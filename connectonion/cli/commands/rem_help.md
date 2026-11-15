@@ -723,6 +723,7 @@ Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
           --chat      WhatsApp only: copy a chat ID from co whatsapp chats.
                       No chat is read unless named.
           --since     how far back to read
+          --vault/--folder  Obsidian: one vault and explicit folders; approve with co rem start.
           --project   coding sources: only sessions run in this directory
 
 Effects:  add/remove change settings only. Bodies are read later, by sync, after start.
@@ -835,8 +836,14 @@ are read later by sync, after co rem start has recorded your approval.
 
 Usage:    co rem sources add NAME [--since 3d|2w|6m|1y] [--only] [--force]
                                    [--chat ID]... [--project DIR] [--about TEXT]
-          NAME is one of: gmail, outlook, codex, claude-code, whatsapp
+                                   [--vault NAME_OR_PATH] [--folder PATH]... [--replace]
+          NAME is one of: gmail, outlook, codex, claude-code, whatsapp, obsidian
 Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
+          co rem sources add obsidian --vault /Users/example/Vault --folder Work
+          Then run co rem start to approve the selection before any note is collected.
+          --vault    Obsidian: one vault name or absolute path, from co obsidian vaults.
+          --folder   Obsidian: explicit vault-relative folder (repeatable); replaces the saved folder selection.
+          --replace  Obsidian: explicitly switch to a different vault; approval is cleared.
           --chat     WhatsApp: one chat to read, from co whatsapp chats (repeatable).
                      No WhatsApp chat is read unless it is named here.
           --project  coding sources: only sessions run in this directory

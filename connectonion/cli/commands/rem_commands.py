@@ -2061,6 +2061,11 @@ def make_rem_app(factory):
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
+                from ...rem.files import state_path
+                if not state_path(root, f"runs/{record['id']}.json").is_file():
+                    # Nothing new: no model ran and no run was kept (#1846), so
+                    # `logs <id>` would name a run that does not exist.
+                    return {**record, "record_kept": False}, ["status"]
                 return record, ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
@@ -2190,10 +2195,20 @@ def make_rem_app(factory):
         if ctx.invoked_subcommand is None:
             _handle(ctx, lambda root: (subscriptions(root), ["sync", "--dry-run"]), ["config"])
 
-    def _add_source(ctx, name, chat, project, about, since, only, force):
+    def _add_source(ctx, name, chat, project, about, since, only, force, vault="", folder=(), replace=False):
+        from ...rem.files import RemError
         from ...rem.service import set_window, toggle_source
 
         def operation(root):
+            from ...rem import source_hooks
+            if name in source_hooks.MODULES:
+                if chat or project or about or since or only or force:
+                    raise RemError("This source uses --vault and --folder; time/chat/project flags do not apply")
+                adapter = source_hooks._load({"kind": name})
+                result = adapter.configure(root, vault=vault, folders=list(folder), replace=replace)
+                return result, ["start"]
+            if vault or folder or replace:
+                raise RemError("Vault options apply only to a registered vault source")
             subscription = toggle_source(root, name, True, project=project, about=about,
                                          since=since or "60d", chats=chat)
             result = {"subscription": subscription, "enabled": True}
@@ -2223,8 +2238,11 @@ def make_rem_app(factory):
                    about: str = typer.Option("", "--about"),
                    since: str = typer.Option("", "--since"),
                    only: bool = typer.Option(False, "--only"),
-                   force: bool = typer.Option(False, "--force")):
-        _add_source(ctx, name, chat, project, about, since, only, force)
+                   force: bool = typer.Option(False, "--force"),
+                   vault: str = typer.Option("", "--vault"),
+                   folder: List[str] = typer.Option([], "--folder"),
+                   replace: bool = typer.Option(False, "--replace")):
+        _add_source(ctx, name, chat, project, about, since, only, force, vault, folder, replace)
 
     @sources_app.command("remove", cls=V("co rem sources remove"))
     def remove_source(ctx: typer.Context, name: str = typer.Argument(...),

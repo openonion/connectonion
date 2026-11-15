@@ -1077,6 +1077,12 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                         + (" (account owner's own messages)" if is_owner or (chat and sent_only)
                            else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
+    if archive_root is not None:
+        from . import source_hooks
+        found, searched = source_hooks.gather(archive_root, handles, start=start, record=record,
+                                             names=set(subscriptions))
+        items.extend(found)
+        coverage.extend(searched)
     items.sort(key=lambda i: i["timestamp"])
     if archive_root is not None:
         from .mail_archive import mail_metadata
@@ -1757,15 +1763,15 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
     else:
         # A hedge is rewritten, never deleted with what it cited: three trial runs of
         # this turn lost 0-4 quotes and 3-11 sources across eight pages (2026-10-20).
-        kept = keep_editing(page, notebook.read(record))
+        kept = keep_editing(page, notebook.read(record), root=notebook.root)
         if kept != notebook.read(record):
             notebook.write(record, kept)
     return before, hedged_lines(notebook.read(record)), out
 
 
-def keep_editing(page, edited):
+def keep_editing(page, edited, *, root=None):
     from .page_review import fold_history, hedged_lines, restore_dropped, strip_hedge
-    kept = restore_dropped(page, edited)
+    kept = restore_dropped(page, edited, root=root)
     hedged = {line for _, line in hedged_lines(kept)}
     return fold_history("\n".join(strip_hedge(line) if line.strip() in hedged else line
                                  for line in kept.split("\n")))
@@ -1805,7 +1811,7 @@ def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) 
     old = {normalise(quote): quote for quote in QUOTE.findall(prose(before))}
     kept = set(old) & {normalise(quote) for quote in QUOTE.findall(prose(after))}
     reason = (f'Turn kept {len(kept)} of the page\'s {len(old)} quotes; restored the prior page'
-              if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after))
+              if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after, root=notebook.root))
     return reason, [old[key] for key in old if key not in kept] if reason.startswith('Turn kept') else []
 
 
@@ -1902,7 +1908,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             # First put the dropped quoted lines back beside the rewrite, as project
             # quote turns and upkeep do; only what that cannot place costs a turn.
             from .page_review import restore_dropped
-            notebook.write(record, restore_dropped(before, notebook.read(record)))
+            notebook.write(record, restore_dropped(before, notebook.read(record), root=notebook.root))
             reason, lost = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
         if lost:
             repaired += 1
@@ -2621,7 +2627,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
-                             "file": str(original_material), "timestamp": now})
+                             "file": str(original_material), "timestamp": now,
+                             "sources": sorted({item["source"] for item in original_items if item.get("source")})})
     # Both runners are `co ai`: it is the orchestrator, and the runner setting
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.

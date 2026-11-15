@@ -3017,7 +3017,7 @@ def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
 def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retried(tmp_path, monkeypatch):
     """connectonion (2026-10-15): round six left zero of round five's fifteen owner quotes."""
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), *, root=None: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/co.md'
     notebook.stub_project(record, 'co', ['/w/co'])
@@ -3044,7 +3044,7 @@ def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retri
 
 def test_a_round_repairs_its_carried_quotes_and_keeps_its_other_change(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), *, root=None: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/example.md'
     notebook.stub_project(record, 'example', ['/work/example'])
@@ -3129,7 +3129,7 @@ def test_org_gather_queries_each_distinct_server_term_once():
 
 def test_quote_loss_with_no_accepted_round_still_records_material_for_retry(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), *, root=None: after)
     root = _notebook(tmp_path, 'codex')
     notebook, record = inv.Notebook(root), 'people/rowan.md'
     full = notebook.read(record).replace('## History\n',

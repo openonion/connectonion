@@ -513,6 +513,13 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
         for source, left in batch.get('material_remaining', {}).items():
             material += f" · {left} left in {source} for next time"
     lines = [rem_look.section('New material', said(material))]
+    for name, acquisition in batch.get('acquisition', {}).items():
+        if acquisition['ok']:
+            result = acquisition['result']
+            counts = ', '.join(f"{key}: {result[key]}" for key in ('added', 'modified', 'deleted', 'unchanged') if key in result)
+            lines.append(rem_look.section('Source collected', said(f"{name}: {counts or 'saved'}")))
+        else:
+            lines.append(rem_look.section('Source collection failed', said(f"{name}: {acquisition['error']}")))
     if batch.get('sessions'):
         from ...rem.sessions import summary
         lines.append(rem_look.section('Agent sessions', said(summary(batch['sessions']).removeprefix('Agent sessions: '))))
@@ -553,7 +560,7 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if tokens:
         lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')
-    if record:
+    if record and value.get('record_kept', True):
         lines.append(rem_look.section('Full record', style.command(spell(['logs', record]))))
     outcome = str(value.get('outcome') or batch.get('outcome') or 'unknown').replace('_', ' ')
     title = style.heading('co rem sync') + (' — ' + style.error('needs attention')

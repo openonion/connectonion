@@ -276,6 +276,15 @@ def next_task(root, *, scheduled=False, discard=False):
           file=sys.stderr, flush=True)
     progress_step("waiting for the maintenance lock")
     _WATCH["deadline"] = None
+    cursor = read_json(state_path(root, "round.json"), {})
+    if not cursor or cursor.get("done"):
+        from . import native_round, source_hooks
+        config = read_config(root)
+        if (source_hooks.selected(root) and not _stop(root, config)[0]
+                and (not scheduled or native_round.scheduled_slot(root, config))):
+            for name, result in source_hooks.fetch(root).items():
+                if not result["ok"]:
+                    print(f"{name}: {result['error']}; using only previously saved approved material", file=sys.stderr)
     with _watching(root), maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,
                                            scheduled=scheduled) as waited_for, runner.private_task_mask():
         _WATCH["deadline"] = time.monotonic() + NEXT_DEADLINE_SECONDS
@@ -308,6 +317,8 @@ def next_task(root, *, scheduled=False, discard=False):
 
 
 def _offer_pending(root, task, *, preparer=None, takeover=False):
+    from .source_hooks import task_material
+    task_material(root, task)
     if task.get("review_unreserved"):
         return _offer_review(root, task)
     claim = task.get("claimed_by")
@@ -480,6 +491,8 @@ def _alive(pid) -> bool:
 
 
 def _save(root, cursor, task):
+    from .source_hooks import task_material
+    task_material(root, task)
     _claim(task)
     directory = Path(task["directory"])
     stage_task = task["task"]
@@ -563,6 +576,8 @@ def submit(root, task_id, *, usage=None):
                 for path, digest in task["inputs"].items() if path in inputs)
                 or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
             raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
+        from .source_hooks import task_material
+        task_material(root, task)
         result = _check_submission(root, task)
         if result.get("outcome") in ("refused", "parked"):
             return result
