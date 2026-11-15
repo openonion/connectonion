@@ -553,7 +553,7 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if tokens:
         lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')
-    if record:
+    if record and value.get('record_kept', True):
         lines.append(rem_look.section('Full record', style.command(spell(['logs', record]))))
     outcome = str(value.get('outcome') or batch.get('outcome') or 'unknown').replace('_', ' ')
     title = style.heading('co rem sync') + (' — ' + style.error('needs attention')

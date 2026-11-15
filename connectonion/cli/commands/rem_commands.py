@@ -2061,6 +2061,11 @@ def make_rem_app(factory):
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
+                from ...rem.files import state_path
+                if not state_path(root, f"runs/{record['id']}.json").is_file():
+                    # Nothing new: no model ran and no run was kept (#1846), so
+                    # `logs <id>` would name a run that does not exist.
+                    return {**record, "record_kept": False}, ["status"]
                 return record, ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
