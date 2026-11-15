@@ -14,11 +14,17 @@ concurrency:
   group: tests-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Do not restore the shared pip cache: its account egress limit stalled Python
-# setup before tests ran. Install dependencies directly; all checks stay enabled.
+# Do not restore the old shared pip cache: its account egress limit stalled
+# setup before tests ran. Use uv's lock-keyed cache instead; all checks stay enabled.
 jobs:
   lockfile:
     runs-on: ubuntu-latest
+    outputs:
+      browser: ${{ steps.paths.outputs.browser }}
+      egress: ${{ steps.paths.outputs.egress }}
+      e2e: ${{ steps.paths.outputs.e2e }}
+      shards: ${{ steps.paths.outputs.shards }}
+      splits: ${{ steps.paths.outputs.splits }}
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -26,17 +32,102 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
+
+      # No API permission or third-party path-filter action is needed, including
+      # on forks and stacked PRs. Compare both exact endpoints; --no-renames
+      # keeps a moved/deleted native file in the filter. Non-PR runs test it all.
+      - name: Identify native contracts affected by this PR
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
+          fi
+          python - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          pr = os.environ['EVENT_NAME'] == 'pull_request'
+          paths = subprocess.check_output([
+              'git', 'diff', '--name-only', '-z', '--no-renames',
+              os.environ['BASE_SHA'], os.environ['HEAD_SHA'],
+          ]).decode().split('\0') if pr else []
+          common = {'pyproject.toml', 'uv.lock', 'requirements.txt', 'pytest.ini',
+                    'setup.py', 'setup.cfg', 'MANIFEST.in',
+                    'tests/conftest.py', 'tests/unit/conftest.py', 'tests/e2e/conftest.py',
+                    'tests/e2e/cli/conftest.py', '.github/workflows/tests.yml'}
+          shared = any(p in common or p.startswith('connectonion/core/')
+                       or (p.startswith('connectonion/cli/') and p.count('/') == 2)
+                       or (p.startswith('connectonion/') and p.count('/') == 1)
+                       for p in paths)
+          browser = shared or any(p.startswith((
+              'connectonion/cli/browser_agent/', 'connectonion/useful_tools/browser_tools/',
+              'connectonion/cli/commands/browser', 'connectonion/rem/files.py',
+              'tests/unit/test_transport', 'tests/unit/test_rem_file_lock',
+              'tests/e2e/cli/test_browser_daemon',
+          )) for p in paths)
+          egress = browser or any(p.startswith((
+              'connectonion/network/', 'connectonion/cli/commands/remote_browser',
+              'connectonion/cli/commands/proxy', 'tests/unit/test_remote_browser',
+              'tests/e2e/cli/test_remote_browser', 'tests/fixtures/remote_browser',
+          )) for p in paths)
+          e2e = browser or any(p.startswith((
+              'connectonion/cli/main.py', 'connectonion/cli/style.py',
+              'connectonion/cli/commands/init', 'connectonion/cli/commands/project_',
+              'connectonion/cli/commands/auth', 'connectonion/cli/commands/copy',
+              'connectonion/cli/commands/doctor', 'connectonion/cli/co_ai/',
+              'connectonion/useful_tools/shell', 'connectonion/useful_skills/',
+              'connectonion/cli/templates/', 'connectonion/rem/reader',
+              'connectonion/rem/service.py', 'connectonion/rem/vendor/',
+              'docs/.package-ignore', 'scripts/check_rem_reader_snapshot.py',
+          )) for p in paths)
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              for name, affected in (('browser', browser), ('egress', egress), ('e2e', e2e)):
+                  print(f'{name}={str(not pr or affected).lower()}', file=output)
+              # Spend freed native runner slots on two more offline shards.
+              # Broad/native PRs retain eight so even their full PR lane is <20 jobs.
+              splits = 8 if browser or egress or e2e else 10
+              print(f'splits={splits}', file=output)
+              print(f'shards={list(range(1, splits + 1))}', file=output)
+          PY
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Verify and audit the exact dependency lock
         run: |
-          python -m pip install uv==0.6.16 pip-audit==2.10.1
+          uv pip install --system pip-audit==2.10.1
           uv lock --check
           uv export --quiet --frozen --all-extras --no-dev --no-emit-project \
             --output-file "$RUNNER_TEMP/connectonion-audit-requirements.txt"
           python -m pip_audit \
             --requirement "$RUNNER_TEMP/connectonion-audit-requirements.txt" \
             --disable-pip --strict --progress-spinner off
+
+      # One pure-Python wheel for both native systems, built from this exact
+      # checkout. Reusing it must never reuse an older commit's package bytes.
+      - name: Build the native candidate wheel once
+        if: steps.paths.outputs.e2e == 'true'
+        run: |
+          uv pip install --system build
+          python -m build --wheel
+
+      - name: Share the candidate wheel
+        if: steps.paths.outputs.e2e == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-wheel
+          path: dist/*.whl
+          if-no-files-found: error
 
   # The offline suite is ~9 minutes of tests on one two-worker runner, so each
   # Python runs it in parallel shards. scripts/ci_test_shard.py splits by
@@ -47,8 +138,12 @@ jobs:
   # `make test` always has; --dist loadfile pinned the largest file
   # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. No more
   # shards than needed: the free plan runs 20 jobs at once across the whole org.
+  # PRs run only 3.12: ten shards when native checks are filtered out, eight
+  # otherwise. Use the existing JUnit weights and recorder, never invented times.
+  # Setup, collection and the largest file still need timing on a real PR.
   test:
-    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ matrix.python-version == '3.11' && 6 || 8 }}
+    needs: lockfile
+    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ github.event_name == 'pull_request' && needs.lockfile.outputs.splits || matrix.python-version == '3.11' && 6 || 8 }}
     runs-on: ubuntu-latest
     # A shard still running at fifteen is hung; the per-test timeout in
     # pytest.ini has already named the culprit, and this is the backstop for a
@@ -57,8 +152,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
+        shard: ${{ fromJSON(github.event_name == 'pull_request' && needs.lockfile.outputs.shards || '[1, 2, 3, 4, 5, 6, 7, 8]') }}
         # 3.12 (traced) and 3.13 run their tests ~40% slower than 3.11, so they
         # take eight shards to 3.11's six to stay near two minutes a shard.
         exclude:
@@ -76,13 +171,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # uv installs the same dev extra in seconds where pip took 25-90. Its
-      # cache stays off for the reason at the top of this file.
+      # Keep uv's cache tied to the reviewed lock, separate from the old pip cache.
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.6.16"
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
         run: uv pip install --system -e ".[dev]"
@@ -102,8 +197,9 @@ jobs:
           # function: line coverage, measured the same, at a fraction of the cost.
           COVERAGE_CORE: sysmon
           COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
+          SHARD_COUNT: ${{ github.event_name == 'pull_request' && needs.lockfile.outputs.splits || matrix.python-version == '3.11' && 6 || 8 }}
         run: |
-          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} ${{ matrix.python-version == '3.11' && 6 || 8 }}) \
+          pytest $(python scripts/ci_test_shard.py ${{ matrix.shard }} "$SHARD_COUNT") \
             -n logical --dist worksteal --tb=short \
             -m "not slow and not real_api and not network" \
             -o junit_family=xunit1 --junitxml=junit.xml \
@@ -131,11 +227,37 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  coverage:
-    needs: test
+  # One stable check for every job that ran, plus coverage and the whole help
+  # tree. Only native jobs filtered out by paths may be skipped. Failures and
+  # cancellations stay red, including when a dependency causes another skip.
+  # Combining the two artifact checks here saves two runner allocations without
+  # removing either gate: a PR has 16 jobs, at most 19 with all native paths.
+  tests-passed:
+    needs: [lockfile, test, cli-help-audit, remote-browser-egress, windows-browser, windows-e2e, macos-e2e]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require every unfiltered job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PYCODE'
+          import json
+          import os
+
+          jobs = json.loads(os.environ['NEEDS'])
+          filters = jobs['lockfile']['outputs']
+          optional = {'remote-browser-egress': 'egress', 'windows-browser': 'browser',
+                      'windows-e2e': 'e2e', 'macos-e2e': 'e2e'}
+          for name, job in jobs.items():
+              result = job['result']
+              print(f'{name}: {result}')
+              filtered = name in optional and filters.get(optional[name]) == 'false'
+              if result != 'success' and not (result == 'skipped' and filtered):
+                  raise SystemExit(f'{name} did not succeed: {result}')
+          PYCODE
+
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -143,6 +265,17 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+
+      # Keep uv's cache tied to the reviewed lock, separate from the old pip cache.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
 
       - name: Download every shard's coverage data
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -155,7 +288,6 @@ jobs:
       # PR pass.
       - name: Combine and gate coverage
         run: |
-          python -m pip install "coverage>=7"
           ls .coverage.shard-*
           coverage combine .coverage.shard-*
           coverage xml
@@ -169,28 +301,24 @@ jobs:
           path: coverage.xml
           if-no-files-found: ignore
 
-  # One stable check name for every shard and the coverage gate. A shard that
-  # failed, was cancelled or was skipped makes this red, never green.
-  tests-passed:
-    needs: [test, coverage, cli-help-audit, cli-help-audit-tree]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require every shard and the coverage gate to succeed
+      - name: Download every shard's list of pages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: audit-pages-*
+          path: audit-pages
+          merge-multiple: true
+
+      - name: Every page audited once, every listed command reachable
         env:
-          TEST_RESULT: ${{ needs.test.result }}
-          COVERAGE_RESULT: ${{ needs.coverage.result }}
-          AUDIT_RESULT: ${{ needs.cli-help-audit.result }}
-          TREE_RESULT: ${{ needs.cli-help-audit-tree.result }}
+          OPENONION_API_KEY: test-key
+          CO_AUDIT_PAGES_DIR: audit-pages
         run: |
-          echo "test shards: $TEST_RESULT, coverage: $COVERAGE_RESULT, help audit shards: $AUDIT_RESULT, help audit tree: $TREE_RESULT"
-          [ "$TEST_RESULT" = success ] && [ "$COVERAGE_RESULT" = success ] \
-            && [ "$AUDIT_RESULT" = success ] && [ "$TREE_RESULT" = success ]
+          pytest -q tests/unit/test_cli_help_contract.py::test_the_shards_together_audit_every_page_once \
+            -m slow --tb=short
 
   # Each `co ... --help` is a process start, and the audit runs about 800 of
   # them (~870 process-seconds). Each shard walks and audits the top-level commands that fall to it
-  # (see tests/unit/test_cli_help_contract.py); cli-help-audit-tree then
+  # (see tests/unit/test_cli_help_contract.py); tests-passed then
   # checks the whole tree once over every shard's list of pages.
   cli-help-audit:
     name: cli-help-audit ${{ matrix.shard }}/4
@@ -209,13 +337,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      # uv installs the same dev extra in seconds where pip took 25-90. Its
-      # cache stays off for the reason at the top of this file.
+      # Keep uv's cache tied to the reviewed lock, separate from the old pip cache.
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.6.16"
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
         run: uv pip install --system -e ".[dev]"
@@ -237,45 +365,6 @@ jobs:
           path: audit-pages
           if-no-files-found: error
 
-  cli-help-audit-tree:
-    needs: cli-help-audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      # uv installs the same dev extra in seconds where pip took 25-90. Its
-      # cache stays off for the reason at the top of this file.
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "0.6.16"
-          enable-cache: false
-
-      - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
-
-      - name: Download every shard's list of pages
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: audit-pages-*
-          path: audit-pages
-          merge-multiple: true
-
-      - name: Every page audited once, every listed command reachable
-        env:
-          OPENONION_API_KEY: test-key
-          CO_AUDIT_PAGES_DIR: audit-pages
-        run: |
-          pytest -q tests/unit/test_cli_help_contract.py::test_the_shards_together_audit_every_page_once \
-            -m slow --tb=short
-
   # The Remote Browser gateway is a security boundary built directly on each
   # platform's asyncio/TCP implementation. Keep its small focused suite on every
   # supported Python and OS instead of treating one green Linux socket as proof
@@ -283,6 +372,8 @@ jobs:
   # shards already run these five files on every Python (324 tests, none
   # skipped), so this job covers the other two systems.
   remote-browser-egress:
+    needs: lockfile
+    if: needs.lockfile.outputs.egress == 'true'
     runs-on: ${{ matrix.os }}
     # Backstop for hangs outside a test (installation, shutdown); the per-test watchdog catches the rest.
     timeout-minutes: 20
@@ -290,7 +381,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
 
     steps:
       - name: Checkout
@@ -301,13 +392,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # uv installs the same dev extra in seconds where pip took 25-90. Its
-      # cache stays off for the reason at the top of this file.
+      # Keep uv's cache tied to the reviewed lock, separate from the old pip cache.
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.6.16"
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
         run: uv pip install --system -e ".[dev]"
@@ -322,11 +413,13 @@ jobs:
   # These tests use a StubBrowser, so no Chrome/network is needed; they exercise the
   # real cross-platform transport (multiprocessing.connection + HMAC authkey).
   windows-browser:
+    needs: lockfile
+    if: needs.lockfile.outputs.browser == 'true'
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
 
     steps:
       - name: Checkout
@@ -337,13 +430,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # uv installs the same dev extra in seconds where pip took 25-90. Its
-      # cache stays off for the reason at the top of this file.
+      # Keep uv's cache tied to the reviewed lock, separate from the old pip cache.
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.6.16"
-          enable-cache: false
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
         run: uv pip install --system -e ".[dev]"
@@ -359,6 +452,8 @@ jobs:
   # launch → navigate → close). This is the "it installs but co/patchright won't
   # run on my machine" class of failure, caught before release.
   windows-e2e:
+    needs: lockfile
+    if: needs.lockfile.outputs.e2e == 'true'
     runs-on: windows-latest
     timeout-minutes: 25
 
@@ -367,21 +462,43 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up Python
+        id: python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Build the wheel (what PyPI ships)
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build --wheel
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Recover the candidate wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: native-wheel
+          path: dist
+
+      - name: Restore the Windows dependency environment
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}\wheel-env
+          key: windows-wheel-env-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('uv.lock') }}
 
       - name: Install from the wheel like a real user (not editable)
         run: |
+          $venv = Join-Path $env:RUNNER_TEMP "wheel-env"
+          if (!(Test-Path "$venv\Scripts\python.exe")) {
+            uv venv --seed $venv
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
           $whl = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
-          pip install $whl
+          # Resolve dependencies every run, even on a cache hit. Replace only the
+          # project distribution unconditionally; never test a cached old wheel.
+          uv pip install --python "$venv\Scripts\python.exe" --reinstall-package connectonion $whl
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          "$venv\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: CLI is discoverable from a plain shell
         run: |
@@ -669,6 +786,8 @@ jobs:
   # bundled browser into an isolated runner directory, then drive a real page
   # through the public `co browser` CLI.
   macos-e2e:
+    needs: lockfile
+    if: needs.lockfile.outputs.e2e == 'true'
     runs-on: macos-latest
     timeout-minutes: 25
 
@@ -681,11 +800,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build and install the wheel (what PyPI ships)
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build --wheel
-          python -m pip install dist/*.whl
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Recover the candidate wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: native-wheel
+          path: dist
+
+      - name: Install the candidate wheel (what PyPI ships)
+        run: uv pip install --system dist/*.whl
 
       - name: CLI and bundled browser are runnable
         env:

@@ -11,40 +11,154 @@ name: help-gate
 # own pages, not all of them.
 
 on:
+  # Cache entries created on a PR are scoped to that PR. Warm the main branch's
+  # exact commit so subsequent PRs can restore its fingerprint too.
+  push:
+    branches: [main]
   pull_request:
     paths:
       - "connectonion/cli/**"
+      - ".github/workflows/help-gate.yml"
+
+# Only the newest head needs an advisory review; never cancel another PR's run.
+concurrency:
+  group: help-gate-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  review:
+  # Collect the base and head concurrently. A cold base cache must not serialize
+  # two complete CLI walks; review below consumes the head's collected pages.
+  base:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the base
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Fingerprint the base's help pages
-        run: |
-          pip install -q -e .
-          # A base from before co audit existed has nothing to compare; review every page then.
-          if co audit --help >/dev/null 2>&1; then co audit co --inventory > "$RUNNER_TEMP/base.json"; else echo '{}' > "$RUNNER_TEMP/base.json"; fi
+      - name: Restore this exact base's help fingerprint
+        id: fingerprint
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}/base.json
+          # No restore-keys: another base/source tree is not a valid comparison.
+          key: help-base-v1-${{ runner.os }}-3.12-${{ github.event.pull_request.base.sha || github.sha }}-${{ hashFiles('connectonion/**', 'pyproject.toml', 'uv.lock') }}
 
+      - name: Set up uv
+        if: steps.fingerprint.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Fingerprint the base's help pages
+        if: steps.fingerprint.outputs.cache-hit != 'true'
+        run: |
+          uv pip install --system -e .
+          # A base from before co audit existed has nothing to compare; review every page then.
+          # Inventory needs one plain walk, not the hard-rule and terminal-look
+          # checks that tests.yml already runs on the head.
+          if co audit --help >/dev/null 2>&1; then
+            python - <<'PY' > "$RUNNER_TEMP/base.json"
+          import json
+          from connectonion.cli import audit
+          print(json.dumps(audit.inventory(audit.pages(['co']))))
+          PY
+          else
+            echo '{}' > "$RUNNER_TEMP/base.json"
+          fi
+
+      - name: Share the base fingerprint
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: help-base
+          path: ${{ runner.temp }}/base.json
+          if-no-files-found: error
+
+  pages:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout the PR
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Collect the PR's pages and hard-rule findings once
+        run: |
+          uv pip install --system -e .
+          python - <<'PY' > "$RUNNER_TEMP/pages.json"
+          import json
+          from dataclasses import asdict
+          from connectonion.cli import audit
+          findings, pages = audit.audit(['co'])
+          print(json.dumps({'pages': {path: page.text for path, page in pages.items()},
+                            'hashes': audit.inventory(pages),
+                            'findings': [asdict(finding) for finding in findings]}))
+          PY
+
+      - name: Share the collected pages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: help-pages
+          path: ${{ runner.temp }}/pages.json
+          if-no-files-found: error
+
+  review:
+    needs: [base, pages]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the PR
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.6.16"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv pip install --system -e .
+
+      - name: Recover both inventories
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: help-*
+          path: ${{ runner.temp }}
+          merge-multiple: true
+
       - name: Review the pages this PR added or changed
         env:
           OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
         run: |
-          pip install -q -e .
           if [ -z "$OPENONION_API_KEY" ]; then
             # Fork PRs get no secrets; the hard rules in tests.yml still applied.
             echo "no model credential in this context — review skipped." | tee -a "$GITHUB_STEP_SUMMARY"
@@ -52,7 +166,31 @@ jobs:
           fi
           # Exit 1 is either a verdict with findings or a crash (no credit, no
           # provider). Only the verdict line tells them apart; a crash is not a pass.
-          co audit co --since "$RUNNER_TEMP/base.json" --review > "$RUNNER_TEMP/review.txt" 2>&1 || true
+          # Match co audit --since/--review without walking the head a second time.
+          python - <<'PY' > "$RUNNER_TEMP/review.txt" 2>&1 || true
+          import json
+          import os
+          from concurrent.futures import ThreadPoolExecutor
+          from pathlib import Path
+          from connectonion.cli import audit
+          from connectonion.core.usage import DEFAULT_MODEL
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          before = json.loads((root / 'base.json').read_text())
+          head = json.loads((root / 'pages.json').read_text())
+          changed = {path for path, digest in head['hashes'].items() if before.get(path) != digest}
+          findings = [audit.Finding(**f) for f in head['findings'] if f['path'] in changed]
+          failing = {f.path for f in findings}
+          passing = [(path, text) for path, text in head['pages'].items()
+                     if path in changed and path not in failing]
+          with ThreadPoolExecutor(max_workers=8) as pool:
+              findings += [f for f in pool.map(lambda item: audit.review(*item, DEFAULT_MODEL), passing) if f]
+          for finding in findings:
+              print(f'{finding.path}  {finding.check}: {finding.fix}')
+          print(f'co: {len(changed)} changed pages')
+          print(f'not yet fit for an agent harness: {len(findings)} problems' if findings
+                else 'fit for an agent harness')
+          PY
           if grep -q "fit for an agent harness" "$RUNNER_TEMP/review.txt"; then
             heading="## co audit --review (advisory)"
           else
