@@ -91,9 +91,52 @@ def _counts(root, night):
             'changed': sorted(changed)}
 
 
-def run(root, *, nights=1, progress=lambda number, row: None):
-    """One exec round per night; all model calls and checks remain in exec."""
-    from . import quota, schedule, service
+def _stop(result, row, index):
+    reason = result.get('reason', '')
+    failed = result.get('outcome') != 'done'
+    if not failed and reason in ('round done', 'daily cap reached'):
+        reason = ''
+    else:
+        reason = reason or result.get('outcome', 'round stopped')
+    if not (row['written'] or row['translated'] or row['drafts']):
+        reason = f'night {index} produced nothing' + (f'; {reason}' if reason else '')
+    return reason, failed
+
+
+def _depth_counts(root, result, before):
+    rounds = result.get('rounds')
+    if rounds is None:  # A stopped slot may already have saved complete page rounds.
+        history = read_json(state_path(root, 'depth.json'), {})
+        rounds = [{'record': record, **row} for record, saved in history.items()
+                  for row in saved[len(before.get(record, [])):]]
+    problems = [f"{row['record']}: enrich {row['enrich']}, muse {row['muse']}" for row in rounds
+                if any(row[name] != 'completed' for name in ('enrich', 'muse'))]
+    reason = '; '.join(part for part in [result['stopped'], *problems] if part)
+    return {'deepened': len(rounds), 'deepen_reason': reason or ('no qualifying pages' if not rounds else '')}
+
+
+def _night(root, night, rows, progress, stage, say):
+    from . import depth, schedule
+    before, deepening = {}, {'rounds': [], 'stopped': 'exec interrupted'}
+    with scope(root, night):
+        try:
+            result = schedule.exec_round(root, scheduled=False)
+            reason, failed = _stop(result, _counts(root, night), len(rows) + 1)
+            deepening['stopped'] = f'exec stopped: {reason}'
+            if not reason:
+                before = read_json(state_path(root, 'depth.json'), {})
+                deepening = {'stopped': 'deepening interrupted'}
+                deepening = depth.slot(root, stage=stage, say=say)
+        finally:  # Include saved work even when the owner stops in either part.
+            row = {**_counts(root, night), **_depth_counts(root, deepening, before)}
+            rows.append(row)
+            progress(len(rows), row)
+    return reason, failed
+
+
+def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=None):
+    """One exec round then one deepen slot per productive, completed night."""
+    from . import quota, service
     from .config import read_config
     if nights < 1:
         raise RemError('Use at least one night: co rem catchup --nights 1')
@@ -106,21 +149,12 @@ def run(root, *, nights=1, progress=lambda number, row: None):
         if reason:
             break
         night = _begin(root)
-        with scope(root, night):
-            try:
-                result = schedule.exec_round(root, scheduled=False)
-            finally:  # Include saved work even when the owner stops in the middle of a night.
-                row = _counts(root, night)
-                rows.append(row)
-                progress(len(rows), row)
-        stop = result.get('reason', '')
-        if result.get('outcome') != 'done' or stop not in ('round done', 'daily cap reached'):
-            reason, failed = stop or result.get('outcome', 'round stopped'), result.get('outcome') != 'done'
-            if not (row['written'] or row['translated'] or row['drafts']):
-                reason = f'night {len(rows)} produced nothing; {reason}'
+        reason, failed = _night(root, night, rows, progress, stage, say)
+        if reason:
             break
-        if not (row['written'] or row['translated'] or row['drafts']):
-            reason = f'night {len(rows)} produced nothing'
-            break
+    totals = {name: sum(row[name] for row in rows) for name in
+              ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened')}
     return {'nights': rows, 'reason': reason, 'failed': failed,
-            **{name: sum(row[name] for row in rows) for name in ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts')}}
+            'deepen_reason': '' if totals['deepened'] else
+                '; '.join(dict.fromkeys(row['deepen_reason'] for row in rows if row['deepen_reason']))
+                or (f'not started: {reason}' if not rows else ''), **totals}

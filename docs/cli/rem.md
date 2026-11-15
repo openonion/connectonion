@@ -493,9 +493,9 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem enrich people/alice.md` | Follow the leads a page has not followed — links, attachments, older threads — and add what they establish. One model turn with the `rem-enrich` Skill, the page's cited originals and a reading ledger of every source the saved archive holds about the subject (no live mailbox query). Prints the lead list: followed, open, blocked. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
-| `co rem decisions` | Count decision and principle pages and captured decisions waiting. No model; no writes. |
-| `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until caught up, a round writes no page, or N rounds finish. |
-| `co rem catchup [--nights N]` | Do the night's work now: one night, or several back to back with `--nights`. Calls the configured model. Each night gets fresh limits; weekly quotas and the Codex usage floor still apply. Stops after a night produces nothing. Prints each night's counts, totals, and `co rem open`. Leaves schedule times unchanged. |
+| `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
+| `co rem decisions write [--rounds N]` | Turn captured session and project decisions into decision pages, then principle pages for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
+| `co rem catchup [--nights N]` | Do the night's work, then one deepen slot. `--nights` repeats both back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Leaves schedule times unchanged. |
 | `co rem abstract [--rounds N]` | Compatibility alias for `co rem decisions write`; prints its new name. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
@@ -513,54 +513,111 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
-Run `co rem catchup` to do one night's work now, or `co rem catchup --nights 5`
-to run five nights back to back. `--nights` is optional, defaults to 1 and must
-be at least 1. Each night uses `co rem exec`'s existing round, calls the configured
-model and reads sources up to now. The schedule is untouched. A notebook-local
+Run `co rem catchup` to do the night's work, then one deepen slot. Use
+`co rem catchup --nights 5` to run both five times back to back. `--nights` is
+optional, defaults to 1 and must be at least 1. Each night uses `co rem exec`'s
+existing round, then the same automatic slot as `co rem deepen`: one enrich
+and muse round per selected page, using the default page count and
+`limits.depth_workers`. It calls the configured model and reads sources up to
+now. A night with deepen can take an hour or more: large-page rounds measured
+35–97 minutes. The schedule is untouched. A notebook-local
 counter gives it fresh daily and nightly limits; page dates, source windows
 and scheduled due times stay real.
 Weekly investigation budgets and the Codex usage floor still stop the run.
+Deepen keeps its separate weekly budget and the same quota and usage floors
+as the scheduled slot. A spent deepen budget or no qualifying pages still
+counts the night; the line says why no pages were deepened.
 The daily investigation call cap leaves room for the same translation tail as
 the scheduled round. Each line reports that night's mail and sessions read,
-pages written, decision pages written, translations and drafts; totals follow.
-A night producing no pages, translations or drafts ends the run. A refused task
-also stops it with the reason; run `co rem exec` to resume unfinished work before
-starting another catchup run. Saved work survives interruption.
+pages written, decision pages written, translations, drafts and pages deepened;
+totals follow. If exec is refused, busy, reaches a quota floor or produces no
+pages, translations or drafts, catchup stops without starting deepen.
+Run `co rem exec` to resume unfinished exec work before starting another catchup
+run. Saved work survives interruption, including during deepen.
 
 Run `co rem decisions` to see how many decision and principle pages exist and how
-many captured decisions are waiting. Run `co rem decisions write` to write them
+many supported captured lines are waiting. Waiting and left count only lines
+with a verbatim quote and a bound original source, excluding captures contradicted
+by stored owner input. Status and the final write summary separately count captures
+with no quote, no bound source, contradicted owner words, or judged not a decision; these totals count
+each line once across the notebook, rather than accumulating across rounds.
+Legacy session pages list unnumbered sources: a quote receives a numbered binding
+only when its words and captured clock identify one retained owner turn on that
+page. Ambiguous or unmatched quotes stay out of the packet. No original transcripts
+are added to the model's material, and the session page remains unchanged.
+Run `co rem decisions write` to write supported captures
 now, oldest first, up to 20 decision lines and 20 reviewed pages per round. Each
 round calls the existing configured model runner once and uses the same material,
 input character bound, owner-quote and citation checks, and decisions/principles
 write scope as the night. Passing pages are kept; refused pages and reasons are
-printed and saved with the run. It continues until nothing is left or a round
-writes no page; `--rounds 2` stops after at most two rounds. Output gives per-round
-counts and totals, decisions left, then `co rem list decisions`. Exit is 0 after
-progress or when nothing is waiting; it is 1 when the first round writes no page,
-with the reason on the last line. A crash leaves its decisions pending. Manual
-success shares the night's saved progress, so neither repeats the other's work.
+printed and saved with the run. Each decision copies the owner's quote exactly as
+captured in the supplied Decisions or Key decisions into the body immediately
+followed by its `[n]`; `## Sources` defines the original source ID for that number
+and keeps the originating page as context. A quote
+placed only under Sources is refused with instructions to move it into the body.
+The page limit is a ceiling: zero pages is valid. Never turn a paraphrase into an owner quote. A quote too long
+for the input bound stays pending, rather than being split into unusable fragments.
+Each offered line has a stable short ID. A passing page that quotes it counts as
+written. For every line it does not quote, the model reports either a merge into a
+decision page it wrote this round, or not a decision because no alternative was
+rejected. A merge finishes only when the named page passes review. Merged lines
+and lines judged not a decision are done and never retried. Verdicts for IDs outside
+the packet are ignored. Refused lines keep the check's reason; lines with neither a
+page nor a verdict count as no answer. Both retry up to three attempts.
+A round that resolves no lines counts as an empty round, sets its slice aside for
+a later retry, and moves to the next slice. It continues until nothing unattempted
+is left or two empty rounds occur in a row; a written, merged or not-a-decision
+outcome resets that streak.
+`--rounds 2` stops after at most two rounds. Output gives per-round counts and
+totals, slices set aside for a later retry, captured lines left, then `co rem list decisions`.
+Status and the final summary show line totals separately: written, merged,
+refused, no answer, and given up. Skipped includes not a decision. Refused and
+no-answer totals include given-up lines; waiting and to retry exclude them.
+These saved totals count each current captured line once, across runs.
+Exit is 0 after progress (including verdicts) or when nothing is waiting; it is 1
+when no attempted round resolves a line, with the reason on the last line.
+A crash leaves its captured lines pending.
+Manual success shares the night's saved progress, so neither repeats the other's work.
 A manual attempt neither uses nor consumes `limits.abstract_rounds_per_night`;
-manual failures also do not count as failed nights. `co rem abstract` remains an
-alias for this command.
+each failed manual run counts once for that slice toward the existing three-failure
+rule, as does each distinct failed night. After three failures the queue releases
+the line and records the reason. Old receipts without verdicts retain their failure
+history and get one more offer, including lines previously given up, so the model
+can give a verdict. Successes after a failed gap are saved separately
+so the gap can retry without repeating later successes. `co rem abstract` remains an alias.
+
+Quote equality with a captured line does not prove who said it. Before promotion,
+the manual and nightly abstract check local stored originals, without fetching a
+source or handing raw messages to the model. A quote found in another sender's
+own mail body or an assistant reply is refused as not authored by the owner.
+A quote absent from its complete cited original is also refused. Typed session
+input and the owner's own mail body can establish owner authorship; quoted mail
+history cannot inherit the sender's identity. Missing or truncated originals,
+unknown senders, and file, repository or web sources leave the speaker unverified.
+Such pages use the existing `## Uncertainties` section with one line:
+`- Speaker unverified.` No speaker is guessed from wording or a citation prefix.
 
 After session summaries, the night runs successive abstract slices when session `## Decisions`
 or project `## Key decisions` contains new or changed captured material. Oldest sections are offered first,
 with at most 20 nonempty decision lines per packet (large sections continue on later
 slices), within the configured input character budget and with only sources bound
-to their quotes. Each completed slice that promotes at least one page admits the next,
+to their quotes. Each completed slice admits the next, setting an empty slice aside,
 up to `limits.abstract_rounds_per_night` (default 6). A backlog of N decision lines
 takes roughly ceil(N / 20 / rounds) nights, where rounds is that nightly limit,
 or longer when slices fail or the character budget requires smaller packets. Section hashes
-advance only after a recorded completed turn promotes at least one page; otherwise
-the slice retries. After failures on three distinct nights, the slice is released and
-its offsets, failure nights and give-up reason are saved in abstract-offered.json.
+advance only over successful or released slices; later successes are saved beyond
+any failed gap. Empty slices retry on a later night or manual run. After three
+distinct failed nights/manual runs, a slice is released and its offsets, failure
+attempt IDs and give-up reason are saved in abstract-offered.json.
 A crashed turn leaves its material pending. It writes or updates at
 most 20 pages under `decisions/` and `principles/` only, with the owner's words
 and original citations on each decision. Assistant proposals without the owner's
 acceptance are excluded. Principles still need at least three decisions. The saved
 night marker counts reserved rounds in the notebook’s noon-to-noon night, so a restart
-keeps the count and the next night starts at zero. An unfinished or failed slice,
-or one that promotes nothing, stops new abstract slices for that night. The later
+keeps the count, attempted slices and consecutive empty count; the next night starts
+at zero. An unfinished reservation blocks new slices until its outcome is recorded.
+Two rounds in a row with neither passing pages nor completed line verdicts stop
+new abstract slices for that night. The later
 same-person and translation passes follow at most six abstract rounds by default.
 Passing pages are saved; rejected
 pages and their errors are recorded in the run. A task with no passing pages
@@ -725,6 +782,7 @@ many candidates remain.
 
 Scheduled `co rem sync --scheduled` runs a slot after a due daily round,
 unless that round was partial. Manual `co rem sync` never deepens pages.
+Each completed catchup night that produced work also runs one slot.
 
 ### What the reader shows
 

@@ -29,7 +29,7 @@ Keep it current
   sync          Run one update now.
   decisions     Count decision and principle pages and decisions waiting. No model.
                 Run co rem decisions write to write them now.
-  catchup       Do the night's work now: one night, or several back to back with --nights.
+  catchup       Do the night's work, then one deepen slot.
   exec          Run the configured background upkeep round.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
@@ -69,12 +69,16 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ## co rem catchup
 
 ```
-Do the night's work now: one night, or several back to back with --nights.
+Do the night's work, then one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
+Each night runs the existing exec round, then one enrich and muse round per selected page, as co rem deepen does.
+A night with deepen can take an hour or more.
 Stops after --nights N (default 1), a night that produces nothing, or a weekly budget or Codex quota floor.
-Output:   Counts for each night, then totals and why it stopped. Exit 1 on a refused or busy task; resume unfinished work with co rem exec.
-Effects:  Calls the configured model and saves pages and progress. Each night gets fresh limits; weekly quotas still apply. Schedule times stay the same.
+Deepen uses its own weekly budget; a spent deepen budget or no qualifying pages still counts the night.
+An exec round that stops the run skips deepen.
+Output:   Counts for each night, including pages deepened and why none, then totals and why it stopped. Exit 1 on a refused or busy task; resume unfinished work with co rem exec.
+Effects:  Calls the configured model and saves pages and progress. Each night gets fresh limits; weekly quotas still apply. Saved work survives interruption. Schedule times stay the same.
 Next:     co rem open
 Back:     co rem --help
 ```
@@ -89,8 +93,9 @@ After session summaries, the night writes decisions/ and principles/ in rounds,
 reading up to 20 captured decision lines each, oldest first. The limit is
 limits.abstract_rounds_per_night (default 6); roughly ceil(N / 20 / rounds) nights
 clear N lines, or longer if rounds fail or the input character limit reads fewer.
-A round that writes no passing page stops this work for the night. A restart keeps
-the round count. Run co rem decisions write to catch up now without that limit.
+An empty round counts as a failed slice and moves on; two empty rounds in a row
+stop this work for the night. Failed slices wait for a later retry. A restart keeps
+the round count and empty streak. Run co rem decisions write to catch up now without that limit.
 
 Usage:    co rem exec [--scheduled]
 Example:  co rem exec --scheduled
@@ -1113,14 +1118,15 @@ Back:     co rem advanced --help
 ## co rem decisions
 
 ```
-Count your decision and principle pages and the captured decisions waiting to be written.
+Count your decision and principle pages and the supported captured decisions waiting to be written.
 Reads the decisions already on session and project pages. No model; no files written.
+Waiting counts only lines with a verbatim quote and a bound original source, excluding known authorship contradictions.
 
 Usage:    co rem decisions [COMMAND]
 Example:  co rem decisions
 Commands:
   write   Write decision and principle pages now, continuing until caught up.
-Output:   Decision pages, principle pages and decisions waiting, then the next command.
+Output:   Decision pages, principle pages, decisions waiting, N to retry and skipped captures by reason, then the next command.
 Effects:  Reads notebook pages and saved progress. No model; no writes.
 Next:     co rem decisions write
 Back:     co rem --help
@@ -1133,10 +1139,19 @@ Turn the decisions already written on your session and project pages into decisi
 Then write principle pages for the reasons that recur.
 Usage:    co rem decisions write [--rounds N]
 Example:  co rem decisions write  |  co rem decisions write --rounds 2
-Stops when nothing is left or a round writes no page. --rounds N limits this run to N rounds.
+Stops when nothing unattempted is left or two empty rounds in a row resolve no lines. --rounds N limits this run to N rounds.
 Reads up to 20 decisions per round, oldest first. Resumes from where previous or overnight runs left off, ignoring the overnight run limit.
-Output:   Counts per round, refused pages and why, totals and decisions left. Exit 1 if the first round writes no page; 0 on progress or no work.
+Only supported quoted lines are offered. Lines without quotes or bound sources, and known authorship contradictions, are skipped.
+Legacy session quotes receive numbered sources only when retained owner turns establish a unique match.
+An empty round counts as a failed slice, set aside for a later retry, then moves to the next slice.
+Progress is saved per captured line: written, merged, not a decision, refused, or no answer.
+Merged lines name a page that passed this round; they and lines judged not a decision are done without retry.
+Pending lines are offered once per manual run or night; after three failed attempts they are recorded as given up with the reason.
+Retries carry the recorded refusal text. Saved refused pages recover identifiable choices hidden by older whole-slice progress.
+Under Sources use exactly one - [n] source-id definition per citation; put originating-page context inline, without [n]: Markdown link definitions.
+Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry, captured lines left and skipped counts once. Line totals: written, merged, refused, no answer, given up. Skipped includes not a decision. Exit 1 if no attempted round resolves a line; 0 on progress or no work.
 Effects:  Calls the model once per round. Writes only under decisions/ and principles/. Saves progress privately.
+          Checks quotes against stored owner input. Unavailable speakers appear under Uncertainties as Speaker unverified.
 Next:     co rem list decisions
 Back:     co rem decisions --help
 ```
@@ -1149,8 +1164,8 @@ Turn captured decisions into decision pages, then principle pages for recurring 
 
 Usage:    co rem abstract [--rounds N]
 Example:  co rem abstract  |  co rem abstract --rounds 2
-          --rounds N  Stop after at most N rounds; otherwise continue until caught up or a round writes no page.
-Output:   Counts per round, refused pages and why, totals and decisions left.
+          --rounds N  Stop after at most N rounds; otherwise continue until caught up or two empty rounds in a row.
+Output:   Counts per round, refused pages and why, totals, slices set aside for a later retry and decisions left.
 Effects:  Calls the model once per round. Writes decisions/ and principles/ and saves progress privately.
 Next:     co rem list decisions
 Back:     co rem decisions --help

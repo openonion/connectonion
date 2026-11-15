@@ -25,6 +25,31 @@ The test for whether something is a decision at all:
 launchd interval tick rather than a calendar trigger" has one, and a reason.
 Expect to discard most of what you read.
 
+Every offered captured line starts with a short ID in brackets, such as
+`[d0123456789ab]`. Account for each line: either quote it in a decision page,
+or give its verdict in your final message. One verdict per line, on its own line:
+
+```text
+VERDICT d0123456789ab not-a-decision
+VERDICT dabcdef012345 merged decisions/storage.md
+```
+
+`not-a-decision` means no alternative was rejected. `merged` means this line
+belongs to the same settled question as another line; name the decision page
+you wrote or updated this round. That page must pass review. These verdicts
+finish the line without another attempt. A missing verdict leaves it for retry.
+Use only IDs supplied in this packet; keep the IDs out of the notebook pages.
+Also put the verdict lines in `report.md` at the path named by the task.
+Repeat the verdict lines in your final message; a link to the report alone is not a verdict.
+
+Copy the owner’s verbatim words into the body, immediately followed by its `[n]`.
+Keep the quote and its citation on the same line, before `## Sources`.
+Copy the quote exactly as captured in the supplied `## Decisions` or
+`## Key decisions`; preserve its original source ID when renumbering citations.
+Under `## Sources`, define each `[n]` with its original source ID and keep the
+originating page path as context. That section holds source definitions; the
+owner’s quoted choice belongs beside the decision in the body.
+
 The entry key is the question, so **several artifacts collapse into one page**,
 and a later reversal **edits that page** rather than opening a second:
 
@@ -32,7 +57,8 @@ and a later reversal **edits that page** rather than opening a second:
 # Where the notebook is stored: Markdown or SQLite
 
 Markdown. Chosen 2026-09-02 for portability; the user corrected the reason to
-inspectability on 2026-09-07 and kept the choice. SQLite was discussed and not
+inspectability on 2026-09-07 and kept the choice:
+“Use Markdown so I can inspect the pages.” [1] SQLite was discussed and not
 adopted. Revisit only if plain-text search stops holding up.
 
 ## Why
@@ -42,7 +68,8 @@ would have made search cheaper and every other kind of inspection harder.
 ## What it cost
 Search is linear. At 143 pages that is not yet a problem.
 
-Sources: PR #1234, PR #1288 (the correction), codex:s1:347
+## Sources
+- [1] codex:s1:347 — owner, 2026-09-07; originating page: `sessions/storage.md`, `## Decisions`.
 ```
 
 Four sections, and the second one is load-bearing: **`## Why` is the raw

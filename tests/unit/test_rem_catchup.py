@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
-from connectonion.rem import daily, native, native_round, quota, runner, schedule, service
+from connectonion.rem import daily, depth, native, native_round, quota, runner, schedule, service
 from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import Notebook, read_json, state_path, write_json
 
@@ -26,6 +26,9 @@ def book(tmp_path, monkeypatch):
     write_json(state_path(tmp_path, 'consent.json'), {'authorized_at': service.now().isoformat()})
     monkeypatch.setattr(quota, 'read', lambda config: {'unknown': 'fixture'})
     monkeypatch.setattr(daily, '_clients', lambda sources: {})
+    monkeypatch.setattr(runner, 'ready', lambda config: ('', ''))
+    for name in ('enrich', 'muse'):
+        monkeypatch.setattr(depth.muse, name, lambda *a, **kw: {})
     return Notebook(tmp_path)
 
 
@@ -78,6 +81,146 @@ def test_two_nights_reuse_exec_reset_abstract_and_print_lines(book, model, monke
     assert 'Night 2: 0 mail read · 0 sessions read · 20 pages written · 20 decisions written · 0 pages translated' in result.output
     assert 'Done: 2 nights · 40 pages written · 40 decisions written · 0 pages translated' in result.output
     assert result.output.rstrip().endswith(f'Next: co rem --root {book.root} open')
+
+
+@pytest.mark.parametrize('daily_cap', [False, True])
+def test_each_night_runs_exec_then_the_default_logged_deepen_slot(book, model, monkeypatch, daily_cap):
+    from connectonion.cli.commands import rem_commands
+    backlog(book, 60)
+    records = [f'people/person-{i}.md' for i in range(4)]
+    for record, name in zip(records, ('Avery', 'Blake', 'Cameron', 'Drew')):
+        book.write(record, f'# {name}\n')
+    set_config(book.root, ['limits.depth_workers', '2'])
+    if daily_cap:
+        set_config(book.root, ['limits.runner_calls_per_day', '1'])
+    exec_round, slot, order = schedule.exec_round, depth.slot, []
+
+    def execute(root, **options):
+        order.append('exec')
+        return exec_round(root, **options)
+
+    def deepen(root, **options):
+        order.append('deepen')
+        assert options['stage'] is rem_commands._depth_stage
+        assert callable(options['say'])
+        assert 'pages' not in options and 'records' not in options
+        return slot(root, **options)
+
+    monkeypatch.setattr(schedule, 'exec_round', execute)
+    monkeypatch.setattr(depth, 'slot', deepen)
+    result = invoke(book, '--nights', '2')
+    assert result.exit_code == 0, result.output
+    assert order == ['exec', 'deepen', 'exec', 'deepen']
+    lines = result.stdout.splitlines()
+    assert '3 pages deepened' in next(line for line in lines if line.startswith('Night 1:'))
+    assert '1 page deepened' in next(line for line in lines if line.startswith('Night 2:'))
+    assert '4 pages deepened' in next(line for line in lines if line.startswith('Done:'))
+    assert set(read_json(state_path(book.root, 'depth.json'), {})) == set(records)
+    logs = service.run_logs(book.root)
+    assert sum(row['phase'] in ('enrich', 'muse') for row in logs) == 8
+
+
+@pytest.mark.parametrize('outcome,reason,productive', [
+    ('refused', 'candidate rejected', True), ('busy', 'task still running', True),
+    ('done', 'Codex quota floor reached', True), ('done', 'round done', False),
+])
+def test_deepen_is_skipped_when_exec_stops_catchup(book, monkeypatch, outcome, reason, productive):
+    from connectonion.rem import catchup
+
+    def execute(root, **options):
+        write_json(state_path(root, 'round.json'), {'catchup_night': catchup.number(root),
+                   'changed': ['people/person.md'] if productive else []})
+        return {'outcome': outcome, 'reason': reason}
+
+    monkeypatch.setattr(schedule, 'exec_round', execute)
+    monkeypatch.setattr(depth, 'slot', lambda *a, **kw: pytest.fail('deepened after exec stopped'))
+    result = invoke(book, '--nights', '2')
+    assert result.exit_code == int(outcome != 'done'), result.output
+    assert 'Night 2:' not in result.stdout
+    assert '0 pages deepened (exec stopped:' in result.stdout
+    assert ('produced nothing' if not productive else reason) in result.stdout
+
+
+def test_spent_deepen_budget_still_counts_each_night(book, model, monkeypatch):
+    backlog(book, 60)
+    book.write('people/person.md', '# Person\n')
+    monkeypatch.setattr(depth, 'spent', lambda *a: 30)
+    result = invoke(book, '--nights', '2')
+    assert result.exit_code == 0, result.output
+    for prefix in ('Night 1:', 'Night 2:', 'Done: 2 nights'):
+        line = next(line for line in result.stdout.splitlines() if line.startswith(prefix))
+        assert '0 pages deepened (deepening has used 30 of its 30-point weekly budget)' in line
+    assert len(model[0]) == 2
+    assert not state_path(book.root, 'depth.json').exists()
+
+
+def test_no_qualifying_pages_still_counts_the_night_and_explains_zero(book, model):
+    backlog(book, 40)
+    result = invoke(book, '--nights', '2', json_out=True)
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)['data']
+    assert len(data['nights']) == 2 and data['deepened'] == 0
+    assert all(row['deepened'] == 0 and row['deepen_reason'] == 'no qualifying pages'
+               for row in data['nights'])
+
+
+@pytest.mark.parametrize('completed', [0, 1])
+def test_deepen_interruption_keeps_enrich_work_and_reports_it(book, model, monkeypatch, completed):
+    backlog(book, 20)
+    records = [f'people/person-{i}.md' for i in range(completed + 1)]
+    for record, name in zip(records, ('Avery', 'Blake')):
+        book.write(record, f'# {name}\n')
+    set_config(book.root, ['limits.depth_workers', '1'])
+
+    def enrich(root, page, **options):
+        book.write(page, book.read(page) + '\nSaved enrich work.\n')
+        return {'changed': [page]}
+
+    def interrupt(root, page, **options):
+        if page == records[-1]:
+            raise KeyboardInterrupt
+        return {}
+
+    monkeypatch.setattr(depth.muse, 'enrich', enrich)
+    monkeypatch.setattr(depth.muse, 'muse', interrupt)
+    result = invoke(book, '--nights', '2')
+    assert result.exit_code == 130, result.output
+    assert all('Saved enrich work.' in book.read(record) for record in records)
+    assert all(record in result.output for record in records) and 'and kept' in result.output
+    assert 'Night 2:' not in result.output
+    assert f"{completed} {'page' if completed == 1 else 'pages'} deepened (deepening interrupted)" in result.output
+    assert set(read_json(state_path(book.root, 'depth.json'), {})) == set(records[:-1])
+    assert {row['phase']: row['outcome'] for row in service.run_logs(book.root)
+            if row.get('record') == records[-1] and row['phase'] in ('enrich', 'muse')
+            } == {'enrich': 'completed', 'muse': 'interrupted'}
+
+
+def test_totals_do_not_attach_a_later_empty_slot_reason_to_deepened_pages(book, model):
+    backlog(book, 40)
+    book.write('people/person.md', '# Person\n')
+    result = invoke(book, '--nights', '2')
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert '0 pages deepened (no qualifying pages)' in next(line for line in lines if line.startswith('Night 2:'))
+    total = next(line for line in lines if line.startswith('Done:'))
+    assert total.endswith('1 page deepened')
+
+
+def test_failed_deepen_stages_are_visible_in_the_night_line(book, model, monkeypatch):
+    backlog(book, 20)
+    book.write('people/person.md', '# Person\n')
+
+    def fail(*args, **options):
+        raise runner.RunFailed('fixture stage failed', {'input_tokens': 10})
+
+    for name in ('enrich', 'muse'):
+        monkeypatch.setattr(depth.muse, name, fail)
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
+    line = next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
+    assert '1 page deepened' in line  # Count the same round records as scheduled sync.
+    assert 'enrich failed: fixture stage failed' in line
+    assert 'muse failed: fixture stage failed' in line
 
 
 def test_default_one_night_and_later_invocation_gets_a_fresh_night(book, model):
@@ -428,7 +571,8 @@ def test_catchup_help_is_discoverable_and_plain():
     assert shown.exit_code == 0, shown.output
     assert 'catchup' in root.output
     assert 'co rem catchup [--nights N]' in shown.output
-    assert "Do the night's work now: one night, or several back to back with --nights." in shown.output
+    assert "Do the night's work, then one deepen slot." in shown.output
+    assert 'A night with deepen can take an hour or more.' in shown.output
     assert 'Example:  co rem catchup  |  co rem catchup --nights 5' in shown.output
     assert '--nights N (default 1)' in shown.output
     assert 'quota floor' in shown.output

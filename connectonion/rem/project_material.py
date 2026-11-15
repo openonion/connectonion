@@ -416,17 +416,25 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, rep
                               "input_scope": item.get("input_scope") or ""})
 
 
-def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
-    """A cited original unavailable in the mapped archive, from the accepted run."""
-    from .reader_model import PRIVATE
+def retained_session(root: Path, source: str) -> dict | None:
+    """The full, retained owner input for a citation; never an assistant reply."""
     if not parse_session_source(source):
         return None
     path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
     saved = read_json(path, {})
     body = saved.get("text")
-    if (saved.get("source") != source or not isinstance(body, str)
-            or SECRET_SHAPES.search(body) or (PRIVATE.search(body) and not private)):
+    if saved.get("source") != source or not isinstance(body, str) or SECRET_SHAPES.search(body):
         return None
+    return saved
+
+
+def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
+    """A cited original unavailable in the mapped archive, from the accepted run."""
+    from .reader_model import PRIVATE
+    saved = retained_session(root, source)
+    if saved is None or (PRIVATE.search(saved["text"]) and not private):
+        return None
+    body = saved["text"]
     excerpt = body.strip()[:4_096]
     return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
             "time": saved.get("timestamp") or "", "sender": "", "thread": "",

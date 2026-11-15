@@ -4,8 +4,8 @@ import hashlib
 import json
 import re
 
-from .files import _readable_json, read_json, state_path, write_json
-from .page_review import _quote_bindings
+from .files import Notebook, _readable_json, read_json, state_path, write_json
+from .page_review import QUOTE, _quote_bindings, _quoted_in
 
 # Twenty lets an older notebook catch up while keeping each slice's review bounded.
 NIGHT_PAGE_LIMIT = 20
@@ -21,7 +21,65 @@ def _sections(notebook):
             body = section[1].strip()
             if not body or re.fullmatch(r'[-*\s]*(?:Unknown|None(?: yet)?|No decisions(?: yet)?)[.!]?', body, re.I):
                 continue
-            yield record, heading, body, text.partition('\n## Sources\n')[2]
+            sources = text.partition('\n## Sources\n')[2]
+            if category == "sessions":
+                body, sources = _session_bindings(body, sources, text)
+            yield record, heading, body, sources
+
+
+def _session_bindings(body, sources, text):
+    """Recover legacy session citations only from owner turns retained on the page."""
+    from .reader_model import SOURCE, session_detail
+    if SOURCE.search(sources):
+        return body, sources
+    turns = session_detail(text, private=True)["session_messages"]
+    numbers, lines = {}, []
+    for line in body.splitlines(keepends=True):
+        for quote in reversed(list(QUOTE.finditer(line))):
+            stamp = re.search(r'\((\d{2}:\d{2})\)', line[quote.end():])
+            matches = {turn["source"] for turn in turns if turn["role"] == "user" and turn.get("source")
+                       and (not stamp or turn["time"].endswith(stamp[1]))
+                       and _quoted_in(quote[1], turn["text"])}
+            if len(matches) == 1:
+                source = next(iter(matches))
+                number = numbers.setdefault(source, len(numbers) + 1)
+                line = line[:quote.end()] + f" [{number}]" + line[quote.end():]
+        lines.append(line)
+    definitions = "\n".join(f"- [{number}] {source}" for source, number in numbers.items())
+    return ''.join(lines), sources + '\n' + definitions
+
+
+def _owner_supported(root, words, binding):
+    """Use the unchanged original-author check before spending a model turn."""
+    from .decision_authorship import review
+    ids = sorted(binding)
+    text = f'“{words}” ' + ''.join(f'[{n}]' for n in range(1, len(ids) + 1))
+    text += '\n\n## Sources\n' + '\n'.join(f'- [{n}] {source}' for n, source in enumerate(ids, 1))
+    return not review(root, text)[1]
+
+
+def _eligible_lines(body, sources, *, root=None):
+    """Keep original character offsets while selecting quotes review can bind."""
+    for match in re.finditer(r'.*(?:\n|$)', body):
+        if any(binding and (root is None or _owner_supported(root, words, binding))
+               for words, binding in _quote_bindings(match[0] + '\n\n## Sources\n' + sources)):
+            yield match
+
+
+def skipped_counts(notebook):
+    """Count unsupported captures once across the notebook, outside the round loop."""
+    counts = {"no_quote": 0, "no_source": 0, "not_owner": 0}
+    for _, _, body, sources in _sections(notebook):
+        eligible = {match.start() for match in _eligible_lines(body, sources)}
+        supported = {match.start() for match in _eligible_lines(body, sources, root=notebook.root)}
+        for match in re.finditer(r'.*(?:\n|$)', body):
+            if match[0].strip() and match.start() not in eligible:
+                counts["no_source" if QUOTE.search(match[0]) else "no_quote"] += 1
+            elif match.start() in eligible and match.start() not in supported:
+                counts["not_owner"] += 1
+    from .decision_progress import counts as progress_counts
+    counts['not_decision'] = progress_counts(notebook)['not_decision']
+    return counts
 
 
 def _captured(heading, body, sources):
@@ -34,51 +92,68 @@ def _captured(heading, body, sources):
     return f"## {heading}\n{body}\n\n## Sources\n" + "\n".join(lines) + "\n"
 
 
-def _piece(heading, body, sources, offset, budget):
-    text = _captured(heading, body[offset:], sources)
-    if len(text) <= budget:
-        return text, len(body)
-    # Normally sections fit whole. Exceptionally large ones progress across slices.
-    end = min(len(body), offset + budget)
-    while end > offset:
-        text = _captured(heading, body[offset:end], sources)
+def line_id(record, digest, start, end):
+    """A short receipt name independent of packet boundaries and attempts."""
+    key = json.dumps([record, digest, start, end], ensure_ascii=False)
+    return 'd' + hashlib.sha256(key.encode()).hexdigest()[:12]
+
+
+def _piece(heading, lines, sources, offset, budget, record, digest):
+    lines = list(lines)
+    # A packet ends at a whole eligible line; an oversized quote stays pending.
+    while lines:
+        end = offset + lines[-1].end()
+        body = ''.join(f'[{line_id(record, digest, offset + match.start(), offset + match.end())}] {match[0]}'
+                       for match in lines)
+        text = _captured(heading, body, sources)
         if len(text) <= budget:
-            line = body.rfind('\n', offset, end)
-            if line > offset:
-                end = line + 1
-                text = _captured(heading, body[offset:end], sources)
             return text, end
-        end -= max(1, len(text) - budget)
+        lines.pop()
     return "", offset
 
 
-def _pending(notebook):
-    offered = read_json(state_path(notebook.root, "abstract-offered.json"), {})
+def slice_key(item):
+    """Only offsets and the captured section hash identify an attempted slice."""
+    return {key: item[key] for key in ("record", "section_sha256", "section_start", "section_end")}
+
+
+def _offered(notebook):
+    from .decision_progress import recover
+    return recover(notebook, read_json(state_path(notebook.root, "abstract-offered.json"), {}))
+
+
+def _pending(notebook, attempted=()):
+    offered = _offered(notebook)
     sections = sorted(_sections(notebook), key=lambda row: (notebook.path(row[0]).stat().st_mtime, row[0]))
     for record, heading, body, sources in sections:
         captured = _captured(heading, body, sources)
         digest = hashlib.sha256(captured.encode()).hexdigest()
         saved = offered.get(record, {})
         offset = saved.get("offset", 0) if saved.get("sha256") == digest else 0
-        if offset < len(body):
-            yield record, heading, body, sources, digest, offset
+        completed = saved.get("completed", []) if saved.get("sha256") == digest else []
+        skipped = completed + [[item["section_start"], item["section_end"]] for item in attempted
+                               if item["record"] == record and item["section_sha256"] == digest]
+        for start, end in sorted(skipped) + [[len(body), len(body)]]:
+            if start > offset:
+                lines = list(_eligible_lines(body[offset:start], sources, root=notebook.root))
+                if lines:
+                    yield record, heading, sources, digest, offset, lines
+            offset = max(offset, end)
 
 
-def pending_count(notebook):
-    return sum(bool(line.strip()) for _, _, body, _, _, offset in _pending(notebook)
-               for line in body[offset:].splitlines())
+def pending_count(notebook, *, attempted=()):
+    return sum(len(lines) for *_, lines in _pending(notebook, attempted))
 
 
-def material(notebook, config=None):
+def material(notebook, config=None, *, attempted=()):
     from .config import read_config
     budget = (config or read_config(notebook.root))["limits"]["input_chars_per_batch"]
     items = []
     lines_left = NIGHT_PAGE_LIMIT
-    for record, heading, body, sources, digest, offset in _pending(notebook):
-        # Cap nonempty decision lines at page capacity so every offered choice can become a page.
-        ends = [match.end() for match in re.finditer(r'.*(?:\n|$)', body[offset:]) if match[0].strip()]
-        bounded = body[:offset + ends[lines_left - 1]] if len(ends) > lines_left else body
-        text, end = _piece(heading, bounded, sources, offset, budget)
+    for record, heading, sources, digest, offset, lines in _pending(notebook, attempted):
+        # Unsupported lines consume neither page capacity nor a model turn.
+        lines = lines[:lines_left]
+        text, end = _piece(heading, lines, sources, offset, budget, record, digest)
         while text:
             item = {"role": "captured-decisions", "record": record, "source": f"notebook:{record}",
                     "section_sha256": digest, "section_start": offset, "section_end": end,
@@ -89,44 +164,84 @@ def material(notebook, config=None):
                 break
             if items:
                 return items  # Start the next section whole next slice, in oldest-first order.
-            text, end = _piece(heading, bounded, sources, offset, len(text) - excess)
+            text, end = _piece(heading, lines, sources, offset, len(text) - excess, record, digest)
         if not text:
             break
         items.append(item)
-        lines_left -= sum(bool(line.strip()) for line in body[offset:end].splitlines())
+        lines_left -= sum(match.end() <= end - offset for match in lines)
         if lines_left <= 0:
             break
     return items
 
 
-def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages"):
-    """Checkpoint a durable success, or give up a slice after three distinct failed nights."""
+def _complete(saved, start, end):
+    """Keep successes beyond a failed gap without losing the gap's later retry."""
+    completed = []
+    for left, right in sorted([*saved.get("completed", []), [start, end]]):
+        if left <= saved["offset"]:
+            saved["offset"] = max(saved["offset"], right)
+        elif completed and left <= completed[-1][1]:
+            completed[-1][1] = max(completed[-1][1], right)
+        else:
+            completed.append([left, right])
+    saved["completed"] = completed
+    failures = saved.get("failures", {})
+    failures.pop(f"{start}:{end}", None)
+    saved.get("failure_reasons", {}).pop(f"{start}:{end}", None)
+    if not failures:
+        saved.pop("failures", None)
+
+
+def remember_offered(root, items, *, promoted=True, night=None, reason="No passing pages", changed=None, refusals=(), report=''):
+    """Checkpoint promoted lines; give up each failed line on its third attempt.
+
+    The slice-only default remains for older callers; writers supply changed
+    pages so one successful page cannot acknowledge its entire input slice.
+    """
     path = state_path(root, "abstract-offered.json")
-    offered = read_json(path, {})
-    for item in items:
+    offered = _offered(Notebook(root))
+    if changed is not None:
+        from .decision_progress import line_results
+        results = line_results(Notebook(root), items, changed, refusals, report=report, reason=reason)
+    else:
+        results = ((item, {'state': 'written' if promoted else 'no_answer', 'reason': reason}) for item in items)
+    deferred = []
+    for item, verdict in results:
         digest = item.get("section_sha256")
         if not digest:
             continue
         saved = offered.get(item["record"], {})
         if saved.get("sha256") != digest:
             saved = {"sha256": digest, "offset": 0}
+        if changed is not None:
+            saved['line_progress'] = True
+        saved['verdict_progress'] = True
         start, end = item.get("section_start", 0), item["section_end"]
-        if saved["offset"] >= end:
+        if saved["offset"] >= end or any(left <= start and right >= end for left, right in saved.get("completed", [])):
             continue
-        if promoted:
-            saved.update(offset=end)
-            saved.pop("failures", None)
+        saved.setdefault('verdicts', {})[f'{start}:{end}'] = verdict
+        if verdict['state'] in ('written', 'merged', 'not_decision'):
+            _complete(saved, start, end)
         else:
+            reason = verdict.get('reason', reason)
             failures = saved.setdefault("failures", {})
-            nights = failures.setdefault(f"{start}:{end}", [])
+            key = f"{start}:{end}"
+            prior = [n for span, nights in failures.items() for n in nights
+                     if int(span.split(':')[0]) <= start and int(span.split(':')[1]) >= end]
+            nights = failures.setdefault(key, list(dict.fromkeys(prior)))
             if night not in nights:
                 nights.append(night)
+                saved.setdefault('failure_reasons', {})[key] = reason
             if len(nights) >= 3:
-                saved["offset"] = end
-                saved.setdefault("given_up", []).append(dict(start=start, end=end, nights=nights, reason=reason))
-                saved.pop("failures", None)
+                given_up = saved.setdefault('given_up', [])
+                given_up[:] = [row for row in given_up if (row['start'], row['end']) != (start, end)]
+                given_up.append(dict(start=start, end=end, nights=nights, reason=reason))
+                _complete(saved, start, end)
+            else:
+                deferred.append(slice_key(item))
         offered[item["record"]] = saved
     write_json(path, offered)
+    return deferred
 
 
 def quote_errors(text, items):
@@ -135,4 +250,5 @@ def quote_errors(text, items):
                 for pair in _quote_bindings(item["text"]) if pair[1]]
     if any(binding and (words, binding) in captured for words, binding in _quote_bindings(text)):
         return []
-    return ["Decision must quote the owner's words with the original source citation from captured Decisions or Key decisions"]
+    return ["Decision must quote the owner's words exactly as captured in Decisions or Key decisions; "
+            "put the quote in the body immediately followed by its [n] and define the original source ID under ## Sources"]

@@ -2125,21 +2125,28 @@ def make_rem_app(factory):
     def catchup(ctx: typer.Context, nights: int = typer.Option(1, "--nights", min=1)):
         from ...rem.catchup import run
 
+        def deepen_text(value):
+            count = value['deepened']
+            text = f"{count} {'page' if count == 1 else 'pages'} deepened"
+            return text + (f" ({value['deepen_reason']})" if value['deepen_reason'] else '')
+
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{row['written']} pages written · {row['decisions']} decisions written · "
-                           f"{row['translated']} pages translated · {row['drafts']} drafts prepared")
+                           f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
+                           + deepen_text(row))
 
         def summary(value):
             count = len(value['nights'])
             text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {value['written']} pages written · "
-                    f"{value['decisions']} decisions written · {value['translated']} pages translated")
+                    f"{value['decisions']} decisions written · {value['translated']} pages translated · "
+                    + deepen_text(value))
             return escape(text + (f"\nStopped: {value['reason']}" if value['reason'] else ''))
 
         def operation(root):
-            value = run(root, nights=nights, progress=progress)
+            value = run(root, nights=nights, progress=progress, stage=_depth_stage, say=rem_look.step)
             return value, ['open'], value['failed']
 
         _handle(ctx, operation, ['logs'], draw=summary, resume=['exec'])
