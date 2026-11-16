@@ -79,11 +79,112 @@ def test_the_night_saves_both_calendars_next_weeks_in_one_shape(tmp_path, calend
     assert by_id['g1'] == {'id': 'g1', 'title': 'Pilot renewal call with Fernhill', 'all_day': False,
                            'start': '2026-10-02T09:30:00+13:00', 'end': '2026-10-02T10:00:00+13:00',
                            'location': 'Video call', 'link': 'https://calendar.example/g1',
-                           'attendees': ['Mara@Fernhill.example'], 'calendar': 'google'}
+                           'attendees': ['Mara@Fernhill.example'], 'label': '', 'calendar_name': '', 'calendar': 'google'}
     assert by_id['g2']['all_day'] and by_id['g2']['start'] == '2026-10-05'
     # Graph's UTC has no offset in the string; it is written with one.
     assert by_id['o1']['start'] == '2026-10-03T01:00:00+00:00' and by_id['o1']['location'] == 'Harbour office'
     assert by_id['o2']['all_day'] and (by_id['o2']['start'], by_id['o2']['end']) == ('2026-10-04', '2026-10-05')
+
+
+def _google_saved(tmp_path, calendars, items):
+    answers, _ = calendars
+    answers.pop('microsoft')
+    answers['google'] = items
+    calendar.save_upcoming(tmp_path, NIGHT)
+    return {event['id']: event for event in _saved(tmp_path)['events']}
+
+
+def _timed(id, **extra):
+    return {'id': id, 'start': {'dateTime': '2026-10-02T09:00:00+13:00'}, 'end': {'dateTime': '2026-10-02T10:00:00+13:00'}} | extra
+
+
+SHARED = {'name': 'Ines Calder', 'access': 'freeBusyReader'}
+OWN = {'name': 'Avery', 'access': 'owner'}
+
+
+def test_where_he_works_that_day_is_not_an_event(tmp_path, calendars):
+    """Half the owner's saved events had no title. A working location is Google's own entry, not something he attends."""
+    by_id = _google_saved(tmp_path, calendars, [
+        _timed('home', eventType='workingLocation', _calendar=OWN),
+        {'id': 'office', 'summary': 'Office', 'eventType': 'workingLocation', 'start': {'date': '2026-10-02'},
+         'end': {'date': '2026-10-03'}, '_calendar': OWN},
+        _timed('call', summary='Pilot call', eventType='default', _calendar=OWN)])
+    assert set(by_id) == {'call'} and by_id['call']['label'] == ''
+
+
+@pytest.mark.parametrize('kind, words', [('focusTime', 'Focus time'), ('outOfOffice', 'Out of office')])
+def test_focus_time_and_out_of_office_are_named_by_their_type(tmp_path, calendars, kind, words):
+    by_id = _google_saved(tmp_path, calendars, [_timed('untitled', eventType=kind, _calendar=OWN),
+                                                _timed('titled', summary='Deep work', eventType=kind, _calendar=OWN)])
+    assert (by_id['untitled']['title'], by_id['untitled']['label']) == ('', words)
+    assert (by_id['titled']['title'], by_id['titled']['label']) == ('Deep work', words)
+
+
+def test_an_entry_from_a_calendar_shared_without_details_is_busy_with_that_calendars_name(tmp_path, calendars):
+    by_id = _google_saved(tmp_path, calendars, [
+        _timed('freebusy', visibility='private', _calendar=SHARED),
+        _timed('bare', _calendar=SHARED),
+        _timed('private', visibility='private', _calendar={'name': 'Fernhill team', 'access': 'reader'}),
+        _timed('own', _calendar=OWN),
+        _timed('own-private', visibility='private', _calendar=OWN)])
+    assert [(by_id[key]['label'], by_id[key]['calendar_name']) for key in ('freebusy', 'bare', 'private')] == [
+        ('Busy', 'Ines Calder'), ('Busy', 'Ines Calder'), ('Busy', 'Fernhill team')]
+    # His own event that he left untitled is not hidden from him: it stays "No title" on the page.
+    assert by_id['own']['label'] == '' and by_id['own-private']['label'] == ''
+    assert all(event['title'] == '' for event in by_id.values())
+
+
+@pytest.mark.parametrize('order', [(0, 1), (1, 0)])
+def test_a_meeting_on_his_calendar_and_on_a_shared_one_keeps_its_title(tmp_path, calendars, order):
+    """Google gives one meeting the same id on every calendar it is on; the colleague's free/busy copy has no title."""
+    copies = [_timed('same', summary='Pilot call', _calendar=OWN), _timed('same', visibility='private', _calendar=SHARED)]
+    by_id = _google_saved(tmp_path, calendars, [copies[n] for n in order])
+    assert (by_id['same']['title'], by_id['same']['label'], by_id['same']['calendar_name']) == ('Pilot call', '', 'Avery')
+
+
+def test_a_cancelled_instance_is_left_out_even_without_a_title(tmp_path, calendars):
+    by_id = _google_saved(tmp_path, calendars, [_timed('gone', status='cancelled', _calendar=OWN), _timed('kept', summary='Kept')])
+    assert set(by_id) == {'kept'}
+
+
+class _FakeGoogle:
+    """Google's client in its own shape: two listed calendars, each asked for its events; records every request."""
+
+    def __init__(self):
+        self.asked = []
+
+    def calendarList(self):
+        return self
+
+    def events(self):
+        return self
+
+    def list(self, **params):
+        self.asked.append(params)
+        return self
+
+    def execute(self):
+        params = self.asked[-1]
+        if 'calendarId' not in params:
+            return {'items': [{'id': 'avery@example.test', 'summary': 'avery@example.test', 'summaryOverride': 'Avery',
+                               'primary': True, 'accessRole': 'owner'},
+                              {'id': 'ines@example.test', 'summary': 'Ines Calder', 'selected': True, 'accessRole': 'freeBusyReader'},
+                              {'id': 'feed@example.test', 'summary': 'Unticked feed', 'accessRole': 'reader'}]}
+        return {'items': [_timed('from-' + params['calendarId'])]}
+
+
+def test_google_is_asked_for_whole_events_and_each_carries_its_calendar(monkeypatch):
+    from connectonion.useful_tools.google_calendar import GoogleCalendar
+    service = _FakeGoogle()
+    monkeypatch.setattr(GoogleCalendar, '__init__', lambda self: None)
+    monkeypatch.setattr(GoogleCalendar, '_get_service', lambda self: service)
+    events = calendar._google_events(NIGHT, NIGHT + timedelta(days=1), SYDNEY)
+    assert [(event['id'], event['_calendar']) for event in events] == [
+        ('from-avery@example.test', OWN), ('from-ines@example.test', SHARED)]
+    # A `fields` mask that left out `summary` would empty every title; none is sent, so Google returns the whole event.
+    asked = [params for params in service.asked if 'calendarId' in params]
+    assert all('summary' in params.get('fields', 'summary') for params in asked) and len(asked) == 2
+    assert [calendar._google(event, SYDNEY)['label'] for event in events] == ['', 'Busy']
 
 
 def test_an_outlook_all_day_event_in_sydney_keeps_its_day(tmp_path, calendars):

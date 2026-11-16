@@ -36,14 +36,19 @@ def _events(calendar, day, zone):
         if first >= end or last <= start:
             continue
         begin, finish = max(start, first), min(end, last)
-        # A timed event that runs through this whole day (a week away, a conference) is all day here,
-        # not "00:00–00:00"; one that runs past midnight ends at 24:00 on the day it began.
-        all_day = bool(event.get('all_day')) or (begin, finish) == (start, end)
+        # Twenty-four hours or more is a trip or a booking, not a meeting: it is listed with the all-day
+        # entries and blocks nothing. A shorter one past midnight ends at 24:00 on the day it began.
+        all_day = bool(event.get('all_day')) or last - first >= timedelta(days=1)
         rows.append({**event, 'kind': 'event', 'all_day': all_day, 'start': begin.isoformat(), 'end': finish.isoformat(),
                      'time': '' if all_day else begin.strftime('%H:%M'),
                      'end_time': '' if all_day else '24:00' if finish == end else finish.strftime('%H:%M'),
                      'address_missing': address_missing(event.get('location', ''))})
-    return sorted(rows, key=lambda row: row['start'])
+    return sorted(rows, key=_order)
+
+
+def _order(row):
+    """All-day entries lead the day as context; then everything by its time."""
+    return (not row.get('all_day'), row.get('start') or '9999')
 
 
 def _gaps(events, start, end, zone):
@@ -107,11 +112,10 @@ def _proposal(row, day, slot, calendar_read):
 
 def _day(calendar, items, day, config, zone, calendar_read):
     events = _events(calendar, day, zone)
-    gaps = _gaps(events, *_bounds(day, config, zone), zone)
+    # Only timed events take working hours: one week-long all-day entry once left every proposal without a time.
+    gaps = _gaps([row for row in events if not row['all_day']], *_bounds(day, config, zone), zone)
     proposals = [_proposal(row, day, _slot(gaps) if calendar_read else None, calendar_read) for row in items]
-    rows = events + proposals
-    rows.sort(key=lambda row: row.get('start') or '9999')
-    return {'date': day.isoformat(), 'items': rows}
+    return {'date': day.isoformat(), 'items': sorted(events + proposals, key=_order)}
 
 
 def build(calendar, items, config, moment):
@@ -164,9 +168,16 @@ def read(root, *, items=None):
     return plan
 
 
+def _title(row):
+    """An event saved without a title says what it is, and whose calendar hid the rest."""
+    label = row.get('label') or 'No title'
+    named = label == 'Busy' and row.get('calendar_name')
+    return row['title'] or (f"{label} ({row['calendar_name']})" if named else label)
+
+
 def _event_text(row):
     when = 'All day' if row.get('all_day') else row['time'] + '–' + row['end_time']
-    parts = [when + ' ' + (row['title'] or 'No title'), *row.get('people', []), row.get('link', '')]
+    parts = [when + ' ' + _title(row), *row.get('people', []), row.get('link', '')]
     if row.get('location'):
         parts += [row['location'], 'address not in the calendar event' if row['address_missing'] else '']
     return ' — '.join(part for part in parts if part)

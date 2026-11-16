@@ -1370,10 +1370,28 @@ pinned to that edge: it comes into view with the draft.
   remaining free gap first (earlier gap wins a tie). Working hours default to
   09:00–18:00; an optional `schedule.working_hours: {start: '09:00', end: '18:00'}`
   in `config.yaml` overrides them. There is no new settings screen. Overlapping
-  events merge for availability; all-day events occupy the whole working day.
-  A timed event that runs through the whole of a day (a week away) is **All day**
-  on that day, and one that runs past midnight ends at 24:00 on the day it began;
-  an event without a title is **No title** (无标题).
+  events merge for availability. Only timed events take working hours: an
+  all-day entry is listed at the top of its day as context and blocks nothing
+  (one week-long all-day entry used to leave every proposal with no free time).
+  A timed event shorter than 24 hours blocks the hours it covers on each day,
+  and one that runs past midnight ends at 24:00 on the day it began. A timed
+  event of 24 hours or more is a trip or a booking, not a meeting: it is shown
+  as **All day** with the all-day entries on every day it covers and blocks
+  nothing either.
+  An event without a title says what it is. Google's focus time and out of
+  office are **Focus time** (专注时间) and **Out of office** (不在办公室); an
+  entry from a calendar shared as free/busy, or a private one on a calendar you
+  can only read, is **Busy (calendar name)** (忙碌（日历名）), since Google
+  sends no title for those; only an event of your own with no title is
+  **No title** (无标题). Google's working-location entries are not saved: where
+  you work that day is not an event. A meeting that is on your calendar and on
+  a colleague's shared one is saved once, with its title. These labels are
+  saved by the calendar read, so events saved before this change keep
+  **No title** until the next night's read (or `co rem catchup`).
+  A proposal row is its time (or **no free time today**) and **Proposed**
+  (建议), then its sentence as plain text on at most two lines (the whole
+  sentence is its tooltip), then why it is there and one short link: the name
+  of its person or project page.
   Items that cannot fit say **no free time today** (今天没有空闲时间).
   Tomorrow's first event and every location tomorrow appear below the list.
   If no calendar has ever been read, one sentence says so and proposals have

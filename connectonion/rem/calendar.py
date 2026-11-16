@@ -30,6 +30,8 @@ CAP = 1000  # events per account: paging stops there, so a runaway recurring ser
 KINDS = ('google', 'microsoft')
 NAMES = {'google': 'Google Calendar', 'microsoft': 'Outlook'}
 BUG = 'bug'
+# Google's own entries that are not meetings, in the words the page shows when one has no title.
+GOOGLE_TYPES = {'focusTime': 'Focus time', 'outOfOffice': 'Out of office'}
 
 
 def available(kind: str) -> bool:
@@ -58,11 +60,14 @@ def _google_events(start, end, zone) -> list[dict]:
     # The calendars he shows in Google Calendar: his own and the shared ones he ticked, not every subscribed feed.
     for listed in [c for c in calendars if c.get('primary') or c.get('selected')]:
         token = None
+        # Each event carries its calendar's name and his access to it: one shared as free/busy has no title to show.
+        shown = {'name': listed.get('summaryOverride') or listed.get('summary', ''), 'access': listed.get('accessRole', '')}
         while len(events) < CAP:
+            # No `fields`: the whole event resource comes back, `summary` and `eventType` included.
             page = service.events().list(calendarId=listed['id'], timeMin=start.isoformat(), timeMax=end.isoformat(),
                                          singleEvents=True, orderBy='startTime', maxResults=250,
                                          timeZone=_zone_name(zone), pageToken=token).execute()
-            events += page.get('items', [])
+            events += [{**item, '_calendar': shown} for item in page.get('items', [])]
             token = page.get('nextPageToken')
             if not token:
                 break
@@ -111,13 +116,27 @@ def _graph_moment(value: dict, zone) -> datetime | None:
     return datetime.fromisoformat(text).replace(tzinfo=timezone.utc if value.get('timeZone', 'UTC') == 'UTC' else zone)
 
 
+def _google_label(item: dict) -> str:
+    """What an event is when Google sends no title: its type, or Busy when the calendar hides its details.
+
+    A calendar shared as free/busy, or a private event on one he can only read, comes without
+    `summary`. His own untitled event stays untitled: owners and writers are sent every title."""
+    if item.get('eventType') in GOOGLE_TYPES:
+        return GOOGLE_TYPES[item['eventType']]
+    access = item.get('_calendar', {}).get('access', '')
+    hidden = access == 'freeBusyReader' or item.get('visibility') in ('private', 'confidential')
+    return 'Busy' if hidden and access not in ('owner', 'writer') and not item.get('summary') else ''
+
+
 def _google(item: dict, zone) -> dict:
     start, end = item.get('start', {}), item.get('end', {})
     return {'id': item.get('id', ''), 'title': item.get('summary') or '', 'all_day': 'date' in start,
             'start': start.get('dateTime') or start.get('date', ''), 'end': end.get('dateTime') or end.get('date', ''),
             'location': item.get('location', ''), 'link': item.get('htmlLink', ''),
             'attendees': [a['email'] for a in item.get('attendees', []) if a.get('email') and not a.get('self')],
-            'cancelled': item.get('status') == 'cancelled'}
+            'label': _google_label(item), 'calendar_name': item.get('_calendar', {}).get('name', ''),
+            # Where he works that day is not an event he attends.
+            'skip': item.get('status') == 'cancelled' or item.get('eventType') == 'workingLocation'}
 
 
 def _microsoft(item: dict, zone) -> dict:
@@ -130,7 +149,7 @@ def _microsoft(item: dict, zone) -> dict:
             'location': (item.get('location') or {}).get('displayName', ''), 'link': item.get('webLink', ''),
             'attendees': [a.get('emailAddress', {}).get('address', '') for a in item.get('attendees', [])
                           if a.get('emailAddress', {}).get('address')],
-            'cancelled': bool(item.get('isCancelled'))}
+            'label': '', 'calendar_name': '', 'skip': bool(item.get('isCancelled'))}
 
 
 def _reason(error: Exception) -> str | None:
@@ -157,8 +176,12 @@ def _read(kind: str, start, end, zone) -> tuple[list[dict], bool] | None:
     shape = _google if kind == 'google' else _microsoft
     items = calendar_events(kind, start, end, zone)
     rows = [{**shape(item, zone), 'calendar': kind} for item in items]
-    unique = {row['id']: row for row in rows if not row['cancelled'] and row['start']}
-    return [{key: value for key, value in row.items() if key != 'cancelled'} for row in unique.values()], len(items) >= CAP
+    unique = {}
+    for row in rows:
+        # One meeting comes from his own calendar with its title and from a colleague's shared one without: keep the titled.
+        if not row['skip'] and row['start'] and (row['id'] not in unique or (row['title'] and not unique[row['id']]['title'])):
+            unique[row['id']] = row
+    return [{key: value for key, value in row.items() if key != 'skip'} for row in unique.values()], len(items) >= CAP
 
 
 def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:

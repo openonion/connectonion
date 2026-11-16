@@ -19,7 +19,7 @@ def event(start='10:00', end='11:00', **extra):
     return dict(title='Meeting', start=f'2026-11-16T{start}:00+00:00',
                 end=f'2026-11-16T{end}:00+00:00', all_day=False,
                 location='12 Harbour Street\nSydney', link='https://calendar.test/event',
-                people=['people/mara.md'], **extra)
+                people=['people/mara.md']) | extra
 
 
 def plan(events=(), items=(), config=None, moment=NOW, read=True):
@@ -99,19 +99,54 @@ def test_day_plan_zone_tomorrow_and_exclusive_all_day_end():
     saved = plan([next_day, all_day], [item()], config, datetime(2026, 11, 15, 23, tzinfo=timezone.utc))
     assert saved['timezone'] == 'Australia/Sydney'
     assert saved['days'][0]['date'] == '2026-11-16'
-    assert proposals(saved['days'][0])[0]['placement'] == 'no free time today'
+    # An all-day entry is context at the top of the day: it takes no working hours.
+    assert [(r['title'], r.get('all_day')) for r in saved['days'][0]['items']] == [('Away', True), ('Mara', None)]
+    assert proposals(saved['days'][0])[0]['time'] == '09:00'
     tomorrow = saved['days'][1]
     assert tomorrow['date'] == '2026-11-17'
     assert [(r['title'], r['time']) for r in tomorrow['items'] if r['kind'] == 'event'] == [('Tomorrow visit', '09:00')]
     assert proposals(tomorrow)[0]['time'] == '10:00'
 
 
-def test_day_plan_timed_event_crossing_midnight_blocks_both_days():
+def test_day_plan_timed_event_under_a_day_blocks_the_hours_it_covers_on_each_day():
     row = event()
-    row.update(start='2026-11-15T23:00:00Z', end='2026-11-17T10:00:00Z')
-    days = plan([row], [item()])['days']
-    assert proposals(days[0])[0]['placement'] == 'no free time today'
-    assert proposals(days[1])[0]['time'] == '10:00'
+    row.update(start='2026-11-16T10:00:00Z', end='2026-11-17T09:30:00Z')
+    days = plan([row], [item(0), item(1), item(2)])['days']
+    assert [(r['time'], r['placement']) for r in proposals(days[0])] == [
+        ('09:00', ''), ('09:30', ''), ('', 'no free time today')]
+    assert [r['time'] for r in proposals(days[1])] == ['09:30', '10:00', '10:30']
+    shown = [r for day in days for r in day['items'] if r['kind'] == 'event']
+    assert [(r['all_day'], r['time'], r['end_time']) for r in shown] == [(False, '10:00', '24:00'), (False, '00:00', '09:30')]
+
+
+def test_day_plan_all_day_and_day_long_timed_entries_lead_the_day_and_block_nothing():
+    """Owner's real day: one week-long all-day entry made all five proposals read "no free time today"."""
+    week = event()
+    week.update(start='2026-11-13', end='2026-11-20', all_day=True, title='Harbour week')
+    trip = event()
+    trip.update(start='2026-11-15T23:00:00Z', end='2026-11-17T10:00:00Z', title='Ferry booking')
+    exact = event()
+    exact.update(start='2026-11-16T12:00:00Z', end='2026-11-17T12:00:00Z', title='Room hire')
+    for day in plan([event('09:00', '10:00'), trip, exact, week], [item(n) for n in range(5)])['days']:
+        rows = day['items']
+        assert sorted((r['title'], r['all_day'], r['time']) for r in rows[:3]) == [
+            ('Ferry booking', True, ''), ('Harbour week', True, ''), ('Room hire', True, '')]
+        assert all(r['time'] and not r['placement'] for r in proposals(day))
+    first = plan([event('09:00', '10:00'), trip, week], [item()])['days'][0]
+    assert proposals(first)[0]['time'] == '10:00', 'the timed meeting still blocks its hour'
+
+
+def test_day_plan_status_words_name_an_untitled_event_by_what_it_is():
+    from connectonion.rem.day_plan import text
+    rows = [event('10:00', '11:00', title='', label='Busy', calendar_name='Ines Calder'),
+            event('11:00', '12:00', title='', label='Focus time', calendar_name='Avery'),
+            event('12:00', '13:00', title='', label='Out of office', calendar_name=''),
+            event('13:00', '14:00', title='', label='', calendar_name='Avery'),
+            event('14:00', '15:00', title='Pilot call', label='Focus time', calendar_name='Avery')]
+    words = text(plan([{**row, 'location': ''} for row in rows]), '2026-11-16')
+    for phrase in ['10:00–11:00 Busy (Ines Calder)', '11:00–12:00 Focus time', '12:00–13:00 Out of office',
+                   '13:00–14:00 No title', '14:00–15:00 Pilot call']:
+        assert phrase in words
 
 
 @pytest.mark.parametrize('calendar', [None, {'read': [], 'events': []}])

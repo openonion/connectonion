@@ -4618,9 +4618,10 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
 def _agenda_items(events, language='en'):
     page = TEMPLATE.read_text()
     functions = '\n'.join(_reader_function(name) for name in
-                          ['agT', 'agDay', 'agToday', 'agTime', 'agLastDay', 'agendaItems', 'agItem', 'calendarDay'])
-    return _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions
-        + '\nuiLanguage = ' + json.dumps(language) + ';\nconst REM = {as_of: "2026-11-16T01:06:00+00:00", status: {timezone: "Australia/Sydney"},'
+                          ['agT', 'agDay', 'agToday', 'agTime', 'agLastDay', 'agendaItems', 'agItem', 'calendarDay', 'eventTitle'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    return _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
+        + ';\nuiLanguage = ' + json.dumps(language) + ';\nconst REM = {as_of: "2026-11-16T01:06:00+00:00", status: {timezone: "Australia/Sydney"},'
         + ' today_queue: [], calendar: {events: ' + json.dumps(events) + '}};'
         + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s;
         const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean), removeAttribute() {}});
@@ -4648,9 +4649,70 @@ def test_agenda_files_a_timed_event_on_every_day_it_covers_and_prints_its_place(
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
+def test_an_untitled_event_says_what_it_is_in_agenda_and_in_your_day(language):
+    """Half the owner's saved events read "No title": free/busy copies of a colleague's calendar and Google's own entries."""
+    zh = language == 'zh'
+    event = lambda start, **extra: dict(title='', all_day=False, start=f'2026-11-16T{start}:00+11:00',
+                                        end=f'2026-11-16T{start}:30+11:00', location='', link='', label='', calendar_name='') | extra
+    events = [event('09', label='Busy', calendar_name='Ines Calder'), event('10', label='Focus time', calendar_name='Avery'),
+              event('11', label='Out of office'), event('12', label='Busy'), event('13', calendar_name='Avery'),
+              event('14', title='Pilot call', label='Focus time')]
+    expected = (['忙碌（Ines Calder）', '专注时间', '不在办公室', '忙碌', '无标题', 'Pilot call'] if zh else
+                ['Busy (Ines Calder)', 'Focus time', 'Out of office', 'Busy', 'No title', 'Pilot call'])
+    cards = [row['card'] for row in _agenda_items(events, language)]
+    assert all(words in card for words, card in zip(expected, cards, strict=True))
+    assert sum(('无标题' if zh else 'No title') in card for card in cards) == 1
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in ['planWhen', 'planReason', 'planWords', 'eventTitle'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    shown = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language)
+        + ';\nconsole.log(JSON.stringify(' + json.dumps(events) + ".map(e => planWords({...e, kind: 'event', time: '09:00', end_time: '09:30'}))));")
+    assert shown == ['09:00–09:30 — ' + words for words in expected]
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_a_proposal_row_is_a_time_a_two_line_sentence_and_one_short_link(language):
+    """The row was one underlined link holding a two-to-four-line sentence; five of them filled a phone."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in
+                          ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'dayPlanItem'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    sentence = 'Send Mara the revised harbour mooring schedule with the three berth options and the ferry timetable she asked for'
+    rows = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + r""";
+      const pages = {'people/mara.md': {path: 'people/mara.md', title: 'Mara Ostrowski'}};
+      const byPath = path => pages[path], href = r => '#r=' + encodeURIComponent(r.path);
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const proposal = {kind: 'proposal', title: 'Mara', record: 'people/mara.md', time: '11:00', end_time: '11:30', placement: '',
+        text: """ + json.dumps(sentence) + r""", reasons: [{text: '{name} waiting since {date}', values: {name: 'Mara', date: '2026-11-14'}}]};
+      console.log(JSON.stringify([proposal, {...proposal, time: '', end_time: '', placement: 'no free time today'},
+        {...proposal, time: '', end_time: '', record: 'projects/harbour.md', title: 'Harbour'}].map(dayPlanItem)));""")
+    zh = language == 'zh'
+    for row, when in zip(rows, ['11:00–11:30', '今天没有空闲时间' if zh else 'no free time today', ''], strict=True):
+        time, text, why = row['children']
+        assert row['tag'] == 'li' and 'day-plan-proposal' in row['class']
+        # The time, or the words for no time, comes first and is words.
+        proposed = '建议' if zh else 'Proposed'
+        assert time['class'] == 'day-plan-when' and time['text'].startswith(when) and proposed in time['text']
+        # The sentence is plain text, whole in its title, and never a link.
+        assert (text['tag'], text['class'], text['text'], text['title']) == ('p', 'day-plan-text', sentence, sentence)
+        links = [child for child in why['children'] if isinstance(child, dict)]
+        assert len(links) == 1 and links[0]['tag'] == 'a' and 'a' not in (time['tag'], text['tag'])
+        assert '2026-11-14' in ''.join(child for child in why['children'] if isinstance(child, str))
+        assert not any(mark in json.dumps(row) for mark in ['"tag": "button"', 'badge', 'dot', 'style'])
+    assert [row['children'][2]['children'][-1] | {'tag': 'a'} for row in rows] == [
+        {'tag': 'a', 'href': '#r=people%2Fmara.md', 'text': 'Mara Ostrowski', 'children': []}] * 2 + [
+        {'tag': 'a', 'href': '#r=projects%2Fharbour.md', 'text': 'Harbour', 'children': []}]
+    clamp = re.search(r'\.day-plan-text \{([^}]*)\}', page)[1]
+    assert '-webkit-line-clamp: 2' in clamp and 'overflow: hidden' in clamp
+    # A long unbroken word (an address, a URL) wraps inside a phone's 390 instead of widening the page.
+    assert 'overflow-wrap: anywhere' in re.search(r'\.day-plan \{([^}]*)\}', page)[1]
+    assert not re.search(r'\.day-plan[\w-]*[^{]*\{[^}]*(?:white-space: nowrap|min-width|(?<!max-)width: \d)', page)
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
 def test_day_plan_reader_names_an_untitled_event_and_keeps_the_address_sentence_to_the_rule(language):
     page = TEMPLATE.read_text()
-    functions = '\n'.join(_reader_function(name) for name in ['planWords', 'dayPlanItem', 'agT'])
+    functions = '\n'.join(_reader_function(name) for name in ['planWhen', 'planReason', 'planWords', 'eventTitle', 'dayPlanItem', 'agT'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
         + ';\nuiLanguage = ' + json.dumps(language) + r""";
@@ -4669,7 +4731,7 @@ def test_day_plan_reader_names_an_untitled_event_and_keeps_the_address_sentence_
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_day_plan_reader_words_links_addresses_tomorrow_and_no_calendar(language):
     page = TEMPLATE.read_text()
-    names = ['planWords', 'dayPlanItem', 'dayPlanVisible', 'yourDay']
+    names = ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'dayPlanItem', 'dayPlanVisible', 'yourDay']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
