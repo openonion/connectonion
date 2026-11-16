@@ -312,6 +312,10 @@ def test_rem_session_project_ties_unmapped_and_bounded_calls(notebook):
     assert paths == Counter({"/work/demo/a.py": 2, "/work/demo": 1})
     assert _touched(json.dumps({"cmd": "cd demo && pwd", "workdir": "/elsewhere"}), "/work") == Counter({
         "/elsewhere": 1, "/elsewhere/demo": 1})
+    # A name no filesystem holds (over 255 bytes) is not a path the session touched:
+    # asking whether it is a repository raises ENAMETOOLONG (2026-11-16).
+    assert _touched(f"cd {'a' * 256} && cat /work/{'b' * 256}/a.py /work/demo/a.py", "/work") == Counter({
+        "/work/demo/a.py": 1})
     transcript(notebook, cwd="/work", rows=[codex(), {"type": "response_item", "payload": {
         "type": "function_call", "arguments": json.dumps({"cmd": "cat /unmapped/file.py"})}}])
     import_sessions(notebook[0], now=NOW)

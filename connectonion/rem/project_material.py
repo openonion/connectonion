@@ -33,7 +33,7 @@ from pathlib import Path
 from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
                     write_json)
 from .investigate import project_paths
-from .scan import is_repository, project_exclusion
+from .scan import is_repository, nameable, project_exclusion
 from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, read_session, session_paths, session_source, timestamp
 
 # The widest window a coding source may read (service.MAX_LOOKBACK_DAYS).
@@ -45,7 +45,10 @@ CONTAINER = "multi-repository workspace container"
 # A path a tool call names: absolute (or ~/), or the target of `cd`, `git -C`, `workdir`.
 _STOP = r"\s'\"`;|&<>(){}\[\],:\\"
 ABSOLUTE = re.compile(rf"(?<![\w.~/-])(~?/[^{_STOP}]+)")
-MOVED = re.compile(rf"(?:\bcd|\bgit\s+-C|\bworkdir\\?[\"']?\s*[:=])\s*\\?[\"']?([^{_STOP}]+)")
+# `cd` and `git -C` are words of their own with a space after them: with neither
+# asked for, the "cd" inside a base64url token (`…-cdAb3…`) named the rest of the
+# token as a folder (2026-11-16).
+MOVED = re.compile(rf"(?:(?<![\w-])cd\s+|(?<![\w-])git\s+-C\s+|\bworkdir\\?[\"']?\s*[:=]\s*)\\?[\"']?([^{_STOP}]+)")
 # Claude Code tool inputs that name a path. Never `content`/`new_string`: the
 # text an edit writes is not a place the session worked.
 CLAUDE_PATH_KEYS = ("file_path", "path", "notebook_path", "command", "cwd", "workdir")
@@ -280,7 +283,7 @@ def _paths(text: str, here: str) -> set[str]:
     """Absolute paths named in a call, and `cd` / `git -C` / `workdir` targets resolved against `here`."""
     named = {m.group(1) for m in ABSOLUTE.finditer(text)}
     named |= {os.path.join(here, os.path.expanduser(m.group(1))) for m in MOVED.finditer(text)}
-    return {os.path.normpath(os.path.expanduser(p)) for p in named if len(p) < 4096}
+    return {os.path.normpath(os.path.expanduser(p)) for p in named if len(p) < 4096 and nameable(p)}
 
 
 class _Owners:
