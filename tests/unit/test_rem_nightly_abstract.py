@@ -527,21 +527,39 @@ def test_existing_unquoted_decision_can_be_maintained():
     assert validate('decisions/legacy.md', candidate, original, [{'source': SOURCE, 'text': WORDS}]) == []
 
 
-def test_maintain_prompt_is_byte_identical_to_main(book, tmp_path):
-    import subprocess
-    import types
-    source = subprocess.run(['git', 'show', 'HEAD:connectonion/rem/runner.py'],
-                            capture_output=True, text=True, check=True).stdout
-    baseline = types.ModuleType('connectonion.rem._baseline_runner')
-    baseline.__file__ = runner.__file__
-    baseline.__package__ = 'connectonion.rem'
-    exec(compile(source, runner.__file__, 'exec'), baseline.__dict__)
+def test_maintain_prompt_is_byte_identical_to_main(book, tmp_path, monkeypatch, rem_clock):
+    """The abstract stage shares runner.prepare with maintain and must not move a byte of it.
+
+    This compared against `git show HEAD:connectonion/rem/runner.py`, which a CI
+    merge checkout cannot answer (exit 128) and which, once committed, compared
+    the file with itself. The words runner.py writes around the composed page
+    skills are saved in tests/fixtures/rem_maintain_prompt.txt instead, with the
+    two folders named and each skill reduced to its name: the skills' own text
+    is theirs to change, the frame and which skills are composed are not. A
+    deliberate change to the maintain prompt edits that file in the same commit."""
+    from datetime import datetime
+
+    class Clock(datetime):  # today_note reads the real clock; the saved frame says the test's day
+        @classmethod
+        def now(cls, tz=None):
+            return rem_clock.astimezone(tz)
+
+    monkeypatch.setattr(runner, 'datetime', Clock)
     directory = tmp_path / 'maintain'
     directory.mkdir()
-    items = [{'source': SOURCE, 'text': WORDS}]
-    expected = baseline.prepare(book, items, default_config(), directory=directory, native=True)['prompt']
-    actual = runner.prepare(book, items, default_config(), directory=directory, native=True)['prompt']
-    assert actual == expected
+    prompt = runner.prepare(book, [{'source': SOURCE, 'text': WORDS}], default_config(),
+                            directory=directory, native=True)['prompt']
+    head, rest = prompt.split('<instructions>\n', 1)
+    skills, tail = rest.split('</instructions>', 1)
+    frame = (head + '<instructions>\n'
+             + ''.join(f'{name}\n' for name in re.findall(r'(?m)^name: (\S+)$', skills))
+             + '</instructions>' + tail)
+    # The canonical notebook is named by its resolved path, the task folder as given.
+    for path, name in ((directory.resolve(), '<TASK>'), (directory, '<TASK>'),
+                       (book.root.resolve(), '<NOTEBOOK>'), (book.root, '<NOTEBOOK>')):
+        frame = frame.replace(str(path), name)
+    expected = Path(__file__).parents[1] / 'fixtures' / 'rem_maintain_prompt.txt'
+    assert frame == expected.read_text(encoding='utf-8')
 
 
 def test_large_section_progresses_in_bounded_packets(book):
