@@ -634,18 +634,28 @@ def test_usage_command_shows_where_tokens_went(tmp_path):
 
 @pytest.mark.parametrize("stage", ["abstract"])
 def test_skill_entry_points_delegate_and_return_a_next_command(tmp_path, monkeypatch, stage):
+    """Abstract writes from the decisions captured on session pages (#2997, #3053),
+    so with none waiting it starts no model; one waiting line makes it delegate."""
     calls = []
 
     def run(notebook, items, config, **kw):
-        calls.append((notebook.root, items, kw["stage"]))
-        return {"changed": [], "usage": None, "report": "done"}
+        calls.append((notebook.root, [item["record"] for item in items], kw["stage"]))
+        notebook.write("decisions/keep-receipts.md",
+                       "# Keep receipts\n\n“Keep receipts.” [1]\n\n## Sources\n- [1] codex:fixture:7\n")
+        return {"changed": ["decisions/keep-receipts.md"], "usage": None, "report": "done"}
 
     monkeypatch.setattr("connectonion.rem.runner.run_stage", run)
+    idle = invoke(tmp_path, "--json", stage)
+    assert idle.exit_code == 0 and json.loads(idle.output)["data"]["rounds"] == [] and calls == []
+    prepare(tmp_path)
+    Notebook(tmp_path).write("sessions/backlog.md", "# Backlog\n\n## Decisions\n- “Keep receipts.” [1]\n\n"
+                                                    "## Sources\n- [1] codex:fixture:7\n")
     result = invoke(tmp_path, "--json", stage)
     assert result.exit_code == 0, result.output
     output = json.loads(result.output)
     assert output["ok"] and output["next"].startswith("co rem")
-    assert calls == [(tmp_path, [], stage)]
+    assert output["data"]["written"] == 1
+    assert calls == [(tmp_path, ["sessions/backlog.md"], stage)]
 
 
 def test_people_roster_returns_identity_and_existing_path(tmp_path):
