@@ -16,16 +16,20 @@ sources**; cite answers in the lead/`Insight`, not `Uncertainties`. Before leavi
 a Facts field `Unknown`, try a relevant outside lookup. Record empty/unavailable
 lookups; failed tools establish limits, not absence of evidence.
 
-Use read-only research; run `co commands` and the relevant `--help` first:
-- `co search "<query>"` (Google-grounded; `--engine ddg` is free).
+Use read-only research. These are the exact calls; run a `--help` only for a
+command not listed here:
+- `co search "<query>"` (Google-grounded); `co search "<query>" --engine ddg` is
+  free. `-n <1-20>` sets the result count.
 - `co fetch <url>` reads a page as Markdown.
-- `co browser` for Google/JavaScript pages: read `co browser help` and
-  `co browser --help` for tab options. Each investigation uses its **own tab**;
-  close it when finished.
+- `co browser` for Google/JavaScript pages. Each investigation uses its **own tab**:
+  `co browser tab open <name> --for "<purpose>"`, `co browser -t <name> go_to <url>`,
+  `co browser -t <name> get_text`; `co browser tab close <name>` when finished.
 - **Do NOT open LinkedIn pages (`linkedin.com`) for the subject**: it detects
   automation. A LinkedIn result snippet inside search results is fine; cite the
   search URL and save the search output, not the LinkedIn URL as a read page.
-- When installed: `co gmail` / `co outlook` search, `lark-cli` (Feishu messages/docs),
+- When installed: `co gmail search "<gmail query>" -n <count>` and
+  `co gmail read <mail id>`; `co outlook search "<words>" -n <count>` and
+  `co outlook read <mail id>`; `lark-cli` (Feishu messages/docs),
   `gh` (GitHub people/repos), and local Codex/Claude Code sessions.
 
 Never send, post, reply, accept or change external state; only edit the candidate
@@ -53,9 +57,10 @@ its question and next search. Coverage belongs in the reply.
 - **Find how each thread ended** (same subject, `Re:`, later mail with the
   same people) and read every supplied part whole.
 - **Choose attachments from `attachments-index` before downloading.** Read those
-  bearing on terms, money or identity with `co gmail download` / `co outlook download`
-  (`--help` first; Gmail selects `--attachment <id>`, Outlook downloads the message's
-  files). Use the full mail ID from the index, save inside the task directory, read
+  bearing on terms, money or identity: `co gmail attachments <mail id>` lists the
+  attachment IDs, `co gmail download <mail id> --attachment <attachment id> --to <directory>`
+  saves one, `co outlook download <mail id> --to <directory>` saves the message's
+  files. Use the full mail ID from the index, save inside the task directory, read
   the document whole, and cite it as `gmail:<short mail id>:<filename>` or
   `outlook:<short mail id>:<filename>` (the short ID is the last component of the
   index's source ID). Save extracted text under `web/` and register that citation

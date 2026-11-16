@@ -140,7 +140,10 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
 # Additive research/tool and capture rules preserve every existing rule (owner, 2026-11-06).
 # 24k from 1.9.3rc55: attachment reading (#2832) and run memory (#2828) added two
 # rule blocks to rem-investigate; the trialled text is kept rather than condensed.
-INSTRUCTION_BUDGET = 24_000
+# 24.5k from #3083: "run `co commands` and the relevant `--help` first" became the
+# exact research calls (145 help calls in one day, 7–14 per investigation). 360
+# characters carried once cost less than the help pages they replace, re-sent every turn.
+INSTRUCTION_BUDGET = 24_500
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])

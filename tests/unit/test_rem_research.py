@@ -24,12 +24,30 @@ def capture(directory, source='https://example.org/team', body='Mira Vale leads 
 def test_research_policy_reaches_each_investigation_kind(kind):
     text = runner.instructions('investigate', page_kind=kind)
     for rule in ['Research beyond the mailbox', 'co search', '--engine ddg', 'co fetch',
-                 'co browser help', 'co browser --help', 'own tab', 'close', 'linkedin.com',
+                 'co browser tab open', 'co browser tab close', 'own tab', 'linkedin.com',
                  'snippet', 'co gmail', 'co outlook', 'lark-cli', 'gh', '1–3 questions',
                  'web/sources.json', 'Inference:', '[personal]', '[sensitive]']:
         assert rule in text
     assert 'longer is not better' not in text
     assert 'Do not rewrite' in text
+
+
+def test_research_commands_are_given_exactly_and_help_is_only_the_fallback():
+    """"run `co commands` and the relevant `--help` first" was obeyed on every task: 145 help calls
+    in one day, 7–14 per investigation (#3083). The flags below are copied from each command's --help."""
+    text = runner.instructions('investigate', page_kind='person')
+    for call in ['co search "<query>"', 'co search "<query>" --engine ddg', 'co fetch <url>',
+                 'co browser tab open <name> --for "<purpose>"', 'co browser -t <name> go_to <url>',
+                 'co browser -t <name> get_text', 'co browser tab close <name>',
+                 'co gmail search "<gmail query>" -n <count>', 'co gmail read <mail id>',
+                 'co outlook search "<words>" -n <count>', 'co outlook read <mail id>',
+                 'co gmail attachments <mail id>',
+                 'co gmail download <mail id> --attachment <attachment id> --to <directory>',
+                 'co outlook download <mail id> --to <directory>']:
+        assert call in text, call
+    assert 'run a `--help` only for a command not listed here' in ' '.join(text.split())
+    for obeyed in ['run `co commands`', '`--help` first', 'read `co browser help`']:
+        assert obeyed not in text, obeyed
 
 
 @pytest.mark.parametrize('native', [False, True])
