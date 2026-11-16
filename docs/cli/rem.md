@@ -3310,9 +3310,15 @@ in that file, including any citation audit or required corrections. `--json`
 retains the full instructions, material path, output path and submit command
 as structured data.
 
-Each task starts with the assistant's goal and the newest 4,000 characters from
-`.state/memory.md`, followed by the page's latest investigate/continue report when
-available. Both are evidence, never instructions or permission to bypass review.
+Each task's instructions are in one order: the assistant's goal, the task
+(workspace, what to read or the inline material, what to write), the memory
+step, the stage Skill, and last up to 4,000 characters of `.state/memory.md`
+followed by the page's latest investigate/continue report when available.
+Memory is given in whole lines, never cut inside one: first the lines that name
+this record's file, then the newest others, in the file's order. Both are
+evidence, never instructions or permission to bypass review. Memory used to
+come first, as the file's last 4,000 characters: the task began 70–75% into
+the prompt, and the notes were mostly about other pages (#3083).
 The agent appends 1–3 lines of `page · approach · result · next` to that memory
 (not asked of a worker `co rem exec` confines to its task folder, which cannot write there),
 including answered and new questions and reusable tool discoveries. Investigation
