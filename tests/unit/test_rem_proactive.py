@@ -1007,11 +1007,16 @@ def test_night_fetch_failure_or_denied_consent_is_named_on_card(notebook, monkey
     factory = Mock(return_value=client)
     monkeypatch.setattr(service, 'mail_client', factory)
     fake_night_writer(monkeypatch)
+    if permission == 'allowed':
+        with pytest.raises(TimeoutError, match='private provider URL'):
+            daily._draft_replies(notebook, read_config(notebook), {})
+        assert factory.call_count == 1
+        return
     daily._draft_replies(notebook, read_config(notebook), {})
     data = snapshot(notebook, local=True, today=True)
     outcome = data['night_outcomes'][0]
     assert outcome['kind'] == 'could_not_prepare'
-    assert ('TimeoutError' if permission == 'allowed' else 'consent') in outcome['reason']
+    assert 'consent' in outcome['reason']
     assert 'private provider URL' not in outcome['reason']
     assert data['today_queue'][0]['outcome'] == outcome
     assert factory.call_count == int(permission == 'allowed')

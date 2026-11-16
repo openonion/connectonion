@@ -7,8 +7,9 @@ from httpx import RequestError
 
 from ..provider_credentials import ProviderCredentialError
 from . import service
-from .files import RemError
+from .files import RemError, read_json
 from .mail_archive import mail_metadata, retain_message
+from .mail import MissingMail, missing_mail_path, read_mail
 
 
 def _metadata(client, provider, identity):
@@ -38,14 +39,23 @@ def _fetch(root, source, metadata):
     subscription = service.subscriptions(root).get(provider, {})
     if not subscription.get('enabled') or not subscription.get('consented') or subscription.get('unsubscribed'):
         return f'{provider.title()} read consent is not active for this mailbox.'
-    # Credential expiry, network failures and deleted messages are expected per-item failures.
+    missing = read_json(missing_mail_path(root, provider, identity), {})
+    if missing:
+        return missing['reason']
     try:
         client = _client(provider)
-        row = metadata.get((provider, identity)) or _metadata(client, provider, identity)
-        body = client.get_email_body(identity)
+        row = metadata.get((provider, identity)) or read_mail(
+            lambda key: _metadata(client, provider, key), identity, provider=provider, root=root)
+        body = read_mail(client.get_email_body, identity, provider=provider, root=root)
+    except MissingMail as error:
+        return str(error)
     except RemError as error:
+        if getattr(error, 'rem_read_failure', False):
+            raise
         return str(error)
     except (OSError, ProviderCredentialError, RequestError, HttpError, GoogleAuthError, HttpLib2Error) as error:
+        if getattr(error, 'rem_read_failure', False):
+            raise
         return service._collection_failure(provider, error)['error']
     if not isinstance(body, str) or not body.strip():
         return f'{provider.title()} returned no message body.'

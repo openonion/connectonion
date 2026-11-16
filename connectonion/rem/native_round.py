@@ -262,7 +262,17 @@ def prepare_task(root, cursor, config, directory):
     task = prepare_translation(root, cursor, config, directory)
     if task:
         return task
+    from .night import listing
+    parked = fetch_stalls.last_night(root)
+    reasons = [row['reason'] for row in listing(root)
+               if row['kind'] == 'could_not_prepare' and 'no longer exists' in row['reason']]
+    if cursor.get('served_turn') != fetch_stalls._turn() and ((parked or {}).get('parked') or reasons):
+        pages = [f"{row['record']}: {row.get('error') or fetch_stalls.PHRASES[row['reason']]}"
+                 for row in (parked or {}).get('parked', [])]
+        cursor['blocked_reason'] = 'All remaining candidates are parked: ' + '; '.join(pages + reasons)
     finish(root, cursor)
+    if cursor.get('blocked_reason'):
+        raise RemError(cursor['blocked_reason'])
     return None
 
 
@@ -321,12 +331,15 @@ def prepare_translation(root, cursor, config, directory):
 def finish(root, cursor):
     from .night_stats import recent
     cursor.update(done=True, pending=None)
-    cursor["run"].update(outcome="completed", finished_at=service.now().isoformat(), changed=cursor["changed"],
+    outcome = 'failed' if cursor.get('blocked_reason') else 'completed'
+    cursor["run"].update(outcome=outcome, finished_at=service.now().isoformat(), changed=cursor["changed"],
                          night=recent(root, nights=1)[0])
+    if cursor.get('blocked_reason'):
+        cursor['run']['reason'] = cursor['blocked_reason']
     write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
     if cursor["slot"]:
         write_json(state_path(root, "worker.json"), {**service.worker_state(root), "last_scheduled_slot": cursor["slot"],
-                                                   "last_scheduled_outcome": "completed"})
+                                                   "last_scheduled_outcome": outcome})
     write_json(state_path(root, "round.json"), cursor)
 
 
