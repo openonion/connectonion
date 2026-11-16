@@ -2231,6 +2231,16 @@
     .brief-header h1, .brief-header .lede, .brief-header .count, .fuse .seg, .qsent, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
     .today-brief .qcard, .qitem { transition: none; }
   }
+  .day-plan { max-width: 760px; margin: 0 0 32px; overflow-wrap: anywhere; }
+  .day-plan h2 { margin: 0 0 12px; }
+  .day-plan h3 { margin: 20px 0 8px; font-size: var(--s-body); }
+  .day-plan-list { list-style: none; padding: 0; margin: 12px 0; }
+  .day-plan-item { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .day-plan-item p { margin: 4px 0 0; }
+  .day-plan-item a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .day-plan-address { white-space: pre-wrap; }
+  .day-plan-when { font-weight: var(--w-bold); }
+  .day-plan-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   /* Agenda (#2998): a week from today, a month, and on a phone the same items day by day. */
   .agenda { color: var(--ink); font: var(--w-regular) var(--s-ui)/18px var(--font); font-feature-settings: "tnum" 1; }
   .agenda a, .agenda a:hover { color: inherit; text-decoration: none; }
@@ -2259,7 +2269,8 @@
   .ag-item.late .ag-time, .agenda-earlier a.late { color: var(--red); }
   .ag-title { font-weight: var(--w-bold); overflow-wrap: anywhere; }
   .ag-note { font-size: var(--s-meta); color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .ag-who { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
+  .ag-who, .ag-where { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
+  .ag-where { white-space: pre-wrap; }
   .ag-who a:hover { text-decoration: underline; }
   .agenda-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); background: var(--rule); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
   .ag-wd { background: var(--paper); padding: 6px 8px; font-size: var(--s-meta); color: var(--grey); }
@@ -2271,7 +2282,7 @@
   .ag-cell .ag-main { flex-direction: row; gap: 6px; }
   .ag-cell .ag-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: var(--w-regular); }
   .ag-cell .ag-time { flex: none; }
-  .ag-cell .ag-note, .ag-cell .ag-who { display: none; }
+  .ag-cell .ag-note, .ag-cell .ag-who, .ag-cell .ag-where { display: none; }
   .ag-more { font-size: var(--s-meta); color: var(--grey); padding: 0 6px; }
   .agenda-days { display: none; }
   .agenda-earlier { margin: 14px 0 0; font-size: var(--s-meta); color: var(--grey); line-height: 20px; }
@@ -2838,8 +2849,8 @@
   .app { display: grid; grid-template-columns: 72px minmax(0, 1fr); min-height: 100vh; }
   .stage { min-width: 0; }
 
-  /* the rail (D-132): seven places, each a picture with its word under it; 更多, settings and you at the foot.
-     It stays 72 wide. Its content is 656 tall; in a lower window the rail itself scrolls. */
+  /* the rail (D-132): eight places, each a picture with its word under it; 更多, settings and you at the foot.
+     It stays 72 wide. Its content is 712 tall; in a lower window the rail itself scrolls. */
   .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; gap: var(--u2); padding: 20px 0; z-index: 30; }
   .brand { display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin-bottom: 14px; color: var(--ink); text-decoration: none !important; }
   .brand .mark { width: 34px; height: 34px; }
@@ -2878,7 +2889,7 @@
     background: var(--ink); color: var(--paper); font: var(--w-regular) var(--s-meta)/1.6 var(--font); padding: 3px 8px; border-radius: var(--radius);
     transition: opacity var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); }
   .nav.you:hover .you-name, .nav.you:focus-visible .you-name { opacity: 1; transform: translate(0, -50%); }
-  @media (max-height: 655px) and (min-width: 641px) { .rail { overflow-y: auto; scrollbar-width: none; } }
+  @media (max-height: 711px) and (min-width: 641px) { .rail { overflow-y: auto; scrollbar-width: none; } }
 
   /* the top bar: where you are, the ⌘K bar (search; ⌘K opens the palette), REM's state */
   .top { display: flex; align-items: center; gap: var(--u3); height: 76px; padding: 0 40px; }
@@ -3407,6 +3418,31 @@ const UI = {
   // names do not fit under a picture at 11px, so the rail has a short word for each (the names stay in aria-label).
   en: { "More of this card": "More", "Waiting on you, in the rail": "Waiting", "Organisations, in the rail": "Orgs" },
   zh: {
+    "All day": "全天",
+    "No title": "无标题",
+    "Busy": "忙碌", "Busy ({calendar})": "忙碌（{calendar}）", "Focus time": "专注时间", "Out of office": "不在办公室",
+    "No calendar has been read yet.": "还没有读取过日历。",
+    "No day plan has been saved yet.": "还没有保存过每天的安排。",
+    "never": "从未",
+    "network error": "网络出错",
+    "provider unavailable": "暂时不可用",
+    "not found on the server (deleted or moved)": "服务器上找不到（已删除或移走）",
+    "a fault in REM": "REM 自身出错",
+    "This saved plan is out of date.": "计划已过期。",
+    "Plan for {date} ({zone})": "{date} 的安排（{zone}）",
+    "Proposed": "建议",
+    "open item on {name}": "{name} 页面上的未结事项",
+    "{name} could not be read: {reason}; events last read {date}": "未能读取 {name}：{reason}；活动上次读取于 {date}",
+    "no free time today": "今天没有空闲时间",
+    "address not in the calendar event": "日历事件中没有地址",
+    "late since {date}": "自 {date} 起逾期",
+    "due {date}": "{date} 到期",
+    "promised to {name}": "答应了 {name}",
+    "{name} waiting since {date}": "{name} 从 {date} 起在等你",
+    "{name} waiting": "{name} 在等你",
+    "Tomorrow: first event": "明天的第一个活动",
+    "Tomorrow: place to go": "明天要去的地方",
+    "No events or proposed things for this day.": "这一天没有活动或建议事项。",
     // People and a person (round 4)
     "{n} days overdue": "逾期 {n} 天",
     "1 day overdue": "逾期 1 天",
@@ -3809,7 +3845,7 @@ const UI = {
     "Changed last night: {before} → {now}": "昨夜变更：{before} → {now}",
     "Not confirmed by the sources": "来源未确认",
     "not confirmed by sources": "来源未确认",
-    "Your day": "你的一天",
+    "Your day": "今天的安排",
     "Today": "今天",
     "Waiting on you": "等你处理",
     "Waiting on others": "等对方回复",
@@ -6020,7 +6056,10 @@ function rawSection(r, name) {
 }
 function sourceList(r) {
   const out = [];
-  const sources = rawSection(r, "Sources").replace(/^([ \t]*)(\d{1,3})\.[ \t]+/gm, "$1- $2. ");
+  const sections = r.category === "knowledge"
+    ? [...r.text.replace(COMMENT, "").matchAll(/^#{2,3} Sources[^\n]*\n([\s\S]*?)(?=^#{1,3} |^Investigation:|(?![\s\S]))/gmi)].map(m => m[1]).join("\n")
+    : rawSection(r, "Sources");
+  const sources = sections.replace(/^([ \t]*)(\d{1,3})\.[ \t]+/gm, "$1- $2. ");
   for (const item of listItems(sources)) {
     const m = /^(?:[\[［](W?\d{1,3})[\]］]|(\d{1,3})\.)\s*(.*)$/.exec(item);
     if (m && !UNKNOWN_TEXT.test(m[3])) out.push({ n: m[1] || m[2],
@@ -6572,13 +6611,14 @@ function icon(name, cls = "") {
 // 更多 lists the categories that have no rail entry of their own; these are their pictures.
 const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "quote", agenda: "calendar", sessions: "terminal",
   opportunities: "activity", works: "doc" };
-// The rail (D-132, #2953): seven places, each a picture with its word under it, the rest one 更多 away, settings
+// The rail (D-132, #2953): eight places, each a picture with its word under it, the rest one 更多 away, settings
 // and you at the foot. Each row is [key, picture, name, link, word]. The word is the name unless the English
 // name is wider than the cell; then the name is one hover away and in the accessible name, which starts with the
 // word you see (WCAG 2.5.3: saying "Orgs" finds Orgs · Organisations). The phone sheet reads data-name.
 function railPlaces() {
   return [["today", "sun", t("Today"), "#"],
     ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail")],
+    ["agenda", "calendar", label("agenda"), "#c=agenda"],
     ["people", "users", label("people"), "#c=people"],
     ["orgs", "building-2", label("orgs"), "#c=orgs", t("Organisations, in the rail")],
     ["projects", "folder", label("projects"), "#c=projects"],
@@ -8062,6 +8102,73 @@ function dealNext(step) {
   const at = cards.findIndex(card => card.classList.contains("focal"));
   dealCard(cards[(at + step + cards.length) % cards.length].dataset.path);
 }
+function planWhen(item) {
+  return item.all_day ? t("All day") : item.time ? item.time + "–" + item.end_time : t(item.placement || "");
+}
+function planReason(item) {
+  return (item.reasons || []).map(reason => t(reason.text, reason.values)).join(uiLanguage === "zh" ? "；" : "; ");
+}
+// An event that came without a title says what it is: focus time, out of office, or busy on a calendar
+// shared without its details (with that calendar's name). Only an event of his own with no title is "No title".
+function eventTitle(e) {
+  if (e.title) return e.title;
+  if (e.label === "Busy" && e.calendar_name) return t("Busy ({calendar})", {calendar: e.calendar_name});
+  return t(e.label || "No title");
+}
+function planWords(item) {
+  return [planWhen(item), eventTitle(item), planReason(item)].filter(Boolean).join(" — ");
+}
+// A proposal is three things in words: when (or that there is no time), what in two lines with the whole
+// sentence in its title, and one short link to its page. The sentence is not a link: a whole underlined
+// paragraph read as an error, and five of them filled a phone.
+function proposalItem(item) {
+  const page = byPath(item.record), reason = planReason(item);
+  return el("li", {class: "day-plan-item day-plan-proposal"}, [
+    el("p", {class: "day-plan-when", text: [planWhen(item), t("Proposed")].filter(Boolean).join(" — ")}),
+    el("p", {class: "day-plan-text", title: item.text, text: item.text}),
+    el("p", {class: "day-plan-why"}, [reason ? reason + " — " : null,
+      el("a", {href: "#r=" + encodeURIComponent(item.record), text: page?.title || item.title})])]);
+}
+function dayPlanItem(item) {
+  if (item.kind === "proposal") return proposalItem(item);
+  const label = planWords(item), people = (item.people || []).map(byPath).filter(Boolean);
+  return el("li", {class: "day-plan-item"}, [
+    item.link ? el("a", {href: item.link, text: label, target: "_blank", rel: "noopener"}) : el("p", {text: label}),
+    people.length ? el("p", {}, people.flatMap((r, i) => [i ? ", " : null, el("a", {href: href(r), text: r.title})])) : null,
+    item.location ? el("p", {class: "day-plan-address", text: item.location}) : null,
+    item.address_missing ? el("p", {text: t("address not in the calendar event")}) : null]);
+}
+function dayPlanVisible(item) {
+  if (item.kind !== "proposal") return true;
+  const keys = item.keys || [item.key], states = typeof threadStates === "undefined" ? REM.threads || {} : threadStates;
+  if (keys.every(key => ["done", "skipped", "ignored"].includes(states[key]?.state) && !states[key]?.returned_at)) return false;
+  const current = REM.today_queue?.find(row => keys.includes(row.key) || row.keys?.some(key => keys.includes(key)));
+  if (current && (current.closed || current.quiet || current.reply?.state === "replied")) return false;
+  if (typeof threadEntries === "function") {
+    const entry = threadEntries().find(entry => keys.includes(doneKey(entry)) || entry.members?.some(member => keys.includes(doneKey(member))));
+    if (entry && !waitingOnYou(entry)) return false;
+  }
+  return true;
+}
+function yourDay() {
+  const plan = REM.day_plan;
+  if (!plan || REM.shared) return null;
+  const today = calendarDay(REM.as_of), day = plan.days.find(day => day.date === today) || plan.days[0];
+  const tomorrow = day.date === today ? plan.days.find(next => next.date > day.date) : null, items = day.items.filter(dayPlanVisible);
+  const events = (tomorrow?.items || []).filter(item => item.kind === "event");
+  return el("section", {class: "day-plan", "aria-label": t("Your day")}, [el("h2", {text: t("Your day")}),
+    el("p", {text: t("Plan for {date} ({zone})", {date: day.date, zone: plan.timezone || REM.status?.timezone || "UTC"})}),
+    day.date !== today ? el("p", {text: t("This saved plan is out of date.")}) : null,
+    !plan.calendar_read ? el("p", {text: t("No calendar has been read yet.")}) : null,
+    plan.calendar_read && plan.not_saved ? el("p", {text: t("No day plan has been saved yet.")}) : null,
+    ...(plan.calendar_errors || []).map(error => el("p", {text: t("{name} could not be read: {reason}; events last read {date}", {name: error.name, reason: t(error.reason), date: error.read_at?.slice(0, 10) || t("never")})})),
+    items.length ? el("ul", {class: "day-plan-list"}, items.map(dayPlanItem)) : el("p", {text: t("No events or proposed things for this day.")}),
+    events.length ? el("div", {class: "day-plan-tomorrow"}, [el("h3", {text: t("Tomorrow: first event")}),
+      el("ul", {class: "day-plan-list"}, [dayPlanItem(events[0])]),
+      ...events.filter(item => item.location).flatMap(item => [el("h3", {text: t("Tomorrow: place to go")}),
+        el("ul", {class: "day-plan-list"}, [dayPlanItem(item)])])]) : null]);
+}
+
 function overview() {
   const main = document.getElementById("main"), inDeck = !!document.activeElement?.closest("#main .qcard");
   main.textContent = "";
@@ -8070,6 +8177,8 @@ function overview() {
   const cards = deckOrder(groups);
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
+  const dayPlan = yourDay();
+  if (dayPlan) main.appendChild(dayPlan);
   main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
     staleWidget(todayEntries(entries).filter(staleEntry)), todayFolds(entries, counts)].filter(Boolean));
@@ -9167,12 +9276,13 @@ function category(c) {
 // it, so a page the calendar cannot place is never lost. On a phone the same items are a day-by-day list.
 const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
-  "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题",
+  "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
   "Still open from earlier": "更早、仍开着",
   "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
   "authorization expired": "授权已过期",
   "{name} · read {when}": "{name} · {when}读取",
+  "Calendars last read on {when}; no events found.": "上次读取日历是 {when}；没有找到日程。",
   "No calendar is connected, so this shows only the notebook's own dates.": "还没有连接日历，这里只显示笔记里的日期。",
   "{name} could not be read on {when} ({reason}).": "{when}没能读取 {name}（{reason}）。", "Its events are from {when}.": "显示的是 {when}读到的日程。",
   "timed out": "超时", "network error": "网络出错", "server error": "服务器出错", "throttled": "被限流", "request refused": "请求被拒",
@@ -9195,15 +9305,23 @@ function agLocale() { return uiLanguage === "zh" ? "zh-CN" : "en-GB"; }
 function agFormat(day, options) { return new Date(day + "T00:00:00Z").toLocaleDateString(agLocale(), { timeZone: "UTC", ...options }); }
 // 24-hour in the notebook's zone, the zone calendarDay files the event under.
 function agTime(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: REM.status?.timezone || "UTC" }); }
+// Both calendars end an all-day event on the day after its last. A timed one runs to the day its last
+// minute falls on: ending at midnight is the day before, and a week away covers each of its days.
+function agLastDay(e, first) {
+  if (e.all_day) return agDay(calendarDay(e.end) || agDay(first, 1), -1);
+  const start = new Date(e.start), end = new Date(e.end);
+  return end > start ? calendarDay(new Date(end - 1).toISOString()) : first;
+}
 function agendaItems() {
   const today = agToday(), items = [];
   for (const e of REM.calendar?.events || []) {
     const first = calendarDay(e.start);
     if (!first) continue;
-    // Both calendars end an all-day event on the day after its last; a timed one is filed under its start.
-    const last = e.all_day ? agDay(calendarDay(e.end) || agDay(first, 1), -1) : first;
+    const last = agLastDay(e, first), ends = e.all_day ? "" : agTime(e.end);
+    // Its start time on the day it starts, "Until 17:00" on the day it ends, all day on the days between.
     for (let day = first, n = 0; n === 0 || (day <= last && n < 62); day = agDay(day, 1), n++)
-      items.push({ day, time: e.all_day ? "" : agTime(e.start), title: e.title || agT("No title"), href: e.link, external: true,
+      items.push({ day, time: e.all_day || day !== first ? "" : agTime(e.start), title: eventTitle(e), href: e.link, external: true,
+        when: day !== first && day === last && ends !== "00:00" ? agT("Until {time}", { time: ends }) : "", where: e.location || "",
         people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, kind: "event" });
   }
   const placed = new Set();
@@ -9228,14 +9346,15 @@ function agendaItems() {
   return items.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title));
 }
 function agItem(item) {
-  const when = item.kind === "event" ? (item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
+  const when = item.kind === "event" ? (item.when || item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
   const main = el("a", { class: "ag-main", title: item.title, href: item.href || "#", ...(item.external ? { target: "_blank", rel: "noopener" } : {}) }, [
     el("span", { class: "ag-time", text: when }), el("span", { class: "ag-title", text: item.title }),
     item.note ? el("span", { class: "ag-note", text: datesInProse(item.note) }) : null]);
   if (item.external && !item.href) main.removeAttribute("href");
   const who = item.people?.length ? el("span", { class: "ag-who" }, item.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]))
     : item.guests ? el("span", { class: "ag-who", text: item.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: item.guests }) }) : null;
-  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, who]);
+  const where = item.where ? el("span", { class: "ag-where", text: item.where }) : null;
+  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, where, who]);
 }
 function agColumnHead(day, today) {
   return el("header", { class: "ag-colhead" }, [day === today ? el("span", { class: "ag-now", text: agT("Today") }) : null,
@@ -9300,6 +9419,10 @@ function agendaNote() {
     + (e.read_at ? " " + agT("Its events are from {when}.", { when: fmtTime(e.read_at) }) : "")),
     // The night stops at a cap so a runaway series cannot fill the file; what it skipped is said, not hidden.
     ...read.filter(c => c.capped).map(c => agT("{name} has more than {n} events in these weeks; REM kept the first {n} and skipped the rest.", { name: c.name, n: c.capped }))];
+  if (read.length && !REM.calendar.events?.length) {
+    const latest = read.map(c => c.at).sort().at(-1);
+    lines.push(agT("Calendars last read on {when}; no events found.", { when: fmtTime(latest) }));
+  }
   return lines.length ? el("p", { class: "agenda-note", text: lines.join(" ") }) : null;
 }
 function agendaBar(range) {
@@ -13088,7 +13211,7 @@ function topicLinks(r) {
     ...groups.map(([k, list]) => topicGroup(k, list, aliases)), quiet]);
 }
 function topicHead(r) {
-  const topic = r.topic || {}, rows = topicRows(r), what = topicKnown(r, "what it is"), first = rows.map(row => row.date).filter(Boolean).sort()[0];
+  const topic = r.topic || {}, rows = topicRows(r), what = topicKnown(r, "what it is") || abstractKnowledge(r).replace(/^#{1,3} .*$/gm, "").trim(), first = rows.map(row => row.date).filter(Boolean).sort()[0];
   const sub = what ? plainLine(what).split(/(?<=[.。!?！？])\s*/)[0]
     : first ? graphT("REM has not written this page yet · named in {n} records since {date}", { n: rows.length, date: fmtDate(first) })
     : graphT("REM has not written this page yet");
@@ -13146,10 +13269,20 @@ function topicUnsure(r) {
   const items = listItems(section(r, "uncertainties")?.text || "").map(line => plainLine(line)).filter(line => line && !/^Unknown\b/.test(line)).slice(0, 2);
   return items.length ? [el("h4", { text: graphT("REM is not sure") }), el("ul", { class: "gx-rail-list" }, items.map(item => el("li", { text: item })))] : [];
 }
+function abstractKnowledge(r) {
+  let text = r.text.replace(COMMENT, "");
+  if (!/^#{2,3} Drawn from\s*$/m.test(text)) return "";
+  if (!/^## Drawn from\s*$/m.test(text))
+    text = text.split(/(?=^## )/m).filter(part => /^### Drawn from\s*$/m.test(part)).join("\n");
+  return text.replace(/^# [^\n]*\n/, "").replace(/^Investigation:[^\n]*$/gm, "")
+    .replace(/^#{2,3} Sources[^\n]*\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/gmi, "").trim();
+}
 function topicPage(r) {
   graphModel();
+  const learning = abstractKnowledge(r);
   const rail = el("aside", { class: "gx-rail", "aria-label": graphT("About") }, [graphLocal(r), ...topicAbout(r), ...topicRelated(r), ...topicUnsure(r)]);
   return el("div", { class: "gx gx-topic" }, [topicHead(r), el("div", { class: "gx-grid" }, [el("div", { class: "gx-main" }, [
+    learning ? el("section", { class: "gx-sec gx-prose", html: markdown(learning, r.path) }) : null,
     topicProse(r, "where you stand", "Where you stand"), topicLinks(r), topicTimeline(r), topicProse(r, "open threads", "Open threads"), topicDoubtful(r)]), rail])]);
 }
 

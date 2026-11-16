@@ -27,7 +27,17 @@ On macOS, one-page agent tasks also receive a **Recently read** index from the d
 Chrome profile: visits in the last 30 days matching the subject's name, domain
 or GitHub repository. Titles and URLs are leads. A relevant page must be fetched
 with `co fetch <url> > web/<slug>.md` and registered in `web/sources.json` before
-its content can be cited. The index itself opens no pages and makes no network
+its content can be cited. An address registered without its scheme
+(`example.org/team`, `www.example.org`, `//example.org/team`, or one wrapped in
+spaces or `<>`) is read as `https://…`; it used to refuse the page and cost a
+whole repair turn (474 s and 2.98M tokens on 2026-11-16, #3083). Anything else
+that is neither an HTTP(S) URL nor a native source ID is refused by entry:
+"Research captures need an HTTP(S) URL or a native read-only source ID: entry 2
+of web/sources.json (file team.md) has "search: …"; write the page's exact
+address as "url": "https://<host>/<path>" …", and an entry that is neither
+(a `file:` id) is to be removed. That refusal goes back to the writer for a
+repair turn like any other review finding; it used to fail the page outright
+(610 s on 2026-11-16, with no repair). The index itself opens no pages and makes no network
 requests; the existing LinkedIn restriction still applies. It shows up to 50
 distinct URLs, newest first, with repeated visits collapsed. Profile/resource
 links match that specific page; an explicit website or organisation domain
@@ -130,7 +140,7 @@ were detected from your sent mail and typed sessions or set in config. Use
 `co rem init --languages zh,en` to set them before mapping, or
 `co rem config set languages zh,en` (your list, as init prints it) to change them
 later; `languages en` keeps English only. English remains the
-canonical writing language. After tidying and drawing decisions and principles,
+canonical writing language. After tidying and drawing decisions, knowledge and principles,
 init translates every listed, written page into your first non-English language,
 even when English is first in the list. Mapped-only stubs and the skill catalog
 index are excluded. `--no-translate` skips this last step; `--no-investigate`,
@@ -265,7 +275,8 @@ co rem investigate          # What is left to investigate, by category; no model
 co rem investigate PAGE    # One page; a page refused before is retried on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
 co rem open                 # Open a fresh snapshot of the notebook in your browser
-co rem sync --dry-run       # Inspect pending metadata, without running a model
+co rem collect --dry-run    # Inspect pending metadata, without running a model
+co rem collect              # One batch of new material only
 co rem sync                 # One update: new material, then at most one unfinished page
 co rem logs                 # Inspect results, partial coverage and failures
 ```
@@ -275,7 +286,7 @@ what is missing; unknown usage remains **Unknown**, never zero. Results end
 with a copyable `Next:` command, including the selected root and shell quoting.
 Use `co rem --help` as the workflow guide: it gives task selection,
 observed inputs, expected results, source/quality checks and recovery before
-the command inventory. `init --help`, `investigate --help` and `sync --help`
+the command inventory. `init --help`, `investigate --help` and `collect --help`
 explain their full workflow as well as options. The overview and group help
 share one implementation, so human and agent guidance cannot drift separately. Root and JSON flags belong **before** the subcommand:
 
@@ -292,7 +303,7 @@ Piping human output does not hide the next step. Grouped help covers:
 |---|---|
 | Map and investigate | `init`, `investigate`, `map-skills`, `scan`, `stub` |
 | Browse | `open`, `list`, `show`, `search`, `status` |
-| Update and review | `sync`, `capture`, `reflect`, `reflections`, `propose`, `review`, `abstract` |
+| Update and review | `collect`, `sync`, `catchup`, `capture`, `reflect`, `reflections`, `propose`, `review`, `decisions`, `abstract` |
 | Sources and background | `sources`, `sources add`, `sources remove`, `start`, `stop` |
 | Settings and diagnostics | `config`, `config set`, `logs`, `doctor` |
 
@@ -473,6 +484,164 @@ second shell implementation would duplicate behavior.
 Group options precede the command: `co rem --root /path/to/rem --json list`.
 Every command returns a next command, including in JSON and through a pipe.
 
+The five stages of a REM day are:
+
+| Stage | Verb | What it does | Background runs it (scheduled sync / exec / in-session next) | Budget it spends |
+|---|---|---|---|---|
+| Collect | `co rem collect` | Read one batch of new mail and coding sessions into the notebook; no later stages. | Yes / yes / yes | Source reads are model-free; extraction uses the daily call cap. |
+| Investigate | `co rem investigate` | Fill pages from originals: people, organisations, projects, session summaries, same-person checks and reply drafts. | Yes / yes / yes | Investigation's weekly points and usage floor; background daily call cap. |
+| Deepen | `co rem deepen` (one page: `enrich`, `muse`) | Follow unfollowed leads, then think a page through. | Yes, after the round / yes, once a round: after its first portion of investigation, or after the round when it had none / no: single tasks use the session's own model and cannot run an hour-long slot; the `codex_exec` launcher runs the slot when a turn ends | Separate weekly deepen points, usage floors, page count, workers and slot time. |
+| Abstract | `co rem abstract` | Decisions, settled knowledge and experience, then principles, out of notebook pages. | No separate abstract round in legacy sync / yes / yes | Background daily call cap and `limits.abstract_rounds_per_night`; manual write ignores the nightly cap. |
+| Translate | `co rem translate` | Put changed pages into the owner's language; last in the intended day because earlier stages change pages. | Yes / yes / yes; a `daily-translation` round only translates | Separate daily translation cap; model-provider allowance. |
+
+`co rem collect` reads one batch, not until caught up. The default ceiling is
+40 items (`limits.extract_items_per_batch`) from one source, with an additional
+input character bound. Sources rotate between batches. Mail takes whole
+correspondents by their oldest queued mail; a correspondent larger than a batch
+is sliced oldest first. Run `co rem collect` again for another batch.
+The result reports known mail still waiting and a copyable next command.
+As on the existing batch path, approved coding sessions are also imported and a
+stalled init mail archive can resume for up to five minutes across approved
+mailboxes. These reads are outside the extraction batch; `--source` scopes that
+batch, not this existing housekeeping.
+
+Mail `progress.json` → source → `pending` contains message metadata already
+listed but not yet successfully processed in a batch. It is not a count of all
+unread mail in the mailbox or of unlisted sessions. Automated senders excluded
+by the subscription never enter this queue; deleted messages are removed on a
+404. Disabled or unapproved sources retain their queue but are reported as held,
+separately from waiting mail. `--with` leaves other correspondents in place.
+Read failures, a daily call cap, and an input that cannot fit can delay progress;
+there is no age expiry for queued mail. Existing local corrections and captured
+material take priority over source batches, so a sustained local backlog can also
+delay mail. Rejected page material is retained in
+refusal state after a successful batch advances its mail queue.
+In the native round a batch's page that is parked (refused twice for one reason,
+or three times) does the same: the batch's scan point is saved, and the parked
+page keeps that batch's material in the refusal ledger for its retry, so one
+page that cannot pass its claim audit no longer sends the same mail through
+extract and maintain every round (2026-11-16: 40 mails read five times in a
+day, the scan point nine days behind). A batch is still left unsaved when its
+extract task or any task that is not a parked page is discarded; then the
+batch's run record carries `progress_not_saved` with the reason, and
+`co rem status` says for that mailbox `read <date>, but its progress was not
+saved (<reason>); the same mail is read again next round` instead of "not read
+since".
+
+Compatibility command `co rem sync`: Collect, then investigate what is unfinished;
+use co rem collect for new material only, co rem catchup for a whole day.
+Its existing options and behavior remain, including installed schedules calling
+`co rem sync --scheduled` and the batch-only `--source` / `--all` paths.
+
+The stage order above describes the day. The current native round preserves
+its trialled order: collect, new same-person checks and reply drafts, then
+investigation in portions of 2 turns. Between two portions the other stages
+take their turn: one session summary, one Abstract round, then translation's
+share (`translation_share`). After the queue come the remaining session
+summaries and Abstract rounds, the same-person checks and the closing
+translation.
+
+Every stage produces early in a night, not only at its end (owner,
+2026-11-16). One investigation turn measured 20 to 60 minutes on a real
+notebook and a 3-hour catchup night completed one page. With portions of 8
+turns and everything else after the whole queue, Abstract and Deepen were 4 to
+12 hours into a night, and any night that was cut short (a deadline, the quota
+floor, two faults in a row, the 3-hour turn) left them at 0. Now a night that
+stops after its first portion has already served a session summary, an Abstract
+round and a translation share, and has run its deepen slot.
+
+Whole-round background runners (`co rem exec`, `co rem catchup`, the
+`codex_exec` launchd entry point, and scheduled sync) run the unchanged
+`depth.slot` once per round. `co rem exec` and catchup run it between two
+tasks as soon as the round's first portion of investigation is done: after
+that portion's Abstract round and before its translation turns, so the order
+is Investigate, Abstract, Deepen, Translate. The `codex_exec` launcher cannot
+run it inside a turn (the session's own model is driving single tasks), so it
+runs it when a turn ends, whether the turn finished, was stopped or reached its
+three hours, once the first portion is done. The page under investigation and
+the page of a task left pending are left out of that slot: deepening them
+would change the page under its own draft. A round with no investigation
+portion (nothing to investigate) keeps the slot where it was, after the round
+completes, and there it still needs a night that wrote, translated or drafted
+something. The early slot does not ask that: a night that served a portion is
+working, and its first page may be an hour from written. Either way a round
+has one slot: the one that ran early is the one a completed round reports.
+Pages deepened await the next translation pass.
+Legacy scheduled sync keeps its existing collect, investigation and translation
+round, then deepens. A busy, not-due or translation-only round, and a round
+that stopped before its first portion, do not start a deepen slot; at the
+Codex usage floor the slot starts no page, as before.
+`co rem catchup` reuses exec, including that same slot, once per night; it
+does not add another slot. In-session `next` / `submit` keeps handing single
+tasks to the session's model and never deepens.
+
+Every stage gets its share of a night, so one long queue cannot keep the
+later stages from running (owner, 2026-11-16: a queue of 333 investigations
+against a weekly budget for 60 to 90 left Abstract and Deepen at 0 after eight
+catchup runs). A night is the schedule's night (noon to noon) or one
+`co rem catchup` night:
+
+| Stage | A night's share | Setting |
+|---|---|---|
+| Investigate | 12 pages: people, projects, organisations, older pages, retries and your own page | `limits.investigations_per_night` |
+| Investigate, skill pages | 3 pages, counted on their own and served after the others | `limits.skill_pages_per_night` |
+| Abstract | 6 rounds of up to 20 decision lines: one between every two portions of investigation, the rest after the queue | `limits.abstract_rounds_per_night` |
+| Deepen | 3 pages in the round's one slot, after the first portion of investigation | `limits.depth_pages_per_slot` |
+| Translate | a share between every two portions of investigation, then the closing pass | none (D-104) |
+
+Only a page that was handed to the model uses the share: one that is parked,
+set aside for a stopped mailbox or found to have nothing new does not. A page
+already open keeps going until it is written, however many rounds it takes.
+When a share is used, the round goes on to what is left of session summaries
+and Abstract, the same-person checks and Translate, and completes; Deepen has
+run by then, after the first portion. The pages that
+did not fit are not lost: they are saved in `.state/investigation-waiting.json`
+and the next round puts them back in the queue. A page the round lists again
+keeps the place that round gives it; a page only the waiting list remembers (a
+person whose new mail predates the last round) leads, so the backlog cannot
+push it back for weeks.
+The night's line and status say it in words, as work that waits and not as a
+failure: `12 of tonight's 12 investigations done; 319 wait for later nights`.
+These two shares are the only count caps on a night since D-104 retired the
+others; the weekly budgets and the Codex usage floor still apply on top.
+
+A weekly budget holds its own stage and no other (owner, 2026-11-16: a catchup
+night ended at "investigation has used 35 of its 35-point weekly budget" with
+Abstract, Translate and Deepen not run, while the Codex week was at 37%):
+
+| What is spent | What waits | What still runs |
+|---|---|---|
+| `limits.investigation_quota_points` (35) | New investigation pages and the same-person checks. A page already open is finished. | Collect and reading the batch into pages, reply drafts, session summaries, Abstract, Translate, Deepen |
+| `limits.depth_quota_points` (30) | Deepen | Everything else |
+| `limits.quota_floor_percent` (the Codex week at 90%) | Every step that calls the model | Collect without the model, the calendar and the day plan |
+
+A spent investigation budget works like a used share: the pages wait in
+`.state/investigation-waiting.json`, the round goes on to its other stages and
+completes, and the night's line and the Investigate line of `co rem status` say
+`investigation is waiting for its weekly budget (35 of 35 points used; the Codex
+week resets Wed 18 Nov 22:00); 40 pages wait`. It is not a stop reason, for
+`co rem exec`, the schedule or `co rem catchup`.
+The investigation budget counts investigation pages and same-person checks,
+by hand or scheduled. Abstract rounds are not counted against it (they were,
+while they ran inside the round, and never when run by `co rem abstract`);
+batch extract and maintain, session summaries, reply drafts and Translate
+never were. Those are bounded by the daily call cap
+(`limits.runner_calls_per_day`), `limits.abstract_rounds_per_night`, the
+round's five summaries, translation's share, and the floor.
+
+`co rem status` keeps its existing dashboard and adds five stage lines in the
+order above. Each says what is waiting (a count) and when that stage last ran
+in the notebook's timezone (a date or `never`). Counts come from saved source
+metadata and the existing investigation, deepen, captured-decision and
+translation queues; investigation counts distinct pages awaiting writing, session
+summaries, same-person checks or reply preparation; collection counts listed mail waiting from enabled, approved sources. Disabled
+or unapproved source queues are shown separately as held; unlisted mail and
+sessions are not counted. Collection dates include batch receipts inside native
+daily rounds as well as standalone batches, and ignore empty checks. A stage's sentence that would pass 80 columns
+breaks after a `;` and continues two spaces in on the next line (the Abstract line's page counts, the Investigate
+line's shares). The same rows are under `stages` in `--json`, each sentence whole in `text`; `calendar` and
+`day_plan` carry the calendar line and the day plan line beside them.
+
 | Command | Behavior |
 |---|---|
 | `co rem init` | Discover sources and map pages, then use the configured model to investigate your page, all eligible people, queued projects, pending mapped organizations and installed skills, recent first. `--no-investigate` explicitly stops after the map. |
@@ -493,22 +662,380 @@ Every command returns a next command, including in JSON and through a pipe.
 | `co rem enrich people/alice.md` | Follow the leads a page has not followed — links, attachments, older threads — and add what they establish. One model turn with the `rem-enrich` Skill, the page's cited originals and a reading ledger of every source the saved archive holds about the subject (no live mailbox query). Prints the lead list: followed, open, blocked. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem muse people/alice.md` | Think one page through: ask many questions, study the five best, write only on insight. One thread of seven resumed turns with the `rem-muse` Skill. [Details](#deepen-one-page-enrich-and-muse). |
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
-| `co rem abstract` | Run rem-abstract over existing notebook evidence. |
+| `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
+| `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. A spent weekly investigation budget holds only investigation: the night still reads the batch, summarises sessions, abstracts, translates and deepens, and its line says investigation is waiting and when the week resets. At the Codex usage floor before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, each cause with its count (three at most) and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. One run at a time holds a notebook: catchup, `co rem exec` and the scheduled background turn take the same lock (`.state/exec-turn.lock`) for their whole run, and the kernel releases it when the process ends, a deadline's exit 75 included. Started while another holds it, catchup prints `Another REM run holds this notebook (the scheduled background turn, co rem exec or co rem catchup), so this run started nothing. Run it again when that one has finished; co rem status shows the turn in progress. No night was counted.` and exits 1; `co rem exec` prints the same sentence and exits 0; a scheduled fire writes it to the scheduler log, exits 0 and tries again at the next fire. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round, or when another run holds the notebook. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
 | `co rem stop` | Remove that notebook's background job; preserve pages and progress. |
 | `co rem sync` | The whole update: one batch of new material; then the day's first run investigates unfinished pages, most recent first, and every later run updates only the people and projects with something new. What the schedule runs (`sync --scheduled`). |
-| `co rem sync --source codex --dry-run` | Pending metadata only; no model or source body reads. |
+| `co rem collect [--source NAME] [--with ADDRESS] [--dry-run]` | Read one batch of approved new material only, using the existing extraction/page updates. No investigation, deepen, abstract or translation. Dry run reads metadata only. |
 | `co rem sources add codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
-| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. |
+| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. When the last night used its share of investigations, the Investigate line says so and how many pages wait for later nights. |
 | `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
+
+Run `co rem catchup` to do the night's work, including its one deepen slot. Use
+`co rem catchup --nights 5` to run both five times back to back. `--nights` is
+optional, defaults to 1 and must be at least 1. Each night uses `co rem exec`'s
+existing round, which owns the same automatic slot as `co rem deepen`: one enrich
+and muse round per selected page, using the default page count and
+`limits.depth_workers`. It calls the configured model and reads sources up to
+now. A night with deepen can take an hour or more: large-page rounds measured
+35–97 minutes. The schedule is untouched. A notebook-local
+counter gives it fresh daily and nightly limits; page dates, source windows
+and scheduled due times stay real.
+The Codex usage floor still stops the run. A spent weekly investigation budget
+does not: investigation waits for the week's reset, the night's line says so,
+and the night's other stages run.
+Deepen keeps its separate weekly budget and the same quota and usage floors
+as the scheduled slot. A spent deepen budget or no qualifying pages still
+counts the night; the line says why no pages were deepened.
+The daily investigation call cap leaves room for the same translation tail as
+the scheduled round. Each line reports that night's mail and sessions read,
+pages written and how many of them are decision pages ("81 pages written (66 of
+them decisions)"; the two used to be listed side by side and read as a sum),
+translations, drafts and pages deepened; totals follow. A productive night stopped at the daily cap keeps its counts and
+can repeat with fresh limits; it has deepened if it got through its first
+portion of investigation, and not otherwise, because its round is unfinished.
+If exec is busy, reaches a quota floor or stops before the first portion, and
+when a night with nothing to investigate produces no pages, translations or
+drafts, catchup stops without starting deepen.
+Saved work survives interruption, including during deepen.
+A page whose enrich turn was refused or failed is not counted as deepened. It is
+counted after it, with the first page's cause in a few words and no local path;
+the full refusal is in `co rem logs`:
+
+```text
+Night 1: … · 2 pages deepened · 1 not deepened (enrich refused: Research captures need an HTTP(S) URL or a native read-only source ID; see co rem logs)
+```
+
+`--json` carries `not_deepened` and `not_deepened_reason` per night and in the totals.
+
+A long investigation queue never keeps the rest of the night from running.
+Once the night's share of investigations is used, the round goes on to its
+other stages and the line says what waits, after the pages deepened:
+
+```text
+Night 1: … · 3 pages deepened · 12 of tonight's 12 investigations done; 319 wait for later nights · 3 of tonight's 3 skill pages done; 144 wait for later nights
+```
+
+`--json` carries the same numbers per night under `shares` (`investigations`
+and `skill_pages`, each with `done`, `limit` and `waiting`). The next night
+continues with the pages that waited.
+
+When every page left in a round is parked, the round ends with that reason
+(exit 1) and still saves the calendar and the day plan first, as every round
+does.
+
+One page never stops the night. When review refuses a candidate, exec (and so
+catchup) runs that task again with the refusal as its required corrections.
+An audit refusal names its findings under its first line, up to three, one
+line each (`Finding 1 of 2 — claim: … | cited: <source id> | problem: … |
+correction: …`); the task's instructions file lists up to five in full. Two
+audit refusals are the same reason only when they fail the same claims: the
+sentence above the findings is the same for every audit, so comparing it
+parked a page whose second refusal was about something else (#3083).
+One refusal is settled without parking. When the refusal that would park a
+page names nothing but lost quotes or sources (`Dropped quote the page had`,
+`Dropped source id the page had`), review puts the lines that cited them back
+unchanged beside the rewrite and accepts the page, as enrich and muse do. The
+repair before it asks for the sentence that cited each one, with its citation:
+a Sources entry no sentence cites is removed again, so adding the id alone was
+refused for the same ids until the page parked (2026-11-17). The submit says
+how many lines came back, and the run record keeps the count
+(`restored_lines`). A line the worker removed on purpose is back too: review
+cannot tell a deliberate cut from a lost one. A page accepted this way has no
+cited-claim audit; its `review.json` says `not automatically assessed`.
+A source counts as one the page had only when a sentence of the old page
+cites it. An id that was merely listed, or cited only inside a diagram, is
+removed from every candidate as uncited, so no repair could keep it and the
+restore had no line to bring back: a real run put 4 lines back and still
+parked the page for one such id (2026-11-17). It is no longer refused.
+The restore runs only when every error left is a dropped quote or source; a
+refusal that also names another error (a capture's format, a quote not in its
+source) is repaired by the worker and parked on the usual count.
+A task refused twice for the same reason, or three times in all, is parked:
+the reason goes to the refusal ledger (`.state/refused-investigations.json`),
+the last candidate and its `review.json` stay in the task's folder under
+`.state/tasks/`, the pending task is cleared and the round continues with its
+next work. A parked page is not picked again in the same night and returns as
+a retry on a later one (after 20 hours on the schedule), up to three retries
+on the same material. A retry that is parked again in the same words, from the
+same material, uses the retries that were left: the next night would buy the
+same refusal. Out of retries, the page waits for new material, and its own
+queue does not list it again either until mail or a session newer than its
+last refusal arrives (it used to come straight back as an unfinished page, so
+one page was parked six times in a day, #3083). The night's line and the totals say it:
+
+```text
+Night 1: … · 1 page parked (projects/fern.md: refused 3 times: the rewrite dropped 6 sources the page had; candidate kept at <root>/.state/tasks/native-<id>/candidate.md; co rem status lists them)
+Done: 1 night · … · 1 page parked (projects/fern.md: refused 3 times: the rewrite dropped 6 sources the page had; candidates kept under <root>/.state/tasks; co rem status lists them)
+```
+
+A night that parked several pages counts them by cause instead of naming one
+page: the most frequent cause first, three causes at most, then how many more
+(it printed only the first page's cause, 2026-11-17):
+
+```text
+Night 1: … · 2 pages parked (1 page, refused 3 times: the rewrite dropped 6 sources the page had; 1 page, co ai timed out after 1200s; first candidate kept at <root>/.state/tasks/native-<id>/candidate.md; co rem status lists them)
+```
+
+The parenthesis carries a short cause, not the stored reason: how often the
+page was refused, then one clause. A rewrite that dropped what the page had is
+counted (`the rewrite dropped 6 sources and 1 quote the page had`); any other
+cause is its first clause (`Quote is not in its cited source`, `co ai timed out
+after 1200s`), with no source ids and no local paths. The stored reason is cut
+at 300 characters, and on 2026-11-17 the line printed that: a list of source
+ids ending mid-word. `co rem status` still lists the whole reason. A candidate
+is named only while its file exists (`no candidate is kept` otherwise): a
+parked task keeps `candidate.md` and its reviews, while investigation notes or
+a translation go with the task's material, and the line had named such a path
+after it was removed.
+
+`--json` carries the same rows in `parked` (`record`, `why`, `cause`,
+`candidate`) per night and in total. Parking is not a failure: a night that parked pages exits
+0, as a night stopped at a limit does. A task that an earlier stopped run left
+pending is resumed by the next catchup or `co rem exec` through the same
+retry-then-park path; only a task another live process is working on stops
+the night (exit 1, with `co rem next --discard` named). `co rem submit` and
+`co rem next --discard` still work by hand.
+
+A page whose first investigation pass was accepted before a night ended keeps
+that draft into the next night and goes on to its remaining pass. A page that
+changed meanwhile is investigated again from the start, with one exception:
+when the only change is the contact script's own (First contact, Last contact,
+company and time zone filled from the mail index), the same script is applied
+to the draft and the page resumes. Before, that rewrite alone restarted a
+person's page at its first pass: 2,158 s and 10.75M tokens over three turns on
+2026-11-16 (#3083). An edit by you, or by a turn that read new mail, still
+restarts the page.
+
+The same holds for a task exec cannot settle. Its instructions print the
+submit command, and the worker may run it itself: exec then reports what that
+submit recorded (accepted, or parked after its refusals) instead of submitting
+a task that is no longer pending, and takes the task the worker's own
+`co rem next` prepared. The worker is not asked to run one: a task exec hands
+out is marked `driven` in its `task.json`, and a submit of it ends on `Next:
+End your turn: the co rem exec that started this task takes the next one.`
+(`"next": null` and `"driven": true` with `--json`), never on `run co rem
+next now (same turn)` and never with the scheduled agent's "keep going until
+the round is done". A parked submit printed that line to exec's one-task
+worker; it obeyed, and the task it prepared waited 7,383 s for a driver
+(#3083). A driven stage that the harness confines to its task folder
+(every stage but investigation and init, with the Codex or Claude Code
+runner) is also not told to write outside it: its instructions leave out the
+`.state/memory.md` step, and its claim audit ends "end your turn: the run
+that started this task submits it" instead of "run next again … run the
+printed Submit command", with the audit's `Now:` batch added to the prompt
+exec hands it. Both commands take the notebook's lock, which is outside the
+folder: 76 tool outputs in one day were permission errors, 58 on that lock.
+The repair of a refused page follows the same rule: its `## Required
+corrections` end "end your turn: the run that started this task submits it.
+Do not run co rem submit; this sandbox refuses it." instead of "Run co rem …
+submit again in this turn". The investigation Skill asks for the memory lines
+only "when the task instructions name a memory path".
+A repair runs in its stage's sandbox, and one rule decides both the flags and
+the wording: exec names a repair `investigate (repair)`, the flags used to
+take that for a confined stage while the wording did not, so a
+`workspace-write` investigation repair was told to run submit (3 permission
+errors in one repair, #3083). An investigation's repair now has the access its
+first pass had and submits its own page; a maintenance or translation repair
+stays confined and ends its turn. The corrections are also rewritten when the
+task changes hands: a page refused under `co rem next` and offered again by
+`co rem exec` (or the reverse) gets the ending for the worker that now has it.
+A task's inputs include `config.yaml`, read for what shapes its material only:
+the evidence-sizing limits (`items_per_batch`, `input_chars_per_batch`,
+`extract_items_per_batch`, `extract_chars_per_batch`, `investigation_rounds`)
+count, and the limits that bound future work (the daily call cap, the nightly
+shares `investigations_per_night`, `skill_pages_per_night` and
+`abstract_rounds_per_night`, workers, timeouts and budgets) do not. A task
+prepared before `abstract_rounds_per_night` existed was parked as changed by
+the release that added it (2026-11-17); every default limit is now named in
+one of the two groups, and a test fails for one that is not.
+A task whose inputs changed while the worker ran, one
+that is no longer the round's pending task, and a turn that passes
+`limits.timeout_seconds` are parked with that error in words, listed like any
+parked page, and the round goes on. The parked task's record keeps the tokens
+its turns used: what a timed-out turn reported before it was closed, and the
+whole turn of a task whose submit then failed (it recorded none, 2026-11-17).
+Two such tasks in a row stop the round
+instead (`2 tasks in a row could not be run, so the round stopped; the last:
+…`), so a dead network does not park every page for a day.
+
+A page whose preparation passes the ten-minute `co rem next` deadline inside
+`co rem exec` or `co rem catchup` is one such task. The deadline interrupts
+the preparation where it waits (a folder listing held by a macOS privacy
+prompt is interrupted too), the notebook's lock is released, the page is
+parked by name (`parked: preparing it passed the 10-minute deadline while
+searching project documents`), exec prints `Parked <page>: …` for it, and the
+round prepares the next page in the same process. It counts towards the two
+in a row. Only a preparation that does not stop within 30 seconds of being
+interrupted still ends the process with exit 75, as a single `co rem next`
+does; catchup first prints the night's line and `Done:` with `Stopped: co rem
+next passed its deadline while <step> and could not be interrupted`, so a
+night never ends without its totals. The page is parked by the next
+`co rem next`, exec or catchup.
+
+What stops the round is what is about the round, not one page: the runner
+cannot start or does not complete (a refused model, a spent provider limit),
+the notebook's lock is held by another process, the notebook cannot be read.
+Catchup then still prints the night's line and the totals, with the reason in
+words on both and on `Stopped:`, exits 1 and starts no further night:
+
+```text
+Night 1: … · 1 pages written · … · 0 pages deepened (exec stopped: co ai did not complete (exit 1, outcome missing): usage limit reached) · 1 page parked (…)
+Done: 1 night · 1 pages written · … · 0 pages deepened (exec stopped: co ai did not complete (exit 1, outcome missing): usage limit reached) · 1 page parked (…)
+Stopped: co ai did not complete (exit 1, outcome missing): usage limit reached
+```
+
+A night in which a task was parked for its own error is a night that ran: the
+next night of `--nights N` starts as usual.
+
+When the Codex usage floor already holds the
+model before the first night, catchup does not print an empty night. It does the
+steps that call no model, once, and spends no night:
+
+- **Collect**: reads new mail and coding sessions into the round, as far as the
+  scheduled turn does before its first model task. The scheduled turn then lets
+  the model read that mail into pages even under the floor (bounded by the daily
+  call cap); catchup stops before that, and the next turn that may call the
+  model reads the same batch without fetching it again. A batch already waiting
+  is kept, not fetched twice; a round already open with its batch read gets the
+  mailboxes read into it, and the line then counts mail only.
+- **Calendar**: saves the upcoming events and the day plan, as every round does.
+- **Investigate, Deepen, Abstract, Translate** wait: they call the model.
+
+```text
+No night ran: a limit holds the model, so only the steps that need no model were done.
+Collect: 2 mail collected · 0 sessions read · 0 pages updated; reading them into pages waits for the model
+Calendar: 0 calendar events saved · day plan saved for 2026-09-07 and 2026-09-08
+Waiting: Investigate, Deepen, Abstract and Translate call the model
+Stopped: the Codex week is at 99%, at or past the 90% floor kept for your own work; investigation resumes when it resets Wed 09 Sep 22:00
+```
+
+`--json`
+carries the same under `held` (`note`, `mail`, `sessions`, `written`, `calendar`,
+`day_plan`, `waiting`, `resumes_at`); `held` is `null` when a night ran. The
+exit code is 0, as for every stop at a limit (`co rem exec`, `co rem
+investigate`): nothing is wrong and nothing needs repair. Exit 1 means a
+refused or busy task, or a round that failed.
+
+Run `co rem decisions` to see how many decision and principle pages exist and how
+many supported captured lines are waiting. Waiting and left count only lines
+with a verbatim quote and a bound original source, excluding captures contradicted
+by stored owner input. Status and the final write summary separately count captures
+with no quote, no bound source, contradicted owner words, or judged not a decision; these totals count
+each line once across the notebook, rather than accumulating across rounds.
+Legacy session pages list unnumbered sources: a quote receives a numbered binding
+only when its words and captured clock identify one retained owner turn on that
+page. Ambiguous or unmatched quotes stay out of the packet. No original transcripts
+are added to the model's material, and the session page remains unchanged.
+Run `co rem abstract` to write supported captures
+now, oldest first, up to 20 decision lines and 20 reviewed pages per round. Each
+round calls the existing configured model runner once and uses the same material,
+input character bound, owner-quote and citation checks, and decisions/knowledge/principles
+write scope as the night. Passing pages are kept; refused pages and reasons are
+printed and saved with the run. Each decision copies the owner's quote exactly as
+captured in the supplied Decisions or Key decisions into the body immediately
+followed by its `[n]`; `## Sources` defines the original source ID for that number
+and ends with `— originating page: <path>` (the task's example line now shows it;
+it ended at the source ID and no page of that night kept the path). A quote
+placed only under Sources is refused with instructions to move it into the body.
+The page limit is a ceiling: zero pages is valid. Never turn a paraphrase into an owner quote. A quote too long
+for the input bound stays pending, rather than being split into unusable fragments.
+Each offered line has a stable short ID. A passing page that quotes it counts as
+written. For every line it does not quote, the model reports either a merge into a
+decision page it wrote this round, or not a decision because no alternative was
+rejected, or because the pages do not say which alternative or why. A decision page
+whose own text says its alternative or reason is unknown or inferred is refused,
+and the refusal asks for the not-a-decision verdict instead (15 of 66 pages of
+one night said so and had passed). A merge finishes only when the named page passes review. Merged lines
+and lines judged not a decision are done and never retried. Verdicts for IDs outside
+the packet are ignored. Refused lines keep the check's reason; lines with neither a
+page nor a verdict count as no answer. Both retry up to three attempts.
+A round that resolves no lines counts as an empty round, sets its slice aside for
+a later retry, and moves to the next slice. It continues until nothing unattempted
+is left or two empty rounds occur in a row; a written, merged or not-a-decision
+outcome resets that streak.
+`--rounds 2` stops after at most two rounds. Output gives per-round counts and
+totals, slices set aside for a later retry, captured lines left, then `co rem list decisions`.
+The result and the Abstract line in `co rem status` report decision, knowledge
+and principle page counts separately. `co rem decisions` keeps its existing view.
+
+The lifts run in order: **decisions, knowledge, principles**. Abstract knowledge
+records learning that holds beyond one choice: how something works, what went
+wrong and why, or a method that worked. Each `knowledge/` page names at least two
+notebook pages from `decisions/`, `sessions/` or `projects/` under `## Drawn from`.
+It keeps the same verbatim body quote, immediate `[n]`, original source ID and
+originating-page citation rule as decisions. This is learning from notebook
+experience; Investigate topic pages describe a subject from raw sources.
+Abstract may create knowledge pages or append clearly headed sections to existing
+ones, including Investigate pages; it must preserve all existing text exactly.
+An appended section carries its own `### Sources` with fresh citation numbers.
+Knowledge passes the same promotion/review path and joins translation discovery
+alongside decisions and principles.
+Translation includes appended experience while preserving every source definition
+and the original investigation stamp. The Knowledge reader shows settled learning
+and its Drawn from links alongside any existing topic content.
+Status and the final summary show line totals separately: written, merged,
+refused, no answer, and given up. Skipped includes not a decision. Refused and
+no-answer totals include given-up lines; waiting and to retry exclude them.
+These saved totals count each current captured line once, across runs.
+Exit is 0 after progress (including verdicts) or when nothing is waiting; it is 1
+when no attempted round resolves a line, with the reason on the last line.
+A crash leaves its captured lines pending.
+Manual success shares the night's saved progress, so neither repeats the other's work.
+A manual attempt neither uses nor consumes `limits.abstract_rounds_per_night`;
+each failed manual run counts once for that slice toward the existing three-failure
+rule, as does each distinct failed night. After three failures the queue releases
+the line and records the reason. Old receipts without verdicts retain their failure
+history and get one more offer, including lines previously given up, so the model
+can give a verdict. Successes after a failed gap are saved separately
+so the gap can retry without repeating later successes. `co rem abstract` is the stage 4 command.
+
+Quote equality with a captured line does not prove who said it. Before promotion,
+the manual and nightly abstract check local stored originals, without fetching a
+source or handing raw messages to the model. A quote found in another sender's
+own mail body or an assistant reply is refused as not authored by the owner.
+A quote absent from its complete cited original is also refused. Typed session
+input and the owner's own mail body can establish owner authorship; quoted mail
+history cannot inherit the sender's identity. Missing or truncated originals,
+unknown senders, and file, repository or web sources leave the speaker unverified.
+Such pages use the existing `## Uncertainties` section with one line:
+`- Speaker unverified.` No speaker is guessed from wording or a citation prefix.
+
+After session summaries, the night runs successive abstract slices when session `## Decisions`
+or project `## Key decisions` contains new or changed captured material. Oldest sections are offered first,
+with at most 20 nonempty decision lines per packet (large sections continue on later
+slices), within the configured input character budget and with only sources bound
+to their quotes. Each completed slice admits the next, setting an empty slice aside,
+up to `limits.abstract_rounds_per_night` (default 6). A backlog of N decision lines
+takes roughly ceil(N / 20 / rounds) nights, where rounds is that nightly limit,
+or longer when slices fail or the character budget requires smaller packets. Section hashes
+advance only over successful or released slices; later successes are saved beyond
+any failed gap. Empty slices retry on a later night or manual run. After three
+distinct failed nights/manual runs, a slice is released and its offsets, failure
+attempt IDs and give-up reason are saved in abstract-offered.json.
+A crashed turn leaves its material pending. It writes or updates at
+most 20 pages under `decisions/`, `knowledge/` and `principles/` only, with the owner's words
+and original citations on each decision. Assistant proposals without the owner's
+acceptance are excluded. Principles still need at least three decisions. The saved
+night marker counts reserved rounds in the notebook’s noon-to-noon night, so a restart
+keeps the count, attempted slices and consecutive empty count; the next night starts
+at zero. An unfinished reservation blocks new slices until its outcome is recorded.
+Two rounds in a row with neither passing pages nor completed line verdicts stop
+new abstract slices for that night. The later
+same-person and translation passes follow at most six abstract rounds by default.
+Passing pages are saved; rejected
+pages and their errors are recorded in the run. A task with no passing pages
+fails. With no unoffered material, this stage makes no model call.
 
 `co rem show NAME` searches people, projects, orgs and skills. An exact page
 path wins; otherwise it matches page titles, page stems and project folder
@@ -600,6 +1127,21 @@ The critic judges the same packet twice independently, keeps only bullets both c
 Only good insights are kept; weak or wrong bullets are removed, and a weak finding about an obligation
 or a question still owed can move to Open threads.
 
+A study turn adds a bullet only when its verdict is insight, and `Insight`
+keeps at most four: the turn text said "Add a new bullet" in each of the five
+study turns, which asked for five and for one from a question that yields
+none. Five is the number of questions, four the page's limit; a fifth names
+the weakest bullet it supersedes and leaves replacement to the reviewer.
+
+A web page that enrich or muse cites needs a saved capture, as in
+investigation: the turn is told to save the text with `co fetch <url> >
+<task>/web/<slug>.md` and register it in `<task>/web/sources.json`, or not to
+cite the URL. A page refused with "Web citation needs a saved capture in
+web/sources.json" goes back with that remedy (save the cited page and
+register it, or remove the citation and any claim resting on it alone). On
+2026-11-16 a muse run with five insights rated good was refused for this, and
+neither the Skill nor the repair text said what a capture was (#3083).
+
 Both send dropped `“…”` quotes or pre-existing `Sources` ids back for repair;
 if one repair cannot restore them, the lost lines are put back as they were,
 with citations renumbered, so the page keeps its new work. A quote the page
@@ -669,6 +1211,14 @@ many candidates remain.
 
 Scheduled `co rem sync --scheduled` runs a slot after a due daily round,
 unless that round was partial. Manual `co rem sync` never deepens pages.
+`co rem exec` and the `python -m connectonion.rem.codex_exec` launcher also
+run the same slot after a completed whole round. Their closing
+translation has already run; deepen changes await the next translation pass.
+Catchup reuses exec's slot and reports its results without calling it again.
+`co rem exec` retries a refused candidate and then parks it as catchup does,
+and prints one `Parked <page>: <reason>` line for each.
+In-session `co rem next` / `co rem submit` does not deepen. Early stops and
+translation-only exec rounds skip the slot.
 
 ### What the reader shows
 
@@ -1053,22 +1603,23 @@ pinned to that edge: it comes into view with the draft.
   newer page, the open conversation returns under its row with its context,
   replies and any unsent message; its composer continues the same agent session.
 - **The rail** (D-132) is a 72px column of places, each a picture with its
-  word under it: **Today**, **Waiting on you** (*Waiting*), **People**,
+  word under it: **Today**, **Waiting on you** (*Waiting*), **Agenda**, **People**,
   **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,
   then **More**, and at the foot **Settings** and your face. A short word is
   the start of the place's accessible name (*Orgs* is named "Orgs ·
   Organisations"), so saying the word you see finds it. **More** opens beside
   its button, wherever the rail has scrolled to, and is never taller than the
-  window: **Memory changes**, then Decisions, Principles, Agenda,
+  window: **Memory changes**, then Decisions, Principles,
   Agent sessions, Opportunities and Works when they hold pages. Your face opens
   your own page and shows **You · name** beside it on hover and on keyboard
   focus. Only **Waiting on you** carries a number; a category's size is not
   something to do. The current place is in ink, in bold, on a raised cell. In a
-  window lower than the rail (656px) the rail itself scrolls, so every place
+  window lower than the rail (712px) the rail itself scrolls, so every place
   stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
   People, Search, More); **More** opens a sheet with every place by its full
-  name, Skills and Knowledge among them, the More list under them with its
-  labels in the same column, and Settings and you at its foot. There is
+  name, Agenda directly after Waiting on you, Skills and Knowledge among them,
+  the More list under them with its labels in the same column, and Settings and
+  you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
@@ -1094,16 +1645,77 @@ pinned to that edge: it comes into view with the draft.
   size and drops the sentences describing its sort order and board axes. The
   [category heading audit](rem-heading-audit.md) records each keep/drop decision
   and inventories the former All records paths.
+- **Your day** (今天的安排) opens Today above its existing rows (#3058).
+  The night saves `.state/day-plan.json` immediately after `.state/calendar.json`
+  in the same background function, for today and tomorrow in `schedule.timezone`.
+  This is deterministic: it uses saved events and Today's existing ranked items,
+  with no model call, address lookup or calendar writes. To-dos stay in Today;
+  no person, organisation or project page gains tasks.
+  Events and proposals share one time-ordered list. Events include their calendar
+  link, linked attendee pages and the location exactly as the calendar supplied it.
+  A location without a number, a street word (street/st, road/rd, avenue/ave,
+  lane/ln, drive/dr, boulevard/blvd, way, highway/hwy, terrace, crescent, court,
+  place, square, 路/街/巷/道/号), or more than six words also says
+  **address not in the calendar event** (日历事件中没有地址). This is a simple
+  warning rule, not address verification; no location is expanded or guessed.
+  At most five open, active items waiting on you retain Today's ranking. Each
+  links to its source page and explains its deadline, promise or waiting date.
+  Each proposal takes 30 minutes, on half-hour boundaries, using the longest
+  remaining free gap first (earlier gap wins a tie). Working hours default to
+  09:00–18:00; an optional `schedule.working_hours: {start: '09:00', end: '18:00'}`
+  in `config.yaml` overrides them. There is no new settings screen. Overlapping
+  events merge for availability. Only timed events take working hours: an
+  all-day entry is listed at the top of its day as context and blocks nothing
+  (one week-long all-day entry used to leave every proposal with no free time).
+  A timed event shorter than 24 hours blocks the hours it covers on each day,
+  and one that runs past midnight ends at 24:00 on the day it began. A timed
+  event of 24 hours or more is a trip or a booking, not a meeting: it is shown
+  as **All day** with the all-day entries on every day it covers and blocks
+  nothing either.
+  An event without a title says what it is. Google's focus time and out of
+  office are **Focus time** (专注时间) and **Out of office** (不在办公室); an
+  entry from a calendar shared as free/busy, or a private one on a calendar you
+  can only read, is **Busy (calendar name)** (忙碌（日历名）), since Google
+  sends no title for those; only an event of your own with no title is
+  **No title** (无标题). Google's working-location entries are not saved: where
+  you work that day is not an event. A meeting that is on your calendar and on
+  a colleague's shared one is saved once, with its title. These labels are
+  saved by the calendar read, so events saved before this change keep
+  **No title** until the next night's read (or `co rem catchup`).
+  A proposal row is its time (or **no free time today**) and **Proposed**
+  (建议), then its sentence as plain text on at most two lines (the whole
+  sentence is its tooltip), then why it is there and one short link: the name
+  of its person or project page.
+  Items that cannot fit say **no free time today** (今天没有空闲时间).
+  Tomorrow's first event and every location tomorrow appear below the list.
+  If no calendar has ever been read, one sentence says so and proposals have
+  no suggested times. Saved plans show their date; a stale plan is labelled.
+  The reader uses the saved plan offline. Since there is no `co rem today`
+  command, `co rem status` prints the same plan as one text line, including
+  tomorrow. `co rem catchup` reports the saved plan for each night.
+  Failed calendar reads keep their last-read date and reason beside the plan.
+  Before the first plan save, proposals are untimed; if a calendar was already
+  read, the reader says the day plan has not been saved yet. Marking a proposal
+  done hides it immediately; undo restores it without
+  moving other proposed times. A question from you is not labelled a promise.
+  Dated promises silent and overdue for over 60 days are set aside as Today
+  does; the remaining proposals keep their existing order.
 - **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
   **Today** returns) and a Monday-first **Month**, with no heading above them. It
   shows your calendar events beside the notebook's own dates: promises with a
   due date (**Due**, or **Late** in red once past) and agenda pages on the date
   they state (**Noted**). An event links to the calendar it came from and to the
   people pages of its guests (matched on a page's Email and Handles lines); a
-  promise or page links to its page. Open notebook items
+  promise or page links to its page. An event prints its location under its
+  title in the week and on a phone. A timed event is on every day it covers:
+  its start time on the first, **All day** between, **Until 17:00** (到 17:00)
+  on the last; one that ends at midnight is not on the next day. The owner's
+  own reader carries events and the plan; a page rendered for sharing
+  (`render` without `local=True`) carries neither. Open notebook items
   dated before today sit in one line under it, whichever week or month is shown.
   On a phone it is a day-by-day list of the next three weeks. Events come from
-  `.state/calendar.json`, which each night's round writes, outside the writer
+  `.state/calendar.json`, which each background round writes once (scheduled
+  sync, exec and native rounds, including `codex_exec`), outside the writer
   lock, from every account co can already read (Google after `co auth google`
   with a calendar scope: the calendars ticked in Google Calendar; Outlook after
   `co auth microsoft` with `Calendars.*`: all its calendars, times asked in the
@@ -1114,6 +1726,11 @@ pinned to that edge: it comes into view with the draft.
   from; anything that is not the provider's failure is a fault in REM, named
   with its exception in the page and in the round's result. Before any night
   the page says no calendar has been read; when none is connected, it says that.
+  When a read found no events, Agenda says when the calendars were last read
+  and that none were found. `co rem status` shows the last read and saved event
+  count, or says that calendars have never been read or none is connected.
+  `co rem catchup` includes the calendar result for each round, with the saved
+  event count and any failed reads in its nightly progress line.
   Only the owner's own reader carries the events; a shared page has none.
 - **Questions & connections** decides each pending review in place in the live
   reader: **Yes** / **No** / **Not sure** on a link, an answer box with **Save
@@ -1615,8 +2232,21 @@ Nonzero exits, missing/malformed envelopes, provider errors and timeouts fail
 the task. Investigation is not marked finished on a failed execution.
 
 co rem forwards its delegated deadline as `co ai --timeout SECONDS` and gives
-the outer process 15 seconds to exit afterward. The common native adapter
+the outer process 30 seconds to exit afterward. The common native adapter
 therefore closes its delegate before co rem process timeout is reached.
+At its deadline the Codex adapter sends `turn/interrupt` for the running turn
+(waiting at most 5 seconds for the answer), archives the thread, and kills the
+app-server's process group at once; only then does it answer `timeout`, so the
+task is parked after its worker has stopped. Until 2026-11-17 it sent no
+interrupt and closed the server with a grace period, and one timed-out
+worker's thread went on editing its task folder for about 7.5 minutes into the
+next task's time. Claude Code's process tree is terminated at its deadline as
+before. If `co ai` itself has to be killed at the outer deadline, its
+app-server is not reached (it runs in a session of its own): that case is not
+handled yet.
+Either timeout is the same failure of that one turn (`co ai timed out after
+Ns`), with the tokens the adapter reported: `co rem exec` and catchup park the
+task and take the next one, and a stage run retries the call once.
 
 ## Scheduling and accounting
 
@@ -1625,6 +2255,28 @@ Codex CLI is installed and signed in. launchd runs `codex exec` directly through
 REM's turn worker, using the same work-loop prompt as the desktop automation.
 Exec sessions can continue across tasks; desktop automation sessions can end early.
 The model remains `model` (default `gpt-6-luna`); `effort` defaults to `medium`.
+
+`effort` is the reasoning effort of every Codex worker REM starts, not only of
+the scheduled turn. The turns that `co rem exec`, `co rem catchup`, sync,
+investigate and deepen start are `co ai --harness codex --effort <effort>`;
+the scheduled `codex exec` turn and the cited-claim audit get
+`-c model_reasoning_effort=<effort>`; owed tasks and conversations pass it to
+the same adapter. Until 2026-11-17 the `co ai` turns and the audit passed
+none, so they ran at the owner's own `~/.codex/config.toml` setting: 81 worker
+turns of one night at `max` while `config.yaml` said `medium`. Claude Code and
+COAI runners take no effort from REM, and their records say none.
+`speed: fast` (the default) asks Codex for its priority service tier on every
+turn; `standard` leaves the tier Codex is configured with.
+
+Every run record keeps what its worker was started at (`harness`, `model`,
+`speed`, `effort`); a task `co rem exec` or catchup drives records its stage's
+model and runner, where it used to name the notebook's. `co rem status` says
+it under the last run:
+
+```text
+Last run         daily-update projects/fern.md · completed
+                 2026-11-17 01:12 · 1 page changed · … tokens in · gpt-6-luna at medium effort, fast
+```
 
 ```bash
 co rem config set schedule.runner codex-exec effort high
@@ -1668,7 +2320,8 @@ attachments`, `searching <mailbox> mail`, `gathering <mailbox> mail`, `gathering
 <source> sessions`, `searching project documents`, `preparing evidence`,
 `writing evidence files`). At the deadline it prints `Where the time went:` with
 the seconds of each step, writes the same numbers to the turn log as a
-`rem.preparation_stalled` event, and exits 75. The page it was preparing is
+`rem.preparation_stalled` event, and exits 75. (Inside `co rem exec` and
+`co rem catchup` the process goes on to the next page instead; see catchup.) The page it was preparing is
 parked with the reason in words (`parked: preparing it passed the 10-minute
 deadline while gathering codex sessions`), listed under Parked in `co rem
 status`, left out of the rest of the round, and retried by the same rule as a
@@ -1693,6 +2346,17 @@ page) is saved under `.state/session-windows/` and reads only rollouts that
 changed. A rollout Codex has compressed to `.jsonl.zst` is read once more, by
 itself; a deleted one takes only its own messages out of the window. The window
 is saved every 512 MB walked, so a build ended by the deadline resumes.
+
+`searching project documents` lists the notes (`.md`, `.txt`) of every folder
+a project page names, and waits at most 5 seconds for one folder's listing.
+macOS holds the listing of a folder under `~/Documents`, `~/Desktop` or
+`~/Downloads` until someone answers its privacy prompt, and in the background
+nobody does: two such folders held one page's preparation for the whole ten
+minutes (2026-11-16), while the other 33 folders took 1.6 seconds together. A
+folder not listed in time is left out of this search and named in the page's
+coverage (`skipped 1 project folder(s) not listed within 5 seconds: <folder>`); the
+search goes on with the others. While that listing is still held, later pages
+skip the folder without waiting again.
 
 REM treats an unreadable folder named in a coding session or scan as having no
 Git repository; that folder does not stop round preparation. Other file access
@@ -1796,6 +2460,12 @@ below is good to about one point.
   whose times overlap are now one group, and a group costs what the meter moved
   from its first reading to its last. Gaps between groups are not counted, so
   your own coding between runs stays yours.
+- **Only a run with its own reading joins a group.** A round keeps one record
+  for itself that lasts as long as the round, with no reading and no tokens.
+  Those records used to join every investigation of a day into one group, which
+  then cost the whole day's meter movement, your own coding included: a night
+  read "38 of 35 points" and held 332 pages when investigation had used under
+  one. A run without a reading now counts alone, from its tokens.
 - **A group the meter cannot see is counted from its tokens** (#1990). Codex
   reports whole percents, so a small group can read the same before and after.
   It then counts `(input − cached input + output)` divided by 12,000,000 at
@@ -1807,6 +2477,9 @@ below is good to about one point.
   default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
+  Only investigation waits: the round's other stages run on
+  ([what each budget holds](#commands)). A round's Abstract tasks do
+  not count toward it.
 - **The initial investigation has no REM quota gate.** It attempts the whole
   selected cohort, even when the weekly meter passes the routine budget or
   safety floor. The runner provider can still enforce its own account limit.
@@ -2164,7 +2837,12 @@ A contact detail must be right or `Unknown`. On a person's page an `Email`
 stays only if the person sends from it or is written to at it under their
 name, and never a relay; a `Phone` stays only if a mail it cites was sent by the
 person (or relayed under their name) with the number in it and nobody else
-named to call beside it. What goes is listed under `contacts_unverified`. An
+named to call beside it. What goes is listed under `contacts_unverified`, and
+the claim audit is told: its packet lists these values, and the owner's own
+that were taken off, under `runner_removed`, with the rule that their absence
+and an `Unknown` in their place are not findings. A finding that names one of
+them anyway is kept in `claim-review.json` under `runner_removed_findings` and
+does not refuse the page: the writer cannot put back what code removes. An
 unknown `Company` can be filled from their own organisation email domain when
 it maps unambiguously to an existing organisation page. Student subdomains
 can name a university affiliation; `(from email domain)` does not establish
@@ -2254,7 +2932,9 @@ before it refuses anything.
   overflow from capped rounds. In `claim-review.json`, `unretained_citations` lists
   handed citation numbers with no readable excerpt and `unverified_lines` lists
   prose citing only those originals (unverified, not refuted); `missing_citations`
-  lists citations never handed to the turn and unavailable in the archive.
+  lists citations never handed to the turn and unavailable in the archive;
+  `runner_removed` lists the contact values code took off the candidate before
+  the audit, and `runner_removed_findings` the findings that asked for one back.
 - **Up to two repair turns for every page type; one for enrich and muse.**
   What review names goes back to the writer with where to read the originals.
   Only project pages had repairs before; callum-reid and two skill pages
@@ -2653,7 +3333,8 @@ the pages behind the rows Today shows (at most 8, in Today's order), then the
 other pages with something waiting on you, then the newest page edits; opened
 pages requesting a translation and pages changed this round break ties. Today's
 rows are read once per round, not once per page. Current caches spend no budget. There is no daily translation count (D-104):
-after every 8 investigation turns translation gets a share sized from its
+after every 2 investigation turns, and that break's session summary and Abstract
+round, translation gets a share sized from its
 backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
 on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.
@@ -2816,10 +3497,24 @@ in that file, including any citation audit or required corrections. `--json`
 retains the full instructions, material path, output path and submit command
 as structured data.
 
-Each task starts with the assistant's goal and the newest 4,000 characters from
-`.state/memory.md`, followed by the page's latest investigate/continue report when
-available. Both are evidence, never instructions or permission to bypass review.
-The agent appends 1–3 lines of `page · approach · result · next` to that memory,
+Each task's instructions are in one order: the assistant's goal, the task
+(workspace, what to read or the inline material, what to write), the memory
+step, the stage Skill, and last up to 4,000 characters of `.state/memory.md`
+followed by the page's latest enrich, muse and investigate/continue reports
+when available. Those reports are bounded too, at 12,000 characters together:
+newest first, each whole while it fits; the first that does not fit keeps its
+last whole lines and says "The first N of its M lines are left out; the whole
+report is the `report` field of <root>/.state/runs/<run id>.json", and older
+ones are listed with their run files as "left out to keep this prompt short".
+They used to be appended whole, outside the memory bound: 27.1K of one
+prompt's 66.5K characters (#3083).
+Memory is given in whole lines, never cut inside one: first the lines that name
+this record's file, then the newest others, in the file's order. Both are
+evidence, never instructions or permission to bypass review. Memory used to
+come first, as the file's last 4,000 characters: the task began 70–75% into
+the prompt, and the notes were mostly about other pages (#3083).
+The agent appends 1–3 lines of `page · approach · result · next` to that memory
+(not asked of a worker `co rem exec` confines to its task folder, which cannot write there),
 including answered and new questions and reusable tool discoveries. Investigation
 reports cite the predecessor's next step; unresolved questions stay in the page's
 existing `Uncertainties` section. Accepted native run logs retain `report.md`,
@@ -2836,6 +3531,17 @@ retains text for quotations and validation. Long JSON strings use consecutive
 without writing a reconstruction script. An unusually long original page is
 supplied as exact JSON rather than an unreadable initial Markdown copy.
 Session summaries use one file per session, such as `sessions/s1.json`.
+The exception is extraction, maintenance and investigation material that fits:
+when the stage Skill, its additions and `material.md` together are within the
+100,000 bytes one argument may carry, the instructions hold the additions and
+the material inline (`<instructions>`, `<material>`) and say not to reread
+`instructions.md`, `additional-instructions.md`, `material.md`, `material.json`
+or the Skill's `SKILL.md`. Larger material names one file, `material.md`:
+`material.json` is still written for the audit trail but not named, because the
+quote check ignores where lines wrap. Every native task also says that
+`task.json` is the runner's own record and not to be read. Measured over one
+day before this (#3083): `material.md` read 320 times, `material.json` 318,
+`task.json` (180–344 KB) 134, the Skill already in the prompt 57.
 The single-call child runner keeps its existing inline packets and JSON replies.
 
 Audit checkpoint lines must contain `excerpt: "verbatim original span"`, at least
@@ -2875,7 +3581,12 @@ after midnight. Manual sync refuses to overlap pending native work.
 
 `co rem logs` includes native tasks. Supply measured token usage with
 `co rem submit TASK-ID --usage-json '{"input_tokens":120,"output_tokens":40}'`
-when available. Otherwise usage remains unknown.
+when available. Otherwise usage remains unknown. A task `co rem exec` or
+catchup drives records the sum of every turn it took: each turn (the render,
+each repair) is a thread of its own, and the record kept only the last one's
+tokens (0.91M input tokens recorded of 9.2M used on 2026-11-17). A turn closed
+at its deadline adds what the adapter reported before the task is parked. A
+`--usage-json` given by hand still replaces the task's usage.
 
 ### When a mailbox fails on one page
 

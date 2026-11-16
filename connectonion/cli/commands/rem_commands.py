@@ -96,6 +96,9 @@ def _owner_next(root, arguments):
     return ["status"] if default_scheduler(root).installed(root) else arguments
 
 
+DRIVEN_NEXT = "End your turn: the co rem exec that started this task takes the next one."
+
+
 def _emit(ctx, value, arguments, *, failed=False, draw=None):
     """Print a result and its Next line: styled in a terminal, the same words anywhere else.
 
@@ -104,6 +107,10 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     """
     from ..style import next_line
     command = _next(ctx, _owner_next(ctx.obj["root"], arguments or ["status"]))
+    driven = isinstance(value, dict) and value.get("driven") and arguments == ["next"]
+    if driven:
+        # A worker `co rem exec` runs has one task: a next of its own makes a task nobody drives (#3083).
+        command = None
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     elif isinstance(value, dict) and value.get("outcome") == "busy":
@@ -117,7 +124,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
         if isinstance(value, dict) and value.get("continuation"):
             tip += ". " + value["continuation"]
-        rem_look.say(next_line(tip))
+        rem_look.say(next_line(DRIVEN_NEXT if driven else tip))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:
@@ -834,7 +841,7 @@ def _first_translation(root, config, say, *, language="", reason="") -> dict:
 
 
 def _first_abstract(root, config, say, result) -> dict:
-    """Decisions, then principles, from the pages the first run just wrote.
+    """Decisions, knowledge, then principles, from the pages the first run just wrote.
 
     The owner (2026-10-08): the first run should also leave the settled
     questions and standing rules, not only people and projects. `co rem
@@ -846,14 +853,16 @@ def _first_abstract(root, config, say, result) -> dict:
         return {"started": False}
     from ...rem.files import Notebook
     from ...rem.runner import RunFailed, run_stage
-    say("Drawing decisions and principles from the pages just written…")
+    say("Drawing decisions, knowledge and principles from the pages just written…")
     try:
         out = run_stage(Notebook(root), [], config, stage="abstract")
     except RunFailed as error:
-        say(f"Decisions and principles were not written ({str(error)[:160]}); retry with co rem abstract.")
+        say(f"Decisions, knowledge and principles were not written ({str(error)[:160]}); retry with co rem abstract.")
         return {"started": True, "outcome": "failed", "why": str(error), "usage": error.usage}
-    pages = [page for page in out.get("changed", []) if page.startswith(("decisions/", "principles/"))]
-    say(f"Decisions and principles: {len(pages)} page{'s' if len(pages) != 1 else ''} written.")
+    pages = [page for page in out.get("changed", []) if page.startswith(("decisions/", "knowledge/", "principles/"))]
+    counts = {category: sum(page.startswith(category + '/') for page in pages)
+              for category in ('decisions', 'knowledge', 'principles')}
+    say(f"Pages written: {counts['decisions']} decisions · {counts['knowledge']} knowledge · {counts['principles']} principles.")
     return {"started": True, "outcome": "completed", "pages": pages, "usage": out.get("usage")}
 
 
@@ -2028,11 +2037,13 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["config"],
                 draw=_dashboard(ctx, verbose))
 
-    def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
+    def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days, *, collect_only=False):
         from ...rem.files import RemError
         from ...rem.service import run_sync, scheduled_skip
 
         finished = []
+        again = ["collect", *(["--source", source] if source else []),
+                 *(["--with", with_person] if with_person else [])] if collect_only else ["sync"]
 
         def progress(number, record):
             # A backfill ran 37 minutes over five batches with no output at all
@@ -2043,7 +2054,7 @@ def make_rem_app(factory):
                        f"({record['outcome']})", err=True)
 
         def operation(root):
-            if dry_run or source or with_person or all_pending:
+            if collect_only or dry_run or source or with_person or all_pending:
                 try:
                     record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
                                       scheduled=scheduled, all_pending=all_pending, on_batch=progress,
@@ -2060,6 +2071,9 @@ def make_rem_app(factory):
                     return scheduled_skip(root, start_command=_next(ctx, ["start"])), ["status"]
                 if record.get("outcome") == "busy":
                     return record, ["status"]
+                if collect_only:
+                    from ...rem.stages import collection_backlog
+                    record = {**record, "collection": collection_backlog(root)}
                 if all_pending:
                     if record["outcome"] not in ("caught_up",):
                         why = record.get("reason") or record["outcome"]
@@ -2067,11 +2081,11 @@ def make_rem_app(factory):
                                        f"({record['items']} items): {why}")
                     return record, ["status"]
                 if dry_run:
-                    return record, ["sync"]
+                    return record, again
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
-                return record, ["logs", record["id"]]
+                return record, again if collect_only else ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
             from ...rem.service import run_scheduled
@@ -2081,8 +2095,8 @@ def make_rem_app(factory):
                 if result is None or result["outcome"] in ("partial", "busy"):
                     return result
                 if scheduled:
-                    from ...rem import depth
-                    result["depth"] = depth.slot(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
+                    from ...rem.schedule import deepen_round
+                    result["depth"] = deepen_round(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
                 return result
 
             result = run_scheduled(root, daily_round) if scheduled else daily_round()
@@ -2104,7 +2118,8 @@ def make_rem_app(factory):
     from rich.markup import escape
 
     def native_text(value):
-        repair = (f"Refused: {value['reason'][:500]}\nFix: {value['fix']} — \"Required corrections\" first"
+        # 1200: an audit refusal carries up to three findings under its first line (#3083).
+        repair = (f"Refused: {value['reason'][:1200]}\nFix: {value['fix']} — \"Required corrections\" first"
                   + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}") if value.get("fix") else ""
         if value.get("outcome") == "refused":
             if value.get("stage") == "claim-audit":
@@ -2122,14 +2137,115 @@ def make_rem_app(factory):
                     + progress + reason
                     + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
                     + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
+        parked = [f"Parked {row['record'] or 'a task'}: {row['reason'].removeprefix('parked: ')}"
+                  + (f" (candidate kept at {row['candidate']})"
+                     if row.get('candidate') and Path(row['candidate']).is_file() else '')
+                  for row in value.get("parked", [])]
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
-                           *(value.get("changed") or [])])
+                           *(value.get("changed") or []), *parked])
 
     @rem.command("exec", cls=V("co rem exec"))
     def native_exec(ctx: typer.Context, scheduled: bool = typer.Option(False, "--scheduled")):
         from ...rem.schedule import exec_round
         _handle(ctx, lambda root: (exec_round(root, scheduled=scheduled), []), [],
                 draw=lambda value: escape(native_text(value)))
+
+    @rem.command("catchup", cls=V("co rem catchup"))
+    def catchup(ctx: typer.Context, nights: int = typer.Option(1, "--nights", min=1)):
+        from ...rem.catchup import run
+
+        def deepen_text(value):
+            count = value['deepened']
+            text = f"{count} {'page' if count == 1 else 'pages'} deepened"
+            text += f" ({value['deepen_reason']})" if value['deepen_reason'] else ''
+            missed = value.get('not_deepened', 0)
+            return text + (f" · {missed} not deepened ({value['not_deepened_reason']}; see co rem logs)" if missed else '')
+
+        def written_text(value):
+            """Decision pages are among the pages written: "81 pages written · 66 decisions written" read as 147."""
+            decisions = value['decisions']
+            return f"{value['written']} pages written" + (f" ({decisions} of them decisions)" if decisions else '')
+
+        def calendar_text(row):
+            saved = row.get('calendar')
+            if saved is None:
+                return ''
+            if saved.get('stopped'):
+                return ' · calendar: ' + saved['stopped']
+            count = saved['events']
+            text = f" · {count} calendar {'event' if count == 1 else 'events'} saved"
+            if saved['errors']:
+                text += f" ({len(saved['errors'])} failed reads)"
+            elif not saved['read']:
+                return ' · no calendar is connected'
+            return text
+
+        def plan_text(row):
+            plan = row.get('day_plan', {})
+            return (' · day plan saved for ' + ' and '.join(plan['dates']) if plan.get('dates') else
+                    ' · ' + plan['stopped'] if plan.get('stopped') else '')
+
+        def held_text(value):
+            """No night ran: say which steps did and which wait, never a row of zeroes."""
+            held = value['held']
+            parts = [f"{held['mail']} mail collected"]
+            if held['sessions'] is not None:  # a round already open read its sessions when it began
+                parts += [f"{held['sessions']} sessions read",
+                          f"{held['written']} {'page' if held['written'] == 1 else 'pages'} updated"]
+            collected = held['note'] or ' · '.join(parts) + '; reading them into pages waits for the model'
+            *first, last = held['waiting']
+            return '\n'.join([
+                'No night ran: a limit holds the model, so only the steps that need no model were done.',
+                'Collect: ' + collected,
+                'Calendar: ' + (calendar_text(held) + plan_text(held)).removeprefix(' · '),
+                f"Waiting: {', '.join(first)} and {last} call the model"])
+
+        def parked_text(rows, kept=''):
+            """Pages set aside after their retries: how many, each cause in a clause, where a candidate is.
+
+            A cause is short, counted and without ids (`refusals.short_cause`); status has the whole reason.
+            One page is named; several are counted by cause (`refusals.causes_in_words`)."""
+            if not rows:
+                return ''
+            from ...rem.refusals import causes_in_words
+            count = len(rows)
+            candidate = next((row['candidate'] for row in rows if row['candidate']), None)
+            where = kept or (f"{'candidate' if count == 1 else 'first candidate'} kept at {candidate}"
+                             if candidate else 'no candidate is kept')
+            named = f"{rows[0]['record'] or 'a task'}: " if count == 1 else ''
+            return (f" · {count} {'page' if count == 1 else 'pages'} parked "
+                    f"({named}{causes_in_words([row['cause'] for row in rows])}; {where}; co rem status lists them)")
+
+        def shares_text(row):
+            from ...rem.native_round import shares_in_words
+            return ''.join(' · ' + words for words in [*shares_in_words(row.get('shares', {})),
+                                                       *filter(None, [row.get('investigation_hold')])])
+
+        def progress(number, row):
+            _WRITTEN.extend(row['changed'])
+            planned = parked_text(row['parked']) + plan_text(row)
+            if not ctx.obj['json']:
+                typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
+                           f"{written_text(row)} · "
+                           f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
+                           + deepen_text(row) + shares_text(row) + calendar_text(row) + planned)
+
+        def summary(value):
+            count = len(value['nights'])
+            if value['held']:
+                return escape(held_text(value) + f"\nStopped: {value['reason']}")
+            text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {written_text(value)} · "
+                    f"{value['translated']} pages translated · "
+                    + deepen_text(value) + parked_text(value['parked'], f"candidates kept under {value['candidates']}"))
+            return escape(text + (f"\nStopped: {value['reason']}" if value['reason'] else ''))
+
+        def operation(root):
+            value = run(root, nights=nights, progress=progress, stage=_depth_stage, say=rem_look.step,
+                        cut_short=lambda value: _emit(ctx, value, ['logs'], failed=True, draw=summary))
+            _WRITTEN.extend((value['held'] or {}).get('changed', []))
+            return value, ['open'], value['failed']
+
+        _handle(ctx, operation, ['logs'], draw=summary, resume=['exec'])
 
     @rem.command("next", cls=V("co rem next"))
     def native_next(ctx: typer.Context,
@@ -2157,6 +2273,13 @@ def make_rem_app(factory):
             refused = value["outcome"] == "refused"
             return value, ["submit", task_id] if refused else ["next"], refused
         _handle(ctx, operation, ["next"], draw=lambda value: escape(native_text(value)))
+
+    @rem.command("collect", cls=V("co rem collect"))
+    def collect_rem(ctx: typer.Context,
+                    source: str = typer.Option("", "--source"),
+                    with_person: str = typer.Option("", "--with"),
+                    dry_run: bool = typer.Option(False, "--dry-run")):
+        _sync(ctx, source, with_person, dry_run, False, False, 30, collect_only=True)
 
     @rem.command("sync", cls=V("co rem sync"))
     def sync_rem(ctx: typer.Context,
@@ -2567,12 +2690,9 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["review"])
 
     @rem.command("abstract", cls=V("co rem abstract"))
-    def abstract_pages(ctx: typer.Context):
-        from ...rem.config import read_config
-        from ...rem.files import Notebook
-        from ...rem.runner import run_stage
-        _handle(ctx, lambda root: (
-            run_stage(Notebook(root), [], read_config(root), stage="abstract"), ["list", "decisions"]), ["status"])
+    def abstract_pages(ctx: typer.Context, rounds: Optional[int] = typer.Option(None, "--rounds", min=1)):
+        from .rem_decisions import write_decisions
+        write_decisions(ctx, rounds, _handle, _WRITTEN)
 
     @rem.command("capture", cls=V("co rem capture"))
     def capture_session(ctx: typer.Context, transcript: Path, source: str = typer.Option(..., "--source")):
@@ -2583,6 +2703,8 @@ def make_rem_app(factory):
     # ------------------- Project pages from the user's own messages (#1943)
     from .rem_projects import add_projects_app
     add_projects_app(rem, factory, _handle, _logged)
+    from .rem_decisions import add_decisions_app
+    add_decisions_app(rem, factory, _handle)
     from .rem_import import add_import_app
     add_import_app(rem, factory, _handle)
 
@@ -2655,8 +2777,8 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs morning doctor history "
-             "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
+    order = ("init collect investigate deepen enrich muse abstract decisions translate catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
+             "advanced scan backfill map-skills stub merge reflect reflections propose review capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

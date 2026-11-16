@@ -9,6 +9,10 @@ from .config import read_config
 from .files import Notebook, RemError, read_json, state_path, write_json
 
 
+class RoundBlocked(RemError):
+    """The round finished with nothing it could serve; `next` saves its calendar before reporting it."""
+
+
 def scheduled_slot(root, config):
     worker = service.worker_state(root)
     slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
@@ -17,7 +21,8 @@ def scheduled_slot(root, config):
     return slot
 
 
-def prepare(root, config, *, scheduled):
+def prepare(root, config, *, scheduled, carry=None):
+    from .catchup import identity, limit_runs
     moment = service.now()
     slot = scheduled_slot(root, config) if scheduled else None
     if scheduled and slot is None:
@@ -52,18 +57,34 @@ def prepare(root, config, *, scheduled):
     basics_changed += set_direct_send(root, service.notebook_today(root).isoformat())
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     logs = service.run_logs(root)
-    today, recent = service.runs_today(logs, service.notebook_zone(config))
+    recent = limit_runs(root, logs, service.notebook_zone(config))
     first = not any(row.get("phase") == "daily-investigation" for row in recent)
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
-              "jobs": _with_parked(root, _jobs(root, first, logs, sources, set_aside)), "job_index": 0, "current": None,
+              "jobs": _queue(_with_parked(root, _with_waiting(root, _jobs(root, first, logs, sources, set_aside)))),
+              "job_index": 0, "current": None,
               "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
-              "mail_slot": slot.isoformat() if slot else None, "set_aside": set_aside}
+              "mail_slot": slot.isoformat() if slot else None, "set_aside": set_aside, **identity(root)}
+    if carry:
+        # A fresh night reads sources again while keeping an unfinished page's
+        # draft and remaining jobs. New mail can invalidate that draft as usual.
+        carry['run'].update(outcome='partial', finished_at=moment.isoformat(), changed=carry['changed'])
+        write_json(state_path(root, f"runs/{carry['run']['id']}.json"), carry['run'])
+        jobs = {job['record']: job for job in carry['jobs'][carry['job_index']:]}
+        # The pages that round passed over for a used share are not behind its index.
+        for job in [*cursor['jobs'], *carry.get('waiting', [])]:
+            jobs.setdefault(job['record'], job)
+        # Task material is retained while its originating round is unfinished.
+        # Keep that work's origin so cleanup cannot delete a carried inquiry plan.
+        # The open page's draft belongs to the first job: it keeps that place.
+        opened = bool(carry.get('current') or carry.get('project_quote'))
+        cursor.update(started_at=carry['started_at'], jobs=_queue(list(jobs.values()), keep_first=opened),
+                      current=carry.get('current'), project_quote=carry.get('project_quote'))
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
-    record.update(outcome="pending", native_round=True)
+    record.update(outcome="pending", native_round=True, batch=batch["record"])
     write_json(path, record)
     cursor["run"] = record
     write_json(state_path(root, "round.json"), cursor)
@@ -89,6 +110,9 @@ def read_new_mail(root, cursor, config, slot):
                           cursor.setdefault("set_aside", []))
     batch["progress_before"] = read_json(state_path(root, "progress.json"), {})
     cursor.update(batch=batch, batch_index=0, mail_slot=slot.isoformat())
+    if batch["record"].get("items"):
+        cursor["run"]["batch"] = batch["record"]
+        write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
 
@@ -139,27 +163,39 @@ def prepare_translation_round(root, config, *, scheduled):
 def _jobs(root, first, logs, sources, set_aside=None):
     from datetime import datetime, timedelta
     from .people_pages import queue as people_queue
+    from .catchup import number
     previous = max((row["started_at"] for row in logs if row.get("phase") in daily.PHASES),
                    default=(service.now() - timedelta(days=1)).isoformat())
     _admit_correspondents(root, sources, datetime.fromisoformat(previous), [] if set_aside is None else set_aside)
     if first:
         resting = daily._found_nothing_lately(root)
-        return (daily._owner_due(root) + [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-                for row in daily.unfinished_by_recency(root) if row["path"] not in resting])
-    rows = [{**row, "kind": "person"} for row in people_queue(root)
-            if row["mode"] == "full" or row["last_activity"] > previous]
-    rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous, include_backlog=True, now=service.now())]
-    queued = {row["record"] for row in rows}
-    resting = daily._found_nothing_lately(root)
-    rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
-             for row in daily.unfinished_by_recency(root)
-             if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
-    from .refusals import due_for_retry, parked_waiting
-    retries, parked = due_for_retry(root), parked_waiting(root)
-    rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked]
+        rows = [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
+                for row in daily.unfinished_by_recency(root) if row["path"] not in resting]
+        if number(root) is None:
+            return daily._owner_due(root) + rows
+    else:
+        rows = [{**row, "kind": "person"} for row in people_queue(root)
+                if row["mode"] == "full" or row["last_activity"] > previous]
+        rows += [{**row, "kind": "project"} for row in project_pages.queue(root, since=previous, include_backlog=True, now=service.now())]
+        queued = {row["record"] for row in rows}
+        resting = daily._found_nothing_lately(root)
+        rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
+                 for row in daily.unfinished_by_recency(root)
+                 if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
+    from .refusals import due_for_retry, parked_waiting, waiting_for_material
+    retries, parked, spent = due_for_retry(root), parked_waiting(root), waiting_for_material(root)
+    rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked
+            and (row["record"] not in spent or _newer(row.get("last_activity"), spent[row["record"]]))]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
     return daily._owner_due(root) + rows
+
+
+def _newer(activity, refused_at):
+    """A page out of retries is listed again only by something that arrived after its last refusal."""
+    from .people_pages import _stamp
+    activity, refused_at = _stamp(activity), _stamp(refused_at)
+    return bool(activity and refused_at and activity > refused_at)
 
 
 def _with_parked(root, jobs):
@@ -168,6 +204,124 @@ def _with_parked(root, jobs):
     jobs = [job for job in jobs if job["record"] not in waiting]
     queued = {job["record"] for job in jobs}
     return jobs + [job for record, job in due.items() if record not in queued]
+
+
+# The pages a night's share did not reach, kept for the next round. Not under catchup/<night>/:
+# the night that left them is not the night that reads them.
+WAITING = "investigation-waiting.json"
+SHARES = {"investigations": "investigations_per_night", "skill_pages": "skill_pages_per_night"}
+
+
+def _share(job):
+    # A refused page tried again takes its page's kind when prepared; it stays in the main share.
+    return "skill_pages" if job.get("kind") == "skill" and not job.get("retry_refused") else "investigations"
+
+
+def _queue(jobs, *, keep_first=False):
+    """Skill pages after every other page, each group in the order it came."""
+    head, rest = (jobs[:1], jobs[1:]) if keep_first else ([], jobs)
+    return head + sorted(rest, key=lambda job: _share(job) == "skill_pages")
+
+
+def _with_waiting(root, jobs):
+    """The pages an earlier night's share did not reach and this round does not list, then its own listing.
+
+    The listing alone would lose them: a later round of a day lists only people whose
+    mail is newer than the last round, so a person passed over once was not listed again.
+    They were due for something new, so they lead; a page listed again keeps the place
+    this round gives it, and the backlog cannot push a person with new mail back for weeks."""
+    queued, book = {job["record"] for job in jobs}, Notebook(root)
+    waited = read_json(state_path(root, WAITING), {}).get("jobs", [])
+    return [job for job in waited if job["record"] not in queued and book.exists(job["record"])] + jobs
+
+
+def _night_shares(root, config):
+    """(where tonight's served pages are kept, the pages): a night is the schedule's or one catchup night."""
+    from .catchup import key, marker
+    from .night_stats import _night_of
+    day = key(root, _night_of(service.now(), service.notebook_zone(config)))
+    path = marker(root, "investigation-night.json")
+    saved = read_json(path, {})
+    return path, saved if saved.get("day") == day else {"day": day, **{name: [] for name in SHARES}}
+
+
+def _job_turn(root, cursor, config, directory):
+    """The next investigation task within tonight's shares, or None once the queue has been walked."""
+    path, served = _night_shares(root, config)
+    while cursor["job_index"] < len(cursor["jobs"]):
+        job = cursor["jobs"][cursor["job_index"]]
+        share = _share(job)
+        opened = cursor["current"] or cursor.get("project_quote")
+        used = job["record"] not in served[share] and len(served[share]) >= config["limits"][SHARES[share]]
+        if not opened and (used or cursor.get("investigation_held")):
+            # Tonight's share is used, or the weekly investigation budget is spent: the page
+            # waits for a later night and the round goes on. A page already open is finished.
+            cursor.setdefault("waiting", []).append(job)
+            cursor["job_index"] += 1
+            continue
+        if "investigation_left" not in cursor:
+            cursor["investigation_left"] = PORTION
+        if cursor["investigation_left"] <= 0:
+            task = _between_portions(root, cursor, config, directory)
+            if task:
+                return task
+            cursor["investigation_left"] = PORTION
+        task = _guarded_job(root, cursor, config, directory)
+        if task:
+            # Only a page handed to the model uses the share; one parked or passed over does not.
+            if job["record"] not in served[share]:
+                served[share].append(job["record"])
+                write_json(path, served)
+            return task
+        # A page passed over is passed over for good: a later page that hangs ends this
+        # process before the round is saved, and the next call would prepare them all again.
+        write_json(state_path(root, "round.json"), cursor)
+    _keep_waiting(root, cursor, config, served)
+    return None
+
+
+def _keep_waiting(root, cursor, config, served):
+    """Save the pages the shares did not reach, with the numbers status and catchup say in words."""
+    waiting = cursor.get("waiting", [])
+    counts = {name: {"done": len(served[name]), "limit": config["limits"][limit],
+                     "waiting": sum(_share(job) == name for job in waiting)} for name, limit in SHARES.items()}
+    held = {"held": cursor["investigation_held"]} if cursor.get("investigation_held") else {}
+    write_json(state_path(root, WAITING), {"night": served["day"], "jobs": waiting, **counts, **held})
+
+
+def _waiting(root, night):
+    """What the last walked queue saved, or {} when that was not `night`'s round."""
+    saved = read_json(state_path(root, WAITING), {})
+    return {} if night is not None and saved.get("night") != night else saved
+
+
+def waiting_shares(root, *, night=None):
+    """What the last walked queue left waiting for a used share, or {}.
+
+    Empty while the weekly budget held that queue: its pages waited for the budget,
+    and "0 of tonight's 12 investigations done" would read as a share that was used."""
+    saved = _waiting(root, night)
+    return {} if not saved or saved.get("held") else {name: saved[name] for name in SHARES}
+
+
+def hold_in_words(root, *, night=None):
+    """'investigation is waiting for its weekly budget (…); 40 pages wait', or '' when it is not held.
+
+    Over once the week has reset, whether or not a round has walked the queue since."""
+    saved = _waiting(root, night)
+    held = saved.get("held")
+    if not held or (held["until"] and held["until"] <= service.now().timestamp()):
+        return ""
+    count = len(saved["jobs"])
+    return held["reason"] + (f"; {count} {'page waits' if count == 1 else 'pages wait'}" if count else "")
+
+
+def shares_in_words(shares, whose="tonight's"):
+    """'12 of tonight's 12 investigations done; 319 wait for later nights', for each share that left pages."""
+    nouns = {"investigations": "investigations", "skill_pages": "skill pages"}
+    return [f"{row['done']} of {whose} {row['limit']} {nouns[name]} done; "
+            f"{row['waiting']} {'waits' if row['waiting'] == 1 else 'wait'} for later nights"
+            for name, row in shares.items() if row["waiting"]]
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
@@ -207,6 +361,17 @@ def prepare_batch(root, cursor, config, directory):
     return None
 
 
+def _progress_not_saved(root, cursor, batch):
+    """An abandoned batch leaves the scan point where it was; its run record says so, and why.
+
+    2026-11-16: the save was skipped without a word, so the same 40 mails were read five
+    times in a day and status could only say the mailbox was "not read since" nine days ago.
+    Said when the batch is abandoned: a discarded extract closes the batch at once."""
+    batch["record"]["progress_not_saved"] = batch["abandoned_reason"]
+    cursor["run"]["batch"] = batch["record"]
+    write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
+
+
 def prepare_task(root, cursor, config, directory):
     _reset_attempts(root, cursor)
     task = prepare_batch(root, cursor, config, directory)
@@ -220,7 +385,10 @@ def prepare_task(root, cursor, config, directory):
     if cursor["current"] and cursor["current"].get("finalized"):
         _finish_investigation(root, cursor)
     from . import same_person
-    pair = next(iter(same_person.candidates(root, uninvestigated=True)), None) if cursor.get("same_new_left", 10) else None
+    # Same-person checks are investigation runs (quota.INVESTIGATION_PHASES): they wait with it.
+    held = cursor.get("investigation_held")
+    pair = (next(iter(same_person.candidates(root, uninvestigated=True)), None)
+            if cursor.get("same_new_left", 10) and not held else None)
     if pair and cursor["current"] is None:
         task = _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
         task["early_pair"] = True
@@ -239,34 +407,22 @@ def prepare_task(root, cursor, config, directory):
         # readmit has already dropped their hold on disk: a call that ends here must not lose them.
         cursor["jobs"] += readmitted
         write_json(state_path(root, "round.json"), cursor)
-    while cursor["job_index"] < len(cursor["jobs"]):
-        if "investigation_left" not in cursor:
-            cursor["investigation_left"] = PORTION
-        if cursor["investigation_left"] <= 0:
-            task = _translation_turn(root, cursor, config, directory)
-            if task:
-                return task
-            cursor["investigation_left"] = PORTION
-        task = _guarded_job(root, cursor, config, directory)
-        if task:
-            return task
-        # A page passed over is passed over for good: a later page that hangs ends this
-        # process before the round is saved, and the next call would prepare them all again.
-        write_json(state_path(root, "round.json"), cursor)
-    if cursor["summaries"]:
-        rows = cursor["summaries"][:1]
-        task = sessions.prepare(root, rows, config, directory=directory, native=True)
-        task["before"] = {rows[0]["record"]: Notebook(root).read(rows[0]["record"])}
-        files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
-        task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
-        return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
-    pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] else None
+    task = _job_turn(root, cursor, config, directory)
+    if task:
+        return task
+    task = _summary_turn(root, cursor, config, directory) or prepare_abstract(root, cursor, config, directory)
+    if task:
+        return task
+    pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] and not held else None
     if pair:
         return _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
-    task = prepare_translation(root, cursor, config, directory)
+    # The closing pass takes one share, like a portion's: it used to run until the
+    # backlog was empty, and with 361 pages waiting the round never completed, so
+    # Deepen, which starts only after a completed round, never ran.
+    task = _translation_turn(root, cursor, config, directory)
     if task:
         return task
     from .night import listing
@@ -279,12 +435,67 @@ def prepare_task(root, cursor, config, directory):
         cursor['blocked_reason'] = 'All remaining candidates are parked: ' + '; '.join(pages + reasons)
     finish(root, cursor)
     if cursor.get('blocked_reason'):
-        raise RemError(cursor['blocked_reason'])
+        raise RoundBlocked(cursor['blocked_reason'])
     return None
 
 
+def _summary_turn(root, cursor, config, directory):
+    """The next session summary of the round's five, or None when none waits."""
+    if not cursor["summaries"]:
+        return None
+    rows = cursor["summaries"][:1]
+    task = sessions.prepare(root, rows, config, directory=directory, native=True)
+    task["before"] = {rows[0]["record"]: Notebook(root).read(rows[0]["record"])}
+    files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
+    task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
+    return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
+
+
+def prepare_abstract(root, cursor, config, directory):
+    """Reserve slices until two consecutive empty rounds, exhaustion or the nightly cap."""
+    from .captured_decisions import material
+    from .night_stats import _night_of
+    from .catchup import identity, key, marker
+    day = key(root, _night_of(service.now(), service.notebook_zone(config)))
+    path = marker(root, "abstract-night.json")
+    saved = read_json(path, {})
+    if saved.get("day") != day:
+        saved = {}
+    rounds = saved.get("rounds", 1) if saved.get("day") == day else 0
+    if rounds >= config["limits"]["abstract_rounds_per_night"] or (rounds and saved.get("stopped", True)):
+        return None
+    items = material(Notebook(root), config, attempted=saved.get("attempted", []))
+    if not items:
+        return None
+    prepared = runner.prepare(Notebook(root), items, config, stage="abstract", directory=directory, native=True)
+    prepared.update(abstract_night=day, abstract_round=rounds + 1, **identity(root))
+    # Count reservations before execution: an unfinished turn must survive a restart
+    # without admitting another slice. A durable outcome reopens it unless two were empty.
+    write_json(path, {**saved, "day": day, "rounds": rounds + 1, "stopped": True})
+    return _task("runner", prepared, cursor, stage="abstract", operation="abstract")
+
+
+def record_abstract_result(root, prepared, *, promoted, deferred=False):
+    """Record a reservation once, keeping empty slices aside until the next night."""
+    from .captured_decisions import slice_key
+    from .catchup import marker
+    path = marker(root, "abstract-night.json", night=prepared.get('catchup_night'))
+    saved = read_json(path, {})
+    if (prepared.get("abstract_night") and saved.get("day") == prepared["abstract_night"]
+            and saved.get("rounds", 1) == prepared.get("abstract_round", 1)
+            and saved.get("result_round") != saved.get("rounds", 1)):
+        empty = 0 if promoted else saved.get("empty_rounds", 0) + 1
+        attempted = saved.get("attempted", [])
+        if not promoted or deferred:
+            attempted += [slice_key(item) for item in prepared.get("items", [])]
+        write_json(path, {**saved, "empty_rounds": empty, "stopped": empty >= 2,
+                            "attempted": attempted, "result_round": saved.get("rounds", 1),
+                            "set_aside": saved.get("set_aside", 0) + deferred})
+
+
 def _reset_attempts(root, cursor):
-    day = service.notebook_today(root).isoformat()
+    from .catchup import key
+    day = key(root, service.notebook_today(root))
     if cursor.get("task_day") != day:
         cursor.update(task_day=day, draft_attempts=[], translation_attempts=[], night_fetches={})
         # A round that crosses midnight reads Today again: yesterday's rows are not today's.
@@ -292,9 +503,39 @@ def _reset_attempts(root, cursor):
 
 
 # D-104: a portion interleaves the night's work and never stops it. After PORTION
-# investigation turns, translation gets a share sized from its backlog (D-71: "翻译…
-# 应该安排的轮次不够多"), then investigation resumes in the same turn.
-PORTION = 8
+# investigation turns the other stages take their turn (`_between_portions`), then
+# investigation resumes in the same turn.
+# 2: one investigation turn measured 20 to 60 minutes on a real notebook, and a
+# 3-hour catchup night completed one page (2026-11-16). At 8 turns the first Abstract
+# round and the first translation were 3 to 8 hours into a night, so any night cut
+# short (a deadline, the quota floor, two faults, the 3-hour turn) left them at 0.
+# After 2 turns they are reached in the first 40 minutes to 2 hours.
+PORTION = 2
+
+
+def _between_portions(root, cursor, config, directory):
+    """Between two portions of investigation: one session summary, one Abstract round, then translation's share.
+
+    Each of them used to wait for the whole night's share of investigations (12 pages
+    of many turns each), so a night that was cut short had only investigated. Abstract
+    stays within `abstract_rounds_per_night` and the round's summaries are still five:
+    what a break serves is not served again by the round's closing steps.
+    `portions` counts the breaks begun; whoever runs whole rounds starts the round's
+    one deepen slot once the first has been served (`schedule.early_depth`)."""
+    if "between" not in cursor:
+        cursor["between"] = ["sessions", "abstract"]
+        cursor["portions"] = cursor.get("portions", 0) + 1
+    while cursor["between"]:
+        step = {"sessions": _summary_turn, "abstract": prepare_abstract}[cursor["between"].pop(0)]
+        task = step(root, cursor, config, directory)
+        if task:
+            return task
+    # Translation's share is sized from its backlog (D-71: "翻译…应该安排的轮次不够多").
+    task = _translation_turn(root, cursor, config, directory)
+    if task:
+        return task
+    cursor.pop("between")
+    return None
 
 
 def translation_share(root):
@@ -404,7 +645,8 @@ def _prepare_job(root, cursor, config, directory):
         job.update(kind=daily._route(root, record), days=daily.RETRY_DAYS, retry_refused=True)
     if job["kind"] == "project":
         return _project_task(root, cursor, config, directory, record)
-    if cursor["current"] and cursor["current"].get("before", book.read(record)) != book.read(record):
+    if (cursor["current"] and cursor["current"].get("before", book.read(record)) != book.read(record)
+            and not _carried_past_basics(book, cursor["current"])):
         # The page changed under its open investigation (mail read while the floor held
         # the round, or the owner): investigate it again from the page as it is now.
         cursor["current"] = None
@@ -446,6 +688,24 @@ def _prepare_job(root, cursor, config, directory):
                     number=state["number"], operation="investigation"), "pass": state.get("tail", "parts")}
 
 
+def _carried_past_basics(book, state):
+    """Keep an accepted draft when the only change to its page is the contact script's own.
+
+    2026-11-16 (#3083): a person's parts pass was accepted, the night ended, and the
+    next night's preparation filled Last contact with a mail the draft had already
+    read. That rewrite alone restarted the page at parts round 1: 2,158 s and 10.75M
+    tokens over three turns. When the script applied to the page the draft started
+    from gives the page as it is now, nothing else changed; the same script is
+    applied to the draft, as it is to every page after promotion, and the round goes
+    on to its next pass. Any other change is still read again from the start."""
+    from .people_basics import fill
+    record, page = state["record"], book.read(state["record"])
+    if not state.get("draft") or fill(book, record, state["before"]) != page:
+        return False
+    state.update(before=page, draft=fill(book, record, state["draft"]))
+    return True
+
+
 def _retry_task(root, cursor, config, directory, job):
     prepared = daily.prepare_retry(root, job["record"], job["entry"], config)
     if prepared is None:
@@ -464,6 +724,9 @@ def _retry_task(root, cursor, config, directory, job):
 def _prepare_investigation(root, cursor, job, directory):
     from .native import preparation_stage
     record = job["record"]
+    if job['kind'] == 'owner':
+        from .catchup import key, marker
+        write_json(marker(root, 'owner-refresh.json'), {'date': key(root, service.notebook_today(root))})
     if job["kind"] == "skill":
         from . import skill_runs
         prepared = skill_runs.prepare(root, record, [Path.home() / ".co/evals"], directory=directory, lock_held=True)
@@ -617,7 +880,8 @@ def check_task(root, task, output):
     record = task["record"]
     receipt = read_json(Path(task["directory"]) / "promotion.json", {})
     if not record and receipt:
-        return {"changed": [receipt["record"]], "report": output["result"]}
+        from .native import _recovered_result
+        return {**_recovered_result(root, task), "report": output["result"]}
     changed = [record] if record and Notebook(root).read(record) != prepared["before"][record] else []
     return {"changed": changed, "report": output["result"],
             "review_candidates": read_json(Path(task["directory"]) / "review-candidates.json", [])}
@@ -734,10 +998,21 @@ def _finish_feedback(root, progress, before, items, task, result):
     return read_json(state_path(root, "progress.json"), {})
 
 
+def _parked_lead(task):
+    """One page of the batch was parked: the batch was read, and that page's material is in the ledger.
+
+    2026-11-16: a parked page abandoned its whole batch, so one page that could not pass
+    its claim audit sent the same 40 mails through extract and maintain again every round.
+    A discarded extract, a task discarded for any other reason and a parked task with no
+    page of its own still abandon the batch: nothing holds their material."""
+    return bool(task.get("parked") and task["handler"] != "extract" and task.get("record"))
+
+
 def _advance_batch(root, cursor, task, result):
     batch = cursor["batch"]
-    if result.get("discarded"):
-        batch["abandoned"] = True
+    if result.get("discarded") and not _parked_lead(task):
+        batch.update(abandoned=True, abandoned_reason=result["discarded"])
+        _progress_not_saved(root, cursor, batch)
         if task["handler"] == "extract":
             batch["done"] = True
     elif batch["selected_feedback"] and task["record"]:

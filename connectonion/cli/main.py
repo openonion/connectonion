@@ -891,6 +891,10 @@ def ai(
         None, "--speed", metavar="fast|standard",
         help="Codex only: fast selects the Fast tier; standard leaves your configured tier unchanged.",
     ),
+    effort: Optional[str] = typer.Option(
+        None, "--effort", metavar="minimal|low|medium|high|xhigh",
+        help="Codex only: the reasoning effort of this run. Without it Codex uses your own configured effort.",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt. Runs an agent whose tools can edit files and run commands here, with approval."""
     from .commands.ai_commands import handle_ai
@@ -917,6 +921,7 @@ def ai(
         permission_mode=permission_mode,
         timeout=timeout,
         speed=speed,
+        effort=effort,
     )
 
 

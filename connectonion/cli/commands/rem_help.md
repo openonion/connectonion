@@ -11,26 +11,35 @@ Experimental: its commands may still change between 1.9.x releases.
 
 Build (once)
   init          Build the notebook from mail and coding sessions, then offer daily updates.
+Collect — read new mail and sessions
+  collect       Read one batch of new material into the notebook.
+Investigate — fill pages from originals
   investigate   Fill a page, a whole category, or your own page, using a model.
-Deepen one page
+Deepen — follow leads, add insights
+  deepen        Add research and insights to pages with useful activity but little detail.
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
   muse          Study questions about one page and add new insights.
-  deepen        Add research and insights to pages with useful activity but little detail.
+Abstract — learn from pages
+  abstract      Write decisions, settled knowledge, then principles from pages.
+  decisions     Count decision and principle pages and decisions waiting. No model.
+Translate — put pages in your language
+  translate     Translate every page not yet in your language, or one page.
+Run a whole day now
+  catchup       Do a whole night's work now, all five stages; several nights with --nights.
 Read
   open          Browse the notebook in your browser.
   list          List pages in a category (people, projects, orgs, skills).
   show          Print one page.
   search        Find text across pages. No model.
-  translate     Translate every page not yet in your language, or one page.
 Keep it current
   start         Approve sources and turn on the daily schedule.
   stop          Turn the schedule off. Pages and approvals stay.
-  status        Is the schedule on, when it runs next, what ran today.
-  sync          Run one update now.
-  exec          Run the configured background upkeep round.
+  status        Show coverage, upkeep, and each stage's waiting count and last run.
+  task          Run, inspect or stop work owed by the owner.
+Background machinery
+  exec          Run the configured background upkeep round, including its deepen slot.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
-  task          Run, inspect or stop work owed by the owner.
 Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
@@ -57,9 +66,30 @@ Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, reflect,
-              reflections, propose, review, abstract, capture, projects)
+              reflections, propose, review, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
+Compatibility: sync — Collect, then investigate what is unfinished; use co rem collect
+              for new material only, co rem catchup for a whole day.
+              Installed schedules still use co rem sync --scheduled.
+```
+
+## co rem catchup
+
+```
+Do the night's work, including its one deepen slot.
+Usage:    co rem catchup [--nights N]
+Example:  co rem catchup  |  co rem catchup --nights 5
+Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round and Translate's share; the night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
+A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then finishes the other stages. The pages that did not fit wait for later nights; none are dropped.
+A night with deepen can take an hour or more.
+Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
+At a weekly limit before any night ran, it still does what needs no model, once: collects new mail and sessions for the next round to read, and saves the calendar and the day plan.
+Output:   One line per night with its counts, then totals and why it stopped. A night that used its share of investigations says how many pages wait for later nights. When a limit held every night: what was collected and saved, which stages wait, and when the week resets.
+Exit:     0 when it finished or a limit stopped it; 1 on a refused or busy task or a failed round. Resume unfinished work with co rem exec.
+Effects:  Calls the configured model and saves pages and progress. Each night gets fresh daily limits; weekly limits still apply. Saved work survives interruption. Schedule times stay the same.
+Next:     co rem open
+Back:     co rem --help
 ```
 
 ## co rem exec
@@ -67,6 +97,20 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Run the configured background upkeep round. Runs the selected coding agent and
 writes notebook pages, reports and run state; never sends mail.
+
+A whole round runs one deepen slot: after its first portion of investigation
+(2 turns) and that portion's Abstract round, or after the round completes when
+it had nothing to investigate. A round that stops before its first portion and
+a translation-only round do not deepen. In-session next and submit
+only hand out single tasks and never run the hour-long deepen slot.
+
+After session summaries, the night writes decisions/, knowledge/ and principles/ in rounds,
+reading up to 20 captured decision lines each, oldest first. The limit is
+limits.abstract_rounds_per_night (default 6); roughly ceil(N / 20 / rounds) nights
+clear N lines, or longer if rounds fail or the input character limit reads fewer.
+An empty round counts as a failed slice and moves on; two empty rounds in a row
+stop this work for the night. Failed slices wait for a later retry. A restart keeps
+the round count and empty streak. Run co rem abstract to catch up now without that limit.
 
 Usage:    co rem exec [--scheduled]
 Example:  co rem exec --scheduled
@@ -604,7 +648,11 @@ Read-only.
 Usage:    co rem status [--verbose]
 Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
-          today's runs, pages changed and tokens; the notebook (people, projects,
+          today's runs, pages changed and tokens; Collect, Investigate, Deepen,
+          Abstract and Translate, each with a waiting count and last-run date
+          (or never), and on Investigate how many pages wait for later nights
+          when the last night used its share; --json includes the same data under stages;
+          the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
           translation coverage and what is queued;
           each mailbox with the command that fixes it, and how long ago it was
@@ -666,12 +714,48 @@ Effects:  Checks that the input has not changed. Checks the output's citations,
           input is rejected. Manual sync waits until this task is submitted or
           discarded with co rem next --discard.
 Next:     co rem next
+          A task co rem exec handed to its worker ends on "End your turn"
+          instead: exec takes the next task, the worker runs no next.
+Back:     co rem --help
+```
+
+## co rem collect
+
+```
+Read one batch of new material from approved sources into the notebook.
+Collection only: no investigation, deepen, abstract or translation.
+Reuses the existing batch reader and its extraction/page updates for new material.
+
+Usage:    co rem collect [--source NAME] [--with ADDRESS] [--dry-run]
+Example:  co rem collect  |  co rem collect --source gmail
+          co rem collect --dry-run
+Options:
+  --source NAME   Take the extraction batch from this approved source in co rem sources.
+  --with ADDRESS  Take only matching mail into the extraction batch (address or part).
+  --dry-run       Inspect pending metadata and daily limits; no bodies, model or writes.
+  --help          Show this message and exit.
+One run reads one batch, not until caught up: up to limits.extract_items_per_batch
+(default 40) from one source, also bounded by the input character limit.
+Existing batch housekeeping also imports approved coding sessions and may resume
+init's stalled mail archive for up to five minutes across approved mailboxes.
+Those reads are outside the extraction batch; --source scopes only that batch.
+Sources take turns. Mail takes whole correspondents oldest first, slicing a
+correspondent larger than the batch. --with leaves other correspondents waiting.
+Output:   Items read, pages changed, known mail still waiting and the next command.
+          The waiting count covers saved listings, not mail or sessions not yet listed.
+          Mail from disabled or unapproved sources is shown separately as held.
+Effects:  Reads source bodies, may call the configured model to extract new material
+          and update its pages, and saves progress. Keeps finished work on interruption.
+Requires: co rem start (it records your approval of the sources).
+Next:     co rem collect
 Back:     co rem --help
 ```
 
 ## co rem sync
 
 ```
+Collect, then investigate what is unfinished; use co rem collect for new material only, co rem catchup for a whole day.
+
 Run one update now: read what arrived since the last run and update the pages it
 concerns. Then the day's first run investigates unfinished pages, most recent
 first; every later run updates only the people and
@@ -765,6 +849,9 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
           limits.workers                 16: concurrent pages for init and investigate CATEGORY
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
+          limits.abstract_rounds_per_night 6: successive abstract slices after summaries
+          limits.investigations_per_night 12: pages investigated a night; the rest wait for later nights
+          limits.skill_pages_per_night   3: skill pages investigated a night, counted on their own
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  pins one stage above to a model ("default" clears it);
                                          a route on plan, extract, synthesize or render also
@@ -880,7 +967,6 @@ Experimental: corrections and questions (#1611, #1609)
   reflections   Read the records for a page, or write a compact copy of them.
   propose       Save a question about a page, or a possible link between two pages.
   review        Answer the saved questions and links.
-  abstract      Write decision and principle pages from the pages you already have.
 Experimental: session capture (#1520)
   capture       Queue the user's messages from one coding-session file. Run by a hook.
 Experimental: project pages from your own messages (#1943)
@@ -1085,20 +1171,36 @@ Next:     co rem review
 Back:     co rem advanced --help
 ```
 
+## co rem decisions
+
+```
+Count your decision and principle pages and the supported captured decisions waiting to be written.
+Reads the decisions already on session and project pages. No model; no files written.
+Waiting counts only lines with a verbatim quote and a bound original source, excluding known authorship contradictions.
+
+Usage:    co rem decisions
+Example:  co rem decisions
+Output:   Decision pages, principle pages, decisions waiting, N to retry and skipped captures by reason, then the next command.
+Effects:  Reads notebook pages and saved progress. No model; no writes.
+Next:     co rem abstract
+Back:     co rem --help
+```
+
 ## co rem abstract
 
 ```
-Write the layer above the pages: decision pages (a question that was settled,
-with the alternative that was rejected), then principle pages (a reason that
-keeps recurring across decisions). Reads pages only, never mail or sessions.
-Runs the model once.
-
-Usage:    co rem abstract
-Example:  co rem abstract
-Output:   Pages under decisions/ and principles/, cited to the pages they came from.
-Effects:  Calls the model. Writes pages.
+Turn settled notebook experience into decisions, knowledge, and principles, in that order.
+Knowledge records lessons from at least two pages; principles capture reasons shared by at least three decisions.
+Usage:    co rem abstract [--rounds N]
+Flags:    --rounds N  Stop after at most N rounds; N must be at least 1.
+          --help      Show this help and exit.
+Example:  co rem abstract --rounds 2
+Output:   Decision, knowledge and principle counts, progress per round, and refused pages with reasons.
+Effects:  Calls the model once per round. Writes reviewed pages under decisions/, knowledge/ and principles/.
+          Existing knowledge pages can only gain clearly headed sections. Saves progress for the next run.
+          Stops when no work remains or after two empty rounds in a row.
 Next:     co rem list decisions
-Back:     co rem advanced --help
+Back:     co rem --help
 ```
 
 ## co rem capture

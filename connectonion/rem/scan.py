@@ -301,6 +301,22 @@ def canonical_origin(origin: str) -> str:
     return origin
 
 
+# The longest name one folder or file can have, in bytes, on APFS, HFS+, ext4 and NTFS.
+NAME_MAX = 255
+
+
+def nameable(path: str) -> bool:
+    """Could this text be a path on disk? Asked where a path is read out of a session's text.
+
+    2026-11-16: a Codex tool call carried a base64url token; the `cd` pattern matched
+    two letters inside it and the 554 characters after them became a folder under the
+    session's workspace. Asking whether that folder held `.git` raised `[Errno 63] File
+    name too long`, and catchup ended inside its first minute with nothing read. Text
+    that no filesystem can hold as a name is not a path, so nothing asks the disk about it.
+    """
+    return "\0" not in path and all(len(part.encode("utf-8", "surrogatepass")) <= NAME_MAX for part in path.split("/"))
+
+
 def is_repository(folder: str | Path) -> bool:
     """An unreadable session or scan folder is not a repository (#3066)."""
     try:

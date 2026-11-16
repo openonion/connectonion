@@ -186,7 +186,8 @@ def own_orgs(notebook: Notebook, owner: dict | None) -> set:
     """Own-company pages still need investigation when all their contacts were excluded."""
     from .investigate import org_domains
     from .org_map import own_company
-    page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
+    record = (owner or {}).get("record")
+    page = notebook.read(record) if record and notebook.path(record).is_file() else ""
     projects = [notebook.read(p) for p in notebook.list("projects")]
     return {record for record in notebook.list("orgs")
             if any(own_company(domain, page, projects, (owner or {}).get("addresses", []))

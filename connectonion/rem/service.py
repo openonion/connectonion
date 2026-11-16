@@ -647,6 +647,11 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
         return f"last read failed {day}{reason}{good}", ""
     missing = (f"{last['dropped_missing']} queued messages dropped as missing"
                if last and last.get("dropped_missing") else "")
+    unsaved = _progress_not_saved(logs, kind)
+    if unsaved:
+        day = timestamp(unsaved["started_at"]).astimezone(zone).date()
+        return (f"read {day}, but its progress was not saved ({unsaved['progress_not_saved']}); "
+                "the same mail is read again next round"), ""
     scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
     if scanned and now() - timestamp(scanned) > timedelta(days=2):
         if any(run.get("phase", "sync") == "sync" and timestamp(run["started_at"]) > timestamp(scanned)
@@ -659,6 +664,13 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     if last and now() - timestamp(last["at"]) > timedelta(days=1):
         return f"last read {age(now() - timestamp(last['at']))} ago", ""
     return "", ""
+
+
+def _progress_not_saved(logs: list[dict], kind: str) -> dict:
+    """The mailbox's last batch, when its round abandoned it and left the scan point where it was."""
+    batches = (run["batch"] for run in logs if isinstance(run.get("batch"), dict))
+    last = next((batch for batch in batches if kind in batch.get("items_by_source", {})), {})
+    return last if last.get("progress_not_saved") else {}
 
 
 def _nights(root: Path) -> list[dict]:
@@ -684,7 +696,8 @@ def round_state(root: Path, config: dict) -> dict | None:
     cursor = read_json(state_path(root, "round.json"), {})
     if not cursor or cursor.get("done") or not (cursor.get("slot") or cursor.get("pending")):
         return None
-    # Held by the floor, a budget or the cap: the round reads mail but its pages wait, and the reason says until when.
+    # Held by the floor or the cap: the round reads mail but its pages wait, and the reason says until when.
+    # A spent investigation budget is not a hold on the round: its other stages run (stages.status says it).
     held = read_json(state_path(root, "round-held.json"), {})
     if held and not cursor.get("pending"):
         return {"state": "stuck", "since": held["since"], "reason": held["reason"]}
@@ -763,7 +776,12 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
         coverage[key] = {"known_runs": len(known), "model_runs": len(model_runs)}
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
+    from .stages import calendar_status, status as stage_status
+    from .day_plan import status as day_plan_status
     return {"state": state, "tonight": night_summary(root),
+            "stages": stage_status(root, config, logs),
+            "calendar": calendar_status(root, config),
+            "day_plan": day_plan_status(root, str(today)),
             "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "models": describe_levels(config),
@@ -869,9 +887,11 @@ def daily_cap(root: Path) -> dict:
     config, state = read_config(root), status(root)
     zone = notebook_zone(config)
     midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
-    _, runs = runs_today(run_logs(root), zone)
+    from .catchup import limit_runs
+    runs = limit_runs(root, run_logs(root), zone)
     translation_attempts = sum(row.get("runner_attempts", 0) for row in runs if row.get("phase") in ("daily-translation", "translate"))
-    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"] - translation_attempts
+    limit = config["limits"]["runner_calls_per_day"]
+    used = sum(row.get("runner_attempts", 0) for row in runs) - translation_attempts
     resets = midnight.isoformat(timespec="minutes")
     return {"used": used, "limit": limit, "remaining": max(0, limit - used), "resets_at": resets,
             "note": (f"{max(0, limit - used)} of {limit} runner attempts left today; the count resets "
@@ -1591,9 +1611,10 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
     if selected_feedback:
         feedback.synchronize(updated, selected_feedback)
+    from .runner import worker_effort
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
               "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-              "phase": "sync", "sources": list(selected), "items": len(items),
+              "effort": worker_effort(config), "phase": "sync", "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
               "extracted": not selected_feedback and len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a

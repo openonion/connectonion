@@ -838,8 +838,9 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
     if progress:
         progress("writing page")
     started, result = time.monotonic(), {}
+    from .runner import worker_effort
     metrics = {"stage": "projects", "record": record, "harness": config["runner"], "model": config["model"],
-               "speed": config["speed"],
+               "speed": config["speed"], "effort": worker_effort(config),
                "input_items": len(items), "prompt_chars": len(text)}
     try:
         result = run(workdir, text, config, "investigate")

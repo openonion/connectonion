@@ -960,7 +960,7 @@ def _known_sources(items: list[dict]) -> set:
     # the facts item even though the raw mail is absent from this turn.
     known.update(row['source'] for item in items if item.get('role') == 'facts'
                  for row in item.get('facts', []) if row.get('source'))
-    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence")
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence", "captured-decisions")
                for source in i.get("sources", [])]
     known.update(derived)
     # Numbered pieces are one original record. A citation to the whole record
@@ -1377,14 +1377,15 @@ def size_note(page_chars: int) -> str:
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
-             owner: bool = False, root: Path | None = None, removed_facts=frozenset()) -> list[str]:
+             owner: bool = False, root: Path | None = None, removed_facts=frozenset(),
+             abstract: bool = False) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     from .reader_model import source_definitions
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
-    if record.startswith('knowledge/'):
+    if record.startswith('knowledge/') and not abstract:
         from .reader_model import PRIVATE, REFERENCE, _destination
         if PRIVATE.search(original.split('\n', 1)[0]) and not PRIVATE.search(candidate.split('\n', 1)[0]):
             errors.append('Preserve topic privacy on the title line')
@@ -1397,7 +1398,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append('Preserve the exact skill invocation name as the page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
     errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
-               for h in headings(record, owner) if counts[h] != 1]
+               for h in (() if abstract and record.startswith('knowledge/') else headings(record, owner)) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
     if owner and re.search(rf'^## {re.escape(NOT_ON_OWNER_PAGE)}[ \t]*$', body, re.M):
         errors.append(f'Section does not belong on the owner page: {NOT_ON_OWNER_PAGE}; '
@@ -1409,6 +1410,10 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     definitions = source_definitions(sources)
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
+    if record.startswith('decisions/') and any(defined[key] != 1 for key in refs):
+        errors.append('Under ## Sources, define each [n] exactly once as '
+                      '- [1] source-id — originating page: `sessions/example.md`; '
+                      'copy the supplied original source ID. Do not add [n]: Markdown link definitions.')
     known = _known_sources(items) | _archived_sources(root, definitions)
     if record.startswith('projects/'):
         from .project_pages import live_source_snapshot
@@ -1477,6 +1482,47 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     errors += fact_errors(record, candidate, original)
     errors += fact_regressions(record, candidate, original, removed=removed_facts)
     return errors
+
+
+def review_abstract_knowledge(notebook, record, text, original, accepted):
+    """Review learning in the batch's usual page review, preserving topic text exactly."""
+    from .captured_decisions import quote_errors
+    from .decision_authorship import review as review_authorship
+    from .reader_model import REFERENCE, SOURCE, _destination
+    if original and not text.startswith(original):
+        return text, ['Abstract knowledge is append-only; preserve all existing text']
+    added = text[len(original):] if original else text
+    if original and not re.match(r'\s*## [^\n]+\n', added):
+        return text, ['Abstract knowledge must append a clearly headed section']
+    # Review an appendix on its own: its nested headings become normal sections.
+    candidate = ('# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M)
+                 if original else text)
+    drawn = re.search(r'(?ms)^## Drawn from\n(.*?)(?=^## |\Z)', prose(candidate))
+    records = {_destination(record, raw) for _, raw in REFERENCE.findall(drawn[1])} if drawn else set()
+    allowed = set(notebook.list()) | set(accepted)
+    records = {path for path in records if path in allowed and path.startswith(('decisions/', 'sessions/', 'projects/'))}
+    errors = [] if drawn else ['Knowledge needs a Drawn from section']
+    if len(records) < 2:
+        errors.append('Knowledge must be drawn from at least two notebook pages in decisions/, sessions/ or projects/')
+    items = []
+    cited = {source for _, source in SOURCE.findall(candidate.partition('\n## Sources\n')[2])}
+    for path in sorted(records):
+        page = accepted[path] if path in accepted else notebook.read(path)
+        sources = {source for _, source in SOURCE.findall(page.partition('\n## Sources\n')[2])}
+        items.append({'role': 'captured-decisions', 'record': path, 'text': page, 'sources': list(sources)})
+        if not sources & cited:
+            errors.append(f'Knowledge must cite an original source from Drawn from page: {path}')
+    if original and set(CITATION.findall(original)) & set(CITATION.findall(candidate)):
+        errors.append('Appended knowledge must use fresh citation numbers')
+    candidate, authorship_errors = review_authorship(notebook.root, candidate)
+    errors += validate(record, candidate, '', items, pages=allowed, root=notebook.root, abstract=True)
+    errors += size_errors(text, original)
+    errors += unquoted_decisions(candidate, decision_page=True) + quote_errors(candidate, items) + authorship_errors
+    if original:
+        appendix = candidate.split('\n', 1)[1]
+        appendix = re.sub(r'^## (Drawn from|Sources|Uncertainties)$', r'### \1', appendix, flags=re.M)
+        return original + appendix, errors
+    return candidate, errors
 
 
 def fact_errors(record: str, candidate: str, original: str) -> list[str]:
@@ -2012,6 +2058,16 @@ def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
 
 
+def _evidence_sources(text: str) -> set[str]:
+    """The source ids a page had as evidence: listed, and cited by a sentence.
+
+    2026-11-17: the retention check counted every listed id. One that no sentence cites
+    (left by an older page, or cited only inside a diagram) is removed from every
+    candidate as uncited, so no repair could keep it and `restore_dropped` had no line to
+    put back: 4 lines were restored and the page was still parked for a dropped id."""
+    return _listed_sources(drop_uncited_sources(text))
+
+
 def quotes(text: str) -> set[str]:
     """Links may change layout without changing the words the page kept."""
     return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
@@ -2076,7 +2132,7 @@ def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     return ([f'Dropped quote the page had: “{quote}”'
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
-               for source in sorted(_listed_sources(before) - _listed_sources(after))])
+               for source in sorted(_evidence_sources(before) - _listed_sources(after))])
 
 
 def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
@@ -2096,7 +2152,7 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
         if section == 'Sources' or line in seen:
             continue
         lost_quotes = _lost_quotes(before, after, exempt)
-        lost_sources = _listed_sources(before) - _listed_sources(after)
+        lost_sources = _evidence_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
             continue
@@ -2341,12 +2397,19 @@ def move_agent_threads(text: str) -> str:
     return text[:at] + '## Who they are\n' + '\n'.join(lines) + '\n\n' + text[at:]
 
 
-def unquoted_decisions(text: str) -> list[str]:
+def unquoted_decisions(text: str, *, decision_page=False) -> list[str]:
     """Key decisions lines that retell the owner instead of quoting them.
 
     2026-10-20 reruns: four of five handoff decisions were paraphrased though
     rem-page-project asks each to quote the sentence that carries the choice.
     """
+    body, _, sources = prose(text).partition('\n## Sources\n')
+    if decision_page and not QUOTE.search(body):
+        sources = re.split(r'^## ', sources, maxsplit=1, flags=re.M)[0]
+        if QUOTE.search(sources):
+            return ["Decision: the quote is under Sources; put it in the body beside its [n]. "
+                    "Keep the original source ID under ## Sources"]
+        return ["Decision without the owner's words -- quote the sentence that carries the choice, copied from the message it cites"]
     span = re.search(r'(?ms)^## Key decisions[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
     lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
     return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "

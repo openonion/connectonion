@@ -2247,3 +2247,34 @@ def test_review_preserves_target_entity_and_terms_beside_foreign_identifier(tmp_
     assert '- Legal entity: Lantern; ABN 98 765 432 109 [1]' in cleaned
     assert '- Pilot fee is $200 [1]' in cleaned
     assert '12 345 678 901' not in cleaned and '12345678901' not in cleaned
+
+
+REWRITE = ("# Fern\n\nFern is a pilot. [1]\n\n## What it is\n- A new summary of the pilot. [1]\n\n"
+           "## Sources\n- [1] codex:fern:9\n\nInvestigation: complete\n")
+
+
+def _fern_before(body, sources):
+    return ("# Fern\n\nFern is a pilot. [1]\n\n## What it is\n" + body + "\n\n## Sources\n- [1] codex:fern:9\n"
+            + sources + "\nInvestigation: complete\n")
+
+
+@pytest.mark.parametrize("body,sources", [
+    ("- Avery ran the first pilot. [2]", "- [2] gmail:aaaaaaaaaaaa\n"),
+    # Listed, and cited by no sentence: review removes such an entry from every candidate.
+    ("- Avery ran the first pilot. [2]", "- [2] gmail:aaaaaaaaaaaa\n- [3] gmail:bbbbbbbbbbbb\n"),
+    # Cited only inside a diagram, which is not prose.
+    ("- Avery ran the first pilot. [2]\n```\nflow [3]\n```", "- [2] gmail:aaaaaaaaaaaa\n- [3] gmail:bbbbbbbbbbbb\n"),
+    # A link, not a citation.
+    ("- Avery ran the first pilot. [2] See [3](https://example.test/plan).", "- [2] gmail:aaaaaaaaaaaa\n- [3] gmail:bbbbbbbbbbbb\n"),
+])
+def test_restoring_what_a_rewrite_dropped_leaves_nothing_the_dropped_check_refuses(body, sources):
+    """2026-11-17: the last resort put 4 lines back and the page was still parked for a
+    "Dropped source id the page had". The check counted every listed id, while only an id a
+    sentence cites can be put back, by the restore or by any repair."""
+    from connectonion.rem.page_review import drop_uncited_sources, dropped, restore_dropped
+    before = _fern_before(body, sources)
+    assert "Dropped source id the page had: gmail:aaaaaaaaaaaa" in dropped(before, REWRITE)
+    restored = drop_uncited_sources(restore_dropped(before, REWRITE))
+    assert "Avery ran the first pilot." in restored and "gmail:aaaaaaaaaaaa" in restored
+    assert dropped(before, restored) == []
+    assert "gmail:bbbbbbbbbbbb" not in " ".join(dropped(before, REWRITE))

@@ -33,7 +33,7 @@ from pathlib import Path
 from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
                     write_json)
 from .investigate import project_paths
-from .scan import is_repository, project_exclusion
+from .scan import is_repository, nameable, project_exclusion
 from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, read_session, session_paths, session_source, timestamp
 
 # The widest window a coding source may read (service.MAX_LOOKBACK_DAYS).
@@ -45,7 +45,10 @@ CONTAINER = "multi-repository workspace container"
 # A path a tool call names: absolute (or ~/), or the target of `cd`, `git -C`, `workdir`.
 _STOP = r"\s'\"`;|&<>(){}\[\],:\\"
 ABSOLUTE = re.compile(rf"(?<![\w.~/-])(~?/[^{_STOP}]+)")
-MOVED = re.compile(rf"(?:\bcd|\bgit\s+-C|\bworkdir\\?[\"']?\s*[:=])\s*\\?[\"']?([^{_STOP}]+)")
+# `cd` and `git -C` are words of their own with a space after them: with neither
+# asked for, the "cd" inside a base64url token (`…-cdAb3…`) named the rest of the
+# token as a folder (2026-11-16).
+MOVED = re.compile(rf"(?:(?<![\w-])cd\s+|(?<![\w-])git\s+-C\s+|\bworkdir\\?[\"']?\s*[:=]\s*)\\?[\"']?([^{_STOP}]+)")
 # Claude Code tool inputs that name a path. Never `content`/`new_string`: the
 # text an edit writes is not a place the session worked.
 CLAUDE_PATH_KEYS = ("file_path", "path", "notebook_path", "command", "cwd", "workdir")
@@ -280,7 +283,7 @@ def _paths(text: str, here: str) -> set[str]:
     """Absolute paths named in a call, and `cd` / `git -C` / `workdir` targets resolved against `here`."""
     named = {m.group(1) for m in ABSOLUTE.finditer(text)}
     named |= {os.path.join(here, os.path.expanduser(m.group(1))) for m in MOVED.finditer(text)}
-    return {os.path.normpath(os.path.expanduser(p)) for p in named if len(p) < 4096}
+    return {os.path.normpath(os.path.expanduser(p)) for p in named if len(p) < 4096 and nameable(p)}
 
 
 class _Owners:
@@ -416,17 +419,25 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, rep
                               "input_scope": item.get("input_scope") or ""})
 
 
-def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
-    """A cited original unavailable in the mapped archive, from the accepted run."""
-    from .reader_model import PRIVATE
+def retained_session(root: Path, source: str) -> dict | None:
+    """The full, retained owner input for a citation; never an assistant reply."""
     if not parse_session_source(source):
         return None
     path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
     saved = read_json(path, {})
     body = saved.get("text")
-    if (saved.get("source") != source or not isinstance(body, str)
-            or SECRET_SHAPES.search(body) or (PRIVATE.search(body) and not private)):
+    if saved.get("source") != source or not isinstance(body, str) or SECRET_SHAPES.search(body):
         return None
+    return saved
+
+
+def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
+    """A cited original unavailable in the mapped archive, from the accepted run."""
+    from .reader_model import PRIVATE
+    saved = retained_session(root, source)
+    if saved is None or (PRIVATE.search(saved["text"]) and not private):
+        return None
+    body = saved["text"]
     excerpt = body.strip()[:4_096]
     return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
             "time": saved.get("timestamp") or "", "sender": "", "thread": "",

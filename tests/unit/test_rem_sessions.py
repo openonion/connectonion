@@ -201,10 +201,12 @@ def test_rem_session_idempotent_append_and_changed_title_keep_the_record(noteboo
     assert import_sessions(root, now=NOW)["imported"] == 1
     record, = Notebook(root).list("sessions")
     again = import_sessions(root, now=NOW)
+    assert again['changed'] == []
     assert again["imported"] == 0 and again["unchanged"] == 1
     with path.open("a") as stream:
         stream.write(json.dumps(codex("Use day headings", stamp="2026-10-16T13:12:00Z")) + "\n")
     updated = import_sessions(root, now=NOW)
+    assert updated['changed'] == [record]
     assert updated["updated"] == 1 and updated["imported"] == 0
     assert Notebook(root).list("sessions") == [record]
     assert "- Turns: 2" in Notebook(root).read(record)
@@ -310,6 +312,10 @@ def test_rem_session_project_ties_unmapped_and_bounded_calls(notebook):
     assert paths == Counter({"/work/demo/a.py": 2, "/work/demo": 1})
     assert _touched(json.dumps({"cmd": "cd demo && pwd", "workdir": "/elsewhere"}), "/work") == Counter({
         "/elsewhere": 1, "/elsewhere/demo": 1})
+    # A name no filesystem holds (over 255 bytes) is not a path the session touched:
+    # asking whether it is a repository raises ENAMETOOLONG (2026-11-16).
+    assert _touched(f"cd {'a' * 256} && cat /work/{'b' * 256}/a.py /work/demo/a.py", "/work") == Counter({
+        "/work/demo/a.py": 1})
     transcript(notebook, cwd="/work", rows=[codex(), {"type": "response_item", "payload": {
         "type": "function_call", "arguments": json.dumps({"cmd": "cat /unmapped/file.py"})}}])
     import_sessions(notebook[0], now=NOW)

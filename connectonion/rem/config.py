@@ -110,6 +110,16 @@ def default_config() -> dict:
             "limits": {"runner_calls_per_day": 200, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
+                       # Abstract slices run after summaries, before the same-person
+                       # and translation tail; leave those jobs room each night.
+                       "abstract_rounds_per_night": 6,
+                       # A night's share of the investigation queue (owner, 2026-11-16).
+                       # The queue held 333 pages against a weekly budget for 60 to 90,
+                       # the round never left it, and Abstract and Deepen stood at 0 after
+                       # eight catchup runs. Past the share the round goes on and the rest
+                       # wait for later nights. Skill pages (147 of the 333) are counted
+                       # on their own so they cannot take the people's and projects' places.
+                       "investigations_per_night": 12, "skill_pages_per_night": 3,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no
@@ -171,8 +181,14 @@ def validate(config: dict) -> dict:
             or any(not isinstance(tag, str) or not LANGUAGE.fullmatch(tag) for tag in config["languages"])):
         raise RemError("languages must be language tags separated by commas, such as zh,en")
     schedule, limits = config["schedule"], config["limits"]
-    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone", "runner", "profile"}:
+    if not isinstance(schedule, dict) or set(schedule) - {"working_hours"} != {"times", "timezone", "runner", "profile"}:
         raise RemError("Schedule requires times and timezone")
+    if 'working_hours' in schedule:
+        hours = schedule['working_hours']
+        if (not isinstance(hours, dict) or set(hours) != {'start', 'end'}
+                or any(not isinstance(value, str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value)
+                       for value in hours.values()) or hours['start'] >= hours['end']):
+            raise RemError('schedule.working_hours requires start before end, both HH:MM')
     if schedule["profile"] not in PROFILES:
         raise RemError(f"schedule.profile must be {' or '.join(PROFILES)}")
     if schedule["runner"] not in ("codex-exec", "codex-app"):

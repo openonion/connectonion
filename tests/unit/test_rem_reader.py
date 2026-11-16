@@ -3487,13 +3487,13 @@ def test_the_graph_and_the_old_all_records_address_land_on_knowledge():
 
 # The drawings the owner could not read (#2953): a rounded square, a triangle, three linked dots, two sliders.
 RETIRED_RAIL_DRAWINGS = ['M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7', 'M12 4.5 20.5 19h-17z', 'M8.2 7.2l7.5 0.6', '<circle cx="9" cy="8" r="2.2"/>']
-RAIL_PICTURES = ['sun', 'message-square-reply', 'users', 'building-2', 'folder', 'zap', 'book', 'ellipsis', 'settings']
+RAIL_PICTURES = ['sun', 'message-square-reply', 'calendar', 'users', 'building-2', 'folder', 'zap', 'book', 'ellipsis', 'settings']
 RAIL = {
-    'en': {'names': ['Today', 'Waiting on you', 'People', 'Organisations', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
-           'words': ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
+    'en': {'names': ['Today', 'Waiting on you', 'Agenda', 'People', 'Organisations', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
+           'words': ['Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
            'you': 'You · Ada Example', 'tabs': ['Today', 'Waiting', 'People', 'Search', 'More']},
-    'zh': {'names': ['今天', '等你处理', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
-           'words': ['今天', '等你处理', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
+    'zh': {'names': ['今天', '等你处理', '日程', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
+           'words': ['今天', '等你处理', '日程', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
            'you': '你 · Ada Example', 'tabs': ['今天', '等你', '人物', '搜索', '更多']},
 }
 
@@ -3518,7 +3518,7 @@ def _rail(language):
       nodes.tabbar.querySelector = () => toggle;
       const document = {getElementById: id => nodes[id], body: {classList: {add() {}}}};
       const ACTIVITY = new Set(['notes', 'logs']), detailReady = true;
-      const REM = {owner: 'people/ada.md', categories: ['people', 'orgs', 'projects', 'skills', 'knowledge', 'notes']};
+      const REM = {owner: 'people/ada.md', categories: ['people', 'orgs', 'projects', 'skills', 'agenda', 'knowledge', 'notes']};
       const byPath = () => ({path: 'people/ada.md', title: 'Ada Example'}), href = r => '#r=' + r.path, route = () => ({});
       const face = name => ({tag: 'span', class: 'face', text: name}), threadCounts = () => ({mine: 2});
       const inCategory = () => [{}], openSettings = () => {}, renderSettings = () => {};
@@ -3556,16 +3556,45 @@ def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
     assert you['title'] is None  # its name shows beside it on hover and keyboard focus (#2961), not in a title
     assert [cell['picture'] for cell in cells] == RAIL_PICTURES
     assert not [drawing for drawing in RETIRED_RAIL_DRAWINGS if drawing in rail['drawings']]
-    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 7
+    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 8
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_skills_has_its_own_rail_entry_and_is_no_longer_behind_more(language):
     rail = _rail(language)
-    links = [cell['href'] for cell in rail['cells'][:7]]
-    assert links == ['#', '#view=open', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=knowledge']
-    assert [cell['active'] for cell in rail['cells'][:7]] == [link == '#c=skills' for link in links]
-    assert rail['menu'] == ['#view=changes']  # Knowledge has its own place now (#2996)
+    links = [cell['href'] for cell in rail['cells'][:8]]
+    assert links == ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=knowledge']
+    assert [cell['active'] for cell in rail['cells'][:8]] == [link == '#c=skills' for link in links]
+    assert rail['menu'] == ['#view=changes']  # Knowledge has its own place now (#2996); Agenda is in the rail
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_agenda_follows_waiting_in_rail_and_phone_sheet_without_more_duplicate(language):
+    rail = _rail(language)
+    agenda = rail['cells'][2]
+    assert agenda['href'] == '#c=agenda' and agenda['picture'] == 'calendar'
+    assert agenda['word'] == ('日程' if language == 'zh' else 'Agenda')
+    assert '#c=agenda' not in rail['menu']
+    # The phone sheet reuses these cells and displays their full data-name in CSS.
+    assert '.rail[data-open="true"] .nav::after { content: attr(data-name);' in TEMPLATE.read_text()
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+@pytest.mark.parametrize('saved', [False, True])
+def test_empty_agenda_explains_never_read_or_last_read_with_no_events(language, saved):
+    page = TEMPLATE.read_text()
+    translations = re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0]
+    data = {'read': [{'name': 'Google Calendar', 'at': '2026-11-15T02:30:00Z'}], 'errors': [], 'events': []} if saved else None
+    result = _run_reader_js(translations + _reader_function('agT') + _reader_function('agendaNote')
+        + '\nuiLanguage = ' + json.dumps(language) + '; const REM = {calendar: ' + json.dumps(data) + '};'
+        + r'''const el = (tag, attrs) => ({tag, ...attrs}), fmtTime = at => at.slice(0, 10);
+        console.log(JSON.stringify(agendaNote()));''')
+    assert result and result['class'] == 'agenda-note'
+    if saved:
+        assert '2026-11-15' in result['text']
+        assert ('没有找到日程' if language == 'zh' else 'no events found') in result['text']
+    else:
+        assert ('还没有读过日历' if language == 'zh' else 'No calendar read yet') in result['text']
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -4584,3 +4613,182 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
     assert result['off'] is None and result['offLive']['text'] == '中文版还没好，先看原文'
     for key in ('pending', 'nightly'):
         assert result[key]['text'] == '中文版还没好，先看原文' and result[key]['class'] == 'translation-line'
+
+
+def _agenda_items(events, language='en'):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in
+                          ['agT', 'agDay', 'agToday', 'agTime', 'agLastDay', 'agendaItems', 'agItem', 'calendarDay', 'eventTitle'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    return _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
+        + ';\nuiLanguage = ' + json.dumps(language) + ';\nconst REM = {as_of: "2026-11-16T01:06:00+00:00", status: {timezone: "Australia/Sydney"},'
+        + ' today_queue: [], calendar: {events: ' + json.dumps(events) + '}};'
+        + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s;
+        const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean), removeAttribute() {}});
+        console.log(JSON.stringify(agendaItems().map(item => ({day: item.day, card: JSON.stringify(agItem(item))}))));""")
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_agenda_files_a_timed_event_on_every_day_it_covers_and_prints_its_place(language):
+    """A week-long timed event that began before this week was on no day of it; one past midnight was on one day only."""
+    event = lambda start, end, **extra: dict(title='', all_day=False, start=start, end=end, location='', link='') | extra
+    rows = _agenda_items([event('2026-11-15T09:00:00+11:00', '2026-11-18T17:00:00+11:00', title='Harbour sprint'),
+                          event('2026-11-16', '2026-11-17', all_day=True),
+                          event('2026-11-19T22:00:00+11:00', '2026-11-20T01:00:00+11:00', title='Late call', location='Harbour Cafe'),
+                          event('2026-11-20T20:00:00+11:00', '2026-11-21T00:00:00+11:00', title='Ends at midnight'),
+                          event('2026-11-21T08:00:00+11:00', '2026-11-21T08:00:00+11:00', title='Reminder')], language)
+    zh = language == 'zh'
+    days = lambda title: [row['day'] for row in rows if title in row['card']]
+    assert days('Harbour sprint') == ['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18']
+    cards = [row['card'] for row in rows if 'Harbour sprint' in row['card']]
+    assert '09:00' in cards[0] and ('全天' if zh else 'All day') in cards[1]
+    assert ('到 17:00' if zh else 'Until 17:00') in cards[3]
+    assert days('无标题' if zh else 'No title') == ['2026-11-16']
+    assert days('Late call') == ['2026-11-19', '2026-11-20'] and days('Harbour Cafe') == ['2026-11-19', '2026-11-20']
+    assert days('Ends at midnight') == ['2026-11-20'] and days('Reminder') == ['2026-11-21']
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_an_untitled_event_says_what_it_is_in_agenda_and_in_your_day(language):
+    """Half the owner's saved events read "No title": free/busy copies of a colleague's calendar and Google's own entries."""
+    zh = language == 'zh'
+    event = lambda start, **extra: dict(title='', all_day=False, start=f'2026-11-16T{start}:00+11:00',
+                                        end=f'2026-11-16T{start}:30+11:00', location='', link='', label='', calendar_name='') | extra
+    events = [event('09', label='Busy', calendar_name='Ines Calder'), event('10', label='Focus time', calendar_name='Avery'),
+              event('11', label='Out of office'), event('12', label='Busy'), event('13', calendar_name='Avery'),
+              event('14', title='Pilot call', label='Focus time')]
+    expected = (['忙碌（Ines Calder）', '专注时间', '不在办公室', '忙碌', '无标题', 'Pilot call'] if zh else
+                ['Busy (Ines Calder)', 'Focus time', 'Out of office', 'Busy', 'No title', 'Pilot call'])
+    cards = [row['card'] for row in _agenda_items(events, language)]
+    assert all(words in card for words, card in zip(expected, cards, strict=True))
+    assert sum(('无标题' if zh else 'No title') in card for card in cards) == 1
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in ['planWhen', 'planReason', 'planWords', 'eventTitle'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    shown = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language)
+        + ';\nconsole.log(JSON.stringify(' + json.dumps(events) + ".map(e => planWords({...e, kind: 'event', time: '09:00', end_time: '09:30'}))));")
+    assert shown == ['09:00–09:30 — ' + words for words in expected]
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_a_proposal_row_is_a_time_a_two_line_sentence_and_one_short_link(language):
+    """The row was one underlined link holding a two-to-four-line sentence; five of them filled a phone."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in
+                          ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'dayPlanItem'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    sentence = 'Send Mara the revised harbour mooring schedule with the three berth options and the ferry timetable she asked for'
+    rows = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + r""";
+      const pages = {'people/mara.md': {path: 'people/mara.md', title: 'Mara Ostrowski'}};
+      const byPath = path => pages[path], href = r => '#r=' + encodeURIComponent(r.path);
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const proposal = {kind: 'proposal', title: 'Mara', record: 'people/mara.md', time: '11:00', end_time: '11:30', placement: '',
+        text: """ + json.dumps(sentence) + r""", reasons: [{text: '{name} waiting since {date}', values: {name: 'Mara', date: '2026-11-14'}}]};
+      console.log(JSON.stringify([proposal, {...proposal, time: '', end_time: '', placement: 'no free time today'},
+        {...proposal, time: '', end_time: '', record: 'projects/harbour.md', title: 'Harbour'}].map(dayPlanItem)));""")
+    zh = language == 'zh'
+    for row, when in zip(rows, ['11:00–11:30', '今天没有空闲时间' if zh else 'no free time today', ''], strict=True):
+        time, text, why = row['children']
+        assert row['tag'] == 'li' and 'day-plan-proposal' in row['class']
+        # The time, or the words for no time, comes first and is words.
+        proposed = '建议' if zh else 'Proposed'
+        assert time['class'] == 'day-plan-when' and time['text'].startswith(when) and proposed in time['text']
+        # The sentence is plain text, whole in its title, and never a link.
+        assert (text['tag'], text['class'], text['text'], text['title']) == ('p', 'day-plan-text', sentence, sentence)
+        links = [child for child in why['children'] if isinstance(child, dict)]
+        assert len(links) == 1 and links[0]['tag'] == 'a' and 'a' not in (time['tag'], text['tag'])
+        assert '2026-11-14' in ''.join(child for child in why['children'] if isinstance(child, str))
+        assert not any(mark in json.dumps(row) for mark in ['"tag": "button"', 'badge', 'dot', 'style'])
+    assert [row['children'][2]['children'][-1] | {'tag': 'a'} for row in rows] == [
+        {'tag': 'a', 'href': '#r=people%2Fmara.md', 'text': 'Mara Ostrowski', 'children': []}] * 2 + [
+        {'tag': 'a', 'href': '#r=projects%2Fharbour.md', 'text': 'Harbour', 'children': []}]
+    clamp = re.search(r'\.day-plan-text \{([^}]*)\}', page)[1]
+    assert '-webkit-line-clamp: 2' in clamp and 'overflow: hidden' in clamp
+    # A long unbroken word (an address, a URL) wraps inside a phone's 390 instead of widening the page.
+    assert 'overflow-wrap: anywhere' in re.search(r'\.day-plan \{([^}]*)\}', page)[1]
+    assert not re.search(r'\.day-plan[\w-]*[^{]*\{[^}]*(?:white-space: nowrap|min-width|(?<!max-)width: \d)', page)
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_day_plan_reader_names_an_untitled_event_and_keeps_the_address_sentence_to_the_rule(language):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in ['planWhen', 'planReason', 'planWords', 'eventTitle', 'dayPlanItem', 'agT'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
+        + ';\nuiLanguage = ' + json.dumps(language) + r""";
+        const byPath = () => null, href = () => '#';
+        const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+        const event = {kind: 'event', title: '', time: '14:00', end_time: '15:00', link: '', location: '', address_missing: false};
+        console.log(JSON.stringify([event, {...event, all_day: true, time: '', end_time: ''},
+          {...event, title: 'Visit', location: '12 Harbour Street', address_missing: false}].map(dayPlanItem)));""")
+    untitled, all_day, placed = (json.dumps(row, ensure_ascii=False) for row in result)
+    name = '无标题' if language == 'zh' else 'No title'
+    assert '14:00–15:00 — ' + name in untitled and ('全天' if language == 'zh' else 'All day') + ' — ' + name in all_day
+    sentence = '日历事件中没有地址' if language == 'zh' else 'address not in the calendar event'
+    assert '12 Harbour Street' in placed and sentence not in placed and sentence not in untitled
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_day_plan_reader_words_links_addresses_tomorrow_and_no_calendar(language):
+    page = TEMPLATE.read_text()
+    names = ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'dayPlanItem', 'dayPlanVisible', 'yourDay']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
+      const byPath = path => ({path, title: 'Mara'}), href = r => '#r=' + encodeURIComponent(r.path);
+      const calendarDay = value => value.slice(0, 10);
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const visit = {kind: 'event', title: 'Visit', time: '10:00', end_time: '11:00',
+        location: 'Harbour Cafe\nBack room', address_missing: true,
+        link: 'https://calendar.test/visit', people: ['people/mara.md']};
+      const proposal = {kind: 'proposal', title: 'Mara', text: 'Send draft', time: '',
+        record: 'people/mara.md', placement: 'no free time today',
+        reasons: [{text: '{name} waiting since {date}', values: {name: 'Mara', date: '2026-11-14'}}]};
+      const REM = {as_of: '2026-11-16', day_plan: {calendar_read: true, calendar_errors: [
+        {name: 'Google Calendar', reason: 'authorization expired', read_at: '2026-11-14T04:00:00Z'},
+        {name: 'Outlook', reason: 'network error', read_at: ''}], days: [
+        {date: '2026-11-16', items: [visit, proposal]},
+        {date: '2026-11-17', items: [{...visit, title: 'First tomorrow', time: '09:00'},
+          {...visit, title: 'Later tomorrow', time: '15:00', location: '24 Later Street'}]}]}};
+      const saved = yourDay();
+      REM.day_plan.calendar_read = false;
+      REM.day_plan.days[0].items = [{...proposal, placement: ''}];
+      const unread = yourDay();
+      REM.as_of = '2026-11-18';
+      console.log(JSON.stringify({saved, unread, stale: yourDay()}));
+    ''')
+    saved = json.dumps(result['saved'], ensure_ascii=False)
+    assert ('今天的安排' if language == 'zh' else 'Your day') in saved
+    assert 'Harbour Cafe\\nBack room' in saved
+    assert ('日历事件中没有地址' if language == 'zh' else 'address not in the calendar event') in saved
+    assert ('今天没有空闲时间' if language == 'zh' else 'no free time today') in saved
+    assert 'https://calendar.test/visit' in saved and '#r=people%2Fmara.md' in saved
+    assert 'First tomorrow' in saved and 'Later tomorrow' in saved and '24 Later Street' in saved
+    assert '2026-11-14' in saved
+    assert ('授权已过期' if language == 'zh' else 'authorization expired') in saved
+    assert ('网络出错' if language == 'zh' else 'network error') in saved
+    assert ('从未' if language == 'zh' else 'never') in saved
+    assert not any(value in saved for value in ['"tag": "button"', 'badge', '"class": "dot"'])
+    unread = json.dumps(result['unread'], ensure_ascii=False)
+    assert ('还没有读取过日历。' if language == 'zh' else 'No calendar has been read yet.') in unread
+    assert ('计划已过期' if language == 'zh' else 'This saved plan is out of date') in json.dumps(result['stale'], ensure_ascii=False)
+    assert page.index('main.appendChild(dayPlan)') < page.index('el("div", { class: "tgrid"', page.index('main.appendChild(dayPlan)'))
+
+
+def test_day_plan_reader_hides_closed_grouped_items_and_restores_undo():
+    page = TEMPLATE.read_text()
+    function = re.search(r'function dayPlanVisible\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      let threadStates = {};
+      const REM = {today_queue: [{key: 'one', keys: ['one', 'two'], closed: false, reply: {state: 'queued'}}]};
+      const item = {kind: 'proposal', key: 'one', keys: ['one', 'two']};
+      const before = dayPlanVisible(item);
+      threadStates = {one: {state: 'done'}, two: {state: 'ignored'}};
+      const closed = dayPlanVisible(item);
+      delete threadStates.two;
+      const undo = dayPlanVisible(item);
+      REM.today_queue[0].reply.state = 'replied';
+      const replied = dayPlanVisible(item);
+      console.log(JSON.stringify({before, closed, undo, replied, event: dayPlanVisible({kind: 'event'})}));
+    ''')
+    assert result == dict(before=True, closed=False, undo=True, replied=False, event=True)

@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from . import config, runner, service, source
 from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
-from .scan import WORKTREE_FOLDER, is_repository, main_checkout, project_exclusion
+from .scan import WORKTREE_FOLDER, is_repository, main_checkout, nameable, project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
 from .project_pages import CODE_CHURN_DAYS
 from .page_review import _plain, _quoted_in
@@ -54,9 +54,13 @@ def _touched(text: str, cwd: str) -> Counter:
     text = text[:20_000]
     workdir = re.search(r'"workdir"\s*:\s*"([^"\n]+)"', text)
     here = Path(workdir[1] if workdir else cwd)
-    paths = Counter(re.findall(r"(?<![\w./:~$-])/(?:[a-zA-Z0-9._@+-]+/)*[a-zA-Z0-9._@+-]+", text))
+    # A token or a URL's tail can match either pattern; what cannot be a folder's
+    # name is never asked about as a repository (`_project_path`), which would raise
+    # `File name too long` (2026-11-16).
+    paths = Counter(path for path in re.findall(r"(?<![\w./:~$-])/(?:[a-zA-Z0-9._@+-]+/)*[a-zA-Z0-9._@+-]+", text)
+                    if nameable(path))
     for target in re.findall(r"\bcd\s+([^\s;&|)'\"]+)", text):
-        if not target.startswith(("~", "-", "$", "/")) and here.is_absolute():
+        if not target.startswith(("~", "-", "$", "/")) and here.is_absolute() and nameable(target):
             paths[str((here / target).resolve())] += 1
     return paths
 
@@ -564,6 +568,7 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts, s
         "printed_commits": [{"sha": c["sha"].lower(), "branch": c["branch"]} for c in session["artifacts"]["commits"]]}
     progress["sessions"][key] = record
     counts["updated" if updated else "imported"] += 1
+    counts.setdefault('changed', []).append(record)
     return ""
 
 
@@ -577,7 +582,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
     since = now - timedelta(days=days)
     notebook = Notebook(root)
     zone = ZoneInfo(config.read_config(root)["schedule"].get("timezone") or config.local_timezone() or "UTC")
-    counts = {"imported": 0, "updated": 0, "unchanged": 0}
+    counts = {"imported": 0, "updated": 0, "unchanged": 0, "changed": []}
     skipped = Counter()
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         progress = read_json(state_path(root, "sessions.json"), {"files": {}, "sessions": {}})
@@ -810,7 +815,8 @@ def _summary_run(root: Path, settings: dict) -> tuple[dict, Path]:
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": service.now().isoformat(),
               "outcome": "running", "runner_attempts": 0, "usage": None, "sources": [], "items": 0,
               "changed": [], "phase": "sessions-summary", "harness": settings["runner"],
-              "model": settings["model"], "speed": settings["speed"], **service.running_marker()}
+              "model": settings["model"], "speed": settings["speed"], "effort": runner.worker_effort(settings),
+              **service.running_marker()}
     path = state_path(root, f"runs/{record['id']}.json")
     write_json(path, record)
     return record, path

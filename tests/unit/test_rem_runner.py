@@ -602,7 +602,8 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert len(argv[-1]) < 8000  # Large material must not go through argv.
     assert options["cwd"] == str(notebook.root / ".state/tasks")
     seconds = config["limits"]["timeout_seconds"]
-    assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
+    # Longer than the adapter's own cleanup at its deadline: interrupt, archive, kill.
+    assert options["timeout"] == seconds + (0 if harness == "coai" else 30)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
     investigating = stage in ("init", "investigate")
@@ -635,6 +636,22 @@ def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
     assert metrics["speed"] == "standard"
 
 
+def test_a_codex_worker_is_started_at_the_notebooks_effort_and_its_record_says_so(notebook, delegate):
+    """2026-11-17: no effort was passed, so all 81 worker turns of a night ran at the owner's
+    own ~/.codex setting (max) while config.yaml said medium."""
+    run_stage(notebook, [], default_config())
+    argv = delegate[0][0]
+    assert argv[argv.index("--effort") + 1] == "medium"
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert metrics["effort"] == "medium"
+    high = runner.harness_flags({**default_config(), "effort": "high"}, "maintain")
+    assert high[high.index("--effort") + 1] == "high"
+    # Claude Code and co's own loop take no effort from us: nothing is passed or claimed.
+    for other in ("claude-code", "coai"):
+        config = {**default_config(), "runner": other}
+        assert "--effort" not in runner.harness_flags(config, "maintain") and runner.worker_effort(config) == ""
+
+
 def test_claude_rem_does_not_inherit_an_api_billing_key(notebook, delegate, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient-test-key")
     config = default_config()
@@ -664,12 +681,13 @@ def test_abstract_writes_disposable_copy_then_promotes(notebook, monkeypatch, de
         workspace = Path(kw["cwd"])
         working = next(workspace.glob("abstract-*/notebook"))
         assert working != notebook.root
-        Notebook(working).write("decisions/example.md", "# Why use Markdown\n\n## Why\nReadable pages.\n")
+        Notebook(working).write("decisions/example.md", '# Why use Markdown\n\n“Use Markdown for readable pages.” [1]\n\n## Why\nReadable pages. [1]\n\n## Sources\n- [1] codex:fixture:7\n')
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 2}}), stderr="")
 
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", write_decision)
-    result = run_stage(notebook, [], default_config(), stage="abstract")
+    result = run_stage(notebook, [{"source": "codex:fixture:7", "text": "Use Markdown for readable pages."}],
+                       default_config(), stage="abstract")
     assert result["changed"] == ["decisions/example.md"]
     assert notebook.read("decisions/example.md").startswith("# Why use Markdown")
 
@@ -683,6 +701,17 @@ def test_timeout_reports_partial_changes(notebook, monkeypatch, delegate):
     with pytest.raises(RunFailed, match="timed out") as caught:
         run_stage(notebook, [], default_config())
     assert caught.value.changed == ["notes/new.md"]
+
+
+def test_a_turn_the_adapter_timed_out_is_a_timed_out_task_with_its_usage(tmp_path, monkeypatch, delegate):
+    """2026-11-17: the adapter always beats the outer deadline, so its timeout left as a
+    plain RunFailed, exec did not park the task and one slow page ended the whole night."""
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", lambda *a, **kw: SimpleNamespace(
+        returncode=1, stderr="", stdout=json.dumps({"outcome": "timeout", "error": "turn timed out after 900s",
+                                                    "usage": {"input_tokens": 40}, "session_id": "fictional"})))
+    with pytest.raises(runner.TimedOut, match="co ai timed out after 1200s") as caught:
+        runner.run_task(tmp_path, "Continue.", default_config(), "investigate")
+    assert caught.value.usage == {"input_tokens": 40}
 
 
 @pytest.mark.parametrize("payload", ['[]', '42', '{}', '{"outcome":"natural","usage":"oops"}'])

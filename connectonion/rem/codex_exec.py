@@ -9,7 +9,8 @@ import signal
 import subprocess
 import time
 import traceback
-from contextlib import suppress
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -124,8 +125,23 @@ def _execute(command, *, timeout=TURN_SECONDS, **kwargs):
             return result
 
 
-def run_turn(root: Path, *, run=_execute) -> str:
-    root = Path(root).resolve()
+# One writer round per notebook. The scheduled turn, `co rem exec` and `co rem catchup`
+# all hold exec-turn.lock for their whole run, and whichever comes second starts nothing.
+HELD_ELSEWHERE = ('Another REM run holds this notebook (the scheduled background turn, co rem exec or '
+                  'co rem catchup)')
+BUSY = (HELD_ELSEWHERE + ', so this run started nothing. Run it again when that one has finished; '
+        'co rem status shows the turn in progress.')
+_ROUND = ContextVar('rem_round_lock', default=None)
+
+
+class NotebookBusy(RemError):
+    """Another run holds exec-turn.lock."""
+
+
+@contextmanager
+def _turn_lock(root):
+    """The open, locked exec-turn.lock. The kernel drops it when this process ends
+    however it ends (a deadline's exit 75 included): no stale lock file can hold a notebook."""
     lock = state_path(root, 'exec-turn.lock')
     lock.parent.mkdir(parents=True, exist_ok=True)
     import fcntl  # POSIX-only; rem.tasks imports this module and the reader imports rem.tasks
@@ -133,8 +149,45 @@ def run_turn(root: Path, *, run=_execute) -> str:
         try:
             fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return 'busy'
-        return _run_locked(root, run, held.fileno())
+            raise NotebookBusy(BUSY) from None
+        yield held
+
+
+@contextmanager
+def round_lock(root):
+    """Hold the notebook for a round `co rem exec` or catchup drives; raises NotebookBusy.
+
+    2026-11-17: catchup did not take the scheduled turn's lock, so the 01:00 turn's
+    `co rem next` was handed the task catchup's worker held, its submit failed, the task
+    was discarded and the worker lost its files mid-turn. Catchup holds it across all its
+    nights; the exec round inside each night is the same hold, not a second one."""
+    root = Path(root).resolve()
+    if _ROUND.get() == root:
+        yield
+        return
+    with _turn_lock(root):
+        token = _ROUND.set(root)
+        try:
+            yield
+        finally:
+            _ROUND.reset(token)
+
+
+def run_turn(root: Path, *, run=_execute) -> str:
+    root = Path(root).resolve()
+    try:
+        with _turn_lock(root) as held:
+            return _run_locked(root, run, held.fileno())
+    except NotebookBusy:
+        return 'busy'
+
+
+def fire(root: Path) -> int:
+    """One scheduled fire's exit code; a fire that found the notebook held says so in the scheduler log."""
+    outcome = run_turn(root)
+    if outcome == 'busy':
+        print(HELD_ELSEWHERE + ', so this scheduled turn started nothing. The next fire tries again.')
+    return 1 if outcome in ('failed', 'timed-out') else 0
 
 
 def _reap_orphan_maintenance(root):
@@ -178,7 +231,8 @@ def _run_locked(root, run, lock_fd):
     receipt = {'turn_id': name, 'started_at': started.isoformat(), 'result': 'running',
                'log': str(log), 'last_message': str(last)}
     write_json(state_path(root, 'last-turn.json'), receipt)
-    result, skipped = None, False
+    result, skipped, failed = None, False, False
+    before = read_json(state_path(root, 'round.json'), {})
     try:
         receipt['terminated_orphans'] = _reap_orphan_maintenance(root)
         from .codex_schedule import CodexNative
@@ -195,8 +249,24 @@ def _run_locked(root, run, lock_fd):
             # running Codex session with the next fire.
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                          cwd=root, pass_fds=(lock_fd,), env={**subprocess_environment(), 'CO_REM_TURN_ID': name})
-    except Exception as error:
-        # Persist the failure for unattended users, then preserve the traceback.
+        cursor = read_json(state_path(root, 'round.json'), {})
+        if cursor and cursor != before:
+            from .schedule import calendar_round
+            receipt['calendar'] = calendar_round(root, native=True)
+        if result.returncode == 0 and cursor.get('done') and cursor != before:
+            from .schedule import finish_exec
+            receipt['depth'] = finish_exec(root, {'outcome': 'done', 'reason': 'round done'}).get('depth')
+        elif cursor != before:
+            # The turn ended with the round still going (its three hours, a stop, the session's
+            # choice). The session's own model drove single tasks, so the slot could not run
+            # inside it: it runs here once the round's first portion of investigation is done.
+            from .schedule import early_depth
+            depth = early_depth(root)
+            if depth is not None:
+                receipt['depth'] = depth
+    except BaseException as error:
+        # Persist failed or interrupted deepening even after Codex itself exited zero.
+        failed = True
         receipt['reason'] = str(error) or type(error).__name__
         with log.open('a') as output:
             output.write(json.dumps({'type': 'rem.turn_failed', 'error': receipt['reason'],
@@ -204,7 +274,7 @@ def _run_locked(root, run, lock_fd):
         raise
     finally:
         code = result.returncode if result is not None else None
-        outcome = 'skipped' if skipped else 'completed' if code == 0 else 'timed-out' if code == 124 else 'failed'
+        outcome = 'skipped' if skipped else 'completed' if code == 0 and not failed else 'timed-out' if code == 124 else 'failed'
         events = _turn_events(root, receipt)
         preparation_error = events[-1].get('error', '') if events else ''
         if preparation_error and not skipped:
@@ -305,4 +375,4 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True, type=Path)
     args = parser.parse_args()
-    raise SystemExit(1 if run_turn(args.root) in ('failed', 'timed-out') else 0)
+    raise SystemExit(fire(args.root))

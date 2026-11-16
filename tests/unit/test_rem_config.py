@@ -246,3 +246,32 @@ def test_runner_change_resets_levels_it_was_not_told(tmp_path):
     set_config(tmp_path, ["models.summary", "claude-sonnet-5-5"])
     settings = set_config(tmp_path, ["runner", "codex", "model", "gpt-6-astra"])
     assert settings["models"] == {**LEVEL_MODELS, "level3": "gpt-6-astra"}
+
+
+def test_abstract_round_limit_defaults_for_existing_notebooks(tmp_path):
+    import yaml
+    from connectonion.rem.config import default_config, read_config
+    assert default_config()['limits'].get('abstract_rounds_per_night') == 6
+    old = default_config()
+    old['limits'].pop('abstract_rounds_per_night')
+    saved = yaml.safe_dump(old)
+    tmp_path.joinpath('config.yaml').write_text(saved)
+    assert read_config(tmp_path)['limits']['abstract_rounds_per_night'] == 6
+    assert tmp_path.joinpath('config.yaml').read_text() == saved
+
+
+def test_abstract_round_limit_can_be_configured(tmp_path):
+    from connectonion.rem.config import read_config, set_config
+    assert set_config(tmp_path, ['limits.abstract_rounds_per_night', '3'])['limits']['abstract_rounds_per_night'] == 3
+    assert read_config(tmp_path)['limits']['abstract_rounds_per_night'] == 3
+
+
+def test_abstract_round_limit_rejects_nonpositive_and_noninteger_values():
+    import pytest
+    from connectonion.rem.config import default_config, validate
+    from connectonion.rem.files import RemError
+    for value in (0, -1, True, 1.5, '6'):
+        config = default_config()
+        config['limits']['abstract_rounds_per_night'] = value
+        with pytest.raises(RemError, match='Limits must be positive integers'):
+            validate(config)

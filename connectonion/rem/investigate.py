@@ -464,18 +464,42 @@ _PROJECT_MEMO_LOCK = threading.Lock()
 _PROJECT_TEXT_LOCK = threading.Lock()   # separate: a text lookup must not wait for a walk
 
 
+# 2026-11-16: macOS holds the listing of a folder under ~/Documents, ~/Desktop or
+# ~/Downloads until someone answers its privacy prompt. Two such project folders
+# held one person's page for its whole ten minutes; the other 33 folders were
+# listed and read in 1.6 s together, the slowest listing in 0.72 s.
+DOCUMENT_LIST_SECONDS = 5
+_PROJECT_WALKERS = {}   # the thread listing each folder; one still alive is a listing still held
+
+
+def _list_project_documents(root: Path) -> None:
+    _PROJECT_DOCUMENTS[root] = (time.monotonic(), tuple(_walk_project_documents(root)))
+
+
 def _project_documents(root: Path):
+    """The folder's documents, or None when its listing did not arrive within DOCUMENT_LIST_SECONDS.
+
+    The listing runs in a thread of its own, as `scan._read_promptly` reads: a
+    held listing cannot be given up from the thread that waits in it. A folder
+    whose listing is still held is not waited for or asked again; when it
+    arrives, the thread saves it for the pages after."""
     if not root.is_dir() or root.is_symlink():
         return ()
     root = root.resolve()
-    # Walked under the lock: sixteen pages starting together each walked every folder.
+    # Listed under the lock: sixteen pages starting together each walked every folder.
     with _PROJECT_MEMO_LOCK:
         kept = _PROJECT_DOCUMENTS.get(root)
         if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS:
             return kept[1]
-        documents = tuple(_walk_project_documents(root))
-        _PROJECT_DOCUMENTS[root] = (time.monotonic(), documents)
-        return documents
+        walker = _PROJECT_WALKERS.get(root)
+        if walker and walker.is_alive():
+            return None
+        began = time.monotonic()
+        walker = _PROJECT_WALKERS[root] = threading.Thread(target=_list_project_documents, args=(root,), daemon=True)
+        walker.start()
+        walker.join(DOCUMENT_LIST_SECONDS)
+        kept = _PROJECT_DOCUMENTS.get(root)
+        return kept[1] if kept and kept[0] >= began else None
 
 
 def _project_text(path: Path) -> str:
@@ -560,9 +584,12 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
              for path in project_paths(collapse_worktree_paths(notebook.read(record)))
              if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()
              and not _private_folder(str(Path(path).expanduser().resolve()), opted_in)}
-    found, seen, real = [], set(), {}
+    found, seen, real, skipped = [], set(), {}, []
     for root in sorted(roots):
-        for path in _project_documents(root):
+        documents = _project_documents(root)
+        if documents is None:
+            skipped.append(str(root))
+        for path in documents or ():
             if _private_folder(str(path), opted_in):
                 continue
             # Cached names can be deleted or replaced by links while other pages run.
@@ -592,10 +619,15 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
                                      "written by the owner, not by the subject; a quote here is the owner's record "
                                      "of what someone said, never their own message.",
                       "text": text})
-    coverage = (f"project documents: {len(found)} file(s) name the subject in {len(roots)} project folder(s) searched; "
+    searched = len(roots) - len(skipped)
+    coverage = (f"project documents: {len(found)} file(s) name the subject in {searched} project folder(s) searched; "
                 f"excerpts read from {len(items)} file(s)")
     if not found:
-        coverage = f"project documents: {len(roots)} project folder(s) searched; none name the subject"
+        coverage = f"project documents: {searched} project folder(s) searched; none name the subject"
+    if skipped:
+        # Said by name: a page with no notes from a folder must not read as one the folder never mentions.
+        coverage += (f"; skipped {len(skipped)} project folder(s) not listed within "
+                     f"{DOCUMENT_LIST_SECONDS:g} seconds: {', '.join(skipped)}")
     return items, coverage
 
 

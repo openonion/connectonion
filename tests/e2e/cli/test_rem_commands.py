@@ -634,18 +634,28 @@ def test_usage_command_shows_where_tokens_went(tmp_path):
 
 @pytest.mark.parametrize("stage", ["abstract"])
 def test_skill_entry_points_delegate_and_return_a_next_command(tmp_path, monkeypatch, stage):
+    """Abstract writes from the decisions captured on session pages (#2997, #3053),
+    so with none waiting it starts no model; one waiting line makes it delegate."""
     calls = []
 
     def run(notebook, items, config, **kw):
-        calls.append((notebook.root, items, kw["stage"]))
-        return {"changed": [], "usage": None, "report": "done"}
+        calls.append((notebook.root, [item["record"] for item in items], kw["stage"]))
+        notebook.write("decisions/keep-receipts.md",
+                       "# Keep receipts\n\n“Keep receipts.” [1]\n\n## Sources\n- [1] codex:fixture:7\n")
+        return {"changed": ["decisions/keep-receipts.md"], "usage": None, "report": "done"}
 
     monkeypatch.setattr("connectonion.rem.runner.run_stage", run)
+    idle = invoke(tmp_path, "--json", stage)
+    assert idle.exit_code == 0 and json.loads(idle.output)["data"]["rounds"] == [] and calls == []
+    prepare(tmp_path)
+    Notebook(tmp_path).write("sessions/backlog.md", "# Backlog\n\n## Decisions\n- “Keep receipts.” [1]\n\n"
+                                                    "## Sources\n- [1] codex:fixture:7\n")
     result = invoke(tmp_path, "--json", stage)
     assert result.exit_code == 0, result.output
     output = json.loads(result.output)
     assert output["ok"] and output["next"].startswith("co rem")
-    assert calls == [(tmp_path, [], stage)]
+    assert output["data"]["written"] == 1
+    assert calls == [(tmp_path, ["sessions/backlog.md"], stage)]
 
 
 def test_people_roster_returns_identity_and_existing_path(tmp_path):
@@ -907,6 +917,9 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     last = lines.index('Last run         investigate people/alice.md · completed')
     assert lines[last + 1].endswith(' · 1 page changed · 91k tokens in')
     assert lines[-1] == f'Next: co rem --root {tmp_path} investigate people'  # the first thing to write (#2008)
+    # A stage sentence that would pass 80 columns breaks after a `;` (the Abstract line with its page counts).
+    abstract = lines.index('Abstract: 0 captured decisions waiting; last ran never;')
+    assert lines[abstract + 1] == '  0 decisions · 0 knowledge · 0 principles'
     assert [line for line in lines if len(line) > 80 and not line.lstrip().startswith(('→', 'Next:', 'Notebook'))] == []
     for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
         assert internal not in '\n'.join(lines), internal
@@ -927,7 +940,12 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
                                  'investigation_this_week', 'quota', 'investigation_quota',
                                  'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight',
-                                 'round', 'nights', 'paused'}
+                                 'round', 'nights', 'paused',
+                                 # The five stage rows (#3053), calendar freshness (#3057), the saved day plan (#3058).
+                                 'stages', 'calendar', 'day_plan'}
+    assert [row['name'] for row in data['data']['stages']] == ['Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate']
+    assert data['data']['calendar'] == {'last_read': None, 'events': 0, 'text': 'Calendars: never read'}
+    assert set(data['data']['day_plan']) == {'saved_at', 'text'}
     assert data['data']['schedule_runner'] == schedule_runner
     assert data['data']['paused'] is None  # always present: null until the Codex floor stops a round (#2938)
     assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}
