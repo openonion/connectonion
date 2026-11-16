@@ -120,6 +120,8 @@ NEXT = {
     "co browser": HANDLER,            # rotating tip on stderr; `import` names its own go_to check; exits by raise
     "co claude run": 'Continue this Claude session:  co claude run "<next task>" --session <session-id>',
     "co call": HANDLER,               # prints the remote's own output; exits by raise
+    "co send": "On the receiving machine:  co receive",
+    "co receive": "Another agent sends here with:  co send <this agent's address> <file>",
     "co commands": HANDLER,
     "co audit": HANDLER,              # names --review, or the rerun after a fix           # ends with the --help pointer itself
     "co copy": HANDLER,               # "co copy --list" after a copy; --list ends with usage

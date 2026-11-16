@@ -797,7 +797,7 @@ def send(
     paths: List[str] = typer.Argument(..., help="Files or folders to send"),
     relay: Optional[str] = typer.Option(None, "--relay", help="Relay used to look the agent up (default: configured backend)"),
 ):
-    """Send files to another agent, verified by sha256; an interrupted send resumes.
+    """Sends files to another agent, verified by sha256; an interrupted send resumes.
 
     The receiving agent must be running and reachable on the same network or
     at a public address. Files go straight to it, never through a relay server.
@@ -813,7 +813,7 @@ def send(
 def receive(
     json_output: bool = typer.Option(False, "--json", help="Print the list as JSON"),
 ):
-    """List the files other agents sent here; only verified ones are listed.
+    """Read-only: list the files other agents sent here, verified ones only.
 
     Run it in the folder where the receiving agent runs. Files are in its
     .co/inbox/files/<date>/; `co send` on the other machine sends them.
