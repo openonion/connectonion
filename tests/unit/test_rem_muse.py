@@ -407,6 +407,66 @@ def test_unknown_page_uses_resolver_error(notebook, stage):
     assert 'No page matches "missing" in people, projects, orgs, skills or topics' in result.output
 
 
+@pytest.mark.parametrize("stage", ["enrich", "muse"])
+def test_a_deepening_turn_is_told_where_a_web_page_it_cites_must_be_saved(notebook, monkeypatch, stage):
+    """A muse run with five insights rated good was refused: "Web citation needs a saved capture in
+    web/sources.json". Only investigation's prompt named the folder (#3083)."""
+    prompts = []
+
+    def run(workdir, prompt, config, stage, **kw):
+        prompts.append(prompt)
+        return {"result": "No insight", "session_id": "thread", "usage": {}}
+
+    monkeypatch.setattr(runner, "run_task", run)
+    runner.run_stage(notebook, [{"role": "page", "record": RECORD, "text": PAGE}], read_config(notebook.root),
+                     stage=stage, turns=feature.MUSE_TURNS if stage == "muse" else ())
+    web = next(state_path(notebook.root, "tasks").glob(f"{stage}-*")) / "web"
+    assert (f"A web page is citable only with its text saved: `co fetch <url> > {web}/<slug>.md`, registered in "
+            f"{web / 'sources.json'} as the Skill describes. Without a saved capture, do not cite the URL."
+            ) in prompts[0]
+
+
+def test_the_muse_skill_says_what_a_web_citation_needs():
+    text = " ".join((runner.useful_skills_dir() / "rem-muse/SKILL.md").read_text().split())
+    assert ("A web page is citable only with a saved capture. If a bullet or a line you add cites a URL the page "
+            "did not already cite, save the page's text in the task directory, `co fetch <url> > web/<slug>.md`, "
+            "and register it in `web/sources.json`: "
+            '`[{"url":"https://example.org/team","file":"team.md","date":"2026-11-06"}]`, with the read date, a '
+            "`web/`-relative file and the exact URL you cite. A URL you cannot save is not cited: name it in your "
+            "reply as a lead for enrich.") in text
+    # The rule muse had is kept beside it.
+    assert "Muse is thinking, not searching." in text
+
+
+def test_a_refused_web_citation_is_repaired_by_saving_the_page_or_dropping_the_citation(tmp_path):
+    """The repair text had no remedy for this refusal; the page was lost with its insights."""
+    errors = ["Web citation needs a saved capture in web/sources.json: https://example.org/team"]
+    for native in (False, True):
+        text = runner.repair_instruction(RECORD, errors, tmp_path, tmp_path, native=native)
+        assert (f" For each web citation refused for a missing capture: save that page's text with "
+                f"`co fetch <url> > {tmp_path / 'web'}/<slug>.md` and add "
+                '{"url": "<the exact URL the page cites>", "file": "<slug>.md", "date": "<today, YYYY-MM-DD>"} '
+                f"to the JSON list in {tmp_path / 'web' / 'sources.json'} (create the folder and the file if absent); "
+                "fetching a URL the page already cites is not new research. If the page cannot be fetched, "
+                "remove that citation and any claim that rests on it alone.") in text
+    assert "co fetch" not in runner.repair_instruction(RECORD, ["Unresolved citation"], tmp_path, tmp_path)
+
+
+def test_a_study_turn_asks_for_a_bullet_only_when_it_found_an_insight_and_names_the_limit_of_four():
+    """Each of five turns said "Add a new bullet" while the Skill caps Insight at four and calls
+    "no insight" a normal result (#3083). Four is the page's limit; five is the number of questions."""
+    study = feature.MUSE_TURNS[1:6]
+    assert len(study) == 5 and len(feature.MUSE_TURNS) == 7
+    for number, turn in enumerate(study, 2):
+        assert turn == (f"Turn {number}: study chosen question {number - 1} (the next of your five). "
+                        "Follow the skill's Turns 2–6 rules. "
+                        "If the verdict is insight, add it as a new bullet; never edit an existing Insight bullet. "
+                        "`Insight` keeps at most four bullets: when a new one would make a fifth, name the weakest "
+                        "bullet it supersedes in your reply and leave replacement to the reviewer.")
+    skill = " ".join((runner.useful_skills_dir() / "rem-muse/SKILL.md").read_text().split())
+    assert "`Insight` keeps at most four bullets; propose which weakest bullet a new one supersedes" in skill
+
+
 @pytest.mark.parametrize("harness,expected", [("codex", {"input_tokens": 7, "output_tokens": 2}),
                                                ("claude-code", {"input_tokens": 28, "output_tokens": 14})])
 def test_muse_turns_resume_one_thread_and_count_usage(notebook, monkeypatch, harness, expected):

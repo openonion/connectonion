@@ -742,6 +742,10 @@ def _repair_thread(session, usage, run=None):
     return resume
 
 
+# The refusal `repair_instruction` answers with how to save a capture.
+UNSAVED_WEB = "Web citation needs a saved capture in web/sources.json"
+
+
 # How a native repair ends. `native._repair_instructions` swaps the first for the
 # second when `co rem exec` drives a worker confined to its task folder: submit
 # takes the notebook's lock, which that sandbox refuses (#3083).
@@ -765,6 +769,14 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
     if "Cited-claim audit did not pass; see claim-review.json" in errors:
         text += (f" Read {directory / 'claim-review.json'}. Fix every audit finding and check the cited "
                  "clauses beside it; the audit is a correction guide, not a source.")
+    if any(error.startswith(UNSAVED_WEB) for error in errors):
+        # This refusal had no remedy here: the repair turn could only guess what a capture is (#3083).
+        text += (" For each web citation refused for a missing capture: save that page's text with "
+                 f"`co fetch <url> > {directory / 'web'}/<slug>.md` and add "
+                 '{"url": "<the exact URL the page cites>", "file": "<slug>.md", "date": "<today, YYYY-MM-DD>"} '
+                 f"to the JSON list in {directory / 'web' / 'sources.json'} (create the folder and the file if absent); "
+                 "fetching a URL the page already cites is not new research. If the page cannot be fetched, "
+                 "remove that citation and any claim that rests on it alone.")
     if any(error.startswith("Dropped") for error in errors):
         text += " Put each named quote and source back where it was, unchanged, unless an original contradicts it."
     if record.startswith("projects/"):
@@ -1116,7 +1128,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     from .page_review import _cited_sources, cited_texts
     carried_urls = set(_cited_sources(original).values())
     readable = cited_texts(notebook.root, text, items)
-    errors += [f"Web citation needs a saved capture in web/sources.json: {source}"
+    errors += [f"{UNSAVED_WEB}: {source}"
                for source in _cited_sources(text).values()
                if source.startswith(("http://", "https://")) and source not in carried_urls and source not in readable]
     audit_usage = {}
@@ -1638,7 +1650,12 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
                    + ("" if stage in ("enrich", "muse") else " and end your reply with NO CHANGE") + ". "
                    "Edit only that candidate page using an available local file tool. "
                    + (f"Use read-only research beyond the supplied material; save captures under {directory / 'web'} "
-                      "and register them in web/sources.json as the Skill describes. " if stage == "investigate" else "")
+                      "and register them in web/sources.json as the Skill describes. " if stage == "investigate" else
+                      # 2026-11-16 (#3083): a muse run with five insights rated good was refused for a
+                      # web citation with no capture; only investigation was told where captures go.
+                      f"A web page is citable only with its text saved: `co fetch <url> > {directory / 'web'}/<slug>.md`, "
+                      f"registered in {directory / 'web' / 'sources.json'} as the Skill describes. "
+                      "Without a saved capture, do not cite the URL. " if stage in ("enrich", "muse") else "")
                    + "The runner owns validation and replacement. Do not start nested co rem jobs. "
                    # enrich and muse end on the reply their Skill asks for: the lead list, the
                    # insights and open questions. Asked for a coverage summary, the 2026-10-16 trial

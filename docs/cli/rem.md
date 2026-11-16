@@ -1046,6 +1046,21 @@ The critic judges the same packet twice independently, keeps only bullets both c
 Only good insights are kept; weak or wrong bullets are removed, and a weak finding about an obligation
 or a question still owed can move to Open threads.
 
+A study turn adds a bullet only when its verdict is insight, and `Insight`
+keeps at most four: the turn text said "Add a new bullet" in each of the five
+study turns, which asked for five and for one from a question that yields
+none. Five is the number of questions, four the page's limit; a fifth names
+the weakest bullet it supersedes and leaves replacement to the reviewer.
+
+A web page that enrich or muse cites needs a saved capture, as in
+investigation: the turn is told to save the text with `co fetch <url> >
+<task>/web/<slug>.md` and register it in `<task>/web/sources.json`, or not to
+cite the URL. A page refused with "Web citation needs a saved capture in
+web/sources.json" goes back with that remedy (save the cited page and
+register it, or remove the citation and any claim resting on it alone). On
+2026-11-16 a muse run with five insights rated good was refused for this, and
+neither the Skill nor the repair text said what a capture was (#3083).
+
 Both send dropped `“…”` quotes or pre-existing `Sources` ids back for repair;
 if one repair cannot restore them, the lost lines are put back as they were,
 with citations renumbered, so the page keeps its new work. A quote the page

@@ -25,7 +25,12 @@ INSIGHT = re.compile(r"verdict:\s*\**\s*insight\b", re.I)
 MUSE_TURNS = ("Now do Turn 1 only.",
               *(f"Turn {n}: study chosen question {n - 1} (the next of your five). "
                 "Follow the skill's Turns 2–6 rules. "
-                "Add a new bullet; never edit an existing Insight bullet." for n in range(2, 7)),
+                # Four is the page's limit (the page rule's "2–4 cited bullets", the Skill, the
+                # critic's over_limit); five is the number of questions. "Add a new bullet" in each
+                # of five turns asked for five, and for one from a question that yields none (#3083).
+                "If the verdict is insight, add it as a new bullet; never edit an existing Insight bullet. "
+                "`Insight` keeps at most four bullets: when a new one would make a fifth, name the weakest "
+                "bullet it supersedes in your reply and leave replacement to the reviewer." for n in range(2, 7)),
               "Last turn — look back, as the skill says.")
 
 
