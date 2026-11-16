@@ -327,3 +327,13 @@ def test_the_owner_page_keeps_private_life_out_of_insight_and_debts_to_what_was_
     assert "Work only: never a `[personal]`" in owner
     assert "owes only what the user agreed to" in owner
     assert len(owner) <= INSTRUCTION_BUDGET
+
+
+def test_the_decision_example_is_counted_as_the_parts_it_shows():
+    """The Skill said "Four sections" above an example with a lead and three headings (#3083)."""
+    text = ' '.join(instructions('abstract').split())
+    assert ('Four parts (the lead, then `## Why`, `## What it cost` and `## Sources`), and the second one is '
+            'load-bearing: **`## Why` is the raw material of the next lift.**') in text
+    assert 'Four sections' not in text
+    example = instructions('abstract').split('```markdown')[1].split('```')[0]
+    assert [line for line in example.splitlines() if line.startswith('## ')] == ['## Why', '## What it cost', '## Sources']

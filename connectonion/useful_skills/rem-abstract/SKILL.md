@@ -72,7 +72,8 @@ Search is linear. At 143 pages that is not yet a problem.
 - [1] codex:s1:347 — owner, 2026-09-07; originating page: `sessions/storage.md`, `## Decisions`.
 ```
 
-Four sections, and the second one is load-bearing: **`## Why` is the raw
+Four parts (the lead, then `## Why`, `## What it cost` and `## Sources`), and
+the second one is load-bearing: **`## Why` is the raw
 material of the next lift.** Record the question, the alternatives, why the
 others lost, and whether it was ever reversed.
 
