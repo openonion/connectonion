@@ -234,32 +234,34 @@ def test_stopping_a_send_stops_it_rather_than_retrying(receiver, tmp_path):
     assert asyncio.run(stop_midway()) < 1
 
 
-def test_a_second_send_of_the_same_file_takes_over_from_the_first(receiver, tmp_path):
+def _chunk(sha256, offset, data):
+    import base64
+    return {"sha256": sha256, "offset": offset, "data": base64.b64encode(data).decode(),
+            "chunk_sha256": hashlib.sha256(data).hexdigest()}
+
+
+def test_a_second_send_of_the_same_file_takes_over_from_the_first(tmp_path):
     """A resumed send can start while the old one is still half alive.
 
     On the first real 5 GB run a stop signal did not reach the first `co send`,
     and the resumed one ran beside it: two sockets appending to one staging
     file. Only one may write; the newest offer wins and the other is told.
     """
-    clip = _video(tmp_path, megabytes=24)
+    body = os.urandom(3000)
+    sha256 = hashlib.sha256(body).hexdigest()
+    offer = {"sha256": sha256, "size": len(body), "name": "C2350.MP4"}
+    root = file_inbox.files_dir(tmp_path)
+    old, new = (file_inbox.FileReceiver(root, "0xsender") for _ in range(2))
+    old.take_over(sha256)
+    old.accept(offer)
+    old.write(_chunk(sha256, 0, body[:1000]))
 
-    async def overlap():
-        started = asyncio.Event()
+    new.take_over(sha256)
+    assert new.accept(offer)["received"] == 1000
+    with pytest.raises(file_inbox.FileRefused, match="took over"):
+        old.write(_chunk(sha256, 1000, body[1000:2000]))
+    new.write(_chunk(sha256, 1000, body[1000:2000]))
+    stored = new.write(_chunk(sha256, 2000, body[2000:]))
 
-        def watch(phase, done, total):
-            if phase == "sending" and done >= 4 * 1024 * 1024:
-                started.set()
-
-        first = asyncio.create_task(
-            file_send.send_file(_remote(receiver, receiver["sender"]), clip, clip.name, watch))
-        await started.wait()
-        second = await file_send.send_file(_remote(receiver, receiver["sender"]), clip, clip.name)
-        with pytest.raises(file_send.SendRefused, match="took over"):
-            await first
-        return second
-
-    stored = asyncio.run(overlap())
-
-    landed = file_inbox.files_dir(receiver["co_dir"]) / stored["path"]
-    assert landed.read_bytes() == clip.read_bytes()
-    assert len(file_inbox.received(receiver["co_dir"])) == 1
+    assert (root / stored["path"]).read_bytes() == body
+    assert len(file_inbox.received(tmp_path)) == 1
