@@ -1,0 +1,225 @@
+"""Files another agent sends to this one: FILE_OFFER, FILE_CHUNK, then verified.
+
+`co send` on the sender's side drives this. The bytes travel on the sealed
+direct socket and never through the relay: a multi-GB video is not something
+the relay should carry, and on the relay it would be at the relay's limits.
+
+    FILE_OFFER     sender → host   {sha256, size, name}
+    FILE_ACCEPTED  host → sender   {sha256, received}     resume from here
+    FILE_CHUNK     sender → host   {sha256, offset, chunk_sha256} signed, data: base64 beside it
+    FILE_PROGRESS  host → sender   {sha256, received}
+    FILE_STORED    host → sender   {sha256, size, name, path}
+
+Layout under the Host's .co/inbox/files/:
+
+    .partial/<sender>/<sha256>.part   the bytes so far; a dropped socket keeps them
+    .partial/<sender>/<sha256>.json   the offer they belong to
+    <YYYY-MM-DD>/<name>               verified; never overwrites what is there
+    received.jsonl                    one line per verified file
+
+A file is listed only after its size and sha256 match the offer. Who may send
+is the same bar as lending a connection (ws_router/proxy.py): a contact,
+a whitelisted address or an admin, on a direct socket.
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import hashlib
+import json
+import os
+import re
+import shutil
+import time
+from datetime import date
+from pathlib import Path
+
+SEND_REQUIRES = ("admin", "whitelist", "contact")
+CHUNK_BYTES = 1024 * 1024
+# What a host accepts in one chunk; the sender uses CHUNK_BYTES.
+MAX_CHUNK_BYTES = 4 * CHUNK_BYTES
+# Room left on the disk after the file has landed. A full disk takes the
+# Host's logs and sessions down with it.
+DISK_MARGIN_BYTES = 1024 ** 3
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_SEGMENT = re.compile(r"^[^/\\\x00-\x1f]{1,255}$")
+
+
+class FileRefused(ValueError):
+    """The offer or chunk is not accepted; `code` says which rule it broke."""
+
+    def __init__(self, code: str, message: str, **detail):
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
+
+
+def files_dir(co_dir: Path) -> Path:
+    return Path(co_dir) / "inbox" / "files"
+
+
+def safe_name(name) -> str:
+    """A relative path of plain segments, or FileRefused. Folders keep their shape."""
+    if not isinstance(name, str) or not name or name.startswith("/"):
+        raise FileRefused("FILE_NAME", "a file name must be a relative path")
+    segments = name.split("/")
+    if len(segments) > 16 or any(
+        part in (".", "..") or not _SEGMENT.fullmatch(part) for part in segments
+    ):
+        raise FileRefused("FILE_NAME", f"unsafe file name: {name!r}")
+    return name
+
+
+def _available(path: Path) -> Path:
+    """A sibling that does not exist yet; what is already there stays."""
+    if not path.exists() and not path.is_symlink():
+        return path
+    for index in range(1, 10_000):
+        candidate = path.with_name(f"{path.stem}-{index}{path.suffix}")
+        if not candidate.exists() and not candidate.is_symlink():
+            return candidate
+    raise FileRefused("FILE_NAME", f"no free name for {path.name}")
+
+
+def received(co_dir: Path) -> list[dict]:
+    """Every verified file, oldest first."""
+    log = files_dir(co_dir) / "received.jsonl"
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+
+
+class FileReceiver:
+    """One socket's incoming files, one at a time."""
+
+    def __init__(self, root: Path, sender: str):
+        self.root = root
+        self.sender = sender
+        self.partial = root / ".partial" / sender
+        self.offer = None
+        self.handle = None
+        self.digest = None
+        self.received = 0
+
+    def accept(self, offer: dict) -> dict:
+        """Check an offer and open its staging file; say how much is already here."""
+        sha256, size = offer.get("sha256"), offer.get("size")
+        if not isinstance(sha256, str) or not _SHA256.fullmatch(sha256):
+            raise FileRefused("FILE_OFFER", "sha256 must be 64 lowercase hex characters")
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            raise FileRefused("FILE_OFFER", "size must be a non-negative integer")
+        name = safe_name(offer.get("name"))
+        self.close()
+        self.partial.mkdir(parents=True, exist_ok=True)
+        part = self.partial / f"{sha256}.part"
+        record = self.partial / f"{sha256}.json"
+        held = part.stat().st_size if part.exists() else 0
+        if held > size:
+            part.unlink()
+            held = 0
+        free = shutil.disk_usage(self.partial).free
+        if size - held + DISK_MARGIN_BYTES > free:
+            raise FileRefused(
+                "FILE_NO_SPACE",
+                f"{size - held} more bytes would leave less than 1 GB free on the receiver",
+            )
+        record.write_text(json.dumps({"sha256": sha256, "size": size, "name": name}))
+        self.digest = hashlib.sha256()
+        if held:
+            with part.open("rb") as existing:
+                for block in iter(lambda: existing.read(CHUNK_BYTES), b""):
+                    self.digest.update(block)
+        self.handle = part.open("ab")
+        self.offer = {"sha256": sha256, "size": size, "name": name}
+        self.received = held
+        return {"sha256": sha256, "received": held}
+
+    def write(self, chunk: dict) -> dict:
+        """Append one chunk at the offset the host expects; store when complete."""
+        if self.offer is None or chunk.get("sha256") != self.offer["sha256"]:
+            raise FileRefused("FILE_CHUNK", "no offer for this file (send FILE_OFFER first)")
+        if chunk.get("offset") != self.received:
+            raise FileRefused(
+                "FILE_OFFSET", f"expected offset {self.received}", received=self.received,
+            )
+        try:
+            data = base64.b64decode(chunk.get("data") or "", validate=True)
+        except (binascii.Error, TypeError):
+            raise FileRefused("FILE_CHUNK", "chunk data is not base64")
+        if len(data) > MAX_CHUNK_BYTES or self.received + len(data) > self.offer["size"]:
+            raise FileRefused("FILE_CHUNK", "chunk is larger than the offer allows")
+        if hashlib.sha256(data).hexdigest() != chunk.get("chunk_sha256"):
+            raise FileRefused("FILE_CHUNK", "chunk does not match its signed sha256")
+        self.handle.write(data)
+        self.digest.update(data)
+        self.received += len(data)
+        if self.received < self.offer["size"]:
+            return {"type": "FILE_PROGRESS", "sha256": self.offer["sha256"],
+                    "received": self.received}
+        return {"type": "FILE_STORED", **self._store()}
+
+    def _store(self) -> dict:
+        offer, part = self.offer, self.partial / f"{self.offer['sha256']}.part"
+        self.handle.flush()
+        os.fsync(self.handle.fileno())
+        self.close()
+        (self.partial / f"{offer['sha256']}.json").unlink()
+        if self.digest.hexdigest() != offer["sha256"]:
+            part.unlink()
+            raise FileRefused("FILE_CORRUPT", "sha256 does not match the offer; send it again")
+        target = _available(self.root / date.today().isoformat() / offer["name"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(part, target)
+        entry = {
+            "from": self.sender, "name": offer["name"], "size": offer["size"],
+            "sha256": offer["sha256"], "path": target.relative_to(self.root).as_posix(),
+            "at": int(time.time()),
+        }
+        with (self.root / "received.jsonl").open("a") as log:
+            log.write(json.dumps(entry) + "\n")
+        self.digest = None
+        return entry
+
+    def close(self):
+        if self.handle is not None:
+            self.handle.close()
+        self.handle, self.offer = None, None
+
+
+def _sender_allowed(conn, route_handlers) -> str | None:
+    """Why this socket may not send files, or None."""
+    if not conn["authenticated"]:
+        return "authenticate first (send a signed CONNECT)"
+    if conn["transport"] != "direct":
+        return "files travel over a direct connection, not the relay"
+    trust = route_handlers["trust_agent"]
+    address = conn["agent_address"]
+    level = "admin" if trust.is_admin(address) else trust.get_level(address)
+    if level not in SEND_REQUIRES:
+        return f"sending files requires a contact or admin; the sender is {level}"
+    return None
+
+
+async def receive_file(data, send_msg, conn, route_handlers, receiver):
+    """Handle FILE_OFFER or FILE_CHUNK; return the socket's receiver for the next frame."""
+    import asyncio
+
+    refused = _sender_allowed(conn, route_handlers)
+    if refused:
+        await send_msg({"type": "ERROR", "code": "FILE_FORBIDDEN", "message": refused})
+        return receiver
+    if receiver is None:
+        receiver = FileReceiver(route_handlers["files_dir"], conn["agent_address"])
+    try:
+        if data.get("type") == "FILE_OFFER":
+            # Resuming rehashes what is already on disk: off the event loop.
+            reply = {"type": "FILE_ACCEPTED", **await asyncio.to_thread(receiver.accept, data)}
+        else:
+            reply = receiver.write(data)
+    except FileRefused as refused:
+        await send_msg({"type": "ERROR", "code": refused.code, "message": str(refused),
+                        **refused.detail})
+        return receiver
+    await send_msg(reply)
+    return receiver
