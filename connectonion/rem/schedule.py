@@ -586,13 +586,14 @@ def _exec_round(root, *, scheduled):
     if scheduled and CodexNative().recent_desktop_fire(root):
         return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
     parked, refused, faults = [], {}, 0
-    task = native.next_task(root, scheduled=scheduled)
-    while task.get("outcome") == "task":
-        if scheduled and CodexNative().recent_desktop_fire(root):
-            return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
-        from .inquiry import stage_config
-        config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
-        task = _run_one(root, native, runner, task, config, refused)
+    task = _prepare(root, native, scheduled=scheduled)
+    while task.get("outcome") == "task" or task.get("fault"):
+        if task["outcome"] == "task":
+            if scheduled and CodexNative().recent_desktop_fire(root):
+                return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+            from .inquiry import stage_config
+            config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
+            task = _run_one(root, native, runner, task, config, refused)
         faults = faults + 1 if task.get("fault") else 0
         if task.get("outcome") == "parked":
             parked.append({key: task.get(key) for key in ("record", "reason", "candidate")})
@@ -603,9 +604,24 @@ def _exec_round(root, *, scheduled):
             # After a refusal this offers the same task again with its required
             # corrections first, as `co rem next` does for the scheduled agent. The
             # task a worker's own `co rem next` prepared is this round's to take too.
-            task = native.next_task(root, scheduled=scheduled,
-                                    own=task.get("outcome") == "refused" or task.get("settled_by") == "worker")
+            task = _prepare(root, native, scheduled=scheduled,
+                            own=task.get("outcome") == "refused" or task.get("settled_by") == "worker")
     return {**task, "parked": parked} if parked else task
+
+
+def _prepare(root, native, *, scheduled, own=False):
+    """The next task; a preparation past its deadline is that one page's fault, as a turn past its own is.
+
+    2026-11-16: ten minutes "searching project documents" for one person's page
+    ended a catchup night with exit 75 and no totals. The page is parked by
+    name when the stall is raised, so the next call prepares other work; a wait
+    that was not a page's (new mail) is counted and gone past the same way."""
+    try:
+        return native.next_task(root, scheduled=scheduled, own=own, in_round=True)
+    except native.PreparationStalled as error:
+        reason = "parked: " + str(error) if error.record else str(error)
+        return {"outcome": "parked" if error.record else "stalled", "record": error.record, "reason": reason,
+                "candidate": None, "fault": True}
 
 
 # One task's fault is parked and the round goes on. Two in a row is no longer about

@@ -211,7 +211,7 @@ def test_the_nights_line_says_what_waits_in_words(notebook, monkeypatch):
            'shares': {'investigations': {'done': 12, 'limit': 12, 'waiting': 319},
                       'skill_pages': {'done': 3, 'limit': 3, 'waiting': 1}}}
 
-    def run(root, *, nights, progress, stage, say):
+    def run(root, *, nights, progress, stage, say, cut_short):
         progress(1, row)
         return {'nights': [row], 'reason': '', 'failed': False, 'held': None, 'parked': [], 'candidates': '',
                 'deepen_reason': '', **{name: row[name] for name in

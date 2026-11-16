@@ -2220,7 +2220,8 @@ def make_rem_app(factory):
             return escape(text + (f"\nStopped: {value['reason']}" if value['reason'] else ''))
 
         def operation(root):
-            value = run(root, nights=nights, progress=progress, stage=_depth_stage, say=rem_look.step)
+            value = run(root, nights=nights, progress=progress, stage=_depth_stage, say=rem_look.step,
+                        cut_short=lambda value: _emit(ctx, value, ['logs'], failed=True, draw=summary))
             _WRITTEN.extend((value['held'] or {}).get('changed', []))
             return value, ['open'], value['failed']
 

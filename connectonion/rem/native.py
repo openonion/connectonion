@@ -7,6 +7,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import sys
 import textwrap
 import threading
@@ -41,9 +42,14 @@ PARK_SAME_REASON, PARK_TOTAL = 2, 3
 NEXT_DEADLINE_SECONDS = 600
 PROGRESS_SECONDS = 60
 DEADLINE_EXIT = 75  # EX_TEMPFAIL: run next again
+# How long an interrupted preparation has to let go of the lock before the process ends.
+UNWIND_SECONDS = 30
 STALLED = "stalled-next.json"
 # `timings` is where this call's seconds went, keyed by what the progress line said.
-_WATCH = {"label": "starting", "skip": {}, "deadline": None, "step": None, "step_began": 0.0, "timings": {}}
+# `interrupt` is the thread the deadline interrupts (exec, catchup); None ends the process.
+# `last_words` is what a longer command prints before a deadline ends its process.
+_WATCH = {"label": "starting", "skip": {}, "deadline": None, "step": None, "step_began": 0.0, "timings": {},
+          "interrupt": None, "last_words": None}
 
 
 class TaskFault(RemError):
@@ -52,6 +58,25 @@ class TaskFault(RemError):
     Exec parks the task with these words and takes the next one. Anything else a
     submit raises (the lock is held elsewhere, the notebook cannot be read) is
     about the round and stops it."""
+
+
+class PreparationStalled(TaskFault):
+    """Preparing one page passed the deadline inside exec and was interrupted.
+
+    2026-11-16: the deadline ended the process, which for `co rem next` is one
+    call and for catchup was the whole night. `record` is the page, when the
+    wait was a page's, and it is already parked by name."""
+
+    def __init__(self, message, record=None):
+        super().__init__(message)
+        self.record = record
+
+
+class _Interrupted(BaseException):
+    """The deadline's signal, raised in the thread that is preparing.
+
+    Not an Exception: a page's preparation catches Exception to set aside a
+    failing mailbox (`_guarded_job`), and this must leave through it."""
 
 
 def pending(root):
@@ -247,15 +272,20 @@ def _watch(root, stop):
         wait = PROGRESS_SECONDS if deadline is None else min(PROGRESS_SECONDS, deadline - time.monotonic())
         if stop.wait(max(0, wait)):
             return
-        if deadline is not None and time.monotonic() >= deadline:
-            _stalled(root)
+        if deadline is not None and time.monotonic() >= deadline and _stalled(root, stop):
+            return
         step = _WATCH["step"] or _WATCH["label"]
         print(f"Still {step} ({_timings().get(step, 0)} s on this step, {int(time.monotonic() - began)} s so far)…",
               file=sys.stderr, flush=True)
 
 
-def _stalled(root):
-    """Record what hung and where the time went, say so, and end the process: the lock goes with it."""
+def _stalled(root, stop):
+    """Record what hung and where the time went, say so, then interrupt the preparation or end the process.
+
+    True when the interrupted preparation let go: exec parks the page and goes
+    on. A single `co rem next` is not interrupted, and a preparation that does
+    not stop within UNWIND_SECONDS cannot be: the process ends, and the lock
+    goes with it."""
     from .codex_exec import record_stall
     step, timings = _WATCH["step"] or _WATCH["label"], _timings()
     write_json(state_path(root, STALLED), {"label": _WATCH["label"], "step": step, "timings": timings,
@@ -263,9 +293,77 @@ def _stalled(root):
     record_stall(root, step, timings)
     spent = "; ".join(f"{name} {seconds} s" for name, seconds in timings.items())
     print(f"Where the time went: {spent}", file=sys.stderr, flush=True)
-    print(f"co rem next passed its deadline ({NEXT_DEADLINE_SECONDS // 60} minutes) while {step}. "
-          "Run co rem next again: it moves on to the next work.", flush=True)
-    os._exit(DEADLINE_EXIT)
+    passed = f"co rem next passed its deadline ({NEXT_DEADLINE_SECONDS // 60} minutes) while {step}"
+    why = f"co rem next passed its deadline while {step}"
+    if _WATCH["interrupt"] is None:
+        _end_process(f"{passed}. Run co rem next again: it moves on to the next work.", why)
+    print(f"Passed the deadline ({NEXT_DEADLINE_SECONDS // 60} minutes) while {step}; "
+          "interrupting it to go on with the next work.", file=sys.stderr, flush=True)
+    signal.pthread_kill(_WATCH["interrupt"], signal.SIGUSR1)
+    if stop.wait(UNWIND_SECONDS):
+        return True
+    _end_process(f"{passed} and could not be interrupted. Run the command again: it moves on to the next work.",
+                 why + " and could not be interrupted")
+
+
+def _end_process(said, why):
+    """Say that the deadline ends the process, let a longer command print its last words, and exit 75."""
+    try:
+        print(said, flush=True)
+        if _WATCH["last_words"]:
+            _WATCH["last_words"](why)
+        sys.stdout.flush()
+    finally:  # whatever the last words raise, the stuck process must not stay
+        os._exit(DEADLINE_EXIT)
+
+
+@contextmanager
+def last_words(say):
+    """What a command that runs many tasks prints if a deadline has to end its process (catchup: its night)."""
+    _WATCH["last_words"] = say
+    try:
+        yield
+    finally:
+        _WATCH["last_words"] = None
+
+
+def _interrupt(signum, frame):
+    raise _Interrupted()
+
+
+def _stall_reason(stall):
+    """Why the stalled page is parked, in the words status shows."""
+    waited = stall.get("step", stall["label"]).partition(": ")[2]
+    return (f"parked: preparing it passed the {NEXT_DEADLINE_SECONDS // 60}-minute deadline"
+            + (f" while {waited}" if waited else ""))
+
+
+@contextmanager
+def _deadline_interrupts(root, wanted):
+    """Inside exec, the deadline interrupts this preparation instead of ending the process.
+
+    2026-11-16: a folder listing macOS held behind a privacy prompt was ended by
+    a signal after 3.0 s in a measurement, so the hung wait can be left without
+    killing the night. Only the main thread receives signals; anywhere else, and
+    for a single `co rem next`, the deadline ends the process as before."""
+    if not (wanted and hasattr(signal, "pthread_kill") and threading.current_thread() is threading.main_thread()):
+        yield
+        return
+    previous = signal.signal(signal.SIGUSR1, _interrupt)
+    _WATCH["interrupt"] = threading.get_ident()
+    try:
+        yield
+    except _Interrupted:
+        stall = read_json(state_path(root, STALLED), {})
+        # Parked now, not by the next call: two stalls in a row stop the round before another call.
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next"):
+            _skip_stalled(root)
+        words = (_stall_reason(stall).removeprefix("parked: ") if stall.get("record") else
+                 f"{stall['step']} passed the {NEXT_DEADLINE_SECONDS // 60}-minute deadline")
+        raise PreparationStalled(words, record=stall.get("record")) from None
+    finally:
+        _WATCH["interrupt"] = None
+        signal.signal(signal.SIGUSR1, previous)
 
 
 JOB_OPERATIONS = ("investigation", "inquiry", "project", "project-quote", "project-final")
@@ -299,10 +397,7 @@ def _skip_stalled(root):
         cursor["mail_slot"] = stall["mail_slot"]
     if stall.get("record"):
         from .refusals import remember_refusal
-        waited = stall.get("step", stall["label"]).partition(": ")[2]
-        why = (f"parked: preparing it passed the {NEXT_DEADLINE_SECONDS // 60}-minute deadline"
-               + (f" while {waited}" if waited else ""))
-        remember_refusal(root, stall["record"], [], why, stage="parked", parked=True)
+        remember_refusal(root, stall["record"], [], _stall_reason(stall), stage="parked", parked=True)
         jobs, index = cursor.get("jobs") or [], cursor.get("job_index", 0)
         if index < len(jobs) and jobs[index]["record"] == stall["record"]:
             cursor.update(job_index=index + 1, current=None, project_quote=None)
@@ -323,15 +418,17 @@ def _watching(root):
         watcher.join()
 
 
-def next_task(root, *, scheduled=False, discard=False, own=False):
+def next_task(root, *, scheduled=False, discard=False, own=False, in_round=False):
     """`own`: the caller is the worker whose submit was just refused, so the
-    pending task's claim is its own and the task is offered again (exec)."""
+    pending task's claim is its own and the task is offered again (exec).
+    `in_round`: the caller goes on to other tasks in this process (exec), so a
+    preparation past its deadline raises `PreparationStalled` instead of exiting."""
     from .catchup import resume
     from .native_round import RoundBlocked
     from .schedule import calendar_round
     with resume(root, scheduled=scheduled):
         try:
-            result = _next_task(root, scheduled=scheduled, discard=discard, own=own)
+            result = _next_task(root, scheduled=scheduled, discard=discard, own=own, in_round=in_round)
         except RoundBlocked:
             # The round is finished, with its reason. Its calendar and day plan are saved
             # like any round's: the error used to leave before them, in exec and catchup too.
@@ -344,7 +441,7 @@ def next_task(root, *, scheduled=False, discard=False, own=False):
         return result
 
 
-def _next_task(root, *, scheduled, discard, own=False):
+def _next_task(root, *, scheduled, discard, own=False, in_round=False):
     root = root.resolve()
     if scheduled:
         from .morning import scheduled_check as morning_message
@@ -355,8 +452,10 @@ def _next_task(root, *, scheduled, discard, own=False):
           file=sys.stderr, flush=True)
     _WATCH.update(deadline=None, step=None, timings={})
     progress_step("waiting for the maintenance lock")
-    with _watching(root), maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,
-                                           scheduled=scheduled) as waited_for, runner.private_task_mask():
+    # Outermost: the interrupt is caught after the lock is released and the watcher has ended.
+    with _deadline_interrupts(root, in_round), _watching(root), maintenance_lock(
+            root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,
+            scheduled=scheduled) as waited_for, runner.private_task_mask():
         _WATCH["deadline"] = time.monotonic() + NEXT_DEADLINE_SECONDS
         progress_step("preparing the next task")
         stall_notices = _skip_stalled(root)

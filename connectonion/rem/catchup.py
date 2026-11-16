@@ -159,18 +159,37 @@ def _night(root, night, rows, progress, stage, say):
             reason, failed = _stop(result, _counts(root, night), len(rows) + 1)
             deepening = result.get('depth', {'rounds': [], 'stopped': f'exec stopped: {reason or result.get("reason", "")}'})
         finally:  # Include saved slot work even if exec's deepen slot was interrupted.
-            cursor = read_json(state_path(root, 'round.json'), {})
-            if cursor.get('catchup_night') == night:
-                deepening = cursor.get('depth', deepening)
-                calendar = cursor.get('calendar', calendar)
-            row = {**_counts(root, night), **_depth_counts(root, deepening, before)}
-            if calendar is not None:
-                row['calendar'] = calendar
-                if 'day_plan' in calendar:
-                    row['day_plan'] = calendar['day_plan']
-            rows.append(row)
-            progress(len(rows), row)
+            rows.append(_row(root, night, deepening, calendar, before))
+            progress(len(rows), rows[-1])
     return reason, failed
+
+
+def _row(root, night, deepening, calendar, before):
+    """The night's line from what is saved, so a night cut short still reports the work it did."""
+    cursor = read_json(state_path(root, 'round.json'), {})
+    if cursor.get('catchup_night') == night:
+        deepening = cursor.get('depth', deepening)
+        calendar = cursor.get('calendar', calendar)
+    row = {**_counts(root, night), **_depth_counts(root, deepening, before)}
+    if calendar is not None:
+        row['calendar'] = calendar
+        if 'day_plan' in calendar:
+            row['day_plan'] = calendar['day_plan']
+    return row
+
+
+def _ended(root, night, rows, progress, why):
+    """The run's result when a deadline has to end the process under this night.
+
+    2026-11-16: a preparation past its deadline ended catchup with exit 75 and
+    neither the night's line nor the totals. Nothing after the exit runs (no
+    `finally`), so the line and the result are made here, from the watcher's
+    thread, before it."""
+    row = _row(root, night, {'rounds': [], 'stopped': f'exec stopped: {why}'}, None, {})
+    rows.append(row)
+    progress(len(rows), row)
+    reason, _ = _stop({'outcome': 'stopped', 'reason': why}, row, len(rows))
+    return _result(root, rows, reason, True, None)
 
 
 MODEL_STAGES = ['Investigate', 'Deepen', 'Abstract', 'Translate']
@@ -195,9 +214,11 @@ def _held(root, reason, meter):
             'resumes_at': datetime.fromtimestamp(resets).astimezone().isoformat() if resets else None}
 
 
-def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=None):
-    """One exec round including its deepen slot per productive, completed night."""
-    from . import quota, service
+def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=None, cut_short=lambda value: None):
+    """One exec round including its deepen slot per productive, completed night.
+
+    `cut_short` prints the result when a deadline ends the process mid-night."""
+    from . import native, quota, service
     from .config import read_config
     if nights < 1:
         raise RemError('Use at least one night: co rem catchup --nights 1')
@@ -212,9 +233,14 @@ def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=No
             held = None if rows else _held(root, reason, meter)
             break
         night = _begin(root)
-        reason, failed = _night(root, night, rows, progress, stage, say)
+        with native.last_words(lambda why: cut_short(_ended(root, night, rows, progress, why))):
+            reason, failed = _night(root, night, rows, progress, stage, say)
         if reason:
             break
+    return _result(root, rows, reason, failed, held)
+
+
+def _result(root, rows, reason, failed, held):
     totals = {name: sum(row[name] for row in rows) for name in
               ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened')}
     return {'nights': rows, 'reason': reason, 'failed': failed, 'held': held,

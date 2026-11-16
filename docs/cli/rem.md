@@ -679,6 +679,20 @@ parked page, and the round goes on. Two such tasks in a row stop the round
 instead (`2 tasks in a row could not be run, so the round stopped; the last:
 …`), so a dead network does not park every page for a day.
 
+A page whose preparation passes the ten-minute `co rem next` deadline inside
+`co rem exec` or `co rem catchup` is one such task. The deadline interrupts
+the preparation where it waits (a folder listing held by a macOS privacy
+prompt is interrupted too), the notebook's lock is released, the page is
+parked by name (`parked: preparing it passed the 10-minute deadline while
+searching project documents`), exec prints `Parked <page>: …` for it, and the
+round prepares the next page in the same process. It counts towards the two
+in a row. Only a preparation that does not stop within 30 seconds of being
+interrupted still ends the process with exit 75, as a single `co rem next`
+does; catchup first prints the night's line and `Done:` with `Stopped: co rem
+next passed its deadline while <step> and could not be interrupted`, so a
+night never ends without its totals. The page is parked by the next
+`co rem next`, exec or catchup.
+
 What stops the round is what is about the round, not one page: the runner
 cannot start or does not complete (a refused model, a spent provider limit),
 the notebook's lock is held by another process, the notebook cannot be read.
@@ -2062,7 +2076,8 @@ attachments`, `searching <mailbox> mail`, `gathering <mailbox> mail`, `gathering
 <source> sessions`, `searching project documents`, `preparing evidence`,
 `writing evidence files`). At the deadline it prints `Where the time went:` with
 the seconds of each step, writes the same numbers to the turn log as a
-`rem.preparation_stalled` event, and exits 75. The page it was preparing is
+`rem.preparation_stalled` event, and exits 75. (Inside `co rem exec` and
+`co rem catchup` the process goes on to the next page instead; see catchup.) The page it was preparing is
 parked with the reason in words (`parked: preparing it passed the 10-minute
 deadline while gathering codex sessions`), listed under Parked in `co rem
 status`, left out of the rest of the round, and retried by the same rule as a
@@ -2087,6 +2102,17 @@ page) is saved under `.state/session-windows/` and reads only rollouts that
 changed. A rollout Codex has compressed to `.jsonl.zst` is read once more, by
 itself; a deleted one takes only its own messages out of the window. The window
 is saved every 512 MB walked, so a build ended by the deadline resumes.
+
+`searching project documents` lists the notes (`.md`, `.txt`) of every folder
+a project page names, and waits at most 5 seconds for one folder's listing.
+macOS holds the listing of a folder under `~/Documents`, `~/Desktop` or
+`~/Downloads` until someone answers its privacy prompt, and in the background
+nobody does: two such folders held one page's preparation for the whole ten
+minutes (2026-11-16), while the other 33 folders took 1.6 seconds together. A
+folder not listed in time is left out of this search and named in the page's
+coverage (`skipped 1 project folder(s) not listed within 5 seconds: <folder>`); the
+search goes on with the others. While that listing is still held, later pages
+skip the folder without waiting again.
 
 REM treats an unreadable folder named in a coding session or scan as having no
 Git repository; that folder does not stop round preparation. Other file access

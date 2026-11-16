@@ -7,9 +7,11 @@ notebooks only.
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -574,3 +576,112 @@ def test_a_night_that_parked_a_task_it_could_not_settle_lets_the_next_night_star
     assert any(line.startswith("Night 2:") for line in lines), result.output
     assert not any(line.startswith("Error:") for line in lines)
     assert any(line.startswith("Done: 2 nights") for line in lines)
+
+
+# 2026-11-16: three hours into `co rem catchup --nights 1` one person's page spent ten
+# minutes "searching project documents". The deadline that parks such a page for a
+# single `co rem next` ends the process, and catchup runs next in its own process:
+# exit 75, no night line, no totals, and Abstract, Translate and Deepen never ran.
+def hanging_preparation(monkeypatch, hung, *, deadline=1.0):
+    """Preparing a page in `hung` waits until something interrupts it; the others are prepared as usual."""
+    prepare_page = native_round._project_task
+
+    def prepare(root, cursor, config, directory, record):
+        if record in hung:
+            native.preparation_stage("searching project documents")
+            time.sleep(60)
+        return prepare_page(root, cursor, config, directory, record)
+
+    monkeypatch.setattr(native_round, "_project_task", prepare)
+    monkeypatch.setattr(native, "NEXT_DEADLINE_SECONDS", deadline)
+    monkeypatch.setattr(native, "PROGRESS_SECONDS", 0.2)
+
+
+def test_a_preparation_past_its_deadline_inside_exec_parks_that_page_and_the_round_goes_on(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    self_serving_model(notebook, monkeypatch, rejected=(), own=None)
+    hanging_preparation(monkeypatch, {fern})
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert (result["outcome"], result["reason"]) == ("done", "round done"), result
+    assert [row["record"] for row in result["parked"]] == [fern]
+    assert result["parked"][0]["reason"].startswith("parked: preparing it passed the ")
+    assert result["parked"][0]["reason"].endswith("deadline while searching project documents")
+    assert refusals.refused_for(notebook, fern)["parked"] == result["parked"][0]["reason"]
+    assert Notebook(notebook).read(heron).startswith("# Written\n")
+    # The lock went with the interrupted preparation, and the handler it used is put back.
+    assert native.next_task(notebook)["outcome"] == "done"
+    assert signal.getsignal(signal.SIGUSR1) == signal.SIG_DFL
+
+
+def test_two_preparations_in_a_row_past_their_deadline_stop_the_round(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, heron, ibis = two_projects(notebook, monkeypatch, ("fern", "heron", "ibis"))
+    calls = self_serving_model(notebook, monkeypatch, rejected=(), own=None)
+    hanging_preparation(monkeypatch, {fern, heron})
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert result["outcome"] == "stopped", result
+    assert result["reason"].startswith("2 tasks in a row could not be run, so the round stopped; the last: "
+                                       "preparing it passed the ")
+    assert calls == [] and [row["record"] for row in result["parked"]] == [fern, heron]
+    waiting = refusals.parked_waiting(notebook)
+    assert fern in waiting and heron in waiting and ibis not in waiting
+
+
+def test_catchup_goes_on_past_a_preparation_that_passed_its_deadline_and_prints_the_night(notebook, monkeypatch):
+    fern, heron = two_projects(notebook, monkeypatch)
+    self_serving_model(notebook, monkeypatch, rejected=(), own=None)
+    hanging_preparation(monkeypatch, {fern})
+    result = catchup(notebook)
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    night = next(line for line in lines if line.startswith("Night 1:"))
+    assert "1 pages written" in night and f"1 page parked ({fern}: preparing it passed the " in night, night
+    assert any(line.startswith("Done: 1 night") and "1 page parked" in line for line in lines), result.output
+    assert Notebook(notebook).read(heron).startswith("# Written\n")
+
+
+CATCHUP_NOT_INTERRUPTIBLE = textwrap.dedent("""
+    import sys, time
+    from datetime import datetime, timezone
+    from connectonion.cli.main import app
+    from connectonion.rem import daily, native, native_round, quota, service
+    moment = datetime(2026, 9, 7, 12, tzinfo=timezone.utc)
+    service.now = lambda: moment
+    daily.now = lambda: moment
+    quota.read = lambda config: {"unknown": "fixture"}
+    daily._clients = lambda sources: {}
+    native.NEXT_DEADLINE_SECONDS = 2
+    native.PROGRESS_SECONDS = 0.5
+    native.UNWIND_SECONDS = 1
+
+    def prepare(root, cursor, config, directory, record):
+        native.preparation_stage("searching project documents")
+        while True:  # a wait the deadline's interrupt does not end
+            try:
+                time.sleep(60)
+            except BaseException:
+                pass
+
+    native_round._project_task = prepare
+    app(["rem", "--root", sys.argv[1], "catchup"])
+    print("NOT REACHED")
+""")
+
+
+def test_a_preparation_that_cannot_be_interrupted_ends_catchup_after_its_night_line_and_totals(notebook, monkeypatch):
+    fern, heron = two_projects(notebook, monkeypatch)
+    result = subprocess.run([sys.executable, "-c", CATCHUP_NOT_INTERRUPTIBLE, str(notebook)], capture_output=True,
+                            text=True, timeout=90, env={**os.environ, "OPENONION_API_KEY": "test-key"})
+    assert result.returncode == native.DEADLINE_EXIT, result.stderr
+    lines = result.stdout.splitlines()
+    assert "NOT REACHED" not in lines
+    night = next(line for line in lines if line.startswith("Night 1:"))
+    why = f"co rem next passed its deadline while preparing {fern}: searching project documents and could not be interrupted"
+    assert "0 pages written" in night and f"exec stopped: {why}" in night, night
+    assert any(line.startswith("Done: 1 night") for line in lines), result.stdout
+    assert f"Stopped: night 1 produced nothing; {why}" in result.stdout, result.stdout
+    # The stall is on file: the next call parks that page by name and serves the other.
+    following = native.next_task(notebook)
+    assert following["outcome"] == "task" and following["record"] == heron, following
+    assert refusals.refused_for(notebook, fern)["parked"].startswith("parked: preparing it passed")
