@@ -597,7 +597,7 @@ def test_catchup_help_is_discoverable_and_plain():
     assert shown.exit_code == 0, shown.output
     assert 'catchup' in root.output
     assert 'co rem catchup [--nights N]' in shown.output
-    assert "Do the night's work, then one deepen slot." in shown.output
+    assert "Do the night's work, including its one deepen slot." in shown.output
     assert 'A night with deepen can take an hour or more.' in shown.output
     assert 'Example:  co rem catchup  |  co rem catchup --nights 5' in shown.output
     assert '--nights N (default 1)' in shown.output

@@ -77,11 +77,11 @@ Compatibility: sync — Collect, then investigate what is unfinished; use co rem
 ## co rem catchup
 
 ```
-Do the night's work, then one deepen slot.
+Do the night's work, including its one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
-Each night is one co rem exec round: Collect, Investigate, Abstract, Translate, then one deepen slot when the whole round completes.
-A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then goes on to the other stages. The pages that did not fit wait for later nights; none are dropped.
+Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round and Translate's share; the night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
+A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then finishes the other stages. The pages that did not fit wait for later nights; none are dropped.
 A night with deepen can take an hour or more.
 Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
 At a weekly limit before any night ran, it still does what needs no model, once: collects new mail and sessions for the next round to read, and saves the calendar and the day plan.
@@ -98,8 +98,10 @@ Back:     co rem --help
 Run the configured background upkeep round. Runs the selected coding agent and
 writes notebook pages, reports and run state; never sends mail.
 
-A completed whole round runs one deepen slot after closing translation. Early
-stops and translation-only rounds do not deepen. In-session next and submit
+A whole round runs one deepen slot: after its first portion of investigation
+(2 turns) and that portion's Abstract round, or after the round completes when
+it had nothing to investigate. A round that stops before its first portion and
+a translation-only round do not deepen. In-session next and submit
 only hand out single tasks and never run the hour-long deepen slot.
 
 After session summaries, the night writes decisions/, knowledge/ and principles/ in rounds,

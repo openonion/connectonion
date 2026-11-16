@@ -203,6 +203,14 @@ def _run_locked(root, run, lock_fd):
         if result.returncode == 0 and cursor.get('done') and cursor != before:
             from .schedule import finish_exec
             receipt['depth'] = finish_exec(root, {'outcome': 'done', 'reason': 'round done'}).get('depth')
+        elif cursor != before:
+            # The turn ended with the round still going (its three hours, a stop, the session's
+            # choice). The session's own model drove single tasks, so the slot could not run
+            # inside it: it runs here once the round's first portion of investigation is done.
+            from .schedule import early_depth
+            depth = early_depth(root)
+            if depth is not None:
+                receipt['depth'] = depth
     except BaseException as error:
         # Persist failed or interrupted deepening even after Codex itself exited zero.
         failed = True

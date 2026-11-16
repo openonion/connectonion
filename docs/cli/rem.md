@@ -480,7 +480,7 @@ The five stages of a REM day are:
 |---|---|---|---|---|
 | Collect | `co rem collect` | Read one batch of new mail and coding sessions into the notebook; no later stages. | Yes / yes / yes | Source reads are model-free; extraction uses the daily call cap. |
 | Investigate | `co rem investigate` | Fill pages from originals: people, organisations, projects, session summaries, same-person checks and reply drafts. | Yes / yes / yes | Investigation's weekly points and usage floor; background daily call cap. |
-| Deepen | `co rem deepen` (one page: `enrich`, `muse`) | Follow unfollowed leads, then think a page through. | Yes, after the round / yes, after the round / no: single tasks use the session's own model and cannot run an hour-long slot | Separate weekly deepen points, usage floors, page count, workers and slot time. |
+| Deepen | `co rem deepen` (one page: `enrich`, `muse`) | Follow unfollowed leads, then think a page through. | Yes, after the round / yes, once a round: after its first portion of investigation, or after the round when it had none / no: single tasks use the session's own model and cannot run an hour-long slot; the `codex_exec` launcher runs the slot when a turn ends | Separate weekly deepen points, usage floors, page count, workers and slot time. |
 | Abstract | `co rem abstract` | Decisions, settled knowledge and experience, then principles, out of notebook pages. | No separate abstract round in legacy sync / yes / yes | Background daily call cap and `limits.abstract_rounds_per_night`; manual write ignores the nightly cap. |
 | Translate | `co rem translate` | Put changed pages into the owner's language; last in the intended day because earlier stages change pages. | Yes / yes / yes; a `daily-translation` round only translates | Separate daily translation cap; model-provider allowance. |
 
@@ -524,20 +524,46 @@ Its existing options and behavior remain, including installed schedules calling
 `co rem sync --scheduled` and the batch-only `--source` / `--all` paths.
 
 The stage order above describes the day. The current native round preserves
-its trialled order: collect, new same-person checks and reply drafts,
-investigations with translation turns interleaved (`translation_share`), session
-summaries, abstract rounds, same-person checks, then closing translation.
-Whole-round background runners (`co rem exec`, the `codex_exec` launchd entry
-point, and scheduled sync) run the unchanged `depth.slot` once after that
-round completes. Closing translation remains inside the round; moving it would
-restructure the single-task protocol. Thus deepen follows Abstract **and the
-closing Translate**, and its changed pages await the next translation pass.
+its trialled order: collect, new same-person checks and reply drafts, then
+investigation in portions of 2 turns. Between two portions the other stages
+take their turn: one session summary, one Abstract round, then translation's
+share (`translation_share`). After the queue come the remaining session
+summaries and Abstract rounds, the same-person checks and the closing
+translation.
+
+Every stage produces early in a night, not only at its end (owner,
+2026-11-16). One investigation turn measured 20 to 60 minutes on a real
+notebook and a 3-hour catchup night completed one page. With portions of 8
+turns and everything else after the whole queue, Abstract and Deepen were 4 to
+12 hours into a night, and any night that was cut short (a deadline, the quota
+floor, two faults in a row, the 3-hour turn) left them at 0. Now a night that
+stops after its first portion has already served a session summary, an Abstract
+round and a translation share, and has run its deepen slot.
+
+Whole-round background runners (`co rem exec`, `co rem catchup`, the
+`codex_exec` launchd entry point, and scheduled sync) run the unchanged
+`depth.slot` once per round. `co rem exec` and catchup run it between two
+tasks as soon as the round's first portion of investigation is done: after
+that portion's Abstract round and before its translation turns, so the order
+is Investigate, Abstract, Deepen, Translate. The `codex_exec` launcher cannot
+run it inside a turn (the session's own model is driving single tasks), so it
+runs it when a turn ends, whether the turn finished, was stopped or reached its
+three hours, once the first portion is done. The page under investigation and
+the page of a task left pending are left out of that slot: deepening them
+would change the page under its own draft. A round with no investigation
+portion (nothing to investigate) keeps the slot where it was, after the round
+completes, and there it still needs a night that wrote, translated or drafted
+something. The early slot does not ask that: a night that served a portion is
+working, and its first page may be an hour from written. Either way a round
+has one slot: the one that ran early is the one a completed round reports.
+Pages deepened await the next translation pass.
 Legacy scheduled sync keeps its existing collect, investigation and translation
-round, then deepens. Partial, busy, refused, quota-held, not-due and
-translation-only or daily-capped unfinished exec rounds do not start a deepen slot.
-`co rem catchup` reuses exec, including that same slot, once per productive
-completed night; it does not add another slot. In-session `next` / `submit`
-keeps handing single tasks to the session's model and never deepens.
+round, then deepens. A busy, not-due or translation-only round, and a round
+that stopped before its first portion, do not start a deepen slot; at the
+Codex usage floor the slot starts no page, as before.
+`co rem catchup` reuses exec, including that same slot, once per night; it
+does not add another slot. In-session `next` / `submit` keeps handing single
+tasks to the session's model and never deepens.
 
 Every stage gets its share of a night, so one long queue cannot keep the
 later stages from running (owner, 2026-11-16: a queue of 333 investigations
@@ -549,15 +575,16 @@ catchup runs). A night is the schedule's night (noon to noon) or one
 |---|---|---|
 | Investigate | 12 pages: people, projects, organisations, older pages, retries and your own page | `limits.investigations_per_night` |
 | Investigate, skill pages | 3 pages, counted on their own and served after the others | `limits.skill_pages_per_night` |
-| Abstract | 6 rounds of up to 20 decision lines | `limits.abstract_rounds_per_night` |
-| Deepen | 3 pages in the one slot that follows a completed round | `limits.depth_pages_per_slot` |
-| Translate | turns between investigations, then the closing pass | none (D-104) |
+| Abstract | 6 rounds of up to 20 decision lines: one between every two portions of investigation, the rest after the queue | `limits.abstract_rounds_per_night` |
+| Deepen | 3 pages in the round's one slot, after the first portion of investigation | `limits.depth_pages_per_slot` |
+| Translate | a share between every two portions of investigation, then the closing pass | none (D-104) |
 
 Only a page that was handed to the model uses the share: one that is parked,
 set aside for a stopped mailbox or found to have nothing new does not. A page
 already open keeps going until it is written, however many rounds it takes.
-When a share is used, the round goes on to session summaries, Abstract, the
-same-person checks and Translate, completes, and Deepen runs. The pages that
+When a share is used, the round goes on to what is left of session summaries
+and Abstract, the same-person checks and Translate, and completes; Deepen has
+run by then, after the first portion. The pages that
 did not fit are not lost: they are saved in `.state/investigation-waiting.json`
 and the next round puts them back in the queue. A page the round lists again
 keeps the place that round gives it; a page only the waiting list remembers (a
@@ -600,7 +627,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, then goes on to Abstract, Translate and Deepen; the night's line says how many pages wait for later nights. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, the first reason and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, the first reason and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -617,7 +644,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
 
-Run `co rem catchup` to do the night's work, then one deepen slot. Use
+Run `co rem catchup` to do the night's work, including its one deepen slot. Use
 `co rem catchup --nights 5` to run both five times back to back. `--nights` is
 optional, defaults to 1 and must be at least 1. Each night uses `co rem exec`'s
 existing round, which owns the same automatic slot as `co rem deepen`: one enrich
@@ -635,9 +662,11 @@ The daily investigation call cap leaves room for the same translation tail as
 the scheduled round. Each line reports that night's mail and sessions read,
 pages written, decision pages written, translations, drafts and pages deepened;
 totals follow. A productive night stopped at the daily cap keeps its counts and
-can repeat with fresh limits, but skips deepen because its round is unfinished.
-If exec is busy, reaches a quota floor or produces no
-pages, translations or drafts, catchup stops without starting deepen.
+can repeat with fresh limits; it has deepened if it got through its first
+portion of investigation, and not otherwise, because its round is unfinished.
+If exec is busy, reaches a quota floor or stops before the first portion, and
+when a night with nothing to investigate produces no pages, translations or
+drafts, catchup stops without starting deepen.
 Saved work survives interruption, including during deepen.
 
 A long investigation queue never keeps the rest of the night from running.
@@ -3084,7 +3113,8 @@ the pages behind the rows Today shows (at most 8, in Today's order), then the
 other pages with something waiting on you, then the newest page edits; opened
 pages requesting a translation and pages changed this round break ties. Today's
 rows are read once per round, not once per page. Current caches spend no budget. There is no daily translation count (D-104):
-after every 8 investigation turns translation gets a share sized from its
+after every 2 investigation turns, and that break's session summary and Abstract
+round, translation gets a share sized from its
 backlog (a fiftieth of the waiting pages, at least 4), then investigation goes
 on in the same turn; the weekly quota floor still stops translation.
 `co rem status` reports coverage for each target language.

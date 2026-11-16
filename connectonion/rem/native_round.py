@@ -253,7 +253,7 @@ def _job_turn(root, cursor, config, directory):
         if "investigation_left" not in cursor:
             cursor["investigation_left"] = PORTION
         if cursor["investigation_left"] <= 0:
-            task = _translation_turn(root, cursor, config, directory)
+            task = _between_portions(root, cursor, config, directory)
             if task:
                 return task
             cursor["investigation_left"] = PORTION
@@ -378,14 +378,7 @@ def prepare_task(root, cursor, config, directory):
     task = _job_turn(root, cursor, config, directory)
     if task:
         return task
-    if cursor["summaries"]:
-        rows = cursor["summaries"][:1]
-        task = sessions.prepare(root, rows, config, directory=directory, native=True)
-        task["before"] = {rows[0]["record"]: Notebook(root).read(rows[0]["record"])}
-        files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
-        task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
-        return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
-    task = prepare_abstract(root, cursor, config, directory)
+    task = _summary_turn(root, cursor, config, directory) or prepare_abstract(root, cursor, config, directory)
     if task:
         return task
     pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] else None
@@ -412,6 +405,18 @@ def prepare_task(root, cursor, config, directory):
     if cursor.get('blocked_reason'):
         raise RoundBlocked(cursor['blocked_reason'])
     return None
+
+
+def _summary_turn(root, cursor, config, directory):
+    """The next session summary of the round's five, or None when none waits."""
+    if not cursor["summaries"]:
+        return None
+    rows = cursor["summaries"][:1]
+    task = sessions.prepare(root, rows, config, directory=directory, native=True)
+    task["before"] = {rows[0]["record"]: Notebook(root).read(rows[0]["record"])}
+    files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
+    task["input_paths"] = [path for path, entry in files.items() if entry.get("session") == rows[0]["key"]]
+    return _task("sessions", task, cursor, stage="sessions-summary", record=rows[0]["record"])
 
 
 def prepare_abstract(root, cursor, config, directory):
@@ -466,9 +471,39 @@ def _reset_attempts(root, cursor):
 
 
 # D-104: a portion interleaves the night's work and never stops it. After PORTION
-# investigation turns, translation gets a share sized from its backlog (D-71: "翻译…
-# 应该安排的轮次不够多"), then investigation resumes in the same turn.
-PORTION = 8
+# investigation turns the other stages take their turn (`_between_portions`), then
+# investigation resumes in the same turn.
+# 2: one investigation turn measured 20 to 60 minutes on a real notebook, and a
+# 3-hour catchup night completed one page (2026-11-16). At 8 turns the first Abstract
+# round and the first translation were 3 to 8 hours into a night, so any night cut
+# short (a deadline, the quota floor, two faults, the 3-hour turn) left them at 0.
+# After 2 turns they are reached in the first 40 minutes to 2 hours.
+PORTION = 2
+
+
+def _between_portions(root, cursor, config, directory):
+    """Between two portions of investigation: one session summary, one Abstract round, then translation's share.
+
+    Each of them used to wait for the whole night's share of investigations (12 pages
+    of many turns each), so a night that was cut short had only investigated. Abstract
+    stays within `abstract_rounds_per_night` and the round's summaries are still five:
+    what a break serves is not served again by the round's closing steps.
+    `portions` counts the breaks begun; whoever runs whole rounds starts the round's
+    one deepen slot once the first has been served (`schedule.early_depth`)."""
+    if "between" not in cursor:
+        cursor["between"] = ["sessions", "abstract"]
+        cursor["portions"] = cursor.get("portions", 0) + 1
+    while cursor["between"]:
+        step = {"sessions": _summary_turn, "abstract": prepare_abstract}[cursor["between"].pop(0)]
+        task = step(root, cursor, config, directory)
+        if task:
+            return task
+    # Translation's share is sized from its backlog (D-71: "翻译…应该安排的轮次不够多").
+    task = _translation_turn(root, cursor, config, directory)
+    if task:
+        return task
+    cursor.pop("between")
+    return None
 
 
 def translation_share(root):

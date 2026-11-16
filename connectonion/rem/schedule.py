@@ -475,15 +475,15 @@ class Systemd:
 def exec_round(root, *, scheduled=True, stage=None, say=None):
     from .catchup import resume
     with resume(root, scheduled=scheduled):
-        result = _exec_round(root, scheduled=scheduled)
+        result = _exec_round(root, scheduled=scheduled, stage=stage, say=say)
         return finish_exec(root, result, stage=stage, say=say)
 
 
-def deepen_round(root, *, stage=None, say=None):
+def deepen_round(root, *, stage=None, say=None, **choice):
     """The one round-driven caller of the unchanged deepen slot, with run logs."""
     from . import depth
     from ..cli.commands.rem_commands import _depth_stage
-    return depth.slot(root, stage=stage or _depth_stage, say=say)
+    return depth.slot(root, stage=stage or _depth_stage, say=say, **choice)
 
 
 def calendar_round(root, *, native=False):
@@ -548,44 +548,83 @@ def _depth_due(root, cursor):
     return any(counts[name] for name in ('written', 'translated', 'drafts'))
 
 
+def _depth_early(root, cursor):
+    """The round has served its first portion of investigation and is still going.
+
+    2026-11-16: the slot started only after a completed round, and at 20 to 60 minutes
+    an investigation turn a night was cut short long before that, so nothing was deepened.
+    `_depth_due`'s question (did the night write, translate or draft anything) is not
+    asked here: a night that served a portion is working, and its first page may be an
+    hour from written. A night with nothing to investigate has no portion and still
+    meets that question after its round. Not due once the slot is claimed: only the
+    call that ran it reports it here; the completed round reports it once more."""
+    return (bool(cursor.get('portions')) and 'depth' not in cursor and not cursor.get('done')
+            and cursor.get('phase') != 'daily-translation')
+
+
+def _open_pages(root, cursor):
+    """The pages the round is in the middle of: deepening one would change it under its own draft."""
+    from .files import read_json, state_path
+    jobs, index = cursor.get('jobs') or [], cursor.get('job_index', 0)
+    opened = cursor.get('current') or cursor.get('project_quote')
+    pending = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {}) if cursor.get('pending') else {}
+    records = [jobs[index]['record'] if opened and index < len(jobs) else '', pending.get('record') or '']
+    return sorted({record for record in records if record})
+
+
+def _depth_slot(root, due, *, stage=None, say=None):
+    """Claim the round's one deepen slot when `due`, run it and save it; None when it is not due.
+
+    The writer lock is not held across the worker calls. A slot that already ran, or was
+    interrupted, is not run again: its saved result is returned."""
+    from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    path = state_path(root, 'round.json')
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        cursor = read_json(path, {})
+        if not due(root, cursor):
+            return None
+        if 'depth' in cursor:
+            return cursor['depth']
+        cursor['depth'] = {'stopped': 'deepening interrupted'}
+        write_json(path, cursor)
+    skip = _open_pages(root, cursor)
+    depth = deepen_round(root, stage=stage, say=say, **({'skip': skip} if skip else {}))
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        current = read_json(path, {})
+        if _round_identity(current) == _round_identity(cursor):
+            current['depth'] = depth
+            write_json(path, current)
+    return depth
+
+
+def early_depth(root, *, stage=None, say=None):
+    """The round's deepen slot, between two tasks, once its first portion of investigation is done."""
+    return _depth_slot(root, _depth_early, stage=stage, say=say)
+
+
 def _round_identity(cursor):
     return (cursor.get('run', {}).get('id'), cursor.get('started_at'), cursor.get('catchup_night'))
 
 
 def finish_exec(root, result, *, stage=None, say=None):
-    """Claim one post-round slot without holding the writer lock across worker calls."""
-    from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    """Save the calendar, then give a completed round its deepen slot unless it ran early."""
     if result.get('outcome') != 'skipped' and result.get('reason') != 'not due':
         calendar = calendar_round(root, native=True)
         if calendar is not None:
             result = {**result, 'calendar': calendar}
     if result.get('outcome') != 'done' or result.get('reason') != 'round done':
         return result
-    path = state_path(root, 'round.json')
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        cursor = read_json(path, {})
-        if not _depth_due(root, cursor):
-            return result
-        if 'depth' in cursor:
-            return {**result, 'depth': cursor['depth']}
-        cursor['depth'] = {'stopped': 'deepening interrupted'}
-        write_json(path, cursor)
-    depth = deepen_round(root, stage=stage, say=say)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        current = read_json(path, {})
-        if _round_identity(current) == _round_identity(cursor):
-            current['depth'] = depth
-            write_json(path, current)
-    return {**result, 'depth': depth}
+    depth = _depth_slot(root, _depth_due, stage=stage, say=say)
+    return result if depth is None else {**result, 'depth': depth}
 
 
-def _exec_round(root, *, scheduled):
+def _exec_round(root, *, scheduled, stage=None, say=None):
     from . import native, runner
     from .codex_schedule import CodexNative
     from .config import read_config
     if scheduled and CodexNative().recent_desktop_fire(root):
         return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
-    parked, refused, faults = [], {}, 0
+    parked, refused, faults, depth = [], {}, 0, None
     task = _prepare(root, native, scheduled=scheduled)
     while task.get("outcome") == "task" or task.get("fault"):
         if task["outcome"] == "task":
@@ -604,9 +643,12 @@ def _exec_round(root, *, scheduled):
             # After a refusal this offers the same task again with its required
             # corrections first, as `co rem next` does for the scheduled agent. The
             # task a worker's own `co rem next` prepared is this round's to take too.
-            task = _prepare(root, native, scheduled=scheduled,
-                            own=task.get("outcome") == "refused" or task.get("settled_by") == "worker")
-    return {**task, "parked": parked} if parked else task
+            own = task.get("outcome") == "refused" or task.get("settled_by") == "worker"
+            if not own:
+                # Between two tasks, never inside one that is being repaired.
+                depth = early_depth(root, stage=stage, say=say) or depth
+            task = _prepare(root, native, scheduled=scheduled, own=own)
+    return {**task, **({"parked": parked} if parked else {}), **({"depth": depth} if depth else {})}
 
 
 def _prepare(root, native, *, scheduled, own=False):

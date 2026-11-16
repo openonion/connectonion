@@ -209,11 +209,12 @@ def _deepen_choices(root, choices, config, started, stage, say):
     return rounds, picked, reason
 
 
-def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
+def slot(root, *, records=None, pages=None, stage=None, say=None, skip=()) -> dict:
+    """`skip`: pages a round has open (its investigation's draft, a pending task); not chosen."""
     started = time.monotonic()
     config = read_config(root)
     if records is None:
-        choices = candidates(root)
+        choices = [row for row in candidates(root) if row["record"] not in skip]
         pages = config["limits"]["depth_pages_per_slot"] if pages is None else pages
     else:
         history = read_json(state_path(root, "depth.json"), {})
