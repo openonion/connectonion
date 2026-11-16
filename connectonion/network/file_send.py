@@ -127,7 +127,11 @@ async def send_file(remote, path: Path, name: str, on_progress=None) -> dict:
         try:
             return await _send_once(remote, path, name, size, sha256, on_progress)
         except (OSError, asyncio.TimeoutError, websockets.ConnectionClosed, _Resync):
-            if attempt == RETRIES:
+            # Ctrl-C cancels this task, and a cancel that lands inside a socket
+            # send comes out as ConnectionClosed. That is the person stopping,
+            # not the network dropping: retrying it reported the receiver as
+            # unreachable on the first real 5 GB run.
+            if attempt == RETRIES or asyncio.current_task().cancelling():
                 raise
             wait = min(30, 2 ** attempt)
             if on_progress:

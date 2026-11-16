@@ -799,8 +799,8 @@ def send(
 ):
     """Send files to another agent, verified by sha256; an interrupted send resumes.
 
-    The receiver's Host must be running and reachable directly: on the same
-    network, or at a public address. The bytes never go through the relay.
+    The receiving agent must be running and reachable on the same network or
+    at a public address. Files go straight to it, never through a relay server.
     Only a contact, a whitelisted address or an admin of the receiver may
     send; files land in its .co/inbox/files/<date>/ and never overwrite
     anything. A folder arrives as the files inside it, under its own name.
@@ -815,8 +815,8 @@ def receive(
 ):
     """List the files other agents sent here; only verified ones are listed.
 
-    Run it in the agent's project (or anywhere, for `co ai`'s ~/.co). Files
-    are in .co/inbox/files/<date>/; `co send` on the other machine sends them.
+    Run it in the folder where the receiving agent runs. Files are in its
+    .co/inbox/files/<date>/; `co send` on the other machine sends them.
     """
     from .commands.send_commands import handle_receive
     raise typer.Exit(handle_receive(json_output))

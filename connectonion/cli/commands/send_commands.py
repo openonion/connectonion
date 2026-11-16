@@ -65,6 +65,10 @@ def handle_send(address: str, paths: list[str], relay_url: str | None) -> int:
         except SendRefused as refused:
             print(f"\nco send: {name}: {refused}", file=sys.stderr)
             return 1
+        except KeyboardInterrupt:
+            print(f"\nco send: stopped. The receiver keeps what arrived; run the same "
+                  "command again to continue from there.", file=sys.stderr)
+            return 130
         print(file=sys.stderr)
         print(f"{name}  {_human(stored['size'])}  sha256 {stored['sha256'][:12]}…  "
               f"stored as {stored['path']}")

@@ -204,3 +204,31 @@ def test_a_chunk_swapped_after_signing_is_refused(tmp_path):
         receiver.write({"sha256": hashlib.sha256(b"hello").hexdigest(), "offset": 0,
                         "data": "d29ybGQ=", "chunk_sha256": hashlib.sha256(b"hello").hexdigest()})
     assert receiver.received == 0
+
+
+def test_stopping_a_send_stops_it_rather_than_retrying(receiver, tmp_path):
+    """Ctrl-C is the person deciding, not the network failing.
+
+    Measured on the first real 5 GB run: the interrupted send swallowed the
+    cancellation as a dropped connection, retried, and reported the receiver as
+    unreachable.
+    """
+    clip = _video(tmp_path, megabytes=24)
+
+    async def stop_midway():
+        started = asyncio.Event()
+
+        def watch(phase, done, total):
+            if phase == "sending":
+                started.set()
+
+        task = asyncio.create_task(
+            file_send.send_file(_remote(receiver, receiver["sender"]), clip, clip.name, watch))
+        await started.wait()
+        task.cancel()
+        began = time.monotonic()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return time.monotonic() - began
+
+    assert asyncio.run(stop_midway()) < 1
