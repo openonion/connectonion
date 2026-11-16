@@ -690,7 +690,9 @@ def _run_one(root, native, runner, task, config, refused):
         result = runner.run_task(Path(task["material"]), native.driven_prompt(task), config, task["stage"])
         return _settle(root, native, task["id"], native.settle(root, task["id"], usage=result.get("usage")), refused)
     except (native.TaskFault, runner.TimedOut) as error:
-        return {**native.park(root, task["id"], native.in_words(str(error)), record=task.get("record")), "fault": True}
+        # A turn closed at its deadline is still paid for: the adapter reports what it used.
+        return {**native.park(root, task["id"], native.in_words(str(error)), record=task.get("record"),
+                              usage=getattr(error, "usage", None)), "fault": True}
 
 
 def _settle(root, native, task_id, outcome, refused):

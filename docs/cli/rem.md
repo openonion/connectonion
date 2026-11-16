@@ -3518,7 +3518,12 @@ after midnight. Manual sync refuses to overlap pending native work.
 
 `co rem logs` includes native tasks. Supply measured token usage with
 `co rem submit TASK-ID --usage-json '{"input_tokens":120,"output_tokens":40}'`
-when available. Otherwise usage remains unknown.
+when available. Otherwise usage remains unknown. A task `co rem exec` or
+catchup drives records the sum of every turn it took: each turn (the render,
+each repair) is a thread of its own, and the record kept only the last one's
+tokens (0.91M input tokens recorded of 9.2M used on 2026-11-17). A turn closed
+at its deadline adds what the adapter reported before the task is parked. A
+`--usage-json` given by hand still replaces the task's usage.
 
 ### When a mailbox fails on one page
 

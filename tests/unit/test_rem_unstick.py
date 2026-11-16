@@ -719,3 +719,29 @@ def test_the_night_names_a_candidate_only_while_its_file_exists(notebook, monkey
     rows = nights._parked(notebook, 1, runs=runs)
     assert [row["candidate"] for row in rows] == [str(kept), None]
     assert [row["cause"] for row in rows] == ["co ai timed out after 5s"] * 2
+
+
+def test_a_task_record_counts_every_turn_it_took_and_what_a_timed_out_turn_reported(notebook, monkeypatch):
+    """2026-11-17: each turn is a thread of its own and the record kept the last one's tokens
+    (0.91M input tokens recorded of 9.2M used in a night), and nothing for a turn that timed out."""
+    from connectonion.rem import schedule
+    fern, heron, ibis = two_projects(notebook, monkeypatch, ("fern", "heron", "ibis"))
+
+    def slow(record, directory):
+        if record == heron:
+            raise runner.TimedOut("co ai timed out after 5s; source progress was preserved", {"input_tokens": 9})
+
+    calls = faulty_model(notebook, monkeypatch, slow)
+    check = native_round.check_task
+
+    def refuse_fern(root, task, output):
+        if task["record"] == fern:
+            raise RemError(f"Candidate rejected, kept at {task['candidate']}: {REJECTED}")
+        return check(root, task, output)
+
+    monkeypatch.setattr(native_round, "check_task", refuse_fern)
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert calls == [fern, fern, heron, ibis] and [row["record"] for row in result["parked"]] == [fern, heron]
+    usage = {row["record"]: row["usage"] for row in service.run_logs(notebook) if row.get("outcome") in ("parked", "completed")
+             and row.get("record")}
+    assert usage == {fern: {"input_tokens": 14}, heron: {"input_tokens": 9}, ibis: {"input_tokens": 7}}

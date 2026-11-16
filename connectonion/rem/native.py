@@ -1153,9 +1153,10 @@ def _park(root, task, why):
             "candidate": candidate, "refusals": task["refusals"], **_what_next(task, True)}
 
 
-def park(root, task_id, why, *, record=None):
+def park(root, task_id, why, *, record=None, usage=None):
     """Park a task from outside a submit, for exec: one refused without a count (a
     claim audit asked to continue again and again), or one it could not settle.
+    `usage` is what a turn that timed out reported before it was closed: it is paid for.
 
     A task that is already settled keeps what was recorded. One that is no longer
     the round's pending task has nothing left to discard, so only the ledger
@@ -1167,6 +1168,7 @@ def park(root, task_id, why, *, record=None):
         task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
         if task.get("status") == "pending" and read_json(state_path(root, "round.json"), {}).get("pending") == task_id:
             task.setdefault("refusals", [])
+            _usage(task, _turns_usage(task, usage))
             return _park(root, task, why)
         settled = _settled(task)
         if settled:
@@ -1199,6 +1201,7 @@ def settle(root, task_id, *, usage=None):
     root = root.resolve()
     with maintenance_lock(root, operation="submit"):
         task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
+        usage = _turns_usage(task, usage)
         settled = _settled(task)
         if settled:
             _usage(task, usage)
@@ -1206,6 +1209,17 @@ def settle(root, task_id, *, usage=None):
             write_json(run, {**read_json(run, {}), "usage": task.get("usage")})
             return {**settled, "settled_by": "worker"}
     return submit(root, task_id, usage=usage)
+
+
+def _turns_usage(task, usage):
+    """The task's tokens so far plus this turn's: every turn exec runs is a thread of its own.
+
+    2026-11-17: a task's record kept the usage of its last turn, so a page that took a
+    render and two repairs recorded a third of its tokens: 0.91M input tokens recorded
+    of 9.2M used in one night, and the quota points of a run without a meter reading
+    are computed from them. A scheduled session's own `co rem submit --usage-json`
+    still replaces: it reports its thread's total."""
+    return runner._add_usage(task.get("usage"), usage) if usage else usage
 
 
 def _continue_review(root, task, reason):
