@@ -332,6 +332,17 @@ def prepare_batch(root, cursor, config, directory):
     return None
 
 
+def _progress_not_saved(root, cursor, batch):
+    """An abandoned batch leaves the scan point where it was; its run record says so, and why.
+
+    2026-11-16: the save was skipped without a word, so the same 40 mails were read five
+    times in a day and status could only say the mailbox was "not read since" nine days ago.
+    Said when the batch is abandoned: a discarded extract closes the batch at once."""
+    batch["record"]["progress_not_saved"] = batch["abandoned_reason"]
+    cursor["run"]["batch"] = batch["record"]
+    write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
+
+
 def prepare_task(root, cursor, config, directory):
     _reset_attempts(root, cursor)
     task = prepare_batch(root, cursor, config, directory)
@@ -901,10 +912,21 @@ def _finish_feedback(root, progress, before, items, task, result):
     return read_json(state_path(root, "progress.json"), {})
 
 
+def _parked_lead(task):
+    """One page of the batch was parked: the batch was read, and that page's material is in the ledger.
+
+    2026-11-16: a parked page abandoned its whole batch, so one page that could not pass
+    its claim audit sent the same 40 mails through extract and maintain again every round.
+    A discarded extract, a task discarded for any other reason and a parked task with no
+    page of its own still abandon the batch: nothing holds their material."""
+    return bool(task.get("parked") and task["handler"] != "extract" and task.get("record"))
+
+
 def _advance_batch(root, cursor, task, result):
     batch = cursor["batch"]
-    if result.get("discarded"):
-        batch["abandoned"] = True
+    if result.get("discarded") and not _parked_lead(task):
+        batch.update(abandoned=True, abandoned_reason=result["discarded"])
+        _progress_not_saved(root, cursor, batch)
         if task["handler"] == "extract":
             batch["done"] = True
     elif batch["selected_feedback"] and task["record"]:

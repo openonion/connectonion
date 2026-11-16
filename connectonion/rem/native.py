@@ -934,6 +934,18 @@ def _park_reason(refusals):
     return None
 
 
+def _batch_material(task, items):
+    """What a parked batch page's retry reads: the batch's own material, never the page.
+
+    2026-11-16: the batch's scan point moves on when one of its pages is parked (see
+    `native_round._advance_batch`), so that mail is not collected again. The ledger held
+    source ids only, and a retry without material is a new investigation of the page,
+    which cannot be made from ids. Other tasks are prepared again from their own queues."""
+    if task["operation"] != "batch":
+        return None
+    return [item for item in items if item.get("role") != "page"]
+
+
 def _park(root, task, why):
     """Set the task aside for a later day, recorded with its reasons; the round moves on."""
     from .catchup import number
@@ -944,8 +956,9 @@ def _park(root, task, why):
     candidate = str(page) if page.is_file() else None
     task["parked"] = True
     if task.get("record"):
-        remember_refusal(root, task["record"], material_sources(task["task"].get("items", [])), reason,
-                         stage="parked", parked=True, candidate=candidate)
+        items = task["task"].get("items", [])
+        remember_refusal(root, task["record"], material_sources(items), reason, stage="parked", parked=True,
+                         candidate=candidate, material=_batch_material(task, items))
     _discard(root, read_json(state_path(root, "round.json"), {}), task, reason, outcome="parked",
              refusals=[refusal[:300] for refusal in task["refusals"]], record=task.get("record"),
              candidate=candidate, parked_night=number(root))

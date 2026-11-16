@@ -647,6 +647,11 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
         return f"last read failed {day}{reason}{good}", ""
     missing = (f"{last['dropped_missing']} queued messages dropped as missing"
                if last and last.get("dropped_missing") else "")
+    unsaved = _progress_not_saved(logs, kind)
+    if unsaved:
+        day = timestamp(unsaved["started_at"]).astimezone(zone).date()
+        return (f"read {day}, but its progress was not saved ({unsaved['progress_not_saved']}); "
+                "the same mail is read again next round"), ""
     scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
     if scanned and now() - timestamp(scanned) > timedelta(days=2):
         if any(run.get("phase", "sync") == "sync" and timestamp(run["started_at"]) > timestamp(scanned)
@@ -659,6 +664,13 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     if last and now() - timestamp(last["at"]) > timedelta(days=1):
         return f"last read {age(now() - timestamp(last['at']))} ago", ""
     return "", ""
+
+
+def _progress_not_saved(logs: list[dict], kind: str) -> dict:
+    """The mailbox's last batch, when its round abandoned it and left the scan point where it was."""
+    batches = (run["batch"] for run in logs if isinstance(run.get("batch"), dict))
+    last = next((batch for batch in batches if kind in batch.get("items_by_source", {})), {})
+    return last if last.get("progress_not_saved") else {}
 
 
 def _nights(root: Path) -> list[dict]:

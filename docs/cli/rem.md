@@ -506,6 +506,17 @@ there is no age expiry for queued mail. Existing local corrections and captured
 material take priority over source batches, so a sustained local backlog can also
 delay mail. Rejected page material is retained in
 refusal state after a successful batch advances its mail queue.
+In the native round a batch's page that is parked (refused twice for one reason,
+or three times) does the same: the batch's scan point is saved, and the parked
+page keeps that batch's material in the refusal ledger for its retry, so one
+page that cannot pass its claim audit no longer sends the same mail through
+extract and maintain every round (2026-11-16: 40 mails read five times in a
+day, the scan point nine days behind). A batch is still left unsaved when its
+extract task or any task that is not a parked page is discarded; then the
+batch's run record carries `progress_not_saved` with the reason, and
+`co rem status` says for that mailbox `read <date>, but its progress was not
+saved (<reason>); the same mail is read again next round` instead of "not read
+since".
 
 Compatibility command `co rem sync`: Collect, then investigate what is unfinished;
 use co rem collect for new material only, co rem catchup for a whole day.
