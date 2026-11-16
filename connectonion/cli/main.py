@@ -791,6 +791,37 @@ def call(
     raise typer.Exit(handle_call(args or []))
 
 
+@app.command(epilog="Examples:  co send 0x3d40... ./C2350.MP4  |  co send 0x3d40... ./footage/  |  co receive")
+def send(
+    address: str = typer.Argument(..., help="The receiving agent's address (0x...)"),
+    paths: List[str] = typer.Argument(..., help="Files or folders to send"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay used to look the agent up (default: configured backend)"),
+):
+    """Sends files to another agent, verified by sha256; an interrupted send resumes.
+
+    The receiving agent must be running and reachable on the same network or
+    at a public address. Files go straight to it, never through a relay server.
+    Only a contact, a whitelisted address or an admin of the receiver may
+    send; files land in its .co/inbox/files/<date>/ and never overwrite
+    anything. A folder arrives as the files inside it, under its own name.
+    """
+    from .commands.send_commands import handle_send
+    raise typer.Exit(handle_send(address, paths, relay))
+
+
+@app.command(epilog="Examples:  co receive  |  co receive --json")
+def receive(
+    json_output: bool = typer.Option(False, "--json", help="Print the list as JSON"),
+):
+    """Read-only: list the files other agents sent here, verified ones only.
+
+    Run it in the folder where the receiving agent runs. Files are in its
+    .co/inbox/files/<date>/; `co send` on the other machine sends them.
+    """
+    from .commands.send_commands import handle_receive
+    raise typer.Exit(handle_receive(json_output))
+
+
 @app.command(epilog='Example:  co ai "explain what agent.py does"  |  co ai --port 8000')
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),

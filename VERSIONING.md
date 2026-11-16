@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc18
+## Current Version: 1.9.6rc19
+Release candidate 1.9.6rc19 for 1.9.6: `co send <address> <file or folder>` sends files to another
+agent's running Host, byte for byte and verified by sha256, and `co receive` lists what arrived. An
+interrupted send continues from where it stopped (measured: 5 GiB from a laptop to a mini PC on the
+office network, stopped at 1.2 GB and resumed there). Only the receiver's contacts may send, the
+bytes never go through the relay, and sealed client sockets no longer offer compression. Stable
+remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc19.md).
+
+- 1.9.6rc19 (co send / co receive: files between agents, verified and resumable; no deflate on sealed sockets).
+
+### Previous candidate: 1.9.6rc18
+
 Release candidate 1.9.6rc18 for 1.9.6: found on the owner's Mac, where one scheduled turn ran
 `co rem next` three times, each to its ten-minute deadline on the same person's page, and was
 recorded as completed. The page is now parked by name and the next call serves other work; a turn
