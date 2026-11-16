@@ -237,9 +237,23 @@ def test_abstract_cap_releases_later_night_jobs(book, abstract_config, monkeypat
                             [] if uninvestigated else [{'id': 'pair'}])
         monkeypatch.setattr(same_person, 'prepare', lambda *a, **kw: {})
     else:
+        monkeypatch.setattr(native_round, 'translation_share', lambda root: 1)
         monkeypatch.setattr(native_round, 'prepare_translation', lambda *a: {'stage': 'translate'})
     following = native_round.prepare_task(book.root, state, abstract_config, book.root / 'following')
     assert following['stage'] == tail
+
+
+def test_the_closing_translation_pass_takes_one_share_and_lets_the_round_finish(book, abstract_config, monkeypatch):
+    # With 361 pages waiting the closing pass ran until the backlog was empty, the round
+    # never completed, and Deepen, which starts after a completed round, never ran.
+    monkeypatch.setattr(native_round, 'translation_share', lambda root: 2)
+    monkeypatch.setattr(native_round, 'prepare_translation', lambda *a: {'stage': 'translate'})
+    finished = []
+    monkeypatch.setattr(native_round, 'finish', lambda root, state: finished.append(True))
+    state = cursor()
+    served = [native_round.prepare_task(book.root, state, abstract_config, book.root / f't-{n}') for n in range(3)]
+    assert [task and task['stage'] for task in served] == ['translate', 'translate', None]
+    assert finished == [True]
 
 
 def test_replayed_success_does_not_open_another_reserved_slice(book, abstract_config):

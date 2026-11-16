@@ -383,7 +383,10 @@ def prepare_task(root, cursor, config, directory):
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
-    task = prepare_translation(root, cursor, config, directory)
+    # The closing pass takes one share, like a portion's: it used to run until the
+    # backlog was empty, and with 361 pages waiting the round never completed, so
+    # Deepen, which starts only after a completed round, never ran.
+    task = _translation_turn(root, cursor, config, directory)
     if task:
         return task
     from .night import listing
