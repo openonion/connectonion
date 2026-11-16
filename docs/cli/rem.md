@@ -752,6 +752,16 @@ retry-then-park path; only a task another live process is working on stops
 the night (exit 1, with `co rem next --discard` named). `co rem submit` and
 `co rem next --discard` still work by hand.
 
+A page whose first investigation pass was accepted before a night ended keeps
+that draft into the next night and goes on to its remaining pass. A page that
+changed meanwhile is investigated again from the start, with one exception:
+when the only change is the contact script's own (First contact, Last contact,
+company and time zone filled from the mail index), the same script is applied
+to the draft and the page resumes. Before, that rewrite alone restarted a
+person's page at its first pass: 2,158 s and 10.75M tokens over three turns on
+2026-11-16 (#3083). An edit by you, or by a turn that read new mail, still
+restarts the page.
+
 The same holds for a task exec cannot settle. Its instructions print the
 submit command, and the worker may run it itself: exec then reports what that
 submit recorded (accepted, or parked after its refusals) instead of submitting

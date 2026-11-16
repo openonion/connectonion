@@ -645,7 +645,8 @@ def _prepare_job(root, cursor, config, directory):
         job.update(kind=daily._route(root, record), days=daily.RETRY_DAYS, retry_refused=True)
     if job["kind"] == "project":
         return _project_task(root, cursor, config, directory, record)
-    if cursor["current"] and cursor["current"].get("before", book.read(record)) != book.read(record):
+    if (cursor["current"] and cursor["current"].get("before", book.read(record)) != book.read(record)
+            and not _carried_past_basics(book, cursor["current"])):
         # The page changed under its open investigation (mail read while the floor held
         # the round, or the owner): investigate it again from the page as it is now.
         cursor["current"] = None
@@ -685,6 +686,24 @@ def _prepare_job(root, cursor, config, directory):
         task["input_paths"].append(state["findings_path"])
     return {**_task("runner", task, cursor, stage="investigate", record=record,
                     number=state["number"], operation="investigation"), "pass": state.get("tail", "parts")}
+
+
+def _carried_past_basics(book, state):
+    """Keep an accepted draft when the only change to its page is the contact script's own.
+
+    2026-11-16 (#3083): a person's parts pass was accepted, the night ended, and the
+    next night's preparation filled Last contact with a mail the draft had already
+    read. That rewrite alone restarted the page at parts round 1: 2,158 s and 10.75M
+    tokens over three turns. When the script applied to the page the draft started
+    from gives the page as it is now, nothing else changed; the same script is
+    applied to the draft, as it is to every page after promotion, and the round goes
+    on to its next pass. Any other change is still read again from the start."""
+    from .people_basics import fill
+    record, page = state["record"], book.read(state["record"])
+    if not state.get("draft") or fill(book, record, state["before"]) != page:
+        return False
+    state.update(before=page, draft=fill(book, record, state["draft"]))
+    return True
 
 
 def _retry_task(root, cursor, config, directory, job):
