@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = {name: yaml.safe_load((ROOT / f'.github/workflows/{name}.yml').read_text())
              for name in ('tests', 'help-gate', 'release')}
 JOBS = WORKFLOWS['tests']['jobs']
-PR_SHARDS = 12
+PR_SHARDS = 10
 NATIVE = {'remote-browser-egress': 'egress', 'windows-browser': 'browser',
           'windows-e2e': 'e2e', 'windows-first-run': 'e2e', 'windows-rem-reader': 'reader',
           'macos-e2e': 'e2e'}
@@ -81,6 +81,9 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
     # Four processes a job, each a shard of its own: no xdist worker collects another's files.
     assert 'scripts/ci_test_shard.py $(( (SHARD - 1) * 4 + part )) $(( SHARD_COUNT * 4 ))' in command['run']
     assert 'for part in 1 2 3 4' in command['run'] and '--dist' not in command['run']
+    # A background command without job control ignores SIGINT, and so does every test's child.
+    assert command['run'].index('set -m') < command['run'].index('pytest $(')
+    assert 'wait "${pids[part - 1]}" || failed=1' in command['run'] and command['run'].rstrip().endswith('exit "$failed"')
     assert 'COVERAGE_FILE="$COVERAGE_DATA-$part"' in command['run']
     assert step(JOBS['test'], "Upload this shard's coverage data")['with']['path'] == '.coverage.shard-${{ matrix.shard }}-*'
     assert '--cov=connectonion --cov-report=' in command['env']['COVERAGE_ARGS']
@@ -91,9 +94,9 @@ def test_ci_pr_is_one_python_but_main_and_reusable_runs_keep_the_full_matrix():
     assert 'test_the_shards_together_audit_every_page_once' in str(JOBS['tests-passed'])
     assert '--fail-under=78' in str(JOBS['tests-passed'])
     # A PR with every native path filtered out stays under the 20 jobs the plan
-    # runs at once: 12 test + 4 audit + lock, then the summary. Native jobs
-    # start after lockfile, when the short jobs of the other workflows are done.
-    assert PR_SHARDS + 4 + 1 == 17 < 20
+    # runs at once, with room for CodeQL, blog-gate and triage beside it:
+    # 10 test + 4 audit + lock, then the summary. Native jobs start after lockfile.
+    assert PR_SHARDS + 4 + 1 == 15 < 20
     assert set(JOBS) == {'lockfile', 'test', 'tests-passed', 'cli-help-audit', *NATIVE}
 
 

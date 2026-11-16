@@ -138,12 +138,14 @@ jobs:
   # is cut into parts by the shard script, which is what --dist worksteal was
   # for (test_cli_tips_name_real_commands.py, 150 s traced, on one worker). No more
   # shards than needed: the free plan runs 20 jobs at once across the whole org.
-  # PRs run only 3.12, in twelve shards. The count is fixed, and this job waits
+  # PRs run only 3.12, in ten shards. The count is fixed, and this job waits
   # for no other: behind `needs: lockfile` every shard started 40 s after the
   # push (run 43774366961), and tests-passed still requires lockfile itself.
+  # Ten, not twelve: with twelve a PR that also starts help-gate asked for 27
+  # jobs at once and four waited 16 to 51 s for a runner (run 43777337433).
   # Use the existing JUnit weights and recorder, never invented times.
   test:
-    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ github.event_name == 'pull_request' && 12 || matrix.python-version == '3.11' && 6 || 8 }}
+    name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ github.event_name == 'pull_request' && 10 || matrix.python-version == '3.11' && 6 || 8 }}
     runs-on: ubuntu-latest
     # A shard still running at fifteen is hung; the per-test timeout in
     # pytest.ini has already named the culprit, and this is the backstop for a
@@ -153,7 +155,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.12"]' || '["3.11", "3.12", "3.13"]') }}
-        shard: ${{ fromJSON(github.event_name == 'pull_request' && '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]' || '[1, 2, 3, 4, 5, 6, 7, 8]') }}
+        shard: ${{ fromJSON(github.event_name == 'pull_request' && '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]' || '[1, 2, 3, 4, 5, 6, 7, 8]') }}
         # 3.12 (traced) and 3.13 run their tests ~40% slower than 3.11, so they
         # take eight shards to 3.11's six to stay near two minutes a shard.
         exclude:
@@ -197,9 +199,13 @@ jobs:
           # function: line coverage, measured the same, at a fraction of the cost.
           COVERAGE_CORE: sysmon
           COVERAGE_ARGS: ${{ matrix.python-version == '3.12' && '--cov=connectonion --cov-report=' || '' }}
-          SHARD_COUNT: ${{ github.event_name == 'pull_request' && 12 || matrix.python-version == '3.11' && 6 || 8 }}
+          SHARD_COUNT: ${{ github.event_name == 'pull_request' && 10 || matrix.python-version == '3.11' && 6 || 8 }}
           SHARD: ${{ matrix.shard }}
         run: |
+          # Job control on: without it bash starts a background command with
+          # SIGINT ignored, every child inherits that, and `co host` under test
+          # never saw its Ctrl-C (test_one_host.py, run 43777337433).
+          set -m
           pids=()
           for part in 1 2 3 4; do
             COVERAGE_FILE="$COVERAGE_DATA-$part" \
@@ -247,7 +253,7 @@ jobs:
   # tree. Only native jobs filtered out by paths may be skipped. Failures and
   # cancellations stay red, including when a dependency causes another skip.
   # Combining the two artifact checks here saves two runner allocations without
-  # removing either gate: a PR has 18 jobs, at most 25 with all native paths.
+  # removing either gate: a PR has 16 jobs, at most 23 with all native paths.
   tests-passed:
     needs: [lockfile, test, cli-help-audit, remote-browser-egress, windows-browser, windows-e2e, windows-first-run, windows-rem-reader, macos-e2e]
     if: always()
