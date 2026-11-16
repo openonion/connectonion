@@ -33,7 +33,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     found = pages(Path(root))
     counts = notebook(root, found)
     lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found), *_today(root, value), "",
-             *(highlight(row['text']) for row in value.get('stages', [])), "",
+             *(highlight(part) for row in value.get('stages', []) for part in _clause_rows(row['text'])), "",
              *([highlight(value['calendar']['text']), ""] if value.get('calendar') else []),
              *([highlight(value['day_plan']['text']), ""] if value.get('day_plan') else []),
              *_notebook(root, value, counts, spell), "",
@@ -448,6 +448,25 @@ def _last_run(run, zone) -> str:
 
 def _compact(tokens) -> str:
     return style.count(rem_look.compact(tokens))
+
+
+def _clause_rows(text: str) -> list[str]:
+    """A stage's sentence broken after a `;` wherever the next clause would pass
+    80 columns, the rest two spaces in. The Abstract line gained its three page
+    counts and the Investigate line its shares and budget hold, and each ran past
+    the width every other row of status keeps. `--json` keeps the one sentence."""
+    import textwrap
+    rows = []
+    for clause in text.split('; '):
+        first, *rest = textwrap.wrap(clause, 78, break_on_hyphens=False, break_long_words=False)
+        if rows and len(rows[-1]) + 2 + len(first) <= 80:
+            rows[-1] += '; ' + first
+        else:
+            if rows:
+                rows[-1] += ';'
+            rows.append(('  ' if rows else '') + first)
+        rows += ['  ' + part for part in rest]
+    return rows
 
 
 def _level_rows(line: str) -> list[str]:

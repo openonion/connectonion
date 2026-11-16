@@ -124,9 +124,11 @@ def test_status_five_stages_match_json_and_saved_queues(stage_book, monkeypatch)
         'Abstract: 1 captured decision waiting; last ran 2026-11-04; 0 decisions · 0 knowledge · 0 principles',
         'Translate: 3 page translations waiting; last ran 2026-11-05',
     ]
-    lines = [line.strip() for line in result.stdout.splitlines()]
-    assert [line for line in lines if any(line.startswith(name + ':') for name in
-            ('Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate'))] == expected
+    lines = result.stdout.splitlines()
+    first = lines.index(expected[0])
+    # Status stays 80 columns wide: the Abstract sentence breaks after a `;`, its page counts two spaces in.
+    assert lines[first:first + 6] == [*expected[:3], 'Abstract: 1 captured decision waiting; last ran 2026-11-04;',
+                                      '  0 decisions · 0 knowledge · 0 principles', expected[4]]
     assert 'Notebook' in result.stdout and 'Today' in result.stdout
     raw = cli.invoke(app, [*args, '--json', 'status'])
     assert raw.exit_code == 0, raw.output

@@ -637,7 +637,10 @@ translation queues; investigation counts distinct pages awaiting writing, sessio
 summaries, same-person checks or reply preparation; collection counts listed mail waiting from enabled, approved sources. Disabled
 or unapproved source queues are shown separately as held; unlisted mail and
 sessions are not counted. Collection dates include batch receipts inside native
-daily rounds as well as standalone batches, and ignore empty checks. The same rows are under `stages` in `--json`.
+daily rounds as well as standalone batches, and ignore empty checks. A stage's sentence that would pass 80 columns
+breaks after a `;` and continues two spaces in on the next line (the Abstract line's page counts, the Investigate
+line's shares). The same rows are under `stages` in `--json`, each sentence whole in `text`; `calendar` and
+`day_plan` carry the calendar line and the day plan line beside them.
 
 | Command | Behavior |
 |---|---|

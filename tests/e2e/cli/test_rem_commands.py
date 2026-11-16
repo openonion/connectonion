@@ -917,6 +917,9 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     last = lines.index('Last run         investigate people/alice.md · completed')
     assert lines[last + 1].endswith(' · 1 page changed · 91k tokens in')
     assert lines[-1] == f'Next: co rem --root {tmp_path} investigate people'  # the first thing to write (#2008)
+    # A stage sentence that would pass 80 columns breaks after a `;` (the Abstract line with its page counts).
+    abstract = lines.index('Abstract: 0 captured decisions waiting; last ran never;')
+    assert lines[abstract + 1] == '  0 decisions · 0 knowledge · 0 principles'
     assert [line for line in lines if len(line) > 80 and not line.lstrip().startswith(('→', 'Next:', 'Notebook'))] == []
     for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
         assert internal not in '\n'.join(lines), internal
@@ -937,7 +940,12 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
                                  'investigation_this_week', 'quota', 'investigation_quota',
                                  'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight',
-                                 'round', 'nights', 'paused'}
+                                 'round', 'nights', 'paused',
+                                 # The five stage rows (#3053), calendar freshness (#3057), the saved day plan (#3058).
+                                 'stages', 'calendar', 'day_plan'}
+    assert [row['name'] for row in data['data']['stages']] == ['Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate']
+    assert data['data']['calendar'] == {'last_read': None, 'events': 0, 'text': 'Calendars: never read'}
+    assert set(data['data']['day_plan']) == {'saved_at', 'text'}
     assert data['data']['schedule_runner'] == schedule_runner
     assert data['data']['paused'] is None  # always present: null until the Codex floor stops a round (#2938)
     assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}

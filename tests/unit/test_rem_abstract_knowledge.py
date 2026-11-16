@@ -165,8 +165,10 @@ def test_abstract_reports_three_counts_and_keeps_decisions_status(book, monkeypa
     again = cli.invoke(app, ['rem', '--root', str(book.root), 'abstract', '--rounds', '1'])
     assert 'Pages: 1 decisions · 1 knowledge · 1 principles' in again.output
     status = cli.invoke(app, ['rem', '--root', str(book.root), 'status'])
-    line = next(line for line in status.output.splitlines() if line.startswith('Abstract:'))
-    assert '1 decisions · 1 knowledge · 1 principles' in line
+    lines = status.output.splitlines()
+    line = next(index for index, line in enumerate(lines) if line.startswith('Abstract:'))
+    # The counts are the sentence's last clause, on its own line where the sentence would pass 80 columns.
+    assert '1 decisions · 1 knowledge · 1 principles' in ' '.join(lines[line:line + 2])
     status_json = cli.invoke(app, ['rem', '--root', str(book.root), '--json', 'status'])
     abstract = next(row for row in json.loads(status_json.output)['data']['stages'] if row['name'] == 'Abstract')
     assert abstract['pages'] == data['pages']
