@@ -739,6 +739,17 @@ correction: …`); the task's instructions file lists up to five in full. Two
 audit refusals are the same reason only when they fail the same claims: the
 sentence above the findings is the same for every audit, so comparing it
 parked a page whose second refusal was about something else (#3083).
+One refusal is settled without parking. When the refusal that would park a
+page names nothing but lost quotes or sources (`Dropped quote the page had`,
+`Dropped source id the page had`), review puts the lines that cited them back
+unchanged beside the rewrite and accepts the page, as enrich and muse do. The
+repair before it asks for the sentence that cited each one, with its citation:
+a Sources entry no sentence cites is removed again, so adding the id alone was
+refused for the same ids until the page parked (2026-11-17). The submit says
+how many lines came back, and the run record keeps the count
+(`restored_lines`). A line the worker removed on purpose is back too: review
+cannot tell a deliberate cut from a lost one. A page accepted this way has no
+cited-claim audit; its `review.json` says `not automatically assessed`.
 A task refused twice for the same reason, or three times in all, is parked:
 the reason goes to the refusal ledger (`.state/refused-investigations.json`),
 the last candidate and its `review.json` stay in the task's folder under

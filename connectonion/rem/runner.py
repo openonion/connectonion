@@ -296,6 +296,9 @@ _THREADS = contextvars.ContextVar("rem_turn_threads", default=None)
 # The tier check fills a fixture page to see what a model can do; auditing its
 # made-up claims would cost a model call and measure nothing (tier.attempt).
 AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
+# Set by a native submit whose refusal would park the page for nothing but lost quotes and
+# sources: the review then puts those lines back itself (`restore_dropped`) and keeps the page.
+RESTORE_DROPS = contextvars.ContextVar("rem_restore_drops", default=False)
 
 
 def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: str = "") -> dict:
@@ -783,7 +786,11 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
                  "fetching a URL the page already cites is not new research. If the page cannot be fetched, "
                  "remove that citation and any claim that rests on it alone.")
     if any(error.startswith("Dropped") for error in errors):
-        text += " Put each named quote and source back where it was, unchanged, unless an original contradicts it."
+        # 2026-11-17: "put each source back" was answered with Sources entries nothing cited;
+        # review removes those as uncited, so the same ids were refused until the page parked.
+        text += (" For each named quote or source, restore the sentence that cited it, with its citation, "
+                 "unchanged, unless an original contradicts it. A Sources entry that no sentence cites is "
+                 "removed again, so adding the id to Sources alone is refused for the same reason.")
     if record.startswith("projects/"):
         text += (" Replace invented `git:` or `file:` citations with supplied source ids, or with pinned ones: "
                  "a `file:` id needs a file under mapped Paths and its current SHA-256, a `git:` id a full "
@@ -849,12 +856,16 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             result["repair_usage"] = _add_usage(result["repair_usage"], repair.get("usage")) or {}
             result["usage"] = _add_usage(result.get("usage"), repair.get("usage"))
             result["result"] = str(result.get("result") or "") + '\n' + str(repair.get("result") or "")
-    if native or not errors or not all(error.startswith(SALVAGEABLE) for error in errors):
+    # A native page has its repair turns between submits, so its last resort is submit's to
+    # ask for (RESTORE_DROPS), and only for what restoring settles: lost quotes and sources.
+    salvageable = "Dropped " if native else SALVAGEABLE
+    if (native and not RESTORE_DROPS.get()) or not errors or not all(error.startswith(salvageable) for error in errors):
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                        lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried,
                        report=str(result.get("result") or ""),
-                       stage_progress=stage_progress)
+                       stage_progress=stage_progress,
+                       **({"native": True, "draft_only": draft_only} if native else {}))
 
 
 def _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress):

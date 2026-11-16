@@ -2796,3 +2796,45 @@ def test_a_native_task_says_what_is_inline_and_that_task_json_is_not_for_reading
     assert '<material>' in prompt and source in prompt
     assert 'task.json is the runner\'s own record of this task, not material: do not read it.' in prompt
     assert prompt == (Path(task['material']) / 'instructions.md').read_text()
+
+
+OLD_SOURCE = 'codex:fixture:7'
+
+
+def _rewrite_dropping_a_source(trial):
+    """A page that cites one source, and a rewrite for new material that leaves that sentence out."""
+    record, source = _feedback(trial)
+    book = Notebook(trial)
+    book.write(record, book.read(record)
+               .replace('## Who they are\n- Unknown — not investigated yet', '## Who they are\n- Avery Lin runs the pilot. [1]')
+               .replace('## Sources\n', f'## Sources\n- [1] {OLD_SOURCE}\n'))
+    task = native.next_task(trial)
+    assert task['record'] == record, task
+    rewrite = book.read(record).replace('Avery Lin runs the pilot. [1]', 'Avery Lin requested a pilot review. [1]')
+    Path(task['candidate']).write_text(rewrite.replace(OLD_SOURCE, source), encoding='utf-8')
+    return record, OLD_SOURCE, task
+
+
+def test_a_dropped_source_repair_says_to_restore_the_sentence_that_cited_it(trial):
+    """2026-11-17: told to put each source back, the worker re-added Sources entries no line
+    cited; review removed them as uncited and refused the page for the same ids again."""
+    record, first, task = _rewrite_dropping_a_source(trial)
+    refused = native.submit(trial, task['id'])
+    assert refused['outcome'] == 'refused' and f'Dropped source id the page had: {first}' in refused['reason']
+    corrections = Path(refused['fix']).read_text().split('## Reference: full render instructions')[0]
+    assert ('restore the sentence that cited it, with its citation' in corrections
+            and 'A Sources entry that no sentence cites is removed again' in corrections)
+    assert 'back where it was' not in corrections
+
+
+def test_a_page_refused_only_for_dropped_sources_is_restored_instead_of_parked(trial):
+    record, first, task = _rewrite_dropping_a_source(trial)
+    assert native.submit(trial, task['id'])['outcome'] == 'refused'
+    result = _submit(trial, task)  # the repair turn changed nothing: this refusal would park the page
+    assert result['outcome'] == 'accepted', result
+    page = Notebook(trial).read(record)
+    assert 'Avery Lin runs the pilot.' in page and 'Avery Lin requested a pilot review.' in page
+    assert first in page.partition('## Sources')[2]
+    assert any('1 line the rewrite removed was put back' in notice and 'removed on purpose is back too' in notice
+               for notice in result['notices'])
+    assert not native.pending(trial)

@@ -1011,7 +1011,7 @@ def test_carried_losses_are_repaired_or_restored_after_one_repair(notebook, monk
         assert phase == stage
         assert 'Dropped quote the page had: “Keep the original words”' in prompt
         assert 'Dropped source id the page had: gmail:aaaaaaaaaaaa' in prompt
-        assert 'Put each named quote and source back where it was, unchanged, unless an original contradicts it.' in prompt
+        assert 'restore the sentence that cited it, with its citation, unchanged, unless an original contradicts it.' in prompt
         if repair:
             candidate.write_text(PAGE + '\nA new finding.\n')
         return {}

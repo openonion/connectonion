@@ -974,12 +974,42 @@ def _check_submission(root, task):
         proposals = read_json(directory / "review-candidates.json", [])
         for proposal in proposals[:2] if isinstance(proposals, list) else []:
             _problem(root, proposal)
-        return native_round.check_task(root, task, output)
+        return _check_or_restore(root, task, output)
     except (RemError, json.JSONDecodeError) as error:
         if task["stage"] == "claim-audit" and isinstance(error, json.JSONDecodeError):
             return _continue_review(root, task, "Write valid JSON to audit-output.json. "
                                     "Continue checking from the notes and submit when every citation is checked.")
         return _refuse_submission(root, task, str(error))
+
+
+RESTORED = ("{count} the rewrite removed {was} put back unchanged beside its new text, because nothing else on the "
+            "page cited a quote or source the page had. A line removed on purpose is back too: review cannot "
+            "tell a deliberate cut from a lost one, and it is removed for good only by a rewrite that cites the "
+            "original contradicting it.")
+
+
+def _check_or_restore(root, task, output):
+    """Check the submission; one that would be parked only for lost quotes and sources is restored instead.
+
+    2026-11-17: told to improve and not append, a worker cut sentences that cited old
+    sources, its repairs could not bring them back, and the page was parked after three
+    refusals with a sound rewrite in it. The runner's own last resort (`restore_dropped`)
+    was never reached from a native submit."""
+    from . import native_round
+    directory = Path(task["directory"])
+    try:
+        return native_round.check_task(root, task, output)
+    except runner.RunFailed as error:
+        errors = read_json(directory / "review.json", {}).get("errors") or []
+        only_drops = errors and all(e.startswith("Dropped ") for e in errors) and str(error).endswith("; ".join(errors))
+        if not only_drops or not _park_reason([*task.get("refusals", []), str(error)]):
+            raise
+    token = runner.RESTORE_DROPS.set(True)
+    try:
+        result = native_round.check_task(root, task, output)
+    finally:
+        runner.RESTORE_DROPS.reset(token)
+    return {**result, "restored_lines": read_json(directory / "review.json", {}).get("restored_lines", 0)}
 
 
 def _repair_findings(directory, reason):
@@ -1281,11 +1311,15 @@ def _accept(root, cursor, task, result):
              if review.get("sources_unavailable")}
     _log(root, task, "completed", changed=result.get("changed", []),
          record=task["record"], report=result.get("report", ""), render_stage=task["render_stage"],
+         **({"restored_lines": result["restored_lines"]} if result.get("restored_lines") else {}),
          **({'draft': result['draft']} if task['handler'] == 'draft' and result.get('draft') else {}), **audit)
     write_json(Path(task["directory"]) / "task.json", task, readable=True)
     native_round.advance(root, cursor, task, result)
     runner.scrub_task(Path(task["directory"]))
-    return {"outcome": "accepted", "id": task["id"], "changed": result.get("changed", []),
+    lines = result.get("restored_lines")
+    said = {"notices": [RESTORED.format(count="1 line" if lines == 1 else f"{lines} lines",
+                                        was="was" if lines == 1 else "were")]} if lines else {}
+    return {"outcome": "accepted", "id": task["id"], "changed": result.get("changed", []), **said,
             **_what_next(task, bool(cursor.get("slot") or cursor.get("scheduled")))}
 
 
