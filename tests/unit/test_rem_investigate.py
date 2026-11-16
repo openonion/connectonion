@@ -616,6 +616,52 @@ def test_project_mentions_reuse_documents_across_people_and_reread_edits(project
     assert len(items) == 2 and walks == [folder, folder]
 
 
+def test_project_mentions_skip_a_folder_whose_listing_is_held_and_say_which(project_documents, monkeypatch):
+    """2026-11-16: macOS held the listing of two folders under ~/Documents behind a privacy
+    prompt nobody answered, and one person's page spent its ten minutes "searching project
+    documents"; the other 33 folders took 1.6 s together."""
+    import threading
+    import time
+    from pathlib import Path
+
+    book, folder = project_documents
+    (folder / 'notes/a.md').write_text('宋佳颐 delivery')
+    held = folder.parent / 'held'
+    held.mkdir()
+    (held / 'a.md').write_text('宋佳颐 behind the prompt')
+    book.stub_project('projects/held.md', 'Held', [str(held)])
+    answered, walks, walk = threading.Event(), [], inv.os.walk
+
+    def walking(root, **kwargs):
+        walks.append(root)
+        if Path(root) == held:
+            answered.wait(60)
+        return walk(root, **kwargs)
+
+    monkeypatch.setattr(inv.os, 'walk', walking)
+    monkeypatch.setattr(inv, 'DOCUMENT_LIST_SECONDS', 0.3)
+    began = time.monotonic()
+    items, coverage = inv.project_mentions(book, ['宋佳颐'])
+    assert time.monotonic() - began < 10
+    assert [item['file'] for item in items] == [str(folder / 'notes/a.md')]
+    assert coverage == ('project documents: 1 file(s) name the subject in 1 project folder(s) searched; '
+                        f'excerpts read from 1 file(s); skipped 1 project folder(s) not listed within 0.3 seconds: {held}')
+
+    # While that listing is still held, the next page neither waits for it nor asks again.
+    monkeypatch.setattr(inv, 'DOCUMENT_LIST_SECONDS', 30)
+    began = time.monotonic()
+    _, coverage = inv.project_mentions(book, ['Nobody Named'])
+    assert time.monotonic() - began < 10 and walks.count(held) == 1
+    assert coverage == ('project documents: 1 project folder(s) searched; none name the subject; '
+                        f'skipped 1 project folder(s) not listed within 30 seconds: {held}')
+
+    # Once someone answers the prompt the listing arrives, and the folder is read again.
+    answered.set()
+    inv._PROJECT_WALKERS[held.resolve()].join(10)
+    items, coverage = inv.project_mentions(book, ['宋佳颐'])
+    assert len(items) == 2 and 'skipped' not in coverage and walks.count(held) == 1
+
+
 @pytest.mark.parametrize('replacement', ['deleted', 'linked', 'linked-directory'])
 def test_project_mentions_recheck_cached_documents(project_documents, replacement):
     book, folder = project_documents
