@@ -205,3 +205,49 @@ def test_day_plan_project_promise_never_names_project_as_person():
                reply={'last_word_yours': True, 'promise': 'I will send it.'})
     chosen = proposals(plan(items=[row])['days'][0])[0]
     assert chosen['reason'] == 'open item on Harbour'
+
+
+def _real_shaped_events():
+    """The shapes a saved calendar.json really holds: offsets, date-only all-day rows, empty titles, a week-long timed row."""
+    row = lambda start, end, **extra: dict(id=start + end, title='', all_day=False, start=start, end=end, location='',
+                                           link='https://calendar.test/e', attendees=[], calendar='google', **extra)
+    return [row('2026-11-15T09:00:00+11:00', '2026-11-21T17:00:00+11:00') | {'title': 'Harbour sprint'},
+            row('2026-11-16', '2026-11-17') | {'all_day': True},
+            row('2026-11-16T14:00:00+11:00', '2026-11-16T15:00:00+11:00') | {'calendar': 'microsoft'},
+            row('2026-11-17T22:00:00+11:00', '2026-11-18T01:00:00+11:00') | {'title': 'Late call', 'location': 'Harbour Cafe'},
+            row('2026-11-21T08:00:00+11:00', '2026-11-21T08:00:00+11:00') | {'title': 'Reminder'}]
+
+
+def test_day_plan_real_shaped_saved_calendar_reaches_the_owner_reader_and_not_a_shared_page(tmp_path, monkeypatch):
+    """A page rendered without local=True is the shared one: it carries no meeting and no plan, by design."""
+    from connectonion.rem import calendar, day_plan, service
+    from connectonion.rem.reader import render, snapshot
+    prepare(tmp_path)
+    config = read_config(tmp_path)
+    config['schedule']['timezone'] = 'Australia/Sydney'
+    import yaml
+    (tmp_path / 'config.yaml').write_text(yaml.safe_dump(config))
+    moment = datetime(2026, 11, 16, 1, 6, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *a: pytest.fail('network'))
+    stamp = moment.isoformat(timespec='seconds')
+    write_json(state_path(tmp_path, 'calendar.json'), {'saved_at': stamp, 'days': 21, 'errors': {}, 'capped': [],
+               'read_at': {'google': stamp, 'microsoft': stamp}, 'events': _real_shaped_events()})
+    day_plan.save(tmp_path, moment)
+    own = snapshot(tmp_path, local=True)
+    assert len(own['calendar']['events']) == 5 and own['day_plan']['timezone'] == 'Australia/Sydney'
+    today, tomorrow = own['day_plan']['days']
+    assert today['date'] == '2026-11-16'
+    # A week-long timed event covers this whole day: it is all day here, never "00:00–00:00".
+    assert [(r['title'], r['all_day'], r['time'], r['end_time']) for r in today['items']] == [
+        ('Harbour sprint', True, '', ''), ('', True, '', ''), ('', False, '14:00', '15:00')]
+    late = next(r for r in tomorrow['items'] if r['title'] == 'Late call')
+    assert (late['time'], late['end_time'], late['address_missing']) == ('22:00', '24:00', True)
+    words = day_plan.text(own['day_plan'], '2026-11-16')
+    assert 'All day Harbour sprint' in words and '00:00–00:00' not in words
+    assert '14:00–15:00 No title' in words and 'All day No title' in words
+    assert 'Harbour Cafe — address not in the calendar event' in words
+    assert '"day_plan": null' not in render(tmp_path, live=False, local=True)
+    assert '"day_plan": null' not in render(tmp_path, live=True, local=True)
+    shared = snapshot(tmp_path)
+    assert shared['calendar'] is None and shared['day_plan'] is None and shared['shared'] is True

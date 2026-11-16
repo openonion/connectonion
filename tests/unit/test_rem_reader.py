@@ -4615,6 +4615,57 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
         assert result[key]['text'] == '中文版还没好，先看原文' and result[key]['class'] == 'translation-line'
 
 
+def _agenda_items(events, language='en'):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in
+                          ['agT', 'agDay', 'agToday', 'agTime', 'agLastDay', 'agendaItems', 'agItem', 'calendarDay'])
+    return _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions
+        + '\nuiLanguage = ' + json.dumps(language) + ';\nconst REM = {as_of: "2026-11-16T01:06:00+00:00", status: {timezone: "Australia/Sydney"},'
+        + ' today_queue: [], calendar: {events: ' + json.dumps(events) + '}};'
+        + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s;
+        const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean), removeAttribute() {}});
+        console.log(JSON.stringify(agendaItems().map(item => ({day: item.day, card: JSON.stringify(agItem(item))}))));""")
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_agenda_files_a_timed_event_on_every_day_it_covers_and_prints_its_place(language):
+    """A week-long timed event that began before this week was on no day of it; one past midnight was on one day only."""
+    event = lambda start, end, **extra: dict(title='', all_day=False, start=start, end=end, location='', link='') | extra
+    rows = _agenda_items([event('2026-11-15T09:00:00+11:00', '2026-11-18T17:00:00+11:00', title='Harbour sprint'),
+                          event('2026-11-16', '2026-11-17', all_day=True),
+                          event('2026-11-19T22:00:00+11:00', '2026-11-20T01:00:00+11:00', title='Late call', location='Harbour Cafe'),
+                          event('2026-11-20T20:00:00+11:00', '2026-11-21T00:00:00+11:00', title='Ends at midnight'),
+                          event('2026-11-21T08:00:00+11:00', '2026-11-21T08:00:00+11:00', title='Reminder')], language)
+    zh = language == 'zh'
+    days = lambda title: [row['day'] for row in rows if title in row['card']]
+    assert days('Harbour sprint') == ['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18']
+    cards = [row['card'] for row in rows if 'Harbour sprint' in row['card']]
+    assert '09:00' in cards[0] and ('全天' if zh else 'All day') in cards[1]
+    assert ('到 17:00' if zh else 'Until 17:00') in cards[3]
+    assert days('无标题' if zh else 'No title') == ['2026-11-16']
+    assert days('Late call') == ['2026-11-19', '2026-11-20'] and days('Harbour Cafe') == ['2026-11-19', '2026-11-20']
+    assert days('Ends at midnight') == ['2026-11-20'] and days('Reminder') == ['2026-11-21']
+
+
+@pytest.mark.parametrize('language', ['en', 'zh'])
+def test_day_plan_reader_names_an_untitled_event_and_keeps_the_address_sentence_to_the_rule(language):
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(_reader_function(name) for name in ['planWords', 'dayPlanItem', 'agT'])
+    ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
+    result = _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
+        + ';\nuiLanguage = ' + json.dumps(language) + r""";
+        const byPath = () => null, href = () => '#';
+        const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+        const event = {kind: 'event', title: '', time: '14:00', end_time: '15:00', link: '', location: '', address_missing: false};
+        console.log(JSON.stringify([event, {...event, all_day: true, time: '', end_time: ''},
+          {...event, title: 'Visit', location: '12 Harbour Street', address_missing: false}].map(dayPlanItem)));""")
+    untitled, all_day, placed = (json.dumps(row, ensure_ascii=False) for row in result)
+    name = '无标题' if language == 'zh' else 'No title'
+    assert '14:00–15:00 — ' + name in untitled and ('全天' if language == 'zh' else 'All day') + ' — ' + name in all_day
+    sentence = '日历事件中没有地址' if language == 'zh' else 'address not in the calendar event'
+    assert '12 Harbour Street' in placed and sentence not in placed and sentence not in untitled
+
+
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_day_plan_reader_words_links_addresses_tomorrow_and_no_calendar(language):
     page = TEMPLATE.read_text()

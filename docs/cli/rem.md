@@ -1371,6 +1371,9 @@ pinned to that edge: it comes into view with the draft.
   09:00–18:00; an optional `schedule.working_hours: {start: '09:00', end: '18:00'}`
   in `config.yaml` overrides them. There is no new settings screen. Overlapping
   events merge for availability; all-day events occupy the whole working day.
+  A timed event that runs through the whole of a day (a week away) is **All day**
+  on that day, and one that runs past midnight ends at 24:00 on the day it began;
+  an event without a title is **No title** (无标题).
   Items that cannot fit say **no free time today** (今天没有空闲时间).
   Tomorrow's first event and every location tomorrow appear below the list.
   If no calendar has ever been read, one sentence says so and proposals have
@@ -1391,7 +1394,12 @@ pinned to that edge: it comes into view with the draft.
   due date (**Due**, or **Late** in red once past) and agenda pages on the date
   they state (**Noted**). An event links to the calendar it came from and to the
   people pages of its guests (matched on a page's Email and Handles lines); a
-  promise or page links to its page. Open notebook items
+  promise or page links to its page. An event prints its location under its
+  title in the week and on a phone. A timed event is on every day it covers:
+  its start time on the first, **All day** between, **Until 17:00** (到 17:00)
+  on the last; one that ends at midnight is not on the next day. The owner's
+  own reader carries events and the plan; a page rendered for sharing
+  (`render` without `local=True`) carries neither. Open notebook items
   dated before today sit in one line under it, whichever week or month is shown.
   On a phone it is a day-by-day list of the next three weeks. Events come from
   `.state/calendar.json`, which each background round writes once (scheduled

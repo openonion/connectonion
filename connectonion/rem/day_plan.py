@@ -36,9 +36,12 @@ def _events(calendar, day, zone):
         if first >= end or last <= start:
             continue
         begin, finish = max(start, first), min(end, last)
-        rows.append({**event, 'kind': 'event', 'start': begin.isoformat(), 'end': finish.isoformat(),
-                     'time': '' if event.get('all_day') else begin.strftime('%H:%M'),
-                     'end_time': '' if event.get('all_day') else finish.strftime('%H:%M'),
+        # A timed event that runs through this whole day (a week away, a conference) is all day here,
+        # not "00:00–00:00"; one that runs past midnight ends at 24:00 on the day it began.
+        all_day = bool(event.get('all_day')) or (begin, finish) == (start, end)
+        rows.append({**event, 'kind': 'event', 'all_day': all_day, 'start': begin.isoformat(), 'end': finish.isoformat(),
+                     'time': '' if all_day else begin.strftime('%H:%M'),
+                     'end_time': '' if all_day else '24:00' if finish == end else finish.strftime('%H:%M'),
                      'address_missing': address_missing(event.get('location', ''))})
     return sorted(rows, key=lambda row: row['start'])
 
@@ -163,7 +166,7 @@ def read(root, *, items=None):
 
 def _event_text(row):
     when = 'All day' if row.get('all_day') else row['time'] + '–' + row['end_time']
-    parts = [when + ' ' + row['title'], *row.get('people', []), row.get('link', '')]
+    parts = [when + ' ' + (row['title'] or 'No title'), *row.get('people', []), row.get('link', '')]
     if row.get('location'):
         parts += [row['location'], 'address not in the calendar event' if row['address_missing'] else '']
     return ' — '.join(part for part in parts if part)

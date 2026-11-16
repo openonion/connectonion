@@ -2267,7 +2267,8 @@
   .ag-item.late .ag-time, .agenda-earlier a.late { color: var(--red); }
   .ag-title { font-weight: var(--w-bold); overflow-wrap: anywhere; }
   .ag-note { font-size: var(--s-meta); color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .ag-who { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
+  .ag-who, .ag-where { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
+  .ag-where { white-space: pre-wrap; }
   .ag-who a:hover { text-decoration: underline; }
   .agenda-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); background: var(--rule); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
   .ag-wd { background: var(--paper); padding: 6px 8px; font-size: var(--s-meta); color: var(--grey); }
@@ -2279,7 +2280,7 @@
   .ag-cell .ag-main { flex-direction: row; gap: 6px; }
   .ag-cell .ag-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: var(--w-regular); }
   .ag-cell .ag-time { flex: none; }
-  .ag-cell .ag-note, .ag-cell .ag-who { display: none; }
+  .ag-cell .ag-note, .ag-cell .ag-who, .ag-cell .ag-where { display: none; }
   .ag-more { font-size: var(--s-meta); color: var(--grey); padding: 0 6px; }
   .agenda-days { display: none; }
   .agenda-earlier { margin: 14px 0 0; font-size: var(--s-meta); color: var(--grey); line-height: 20px; }
@@ -3416,6 +3417,7 @@ const UI = {
   en: { "More of this card": "More", "Waiting on you, in the rail": "Waiting", "Organisations, in the rail": "Orgs" },
   zh: {
     "All day": "全天",
+    "No title": "无标题",
     "No calendar has been read yet.": "还没有读取过日历。",
     "No day plan has been saved yet.": "还没有保存过每天的安排。",
     "never": "从未",
@@ -8096,7 +8098,7 @@ function dealNext(step) {
 function planWords(item) {
   const when = item.all_day ? t("All day") : item.time ? item.time + "–" + item.end_time : t(item.placement || "");
   const reason = (item.reasons || []).map(reason => t(reason.text, reason.values)).join(uiLanguage === "zh" ? "；" : "; ");
-  return [when, item.kind === "proposal" ? t("Proposed") + ": " + item.text : item.title, reason].filter(Boolean).join(" — ");
+  return [when, item.kind === "proposal" ? t("Proposed") + ": " + item.text : item.title || t("No title"), reason].filter(Boolean).join(" — ");
 }
 function dayPlanItem(item) {
   const path = item.record, person = path && byPath(path);
@@ -9247,7 +9249,7 @@ function category(c) {
 // it, so a page the calendar cannot place is never lost. On a phone the same items are a day-by-day list.
 const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
-  "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题",
+  "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
   "Still open from earlier": "更早、仍开着",
   "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
@@ -9276,15 +9278,23 @@ function agLocale() { return uiLanguage === "zh" ? "zh-CN" : "en-GB"; }
 function agFormat(day, options) { return new Date(day + "T00:00:00Z").toLocaleDateString(agLocale(), { timeZone: "UTC", ...options }); }
 // 24-hour in the notebook's zone, the zone calendarDay files the event under.
 function agTime(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: REM.status?.timezone || "UTC" }); }
+// Both calendars end an all-day event on the day after its last. A timed one runs to the day its last
+// minute falls on: ending at midnight is the day before, and a week away covers each of its days.
+function agLastDay(e, first) {
+  if (e.all_day) return agDay(calendarDay(e.end) || agDay(first, 1), -1);
+  const start = new Date(e.start), end = new Date(e.end);
+  return end > start ? calendarDay(new Date(end - 1).toISOString()) : first;
+}
 function agendaItems() {
   const today = agToday(), items = [];
   for (const e of REM.calendar?.events || []) {
     const first = calendarDay(e.start);
     if (!first) continue;
-    // Both calendars end an all-day event on the day after its last; a timed one is filed under its start.
-    const last = e.all_day ? agDay(calendarDay(e.end) || agDay(first, 1), -1) : first;
+    const last = agLastDay(e, first), ends = e.all_day ? "" : agTime(e.end);
+    // Its start time on the day it starts, "Until 17:00" on the day it ends, all day on the days between.
     for (let day = first, n = 0; n === 0 || (day <= last && n < 62); day = agDay(day, 1), n++)
-      items.push({ day, time: e.all_day ? "" : agTime(e.start), title: e.title || agT("No title"), href: e.link, external: true,
+      items.push({ day, time: e.all_day || day !== first ? "" : agTime(e.start), title: e.title || agT("No title"), href: e.link, external: true,
+        when: day !== first && day === last && ends !== "00:00" ? agT("Until {time}", { time: ends }) : "", where: e.location || "",
         people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, kind: "event" });
   }
   const placed = new Set();
@@ -9309,14 +9319,15 @@ function agendaItems() {
   return items.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title));
 }
 function agItem(item) {
-  const when = item.kind === "event" ? (item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
+  const when = item.kind === "event" ? (item.when || item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
   const main = el("a", { class: "ag-main", title: item.title, href: item.href || "#", ...(item.external ? { target: "_blank", rel: "noopener" } : {}) }, [
     el("span", { class: "ag-time", text: when }), el("span", { class: "ag-title", text: item.title }),
     item.note ? el("span", { class: "ag-note", text: datesInProse(item.note) }) : null]);
   if (item.external && !item.href) main.removeAttribute("href");
   const who = item.people?.length ? el("span", { class: "ag-who" }, item.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]))
     : item.guests ? el("span", { class: "ag-who", text: item.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: item.guests }) }) : null;
-  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, who]);
+  const where = item.where ? el("span", { class: "ag-where", text: item.where }) : null;
+  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, where, who]);
 }
 function agColumnHead(day, today) {
   return el("header", { class: "ag-colhead" }, [day === today ? el("span", { class: "ag-now", text: agT("Today") }) : null,
