@@ -750,6 +750,14 @@ how many lines came back, and the run record keeps the count
 (`restored_lines`). A line the worker removed on purpose is back too: review
 cannot tell a deliberate cut from a lost one. A page accepted this way has no
 cited-claim audit; its `review.json` says `not automatically assessed`.
+A source counts as one the page had only when a sentence of the old page
+cites it. An id that was merely listed, or cited only inside a diagram, is
+removed from every candidate as uncited, so no repair could keep it and the
+restore had no line to bring back: a real run put 4 lines back and still
+parked the page for one such id (2026-11-17). It is no longer refused.
+The restore runs only when every error left is a dropped quote or source; a
+refusal that also names another error (a capture's format, a quote not in its
+source) is repaired by the worker and parked on the usual count.
 A task refused twice for the same reason, or three times in all, is parked:
 the reason goes to the refusal ledger (`.state/refused-investigations.json`),
 the last candidate and its `review.json` stay in the task's folder under

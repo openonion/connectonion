@@ -2860,3 +2860,24 @@ def test_a_page_refused_only_for_dropped_sources_is_restored_instead_of_parked(t
     assert any('1 line the rewrite removed was put back' in notice and 'removed on purpose is back too' in notice
                for notice in result['notices'])
     assert not native.pending(trial)
+
+
+def test_a_restored_page_is_not_parked_for_a_source_no_sentence_of_the_old_page_cited(trial):
+    """2026-11-17: the restore put 4 lines back and the page parked for a remaining dropped id."""
+    record, source = _feedback(trial)
+    book = Notebook(trial)
+    book.write(record, book.read(record)
+               .replace('## Who they are\n- Unknown — not investigated yet',
+                        '## Who they are\n- Avery Lin runs the pilot. [1]\n```\nrequest -> review [2]\n```')
+               .replace('## Sources\n', f'## Sources\n- [1] {OLD_SOURCE}\n- [2] codex:fixture:8\n'))
+    task = native.next_task(trial)
+    rewrite = (book.read(record).replace('Avery Lin runs the pilot. [1]', 'Avery Lin requested a pilot review. [1]')
+               .replace('```\nrequest -> review [2]\n```\n', '').replace('- [2] codex:fixture:8\n', ''))
+    Path(task['candidate']).write_text(rewrite.replace(OLD_SOURCE, source), encoding='utf-8')
+    refused = native.submit(trial, task['id'])
+    assert refused['outcome'] == 'refused' and f'Dropped source id the page had: {OLD_SOURCE}' in refused['reason']
+    assert 'codex:fixture:8' not in refused['reason']
+    result = _submit(trial, task)
+    assert result['outcome'] == 'accepted', result
+    page = book.read(record)
+    assert 'Avery Lin runs the pilot.' in page and OLD_SOURCE in page.partition('## Sources')[2]

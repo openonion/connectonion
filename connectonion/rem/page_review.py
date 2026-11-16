@@ -2058,6 +2058,16 @@ def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
 
 
+def _evidence_sources(text: str) -> set[str]:
+    """The source ids a page had as evidence: listed, and cited by a sentence.
+
+    2026-11-17: the retention check counted every listed id. One that no sentence cites
+    (left by an older page, or cited only inside a diagram) is removed from every
+    candidate as uncited, so no repair could keep it and `restore_dropped` had no line to
+    put back: 4 lines were restored and the page was still parked for a dropped id."""
+    return _listed_sources(drop_uncited_sources(text))
+
+
 def quotes(text: str) -> set[str]:
     """Links may change layout without changing the words the page kept."""
     return set(QUOTE.findall(re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose(text))))
@@ -2122,7 +2132,7 @@ def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     return ([f'Dropped quote the page had: “{quote}”'
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
-               for source in sorted(_listed_sources(before) - _listed_sources(after))])
+               for source in sorted(_evidence_sources(before) - _listed_sources(after))])
 
 
 def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
@@ -2142,7 +2152,7 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
         if section == 'Sources' or line in seen:
             continue
         lost_quotes = _lost_quotes(before, after, exempt)
-        lost_sources = _listed_sources(before) - _listed_sources(after)
+        lost_sources = _evidence_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
             continue
