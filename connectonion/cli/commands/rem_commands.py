@@ -166,7 +166,7 @@ def _file_error(error) -> str:
     if isinstance(error, RemError):
         return str(error)
     if isinstance(error, OSError):
-        return f"Cannot read or write the selected co rem files: {error}"
+        return f"Cannot access file or folder: {error}"
     if isinstance(error, UnicodeDecodeError):
         where = _decoding(error.__traceback__)
         return (f"{where or 'A co rem file'} is not UTF-8 text ({error.reason} at position {error.start}); "
@@ -190,6 +190,7 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     from ...rem.files import RemError
 
     _WRITTEN.clear()
+    preparation_error = None
     try:
         response = operation(ctx.obj["root"])
         value, arguments = response[:2]
@@ -197,6 +198,7 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     except KeyboardInterrupt:
         _interrupted(ctx, resume or retry or recovery)
     except (RemError, OSError, UnicodeError) as error:
+        preparation_error = error
         message = _file_error(error)
         # An error that says what to run is the Next line too. `sync` before
         # `start` said "run co rem start" and then printed "Next: co rem logs".
@@ -205,6 +207,10 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
                      retry if retry and getattr(error, "_rem_retry_page", False) else recovery)
         _emit(ctx, message, next_step, failed=True)
         return
+    finally:
+        if ctx.info_name == "next":
+            from ...rem.codex_exec import record_preparation
+            record_preparation(ctx.obj["root"], preparation_error or sys.exc_info()[1])
     _emit(ctx, value, arguments, failed=failed, draw=draw)
 
 

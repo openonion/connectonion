@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import WRITE_WAIT_SECONDS, RemError, atomic_write, is_address, maintenance_lock, read_json, state_path, write_json
-from .mail import _address, _addresses, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE
+from .mail import MissingMail, _address, _addresses, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE
 
 
 def _key(value: str) -> str:
@@ -134,7 +134,8 @@ def _archive_message(root: Path, row: dict, clients: dict) -> str:
     client = clients.get(provider)
     if client is None:
         raise RemError("Mail provider unavailable during body archive")
-    body = client.get_email_body(message_id)
+    from .mail import read_mail
+    body = read_mail(client.get_email_body, message_id, provider=provider, root=root)
     if not isinstance(body, str):
         raise RemError("Mail provider returned no text body")
     snapshot = {"provider": provider, "id": message_id, "date": row.get("date", ""),
@@ -187,6 +188,7 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
     result = {"phase": "running", "started": started, "range_start": start.isoformat(),
               "range_end": end.isoformat(), "target": len(messages), "saved": 0,
               "reused": 0, "failed": missing_ids,
+              "dropped_missing": [],
               "failed_keys": [{"key": "missing-id", "error": "MissingId"}] if missing_ids else [],
               "people_indexes": 0,
               "project_indexes": 0, "providers": sorted(clients),
@@ -208,9 +210,11 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
             try:
                 saved = futures[index - 1].result() if futures else _archive_message(root, row, clients)
                 result[saved] += 1
+            except MissingMail as error:
+                result['dropped_missing'].append({'provider': provider, 'id': message_id, 'reason': str(error)})
             except Exception as error:  # A single unavailable message must not discard the map.
                 result["failed"] += 1
-                result["failed_keys"].append({"key": key, "error": type(error).__name__})
+                result["failed_keys"].append({"key": key, "id": message_id, "error": type(error).__name__, 'reason': str(error)})
             if progress and (index == 1 or index % 25 == 0 or index == len(messages)):
                 progress(f"saving mail bodies ({result['saved']} saved, {result['reused']} reused, "
                          f"{result['failed']} failed)", f"{index}/{len(messages)}")
@@ -219,7 +223,8 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
             if index % 25 == 0:
                 result["updated"] = now().isoformat()
                 write_json(state, result)
-    result["people_indexes"] = _person_indexes(root, report, messages)
+    gone = {(row['provider'], row['id']) for row in result['dropped_missing']}
+    result["people_indexes"] = _person_indexes(root, report, [row for row in messages if (row['source'], row['id']) not in gone])
     result["project_indexes"] = _project_indexes(root, report, sessions)
     mail_scan_errors = [error for error in report.get("errors", [])
                         if error.get("source") in ("gmail", "outlook")]

@@ -13,6 +13,61 @@ def _gmail(root):
     return service.mailbox_state("gmail", service.subscriptions(root)["gmail"], root=root)
 
 
+@pytest.mark.parametrize("count", [1, 66])
+def test_background_failure_streak_is_counted_and_said_in_status_and_today(tmp_path, rem_clock, count):
+    from rich.text import Text
+    from connectonion.cli.commands.rem_status import _today
+    from connectonion.rem.config import prepare
+    from connectonion.rem.reader import snapshot
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "UTC"])
+    start = service.now() - timedelta(days=2)
+    for index in range(count + 1):
+        stamp = (start + timedelta(minutes=30 * index)).isoformat()
+        turn = {"turn_id": str(index), "started_at": stamp, "finished_at": stamp,
+                "result": "failed" if index else "completed", "reason": "Permission denied: /outside/.git"}
+        write_json(state_path(tmp_path, f"turns/{index:03}.json"), turn)
+    write_json(state_path(tmp_path, "last-turn.json"), turn)
+    value = service.status(tmp_path)
+    warning = value["schedule_failure"]
+    assert warning["failures"] == count
+    assert warning["since"] == (start + timedelta(minutes=30)).isoformat()
+    output = Text.from_markup("\n".join(_today(tmp_path, value))).plain
+    noun = "turn failed" if count == 1 else "turns failed"
+    assert f"Background: the last {count} {noun}, since " in output
+    assert warning["since"][:16].replace("T", " ") in output
+    assert " UTC" in output
+    assert "Last error: Permission denied: /outside/.git" in output
+    assert "co rem logs" in output
+    assert snapshot(tmp_path, today=True)["status"]["schedule_failure"] == warning
+
+
+@pytest.mark.parametrize("last", ["completed", "running", "skipped"])
+def test_background_failure_streak_stops_after_success_or_while_starting(tmp_path, rem_clock, last):
+    write_json(state_path(tmp_path, "turns/first.json"), {
+        "started_at": "2026-09-06T00:00:00Z", "result": "failed", "reason": "fixture"})
+    write_json(state_path(tmp_path, "last-turn.json"), {"started_at": "2026-09-07T00:00:00Z", "result": last})
+    assert service.schedule_failure(tmp_path) is None
+
+
+@pytest.mark.parametrize("count,language", [(1, "en"), (66, "en"), (66, "zh")])
+def test_reader_today_background_status_says_failure_count_and_since(count, language):
+    import json
+    import re
+    from connectonion.rem.reader import TEMPLATE
+    from tests.unit.test_rem_reader import _run_reader_js
+    function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
+    script = f'uiLanguage = {json.dumps(language)};\n' + function
+    script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
+        "code": "blocked", "failures": count, "since": "2026-11-14T14:00:00+00:00",
+        "evidence": "Permission denied: /private/fixture/.git"}) + ')));'
+    output = _run_reader_js(script)
+    assert str(count) in output and "2026-11-14 14:00" in output
+    assert "UTC" in output
+    assert ("failed" if language == "en" else "失败") in output
+    assert "/private/fixture" not in output
+
+
 def test_a_mailbox_last_read_more_than_a_day_ago_is_not_a_tick(mixed_sources):
     root = mixed_sources[0]
     write_json(state_path(root, "source_reads.json"), {"gmail": {

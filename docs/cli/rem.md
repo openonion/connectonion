@@ -1660,6 +1660,17 @@ Configuration, command resolution and spawn errors leave a failed receipt with
 the reason, which `co rem status` displays alongside the turn log and the command
 to restart after fixing the cause.
 
+REM treats an unreadable folder named in a coding session or scan as having no
+Git repository; that folder does not stop round preparation. Other file access
+errors name the affected path without blaming the notebook files.
+If `co rem next` fails to prepare a task, the background turn is recorded as
+`failed` with the error even when Codex exits zero. Its traceback is saved in
+the turn's `.state/turns/*.jsonl` log. A successful retry clears that turn's
+failure, while keeping the traceback; an idle turn remains `completed`.
+`co rem status` and the reader's Today show the consecutive failed-turn count
+and when the streak began (UTC). Status also shows the last error and points to
+`co rem logs`. A completed turn ends the failure streak.
+
 For `codex-app`, the desktop adopts a private local automation definition.
 Its wake job opens Codex 15 minutes before each fire. Keep the app open and the
 computer awake. Completed native wrapper conversations and REM's internal Codex
@@ -2834,31 +2845,34 @@ when available. Otherwise usage remains unknown.
 
 ### When a mailbox fails on one page
 
-A mailbox failing while `next` prepares one page sets that page aside; `next`
-goes on to the next page in the same call. From 2026-11-12 every 15-minute turn
+A missing mail or attachment while `next` prepares one page sets that page aside;
+`next` goes on to the next page in the same call. From 2026-11-12 every 15-minute turn
 on a real notebook ended with no task: 16 turns on an Outlook HTTP 404, then 14
 on a ReadTimeout listing one mail's attachments, both while preparing one
 person's page. The error left `next` before the round was saved, so each turn
 tried the same page again, and four nights read no mail.
 
-- **Attachments are enrichment.** A listing that still fails after its retries
-  becomes a coverage line (`outlook: attachments for 1 message(s) not listed:
-  timed out`), and the page is written from the mail bodies. Those attachments
-  are not asked for again in that investigation; the page's next investigation
-  lists them again.
-- **A mail gone from the server is skipped** with a coverage line
-  (`outlook: 1 message(s) skipped: not found on the server (deleted or moved)`),
-  never a hint to open the inbox.
-- **Any other mailbox failure while preparing a page** (a body that times out, a
-  5xx, a network error) parks that page in `.state/fetch-parked.json` with the
-  mailbox, the reason and a retry time: 1 hour, then 6 hours, then once a day.
-  `next` prints `Set people/x.md aside: Outlook timed out; tried again no earlier than …`
-  (the retry time is the earliest; the page waits for the first round after it)
-  and serves the next page. Later rounds leave the page out until its retry time,
-  then bring back the same job; a page prepared again clears its entry. A bug in
-  REM is not a mailbox failure and still stops `next`, so it is seen.
-- **A mailbox failing for three pages in one turn, or whose authorization has
-  expired, is not asked again in that turn** (the turn is `CO_REM_TURN_ID`; a
+- **HTTP 404 and 410 mean that one piece of mail is gone.** Message bodies,
+  cited-original headers and bodies, and attachment metadata use the same check
+  for Gmail and Outlook. REM records the native message ID, operation, HTTP status
+  and reason under `.state/mail/dropped-missing/`. A page needing it is parked in
+  `.state/fetch-parked.json`; `next` names the missing ID and serves the next item.
+  The unchanged page stays parked across later turns, even after the old retry
+  time. A change to the page text makes it eligible again, for example after new
+  mail updates the page or the owner edits its evidence. Missing cited originals
+  appear as **could not be prepared** in the night outcomes and are not fetched
+  again for that same source ID; a new citation can be fetched. To retry an original
+  restored by the provider, remove its matching `mail/dropped-missing/` entry.
+  Queued sync mail is consumed with its ID in progress's `dropped_missing` and
+  the batch's missing count; an initial archive records it in `dropped_missing`.
+- **Other single-message read failures still fail preparation.** HTTP 401/403,
+  429, 5xx and network errors retain their messages after any existing retries;
+  they are not treated as deleted mail or a successful attachment listing.
+- **If no task was served and every remaining candidate is parked, the round
+  fails with that reason.** The background turn receipt, `co rem status` and Today
+  show the failure through the same preparation-failure reporting as other errors.
+- **A mailbox whose listing fails for three pages in one turn, or whose listing
+  reports expired authorization, is not asked again in that turn** (the turn is `CO_REM_TURN_ID`; a
   `next` typed by hand is a turn of its own). Pages that would ask it wait for
   the next turn without back-off, back in the same round, and work that needs no
   mail (projects, skills, retries from held material, summaries, translations)

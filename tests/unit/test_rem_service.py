@@ -20,7 +20,7 @@ pytestmark = pytest.mark.usefixtures("rem_clock")
     (['failed', 'completed'], '无法启动过，重试后已完成。', False, False),
     (['completed', 'completed'], 'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled.', True, True),
     (['failed', 'completed'], 'Finished the work.', False, False),
-    (['completed', 'failed'], '', False, False),
+    (['completed', 'failed'], '', False, True),
     (['failed', 'running'], '', False, False),
 ])
 def test_status_today_surfaces_receipt_failures(rem, results, last_message, blocked, visible):
@@ -42,11 +42,15 @@ def test_status_today_surfaces_receipt_failures(rem, results, last_message, bloc
     assert bool(line) == visible
     if visible:
         from rich.text import Text
-        assert line == {'code': 'blocked' if blocked else 'repeated_failure',
-                        'evidence': last_message if blocked else 'fictional timeout'}
+        assert line['code'] == ('blocked' if blocked else 'repeated_failure')
+        assert line['evidence'] == (last_message if blocked else 'fictional timeout')
         output = Text.from_markup(_today(root, value)[0]).plain
-        assert output.startswith('Last scheduled turn did not finish:')
-        assert ('run co rem start' if blocked else 'Retried automatically') in output
+        if line.get('failures'):
+            assert output.startswith(f"Background: the last {line['failures']} ")
+            assert 'co rem logs' in output
+        else:
+            assert output.startswith('Last scheduled turn did not finish:')
+            assert 'run co rem start' in output
         assert line['evidence'] in output
         assert snapshot(root)['status']['schedule_failure'] == line
 

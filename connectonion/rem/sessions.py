@@ -1,5 +1,6 @@
 """One page per owner conversation, with optional batched model summaries."""
 
+from functools import lru_cache
 import hashlib
 import io
 import json
@@ -16,7 +17,7 @@ from zoneinfo import ZoneInfo
 from . import config, runner, service, source
 from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
-from .scan import WORKTREE_FOLDER, main_checkout, project_exclusion
+from .scan import WORKTREE_FOLDER, is_repository, main_checkout, project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
 from .project_pages import CODE_CHURN_DAYS
 from .page_review import _plain, _quoted_in
@@ -60,9 +61,14 @@ def _touched(text: str, cwd: str) -> Counter:
     return paths
 
 
+@lru_cache(maxsize=None)
 def _project_path(path: str) -> str:
+    # One import asks about the same few folders thousands of times, and each answer opens a
+    # worktree's `.git` file: 8,728 opens took 128 s on the owner's Mac and the round never
+    # started inside its ten minutes. import_sessions clears this at its start, so a run sees
+    # the disk as it is now.
     folder = WORKTREE_FOLDER.match(path)
-    if folder and (Path(folder[1]) / ".git").exists():
+    if folder and is_repository(folder[1]):
         return folder[1] + (folder[3] or "")
     return main_checkout(path) or path
 
@@ -567,6 +573,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
         raise RemError("Session import days must be positive")
     started = time.monotonic()
     now = now or (sessions.now if sessions is not None else datetime.now(timezone.utc))
+    _project_path.cache_clear()
     since = now - timedelta(days=days)
     notebook = Notebook(root)
     zone = ZoneInfo(config.read_config(root)["schedule"].get("timezone") or config.local_timezone() or "UTC")

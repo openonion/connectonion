@@ -296,14 +296,17 @@ def next_task(root, *, scheduled=False, discard=False):
                   else _next_round(root, cursor, scheduled=scheduled, notices=notices))
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
-        if scheduled and result.get("outcome") == "task":
+        if result.get("outcome") == "task":
+            from .fetch_stalls import _turn
             # Taking over a manual round must keep later submit/next calls in
             # this turn without claiming a slot that did not start the round.
             cursor = read_json(state_path(root, "round.json"), {})
-            if not cursor.get("slot"):
+            cursor['served_turn'] = _turn()
+            if scheduled and not cursor.get("slot"):
                 cursor["scheduled"] = True
-                write_json(state_path(root, "round.json"), cursor)
-            result["continuation"] = SCHEDULED_CONTINUATION
+            write_json(state_path(root, "round.json"), cursor)
+            if scheduled:
+                result["continuation"] = SCHEDULED_CONTINUATION
         return result
 
 
