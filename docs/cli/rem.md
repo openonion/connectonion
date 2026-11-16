@@ -27,7 +27,14 @@ On macOS, one-page agent tasks also receive a **Recently read** index from the d
 Chrome profile: visits in the last 30 days matching the subject's name, domain
 or GitHub repository. Titles and URLs are leads. A relevant page must be fetched
 with `co fetch <url> > web/<slug>.md` and registered in `web/sources.json` before
-its content can be cited. The index itself opens no pages and makes no network
+its content can be cited. An address registered without its scheme
+(`example.org/team`, `www.example.org`, `//example.org/team`, or one wrapped in
+spaces or `<>`) is read as `https://…`; it used to refuse the page and cost a
+whole repair turn (474 s and 2.98M tokens on 2026-11-16, #3083). Anything else
+that is neither an HTTP(S) URL nor a native source ID is refused by entry:
+"Research captures need an HTTP(S) URL or a native read-only source ID: entry 2
+of web/sources.json (file team.md) has "search: …"; write the page's exact
+address as "url": "https://<host>/<path>" …". The index itself opens no pages and makes no network
 requests; the existing LinkedIn restriction still applies. It shows up to 50
 distinct URLs, newest first, with repeated visits collapsed. Profile/resource
 links match that specific page; an explicit website or organisation domain

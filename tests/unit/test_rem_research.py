@@ -134,6 +134,40 @@ def test_capture_that_is_not_text_is_refused_by_name(tmp_path):
         evidence.research_items(tmp_path)
 
 
+@pytest.mark.parametrize('written', ['example.org/team', 'www.example.org/team', '//example.org/team',
+                                     ' https://example.org/team\n', '<https://example.org/team>',
+                                     'example.org:8443/team?tab=1'])
+def test_a_capture_url_written_without_its_scheme_is_read_as_https(tmp_path, written):
+    """"Research captures need an HTTP(S) URL" cost a whole repair turn, 474 s and 2.98M tokens, for an
+    address only one reading fits (#3083)."""
+    capture(tmp_path, written)
+    read = evidence.research_items(tmp_path)[0]['source']
+    assert read.startswith('https://') and read == 'https://' + written.strip(' \n<>/').removeprefix('https://')
+
+
+def test_a_bare_scheme_free_capture_is_still_a_linkedin_page(tmp_path):
+    capture(tmp_path, 'www.linkedin.com/in/mira')
+    with pytest.raises(RemError, match='LinkedIn'):
+        evidence.research_items(tmp_path)
+
+
+@pytest.mark.parametrize('written', ['team.md', 'search: Mira Vale Atlas', 'file:///tmp/team.md', 'ftp://example.org/team',
+                                     'co fetch https://example.org/team', 'Atlas'])
+def test_a_capture_that_is_no_address_is_refused_by_entry_with_the_form_to_write(tmp_path, written):
+    """The refusal named neither the entry nor what to write instead."""
+    capture(tmp_path, written)
+    rows = json.loads((tmp_path / 'web/sources.json').read_text())
+    (tmp_path / 'web/sources.json').write_text(json.dumps(
+        [{'url': 'https://example.org/about', 'file': 'team.md', 'date': '2026-11-06'}, *rows]))
+    with pytest.raises(RemError) as refused:
+        evidence.research_items(tmp_path)
+    reason = str(refused.value)
+    assert reason.startswith('Research captures need an HTTP(S) URL or a native read-only source ID: ')
+    assert f'entry 2 of web/sources.json (file team.md) has {json.dumps(written)}' in reason
+    assert '"url": "https://<host>/<path>"' in reason and '"source": "gmail:<mail id>"' in reason
+    assert 'the search URL' in reason
+
+
 def test_search_capture_can_include_linkedin_snippet(tmp_path):
     source = capture(tmp_path, 'https://www.google.com/search?q=Mira+Vale',
                      'LinkedIn result snippet: Mira Vale — Atlas lead.')

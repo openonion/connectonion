@@ -138,13 +138,15 @@ def research_items(directory: Path) -> list[dict]:
     if not isinstance(rows, list):
         raise RemError("web/sources.json must be a list of url/source, file and date entries")
     items = {}
-    for row in rows:
+    for number, row in enumerate(rows, 1):
         if not isinstance(row, dict) or any(not isinstance(row.get(k), str) for k in ("file", "date")):
             raise RemError("Each research capture needs file and date strings")
-        source = row.get("url") or row.get("source")
-        if not isinstance(source, str):
+        written = row.get("url") or row.get("source")
+        if not isinstance(written, str):
             raise RemError("Research captures need URL or native source IDs")
-        _research_source(source)
+        source = _with_scheme(written)
+        _research_source(source, f"entry {number} of web/sources.json (file {row['file']}) has "
+                                 + json.dumps(written, ensure_ascii=False))
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["date"]):
             raise RemError("Research capture date must be YYYY-MM-DD")
         date.fromisoformat(row["date"])
@@ -168,7 +170,25 @@ def _capture_text(web: Path, name: str) -> str:
                        "(co fetch <url> > web/<slug>.md), not a screenshot, image or PDF") from error
 
 
-def _research_source(source: str) -> None:
+# A host with a dot in it, then a path or query. `team.md` alone is also the name of a
+# capture file and `Atlas` a search term, so a bare word or bare host is left to the refusal.
+SCHEMELESS = re.compile(r"(?:www\.(?:[\w-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:[/?#]\S*)?"
+                        r"|(?:[\w-]+\.)+[A-Za-z]{2,}(?::\d+)?[/?]\S*)")
+
+
+def _with_scheme(written: str) -> str:
+    """An address written without `https://` has one reading, so it is read, not refused.
+
+    2026-11-16 (#3083): "Research captures need an HTTP(S) URL" sent a page back for a
+    whole repair turn, 474 s and 2.98M tokens. Only what cannot be anything else is
+    changed: surrounding space and `<>`, a leading `//`, and a host followed by a path."""
+    source = written.strip().removeprefix("<").removesuffix(">").strip()
+    if source.startswith("//"):
+        return "https:" + source
+    return "https://" + source if SCHEMELESS.fullmatch(source) else source
+
+
+def _research_source(source: str, entry: str) -> None:
     from urllib.parse import urlsplit
 
     url = urlsplit(source)
@@ -177,7 +197,12 @@ def _research_source(source: str) -> None:
     native = re.fullmatch(r"(?:gmail|outlook|lark|github|codex|claude-code):\S+", source)
     attachment = re.fullmatch(r"(?:gmail|outlook):[0-9a-f]{12}:[^/\\\r\n]+", source)
     if not native and not attachment and (url.scheme not in ("http", "https") or not url.hostname):
-        raise RemError("Research captures need an HTTP(S) URL or a native read-only source ID")
+        # Which entry and what to write: the bare sentence left the repair to guess both.
+        raise RemError(
+            f"Research captures need an HTTP(S) URL or a native read-only source ID: {entry}; "
+            'write the page\'s exact address as "url": "https://<host>/<path>" (for a search result, '
+            'the search URL), or a CLI read as "source": "gmail:<mail id>" (also outlook:, lark:, '
+            "github:, codex: and claude-code: IDs), and cite the same text under Sources")
 
 
 def retain_research(root: Path, text: str, items: list[dict]) -> None:
