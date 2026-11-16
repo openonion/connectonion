@@ -1017,6 +1017,22 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 ---
 
+#### `co send <address> <path>...` - Send Files to Another Agent
+
+Files, and folders as the files inside them, to another agent's running Host.
+They arrive byte for byte and are checked against their sha256; an interrupted
+send continues from where it stopped. Only the receiver's contacts may send, the
+receiver must be reachable directly, and the bytes never go through the relay.
+`co receive` lists what arrived. See [send.md](send.md).
+
+```bash
+co send 0x1e85... ./C2350.MP4        # one file, any size
+co send 0x1e85... ./footage/         # a folder
+co receive                           # on the receiving machine
+```
+
+---
+
 #### `co call <address> <command>` - Run a Command on a Remote Agent
 
 The **remote twin of `co browser`**: run one command on a remote agent and print

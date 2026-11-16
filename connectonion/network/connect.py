@@ -1006,7 +1006,11 @@ class RemoteAgent:
         """
         for ws_url, is_direct in self._ways_to_reach():
             try:
-                ws = await websockets.connect(ws_url, max_size=MAX_WEBSOCKET_MESSAGE_BYTES)
+                # No permessage-deflate: almost every socket is sealed below, and
+                # ciphertext does not compress. Measured on `co send`, deflating
+                # it was half the time spent per megabyte, for no bytes saved.
+                ws = await websockets.connect(ws_url, max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
+                                              compression=None)
             except OSError:
                 if not is_direct:
                     raise          # the relay is the last resort; there is no next

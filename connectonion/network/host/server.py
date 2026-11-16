@@ -1368,6 +1368,9 @@ def host(
     route_handlers["identity_dir"] = co_dir
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
+    # Where files other agents send land (file_inbox.py, `co send`).
+    from .file_inbox import files_dir
+    route_handlers["files_dir"] = files_dir(co_dir)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
