@@ -202,7 +202,8 @@ def _research_source(source: str, entry: str) -> None:
             f"Research captures need an HTTP(S) URL or a native read-only source ID: {entry}; "
             'write the page\'s exact address as "url": "https://<host>/<path>" (for a search result, '
             'the search URL), or a CLI read as "source": "gmail:<mail id>" (also outlook:, lark:, '
-            "github:, codex: and claude-code: IDs), and cite the same text under Sources")
+            "github:, codex: and claude-code: IDs), and cite the same text under Sources; an entry "
+            "that is neither (a local file, a `file:` id) is not a capture: remove it")
 
 
 def retain_research(root: Path, text: str, items: list[dict]) -> None:

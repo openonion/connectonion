@@ -947,6 +947,23 @@ def _keep_identity(record: str, before: str, after: str) -> str:
     return f"{title}\n\n{identity}" + (" " if lead else "\n\n") + body
 
 
+def _captures(root, directory, items, candidate, usage) -> list[dict]:
+    """The turn's own web/sources.json, refused like any other review finding.
+
+    2026-11-16: an enrich turn listed a `file:` id there; the refusal left as a plain
+    error outside the repair loop, and the page failed after 610 s with no repair turn.
+    The writer made the entry and can correct it, so it gets the same repair.
+    """
+    from .evidence import additional_research
+    try:
+        return additional_research(root, directory, items)
+    except RunFailed:
+        raise
+    except RemError as error:
+        write_json(directory / "review.json", {"accepted": False, "errors": [str(error)]})
+        raise RunFailed(f"Candidate rejected, kept at {candidate}: {error}", usage) from error
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
                        stage_progress=None, native=False, report="", draft_only=False):
@@ -968,8 +985,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     snapshot = original
     original = resolve_sources(notebook.root, record, original)
     carried = resolve_sources(notebook.root, record, carried)
-    from .evidence import additional_research
-    items = [*items, *additional_research(notebook.root, directory, items)]
+    items = [*items, *_captures(notebook.root, directory, items, candidate, usage)]
     from . import facts
     from .fact_extract import OTHERS_PHONE
     text = sources_before_footer(candidate.read_text(encoding="utf-8"))

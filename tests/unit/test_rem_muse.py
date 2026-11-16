@@ -1245,3 +1245,37 @@ def test_known_checkouts_are_the_map_and_page_paths(notebook):
     write_json(state_path(notebook.root, 'map.json'), {'projects': [{'record': 'projects/lantern.md',
                                                                      'paths': ['/work/lantern']}]})
     assert Path('/work/lantern').resolve() in insight_critic.known_checkouts(notebook, RECORD)
+
+
+def test_a_capture_entry_that_is_neither_a_url_nor_a_source_id_gets_a_repair_turn(notebook, monkeypatch):
+    """2026-11-16: an enrich turn listed a `file:` id in web/sources.json; the refusal was raised
+    outside the review-repair loop, so the page failed after 610 s with no repair turn."""
+    prompts, real = [], runner._promote_candidate
+
+    def run(workdir, prompt, config, phase, **kw):
+        prompts.append(prompt)
+        directory = next(workdir.glob("enrich-*"))
+        (directory / "candidate.md").write_text(PAGE + "\nNew finding.\n")
+        (directory / "web").mkdir(exist_ok=True)
+        rows = [{"url": "https://example.com/atlas", "file": "atlas.md", "date": "2026-11-16"}]
+        if len(prompts) == 1:
+            rows.append({"source": "file:notes/atlas.txt", "file": "notes.md", "date": "2026-11-16"})
+        write_json(directory / "web" / "sources.json", rows)
+        for row in rows:
+            (directory / "web" / row["file"]).write_text("Atlas ships on Friday.")
+        return {"result": "done", "usage": {"input_tokens": 100}}
+
+    def promote(book, record, candidate, original, items, directory, usage, **kw):
+        if len(prompts) == 1:
+            return real(book, record, candidate, original, items, directory, usage, **kw)
+        book.write(record, candidate.read_text())
+
+    monkeypatch.setattr(runner, "run_task", run)
+    monkeypatch.setattr(runner, "_promote_candidate", promote)
+    result = runner.run_stage(notebook, [{"role": "page", "record": RECORD, "text": PAGE}],
+                              {**read_config(notebook.root), "runner": "codex"}, stage="enrich")
+    assert result["repairs"] == 1 and len(prompts) == 2
+    assert ('entry 2 of web/sources.json (file notes.md) has "file:notes/atlas.txt"' in prompts[1]
+            and '"url": "https://<host>/<path>"' in prompts[1] and "is not a capture: remove it" in prompts[1])
+    review = json.loads(next((notebook.root / ".state").rglob("review.json")).read_text())
+    assert review["accepted"] is False and review["errors"][0].startswith("Research captures need")
