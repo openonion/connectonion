@@ -881,14 +881,18 @@ write scope as the night. Passing pages are kept; refused pages and reasons are
 printed and saved with the run. Each decision copies the owner's quote exactly as
 captured in the supplied Decisions or Key decisions into the body immediately
 followed by its `[n]`; `## Sources` defines the original source ID for that number
-and keeps the originating page as context. A quote
+and ends with `— originating page: <path>` (the task's example line now shows it;
+it ended at the source ID and no page of that night kept the path). A quote
 placed only under Sources is refused with instructions to move it into the body.
 The page limit is a ceiling: zero pages is valid. Never turn a paraphrase into an owner quote. A quote too long
 for the input bound stays pending, rather than being split into unusable fragments.
 Each offered line has a stable short ID. A passing page that quotes it counts as
 written. For every line it does not quote, the model reports either a merge into a
 decision page it wrote this round, or not a decision because no alternative was
-rejected. A merge finishes only when the named page passes review. Merged lines
+rejected, or because the pages do not say which alternative or why. A decision page
+whose own text says its alternative or reason is unknown or inferred is refused,
+and the refusal asks for the not-a-decision verdict instead (15 of 66 pages of
+one night said so and had passed). A merge finishes only when the named page passes review. Merged lines
 and lines judged not a decision are done and never retried. Verdicts for IDs outside
 the packet are ignored. Refused lines keep the check's reason; lines with neither a
 page nor a verdict count as no answer. Both retry up to three attempts.

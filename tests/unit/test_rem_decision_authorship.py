@@ -156,3 +156,53 @@ def test_full_mail_id_uses_the_indexed_original(book, provider):
     original(book, source)
     text, errors = review(book.root, page(source))
     assert errors == [] and 'Speaker unverified' not in text
+
+
+# ------------------------------------------- a page that admits it has no alternative or reason
+
+def decided(sentence):
+    return (f'# Storage\n\nPlain files. “{WORDS}” [1] {sentence}\n\n## Why\nPages stay readable.\n\n'
+            f'## Sources\n- [1] {SOURCE} — originating page: `sessions/storage.md`.\n')
+
+
+@pytest.mark.parametrize('sentence', [
+    'The rejected alternative is unknown.',
+    'No alternative was recorded; the reason is inferred from the wording.',
+    'The rationale was not stated in the session.',
+    'Reasons are unclear.',
+    'An inferred reason: the files are easier to read.',
+    'There is no stated alternative.'])
+def test_a_decision_page_that_says_its_alternative_or_reason_is_unknown_or_inferred_is_refused(book, sentence):
+    """2026-11-16: 15 of 66 new decision pages said so in their own text and all passed review,
+    which only asked who spoke the quote."""
+    from connectonion.rem.decision_authorship import admitted_gaps
+    original(book)
+    errors = admitted_gaps(decided(sentence))
+    assert len(errors) == 1 and 'VERDICT <line id> not-a-decision' in errors[0] and 'delete this page' in errors[0]
+    book.write('sessions/storage.md', '# Storage\n\n## Decisions\n- “' + WORDS + f'” [1]\n\n## Sources\n- [1] {SOURCE}\n')
+    task = runner.prepare(book, captured_decisions.material(book), default_config(), stage='abstract',
+                          directory=book.root / '.state/tasks/admitted', native=True)
+    Notebook(Path(task['task_root'])).write('decisions/storage.md', decided(sentence))
+    with pytest.raises(runner.RunFailed, match='not-a-decision'):
+        runner.check(task, {}, native=True)
+    assert book.list('decisions') == []
+
+
+@pytest.mark.parametrize('sentence', [
+    'SQLite was discussed and not adopted.',
+    'The user corrected the reason to inspectability and kept the choice.',
+    'SQLite was the alternative; what it would cost at a thousand pages is unknown.',
+    'Whether search holds up at scale is unknown. The reason was inspection.'])
+def test_a_decision_page_with_its_alternative_and_reason_is_not_refused_for_an_unknown_elsewhere(sentence):
+    from connectonion.rem.decision_authorship import admitted_gaps
+    assert admitted_gaps(decided(sentence)) == []
+
+
+def test_the_abstract_skill_gives_the_not_a_decision_verdict_to_an_unknown_alternative_or_reason():
+    import re
+    from connectonion.rem.decision_authorship import admitted_gaps
+    from connectonion.skills_catalog import useful_skills_dir
+    text = (useful_skills_dir() / 'rem-abstract/SKILL.md').read_text()
+    assert ('If the page would have to say that the alternative or the reason is unknown or inferred, '
+            'the verdict is `not-a-decision`') in ' '.join(text.split())
+    assert admitted_gaps(re.search(r'(?s)```markdown\n(# Where the notebook.*?)```', text)[1]) == []

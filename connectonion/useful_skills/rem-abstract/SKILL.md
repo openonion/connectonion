@@ -25,6 +25,10 @@ The test for whether something is a decision at all:
 launchd interval tick rather than a calendar trigger" has one, and a reason.
 Expect to discard most of what you read.
 
+Both must be on the pages you were given. **If the page would have to say that
+the alternative or the reason is unknown or inferred, the verdict is
+`not-a-decision`**: do not write the page. Review refuses one that says so.
+
 Every offered captured line starts with a short ID in brackets, such as
 `[d0123456789ab]`. Account for each line: either quote it in a decision page,
 or give its verdict in your final message. One verdict per line, on its own line:
@@ -34,7 +38,8 @@ VERDICT d0123456789ab not-a-decision
 VERDICT dabcdef012345 merged decisions/storage.md
 ```
 
-`not-a-decision` means no alternative was rejected. `merged` means this line
+`not-a-decision` means no alternative was rejected, or the pages do not say
+which alternative or why. `merged` means this line
 belongs to the same settled question as another line; name the decision page
 you wrote or updated this round. That page must pass review. These verdicts
 finish the line without another attempt. A missing verdict leaves it for retry.
@@ -46,8 +51,9 @@ Copy the owner’s verbatim words into the body, immediately followed by its `[n
 Keep the quote and its citation on the same line, before `## Sources`.
 Copy the quote exactly as captured in the supplied `## Decisions` or
 `## Key decisions`; preserve its original source ID when renumbering citations.
-Under `## Sources`, define each `[n]` with its original source ID and keep the
-originating page path as context. That section holds source definitions; the
+Under `## Sources`, define each `[n]` with its original source ID, and end every
+line with the page you read it on; a line without it is unfinished:
+`- [n] <source ID> — originating page: <path>`. That section holds source definitions; the
 owner’s quoted choice belongs beside the decision in the body.
 
 The entry key is the question, so **several artifacts collapse into one page**,

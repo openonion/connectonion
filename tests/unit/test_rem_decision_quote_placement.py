@@ -94,7 +94,9 @@ def test_abstract_prompt_gives_body_example_and_separate_source_definition(task)
     assert "Every decision must copy the owner's verbatim words into the body, immediately followed by its [n]." in prompt
     assert 'Under ## Sources, define each [n] exactly once with the original source ID; put the originating page path inline as context.' in prompt
     assert 'Example body line: “Use Markdown so I can inspect the pages.” [1]' in prompt
-    assert 'Example source definition under ## Sources: - [1] codex:s1:347' in prompt
+    # 2026-11-16: the example ended at the source ID and 0 of 82 Sources lines kept the originating page.
+    assert 'Example source definition under ## Sources: - [1] codex:s1:347 — originating page: `sessions/storage.md`.\n' in prompt
+    assert 'in the form - [n] source-id' not in prompt
     assert 'Copy the quote exactly as captured in the supplied ## Decisions or ## Key decisions; preserve its original source ID when renumbering citations.' in prompt
     assert "owner's verbatim words and original source ID under ## Sources" not in prompt
 
@@ -104,6 +106,7 @@ def test_shipped_skill_example_obeys_the_same_quote_contract():
     assert 'Copy the owner’s verbatim words into the body, immediately followed by its `[n]`.' in skill
     assert 'Under `## Sources`, define each `[n]` with its original source ID' in skill
     assert 'Copy the quote exactly as captured in the supplied `## Decisions` or' in skill
+    assert '`- [n] <source ID> — originating page: <path>`' in skill and 'a line without it is unfinished' in skill
     example = re.search(r'```markdown\n(.*?)\n```', skill, re.S)[1]
     assert unquoted_decisions(example, decision_page=True) == []
     items = [{'role': 'captured-decisions', 'text': '## Decisions\n'

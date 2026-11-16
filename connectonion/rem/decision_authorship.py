@@ -1,4 +1,5 @@
-"""Check captured decision speakers against local originals, without a model or fetch."""
+"""Check captured decision speakers against local originals, and that the page does not admit
+it has no alternative or reason, without a model or fetch."""
 
 import re
 import sqlite3
@@ -13,6 +14,26 @@ from .source import parse_session_source
 from .store_messages import archived_message, owner_addresses
 
 UNVERIFIED = '- Speaker unverified.'
+
+# A short list on purpose: the page's own sentence saying its alternative or reason is
+# unknown or inferred. Within one clause, so an unknown about something else does not match.
+_BASIS = r'(?:alternatives?|reasons?|rationale)'
+ADMITS = re.compile(
+    rf'(?i)\b{_BASIS}\b[^.;\n]{{0,40}}\b(?:unknown|unclear|inferred|not (?:stated|recorded|captured|known|given))\b'
+    rf'|\b(?:unknown|unstated|inferred|no (?:stated|recorded))\b[^.;\n]{{0,20}}\b{_BASIS}\b')
+
+
+def admitted_gaps(text):
+    """Refuse a decision page whose own body says the alternative or the reason is unknown or inferred.
+
+    2026-11-16: 15 of 66 new decision pages said so and passed, because review only asked
+    who spoke the quote. A choice with no known alternative or reason is not a decision."""
+    found = ADMITS.search(text.partition('\n## Sources\n')[0])
+    if not found:
+        return []
+    return [f'Decision page says its alternative or reason is unknown or inferred ("{found[0]}"); that is not a '
+            'decision: delete this page and give its captured line `VERDICT <line id> not-a-decision`, '
+            'or state the rejected alternative and the reason from the supplied pages']
 
 
 def _original(root, db, source, owner):

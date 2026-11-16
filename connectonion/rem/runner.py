@@ -1370,8 +1370,9 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
                                "restored_lines": restored_lines}
             authorship_errors = []
             if native and stage == "abstract" and record.startswith("decisions/"):
-                from .decision_authorship import review as review_authorship
+                from .decision_authorship import admitted_gaps, review as review_authorship
                 text, authorship_errors = review_authorship(notebook.root, text)
+                authorship_errors += admitted_gaps(text)
             working.write(record, text)  # Preflight path/size/secret policy for every page before promotion.
             errors = (validate(record, text, original, items, pages=set(before),
                                owner=record == owner, root=notebook.root)
@@ -1703,11 +1704,11 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
                            "Copy the quote exactly as captured in the supplied ## Decisions or ## Key decisions; "
                            "preserve its original source ID when renumbering citations. "
                            "Under ## Sources, define each [n] exactly once with the original source ID; put the originating page path inline as context. "
-                           "Copy the supplied source definition in the form - [n] source-id, renumbering only the citation label. "
+                           "Copy the supplied source definition's source ID, renumbering only the citation label, and end the line with the page you read it on. "
                            "Use this exact line shape: - [1] source-id — originating page: `sessions/example.md`. "
                            "Do not add [n]: Markdown link definitions or a second definition of any citation label. "
                            "Example body line: “Use Markdown so I can inspect the pages.” [1]\n"
-                           "Example source definition under ## Sources: - [1] codex:s1:347\n"
+                           "Example source definition under ## Sources: - [1] codex:s1:347 — originating page: `sessions/storage.md`.\n"
                            "An assistant's proposal is not a decision unless the owner said or explicitly accepted it. "
                            "Preserve existing questions and edit their pages for reversals; skip choices already captured. "
                            "Write decisions first, then knowledge learned across at least two notebook pages named under Drawn from, "
