@@ -745,3 +745,17 @@ def test_a_task_record_counts_every_turn_it_took_and_what_a_timed_out_turn_repor
     usage = {row["record"]: row["usage"] for row in service.run_logs(notebook) if row.get("outcome") in ("parked", "completed")
              and row.get("record")}
     assert usage == {fern: {"input_tokens": 14}, heron: {"input_tokens": 9}, ibis: {"input_tokens": 7}}
+
+
+def test_a_task_parked_because_its_input_changed_records_what_its_turn_used(notebook, monkeypatch):
+    """2026-11-17: a 253 second turn whose submit failed "Task input changed" was parked with no
+    tokens: the fault is raised after the turn returned, and only the error's own usage was kept."""
+    from connectonion.rem import schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    faulty_model(notebook, monkeypatch, lambda record, directory: record == fern and (
+        directory / "material.md").write_text("changed while the worker ran\n", encoding="utf-8"))
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert [row["record"] for row in result["parked"]] == [fern]
+    usage = {row["record"]: row["usage"] for row in service.run_logs(notebook) if row.get("outcome") in ("parked", "completed")
+             and row.get("record")}
+    assert usage == {fern: {"input_tokens": 7}, heron: {"input_tokens": 7}}

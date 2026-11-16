@@ -686,13 +686,16 @@ def _run_one(root, native, runner, task, config, refused):
     its deadline (`TimedOut`). A runner that cannot start or does not complete, a
     lock held elsewhere, an unreadable notebook and a refused model are about the
     round: they are raised, and catchup reports them and starts no further night."""
+    used = None
     try:
-        result = runner.run_task(Path(task["material"]), native.driven_prompt(task), config, task["stage"])
-        return _settle(root, native, task["id"], native.settle(root, task["id"], usage=result.get("usage")), refused)
+        used = runner.run_task(Path(task["material"]), native.driven_prompt(task), config, task["stage"]).get("usage")
+        return _settle(root, native, task["id"], native.settle(root, task["id"], usage=used), refused)
     except (native.TaskFault, runner.TimedOut) as error:
         # A turn closed at its deadline is still paid for: the adapter reports what it used.
+        # So is a turn that finished and whose submit then could not settle the task
+        # (2026-11-17: "Task input changed" after 253 seconds, parked with no tokens).
         return {**native.park(root, task["id"], native.in_words(str(error)), record=task.get("record"),
-                              usage=getattr(error, "usage", None)), "fault": True}
+                              usage=getattr(error, "usage", None) or used), "fault": True}
 
 
 def _settle(root, native, task_id, outcome, refused):

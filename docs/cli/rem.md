@@ -843,7 +843,10 @@ one of the two groups, and a test fails for one that is not.
 A task whose inputs changed while the worker ran, one
 that is no longer the round's pending task, and a turn that passes
 `limits.timeout_seconds` are parked with that error in words, listed like any
-parked page, and the round goes on. Two such tasks in a row stop the round
+parked page, and the round goes on. The parked task's record keeps the tokens
+its turns used: what a timed-out turn reported before it was closed, and the
+whole turn of a task whose submit then failed (it recorded none, 2026-11-17).
+Two such tasks in a row stop the round
 instead (`2 tasks in a row could not be run, so the round stopped; the last:
 …`), so a dead network does not park every page for a day.
 
