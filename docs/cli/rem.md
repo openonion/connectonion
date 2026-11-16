@@ -764,12 +764,24 @@ last refusal arrives (it used to come straight back as an unfinished page, so
 one page was parked six times in a day, #3083). The night's line and the totals say it:
 
 ```text
-Night 1: … · 1 page parked (projects/fern.md: refused twice for the same reason: Dropped source id the page had: codex:fern:1; candidate kept at <root>/.state/tasks/native-<id>/candidate.md; co rem status lists them)
-Done: 1 night · … · 1 page parked (projects/fern.md: refused twice for the same reason: Dropped source id the page had: codex:fern:1; candidates kept under <root>/.state/tasks; co rem status lists them)
+Night 1: … · 1 page parked (projects/fern.md: refused 3 times: the rewrite dropped 6 sources the page had; candidate kept at <root>/.state/tasks/native-<id>/candidate.md; co rem status lists them)
+Done: 1 night · … · 1 page parked (projects/fern.md: refused 3 times: the rewrite dropped 6 sources the page had; candidates kept under <root>/.state/tasks; co rem status lists them)
 ```
 
-`--json` carries the same rows in `parked` (`record`, `why`, `candidate`) per
-night and in total. Parking is not a failure: a night that parked pages exits
+The parenthesis carries a short cause, not the stored reason: how often the
+page was refused, then one clause. A rewrite that dropped what the page had is
+counted (`the rewrite dropped 6 sources and 1 quote the page had`); any other
+cause is its first clause (`Quote is not in its cited source`, `co ai timed out
+after 1200s`), with no source ids and no local paths. The stored reason is cut
+at 300 characters, and on 2026-11-17 the line printed that: a list of source
+ids ending mid-word. `co rem status` still lists the whole reason. A candidate
+is named only while its file exists (`no candidate is kept` otherwise): a
+parked task keeps `candidate.md` and its reviews, while investigation notes or
+a translation go with the task's material, and the line had named such a path
+after it was removed.
+
+`--json` carries the same rows in `parked` (`record`, `why`, `cause`,
+`candidate`) per night and in total. Parking is not a failure: a night that parked pages exits
 0, as a night stopped at a limit does. A task that an earlier stopped run left
 pending is resumed by the next catchup or `co rem exec` through the same
 retry-then-park path; only a task another live process is working on stops

@@ -103,15 +103,22 @@ def _counts(root, night):
 
 
 def _parked(root, night, *, runs):
-    """What this night set aside: tasks parked after their retries, then pages whose preparation hung."""
-    from .refusals import refused_pages
-    rows = [{'record': row.get('record'), 'why': row.get('reason', '').removeprefix('parked: '), 'candidate': row.get('candidate')}
-            for row in sorted(runs, key=lambda row: row.get('finished_at') or '')
-            if row.get('outcome') == 'parked' and row.get('parked_night') == night]
-    listed = {row['record'] for row in rows}
-    return rows + [{'record': record, 'why': entry['parked'].removeprefix('parked: '), 'candidate': entry.get('candidate')}
-                   for record, entry in refused_pages(root).items()
-                   if entry.get('parked_night') == night and record not in listed]
+    """What this night set aside: tasks parked after their retries, then pages whose preparation hung.
+
+    `cause` is what the night's line prints (`refusals.short_cause`); `why` stays whole for
+    `--json`. A candidate is named only while its file is there: a parked task keeps
+    candidate.md and its reviews, and any other file it wrote goes with the material."""
+    from .refusals import refused_pages, short_cause
+    found = [(row.get('record'), row.get('reason', ''), row.get('cause'), row.get('candidate'))
+             for row in sorted(runs, key=lambda row: row.get('finished_at') or '')
+             if row.get('outcome') == 'parked' and row.get('parked_night') == night]
+    listed = {record for record, *_ in found}
+    found += [(record, entry['parked'], None, entry.get('candidate')) for record, entry in refused_pages(root).items()
+              if entry.get('parked_night') == night and record not in listed]
+    return [{'record': record, 'why': why.removeprefix('parked: '),
+             'cause': cause or short_cause(why.removeprefix('parked: ')),
+             'candidate': candidate if candidate and Path(candidate).is_file() else None}
+            for record, why, cause, candidate in found]
 
 
 def _stop(result, row, index):

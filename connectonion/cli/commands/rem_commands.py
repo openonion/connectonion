@@ -2138,7 +2138,8 @@ def make_rem_app(factory):
                     + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
                     + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
         parked = [f"Parked {row['record'] or 'a task'}: {row['reason'].removeprefix('parked: ')}"
-                  + (f" (candidate kept at {row['candidate']})" if row.get('candidate') else '')
+                  + (f" (candidate kept at {row['candidate']})"
+                     if row.get('candidate') and Path(row['candidate']).is_file() else '')
                   for row in value.get("parked", [])]
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
                            *(value.get("changed") or []), *parked])
@@ -2200,14 +2201,16 @@ def make_rem_app(factory):
                 f"Waiting: {', '.join(first)} and {last} call the model"])
 
         def parked_text(rows, kept=''):
-            """Pages set aside after their retries: how many, the first reason, where the candidates are."""
+            """Pages set aside after their retries: how many, the first cause in a clause, where its candidate is.
+
+            The cause is short, counted and without ids (`refusals.short_cause`); status has the whole reason."""
             if not rows:
                 return ''
             first, count = rows[0], len(rows)
             where = kept or (f"{'candidate' if count == 1 else 'first candidate'} kept at {first['candidate']}"
-                             if first['candidate'] else 'no candidate was written')
+                             if first['candidate'] else 'no candidate is kept')
             return (f" · {count} {'page' if count == 1 else 'pages'} parked "
-                    f"({first['record'] or 'a task'}: {first['why']}; {where}; co rem status lists them)")
+                    f"({first['record'] or 'a task'}: {first['cause']}; {where}; co rem status lists them)")
 
         def shares_text(row):
             from ...rem.native_round import shares_in_words

@@ -13,6 +13,7 @@ on, so the batch is not read twice, and the daily round retries the page from
 what is held here.
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -26,6 +27,26 @@ RETRY_HOURS = 20
 # a deterministic refusal (a page over the size limit) would otherwise cost a
 # turn every day for ever.
 MAX_RETRIES = 3
+
+
+# A local path inside an error. What the night's line prints never carries one.
+LOCAL_PATH = re.compile(r"""(?<![\w.<:/])/(?:[^\s/:;,)"']+/)+[^\s/:;,)"']*""")
+DROPPED = (("Dropped source id the page had:", "source"), ("Dropped quote the page had:", "quote"))
+
+
+def short_cause(why: str, refusal: str = "") -> str:
+    """A parked reason for the night's line: how often it was refused, then the cause in a clause.
+
+    2026-11-17: the line printed the stored reason, 300 characters of source ids cut
+    mid-word. A rewrite that dropped what the page had is said with its counts, taken
+    from `refusal` (the whole last refusal) when the caller has it, since `why` is cut;
+    any other cause is its first clause. No ids and no local paths either way."""
+    head, body = re.match(r"(?s)(?:(refused (?:\d+ times|twice for the same reason)): )?(.*)", why).groups()
+    text = LOCAL_PATH.sub("<path>", refusal or body).removeprefix("Candidate rejected, kept at <path>: ")
+    lost = [f"{count} {name}{'' if count == 1 else 's'}" for rule, name in DROPPED if (count := text.count(rule))]
+    cause = (f"the rewrite dropped {' and '.join(lost)} the page had" if lost and text.startswith("Dropped ")
+             else re.split(r":\s|;\s|\n", text, maxsplit=1)[0][:100])
+    return f"{head}: {cause}" if head else cause
 
 
 def refused_pages(root: Path) -> dict:

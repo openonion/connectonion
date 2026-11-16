@@ -140,14 +140,12 @@ def _stage(root, record, name) -> dict:
     return getattr(muse, name)(root, record)
 
 
-LOCAL_PATH = re.compile(r"""(?<![\w.<:/])/(?:[^\s/:;,)"']+/)+[^\s/:;,)"']*""")
-
-
 def _failure(error) -> tuple[str, str]:
     """What went wrong without local paths, and its first clause: the night's line prints the clause.
 
     2026-11-16: the line carried 200 raw characters of a refusal, a task directory included.
     """
+    from .refusals import LOCAL_PATH
     text = LOCAL_PATH.sub("<path>", str(error)).removeprefix("Candidate rejected, kept at <path>: ")
     return text[:200], re.split(r":\s|;\s", text, maxsplit=1)[0][:100]
 

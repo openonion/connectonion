@@ -368,10 +368,12 @@ def test_catchup_resumes_a_task_left_pending_and_says_what_it_parked(notebook, m
     assert result.exit_code == 0, result.output
     assert "a native task is pending" not in result.output
     night = next(line for line in result.stdout.splitlines() if line.startswith("Night 1:"))
-    assert f"1 page parked ({fern}: refused twice for the same reason: {REJECTED}" in night
-    assert f"candidate kept at {Path(task['material']) / 'candidate.md'}" in night
+    # The cause in words with its count: the raw reason is a list of source ids, cut mid-word at 300.
+    cause = "refused twice for the same reason: the rewrite dropped 1 source the page had"
+    assert f"1 page parked ({fern}: {cause}; candidate kept at {Path(task['material']) / 'candidate.md'}" in night
+    assert "codex:fern:1" not in night
     done = result.stdout[result.stdout.index("Done: 1 night"):]
-    assert f"1 page parked ({fern}: refused twice for the same reason: {REJECTED}" in done
+    assert f"1 page parked ({fern}: {cause}; candidates kept under" in done
     assert f"candidates kept under {state_path(notebook, 'tasks')}" in done
     assert Notebook(notebook).read(heron).startswith("# Heron\n\nReviewed the pilot.\n")
     status = CliRunner().invoke(app, ["rem", "--root", str(notebook), "status"]).output
@@ -685,3 +687,35 @@ def test_a_preparation_that_cannot_be_interrupted_ends_catchup_after_its_night_l
     following = native.next_task(notebook)
     assert following["outcome"] == "task" and following["record"] == heron, following
     assert refusals.refused_for(notebook, fern)["parked"].startswith("parked: preparing it passed")
+
+
+def test_a_parked_cause_is_short_counted_and_has_no_ids_or_paths():
+    """2026-11-17: the night's line printed 300 raw characters of source ids, cut mid-word."""
+    ids = [f"gmail:{'%012x' % n}" for n in range(6)]
+    refusal = ("Candidate rejected, kept at /fictional/rem/.state/tasks/native-1/candidate.md: "
+               + "; ".join(f"Dropped source id the page had: {i}" for i in ids) + "; Dropped quote the page had: “Keep it”")
+    why = native._park_reason([refusal] * 3)
+    assert len(why) > 300 and not all(i in why for i in ids)  # the stored reason is cut
+    assert refusals.short_cause(why, refusal) == "refused 3 times: the rewrite dropped 6 sources and 1 quote the page had"
+    assert refusals.short_cause(why) .startswith("refused 3 times: the rewrite dropped ")
+    assert refusals.short_cause("refused twice for the same reason: Quote is not in its cited source: “Use the long "
+                                "form”; Finding has unresolved citations") == \
+        "refused twice for the same reason: Quote is not in its cited source"
+    assert refusals.short_cause("co ai timed out after 5s; source progress was preserved") == "co ai timed out after 5s"
+    assert refusals.short_cause("Candidate file /fictional/rem/.state/tasks/native-1/notes.md is missing: write it") == \
+        "Candidate file <path> is missing"
+
+
+def test_the_night_names_a_candidate_only_while_its_file_exists(notebook, monkeypatch):
+    """A parked task keeps candidate.md and its reviews; any other file it wrote goes with the material,
+    and the line named a path that was no longer there."""
+    from connectonion.rem import catchup as nights
+    kept, gone = notebook / "kept.md", notebook / "gone.md"
+    kept.write_text("# Kept\n")
+    runs = [{"outcome": "parked", "parked_night": 1, "record": "projects/fern.md", "reason": "parked: co ai timed out after 5s",
+             "candidate": str(kept), "finished_at": "1"},
+            {"outcome": "parked", "parked_night": 1, "record": "projects/heron.md", "reason": "parked: co ai timed out after 5s",
+             "candidate": str(gone), "finished_at": "2"}]
+    rows = nights._parked(notebook, 1, runs=runs)
+    assert [row["candidate"] for row in rows] == [str(kept), None]
+    assert [row["cause"] for row in rows] == ["co ai timed out after 5s"] * 2

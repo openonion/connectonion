@@ -1131,11 +1131,15 @@ def _batch_material(task, items):
 def _park(root, task, why):
     """Set the task aside for a later day, recorded with its reasons; the round moves on."""
     from .catchup import number
-    from .refusals import material_sources, remember_refusal
+    from .refusals import material_sources, remember_refusal, short_cause
     reason = "parked: " + why
     # The last page it wrote stays where the owner can read what was refused (see scrub_task).
+    # Only a file the scrub keeps is named: notes or a translation go with the material,
+    # and on 2026-11-17 the night's line pointed at one that was no longer there.
     page = Path(task["task"].get("candidate") or "")
-    candidate = str(page) if page.is_file() else None
+    candidate = str(page) if page.is_file() and page.name in runner.PARKED_KEEPS else None
+    refusals = task.get("refusals") or []
+    cause = short_cause(why, refusals[-1] if refusals and why.startswith("refused ") else "")
     task["parked"] = True
     if task.get("record"):
         items = task["task"].get("items", [])
@@ -1143,7 +1147,7 @@ def _park(root, task, why):
                          candidate=candidate, material=_batch_material(task, items))
     _discard(root, read_json(state_path(root, "round.json"), {}), task, reason, outcome="parked",
              refusals=[refusal[:300] for refusal in task["refusals"]], record=task.get("record"),
-             candidate=candidate, parked_night=number(root))
+             candidate=candidate, parked_night=number(root), cause=cause)
     _leave_job(root, task)
     return {"outcome": "parked", "id": task["id"], "record": task.get("record"), "reason": reason,
             "candidate": candidate, "refusals": task["refusals"], **_what_next(task, True)}
