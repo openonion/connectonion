@@ -409,3 +409,168 @@ def test_exec_parks_a_task_whose_review_keeps_asking_without_counting(notebook, 
     assert sum(call["record"] == fern for call in calls) == native.PARK_TOTAL
     assert refusals.refused_for(notebook, fern)["parked"].startswith("parked: refused 3 times")
     assert Notebook(notebook).read(heron).startswith("# Heron\n\nReviewed the pilot.\n")
+
+
+# 2026-11-16, the same day: three pages were parked and then the night died with
+# "Task does not exist or is not pending". The worker had run the printed submit
+# command itself (twice refused, so parked) and then `co rem next`; exec submitted
+# the task it had handed out, which was no longer pending.
+def self_serving_model(root, monkeypatch, rejected, own):
+    """Review rejects `rejected`; the worker on `own` submits by itself and asks for the next task."""
+    from connectonion.rem import schedule
+    calls = []
+
+    def run(directory, prompt, config, stage, **options):
+        task = read_json(Path(directory) / "task.json", {})
+        calls.append(task["record"])
+        Path(task["candidate"]).write_text(f"# Draft {len(calls)}\n", encoding="utf-8")
+        if task["record"] == own:
+            tries = ["refused", "parked"] if own in rejected else ["accepted"]
+            assert [native.submit(root, task["id"])["outcome"] for _ in tries] == tries
+            following = native.next_task(root)
+            if following.get("outcome") == "task":  # another live process holds the claim, as the worker's `next` did
+                saved = Path(following["material"]) / "task.json"
+                write_json(saved, {**read_json(saved, {}), "claimed_by": {"pid": os.getppid(), "started_at": NEW}})
+        return {"result": "", "usage": {"input_tokens": 7}}
+
+    def check(root, task, output):
+        if task["record"] in rejected:
+            raise RemError(f"Candidate rejected, kept at {task['candidate']}: {REJECTED}")
+        Notebook(root).write(task["record"], "# Written\n\nReviewed the pilot.\n")
+        return {"changed": [task["record"]], "report": ""}
+
+    monkeypatch.setattr(runner, "run_task", run)
+    monkeypatch.setattr(runner, "ready", lambda config: ("", ""))
+    monkeypatch.setattr(native_round, "check_task", check)
+    monkeypatch.setattr(schedule, "deepen_round", lambda root, **kw: {"rounds": [], "stopped": ""})
+    return calls
+
+
+def test_exec_goes_on_after_the_worker_parked_its_own_task_and_asked_for_the_next(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, gull, heron, ibis = two_projects(notebook, monkeypatch, ("fern", "gull", "heron", "ibis"))
+    calls = self_serving_model(notebook, monkeypatch, rejected=(fern, gull, heron), own=heron)
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert (result["outcome"], result["reason"]) == ("done", "round done"), result
+    assert [row["record"] for row in result["parked"]] == [fern, gull, heron]
+    assert all(row["reason"].startswith("parked: refused twice for the same reason") for row in result["parked"])
+    # The worker's own two submits were its tries: exec does not run the parked task again.
+    assert (calls.count(fern), calls.count(gull), calls.count(heron), calls.count(ibis)) == (2, 2, 1, 1)
+    assert Notebook(notebook).read(ibis).startswith("# Written\n")
+    assert not read_json(state_path(notebook, "round.json"), {}).get("pending")
+    # The tokens of the turn that settled its own task are still counted.
+    log = next(row for row in service.run_logs(notebook) if row.get("record") == heron and row["outcome"] == "parked")
+    assert log["usage"] == {"input_tokens": 7}
+
+
+def test_exec_goes_on_after_the_worker_submitted_an_accepted_task_itself(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    calls = self_serving_model(notebook, monkeypatch, rejected=(), own=fern)
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert (result["outcome"], result["reason"]) == ("done", "round done"), result
+    assert calls == [fern, heron] and "parked" not in result
+    assert Notebook(notebook).read(fern).startswith("# Written\n") and Notebook(notebook).read(heron).startswith("# Written\n")
+
+
+def faulty_model(root, monkeypatch, fault):
+    """Every page is accepted, except that `fault(record, directory)` may break one task's run."""
+    calls = self_serving_model(root, monkeypatch, rejected=(), own=None)
+    write = runner.run_task
+
+    def run(directory, prompt, config, stage, **options):
+        output = write(directory, prompt, config, stage, **options)
+        fault(read_json(Path(directory) / "task.json", {})["record"], Path(directory))
+        return output
+
+    monkeypatch.setattr(runner, "run_task", run)
+    return calls
+
+
+def test_a_task_whose_input_changed_under_it_is_parked_with_the_error_and_the_round_goes_on(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    faulty_model(notebook, monkeypatch, lambda record, directory: record == fern and (
+        directory / "material.md").write_text("changed while the worker ran\n", encoding="utf-8"))
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert (result["outcome"], result["reason"]) == ("done", "round done"), result
+    assert [row["record"] for row in result["parked"]] == [fern]
+    assert refusals.refused_for(notebook, fern)["parked"].startswith("parked: Task input changed")
+    assert Notebook(notebook).read(heron).startswith("# Written\n")
+    status = CliRunner().invoke(app, ["rem", "--root", str(notebook), "status"]).output
+    assert f"{fern} · parked: Task input changed" in " ".join(status.split())
+
+
+def timeout(record, directory):
+    raise runner.TimedOut("co ai timed out after 5s; source progress was preserved")
+
+
+def test_one_task_that_times_out_is_parked_and_the_round_goes_on(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    faulty_model(notebook, monkeypatch, lambda record, directory: record == fern and timeout(record, directory))
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert (result["outcome"], result["reason"]) == ("done", "round done"), result
+    assert [row["reason"] for row in result["parked"]] == ["parked: co ai timed out after 5s; source progress was preserved"]
+    assert Notebook(notebook).read(heron).startswith("# Written\n")
+
+
+def test_two_tasks_in_a_row_that_cannot_be_run_stop_the_round_instead_of_parking_every_page(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, heron, ibis = two_projects(notebook, monkeypatch, ("fern", "heron", "ibis"))
+    calls = faulty_model(notebook, monkeypatch, timeout)
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert result["outcome"] == "stopped", result
+    assert result["reason"] == ("2 tasks in a row could not be run, so the round stopped; the last: "
+                                "co ai timed out after 5s; source progress was preserved")
+    assert calls == [fern, heron] and [row["record"] for row in result["parked"]] == [fern, heron]
+    assert ibis not in refusals.parked_waiting(notebook)
+
+
+def test_a_runner_that_cannot_run_stops_the_round_and_parks_nothing(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, _ = two_projects(notebook, monkeypatch)
+
+    def refuse_to_start(*args, **options):
+        raise runner.RunFailed("co ai did not complete (exit 1, outcome missing): usage limit reached")
+
+    monkeypatch.setattr(runner, "run_task", refuse_to_start)
+    monkeypatch.setattr(runner, "ready", lambda config: ("", ""))
+    with pytest.raises(runner.RunFailed, match="usage limit reached"):
+        schedule.exec_round(notebook, scheduled=False)
+    assert fern not in refusals.parked_waiting(notebook)
+
+
+def test_catchup_prints_its_totals_and_the_reason_when_the_round_cannot_go_on(notebook, monkeypatch):
+    fern, _, _ = two_projects(notebook, monkeypatch, ("fern", "heron", "ibis"))
+    calls = self_serving_model(notebook, monkeypatch, rejected=(fern,), own=None)
+    write = runner.run_task
+
+    def run(directory, prompt, config, stage, **options):
+        if len(calls) == 3:  # Fern twice (parked), Heron written, then the runner stops answering
+            raise runner.RunFailed("co ai did not complete (exit 1, outcome missing): usage limit reached")
+        return write(directory, prompt, config, stage, **options)
+
+    monkeypatch.setattr(runner, "run_task", run)
+    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "catchup", "--nights", "3"])
+    assert result.exit_code == 1, result.output
+    lines = result.output.splitlines()
+    night = next(line for line in lines if line.startswith("Night 1:"))
+    assert "1 pages written" in night and f"1 page parked ({fern}:" in night
+    assert "exec stopped: co ai did not complete" in night and "exec interrupted" not in night
+    assert not any(line.startswith(("Night 2:", "Error:")) for line in lines), result.output
+    done = next(line for line in lines if line.startswith("Done: 1 night"))
+    assert "1 pages written" in done and "1 page parked" in done
+    assert "Stopped: co ai did not complete (exit 1, outcome missing): usage limit reached" in result.output
+    assert lines[-1].startswith("Next: ")
+
+
+def test_a_night_that_parked_a_task_it_could_not_settle_lets_the_next_night_start(notebook, monkeypatch):
+    fern, heron = two_projects(notebook, monkeypatch)
+    faulty_model(notebook, monkeypatch, lambda record, directory: record == fern and timeout(record, directory))
+    result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "catchup", "--nights", "2"])
+    lines = result.output.splitlines()
+    assert any(line.startswith("Night 1:") and f"1 page parked ({fern}: co ai timed out" in line for line in lines), result.output
+    assert any(line.startswith("Night 2:") for line in lines), result.output
+    assert not any(line.startswith("Error:") for line in lines)
+    assert any(line.startswith("Done: 2 nights") for line in lines)

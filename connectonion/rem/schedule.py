@@ -585,23 +585,49 @@ def _exec_round(root, *, scheduled):
     from .config import read_config
     if scheduled and CodexNative().recent_desktop_fire(root):
         return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
-    parked, refused = [], {}
+    parked, refused, faults = [], {}, 0
     task = native.next_task(root, scheduled=scheduled)
     while task.get("outcome") == "task":
         if scheduled and CodexNative().recent_desktop_fire(root):
             return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
         from .inquiry import stage_config
         config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
-        task_id = task["id"]
-        result = runner.run_task(Path(task["material"]), task["instructions"], config, task["stage"])
-        task = _settle(root, native, task_id, native.submit(root, task_id, usage=result.get("usage")), refused)
+        task = _run_one(root, native, runner, task, config, refused)
+        faults = faults + 1 if task.get("fault") else 0
         if task.get("outcome") == "parked":
             parked.append({key: task.get(key) for key in ("record", "reason", "candidate")})
-        if task.get("outcome") != "task":
+        if faults == TASK_FAULTS_IN_A_ROW:
+            task = {"outcome": "stopped", "reason": f"{faults} tasks in a row could not be run, so the round stopped; "
+                    f"the last: {task['reason'].removeprefix('parked: ')}"}
+        elif task.get("outcome") != "task":
             # After a refusal this offers the same task again with its required
-            # corrections first, as `co rem next` does for the scheduled agent.
-            task = native.next_task(root, scheduled=scheduled, own=task.get("outcome") == "refused")
+            # corrections first, as `co rem next` does for the scheduled agent. The
+            # task a worker's own `co rem next` prepared is this round's to take too.
+            task = native.next_task(root, scheduled=scheduled,
+                                    own=task.get("outcome") == "refused" or task.get("settled_by") == "worker")
     return {**task, "parked": parked} if parked else task
+
+
+# One task's fault is parked and the round goes on. Two in a row is no longer about
+# the pages (the network is down, every turn times out): stopping keeps the rest of
+# the round's pages from being parked one by one for a day each.
+TASK_FAULTS_IN_A_ROW = 2
+
+
+def _run_one(root, native, runner, task, config, refused):
+    """Run one task and settle it; what is wrong with this one task alone parks it.
+
+    2026-11-16: any error from one task's submit ended the night. Only the two kinds
+    that name one task are caught: a submit that cannot settle it (`TaskFault`: it is
+    no longer pending, or its inputs changed while the worker ran) and a turn past
+    its deadline (`TimedOut`). A runner that cannot start or does not complete, a
+    lock held elsewhere, an unreadable notebook and a refused model are about the
+    round: they are raised, and catchup reports them and starts no further night."""
+    try:
+        result = runner.run_task(Path(task["material"]), task["instructions"], config, task["stage"])
+        return _settle(root, native, task["id"], native.settle(root, task["id"], usage=result.get("usage")), refused)
+    except (native.TaskFault, runner.TimedOut) as error:
+        return {**native.park(root, task["id"], native.in_words(str(error)), record=task.get("record")), "fault": True}
 
 
 def _settle(root, native, task_id, outcome, refused):

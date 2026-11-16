@@ -132,6 +132,18 @@ def _depth_counts(root, result, before):
     return {'deepened': len(rounds), 'deepen_reason': reason or ('no qualifying pages' if not rounds else '')}
 
 
+def _round(root, schedule, stage, say):
+    """One exec round. An error that stops the round is the night's stop reason, not a bare error.
+
+    2026-11-16: "Task does not exist or is not pending" ended catchup after the
+    night's line with `Error:` and no totals, and the line said "exec interrupted".
+    Ctrl-C still leaves through `_night`'s finally, with its own report."""
+    try:
+        return schedule.exec_round(root, scheduled=False, stage=stage, say=say)
+    except RemError as error:
+        return {'outcome': 'failed', 'reason': str(error)}
+
+
 def _night(root, night, rows, progress, stage, say):
     from . import schedule
     before = read_json(state_path(root, 'depth.json'), {})
@@ -139,7 +151,7 @@ def _night(root, night, rows, progress, stage, say):
     calendar = None
     with scope(root, night):
         try:
-            result = schedule.exec_round(root, scheduled=False, stage=stage, say=say)
+            result = _round(root, schedule, stage, say)
             calendar = result.get('calendar')
             reason, failed = _stop(result, _counts(root, night), len(rows) + 1)
             deepening = result.get('depth', {'rounds': [], 'stopped': f'exec stopped: {reason or result.get("reason", "")}'})

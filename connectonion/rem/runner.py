@@ -31,6 +31,10 @@ class RunFailed(RemError):
         self.report = report
 
 
+class TimedOut(RunFailed):
+    """One turn passed its deadline. It is that task's failure: exec parks the task and goes on."""
+
+
 STAGES = ("init", "extract", "maintain", "investigate", "enrich", "muse", "abstract")
 ONE_PAGE_STAGES = ("investigate", "enrich", "muse")
 # The stages that write notebook pages, and so need the page shapes.
@@ -293,7 +297,7 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: st
             cwd=str(workspace.resolve()), capture_output=True, text=True,
             timeout=process_timeout, env=child_env(config))
     except subprocess.TimeoutExpired as error:
-        raise RunFailed(f"co ai timed out after {timeout}s; source progress was preserved") from error
+        raise TimedOut(f"co ai timed out after {timeout}s; source progress was preserved") from error
     except OSError as error:
         raise RunFailed(f"co ai could not start: {error}") from error
     envelope = {}

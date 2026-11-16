@@ -46,6 +46,14 @@ STALLED = "stalled-next.json"
 _WATCH = {"label": "starting", "skip": {}, "deadline": None, "step": None, "step_began": 0.0, "timings": {}}
 
 
+class TaskFault(RemError):
+    """This one task cannot be settled, and the round itself can go on.
+
+    Exec parks the task with these words and takes the next one. Anything else a
+    submit raises (the lock is held elsewhere, the notebook cannot be read) is
+    about the round and stops it."""
+
+
 def pending(root):
     task_id = read_json(state_path(root, "round.json"), {}).get("pending")
     task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {}) if task_id else {}
@@ -677,10 +685,10 @@ def _submit(root, task_id, *, usage):
     with maintenance_lock(root, operation="submit"), runner.private_task_mask():
         task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
         if task.get("status") != "pending":
-            raise RemError("Task does not exist or is not pending")
+            raise TaskFault("Task does not exist or is not pending")
         cursor = read_json(state_path(root, "round.json"), {})
         if cursor.get("pending") != task_id:
-            raise RemError("Task is not the round's pending task")
+            raise TaskFault("Task is not the round's pending task")
         _usage(task, usage)
         committed = native_round.recover_commit(root, task)
         if committed is not None:
@@ -692,7 +700,7 @@ def _submit(root, task_id, *, usage):
         if (any(not _input_matches(root, task, Path(path), digest)
                 for path, digest in task["inputs"].items() if path in inputs)
                 or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
-            raise RemError("Task input changed; preserve the current notebook. Run co rem next --discard")
+            raise TaskFault("Task input changed; preserve the current notebook. Run co rem next --discard")
         result = _check_submission(root, task)
         if result.get("outcome") in ("refused", "parked"):
             return result
@@ -705,7 +713,7 @@ def _usage(task, usage):
     if usage is None:
         return
     if not isinstance(usage, dict) or any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in usage.values()):
-        raise RemError("Usage must contain non-negative finite token totals")
+        raise TaskFault("Usage must contain non-negative finite token totals")
     task["usage"] = usage
 
 
@@ -839,17 +847,59 @@ def _park(root, task, why):
             "candidate": candidate, "refusals": task["refusals"], "same_turn": True}
 
 
-def park(root, task_id, why):
-    """Park the round's pending task from outside a submit: exec's bound on a task
-    that is refused without a count (a claim audit asked to continue again and again)."""
+def park(root, task_id, why, *, record=None):
+    """Park a task from outside a submit, for exec: one refused without a count (a
+    claim audit asked to continue again and again), or one it could not settle.
+
+    A task that is already settled keeps what was recorded. One that is no longer
+    the round's pending task has nothing left to discard, so only the ledger
+    says why its page (`record`) was set aside."""
     from .catchup import resume
+    from .refusals import remember_refusal
     root = root.resolve()
     with resume(root), maintenance_lock(root, operation="submit"), runner.private_task_mask():
         task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
-        if task.get("status") != "pending" or read_json(state_path(root, "round.json"), {}).get("pending") != task_id:
-            raise RemError("Task is not the round's pending task")
-        task.setdefault("refusals", [])
-        return _park(root, task, why)
+        if task.get("status") == "pending" and read_json(state_path(root, "round.json"), {}).get("pending") == task_id:
+            task.setdefault("refusals", [])
+            return _park(root, task, why)
+        settled = _settled(task)
+        if settled:
+            return settled
+        if record:
+            remember_refusal(root, record, [], "parked: " + why, stage="parked", parked=True)
+        return {"outcome": "parked", "id": task_id, "record": record, "reason": "parked: " + why, "candidate": None}
+
+
+def _settled(task):
+    """What was recorded for a task that is no longer pending, or None while it is (or does not exist)."""
+    if task.get("status") == "accepted":
+        return {"outcome": "accepted", "id": task["id"], "changed": task["accepted_result"].get("changed", [])}
+    if task.get("status") != "discarded":
+        return None
+    page = Path(task["task"].get("candidate") or "")
+    return {"outcome": "parked" if task.get("parked") else "discarded", "id": task["id"], "record": task.get("record"),
+            "reason": task["reason"], "candidate": str(page) if task.get("parked") and page.is_file() else None}
+
+
+def settle(root, task_id, *, usage=None):
+    """Exec's submit after its worker's turn: submit the task, or report what the worker already recorded.
+
+    2026-11-16: the instructions print the submit command for the scheduled agent,
+    and exec's worker ran it too. Refused twice, the task was parked by the worker's
+    own submit, the worker then ran `co rem next`, and exec's submit of the task it
+    had handed out ended a three-night catchup with "Task does not exist or is not
+    pending" before Abstract, Translate or Deepen. `settled_by` tells exec that the
+    task now pending was prepared inside its own worker's turn."""
+    root = root.resolve()
+    with maintenance_lock(root, operation="submit"):
+        task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
+        settled = _settled(task)
+        if settled:
+            _usage(task, usage)
+            run = state_path(root, f"runs/{task['run']['id']}.json")
+            write_json(run, {**read_json(run, {}), "usage": task.get("usage")})
+            return {**settled, "settled_by": "worker"}
+    return submit(root, task_id, usage=usage)
 
 
 def _continue_review(root, task, reason):
