@@ -98,14 +98,24 @@ def _hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
+# Scheduling, concurrency and budgets govern future work, so a prepared task's digest
+# leaves them out; the retired count caps stay listed for tasks saved while they existed.
+RUN_LIMITS = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
+              "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
+              "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
+              "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
+# Evidence-sizing limits decide what a prepared task holds, so they are hashed.
+# A new default limit belongs in one of the two sets: unclassified it is hashed, and
+# every task the release before it prepared is parked "Task input changed" (2026-11-17,
+# abstract_rounds_per_night). A test fails until it is named here.
+EVIDENCE_LIMITS = {"items_per_batch", "input_chars_per_batch", "extract_items_per_batch",
+                   "extract_chars_per_batch", "investigation_rounds"}
+
+
 def _config_hash(config, *, include_languages=False, include_models=False, include_notify=False):
-    # Scheduling, concurrency and budgets govern future work. Prepared material
-    # (including its language and local dates) is already saved. Reader translation
-    # targets do not change page-task material. Keep evidence-sizing limits.
-    run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
-                  "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
-                  "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
-                  "investigations_per_night", "skill_pages_per_night"}
+    # Prepared material (including its language and local dates) is already saved.
+    # Reader translation targets do not change page-task material.
+    run_limits = RUN_LIMITS
     ignored = {"schedule", "effort", "notify"}
     if include_notify:
         ignored.remove("notify")

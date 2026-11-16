@@ -2658,7 +2658,7 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
                 'timeout_seconds', 'workers', 'investigation_quota_points', 'quota_floor_percent',
                 'depth_quota_points', 'depth_workers', 'depth_pages_per_slot', 'depth_slot_minutes',
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                'investigations_per_night', 'skill_pages_per_night'}
+                'investigations_per_night', 'skill_pages_per_night', 'abstract_rounds_per_night'}
     material = {key: value for key, value in previous.items() if key not in ('schedule', 'effort')}
     material['limits'] = {key: value for key, value in previous['limits'].items() if key not in controls}
     saved['inputs'][str(trial / 'config.yaml')] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
@@ -2671,6 +2671,28 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
     else:
         with pytest.raises(RemError, match='input changed'):
             native.submit(trial, task['id'])
+
+
+def test_every_default_limit_is_classified_for_the_task_digest():
+    # 2026-11-17: limits.abstract_rounds_per_night was added to the defaults and to neither
+    # set, so it was hashed: a task prepared by the release before it failed "Task input
+    # changed" under the next one, and a 253 second worker turn was thrown away.
+    limits = set(default_config()['limits'])
+    assert limits <= native.RUN_LIMITS | native.EVIDENCE_LIMITS, sorted(limits - native.RUN_LIMITS - native.EVIDENCE_LIMITS)
+    assert not native.RUN_LIMITS & native.EVIDENCE_LIMITS
+    assert {'abstract_rounds_per_night', 'investigations_per_night', 'skill_pages_per_night'} <= native.RUN_LIMITS
+
+
+def test_a_page_task_prepared_before_the_abstract_share_existed_still_submits(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial)
+    _candidate(trial, task, record, source)
+    saved = native.pending(trial)[0]
+    config = read_config(trial)
+    del config['limits']['abstract_rounds_per_night']
+    saved['inputs'][str(trial / 'config.yaml')] = native._config_hash(config)
+    write_json(Path(task['material']) / 'task.json', saved)
+    assert _submit(trial, task)['outcome'] == 'accepted'
 
 
 def test_a_page_task_saved_before_the_count_caps_were_retired_still_submits(trial):
@@ -2713,7 +2735,7 @@ def test_pre_model_split_digest_accepts_model_controls(trial, languages, change)
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                "investigations_per_night", "skill_pages_per_night"}
+                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
     material = {k: v for k, v in previous.items() if k not in ignored}
     material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}
@@ -2740,7 +2762,7 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                "investigations_per_night", "skill_pages_per_night"}
+                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
     material = {k: v for k, v in previous.items() if k not in ignored}
     material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}

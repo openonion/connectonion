@@ -831,6 +831,15 @@ first pass had and submits its own page; a maintenance or translation repair
 stays confined and ends its turn. The corrections are also rewritten when the
 task changes hands: a page refused under `co rem next` and offered again by
 `co rem exec` (or the reverse) gets the ending for the worker that now has it.
+A task's inputs include `config.yaml`, read for what shapes its material only:
+the evidence-sizing limits (`items_per_batch`, `input_chars_per_batch`,
+`extract_items_per_batch`, `extract_chars_per_batch`, `investigation_rounds`)
+count, and the limits that bound future work (the daily call cap, the nightly
+shares `investigations_per_night`, `skill_pages_per_night` and
+`abstract_rounds_per_night`, workers, timeouts and budgets) do not. A task
+prepared before `abstract_rounds_per_night` existed was parked as changed by
+the release that added it (2026-11-17); every default limit is now named in
+one of the two groups, and a test fails for one that is not.
 A task whose inputs changed while the worker ran, one
 that is no longer the round's pending task, and a turn that passes
 `limits.timeout_seconds` are parked with that error in words, listed like any
