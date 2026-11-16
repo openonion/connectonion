@@ -7900,8 +7900,12 @@ function turnTrouble(failure) {
   const evidence = String(failure.evidence || "");
   if (failure.failures) {
     const since = String(failure.since || "").slice(0, 16).replace("T", " ");
-    return uiLanguage === "zh" ? `后台：最近 ${failure.failures} 轮失败，自 ${since} UTC 起。REM 会自动重试。`
-      : `Background: the last ${failure.failures} ${failure.failures === 1 ? "turn failed" : "turns failed"}, since ${since} UTC. REM retries automatically.`;
+    // `empty`: turns that exited cleanly with no task served and nothing submitted (1.9.6rc18).
+    const empty = failure.empty || 0, all = empty === failure.failures;
+    if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} UTC 起。REM 会自动重试。`;
+    const said = all ? (failure.failures === 1 ? "turn ran but produced nothing" : "turns ran but produced nothing")
+      : (failure.failures === 1 ? "turn failed" : "turns failed") + (empty ? ` (${empty} ran but produced nothing)` : "");
+    return `Background: the last ${failure.failures} ${said}, since ${since} UTC. REM retries automatically.`;
   }
   if (/^Turn exceeded \d+ hours/.test(evidence)) return t("One round last night ran too long and was stopped; the next round continues.");
   if (/^MAINTENANCE_BUSY\b/.test(evidence)) return t("Another job was holding the notebook, so the last round did not run; the next round tries again.");

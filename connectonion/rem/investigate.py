@@ -871,6 +871,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 "attachment metadata unavailable without provider")
             continue
         if attachments_dir is not None and hasattr(client, "list_attachments") and local:
+            if stage_progress:
+                stage_progress(f"listing {kind} attachments", 0, len(local))
             with ThreadPoolExecutor(max_workers=10) as pool:
                 metadata = pool.map(attachment_metadata, (item["_mail_id"] for item in local))
                 for item, listed in zip(local, metadata):
@@ -881,6 +883,8 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         # domain is not an address; org pages search it through `domains` above.
         emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         unavailable = None
+        if stage_progress and intervals:
+            stage_progress(f"searching {kind} mail")
         for begin, finish in intervals:
             if record.startswith('knowledge/') and hasattr(client, 'list_search'):
                 terms = ['"' + handle.replace('"', '') + '"' for handle in handles]
@@ -939,6 +943,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if sent_only:
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
+        if stage_progress and mail_to_read:
+            # Named before the bodies are asked for: the first ten used to be counted as the search.
+            stage_progress(f"gathering {kind} mail", 0, len(mail_to_read))
         with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 20)) as pool:
             bodies = pool.map(fetch_body, (row["id"] for row in mail_to_read))
             for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
@@ -1148,6 +1155,8 @@ SESSION_WINDOW_VERSION = 2  # Bump when source.collect changes which messages it
 # A first run is hours long; re-verifying every rollout each ten minutes held all
 # its workers behind one three-minute scan. Half an hour stale is fine for it.
 SESSION_MEMO_SECONDS = 1800
+# How much of the store one batch walks before the window is saved (11-16).
+WINDOW_SCAN_BYTES = 512_000_000
 
 
 def _migrate_session_window(saved: dict, kind: str, *, root: Path) -> dict:
@@ -1225,10 +1234,11 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path, *, mis
     saved = read_json(cache_path, {})
     since = timestamp(scoped["since"])
     if (saved.get("version") not in (1, SESSION_WINDOW_VERSION) or saved.get("subscription") != identity
-            or timestamp(saved["since"]) > since
-            or any(not (Path(scoped["root"]) / name).is_file() for name in saved["progress"])):
+            or timestamp(saved["since"]) > since):
         saved = {"version": SESSION_WINDOW_VERSION, "subscription": identity, "since": scoped["since"],
                  "items": [], "progress": {}, "unfamiliar": 0}
+    kept = _without_vanished_rollouts(saved, Path(scoped["root"]))
+    pruned, saved = kept is not saved, kept
     if saved["version"] == 1:
         saved = _migrate_session_window(saved, scoped.get("kind", "codex"), root=Path(scoped["root"]))
         write_json(cache_path, saved)
@@ -1236,24 +1246,55 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path, *, mis
     unfamiliar, told = saved["unfamiliar"], len(items)
     earlier_missing = set(saved.pop("missing_files", []))
     missing.update(name for name in earlier_missing if not (Path(scoped["root"]) / name).is_file())
+    written = saved["progress"] if cache_path.is_file() and missing == earlier_missing and not pruned else None
     while True:
-        batch = collect({**scoped, "since": saved["since"]}, cursor, 4_000, 20_000_000)
+        batch = collect({**scoped, "since": saved["since"]}, cursor, 4_000, 20_000_000, scan_bytes=WINDOW_SCAN_BYTES)
         items.extend(batch.items)
         unfamiliar += batch.unrecognised
         missing.update(batch.missing_files)
         if stage_progress and len(items) > told:
             told = len(items)
             stage_progress(f"gathering {label}: {told:,} scanned", told)
-        if batch.progress == cursor:
+        done, cursor = batch.progress == cursor, batch.progress
+        if written != cursor:
+            # Saved batch by batch: a build ended by next's deadline used to save nothing,
+            # so the next call read the same gigabytes and was ended at the same place.
+            write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar,
+                                    **({"missing_files": sorted(missing)} if missing else {})})
+            written = cursor
+        if done:
             break
-        cursor = batch.progress
-    if saved["progress"] != cursor or not cache_path.is_file() or missing != earlier_missing:
-        write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar,
-                                **({"missing_files": sorted(missing)} if missing else {})})
     _WINDOWS[memo] = (time.monotonic(), timestamp(saved["since"]), items, unfamiliar, sorted(missing))
     if timestamp(saved["since"]) < requested:
         items = [item for item in items if timestamp(item["timestamp"]) >= requested]
     return items, unfamiliar
+
+
+def _without_vanished_rollouts(saved: dict, root: Path) -> dict:
+    """The window without what a rollout that no longer exists gave it; one Codex compressed is followed.
+
+    Any rollout no longer a plain file used to discard the whole window, and Codex
+    compresses old sessions in place: from the first one compressed, every page
+    read the whole store again, on every call (11-16: 6.7 GB, past the deadline).
+    The messages of a compressed rollout are the same bytes at the same offsets."""
+    from .source import COMPRESSED
+    moved, gone = {}, set()
+    for name in saved["progress"]:
+        plain = root / name
+        if plain.is_file():
+            continue
+        packed = plain.with_name(plain.name + COMPRESSED)
+        if packed.is_file():
+            moved[plain.as_uri()] = packed.as_uri()
+        else:
+            gone.add(name)
+    if not moved and not gone:
+        return saved
+    lost = {(root / name).as_uri() for name in gone} | {(root / (name + COMPRESSED)).as_uri() for name in gone}
+    items = [{**item, "reference": moved.get(item.get("reference"), item.get("reference"))}
+             for item in saved["items"] if item.get("reference") not in lost]
+    progress = {name: entry for name, entry in saved["progress"].items() if name not in gone}
+    return {**saved, "items": items, "progress": progress}
 
 
 SEARCH_RESULTS = 20
@@ -2315,6 +2356,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         company_note = (OWN_COMPANY_NOTE + f"\nOwner: {company['name']}; own addresses and agents: "
                         + ', '.join(company['addresses']) + '\n\n' + company_context(notebook, record, company))
     if not sent_only and record.startswith(("people/", "orgs/")):
+        if stage_progress:
+            stage_progress("searching project documents")
         mentions, documents_coverage = project_mentions(notebook, [subject, *search_handles])
         items.extend(mentions)
         coverage.append(documents_coverage)

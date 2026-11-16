@@ -463,9 +463,11 @@ def test_investigation_reports_privacy_safe_stages(tmp_path):
     inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan"], days=5,
                     clients={"outlook": Quiet()}, subscriptions={}, runner=fake_runner,
                     stage_progress=lambda stage, *counts: stages.append((stage, counts)))
+    # Each wait has its own name: the search, the bodies and the owner's notes were all "gathering sources".
     assert [stage for stage, _ in stages] == [
-        "gathering sources", "gathering outlook mail", "preparing evidence", "writing investigation",
-        "recording result"]
+        "gathering sources", "searching outlook mail", "gathering outlook mail", "gathering outlook mail",
+        "searching project documents", "preparing evidence", "writing investigation", "recording result"]
+    assert stages[2:4] == [("gathering outlook mail", (0, 1)), ("gathering outlook mail", (1, 1))]
 
 
 @pytest.mark.parametrize('parent', ['workspace', 'rem-workspace'])
