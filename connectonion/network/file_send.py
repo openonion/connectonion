@@ -78,6 +78,17 @@ async def _reply(ws) -> dict:
             return event
 
 
+def _stop_if_cancelled():
+    """Re-raise a cancel that a socket call swallowed.
+
+    Ctrl-C cancels this task, and a cancel that lands inside a websockets send
+    or recv can come out as ConnectionClosed, or not at all: on CI the send then
+    finished as if nobody had asked it to stop.
+    """
+    if asyncio.current_task().cancelling():
+        raise asyncio.CancelledError()
+
+
 async def _send_once(remote, path: Path, name: str, size: int, sha256: str, on_progress):
     import websockets
 
@@ -103,6 +114,7 @@ async def _send_once(remote, path: Path, name: str, size: int, sha256: str, on_p
             if sent == size:
                 await ws.send(_chunk(remote, sha256, sent, b""))
             while True:
+                _stop_if_cancelled()
                 while sent < size and sent - acked < WINDOW_BYTES:
                     data = source.read(CHUNK_BYTES)
                     await ws.send(_chunk(remote, sha256, sent, data))
@@ -127,11 +139,10 @@ async def send_file(remote, path: Path, name: str, on_progress=None) -> dict:
         try:
             return await _send_once(remote, path, name, size, sha256, on_progress)
         except (OSError, asyncio.TimeoutError, websockets.ConnectionClosed, _Resync):
-            # Ctrl-C cancels this task, and a cancel that lands inside a socket
-            # send comes out as ConnectionClosed. That is the person stopping,
-            # not the network dropping: retrying it reported the receiver as
-            # unreachable on the first real 5 GB run.
-            if attempt == RETRIES or asyncio.current_task().cancelling():
+            # The person stopping, not the network dropping: retrying it reported
+            # the receiver as unreachable on the first real 5 GB run.
+            _stop_if_cancelled()
+            if attempt == RETRIES:
                 raise
             wait = min(30, 2 ** attempt)
             if on_progress:

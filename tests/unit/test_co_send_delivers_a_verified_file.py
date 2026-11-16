@@ -148,7 +148,9 @@ def _nothing_staged(receiver):
 def test_a_stranger_cannot_send(receiver, tmp_path):
     clip = _video(tmp_path, megabytes=1)
 
-    with pytest.raises(file_send.SendRefused, match="onboarding"):
+    # Refused at CONNECT, before any file frame: "requires onboarding" when an
+    # invite code is configured, "not a contact" when none is.
+    with pytest.raises(file_send.SendRefused, match="onboarding|not a contact"):
         asyncio.run(file_send.send_file(_remote(receiver, address.generate()), clip, clip.name))
     assert _nothing_staged(receiver)
 
@@ -213,7 +215,7 @@ def test_stopping_a_send_stops_it_rather_than_retrying(receiver, tmp_path):
     cancellation as a dropped connection, retried, and reported the receiver as
     unreachable.
     """
-    clip = _video(tmp_path, megabytes=24)
+    clip = _video(tmp_path, megabytes=64)
 
     async def stop_midway():
         started = asyncio.Event()
