@@ -110,3 +110,40 @@ def test_a_page_out_of_retries_is_not_listed_again_until_something_new_arrives(t
     assert record not in listed()
     row["last_activity"] = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     assert record in listed()
+
+
+# ---------------------------------------------- a native worker is given what fits, and one file to read when it does not
+
+SMALL = [{"role": "user", "source": "codex:abc:1", "text": "shipped the reader", "timestamp": "2026-09-24"}]
+
+
+def test_a_native_worker_is_given_material_that_fits(tmp_path):
+    """In 56 native turns the worker read material.md 320 times, material.json 318 times, the SKILL.md
+    it already had 57 times and instructions.md 35 times: the inline branch was only for co ai."""
+    prompt = runner.task_prompt(tmp_path, SMALL, "maintain", "codex", native=True)
+    assert "<material>" in prompt and "shipped the reader" in prompt and "<instructions>" in prompt
+    assert "Read all source material" not in prompt
+    assert ("Do not reread this task's instructions.md, additional-instructions.md, "
+            "material.md or material.json; their content is already inline.") in prompt
+    assert "do not open its SKILL.md" in prompt and "already loaded" not in prompt
+    assert "already loaded" in runner.task_prompt(tmp_path, SMALL, "maintain", "codex")   # co ai expands the Skill
+
+
+def test_a_native_prompt_counts_the_skill_it_carries(tmp_path):
+    """Native prepends the stage Skill to the same argv string, so the Skill is part of what must fit."""
+    core = len((runner.useful_skills_dir() / "rem-maintain/SKILL.md").read_bytes())
+    additions = len(runner.instructions("maintain", "codex").encode()) - core
+    # Room for the additions and the material, and for half the Skill but not all of it.
+    items = [{**SMALL[0], "text": "x " * ((runner.INLINE_LIMIT - additions - core // 2) // 2)}]
+    assert "<material>" in runner.task_prompt(tmp_path, items, "maintain", "codex")
+    assert "<material>" not in runner.task_prompt(tmp_path, items, "maintain", "codex", native=True)
+
+
+def test_native_material_too_big_to_give_names_one_file(tmp_path):
+    """The same content in two formats was read twice: 320 reads of one, 318 of the other."""
+    big = [{**SMALL[0], "text": "x " * runner.INLINE_LIMIT}]
+    prompt = runner.task_prompt(tmp_path, big, "maintain", "codex", native=True)
+    assert str(tmp_path / "material.md") in prompt and "material.json" not in prompt
+    assert "the check ignores where its lines wrap" in prompt
+    assert (tmp_path / "material.json").is_file()                                    # still written, for the audit
+    assert str(tmp_path / "material.json") in runner.task_prompt(tmp_path, big, "maintain", "codex")

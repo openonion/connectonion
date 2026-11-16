@@ -2660,3 +2660,13 @@ def test_each_new_scheduled_slot_reads_new_mail_into_a_long_round(trial, monkeyp
     assert read_json(state_path(trial, 'round.json'), {})['mail_slot'] == moment.isoformat()
     native.next_task(trial, scheduled=True)
     assert reads == [moment], 'the same slot does not read again'
+
+
+def test_a_native_task_says_what_is_inline_and_that_task_json_is_not_for_reading(trial):
+    """task.json (180–344 KB of the runner's own state) was read 134 times in one day (#3083)."""
+    _, source = _feedback(trial)
+    task = native.next_task(trial)
+    prompt = task['instructions']
+    assert '<material>' in prompt and source in prompt
+    assert 'task.json is the runner\'s own record of this task, not material: do not read it.' in prompt
+    assert prompt == (Path(task['material']) / 'instructions.md').read_text()

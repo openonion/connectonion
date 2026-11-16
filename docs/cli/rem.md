@@ -3331,6 +3331,17 @@ retains text for quotations and validation. Long JSON strings use consecutive
 without writing a reconstruction script. An unusually long original page is
 supplied as exact JSON rather than an unreadable initial Markdown copy.
 Session summaries use one file per session, such as `sessions/s1.json`.
+The exception is extraction, maintenance and investigation material that fits:
+when the stage Skill, its additions and `material.md` together are within the
+100,000 bytes one argument may carry, the instructions hold the additions and
+the material inline (`<instructions>`, `<material>`) and say not to reread
+`instructions.md`, `additional-instructions.md`, `material.md`, `material.json`
+or the Skill's `SKILL.md`. Larger material names one file, `material.md`:
+`material.json` is still written for the audit trail but not named, because the
+quote check ignores where lines wrap. Every native task also says that
+`task.json` is the runner's own record and not to be read. Measured over one
+day before this (#3083): `material.md` read 320 times, `material.json` 318,
+`task.json` (180–344 KB) 134, the Skill already in the prompt 57.
 The single-call child runner keeps its existing inline packets and JSON replies.
 
 Audit checkpoint lines must contain `excerpt: "verbatim original span"`, at least
