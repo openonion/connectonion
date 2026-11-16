@@ -560,7 +560,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. Exit 0 when it finished or a limit stopped it, 1 on a refused, busy or failed round. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, the first reason and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -596,10 +596,32 @@ the scheduled round. Each line reports that night's mail and sessions read,
 pages written, decision pages written, translations, drafts and pages deepened;
 totals follow. A productive night stopped at the daily cap keeps its counts and
 can repeat with fresh limits, but skips deepen because its round is unfinished.
-If exec is refused, busy, reaches a quota floor or produces no
+If exec is busy, reaches a quota floor or produces no
 pages, translations or drafts, catchup stops without starting deepen.
-Run `co rem exec` to resume unfinished exec work before starting another catchup
-run. Saved work survives interruption, including during deepen.
+Saved work survives interruption, including during deepen.
+
+One page never stops the night. When review refuses a candidate, exec (and so
+catchup) runs that task again with the refusal as its required corrections.
+A task refused twice for the same reason, or three times in all, is parked:
+the reason goes to the refusal ledger (`.state/refused-investigations.json`),
+the last candidate and its `review.json` stay in the task's folder under
+`.state/tasks/`, the pending task is cleared and the round continues with its
+next work. A parked page is not picked again in the same night and returns as
+a retry on a later one (after 20 hours on the schedule), up to three retries
+on the same material. The night's line and the totals say it:
+
+```text
+Night 1: … · 1 page parked (projects/fern.md: refused twice for the same reason: Dropped source id the page had: codex:fern:1; candidate kept at <root>/.state/tasks/native-<id>/candidate.md; co rem status lists them)
+Done: 1 night · … · 1 page parked (projects/fern.md: refused twice for the same reason: Dropped source id the page had: codex:fern:1; candidates kept under <root>/.state/tasks; co rem status lists them)
+```
+
+`--json` carries the same rows in `parked` (`record`, `why`, `candidate`) per
+night and in total. Parking is not a failure: a night that parked pages exits
+0, as a night stopped at a limit does. A task that an earlier stopped run left
+pending is resumed by the next catchup or `co rem exec` through the same
+retry-then-park path; only a task another live process is working on stops
+the night (exit 1, with `co rem next --discard` named). `co rem submit` and
+`co rem next --discard` still work by hand.
 
 When the weekly investigation budget or the Codex usage floor already holds the
 model before the first night, catchup does not print an empty night. It does the
@@ -899,6 +921,8 @@ unless that round was partial. Manual `co rem sync` never deepens pages.
 run the same slot after a completed whole round. Their closing
 translation has already run; deepen changes await the next translation pass.
 Catchup reuses exec's slot and reports its results without calling it again.
+`co rem exec` retries a refused candidate and then parks it as catchup does,
+and prints one `Parked <page>: <reason>` line for each.
 In-session `co rem next` / `co rem submit` does not deepen. Early stops and
 translation-only exec rounds skip the slot.
 

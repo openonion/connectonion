@@ -49,11 +49,13 @@ def material_sources(items: list[dict]) -> list[str]:
 
 
 def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, stage: str,
-                     material: list[dict] | None = None, parked: bool = False) -> None:
+                     material: list[dict] | None = None, parked: bool = False,
+                     candidate: str | None = None) -> None:
     """Add a refusal to the page's entry; what an earlier refusal held stays held.
 
     `parked`: the native round set the page aside (refused again and again, or
-    its preparation hung). That note stays until the page is accepted."""
+    its preparation hung). That note stays until the page is accepted.
+    `candidate`: where the last page a parked task wrote is kept for the owner."""
     from .catchup import identity, number
     ledger = refused_pages(root)
     entry = ledger.get(record) or {}
@@ -68,8 +70,9 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
                       **identity(root),
                       **({"material": list(held.values())} if held else {}),
                       **({"parked": why[:300], "parked_at": datetime.now(timezone.utc).isoformat(),
-                          "parked_night": number(root)} if parked
-                         else {key: entry[key] for key in ("parked", "parked_at", "parked_night") if key in entry})}
+                          "parked_night": number(root), **({"candidate": candidate} if candidate else {})} if parked
+                         else {key: entry[key] for key in ("parked", "parked_at", "parked_night", "candidate")
+                               if key in entry})}
     write_json(state_path(root, REFUSED), ledger)
 
 

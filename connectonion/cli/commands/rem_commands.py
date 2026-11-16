@@ -2125,8 +2125,11 @@ def make_rem_app(factory):
                     + progress + reason
                     + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
                     + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
+        parked = [f"Parked {row['record'] or 'a task'}: {row['reason'].removeprefix('parked: ')}"
+                  + (f" (candidate kept at {row['candidate']})" if row.get('candidate') else '')
+                  for row in value.get("parked", [])]
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
-                           *(value.get("changed") or [])])
+                           *(value.get("changed") or []), *parked])
 
     @rem.command("exec", cls=V("co rem exec"))
     def native_exec(ctx: typer.Context, scheduled: bool = typer.Option(False, "--scheduled")):
@@ -2180,9 +2183,19 @@ def make_rem_app(factory):
                 'Calendar: ' + (calendar_text(held) + plan_text(held)).removeprefix(' · '),
                 f"Waiting: {', '.join(first)} and {last} call the model{when}"])
 
+        def parked_text(rows, kept=''):
+            """Pages set aside after their retries: how many, the first reason, where the candidates are."""
+            if not rows:
+                return ''
+            first, count = rows[0], len(rows)
+            where = kept or (f"{'candidate' if count == 1 else 'first candidate'} kept at {first['candidate']}"
+                             if first['candidate'] else 'no candidate was written')
+            return (f" · {count} {'page' if count == 1 else 'pages'} parked "
+                    f"({first['record'] or 'a task'}: {first['why']}; {where}; co rem status lists them)")
+
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
-            planned = plan_text(row)
+            planned = parked_text(row['parked']) + plan_text(row)
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{row['written']} pages written · {row['decisions']} decisions written · "
@@ -2195,7 +2208,7 @@ def make_rem_app(factory):
                 return escape(held_text(value) + f"\nStopped: {value['reason']}")
             text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {value['written']} pages written · "
                     f"{value['decisions']} decisions written · {value['translated']} pages translated · "
-                    + deepen_text(value))
+                    + deepen_text(value) + parked_text(value['parked'], f"candidates kept under {value['candidates']}"))
             return escape(text + (f"\nStopped: {value['reason']}" if value['reason'] else ''))
 
         def operation(root):

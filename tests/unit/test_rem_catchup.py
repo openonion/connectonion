@@ -43,7 +43,7 @@ def model(monkeypatch):
     calls, modes = [], []
 
     def run(directory, prompt, config, stage, **options):
-        assert stage == 'abstract', stage
+        assert stage.removesuffix(' (repair)') == 'abstract', stage
         packet = read_json(directory / 'material.json', [])
         calls.append(packet)
         if modes and modes.pop(0) == 'empty':
@@ -260,12 +260,14 @@ def test_default_one_night_and_later_invocation_gets_a_fresh_night(book, model):
 def test_night_that_produces_nothing_stops(book, model, empty_model):
     if empty_model:
         backlog(book, 60)
-        model[1].append('empty')
+        model[1].extend(['empty', 'empty'])
     result = invoke(book, '--nights', '5')
-    assert result.exit_code == int(empty_model), result.output
+    # An answer refused twice is parked, not a failed round: the night ends in words, exit 0.
+    assert result.exit_code == 0, result.output
     assert 'Night 1:' in result.output and 'Night 2:' not in result.output
     assert 'Stopped: night 1 produced nothing' in result.output
-    assert len(model[0]) == int(empty_model)
+    assert len(model[0]) == 2 * int(empty_model)
+    assert ('1 page parked (a task: refused twice for the same reason: ' in result.output) == empty_model
 
 
 @pytest.mark.parametrize('between', [False, True])

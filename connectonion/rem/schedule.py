@@ -585,19 +585,39 @@ def _exec_round(root, *, scheduled):
     from .config import read_config
     if scheduled and CodexNative().recent_desktop_fire(root):
         return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+    parked, refused = [], {}
     task = native.next_task(root, scheduled=scheduled)
     while task.get("outcome") == "task":
         if scheduled and CodexNative().recent_desktop_fire(root):
             return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
         from .inquiry import stage_config
         config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
+        task_id = task["id"]
         result = runner.run_task(Path(task["material"]), task["instructions"], config, task["stage"])
-        task = native.submit(root, task["id"], usage=result.get("usage"))
-        if task.get("outcome") == "refused":
-            return task
+        task = _settle(root, native, task_id, native.submit(root, task_id, usage=result.get("usage")), refused)
+        if task.get("outcome") == "parked":
+            parked.append({key: task.get(key) for key in ("record", "reason", "candidate")})
         if task.get("outcome") != "task":
-            task = native.next_task(root, scheduled=scheduled)
-    return task
+            # After a refusal this offers the same task again with its required
+            # corrections first, as `co rem next` does for the scheduled agent.
+            task = native.next_task(root, scheduled=scheduled, own=task.get("outcome") == "refused")
+    return {**task, "parked": parked} if parked else task
+
+
+def _settle(root, native, task_id, outcome, refused):
+    """A refusal is one more try, never the end of the round.
+
+    2026-11-16: exec returned at the first refusal, so one page that dropped a
+    source id ended a catchup night before mail, abstract or translation, and its
+    pending task refused every later catchup. Submit already parks a task refused
+    twice for one reason or three times in all; a refusal it does not count (a
+    claim audit told to continue) is bounded here by the same total."""
+    if outcome.get("outcome") != "refused":
+        return outcome
+    refused[task_id] = refused.get(task_id, 0) + 1
+    if refused[task_id] < native.PARK_TOTAL:
+        return outcome
+    return native.park(root, task_id, f"refused {refused[task_id]} times: {native.in_words(outcome.get('reason', ''))}")
 
 
 class Unsupported:

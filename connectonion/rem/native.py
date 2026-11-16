@@ -52,6 +52,7 @@ def pending(root):
 
 
 def refuse_pending(root):
+    """A manual sync must not read sources under an open task; exec and catchup resume it instead."""
     task_id = read_json(state_path(root, "round.json"), {}).get("pending")
     if task_id:
         raise RemError(f"a native task is pending: co rem submit {task_id} or co rem next --discard")
@@ -267,10 +268,12 @@ def _watching(root):
         watcher.join()
 
 
-def next_task(root, *, scheduled=False, discard=False):
+def next_task(root, *, scheduled=False, discard=False, own=False):
+    """`own`: the caller is the worker whose submit was just refused, so the
+    pending task's claim is its own and the task is offered again (exec)."""
     from .catchup import resume
     with resume(root, scheduled=scheduled):
-        result = _next_task(root, scheduled=scheduled, discard=discard)
+        result = _next_task(root, scheduled=scheduled, discard=discard, own=own)
         if result.get('reason') != 'not due':
             from .schedule import calendar_round
             calendar = calendar_round(root, native=True)
@@ -279,7 +282,7 @@ def next_task(root, *, scheduled=False, discard=False):
         return result
 
 
-def _next_task(root, *, scheduled, discard):
+def _next_task(root, *, scheduled, discard, own=False):
     root = root.resolve()
     if scheduled:
         from .morning import scheduled_check as morning_message
@@ -306,7 +309,7 @@ def _next_task(root, *, scheduled, discard):
         # A next or submit can publish a task just before its CLI exits (or is
         # reaped). That preparer's advisory claim must not hide the new task.
         preparer = waited_for.get("pid")
-        result = (_offer_pending(root, tasks[0], preparer=preparer, takeover=scheduled) if tasks
+        result = (_offer_pending(root, tasks[0], preparer=preparer, takeover=scheduled or own) if tasks
                   else _next_round(root, cursor, scheduled=scheduled, notices=notices))
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
@@ -750,26 +753,54 @@ def _same_reason(reason):
     return re.sub(r"\d+", "#", reason.strip().splitlines()[0] if reason.strip() else "")[:200]
 
 
+def in_words(reason):
+    """A refusal without the candidate path in front of it.
+
+    2026-11-16: the ledger keeps 300 characters and status prints 200; a task
+    folder's path took them all, so a parked page showed where and never why.
+    The path is recorded beside the reason instead."""
+    return re.sub(r"^Candidate rejected, kept at .*?: ", "", reason)[:300]
+
+
 def _park_reason(refusals):
     if len(refusals) >= PARK_TOTAL:
-        return f"refused {len(refusals)} times: {refusals[-1][:300]}"
+        return f"refused {len(refusals)} times: {in_words(refusals[-1])}"
     if refusals and [_same_reason(r) for r in refusals].count(_same_reason(refusals[-1])) >= PARK_SAME_REASON:
-        return f"refused twice for the same reason: {refusals[-1][:300]}"
+        return f"refused twice for the same reason: {in_words(refusals[-1])}"
     return None
 
 
 def _park(root, task, why):
     """Set the task aside for a later day, recorded with its reasons; the round moves on."""
+    from .catchup import number
     from .refusals import material_sources, remember_refusal
     reason = "parked: " + why
+    # The last page it wrote stays where the owner can read what was refused (see scrub_task).
+    page = Path(task["task"].get("candidate") or "")
+    candidate = str(page) if page.is_file() else None
+    task["parked"] = True
     if task.get("record"):
         remember_refusal(root, task["record"], material_sources(task["task"].get("items", [])), reason,
-                         stage="parked", parked=True)
+                         stage="parked", parked=True, candidate=candidate)
     _discard(root, read_json(state_path(root, "round.json"), {}), task, reason, outcome="parked",
-             refusals=[refusal[:300] for refusal in task["refusals"]])
+             refusals=[refusal[:300] for refusal in task["refusals"]], record=task.get("record"),
+             candidate=candidate, parked_night=number(root))
     _leave_job(root, task)
     return {"outcome": "parked", "id": task["id"], "record": task.get("record"), "reason": reason,
-            "refusals": task["refusals"], "same_turn": True}
+            "candidate": candidate, "refusals": task["refusals"], "same_turn": True}
+
+
+def park(root, task_id, why):
+    """Park the round's pending task from outside a submit: exec's bound on a task
+    that is refused without a count (a claim audit asked to continue again and again)."""
+    from .catchup import resume
+    root = root.resolve()
+    with resume(root), maintenance_lock(root, operation="submit"), runner.private_task_mask():
+        task = read_json(state_path(root, f"tasks/{task_id}/task.json"), {})
+        if task.get("status") != "pending" or read_json(state_path(root, "round.json"), {}).get("pending") != task_id:
+            raise RemError("Task is not the round's pending task")
+        task.setdefault("refusals", [])
+        return _park(root, task, why)
 
 
 def _continue_review(root, task, reason):

@@ -59,9 +59,10 @@ def limit_runs(root, logs, zone):
 
 
 def _begin(root):
-    from . import native
     with maintenance_lock(root):
-        native.refuse_pending(root)
+        # A task an earlier stopped run left pending is resumed by this night's exec
+        # round (retried with its refusal, then parked), not refused here: on
+        # 2026-11-16 it made every later catchup exit until a command was run by hand.
         path = state_path(root, 'catchup.json')
         night = read_json(path, {}).get('nights', 0) + 1
         write_json(path, {'nights': night})
@@ -92,7 +93,19 @@ def _counts(root, night):
             'translated': cursor.get('translated', 0),
             'drafts': len({row['draft'] for row in runs if row.get('phase') == 'reply-draft'
                            and row.get('draft') and row.get('outcome') == 'completed'}),
-            'changed': sorted(changed)}
+            'changed': sorted(changed), 'parked': _parked(root, night, runs=service.run_logs(root))}
+
+
+def _parked(root, night, *, runs):
+    """What this night set aside: tasks parked after their retries, then pages whose preparation hung."""
+    from .refusals import refused_pages
+    rows = [{'record': row.get('record'), 'why': row.get('reason', '').removeprefix('parked: '), 'candidate': row.get('candidate')}
+            for row in sorted(runs, key=lambda row: row.get('finished_at') or '')
+            if row.get('outcome') == 'parked' and row.get('parked_night') == night]
+    listed = {row['record'] for row in rows}
+    return rows + [{'record': record, 'why': entry['parked'].removeprefix('parked: '), 'candidate': entry.get('candidate')}
+                   for record, entry in refused_pages(root).items()
+                   if entry.get('parked_night') == night and record not in listed]
 
 
 def _stop(result, row, index):
@@ -190,6 +203,7 @@ def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=No
     totals = {name: sum(row[name] for row in rows) for name in
               ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened')}
     return {'nights': rows, 'reason': reason, 'failed': failed, 'held': held,
+            'parked': [page for row in rows for page in row['parked']], 'candidates': str(state_path(root, 'tasks')),
             'deepen_reason': '' if totals['deepened'] else
                 '; '.join(dict.fromkeys(row['deepen_reason'] for row in rows if row['deepen_reason']))
                 or (f'not started: {reason}' if not rows else ''), **totals}

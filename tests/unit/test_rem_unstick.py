@@ -190,3 +190,120 @@ def test_parking_an_investigation_round_leaves_the_page_for_the_next_job(noteboo
     assert cursor["job_index"] == 1 and cursor["current"] is None
     native._leave_job(notebook, {"operation": "batch", "record": "people/fixture-b.md"})
     assert read_json(state_path(notebook, "round.json"), {})["job_index"] == 1
+
+
+# 2026-11-16: on the owner's notebook one rejected candidate ("Dropped source id the
+# page had") stopped a whole `co rem catchup` night, and the task it left pending
+# made the next catchup exit with "a native task is pending".
+REJECTED = "Dropped source id the page had: codex:fern:1"
+
+
+def exec_model(root, monkeypatch):
+    """The exec runner writes a candidate for every task; review rejects Fern's every time."""
+    from connectonion.rem import schedule
+    calls = []
+
+    def run(directory, prompt, config, stage, **options):
+        task = read_json(Path(directory) / "task.json", {})
+        calls.append({"record": task["record"], "stage": stage, "prompt": prompt})
+        if task["record"]:
+            Path(task["candidate"]).write_text(f"# Draft {len(calls)}\n", encoding="utf-8")
+        return {"result": "", "usage": {"input_tokens": 1}}
+
+    def check(root, task, output):
+        if task["record"] == "projects/fern.md":
+            raise RemError(f"Candidate rejected, kept at {task['candidate']}: {REJECTED}")
+        if task["record"]:
+            Notebook(root).write(task["record"], "# Heron\n\nReviewed the pilot.\n")
+        return {"changed": [task["record"]] if task["record"] else [], "report": ""}
+
+    monkeypatch.setattr(runner, "run_task", run)
+    monkeypatch.setattr(runner, "ready", lambda config: ("", ""))
+    monkeypatch.setattr(native_round, "check_task", check)
+    monkeypatch.setattr(schedule, "deepen_round", lambda root, **kw: {"rounds": [], "stopped": ""})
+    return calls
+
+
+def catchup(root, *args):
+    return CliRunner().invoke(app, ["rem", "--root", str(root), *args, "catchup"])
+
+
+def test_exec_feeds_a_rejection_back_then_parks_the_page_and_writes_the_next(notebook, monkeypatch):
+    from connectonion.rem import schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    calls = exec_model(notebook, monkeypatch)
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert (result["outcome"], result["reason"]) == ("done", "round done"), result
+    tried = [call for call in calls if call["record"] == fern]
+    # The existing limit: refused twice for the same reason parks the task.
+    assert len(tried) == native.PARK_SAME_REASON
+    assert tried[1]["stage"].endswith("(repair)") and REJECTED in tried[1]["prompt"]
+    assert tried[1]["prompt"].startswith("## Required corrections")
+    assert Notebook(notebook).read(heron).startswith("# Heron\n\nReviewed the pilot.\n")
+    entry = refusals.refused_for(notebook, fern)
+    assert entry["parked"].startswith("parked: refused twice for the same reason") and REJECTED in entry["parked"]
+    assert Path(entry["candidate"]).read_text(encoding="utf-8") == "# Draft 2\n"
+    assert [row["record"] for row in result["parked"]] == [fern]
+    assert not read_json(state_path(notebook, "round.json"), {}).get("pending")
+    # The finished round's cleanup keeps what the owner needs to look at.
+    runner.scrub_finished_tasks(state_path(notebook, "tasks"))
+    assert Path(entry["candidate"]).is_file()
+    assert not (Path(entry["candidate"]).parent / "material.json").exists()
+
+
+def test_catchup_resumes_a_task_left_pending_and_says_what_it_parked(notebook, monkeypatch):
+    fern, heron = two_projects(notebook, monkeypatch)
+    task = native.next_task(notebook)
+    exec_model(notebook, monkeypatch)
+    assert native.submit(notebook, task["id"])["outcome"] == "refused"  # the stopped run
+    gone = subprocess.Popen([sys.executable, "-c", ""])
+    gone.wait()
+    saved = Path(task["material"]) / "task.json"
+    write_json(saved, {**read_json(saved, {}), "claimed_by": {"pid": gone.pid, "started_at": NEW}})
+    result = catchup(notebook)
+    assert result.exit_code == 0, result.output
+    assert "a native task is pending" not in result.output
+    night = next(line for line in result.stdout.splitlines() if line.startswith("Night 1:"))
+    assert f"1 page parked ({fern}: refused twice for the same reason: {REJECTED}" in night
+    assert f"candidate kept at {Path(task['material']) / 'candidate.md'}" in night
+    done = result.stdout[result.stdout.index("Done: 1 night"):]
+    assert f"1 page parked ({fern}: refused twice for the same reason: {REJECTED}" in done
+    assert f"candidates kept under {state_path(notebook, 'tasks')}" in done
+    assert Notebook(notebook).read(heron).startswith("# Heron\n\nReviewed the pilot.\n")
+    status = CliRunner().invoke(app, ["rem", "--root", str(notebook), "status"]).output
+    assert f"{fern} · parked: refused twice for the same reason: {REJECTED}" in " ".join(status.split())
+    # The next night may retry it (the existing rule) and says so again when it parks again.
+    data = json.loads(catchup(notebook, "--json").stdout)["data"]
+    assert [row["record"] for row in data["parked"]] == [fern] == [row["record"] for row in data["nights"][0]["parked"]]
+    assert data["parked"][0]["why"] == f"refused twice for the same reason: {REJECTED}"
+    assert data["candidates"] == str(state_path(notebook, "tasks"))
+
+
+def test_a_parked_page_is_not_tried_again_in_the_same_night(notebook, monkeypatch):
+    from connectonion.rem import catchup as nights, schedule
+    fern, _ = two_projects(notebook, monkeypatch)
+    calls = exec_model(notebook, monkeypatch)
+    with nights.scope(notebook, 1):
+        schedule.exec_round(notebook, scheduled=False)
+        tried = sum(call["record"] == fern for call in calls)
+        assert fern in refusals.parked_waiting(notebook) and fern not in refusals.due_for_retry(notebook)
+        schedule.exec_round(notebook, scheduled=False)
+        assert sum(call["record"] == fern for call in calls) == tried
+    with nights.scope(notebook, 2):  # the existing rule: a later night may retry it
+        assert fern not in refusals.parked_waiting(notebook) and fern in refusals.due_for_retry(notebook)
+
+
+def test_exec_parks_a_task_whose_review_keeps_asking_without_counting(notebook, monkeypatch):
+    """A claim-audit "continue" is refused without a count; exec must still end it."""
+    from connectonion.rem import schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    calls = exec_model(notebook, monkeypatch)
+    accept = native_round.check_task
+    monkeypatch.setattr(native_round, "check_task", lambda root, task, output: (
+        {"needs_review": "audit", "candidate": task["candidate"], "continue_review": "Continue checking"}
+        if task["record"] == fern else accept(root, task, output)))
+    result = schedule.exec_round(notebook, scheduled=False)
+    assert result["reason"] == "round done", result
+    assert sum(call["record"] == fern for call in calls) == native.PARK_TOTAL
+    assert refusals.refused_for(notebook, fern)["parked"].startswith("parked: refused 3 times")
+    assert Notebook(notebook).read(heron).startswith("# Heron\n\nReviewed the pilot.\n")

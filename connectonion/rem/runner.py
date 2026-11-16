@@ -1361,6 +1361,9 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
 # private copy of the owner's mail and pages.
 TASK_KEEPS = ("result.json", "candidate.md", "review.json", "claim-review.json",
               "insight-critic.json", "review-candidates.json", "instructions.md", "task.json", "refused")
+# A parked native task keeps the page it wrote and why it was refused: the ledger
+# and the catchup line point the owner here. Its task.json holds the material, so it goes.
+PARKED_KEEPS = ("candidate.md", "review.json", "claim-review.json")
 
 
 def scrub_task(directory: Path) -> None:
@@ -1383,11 +1386,12 @@ def scrub_task(directory: Path) -> None:
             and native_task.get("round_started_at") == active_round.get("started_at")):
         return
     import shutil
-    if native_task.get("status") in ("accepted", "discarded"):
+    parked = bool(native_task.get("parked"))
+    if native_task.get("status") in ("accepted", "discarded") and not parked:
         shutil.rmtree(directory)
         return
     for path in directory.iterdir():
-        if path.name in TASK_KEEPS:
+        if path.name in (PARKED_KEEPS if parked else TASK_KEEPS):
             # refused/ holds the pages a maintenance pass wrote and review
             # refused; deleted with the material, the refusal had nothing to show.
             for kept in [path, *(path.rglob("*") if path.is_dir() and not path.is_symlink() else ())]:
