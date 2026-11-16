@@ -519,6 +519,92 @@ def test_claim_audit_findings_are_inline_in_refusal_instructions(refused_investi
     assert 'Required correction: Attribute the pilot review request to the owner’s record.' in corrections
 
 
+MEMORY_STEP = "Before submitting, append 1–3 lines to"
+AUDIT_SELF_PACED = ("After the printed batch, run next again. When every citation is checked, write audit-output.json "
+                    "from the notes, keeping every finding, and run the printed Submit command. ")
+
+
+def _scheduled_round(root):
+    cursor = read_json(state_path(root, 'round.json'), {})
+    write_json(state_path(root, 'round.json'), {**cursor, 'scheduled': True})
+
+
+@pytest.mark.parametrize('driven', [True, False])
+def test_a_worker_exec_drives_is_not_told_to_run_next(trial, driven):
+    """A submit printed "Next: run co rem next now (same turn)" to exec's one-task worker; it obeyed,
+    and the task it created waited 7,383 s for a driver (#3083)."""
+    record, source = _feedback(trial)
+    task = native.next_task(trial, in_round=driven)
+    assert task.get('driven', False) is driven
+    _scheduled_round(trial)
+    _candidate(trial, task, record, source)
+    prefix = ['rem', '--root', str(trial)]
+    audit = CliRunner().invoke(app, [*prefix, 'submit', task['id']])
+    assert 'Stage: claim-audit' in audit.stdout
+    _audit_notes(task)
+    (Path(task['material']) / 'audit-output.json').write_text(json.dumps({'verdict': 'PASS', 'findings': []}))
+    accepted = CliRunner().invoke(app, [*prefix, 'submit', task['id']])
+    assert accepted.exit_code == 0 and 'accepted' in accepted.stdout, accepted.output
+    for output in (audit.stdout, accepted.stdout):
+        last = output.strip().splitlines()[-1]
+        assert last.startswith('Next:')
+        assert ('--root' in last and ' next' in last) is not driven, last  # the command, with its notebook
+    assert (native.SCHEDULED_CONTINUATION in audit.stdout) is not driven
+    assert ('now (same turn)' in accepted.stdout) is not driven
+    assert ('End your turn' in accepted.stdout) is driven
+
+
+def test_a_driven_submit_names_no_next_command_in_json(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial, in_round=True)
+    _candidate(trial, task, record, source)
+    result = CliRunner().invoke(app, ['rem', '--root', str(trial), '--json', 'submit', task['id']])
+    answer = json.loads(result.stdout)
+    assert answer['data']['driven'] is True and answer['next'] is None
+
+
+def test_a_parked_submit_under_exec_asks_for_nothing_in_the_same_turn(trial):
+    record, source = _feedback(trial)
+    task = native.next_task(trial, in_round=True)
+    path = Path(task['candidate'])
+    _candidate(trial, task, record, source)
+    path.write_text(path.read_text().replace(source, 'gmail:invented'))
+    assert native.submit(trial, task['id'])['outcome'] == 'refused'
+    parked = native.submit(trial, task['id'])
+    assert parked['outcome'] == 'parked' and parked['driven'] and not parked['same_turn']
+
+
+@pytest.mark.parametrize('driven, runner_name, sent', [(True, 'codex', False), (False, 'codex', True),
+                                                       (True, 'coai', True)])
+def test_a_stage_confined_to_its_folder_under_exec_is_not_told_to_write_outside_it(trial, driven, runner_name, sent):
+    """76 permission errors in a day: workspace-write stages were told to append to memory.md and to
+    run next and submit, all of which take files outside the task folder (#3083)."""
+    from connectonion.rem.config import set_config
+    set_config(trial, ['runner', runner_name])
+    record, source = _feedback(trial)
+    task = native.next_task(trial, in_round=driven)
+    assert task['stage'] == 'maintain'
+    assert (MEMORY_STEP in task['instructions']) is sent
+    assert (MEMORY_STEP in (Path(task['material']) / 'instructions.md').read_text()) is sent
+    _candidate(trial, task, record, source)
+    audit = native.submit(trial, task['id'])
+    assert audit['stage'] == 'claim-audit'
+    assert (AUDIT_SELF_PACED in audit['instructions']) is sent
+    if not sent:
+        assert 'end your turn' in audit['instructions'] and 'Do not run co rem next or co rem submit' in audit['instructions']
+        # What `co rem next` would have printed is in the prompt exec hands its worker.
+        assert 'Now: check [1]' in native.driven_prompt(audit)
+
+
+def test_an_investigation_under_exec_keeps_its_memory_step(trial, refused_investigation):
+    """Investigation runs with full access: it can append to memory.md, and submits its own page."""
+    task = read_json(Path(refused_investigation['material']) / 'task.json', {})
+    task['driven'], task['stage'] = True, 'investigate'
+    assert native.keeps_memory_step(trial, task)
+    task['stage'] = 'translate'
+    assert not native.keeps_memory_step(trial, task)
+
+
 def test_an_audit_refusal_says_which_claim_which_citation_and_what_is_wrong(trial, refused_investigation):
     """Every audit refusal read "Cited-claim audit did not pass; see claim-review.json" (#3083)."""
     saved = read_json(Path(refused_investigation['material']) / 'task.json', {})

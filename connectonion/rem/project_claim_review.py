@@ -151,6 +151,16 @@ PROJECTS = (
     "A Pattern or Changed bullet is supported when each cited message shows its part. A request no later "
     "supplied input answers is an open thread; its past date alone does not close it. ")
 BOUND = 250_000
+# How an audit turn ends. The worker that runs `co rem next` and `co rem submit` itself
+# paces its own batches. One that `co rem exec` drives is confined to the task folder:
+# both commands take the notebook's lock, outside it, and 58 of a day's 76 permission
+# errors were that lock (#3083). Exec prints the batch into its prompt and submits.
+SELF_PACED = ("After the printed batch, run next again. When every citation is checked, write audit-output.json "
+              "from the notes, keeping every finding, and run the printed Submit command. ")
+DRIVEN = ("After the printed batch, go on to the next unchecked citations in Sources order; nothing prints them "
+          "for you. When every citation is checked, write audit-output.json from the notes, keeping every "
+          "finding, and end your turn: the run that started this task submits it. "
+          "Do not run co rem next or co rem submit; this sandbox refuses both. ")
 
 
 def fit(material: dict, bound: int) -> dict:
@@ -395,8 +405,7 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
             "audit-material.json; for an original shorter than 20 characters, quote the entire original. "
             "Lines without a matching excerpt do not count. For FAIL, keep the exact claim, issue, evidence and required_correction. "
             "Do not mark a citation checked until all its claims and relevant source sections are checked. "
-            "After the printed batch, run next again. When every citation is checked, write audit-output.json "
-            "from the notes, keeping every finding, and run the printed Submit command. "
+            + SELF_PACED +
             f"Read the remaining sections of the audit packet at {directory / 'audit-material.md'} in pieces. "
             "Never cat the whole packet: output can truncate before later originals. "
             "The candidate's Sources list maps [N] to the source id. "

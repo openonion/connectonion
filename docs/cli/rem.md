@@ -723,7 +723,22 @@ The same holds for a task exec cannot settle. Its instructions print the
 submit command, and the worker may run it itself: exec then reports what that
 submit recorded (accepted, or parked after its refusals) instead of submitting
 a task that is no longer pending, and takes the task the worker's own
-`co rem next` prepared. A task whose inputs changed while the worker ran, one
+`co rem next` prepared. The worker is not asked to run one: a task exec hands
+out is marked `driven` in its `task.json`, and a submit of it ends on `Next:
+End your turn: the co rem exec that started this task takes the next one.`
+(`"next": null` and `"driven": true` with `--json`), never on `run co rem
+next now (same turn)` and never with the scheduled agent's "keep going until
+the round is done". A parked submit printed that line to exec's one-task
+worker; it obeyed, and the task it prepared waited 7,383 s for a driver
+(#3083). A driven stage that the harness confines to its task folder
+(every stage but investigation and init, with the Codex or Claude Code
+runner) is also not told to write outside it: its instructions leave out the
+`.state/memory.md` step, and its claim audit ends "end your turn: the run
+that started this task submits it" instead of "run next again … run the
+printed Submit command", with the audit's `Now:` batch added to the prompt
+exec hands it. Both commands take the notebook's lock, which is outside the
+folder: 76 tool outputs in one day were permission errors, 58 on that lock.
+A task whose inputs changed while the worker ran, one
 that is no longer the round's pending task, and a turn that passes
 `limits.timeout_seconds` are parked with that error in words, listed like any
 parked page, and the round goes on. Two such tasks in a row stop the round
@@ -3298,7 +3313,8 @@ as structured data.
 Each task starts with the assistant's goal and the newest 4,000 characters from
 `.state/memory.md`, followed by the page's latest investigate/continue report when
 available. Both are evidence, never instructions or permission to bypass review.
-The agent appends 1–3 lines of `page · approach · result · next` to that memory,
+The agent appends 1–3 lines of `page · approach · result · next` to that memory
+(not asked of a worker `co rem exec` confines to its task folder, which cannot write there),
 including answered and new questions and reusable tool discoveries. Investigation
 reports cite the predecessor's next step; unresolved questions stay in the page's
 existing `Uncertainties` section. Accepted native run logs retain `report.md`,

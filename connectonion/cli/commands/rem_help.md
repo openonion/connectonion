@@ -714,6 +714,8 @@ Effects:  Checks that the input has not changed. Checks the output's citations,
           input is rejected. Manual sync waits until this task is submitted or
           discarded with co rem next --discard.
 Next:     co rem next
+          A task co rem exec handed to its worker ends on "End your turn"
+          instead: exec takes the next task, the worker runs no next.
 Back:     co rem --help
 ```
 

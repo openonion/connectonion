@@ -96,6 +96,9 @@ def _owner_next(root, arguments):
     return ["status"] if default_scheduler(root).installed(root) else arguments
 
 
+DRIVEN_NEXT = "End your turn: the co rem exec that started this task takes the next one."
+
+
 def _emit(ctx, value, arguments, *, failed=False, draw=None):
     """Print a result and its Next line: styled in a terminal, the same words anywhere else.
 
@@ -104,6 +107,10 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     """
     from ..style import next_line
     command = _next(ctx, _owner_next(ctx.obj["root"], arguments or ["status"]))
+    driven = isinstance(value, dict) and value.get("driven") and arguments == ["next"]
+    if driven:
+        # A worker `co rem exec` runs has one task: a next of its own makes a task nobody drives (#3083).
+        command = None
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     elif isinstance(value, dict) and value.get("outcome") == "busy":
@@ -117,7 +124,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
         if isinstance(value, dict) and value.get("continuation"):
             tip += ". " + value["continuation"]
-        rem_look.say(next_line(tip))
+        rem_look.say(next_line(DRIVEN_NEXT if driven else tip))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:

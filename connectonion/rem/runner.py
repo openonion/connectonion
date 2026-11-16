@@ -253,6 +253,15 @@ CONFINEMENT = {
 }
 
 
+def full_access(stage: str) -> bool:
+    return stage == "init" or stage in ONE_PAGE_STAGES
+
+
+def workspace_only(config: dict, stage: str) -> bool:
+    """Does `run_task` confine this stage's worker to its task folder (see harness_flags)?"""
+    return config["runner"] != "coai" and not full_access(stage.removesuffix(" (repair)"))
+
+
 def harness_flags(config: dict, stage: str) -> list[str]:
     harness = "ours" if config["runner"] == "coai" else config["runner"]
     flags = ["--harness", harness]
@@ -261,7 +270,7 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     # Security note (deferred): In unattended background runs, mail attachments could
     # theoretically carry prompt injection. Defer containment/hardening; utility,
     # tool authorization, and complete context come first.
-    investigating = stage == "init" or stage in ONE_PAGE_STAGES
+    investigating = full_access(stage)
     if harness == "codex":
         flags += ["--sandbox", "danger-full-access" if investigating else "workspace-write"]
         flags += ["--speed", config["speed"]]

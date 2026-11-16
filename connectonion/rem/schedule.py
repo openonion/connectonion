@@ -682,7 +682,7 @@ def _run_one(root, native, runner, task, config, refused):
     lock held elsewhere, an unreadable notebook and a refused model are about the
     round: they are raised, and catchup reports them and starts no further night."""
     try:
-        result = runner.run_task(Path(task["material"]), task["instructions"], config, task["stage"])
+        result = runner.run_task(Path(task["material"]), native.driven_prompt(task), config, task["stage"])
         return _settle(root, native, task["id"], native.settle(root, task["id"], usage=result.get("usage")), refused)
     except (native.TaskFault, runner.TimedOut) as error:
         return {**native.park(root, task["id"], native.in_words(str(error)), record=task.get("record")), "fault": True}
