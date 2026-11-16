@@ -473,10 +473,15 @@ class Systemd:
 
 
 def exec_round(root, *, scheduled=True, stage=None, say=None):
+    """One round under the notebook's turn lock; `busy`, with nothing started, when another run holds it."""
     from .catchup import resume
-    with resume(root, scheduled=scheduled):
-        result = _exec_round(root, scheduled=scheduled, stage=stage, say=say)
-        return finish_exec(root, result, stage=stage, say=say)
+    from .codex_exec import BUSY, NotebookBusy, round_lock
+    try:
+        with round_lock(root), resume(root, scheduled=scheduled):
+            result = _exec_round(root, scheduled=scheduled, stage=stage, say=say)
+            return finish_exec(root, result, stage=stage, say=say)
+    except NotebookBusy:
+        return {"outcome": "busy", "reason": BUSY}
 
 
 def deepen_round(root, *, stage=None, say=None, **choice):

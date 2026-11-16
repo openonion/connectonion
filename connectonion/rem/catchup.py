@@ -240,11 +240,20 @@ def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=No
     """One exec round including its deepen slot per productive, completed night.
 
     `cut_short` prints the result when a deadline ends the process mid-night."""
-    from . import native, quota
-    from .config import read_config
+    from .codex_exec import BUSY, NotebookBusy, round_lock
     if nights < 1:
         raise RemError('Use at least one night: co rem catchup --nights 1')
-    root, rows, reason, failed, held = Path(root).resolve(), [], '', False, None
+    try:
+        with round_lock(root):
+            return _nights(Path(root).resolve(), nights, progress, stage, say, cut_short)
+    except NotebookBusy:
+        return {'outcome': 'busy', 'reason': BUSY + ' No night was counted.', 'failed': True, 'held': None}
+
+
+def _nights(root, nights, progress, stage, say, cut_short):
+    from . import native, quota
+    from .config import read_config
+    rows, reason, failed, held = [], '', False, None
     for _ in range(nights):
         config = read_config(root)
         meter = quota.meter(root, config)

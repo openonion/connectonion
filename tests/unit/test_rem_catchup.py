@@ -847,3 +847,63 @@ def test_a_night_with_no_decision_pages_says_only_the_pages_written(book, monkey
     result = invoke(book)
     line = next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
     assert '0 pages written · 0 pages translated' in line
+
+
+def test_catchup_says_another_run_holds_the_notebook_and_counts_no_night(book, model):
+    """2026-11-17: catchup and the 01:00 scheduled turn ran on one notebook at once and each lost a task."""
+    import fcntl
+    backlog(book, 20)
+    lock = state_path(book.root, 'exec-turn.lock')
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open('a') as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = invoke(book)
+    assert result.exit_code == 1, result.output
+    assert 'Another REM run holds this notebook' in result.output and 'No night was counted' in result.output
+    assert 'Night 1' not in result.output and 'Traceback' not in result.output
+    assert not model[0] and not state_path(book.root, 'catchup.json').exists()
+
+
+def test_catchup_holds_the_turn_lock_for_its_rounds_and_releases_it(book, model, monkeypatch):
+    from connectonion.rem import codex_exec
+    backlog(book, 20)
+    seen, run_task = [], runner.run_task
+
+    def run(directory, prompt, config, stage, **options):
+        seen.append(codex_exec.run_turn(book.root, run=lambda *a, **kw: pytest.fail('a second turn started')))
+        return run_task(directory, prompt, config, stage, **options)
+
+    monkeypatch.setattr(runner, 'run_task', run)
+    assert invoke(book).exit_code == 0
+    assert seen == ['busy']
+    with codex_exec.round_lock(book.root):  # released: the next run takes it
+        assert schedule.exec_round(book.root, scheduled=False)['outcome'] != 'busy'
+
+
+def test_exec_round_is_busy_while_another_run_holds_the_notebook(book, model):
+    from connectonion.rem import codex_exec
+    backlog(book, 20)
+
+    def run(command, **kwargs):
+        assert schedule.exec_round(book.root, scheduled=True) == {'outcome': 'busy', 'reason': codex_exec.BUSY}
+        return __import__('subprocess').CompletedProcess(command, 0)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(codex_exec, '_start_command', lambda root, last: ['fictional-codex'])
+    monkeypatch.setattr('connectonion.rem.codex_schedule.CodexNative.recent_desktop_fire', lambda self, root: False)
+    try:
+        assert codex_exec.run_turn(book.root, run=run) == 'completed'
+    finally:
+        monkeypatch.undo()
+    assert not model[0]
+
+
+def test_scheduled_turn_says_another_run_holds_the_notebook_and_exits_zero(book, capsys):
+    import fcntl
+    from connectonion.rem import codex_exec
+    lock = state_path(book.root, 'exec-turn.lock')
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open('a') as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert codex_exec.fire(book.root) == 0
+    assert 'Another REM run holds this notebook' in capsys.readouterr().out

@@ -9,7 +9,8 @@ import signal
 import subprocess
 import time
 import traceback
-from contextlib import suppress
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -124,8 +125,23 @@ def _execute(command, *, timeout=TURN_SECONDS, **kwargs):
             return result
 
 
-def run_turn(root: Path, *, run=_execute) -> str:
-    root = Path(root).resolve()
+# One writer round per notebook. The scheduled turn, `co rem exec` and `co rem catchup`
+# all hold exec-turn.lock for their whole run, and whichever comes second starts nothing.
+HELD_ELSEWHERE = ('Another REM run holds this notebook (the scheduled background turn, co rem exec or '
+                  'co rem catchup)')
+BUSY = (HELD_ELSEWHERE + ', so this run started nothing. Run it again when that one has finished; '
+        'co rem status shows the turn in progress.')
+_ROUND = ContextVar('rem_round_lock', default=None)
+
+
+class NotebookBusy(RemError):
+    """Another run holds exec-turn.lock."""
+
+
+@contextmanager
+def _turn_lock(root):
+    """The open, locked exec-turn.lock. The kernel drops it when this process ends
+    however it ends (a deadline's exit 75 included): no stale lock file can hold a notebook."""
     lock = state_path(root, 'exec-turn.lock')
     lock.parent.mkdir(parents=True, exist_ok=True)
     import fcntl  # POSIX-only; rem.tasks imports this module and the reader imports rem.tasks
@@ -133,8 +149,45 @@ def run_turn(root: Path, *, run=_execute) -> str:
         try:
             fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return 'busy'
-        return _run_locked(root, run, held.fileno())
+            raise NotebookBusy(BUSY) from None
+        yield held
+
+
+@contextmanager
+def round_lock(root):
+    """Hold the notebook for a round `co rem exec` or catchup drives; raises NotebookBusy.
+
+    2026-11-17: catchup did not take the scheduled turn's lock, so the 01:00 turn's
+    `co rem next` was handed the task catchup's worker held, its submit failed, the task
+    was discarded and the worker lost its files mid-turn. Catchup holds it across all its
+    nights; the exec round inside each night is the same hold, not a second one."""
+    root = Path(root).resolve()
+    if _ROUND.get() == root:
+        yield
+        return
+    with _turn_lock(root):
+        token = _ROUND.set(root)
+        try:
+            yield
+        finally:
+            _ROUND.reset(token)
+
+
+def run_turn(root: Path, *, run=_execute) -> str:
+    root = Path(root).resolve()
+    try:
+        with _turn_lock(root) as held:
+            return _run_locked(root, run, held.fileno())
+    except NotebookBusy:
+        return 'busy'
+
+
+def fire(root: Path) -> int:
+    """One scheduled fire's exit code; a fire that found the notebook held says so in the scheduler log."""
+    outcome = run_turn(root)
+    if outcome == 'busy':
+        print(HELD_ELSEWHERE + ', so this scheduled turn started nothing. The next fire tries again.')
+    return 1 if outcome in ('failed', 'timed-out') else 0
 
 
 def _reap_orphan_maintenance(root):
@@ -322,4 +375,4 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True, type=Path)
     args = parser.parse_args()
-    raise SystemExit(1 if run_turn(args.root) in ('failed', 'timed-out') else 0)
+    raise SystemExit(fire(args.root))
