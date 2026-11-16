@@ -602,7 +602,8 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert len(argv[-1]) < 8000  # Large material must not go through argv.
     assert options["cwd"] == str(notebook.root / ".state/tasks")
     seconds = config["limits"]["timeout_seconds"]
-    assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
+    # Longer than the adapter's own cleanup at its deadline: interrupt, archive, kill.
+    assert options["timeout"] == seconds + (0 if harness == "coai" else 30)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
     investigating = stage in ("init", "investigate")

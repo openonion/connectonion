@@ -2229,8 +2229,18 @@ Nonzero exits, missing/malformed envelopes, provider errors and timeouts fail
 the task. Investigation is not marked finished on a failed execution.
 
 co rem forwards its delegated deadline as `co ai --timeout SECONDS` and gives
-the outer process 15 seconds to exit afterward. The common native adapter
+the outer process 30 seconds to exit afterward. The common native adapter
 therefore closes its delegate before co rem process timeout is reached.
+At its deadline the Codex adapter sends `turn/interrupt` for the running turn
+(waiting at most 5 seconds for the answer), archives the thread, and kills the
+app-server's process group at once; only then does it answer `timeout`, so the
+task is parked after its worker has stopped. Until 2026-11-17 it sent no
+interrupt and closed the server with a grace period, and one timed-out
+worker's thread went on editing its task folder for about 7.5 minutes into the
+next task's time. Claude Code's process tree is terminated at its deadline as
+before. If `co ai` itself has to be killed at the outer deadline, its
+app-server is not reached (it runs in a session of its own): that case is not
+handled yet.
 Either timeout is the same failure of that one turn (`co ai timed out after
 Ns`), with the tokens the adapter reported: `co rem exec` and catchup park the
 task and take the next one, and a stage run retries the call once.

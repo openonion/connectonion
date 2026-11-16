@@ -310,14 +310,21 @@ AUDIT = contextvars.ContextVar("rem_claim_audit", default=True)
 RESTORE_DROPS = contextvars.ContextVar("rem_restore_drops", default=False)
 
 
+# Seconds the co ai child has after its own deadline to stop its delegate and answer.
+ADAPTER_CLEANUP_S = 30
+
+
 def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: str = "") -> dict:
     """Run every co rem model turn from its stable task workspace."""
     # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
     prompt = prompt.replace("\0", "")
     timeout = config["limits"]["timeout_seconds"]
     # Let the shared native adapter time out and close its subprocesses first.
-    # Killing the co parent before its own deadline bypasses that cleanup.
-    process_timeout = timeout + 15 if config["runner"] != "coai" else timeout
+    # Killing the co parent before its own deadline bypasses that cleanup: the Codex
+    # app-server runs in a session of its own and is not reached by that kill. At its
+    # deadline the adapter interrupts the turn (5s), archives the thread (10s) and kills
+    # the server's process group, which no longer fits in the 15 seconds this allowed.
+    process_timeout = timeout + ADAPTER_CLEANUP_S if config["runner"] != "coai" else timeout
     try:
         completed = subprocess.run(
             [*preflight(), "ai", "--json", *harness_flags(config, stage),

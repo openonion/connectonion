@@ -294,6 +294,14 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
             )
         try:
             turn = client.run_turn(sid, prompt, **turn_options)
+        except TimeoutError:
+            # A turn past its deadline is still running in the app-server. Ask it to
+            # stop while it can still answer, then kill the process group without the
+            # shutdown grace: on 2026-11-17 a timed-out REM worker's thread went on
+            # editing its task folder for about 7.5 minutes, into the next task's time.
+            _interrupt_timed_out_turn(client)
+            force_close = True
+            raise
         finally:
             if os.environ.get("CO_REM_CODEX_ARCHIVE") == "1":
                 client.request("thread/archive", {"threadId": sid}, timeout=10)
@@ -339,6 +347,18 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
     return _envelope(sid, resumed=resumed, last_message=last_message(),
                      usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}",
                      approvals_denied=len(denied))
+
+
+# Seconds a timed-out turn's interrupt may wait for its answer. The caller's own
+# deadline has already passed, and the process is killed next whatever the answer.
+TIMEOUT_INTERRUPT_S = 5
+
+
+def _interrupt_timed_out_turn(client):
+    """Send turn/interrupt for the client's active turn, where the client can."""
+    interrupt = getattr(client, "interrupt_active_turn", None)
+    if callable(interrupt):
+        interrupt(timeout=TIMEOUT_INTERRUPT_S)
 
 
 def _approval_policy(approval, agent):
@@ -1470,7 +1490,7 @@ class CodexAppServer:
             params["clientUserMessageId"] = client_user_message_id
         return self.request("turn/steer", params, timeout=30)
 
-    def interrupt_active_turn(self):
+    def interrupt_active_turn(self, timeout=10):
         """Ask Codex to interrupt its active turn before the Host closes it."""
         thread_id = self._active_thread_id
         turn_id = self._active_turn_id
@@ -1485,7 +1505,7 @@ class CodexAppServer:
             self.request("turn/interrupt", {
                 "threadId": thread_id,
                 "turnId": turn_id,
-            }, timeout=10)
+            }, timeout=timeout)
         except (RuntimeError, TimeoutError, _ProviderCancelled):
             # A terminal notification can race this request. The caller still
             # exits, but never fabricates a paused/resumed claim for that race.
