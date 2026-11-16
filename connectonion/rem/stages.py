@@ -65,6 +65,10 @@ def _investigate(root):
     cursor = read_json(state_path(root, 'round.json'), {})
     if not cursor.get('done'):
         pages.update(job['record'] for job in cursor.get('jobs', [])[cursor.get('job_index', 0):])
+    # Pages a night's share did not reach are waiting too, listed again or not.
+    from .native_round import WAITING
+    pages.update(job['record'] for job in read_json(state_path(root, WAITING), {}).get('jobs', [])
+                 if book.exists(job['record']))
     return len(pages)
 
 
@@ -104,6 +108,12 @@ def status(root, config, logs):
             rows[-1]['held'] = collection_backlog(root)['held']
             if rows[-1]['held']:
                 rows[-1]['text'] += f"; {rows[-1]['held']} held (source disabled or unapproved)"
+        if name == 'Investigate':
+            from .native_round import shares_in_words, waiting_shares
+            # A used share is not a failure: the line says what was done and what waits.
+            rows[-1]['shares'] = waiting_shares(root)
+            rows[-1]['text'] += ''.join('; ' + words for words in
+                                        shares_in_words(rows[-1]['shares'], "the last night's"))
         if name == 'Abstract':
             book = Notebook(root)
             counts = {category: len(book.list(category)) for category in ('decisions', 'knowledge', 'principles')}

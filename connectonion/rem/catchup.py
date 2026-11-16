@@ -78,6 +78,7 @@ def _mail(root, batch):
 
 def _counts(root, night):
     from . import service
+    from .native_round import waiting_shares
     cursor = read_json(state_path(root, 'round.json'), {})
     if cursor.get('catchup_night') != night:
         cursor = {}
@@ -93,7 +94,9 @@ def _counts(root, night):
             'translated': cursor.get('translated', 0),
             'drafts': len({row['draft'] for row in runs if row.get('phase') == 'reply-draft'
                            and row.get('draft') and row.get('outcome') == 'completed'}),
-            'changed': sorted(changed), 'parked': _parked(root, night, runs=service.run_logs(root))}
+            'changed': sorted(changed), 'parked': _parked(root, night, runs=service.run_logs(root)),
+            # A used share is work that waits, said in the night's line; it is not a stop reason.
+            'shares': waiting_shares(root, night=f'catchup:{night}')}
 
 
 def _parked(root, night, *, runs):

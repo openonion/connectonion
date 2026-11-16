@@ -113,6 +113,13 @@ def default_config() -> dict:
                        # Abstract slices run after summaries, before the same-person
                        # and translation tail; leave those jobs room each night.
                        "abstract_rounds_per_night": 6,
+                       # A night's share of the investigation queue (owner, 2026-11-16).
+                       # The queue held 333 pages against a weekly budget for 60 to 90,
+                       # the round never left it, and Abstract and Deepen stood at 0 after
+                       # eight catchup runs. Past the share the round goes on and the rest
+                       # wait for later nights. Skill pages (147 of the 333) are counted
+                       # on their own so they cannot take the people's and projects' places.
+                       "investigations_per_night": 12, "skill_pages_per_night": 3,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no

@@ -9,6 +9,10 @@ from .config import read_config
 from .files import Notebook, RemError, read_json, state_path, write_json
 
 
+class RoundBlocked(RemError):
+    """The round finished with nothing it could serve; `next` saves its calendar before reporting it."""
+
+
 def scheduled_slot(root, config):
     worker = service.worker_state(root)
     slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
@@ -58,7 +62,8 @@ def prepare(root, config, *, scheduled, carry=None):
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
               "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
-              "jobs": _with_parked(root, _jobs(root, first, logs, sources, set_aside)), "job_index": 0, "current": None,
+              "jobs": _queue(_with_parked(root, _with_waiting(root, _jobs(root, first, logs, sources, set_aside)))),
+              "job_index": 0, "current": None,
               "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
               "mail_slot": slot.isoformat() if slot else None, "set_aside": set_aside, **identity(root)}
     if carry:
@@ -67,12 +72,15 @@ def prepare(root, config, *, scheduled, carry=None):
         carry['run'].update(outcome='partial', finished_at=moment.isoformat(), changed=carry['changed'])
         write_json(state_path(root, f"runs/{carry['run']['id']}.json"), carry['run'])
         jobs = {job['record']: job for job in carry['jobs'][carry['job_index']:]}
-        for job in cursor['jobs']:
+        # The pages that round passed over for a used share are not behind its index.
+        for job in [*cursor['jobs'], *carry.get('waiting', [])]:
             jobs.setdefault(job['record'], job)
         # Task material is retained while its originating round is unfinished.
         # Keep that work's origin so cleanup cannot delete a carried inquiry plan.
-        cursor.update(started_at=carry['started_at'], jobs=list(jobs.values()), current=carry.get('current'),
-                      project_quote=carry.get('project_quote'))
+        # The open page's draft belongs to the first job: it keeps that place.
+        opened = bool(carry.get('current') or carry.get('project_quote'))
+        cursor.update(started_at=carry['started_at'], jobs=_queue(list(jobs.values()), keep_first=opened),
+                      current=carry.get('current'), project_quote=carry.get('project_quote'))
     if not batch["done"] and batch["digested"] is not None:
         _digest(cursor, batch["digested"])
     record, path = daily._reserve(root, phase, 0, {}, moment=moment)
@@ -190,6 +198,103 @@ def _with_parked(root, jobs):
     return jobs + [job for record, job in due.items() if record not in queued]
 
 
+# The pages a night's share did not reach, kept for the next round. Not under catchup/<night>/:
+# the night that left them is not the night that reads them.
+WAITING = "investigation-waiting.json"
+SHARES = {"investigations": "investigations_per_night", "skill_pages": "skill_pages_per_night"}
+
+
+def _share(job):
+    # A refused page tried again takes its page's kind when prepared; it stays in the main share.
+    return "skill_pages" if job.get("kind") == "skill" and not job.get("retry_refused") else "investigations"
+
+
+def _queue(jobs, *, keep_first=False):
+    """Skill pages after every other page, each group in the order it came."""
+    head, rest = (jobs[:1], jobs[1:]) if keep_first else ([], jobs)
+    return head + sorted(rest, key=lambda job: _share(job) == "skill_pages")
+
+
+def _with_waiting(root, jobs):
+    """The pages an earlier night's share did not reach and this round does not list, then its own listing.
+
+    The listing alone would lose them: a later round of a day lists only people whose
+    mail is newer than the last round, so a person passed over once was not listed again.
+    They were due for something new, so they lead; a page listed again keeps the place
+    this round gives it, and the backlog cannot push a person with new mail back for weeks."""
+    queued, book = {job["record"] for job in jobs}, Notebook(root)
+    waited = read_json(state_path(root, WAITING), {}).get("jobs", [])
+    return [job for job in waited if job["record"] not in queued and book.exists(job["record"])] + jobs
+
+
+def _night_shares(root, config):
+    """(where tonight's served pages are kept, the pages): a night is the schedule's or one catchup night."""
+    from .catchup import key, marker
+    from .night_stats import _night_of
+    day = key(root, _night_of(service.now(), service.notebook_zone(config)))
+    path = marker(root, "investigation-night.json")
+    saved = read_json(path, {})
+    return path, saved if saved.get("day") == day else {"day": day, **{name: [] for name in SHARES}}
+
+
+def _job_turn(root, cursor, config, directory):
+    """The next investigation task within tonight's shares, or None once the queue has been walked."""
+    path, served = _night_shares(root, config)
+    while cursor["job_index"] < len(cursor["jobs"]):
+        job = cursor["jobs"][cursor["job_index"]]
+        share = _share(job)
+        opened = cursor["current"] or cursor.get("project_quote")
+        if (not opened and job["record"] not in served[share]
+                and len(served[share]) >= config["limits"][SHARES[share]]):
+            # Tonight's share is used: the page waits for a later night and the round goes on.
+            cursor.setdefault("waiting", []).append(job)
+            cursor["job_index"] += 1
+            continue
+        if "investigation_left" not in cursor:
+            cursor["investigation_left"] = PORTION
+        if cursor["investigation_left"] <= 0:
+            task = _translation_turn(root, cursor, config, directory)
+            if task:
+                return task
+            cursor["investigation_left"] = PORTION
+        task = _guarded_job(root, cursor, config, directory)
+        if task:
+            # Only a page handed to the model uses the share; one parked or passed over does not.
+            if job["record"] not in served[share]:
+                served[share].append(job["record"])
+                write_json(path, served)
+            return task
+        # A page passed over is passed over for good: a later page that hangs ends this
+        # process before the round is saved, and the next call would prepare them all again.
+        write_json(state_path(root, "round.json"), cursor)
+    _keep_waiting(root, cursor, config, served)
+    return None
+
+
+def _keep_waiting(root, cursor, config, served):
+    """Save the pages the shares did not reach, with the numbers status and catchup say in words."""
+    waiting = cursor.get("waiting", [])
+    counts = {name: {"done": len(served[name]), "limit": config["limits"][limit],
+                     "waiting": sum(_share(job) == name for job in waiting)} for name, limit in SHARES.items()}
+    write_json(state_path(root, WAITING), {"night": served["day"], "jobs": waiting, **counts})
+
+
+def waiting_shares(root, *, night=None):
+    """What the last walked queue left waiting, or {} when that was not `night`'s round."""
+    saved = read_json(state_path(root, WAITING), {})
+    if not saved or (night is not None and saved.get("night") != night):
+        return {}
+    return {name: saved[name] for name in SHARES}
+
+
+def shares_in_words(shares, whose="tonight's"):
+    """'12 of tonight's 12 investigations done; 319 wait for later nights', for each share that left pages."""
+    nouns = {"investigations": "investigations", "skill_pages": "skill pages"}
+    return [f"{row['done']} of {whose} {row['limit']} {nouns[name]} done; "
+            f"{row['waiting']} {'waits' if row['waiting'] == 1 else 'wait'} for later nights"
+            for name, row in shares.items() if row["waiting"]]
+
+
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
     phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation", "draft": "reply-draft"}
     return {"handler": handler, "task": task, "stage": stage, "record": record, "round": number,
@@ -259,20 +364,9 @@ def prepare_task(root, cursor, config, directory):
         # readmit has already dropped their hold on disk: a call that ends here must not lose them.
         cursor["jobs"] += readmitted
         write_json(state_path(root, "round.json"), cursor)
-    while cursor["job_index"] < len(cursor["jobs"]):
-        if "investigation_left" not in cursor:
-            cursor["investigation_left"] = PORTION
-        if cursor["investigation_left"] <= 0:
-            task = _translation_turn(root, cursor, config, directory)
-            if task:
-                return task
-            cursor["investigation_left"] = PORTION
-        task = _guarded_job(root, cursor, config, directory)
-        if task:
-            return task
-        # A page passed over is passed over for good: a later page that hangs ends this
-        # process before the round is saved, and the next call would prepare them all again.
-        write_json(state_path(root, "round.json"), cursor)
+    task = _job_turn(root, cursor, config, directory)
+    if task:
+        return task
     if cursor["summaries"]:
         rows = cursor["summaries"][:1]
         task = sessions.prepare(root, rows, config, directory=directory, native=True)
@@ -302,7 +396,7 @@ def prepare_task(root, cursor, config, directory):
         cursor['blocked_reason'] = 'All remaining candidates are parked: ' + '; '.join(pages + reasons)
     finish(root, cursor)
     if cursor.get('blocked_reason'):
-        raise RemError(cursor['blocked_reason'])
+        raise RoundBlocked(cursor['blocked_reason'])
     return None
 
 

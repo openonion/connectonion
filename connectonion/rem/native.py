@@ -79,7 +79,8 @@ def _config_hash(config, *, include_languages=False, include_models=False, inclu
     # targets do not change page-task material. Keep evidence-sizing limits.
     run_limits = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
                   "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
-                  "depth_workers", "depth_pages_per_slot", "depth_slot_minutes"}
+                  "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
+                  "investigations_per_night", "skill_pages_per_night"}
     ignored = {"schedule", "effort", "notify"}
     if include_notify:
         ignored.remove("notify")
@@ -326,10 +327,17 @@ def next_task(root, *, scheduled=False, discard=False, own=False):
     """`own`: the caller is the worker whose submit was just refused, so the
     pending task's claim is its own and the task is offered again (exec)."""
     from .catchup import resume
+    from .native_round import RoundBlocked
+    from .schedule import calendar_round
     with resume(root, scheduled=scheduled):
-        result = _next_task(root, scheduled=scheduled, discard=discard, own=own)
+        try:
+            result = _next_task(root, scheduled=scheduled, discard=discard, own=own)
+        except RoundBlocked:
+            # The round is finished, with its reason. Its calendar and day plan are saved
+            # like any round's: the error used to leave before them, in exec and catchup too.
+            calendar_round(root, native=True)
+            raise
         if result.get('reason') != 'not due':
-            from .schedule import calendar_round
             calendar = calendar_round(root, native=True)
             if calendar is not None:
                 result['calendar'] = calendar

@@ -81,10 +81,11 @@ Do the night's work, then one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
 Each night is one co rem exec round: Collect, Investigate, Abstract, Translate, then one deepen slot when the whole round completes.
+A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then goes on to the other stages. The pages that did not fit wait for later nights; none are dropped.
 A night with deepen can take an hour or more.
 Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
 At a weekly limit before any night ran, it still does what needs no model, once: collects new mail and sessions for the next round to read, and saves the calendar and the day plan.
-Output:   One line per night with its counts, then totals and why it stopped. When a limit held every night: what was collected and saved, which stages wait, and when the week resets.
+Output:   One line per night with its counts, then totals and why it stopped. A night that used its share of investigations says how many pages wait for later nights. When a limit held every night: what was collected and saved, which stages wait, and when the week resets.
 Exit:     0 when it finished or a limit stopped it; 1 on a refused or busy task or a failed round. Resume unfinished work with co rem exec.
 Effects:  Calls the configured model and saves pages and progress. Each night gets fresh daily limits; weekly limits still apply. Saved work survives interruption. Schedule times stay the same.
 Next:     co rem open
@@ -647,7 +648,8 @@ Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; Collect, Investigate, Deepen,
           Abstract and Translate, each with a waiting count and last-run date
-          (or never); --json includes the same data under stages;
+          (or never), and on Investigate how many pages wait for later nights
+          when the last night used its share; --json includes the same data under stages;
           the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
           translation coverage and what is queued;
@@ -844,6 +846,8 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
           limits.abstract_rounds_per_night 6: successive abstract slices after summaries
+          limits.investigations_per_night 12: pages investigated a night; the rest wait for later nights
+          limits.skill_pages_per_night   3: skill pages investigated a night, counted on their own
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  pins one stage above to a model ("default" clears it);
                                          a route on plan, extract, synthesize or render also

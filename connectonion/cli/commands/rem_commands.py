@@ -2197,6 +2197,10 @@ def make_rem_app(factory):
             return (f" · {count} {'page' if count == 1 else 'pages'} parked "
                     f"({first['record'] or 'a task'}: {first['why']}; {where}; co rem status lists them)")
 
+        def shares_text(row):
+            from ...rem.native_round import shares_in_words
+            return ''.join(' · ' + words for words in shares_in_words(row.get('shares', {})))
+
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
             planned = parked_text(row['parked']) + plan_text(row)
@@ -2204,7 +2208,7 @@ def make_rem_app(factory):
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{row['written']} pages written · {row['decisions']} decisions written · "
                            f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
-                           + deepen_text(row) + calendar_text(row) + planned)
+                           + deepen_text(row) + shares_text(row) + calendar_text(row) + planned)
 
         def summary(value):
             count = len(value['nights'])

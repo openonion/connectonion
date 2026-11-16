@@ -528,6 +528,35 @@ translation-only or daily-capped unfinished exec rounds do not start a deepen sl
 completed night; it does not add another slot. In-session `next` / `submit`
 keeps handing single tasks to the session's model and never deepens.
 
+Every stage gets its share of a night, so one long queue cannot keep the
+later stages from running (owner, 2026-11-16: a queue of 333 investigations
+against a weekly budget for 60 to 90 left Abstract and Deepen at 0 after eight
+catchup runs). A night is the schedule's night (noon to noon) or one
+`co rem catchup` night:
+
+| Stage | A night's share | Setting |
+|---|---|---|
+| Investigate | 12 pages: people, projects, organisations, older pages, retries and your own page | `limits.investigations_per_night` |
+| Investigate, skill pages | 3 pages, counted on their own and served after the others | `limits.skill_pages_per_night` |
+| Abstract | 6 rounds of up to 20 decision lines | `limits.abstract_rounds_per_night` |
+| Deepen | 3 pages in the one slot that follows a completed round | `limits.depth_pages_per_slot` |
+| Translate | turns between investigations, then the closing pass | none (D-104) |
+
+Only a page that was handed to the model uses the share: one that is parked,
+set aside for a stopped mailbox or found to have nothing new does not. A page
+already open keeps going until it is written, however many rounds it takes.
+When a share is used, the round goes on to session summaries, Abstract, the
+same-person checks and Translate, completes, and Deepen runs. The pages that
+did not fit are not lost: they are saved in `.state/investigation-waiting.json`
+and the next round puts them back in the queue. A page the round lists again
+keeps the place that round gives it; a page only the waiting list remembers (a
+person whose new mail predates the last round) leads, so the backlog cannot
+push it back for weeks.
+The night's line and status say it in words, as work that waits and not as a
+failure: `12 of tonight's 12 investigations done; 319 wait for later nights`.
+These two shares are the only count caps on a night since D-104 retired the
+others; the weekly budgets and the Codex usage floor still apply on top.
+
 `co rem status` keeps its existing dashboard and adds five stage lines in the
 order above. Each says what is waiting (a count) and when that stage last ran
 in the notebook's timezone (a date or `never`). Counts come from saved source
@@ -560,7 +589,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, the first reason and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot after closing translation when the whole round completes. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, then goes on to Abstract, Translate and Deepen; the night's line says how many pages wait for later nights. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, the first reason and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -571,7 +600,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
-| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. |
+| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. When the last night used its share of investigations, the Investigate line says so and how many pages wait for later nights. |
 | `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
@@ -599,6 +628,22 @@ can repeat with fresh limits, but skips deepen because its round is unfinished.
 If exec is busy, reaches a quota floor or produces no
 pages, translations or drafts, catchup stops without starting deepen.
 Saved work survives interruption, including during deepen.
+
+A long investigation queue never keeps the rest of the night from running.
+Once the night's share of investigations is used, the round goes on to its
+other stages and the line says what waits, after the pages deepened:
+
+```text
+Night 1: … · 3 pages deepened · 12 of tonight's 12 investigations done; 319 wait for later nights · 3 of tonight's 3 skill pages done; 144 wait for later nights
+```
+
+`--json` carries the same numbers per night under `shares` (`investigations`
+and `skill_pages`, each with `done`, `limit` and `waiting`). The next night
+continues with the pages that waited.
+
+When every page left in a round is parked, the round ends with that reason
+(exit 1) and still saves the calendar and the day plan first, as every round
+does.
 
 One page never stops the night. When review refuses a candidate, exec (and so
 catchup) runs that task again with the refusal as its required corrections.
