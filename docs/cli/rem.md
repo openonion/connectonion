@@ -769,6 +769,15 @@ corrections` end "end your turn: the run that started this task submits it.
 Do not run co rem submit; this sandbox refuses it." instead of "Run co rem …
 submit again in this turn". The investigation Skill asks for the memory lines
 only "when the task instructions name a memory path".
+A repair runs in its stage's sandbox, and one rule decides both the flags and
+the wording: exec names a repair `investigate (repair)`, the flags used to
+take that for a confined stage while the wording did not, so a
+`workspace-write` investigation repair was told to run submit (3 permission
+errors in one repair, #3083). An investigation's repair now has the access its
+first pass had and submits its own page; a maintenance or translation repair
+stays confined and ends its turn. The corrections are also rewritten when the
+task changes hands: a page refused under `co rem next` and offered again by
+`co rem exec` (or the reverse) gets the ending for the worker that now has it.
 A task whose inputs changed while the worker ran, one
 that is no longer the round's pending task, and a turn that passes
 `limits.timeout_seconds` are parked with that error in words, listed like any

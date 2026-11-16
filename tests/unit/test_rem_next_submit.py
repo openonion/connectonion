@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 from connectonion.cli.main import app
 from connectonion.rem import daily, native, quota, reflections, runner, service
-from connectonion.rem.config import prepare, read_config, set_config
+from connectonion.rem.config import default_config, prepare, read_config, set_config
 from connectonion.rem.files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 
 
@@ -638,6 +638,38 @@ def test_a_repair_confined_to_its_folder_under_exec_is_not_told_to_submit(trial,
     if not sent:
         assert repair.count('end your turn: the run that started this task submits it') == 2
         assert 'Do not run co rem submit; this sandbox refuses it.' in repair
+
+
+@pytest.mark.parametrize('stage', ['init', 'investigate', 'enrich', 'muse', 'maintain', 'abstract', 'translate'])
+@pytest.mark.parametrize('harness, confined', [('codex', 'workspace-write'), ('claude-code', 'acceptEdits')])
+def test_a_repair_runs_in_its_stages_sandbox_and_is_worded_for_it(stage, harness, confined):
+    """exec passed "investigate (repair)": the flags took that for a confined stage while the wording
+    stripped the suffix, so a workspace-write repair was told to run submit (3 permission errors, #3083)."""
+    config = {**default_config(), 'runner': harness}
+    for name in (stage, stage + ' (repair)'):
+        assert (confined in runner.harness_flags(config, name)) is runner.workspace_only(config, name)
+    assert runner.harness_flags(config, stage) == runner.harness_flags(config, stage + ' (repair)')
+
+
+@pytest.mark.parametrize('first, then', [(False, True), (True, False)])
+def test_a_refused_task_offered_to_another_kind_of_worker_gets_its_wording(trial, first, then):
+    """The corrections were written at refusal time: a page refused under `co rem next` and offered
+    again by exec still said to run submit, which exec's confined worker cannot (#3083)."""
+    from connectonion.rem.config import set_config
+    set_config(trial, ['runner', 'codex'])
+    record, source = _feedback(trial)
+    task = native.next_task(trial, in_round=first)
+    path = Path(task['candidate'])
+    _candidate(trial, task, record, source)
+    path.write_text(path.read_text().replace(source, 'gmail:invented'))
+    assert native.submit(trial, task['id'])['outcome'] == 'refused'
+    again = native.next_task(trial, in_round=then, own=True)
+    assert again['id'] == task['id']
+    repair = again['instructions'].split('## Reference')[0]
+    assert repair.startswith('## Required corrections\n') and repair.count('## Required corrections') == 1
+    assert (f"Run {task['submit']} again in this turn." in repair) is not then
+    assert ('Do not run co rem submit; this sandbox refuses it.' in repair) is then
+    assert (Path(task['material']) / 'instructions.md').read_text() == again['instructions']
 
 
 def test_the_investigation_skill_writes_memory_only_where_the_task_names_a_path():

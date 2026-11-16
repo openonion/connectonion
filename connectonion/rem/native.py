@@ -519,6 +519,7 @@ def _next_task(root, *, scheduled, discard, own=False, in_round=False):
 
 def _offer_pending(root, task, *, preparer=None, takeover=False, driven=False):
     # Whoever offers the task now drives it: a task a stopped exec left is the scheduled agent's to run.
+    redriven = bool(task.get("driven")) != driven
     task["driven"] = driven
     if task.get("review_unreserved"):
         return _offer_review(root, task)
@@ -528,8 +529,11 @@ def _offer_pending(root, task, *, preparer=None, takeover=False, driven=False):
                 "co rem next --discard to take it over"}
     _write_instructions(task, check=True)
     refusal = task.get("last_result", {})
+    # The corrections end "run submit again" or "end your turn" for the worker they were
+    # written for; one refused under `co rem next` and offered again by exec kept the
+    # first, which exec's confined worker cannot do (#3083). So they are rebuilt.
     if (refusal.get("outcome") == "refused" and task["stage"] == task["render_stage"]
-            and not task["instructions"].startswith("## Required corrections\n")):
+            and (redriven or not task["instructions"].startswith("## Required corrections\n"))):
         refusal["fix"] = str(_repair_instructions(root, task, refusal["reason"]))
         _write_instructions(task)
     # A claim is advisory: a session that died mid-task must not keep tonight's idle.

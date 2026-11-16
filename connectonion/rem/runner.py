@@ -254,12 +254,19 @@ CONFINEMENT = {
 
 
 def full_access(stage: str) -> bool:
+    """A repair is its stage's work and runs in its stage's sandbox.
+
+    2026-11-16 (#3083): exec passes "investigate (repair)". The flags compared that
+    whole string and confined the repair, while the wording stripped the suffix and
+    told it to run submit and append memory: 3 permission errors in one repair. The
+    suffix is read here, the one place both `harness_flags` and `workspace_only` ask."""
+    stage = stage.removesuffix(" (repair)")
     return stage == "init" or stage in ONE_PAGE_STAGES
 
 
 def workspace_only(config: dict, stage: str) -> bool:
     """Does `run_task` confine this stage's worker to its task folder (see harness_flags)?"""
-    return config["runner"] != "coai" and not full_access(stage.removesuffix(" (repair)"))
+    return config["runner"] != "coai" and not full_access(stage)
 
 
 def harness_flags(config: dict, stage: str) -> list[str]:
