@@ -1,5 +1,7 @@
 """Recover a cited original using the same mail clients as co outlook/co gmail."""
 
+import re
+
 from google.auth.exceptions import GoogleAuthError
 from googleapiclient.errors import HttpError
 from httplib2 import HttpLib2Error
@@ -42,6 +44,13 @@ def _fetch(root, source, metadata):
     missing = read_json(missing_mail_path(root, provider, identity), {})
     if missing:
         return missing['reason']
+    digest = re.match(r'[0-9a-f]{12}(?![0-9a-f])', identity)
+    if digest:
+        # REM's own short name for a retained mail (mail.py: sha256 of the id, twelve
+        # characters), not the mailbox's id: Graph answers HTTP 400 "Id is malformed" to it.
+        # Gmail's ids are sixteen hexadecimal characters and are still asked for.
+        return (f'{provider.title()} cannot be asked for {identity}: {digest[0]} is the notebook\'s digest '
+                'of a mail it no longer holds, not a mailbox id.')
     try:
         client = _client(provider)
         row = metadata.get((provider, identity)) or read_mail(

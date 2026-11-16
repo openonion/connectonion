@@ -341,6 +341,27 @@ class MissingMail(RemError):
         self.status = status
 
 
+# A read answered 401 or 403 needs `co auth`, 408 timed out and 429 is throttling: those are
+# the mailbox's state. Any other 4xx is the mailbox refusing this one request.
+GONE, NOT_THIS_READ = (404, 410), (401, 403, 408, 429)
+STEPS = {'message': 'reading message', 'attachments': 'listing the attachments of message'}
+
+
+class RefusedMail(RemError):
+    """One read the mailbox refused: that read's page or night item is set aside, never the round.
+
+    2026-11-16: a citation that was no message id reached Graph as one, Graph answered
+    HTTP 400, and the raw error left `co rem catchup` after 22 minutes with no totals
+    and none of the stages after it. The message names the step and the status,
+    because "Microsoft Graph API error (HTTP 400)" names neither the read nor the page."""
+
+    def __init__(self, provider, identity, operation, status):
+        super().__init__(f"{provider.title() or 'The mailbox'} refused {STEPS.get(operation, 'reading ' + operation)} "
+                         f'{identity} (HTTP {status})')
+        self.rem_provider, self.refused_id, self.operation = provider or None, identity, operation
+        self.status = status
+
+
 def missing_mail_path(root, provider, identity, operation='message'):
     key = hashlib.sha256(f'{operation}:{identity}'.encode()).hexdigest()
     return state_path(root, f'mail/dropped-missing/{provider}/{key}.json')
@@ -349,8 +370,9 @@ def missing_mail_path(root, provider, identity, operation='message'):
 def read_mail(call, identity: str, *, provider: str = '', root: Path | None = None, operation: str = 'message'):
     """Read one piece of mail; only a provider's HTTP 404/410 means it is gone.
 
-    Other read errors pass through unchanged, including through legacy parking
-    handlers. Keep the missing ID separately from any retained original body.
+    Another 4xx that is not about authorization or throttling is this read refused
+    (RefusedMail). Every other read error passes through unchanged, including through
+    legacy parking handlers. Keep the missing ID separately from any retained original body.
     """
     from googleapiclient.errors import HttpError
     from ..provider_credentials import ProviderCredentialError
@@ -363,7 +385,11 @@ def read_mail(call, identity: str, *, provider: str = '', root: Path | None = No
         if status is None and isinstance(error, MailboxError):
             match = re.search(r'\bHTTP (\d{3})\b', str(error))
             status = int(match[1]) if match else None
-        if not isinstance(error, (HttpError, ProviderCredentialError, MailboxError)) or status not in (404, 410):
+        if not isinstance(error, (HttpError, ProviderCredentialError, MailboxError)) or status is None:
+            raise
+        if 400 <= status < 500 and status not in GONE + NOT_THIS_READ:
+            raise RefusedMail(provider or getattr(error, 'rem_provider', ''), identity, operation, status) from error
+        if status not in GONE:
             raise
         missing = MissingMail(provider, identity, operation, status, error)
         if root is not None:

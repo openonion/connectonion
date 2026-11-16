@@ -81,10 +81,19 @@ def _future_commitment(words):
                           r'我(?:会(?!不)|(?:下周|下星期|明天|后天|稍后|之后|周[一二三四五六日天]))', words, re.I))
 
 
+def _cited_mail(source):
+    """The mail a Sources entry names: an attachment (`outlook:<digest>:<file>`) is cited through its mail.
+
+    2026-11-16: the whole entry was taken for a message the archive lacked, the night asked
+    Graph for `/me/messages/<digest>:<file>`, and the HTTP 400 that came back ended the night."""
+    digest = re.match(r'(?:gmail|outlook):[0-9a-f]{12}(?![0-9a-f])', source)
+    return digest[0] if digest else source
+
+
 def _reply(root, sources, text, owner, db, direction):
     from .reader_model import _cited_row
     from .store_messages import archived_message
-    mail = [sources.get(number, '') for number in census.CITATION.findall(text)
+    mail = [_cited_mail(sources.get(number, '')) for number in census.CITATION.findall(text)
             if sources.get(number, '').partition(':')[0] in ('gmail', 'outlook')]
     if not mail:
         return {'state': 'task', 'last_word_yours': False, 'promise': text}

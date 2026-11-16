@@ -71,6 +71,8 @@ def _by_status(status: int) -> str:
         return "denied"
     if status == 429:
         return "throttled"
+    if status == 408:
+        return "timeout"
     return "server" if status >= 500 else "refused"
 
 
@@ -121,7 +123,7 @@ def park(root, job: dict, error) -> str | None:
     None means the error is not a mailbox's, and the caller re-raises it."""
     # Only an error a mail client raised (Labelled tags it) is a mailbox's: a git or
     # web fetch timing out in a project or skill page is not mail, and must be seen.
-    from .mail import MissingMail
+    from .mail import MissingMail, RefusedMail
     if getattr(error, 'rem_read_failure', False) and not isinstance(error, MissingMail):
         return None
     provider, reason = getattr(error, "rem_provider", None), failure(error)
@@ -136,6 +138,9 @@ def park(root, job: dict, error) -> str | None:
     if isinstance(error, MissingMail):
         ledger['items'][record].update(missing_id=error.missing_id, operation=error.operation,
                                       error=str(error), page_revision=_page_revision(root, record))
+    if isinstance(error, RefusedMail):
+        # The night line reads this: which read, and the status the mailbox answered.
+        ledger['items'][record]['error'] = str(error)
     failed = ledger["turn"]["failed"].setdefault(provider, [])
     if record not in failed:
         failed.append(record)
@@ -148,7 +153,8 @@ def park(root, job: dict, error) -> str | None:
          **({"stopped": True} if stops else {})}]
     write_json(state_path(root, LEDGER), ledger)
     name = NAMES.get(provider, provider)
-    notice = f"Set {record} aside: {name} {PHRASES[reason]}; tried again no earlier than {retry:%Y-%m-%d %H:%M} UTC"
+    what = str(error) if isinstance(error, RefusedMail) else f"{name} {PHRASES[reason]}"
+    notice = f"Set {record} aside: {what}; tried again no earlier than {retry:%Y-%m-%d %H:%M} UTC"
     if isinstance(error, MissingMail):
         notice = f'Set {record} aside: {error}; waits until the page changes (for example, new mail).'
     if stops:

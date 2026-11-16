@@ -220,3 +220,122 @@ def test_every_next_raising_mailbox_error_keeps_error_in_failed_receipt(notebook
     receipt = read_json(state_path(notebook, 'last-turn.json'), {})
     assert receipt['reason'] == str(error)
     assert read_json(state_path(notebook, f"turns/{receipt['turn_id']}.json"), {}) == receipt
+
+
+# 2026-11-16: a person's page cited an attachment as `outlook:<digest>:<name>`. The night
+# took that for a message the archive lacked and asked Graph for `/me/messages/<digest>:<name>`;
+# Graph answered HTTP 400 (ErrorInvalidIdMalformed) and the error ended the catchup night
+# after 22 minutes with no totals and no Abstract, Translate or Deepen.
+
+def graph_400():
+    from connectonion.provider_credentials import ProviderCredentialError
+    return ProviderCredentialError('provider_unavailable', 'Microsoft Graph API error (HTTP 400).',
+                                   'co outlook inbox', status=400)
+
+
+def _digest(identity):
+    import hashlib
+    return hashlib.sha256(identity.encode()).hexdigest()[:12]
+
+
+@pytest.mark.parametrize('suffix', [':Notice.pdf', ';'])
+def test_an_attachment_citation_is_read_as_its_retained_mail_and_no_mailbox_is_asked(notebook, monkeypatch, suffix):
+    from connectonion.rem import night, today
+    from connectonion.rem.store import refresh
+    from tests.unit.test_rem_proactive import night_item
+    night_item(notebook, 0)
+    book = Notebook(notebook)
+    page = book.read('people/fern-0.md')
+    book.write('people/fern-0.md', page.replace('gmail:ask-0', f"gmail:{_digest('ask-0')}{suffix}"))
+    write_json(state_path(notebook, 'subscriptions.json'), {'gmail': {'enabled': True, 'consented': True}})
+    monkeypatch.setattr(night_mail, '_client', lambda provider: pytest.fail('the cited mail is already retained'))
+    refresh(notebook)
+    reply = next(row['reply'] for row in today.queue(notebook) if row['record'] == 'people/fern-0.md')
+    assert reply['state'] != 'unarchived' and reply['source'] == 'gmail:ask-0'
+    night.prepare(notebook, read_config(notebook))
+    assert 'malformed' not in json.dumps(night.listing(notebook))
+
+
+@pytest.mark.parametrize('identity', ['0123456789ab', '0123456789ab:Notice.pdf'])
+def test_a_local_digest_no_retained_mail_answers_is_never_sent_to_the_mailbox_as_an_id(notebook, monkeypatch, identity):
+    write_json(state_path(notebook, 'subscriptions.json'), {'outlook': {'enabled': True, 'consented': True}})
+    monkeypatch.setattr(night_mail, '_client', lambda provider: pytest.fail('a digest is not a mailbox id'))
+    reason = night_mail._fetch(notebook, f'outlook:{identity}', {})
+    assert 'digest' in reason and '0123456789ab' in reason
+
+
+def test_a_gmail_message_id_is_still_asked_for(notebook, monkeypatch):
+    # Sixteen hexadecimal characters are Gmail's own id, not REM's twelve-character digest.
+    write_json(state_path(notebook, 'subscriptions.json'), {'gmail': {'enabled': True, 'consented': True}})
+    mailbox = Mailbox()
+    monkeypatch.setattr(night_mail, '_client', lambda provider: mailbox)
+    monkeypatch.setattr(night_mail, '_metadata', lambda client, provider, key: {
+        'id': key, 'from': 'fern@example.test', 'to': ['owner@example.test'], 'thread': 't',
+        'date': '2026-11-07T01:00:00+00:00', 'subject': 'Pilot review'})
+    assert night_mail._fetch(notebook, 'gmail:0123456789abcdef', {}) == ''
+
+
+@pytest.mark.parametrize('operation, step', [('message', 'reading message'), ('attachments', 'listing the attachments of message')])
+@pytest.mark.parametrize('status', [400, 405, 414, 422])
+def test_a_read_the_mailbox_refuses_names_its_step_and_status(operation, step, status):
+    from connectonion.rem.mail import RefusedMail
+    def refuse(identity):
+        raise MailboxError('provider_error', f'Gmail read failed (HTTP {status}).')
+    with pytest.raises(RefusedMail) as caught:
+        read_mail(refuse, 'mail-1', provider='gmail', operation=operation)
+    assert f'Gmail refused {step} mail-1 (HTTP {status})' in str(caught.value)
+    assert fetch_stalls.failure(caught.value) == 'refused' and caught.value.rem_provider == 'gmail'
+
+
+def test_an_expired_authorization_is_not_a_refused_read():
+    from connectonion.provider_credentials import ProviderCredentialError
+    error = ProviderCredentialError('reauth_required', 'Microsoft authorization expired.', 'co auth microsoft')
+    with pytest.raises(ProviderCredentialError) as caught:
+        read_mail(lambda identity: (_ for _ in ()).throw(error), 'mail-1', provider='outlook')
+    assert caught.value is error and fetch_stalls.failure(error) == 'auth'
+
+
+def test_scheduled_next_parks_a_page_whose_read_was_refused_and_serves_other_work(notebook, monkeypatch):
+    round_of(notebook, monkeypatch, ['orgs/lantern.md'])
+    Notebook(notebook).write('orgs/lantern.md', '# Lantern\n\n- Domain: lantern.example\n')
+    mailbox = Mailbox(body_errors={'mail-1': graph_400})
+    monkeypatch.setattr(native_round, '_prepare_investigation', lambda *a: inv.gather(
+        'Lantern', ['lantern.example'], days=5, clients={'outlook': mailbox}, subscriptions={},
+        archive_root=notebook, record='orgs/lantern.md', attachments_dir=notebook / 'attachments', lock_held=True))
+    task = native.next_task(notebook, scheduled=True)
+    assert task['outcome'] == 'task' and task['record'] == 'projects/heron.md'
+    parked = read_json(state_path(notebook, fetch_stalls.LEDGER), {})['items']['orgs/lantern.md']
+    assert parked['reason'] == 'refused' and 'missing_id' not in parked
+    assert parked['retry_at'] > service.now().isoformat()
+    assert 'Outlook refused reading message mail-1 (HTTP 400)' in parked['error']
+    assert any('Set orgs/lantern.md aside: Outlook refused reading message mail-1 (HTTP 400); tried again no earlier than'
+               in notice for notice in task['notices'])
+    # One refused read is that page's: the mailbox is still asked for the other pages.
+    assert fetch_stalls.stopped(notebook) == {}
+
+
+@pytest.mark.parametrize('site', ['metadata', 'body'])
+def test_night_cited_original_the_mailbox_refuses_is_a_reason_not_the_end_of_the_round(notebook, monkeypatch, site):
+    write_json(state_path(notebook, 'subscriptions.json'), {'outlook': {'enabled': True, 'consented': True}})
+    def refuse(*args):
+        raise graph_400()
+    mailbox = Mailbox()
+    monkeypatch.setattr(night_mail, '_client', lambda provider: mailbox)
+    monkeypatch.setattr(night_mail, '_metadata', refuse if site == 'metadata' else lambda *a: {'id': 'mail-1'})
+    if site == 'body':
+        mailbox.get_email_body = refuse
+    rows = [{'reply': {'state': 'unarchived', 'source': 'outlook:mail-1'}}]
+    assert 'Outlook refused reading message mail-1 (HTTP 400)' in night_mail.fetch_missing(notebook, rows)['outlook:mail-1']
+
+
+def test_night_lists_a_refused_original_as_could_not_prepare(notebook, monkeypatch):
+    from connectonion.rem import night
+    from tests.unit.test_rem_proactive import night_item
+    night_item(notebook, 0, archived=False)
+    write_json(state_path(notebook, 'subscriptions.json'), {'gmail': {'enabled': True, 'consented': True}})
+    mailbox = Mailbox()
+    mailbox.get_email_body = lambda identity: (_ for _ in ()).throw(gone(400))
+    monkeypatch.setattr(night_mail, '_client', lambda provider: mailbox)
+    assert night.prepare(notebook, read_config(notebook)) == []
+    outcome = night.listing(notebook)[0]
+    assert outcome['kind'] == 'could_not_prepare' and '(HTTP 400)' in outcome['reason']
