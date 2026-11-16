@@ -87,3 +87,35 @@ def test_repository_probe_does_not_hide_other_io_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "exists", broken)
     with pytest.raises(OSError, match="Input/output error"):
         scan.is_repository(tmp_path)
+
+
+def test_a_worktree_file_the_system_holds_back_does_not_hold_the_round(tmp_path, monkeypatch):
+    """macOS holds the first read under ~/Documents behind a privacy prompt nobody answers at night."""
+    import threading
+    import time
+    folder = tmp_path / "held"
+    folder.mkdir()
+    (folder / ".git").write_text("gitdir: /somewhere/home/.git/worktrees/held\n")
+    release = threading.Event()
+    read_text = Path.read_text
+
+    def held(path, *args, **kwargs):
+        if path == folder / ".git":
+            release.wait(30)
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", held)
+    monkeypatch.setattr(scan, "READ_WAIT_SECONDS", 0.2)
+    started = time.monotonic()
+    assert scan.main_checkout(str(folder)) == ""
+    assert time.monotonic() - started < 5
+    release.set()
+
+
+def test_one_import_asks_about_a_folder_once(tmp_path, monkeypatch):
+    asked = []
+    monkeypatch.setattr(sessions, "main_checkout", lambda path: asked.append(path) or "")
+    sessions._project_path.cache_clear()
+    for _ in range(3):
+        sessions._project_path(str(tmp_path / "work"))
+    assert asked == [str(tmp_path / "work")]

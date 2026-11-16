@@ -7,6 +7,7 @@ correspondent is a person, a company's notices, or an event mailer is a
 judgement the Skill makes; this only hands it the signals.
 """
 
+import threading
 import collections
 import html
 import io
@@ -339,6 +340,32 @@ def project_exclusion(path: Path) -> str:
 CLAUDE_WORKTREE = re.compile(r"^(/.+?)/\.claude/worktrees/[^/]+(/.*)?$")
 
 
+READ_WAIT_SECONDS = 2
+
+
+def _read_promptly(file: Path) -> str:
+    """A small file's text, or "" when the system does not hand it over in time.
+
+    macOS answers the first read under ~/Documents, ~/Desktop or ~/Downloads with a privacy
+    prompt and holds the read until someone answers it. In the background nobody does: one
+    worktree's 74-byte `.git` file under Documents held the owner's round for 44 s a time and
+    the round never started inside its ten minutes. Waiting is not worth more than knowing
+    whether a folder is a worktree, so the read is left behind and the folder is not one.
+    """
+    found: list[str] = []
+
+    def read() -> None:
+        try:
+            found.append(file.read_text(errors="replace"))
+        except OSError:  # refused or gone: the same answer as not in time
+            return
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    reader.join(READ_WAIT_SECONDS)
+    return found[0] if found else ""
+
+
 def main_checkout(path: str) -> str:
     """The repository checkout a worktree belongs to, or "" for anything else.
 
@@ -351,7 +378,7 @@ def main_checkout(path: str) -> str:
     git = Path(path) / ".git"
     repository = is_repository(path)
     if repository and git.is_file():
-        home = re.fullmatch(r"gitdir:\s*(.+?)/\.git/worktrees/[^/]+/?\s*", git.read_text(errors="replace"))
+        home = re.fullmatch(r"gitdir:\s*(.+?)/\.git/worktrees/[^/]+/?\s*", _read_promptly(git))
         if home:
             return os.path.normpath(os.path.join(path, home[1]))
     layout = CLAUDE_WORKTREE.match(path)
