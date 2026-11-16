@@ -232,3 +232,34 @@ def test_stopping_a_send_stops_it_rather_than_retrying(receiver, tmp_path):
         return time.monotonic() - began
 
     assert asyncio.run(stop_midway()) < 1
+
+
+def test_a_second_send_of_the_same_file_takes_over_from_the_first(receiver, tmp_path):
+    """A resumed send can start while the old one is still half alive.
+
+    On the first real 5 GB run a stop signal did not reach the first `co send`,
+    and the resumed one ran beside it: two sockets appending to one staging
+    file. Only one may write; the newest offer wins and the other is told.
+    """
+    clip = _video(tmp_path, megabytes=24)
+
+    async def overlap():
+        started = asyncio.Event()
+
+        def watch(phase, done, total):
+            if phase == "sending" and done >= 4 * 1024 * 1024:
+                started.set()
+
+        first = asyncio.create_task(
+            file_send.send_file(_remote(receiver, receiver["sender"]), clip, clip.name, watch))
+        await started.wait()
+        second = await file_send.send_file(_remote(receiver, receiver["sender"]), clip, clip.name)
+        with pytest.raises(file_send.SendRefused, match="took over"):
+            await first
+        return second
+
+    stored = asyncio.run(overlap())
+
+    landed = file_inbox.files_dir(receiver["co_dir"]) / stored["path"]
+    assert landed.read_bytes() == clip.read_bytes()
+    assert len(file_inbox.received(receiver["co_dir"])) == 1

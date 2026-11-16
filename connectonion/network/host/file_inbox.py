@@ -43,6 +43,10 @@ MAX_CHUNK_BYTES = 4 * CHUNK_BYTES
 # Host's logs and sessions down with it.
 DISK_MARGIN_BYTES = 1024 ** 3
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+# The one receiver writing each staging file, keyed by its path. A resumed send
+# opens a new socket while the old one may still be half alive; two writers on
+# one .part interleave their bytes (seen on the first real 5 GB run).
+_writers: dict = {}
 _SEGMENT = re.compile(r"^[^/\\\x00-\x1f]{1,255}$")
 
 
@@ -101,16 +105,31 @@ class FileReceiver:
         self.handle = None
         self.digest = None
         self.received = 0
+        self.superseded = False
+        self.key = None
 
-    def accept(self, offer: dict) -> dict:
-        """Check an offer and open its staging file; say how much is already here."""
-        sha256, size = offer.get("sha256"), offer.get("size")
+    def take_over(self, sha256) -> None:
+        """Become the only writer of this file's staging copy; the last offer wins."""
         if not isinstance(sha256, str) or not _SHA256.fullmatch(sha256):
             raise FileRefused("FILE_OFFER", "sha256 must be 64 lowercase hex characters")
+        self.close()
+        self.key = self.partial / f"{sha256}.part"
+        holder = _writers.get(self.key)
+        if holder is not None:
+            holder.close()
+            holder.superseded = True
+        _writers[self.key] = self
+        self.superseded = False
+
+    def accept(self, offer: dict) -> dict:
+        """Check an offer and open its staging file; say how much is already here.
+
+        Call take_over(sha256) first, on the event loop.
+        """
+        sha256, size = offer.get("sha256"), offer.get("size")
         if not isinstance(size, int) or isinstance(size, bool) or size < 0:
             raise FileRefused("FILE_OFFER", "size must be a non-negative integer")
         name = safe_name(offer.get("name"))
-        self.close()
         self.partial.mkdir(parents=True, exist_ok=True)
         part = self.partial / f"{sha256}.part"
         record = self.partial / f"{sha256}.json"
@@ -137,6 +156,8 @@ class FileReceiver:
 
     def write(self, chunk: dict) -> dict:
         """Append one chunk at the offset the host expects; store when complete."""
+        if self.superseded:
+            raise FileRefused("FILE_SUPERSEDED", "another send of this file took over")
         if self.offer is None or chunk.get("sha256") != self.offer["sha256"]:
             raise FileRefused("FILE_CHUNK", "no offer for this file (send FILE_OFFER first)")
         if chunk.get("offset") != self.received:
@@ -184,6 +205,8 @@ class FileReceiver:
     def close(self):
         if self.handle is not None:
             self.handle.close()
+        if _writers.get(self.key) is self:
+            del _writers[self.key]
         self.handle, self.offer = None, None
 
 
@@ -213,6 +236,7 @@ async def receive_file(data, send_msg, conn, route_handlers, receiver):
         receiver = FileReceiver(route_handlers["files_dir"], conn["agent_address"])
     try:
         if data.get("type") == "FILE_OFFER":
+            receiver.take_over(data.get("sha256"))
             # Resuming rehashes what is already on disk: off the event loop.
             reply = {"type": "FILE_ACCEPTED", **await asyncio.to_thread(receiver.accept, data)}
         else:
