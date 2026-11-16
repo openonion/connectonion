@@ -2180,6 +2180,9 @@ the task. Investigation is not marked finished on a failed execution.
 co rem forwards its delegated deadline as `co ai --timeout SECONDS` and gives
 the outer process 15 seconds to exit afterward. The common native adapter
 therefore closes its delegate before co rem process timeout is reached.
+Either timeout is the same failure of that one turn (`co ai timed out after
+Ns`), with the tokens the adapter reported: `co rem exec` and catchup park the
+task and take the next one, and a stage run retries the call once.
 
 ## Scheduling and accounting
 

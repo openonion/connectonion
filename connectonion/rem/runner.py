@@ -342,6 +342,11 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: st
         # what to run, rather than relaying the provider's JSON.
         raise RunFailed(f"Model {config['model']} is not available to a ChatGPT login. "
                         "Choose one that is: co rem config set model gpt-6-luna", usage)
+    if envelope.get("outcome") == "timeout":
+        # The adapter closes its delegate at the deadline and answers before the outer
+        # process timeout above can fire, so this is the timeout that happens. 2026-11-17:
+        # as a plain RunFailed it was not one task's fault, and it ended a catchup night.
+        raise TimedOut(f"co ai timed out after {timeout}s; source progress was preserved", usage)
     if completed.returncode or envelope.get("error") or envelope.get("outcome") != "natural":
         raise RunFailed(
             f"co ai did not complete (exit {completed.returncode}, "

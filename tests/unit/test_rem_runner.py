@@ -686,6 +686,17 @@ def test_timeout_reports_partial_changes(notebook, monkeypatch, delegate):
     assert caught.value.changed == ["notes/new.md"]
 
 
+def test_a_turn_the_adapter_timed_out_is_a_timed_out_task_with_its_usage(tmp_path, monkeypatch, delegate):
+    """2026-11-17: the adapter always beats the outer deadline, so its timeout left as a
+    plain RunFailed, exec did not park the task and one slow page ended the whole night."""
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", lambda *a, **kw: SimpleNamespace(
+        returncode=1, stderr="", stdout=json.dumps({"outcome": "timeout", "error": "turn timed out after 900s",
+                                                    "usage": {"input_tokens": 40}, "session_id": "fictional"})))
+    with pytest.raises(runner.TimedOut, match="co ai timed out after 1200s") as caught:
+        runner.run_task(tmp_path, "Continue.", default_config(), "investigate")
+    assert caught.value.usage == {"input_tokens": 40}
+
+
 @pytest.mark.parametrize("payload", ['[]', '42', '{}', '{"outcome":"natural","usage":"oops"}'])
 def test_invalid_envelope_fails(notebook, monkeypatch, delegate, payload):
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run",
