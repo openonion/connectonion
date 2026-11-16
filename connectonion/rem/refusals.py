@@ -49,6 +49,19 @@ def short_cause(why: str, refusal: str = "") -> str:
     return f"{head}: {cause}" if head else cause
 
 
+def causes_in_words(causes: list[str]) -> str:
+    """Why a night's pages were parked: each distinct short cause with how many pages it took.
+
+    2026-11-17: two pages parked for different reasons printed the first one's cause after
+    "2 pages parked". The most frequent come first, three at most, then how many more."""
+    if len(causes) == 1:
+        return causes[0]
+    counted = sorted({cause: causes.count(cause) for cause in causes}.items(), key=lambda pair: -pair[1])
+    said = [f"{count} {'page' if count == 1 else 'pages'}, {cause}" for cause, count in counted[:3]]
+    more = len(counted) - 3
+    return "; ".join(said + ([f"and {more} more {'cause' if more == 1 else 'causes'}"] if more > 0 else []))
+
+
 def refused_pages(root: Path) -> dict:
     return read_json(state_path(root, REFUSED), {})
 

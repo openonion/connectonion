@@ -2201,16 +2201,20 @@ def make_rem_app(factory):
                 f"Waiting: {', '.join(first)} and {last} call the model"])
 
         def parked_text(rows, kept=''):
-            """Pages set aside after their retries: how many, the first cause in a clause, where its candidate is.
+            """Pages set aside after their retries: how many, each cause in a clause, where a candidate is.
 
-            The cause is short, counted and without ids (`refusals.short_cause`); status has the whole reason."""
+            A cause is short, counted and without ids (`refusals.short_cause`); status has the whole reason.
+            One page is named; several are counted by cause (`refusals.causes_in_words`)."""
             if not rows:
                 return ''
-            first, count = rows[0], len(rows)
-            where = kept or (f"{'candidate' if count == 1 else 'first candidate'} kept at {first['candidate']}"
-                             if first['candidate'] else 'no candidate is kept')
+            from ...rem.refusals import causes_in_words
+            count = len(rows)
+            candidate = next((row['candidate'] for row in rows if row['candidate']), None)
+            where = kept or (f"{'candidate' if count == 1 else 'first candidate'} kept at {candidate}"
+                             if candidate else 'no candidate is kept')
+            named = f"{rows[0]['record'] or 'a task'}: " if count == 1 else ''
             return (f" · {count} {'page' if count == 1 else 'pages'} parked "
-                    f"({first['record'] or 'a task'}: {first['cause']}; {where}; co rem status lists them)")
+                    f"({named}{causes_in_words([row['cause'] for row in rows])}; {where}; co rem status lists them)")
 
         def shares_text(row):
             from ...rem.native_round import shares_in_words

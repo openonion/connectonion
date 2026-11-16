@@ -759,3 +759,29 @@ def test_a_task_parked_because_its_input_changed_records_what_its_turn_used(note
     usage = {row["record"]: row["usage"] for row in service.run_logs(notebook) if row.get("outcome") in ("parked", "completed")
              and row.get("record")}
     assert usage == {fern: {"input_tokens": 7}, heron: {"input_tokens": 7}}
+
+
+def test_the_night_says_each_cause_of_its_parked_pages_with_a_count(notebook, monkeypatch):
+    """2026-11-17: two pages parked for different reasons printed "2 pages parked" and the first cause."""
+    assert refusals.causes_in_words(["co ai timed out after 5s"]) == "co ai timed out after 5s"
+    assert refusals.causes_in_words(["a", "b", "a"]) == "2 pages, a; 1 page, b"
+    assert refusals.causes_in_words(["a", "b", "c", "d", "e", "e"]) == "2 pages, e; 1 page, a; 1 page, b; and 2 more causes"
+    fern, heron, ibis = two_projects(notebook, monkeypatch, ("fern", "heron", "ibis"))
+    faulty_model(notebook, monkeypatch, lambda record, directory: record == heron and timeout(record, directory))
+    check = native_round.check_task
+
+    def refuse_fern(root, task, output):
+        if task["record"] == fern:
+            raise RemError(f"Candidate rejected, kept at {task['candidate']}: {REJECTED}")
+        return check(root, task, output)
+
+    monkeypatch.setattr(native_round, "check_task", refuse_fern)
+    result = catchup(notebook)
+    night = next(line for line in result.stdout.splitlines() if line.startswith("Night 1:"))
+    said = night[night.index("2 pages parked ("):]
+    assert "1 page, refused twice for the same reason: the rewrite dropped 1 source the page had; " in said, night
+    assert "1 page, co ai timed out after 5s; " in said and "; first candidate kept at " in said
+    assert "codex:fern:1" not in night and heron not in night
+    done = result.stdout[result.stdout.index("Done: 1 night"):]
+    assert "2 pages parked (1 page, " in done and "1 page, refused twice for the same reason: " in done
+    assert "; candidates kept under " in done
