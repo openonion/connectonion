@@ -352,7 +352,8 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
             "periods": len(periods)}
 
 
-def _prior_runs(root: Path, record: str) -> list[dict]:
+def prior_reports(root: Path, record: str) -> list[dict]:
+    """The latest completed report of each kind for this page: its heading and its run."""
     logs = run_logs(root)
     reports = []
     for stages, label in ((("enrich",), "Open leads from enrich"), (("muse",), "Questions the last muse run left"),
@@ -361,7 +362,12 @@ def _prior_runs(root: Path, record: str) -> list[dict]:
                        and run.get("record") == record and run.get("report") and not run.get("pending_review")
                        and run.get("outcome") == "completed"), None)
         if latest and latest.get("report"):
-            reports.append(f"## {label}\n{latest['report']}")
+            reports.append({"label": label, "kind": stages[0], "run": latest})
+    return reports
+
+
+def _prior_runs(root: Path, record: str) -> list[dict]:
+    reports = [f"## {row['label']}\n{row['run']['report']}" for row in prior_reports(root, record)]
     return [{"role": "prior-runs", "source": "investigation:prior-runs", "timestamp": now().isoformat(),
              "text": "\n\n".join(reports)}] if reports else []
 

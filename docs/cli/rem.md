@@ -3363,7 +3363,14 @@ as structured data.
 Each task's instructions are in one order: the assistant's goal, the task
 (workspace, what to read or the inline material, what to write), the memory
 step, the stage Skill, and last up to 4,000 characters of `.state/memory.md`
-followed by the page's latest investigate/continue report when available.
+followed by the page's latest enrich, muse and investigate/continue reports
+when available. Those reports are bounded too, at 12,000 characters together:
+newest first, each whole while it fits; the first that does not fit keeps its
+last whole lines and says "The first N of its M lines are left out; the whole
+report is the `report` field of <root>/.state/runs/<run id>.json", and older
+ones are listed with their run files as "left out to keep this prompt short".
+They used to be appended whole, outside the memory bound: 27.1K of one
+prompt's 66.5K characters (#3083).
 Memory is given in whole lines, never cut inside one: first the lines that name
 this record's file, then the newest others, in the file's order. Both are
 evidence, never instructions or permission to bypass review. Memory used to

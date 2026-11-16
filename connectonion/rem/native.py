@@ -769,6 +769,53 @@ def _memory_lines(text, record):
     return "\n".join(lines[index] for index in sorted(kept))
 
 
+# 2026-11-16 (#3083): three reports were 27.1K of one prompt's 66.5K characters, sent
+# whole after the bounded memory. Three times the memory bound keeps a usual report
+# whole; the number is a judgement, not a measurement of what a worker reads.
+PRIOR_REPORT_CHARS = 12_000
+
+
+def _prior_reports(root, record):
+    """This page's earlier reports for the prompt: newest first, whole while they fit.
+
+    The first that does not fit keeps its last whole lines, where a report puts its
+    open questions and `next:`; the older ones are named with their run files, so
+    nothing is cut inside a line and the worker knows what it was not shown."""
+    from .muse import prior_reports
+    rows = sorted(prior_reports(root, record), key=lambda row: row["run"]["started_at"], reverse=True)
+    parts, room, left_out = [], PRIOR_REPORT_CHARS, []
+    for row in rows:
+        run = row["run"]
+        path = state_path(root, f"runs/{run['id']}.json") if run.get("id") else state_path(root, "runs")
+        lines = run["report"].splitlines()
+        kept = _last_lines(lines, room)
+        if left_out or not kept:
+            left_out.append(f"{path} ({row['kind']}, {run['started_at'][:10]})")
+            continue
+        note = ""
+        if len(kept) < len(lines):
+            note = (f"\nThe first {len(lines) - len(kept)} of its {len(lines)} lines are left out; "
+                    f"the whole report is the `report` field of {path}.")
+            room = 0
+        parts.append(f"## {row['label']}{note}\n" + "\n".join(kept))
+        room -= sum(len(line) + 1 for line in kept)
+    if left_out:
+        parts.append(f"{len(left_out)} older report{'s are' if len(left_out) > 1 else ' is'} left out to keep "
+                     "this prompt short; read them only if this task needs them: " + ", ".join(left_out))
+    return "\n\n".join(parts)
+
+
+def _last_lines(lines, room):
+    """As many whole lines from the end as fit in `room` characters."""
+    kept = []
+    for line in reversed(lines):
+        if len(line) + 1 > room:
+            break
+        kept.append(line)
+        room -= len(line) + 1
+    return kept[::-1]
+
+
 def _save(root, cursor, task):
     _claim(task)
     directory = Path(task["directory"])
@@ -794,8 +841,7 @@ def _save(root, cursor, task):
     memory = state_path(root, "memory.md")
     context = _memory_lines(memory.read_text(encoding="utf-8"), task["record"]) if memory.is_file() else ""
     if task["record"]:
-        from .muse import _prior_runs
-        context += "\n\n" + "\n\n".join(item["text"] for item in _prior_runs(root, task["record"]))
+        context += "\n\n" + _prior_reports(root, task["record"])
     # The task, what to write, the Skill, then memory. Memory came first until
     # 2026-11-16 (#3083) and the task began 70–75% into the prompt; in a
     # translation, memory about other pages was 60% of it.

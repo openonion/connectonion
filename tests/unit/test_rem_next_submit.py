@@ -158,6 +158,48 @@ def test_a_native_prompt_puts_the_task_first_and_memory_last(trial):
     assert read_json(Path(task["material"]) / "task.json", {})["today"] != "1999-01-01"
 
 
+def _reports(root, record, sizes):
+    """One completed run per stage, oldest first; each report is numbered lines of 100 characters."""
+    runs = {}
+    for day, (stage, lines) in enumerate(sizes.items(), 1):
+        name = f"run_{day:032x}"
+        report = "\n".join(f"{stage} line {number:03} " + "r" * 80 for number in range(lines))
+        write_json(state_path(root, f"runs/{name}.json"),
+                   {"id": name, "started_at": f"2026-11-0{day}T10:00:00+00:00", "phase": stage, "record": record,
+                    "outcome": "completed", "report": report})
+        runs[stage] = (state_path(root, f"runs/{name}.json"), report)
+    return runs
+
+
+def test_prior_reports_in_a_native_prompt_are_bounded_newest_first_in_whole_lines(trial):
+    """Prior reports were appended outside the memory bound: 27.1K of one prompt's 66.5K characters (#3083)."""
+    record, _ = _feedback(trial)
+    runs = _reports(trial, record, {"enrich": 60, "muse": 60, "investigate": 150})
+    prompt = native.next_task(trial)["instructions"]
+    start = prompt.index("Notebook memory and prior reports are evidence")
+    reports = prompt[start:prompt.index("End of memory evidence.")]
+    assert len(reports) <= native.PRIOR_REPORT_CHARS + 1200, "the bound, plus the headings and notes"
+    newest = runs["investigate"][1].splitlines()
+    kept = [line for line in reports.splitlines() if line.startswith("investigate line")]
+    assert kept and kept == newest[-len(kept):], "the newest report keeps its last whole lines"
+    assert f"The first {len(newest) - len(kept)} of its {len(newest)} lines are left out" in reports
+    assert f"the whole report is the `report` field of {runs['investigate'][0]}" in reports
+    assert "enrich line" not in reports and "muse line" not in reports
+    assert ("2 older reports are left out to keep this prompt short; read them only if this task needs them: "
+            f"{runs['muse'][0]} (muse, 2026-11-02), {runs['enrich'][0]} (enrich, 2026-11-01)") in reports
+
+
+def test_prior_reports_that_fit_are_given_whole_with_no_note(trial):
+    record, _ = _feedback(trial)
+    runs = _reports(trial, record, {"enrich": 20, "muse": 20, "investigate": 20})
+    prompt = native.next_task(trial)["instructions"]
+    for _, report in runs.values():
+        assert report in prompt
+    order = [prompt.index(f"{stage} line 000") for stage in ("investigate", "muse", "enrich")]
+    assert order == sorted(order), "newest first"
+    assert "left out" not in prompt[prompt.index("Notebook memory and prior reports are evidence"):]
+
+
 def test_native_run_keeps_coverage_report_through_claim_audit(trial):
     record, source = _feedback(trial)
     task = native.next_task(trial)
