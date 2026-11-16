@@ -267,3 +267,61 @@ def test_a_second_send_of_the_same_file_takes_over_from_the_first(tmp_path):
 
     assert (root / stored["path"]).read_bytes() == body
     assert len(file_inbox.received(tmp_path)) == 1
+
+
+def _store(receiver, name, body):
+    sha256 = hashlib.sha256(body).hexdigest()
+    receiver.take_over(sha256)
+    receiver.accept({"sha256": sha256, "size": len(body), "name": name})
+    return receiver.write(_chunk(sha256, 0, body))
+
+
+def test_a_folder_named_like_an_earlier_file_lands_beside_it(tmp_path):
+    """`a` then `a/b` on one day: the mkdir failed on every retry, forever."""
+    root = file_inbox.files_dir(tmp_path)
+    receiver = file_inbox.FileReceiver(root, "0xsender")
+    first = _store(receiver, "a", b"a file")
+
+    second = _store(receiver, "a/b", b"in a folder")
+
+    assert (root / first["path"]).read_bytes() == b"a file"
+    assert (root / second["path"]).read_bytes() == b"in a folder"
+    assert second["path"].endswith("a-1/b")
+
+
+def test_an_empty_chunk_before_the_end_is_refused(tmp_path):
+    """Otherwise a sender whose file got shorter loops on empty chunks forever."""
+    receiver = file_inbox.FileReceiver(file_inbox.files_dir(tmp_path), "0xsender")
+    sha256 = hashlib.sha256(b"hello").hexdigest()
+    receiver.take_over(sha256)
+    receiver.accept({"sha256": sha256, "size": 5, "name": "x.bin"})
+
+    with pytest.raises(file_inbox.FileRefused, match="empty chunk"):
+        receiver.write(_chunk(sha256, 0, b""))
+
+
+def test_a_file_that_shrinks_while_sending_stops_the_send(receiver, tmp_path):
+    clip = _video(tmp_path, megabytes=12)
+
+    def shrink(phase, done, total):
+        if phase == "hashing" and done == total:
+            with clip.open("r+b") as source:
+                source.truncate(total // 2)
+
+    with pytest.raises(file_send.SendRefused, match="got shorter"):
+        asyncio.run(file_send.send_file(_remote(receiver, receiver["sender"]), clip, clip.name, shrink))
+
+
+def test_a_send_given_up_a_week_ago_is_cleared(tmp_path):
+    root = file_inbox.files_dir(tmp_path)
+    receiver = file_inbox.FileReceiver(root, "0xsender")
+    old = root / ".partial" / "0xsender" / f"{'1' * 64}.part"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"abandoned")
+    old.with_suffix(".json").write_text("{}")
+    week = time.time() - 8 * 24 * 3600
+    os.utime(old, (week, week))
+
+    _store(receiver, "new.bin", b"new")
+
+    assert not old.exists() and not old.with_suffix(".json").exists()

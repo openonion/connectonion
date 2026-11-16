@@ -117,6 +117,9 @@ async def _send_once(remote, path: Path, name: str, size: int, sha256: str, on_p
                 _stop_if_cancelled()
                 while sent < size and sent - acked < WINDOW_BYTES:
                     data = source.read(CHUNK_BYTES)
+                    if not data:
+                        raise SendRefused(f"{path} got shorter while it was being sent; "
+                                          "send it again")
                     await ws.send(_chunk(remote, sha256, sent, data))
                     sent += len(data)
                 reply = await _reply(ws)

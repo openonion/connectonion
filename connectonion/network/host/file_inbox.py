@@ -31,6 +31,7 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -42,6 +43,8 @@ MAX_CHUNK_BYTES = 4 * CHUNK_BYTES
 # Room left on the disk after the file has landed. A full disk takes the
 # Host's logs and sessions down with it.
 DISK_MARGIN_BYTES = 1024 ** 3
+# A staging copy nobody has resumed for this long is a send someone gave up on.
+STALE_PARTIAL_SECONDS = 7 * 24 * 3600
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 # The one receiver writing each staging file, keyed by its path. A resumed send
 # opens a new socket while the old one may still be half alive; two writers on
@@ -86,6 +89,22 @@ def _available(path: Path) -> Path:
     raise FileRefused("FILE_NAME", f"no free name for {path.name}")
 
 
+def _landing(base: Path, name: str) -> Path:
+    """Where `name` lands under `base`: a folder segment that is already a file
+    there gets a free name of its own, rather than failing the mkdir every retry."""
+    *folders, leaf = name.split("/")
+    here = base
+    for folder in folders:
+        here = here / folder
+        if here.exists() and not here.is_dir():
+            here = _available(here)
+    return _available(here / leaf)
+
+
+def _remaining(writer) -> int:
+    return writer.offer["size"] - writer.received if writer.offer else 0
+
+
 def received(co_dir: Path) -> list[dict]:
     """Every verified file, oldest first."""
     log = files_dir(co_dir) / "received.jsonl"
@@ -107,6 +126,9 @@ class FileReceiver:
         self.received = 0
         self.superseded = False
         self.key = None
+        # write() runs in a worker thread; take_over() closes another socket's
+        # receiver from the event loop. One at a time.
+        self.lock = threading.RLock()
 
     def take_over(self, sha256) -> None:
         """Become the only writer of this file's staging copy; the last offer wins."""
@@ -116,8 +138,9 @@ class FileReceiver:
         self.key = self.partial / f"{sha256}.part"
         holder = _writers.get(self.key)
         if holder is not None:
-            holder.close()
-            holder.superseded = True
+            with holder.lock:
+                holder.superseded = True
+                holder.close()
         _writers[self.key] = self
         self.superseded = False
 
@@ -133,11 +156,14 @@ class FileReceiver:
         self.partial.mkdir(parents=True, exist_ok=True)
         part = self.partial / f"{sha256}.part"
         record = self.partial / f"{sha256}.json"
+        self._forget_stale(keep=part)
         held = part.stat().st_size if part.exists() else 0
         if held > size:
             part.unlink()
             held = 0
-        free = shutil.disk_usage(self.partial).free
+        # Other sends still in progress will need their room too.
+        promised = sum(_remaining(w) for w in list(_writers.values()) if w is not self)
+        free = shutil.disk_usage(self.partial).free - promised
         if size - held + DISK_MARGIN_BYTES > free:
             raise FileRefused(
                 "FILE_NO_SPACE",
@@ -154,8 +180,19 @@ class FileReceiver:
         self.received = held
         return {"sha256": sha256, "received": held}
 
+    def _forget_stale(self, keep: Path) -> None:
+        cutoff = time.time() - STALE_PARTIAL_SECONDS
+        for part in self.partial.glob("*.part"):
+            if part != keep and part.stat().st_mtime < cutoff and _writers.get(part) is None:
+                part.unlink()
+                part.with_suffix(".json").unlink(missing_ok=True)
+
     def write(self, chunk: dict) -> dict:
         """Append one chunk at the offset the host expects; store when complete."""
+        with self.lock:
+            return self._write(chunk)
+
+    def _write(self, chunk: dict) -> dict:
         if self.superseded:
             raise FileRefused("FILE_SUPERSEDED", "another send of this file took over")
         if self.offer is None or chunk.get("sha256") != self.offer["sha256"]:
@@ -170,6 +207,8 @@ class FileReceiver:
             raise FileRefused("FILE_CHUNK", "chunk data is not base64")
         if len(data) > MAX_CHUNK_BYTES or self.received + len(data) > self.offer["size"]:
             raise FileRefused("FILE_CHUNK", "chunk is larger than the offer allows")
+        if not data and self.received < self.offer["size"]:
+            raise FileRefused("FILE_CHUNK", "an empty chunk before the end of the file")
         if hashlib.sha256(data).hexdigest() != chunk.get("chunk_sha256"):
             raise FileRefused("FILE_CHUNK", "chunk does not match its signed sha256")
         self.handle.write(data)
@@ -189,7 +228,7 @@ class FileReceiver:
         if self.digest.hexdigest() != offer["sha256"]:
             part.unlink()
             raise FileRefused("FILE_CORRUPT", "sha256 does not match the offer; send it again")
-        target = _available(self.root / date.today().isoformat() / offer["name"])
+        target = _landing(self.root / date.today().isoformat(), offer["name"])
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(part, target)
         entry = {
@@ -203,19 +242,29 @@ class FileReceiver:
         return entry
 
     def close(self):
-        if self.handle is not None:
-            self.handle.close()
-        if _writers.get(self.key) is self:
-            del _writers[self.key]
-        self.handle, self.offer = None, None
+        with self.lock:
+            if self.handle is not None:
+                self.handle.close()
+            if _writers.get(self.key) is self:
+                del _writers[self.key]
+            self.handle, self.offer = None, None
 
 
-def _sender_allowed(conn, route_handlers) -> str | None:
-    """Why this socket may not send files, or None."""
-    if not conn["authenticated"]:
+def _sender_allowed(conn, route_handlers, offer: bool) -> str | None:
+    """Why this socket may not send files, or None.
+
+    Trust is read on the offer; a chunk only lands for an accepted offer, and a
+    revoked sender loses the socket in session.py. Reading the trust files on
+    every chunk was 5,000 reads for 5 GB, on the event loop.
+    """
+    # Unsigned commands on a bare socket can be injected by whoever is on the
+    # path; ws_router/proxy.py refuses them for the same reason.
+    if not conn["authenticated"] or not conn["signed_commands"]:
         return "authenticate first (send a signed CONNECT)"
     if conn["transport"] != "direct":
         return "files travel over a direct connection, not the relay"
+    if not offer:
+        return None
     trust = route_handlers["trust_agent"]
     address = conn["agent_address"]
     level = "admin" if trust.is_admin(address) else trust.get_level(address)
@@ -228,7 +277,7 @@ async def receive_file(data, send_msg, conn, route_handlers, receiver):
     """Handle FILE_OFFER or FILE_CHUNK; return the socket's receiver for the next frame."""
     import asyncio
 
-    refused = _sender_allowed(conn, route_handlers)
+    refused = _sender_allowed(conn, route_handlers, data.get("type") == "FILE_OFFER")
     if refused:
         await send_msg({"type": "ERROR", "code": "FILE_FORBIDDEN", "message": refused})
         return receiver
@@ -240,7 +289,9 @@ async def receive_file(data, send_msg, conn, route_handlers, receiver):
             # Resuming rehashes what is already on disk: off the event loop.
             reply = {"type": "FILE_ACCEPTED", **await asyncio.to_thread(receiver.accept, data)}
         else:
-            reply = receiver.write(data)
+            # A 4 MB write, and the fsync of a whole file at the end, block;
+            # the Host's other sessions keep running meanwhile.
+            reply = await asyncio.to_thread(receiver.write, data)
     except FileRefused as refused:
         await send_msg({"type": "ERROR", "code": refused.code, "message": str(refused),
                         **refused.detail})
