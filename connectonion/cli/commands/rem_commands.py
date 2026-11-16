@@ -2160,6 +2160,11 @@ def make_rem_app(factory):
             missed = value.get('not_deepened', 0)
             return text + (f" · {missed} not deepened ({value['not_deepened_reason']}; see co rem logs)" if missed else '')
 
+        def written_text(value):
+            """Decision pages are among the pages written: "81 pages written · 66 decisions written" read as 147."""
+            decisions = value['decisions']
+            return f"{value['written']} pages written" + (f" ({decisions} of them decisions)" if decisions else '')
+
         def calendar_text(row):
             saved = row.get('calendar')
             if saved is None:
@@ -2214,7 +2219,7 @@ def make_rem_app(factory):
             planned = parked_text(row['parked']) + plan_text(row)
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
-                           f"{row['written']} pages written · {row['decisions']} decisions written · "
+                           f"{written_text(row)} · "
                            f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
                            + deepen_text(row) + shares_text(row) + calendar_text(row) + planned)
 
@@ -2222,8 +2227,8 @@ def make_rem_app(factory):
             count = len(value['nights'])
             if value['held']:
                 return escape(held_text(value) + f"\nStopped: {value['reason']}")
-            text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {value['written']} pages written · "
-                    f"{value['decisions']} decisions written · {value['translated']} pages translated · "
+            text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {written_text(value)} · "
+                    f"{value['translated']} pages translated · "
                     + deepen_text(value) + parked_text(value['parked'], f"candidates kept under {value['candidates']}"))
             return escape(text + (f"\nStopped: {value['reason']}" if value['reason'] else ''))
 

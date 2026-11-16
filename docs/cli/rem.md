@@ -696,8 +696,9 @@ as the scheduled slot. A spent deepen budget or no qualifying pages still
 counts the night; the line says why no pages were deepened.
 The daily investigation call cap leaves room for the same translation tail as
 the scheduled round. Each line reports that night's mail and sessions read,
-pages written, decision pages written, translations, drafts and pages deepened;
-totals follow. A productive night stopped at the daily cap keeps its counts and
+pages written and how many of them are decision pages ("81 pages written (66 of
+them decisions)"; the two used to be listed side by side and read as a sum),
+translations, drafts and pages deepened; totals follow. A productive night stopped at the daily cap keeps its counts and
 can repeat with fresh limits; it has deepened if it got through its first
 portion of investigation, and not otherwise, because its round is unfinished.
 If exec is busy, reaches a quota floor or stops before the first portion, and

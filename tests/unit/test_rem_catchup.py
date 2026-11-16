@@ -104,9 +104,9 @@ def test_two_nights_reuse_exec_reset_abstract_and_print_lines(book, model, monke
     assert result.exit_code == 0, result.output
     assert len(rounds) == 2 and all(row.get('scheduled') is False for row in rounds)
     assert len(model[0]) == 2 and len(book.list('decisions')) == 40
-    assert 'Night 1: 0 mail read · 0 sessions read · 20 pages written · 20 decisions written · 0 pages translated' in result.output
-    assert 'Night 2: 0 mail read · 0 sessions read · 20 pages written · 20 decisions written · 0 pages translated' in result.output
-    assert 'Done: 2 nights · 40 pages written · 40 decisions written · 0 pages translated' in result.output
+    assert 'Night 1: 0 mail read · 0 sessions read · 20 pages written (20 of them decisions) · 0 pages translated' in result.output
+    assert 'Night 2: 0 mail read · 0 sessions read · 20 pages written (20 of them decisions) · 0 pages translated' in result.output
+    assert 'Done: 2 nights · 40 pages written (40 of them decisions) · 0 pages translated' in result.output
     assert result.output.rstrip().endswith(f'Next: co rem --root {book.root} open')
 
 
@@ -335,7 +335,7 @@ def test_a_spent_investigation_budget_holds_investigation_and_the_night_still_ab
     assert len(model[0]) == 2 and len(book.list('decisions')) == 40 and len(slots) == 2
     for number in (1, 2):
         line = next(line for line in result.stdout.splitlines() if line.startswith(f'Night {number}:'))
-        assert '20 decisions written' in line and 'exec stopped' not in line
+        assert '(20 of them decisions)' in line and 'exec stopped' not in line
         assert re.search(r'investigation is waiting for its weekly budget \(35 of 35 points used; '
                          r'the Codex week resets \w{3} \d{2} \w{3} \d{2}:\d{2}\); 1 page waits', line), line
     assert 'Stopped:' not in result.stdout
@@ -820,3 +820,30 @@ def test_a_held_catchup_leaves_an_open_task_alone(book, held):
     assert result.exit_code == 0, result.output
     assert len(held['reads']) == 1 and len(held['events']) == 2
     assert 'Collect: task native-fixture is open; its round keeps the mail it collected' in result.stdout
+
+
+def test_decisions_are_said_as_part_of_the_pages_written_not_beside_them(book, model, monkeypatch):
+    """2026-11-16: "81 pages written · 66 decisions written" read as 147 pages; the 66 are among the 81."""
+    backlog(book, 2)
+    exec_round = schedule.exec_round
+
+    def execute(root, **options):
+        result = exec_round(root, **options)
+        cursor = read_json(state_path(root, 'round.json'), {})
+        cursor['changed'] = [*cursor.get('changed', []), 'people/person.md']
+        write_json(state_path(root, 'round.json'), cursor)
+        return result
+
+    monkeypatch.setattr(schedule, 'exec_round', execute)
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
+    for prefix in ('Night 1:', 'Done: 1 night'):
+        line = next(line for line in result.stdout.splitlines() if line.startswith(prefix))
+        assert '3 pages written (2 of them decisions) · ' in line and 'decisions written' not in line
+
+
+def test_a_night_with_no_decision_pages_says_only_the_pages_written(book, monkeypatch):
+    monkeypatch.setattr(schedule, 'exec_round', lambda root, **options: {'outcome': 'done', 'reason': 'round done'})
+    result = invoke(book)
+    line = next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
+    assert '0 pages written · 0 pages translated' in line
