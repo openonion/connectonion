@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc19
+## Current Version: 1.9.6rc20
+Release candidate 1.9.6rc20 for 1.9.6: the night's Codex workers run at the reasoning effort the
+notebook's config names instead of inheriting the global Codex setting (measured: every worker of
+three real nights ran at `max` against a configured `medium`). `co rem catchup` and the scheduled
+turn hold one lock, so two runs no longer work the same notebook. A worker turn that times out
+parks its page and the round goes on. Each night has shares per stage, and a spent investigation
+budget holds only new investigations. Decision pages that admit their own reason is unknown are
+refused. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc20.md).
+
+- 1.9.6rc20 (REM: configured effort reaches the workers; one lock per notebook; a timeout parks one page; nightly shares).
+
+### Previous candidate: 1.9.6rc19
+
 Release candidate 1.9.6rc19 for 1.9.6: `co send <address> <file or folder>` sends files to another
 agent's running Host, byte for byte and verified by sha256, and `co receive` lists what arrived. An
 interrupted send continues from where it stopped (measured: 5 GiB from a laptop to a mini PC on the
