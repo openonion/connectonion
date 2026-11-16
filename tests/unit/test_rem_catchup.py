@@ -230,7 +230,7 @@ def test_totals_do_not_attach_a_later_empty_slot_reason_to_deepened_pages(book, 
     assert total.endswith('1 page deepened')
 
 
-def test_failed_deepen_stages_are_visible_in_the_night_line(book, model, monkeypatch):
+def test_a_page_whose_enrich_failed_is_counted_as_not_deepened_with_a_short_cause(book, model, monkeypatch):
     backlog(book, 20)
     book.write('people/person.md', '# Person\n')
 
@@ -241,10 +241,43 @@ def test_failed_deepen_stages_are_visible_in_the_night_line(book, model, monkeyp
         monkeypatch.setattr(depth.muse, name, fail)
     result = invoke(book)
     assert result.exit_code == 0, result.output
+    for prefix in ('Night 1:', 'Done:'):
+        line = next(line for line in result.stdout.splitlines() if line.startswith(prefix))
+        assert '0 pages deepened · 1 not deepened (enrich failed: fixture stage failed; see co rem logs)' in line
+
+
+def test_the_night_line_gives_a_refused_enrich_in_a_few_words_without_the_refusal_text_or_a_path(book, model, monkeypatch):
+    """2026-11-16: the parenthesis after "pages deepened" was 200 characters of raw refusal,
+    a task path included, and the refused page was counted as deepened."""
+    backlog(book, 20)
+    for name in ('one', 'two', 'three'):
+        book.write(f'people/{name}.md', f'# {name.title()}\n')
+
+    def enrich(root, record, **options):
+        if record == 'people/two.md':
+            raise runner.RunFailed(
+                f'Candidate rejected, kept at {root}/.state/tasks/enrich-1/candidate.md: Research captures need an '
+                'HTTP(S) URL or a native read-only source ID: entry 2 of web/sources.json (file notes.md) has '
+                '"file:notes.txt"; write the page\'s exact address', {'input_tokens': 10})
+        return {}
+
+    monkeypatch.setattr(depth.muse, 'enrich', enrich)
+    result = invoke(book)
+    assert result.exit_code == 0, result.output
     line = next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
-    assert '1 page deepened' in line  # Count the same round records as scheduled sync.
-    assert 'enrich failed: fixture stage failed' in line
-    assert 'muse failed: fixture stage failed' in line
+    assert ('2 pages deepened · 1 not deepened (enrich refused: Research captures need an HTTP(S) URL or a native '
+            'read-only source ID; see co rem logs)') in line
+    assert str(book.root) not in line and 'entry 2' not in line
+
+
+def test_a_round_saved_before_causes_were_kept_gives_its_first_clause(tmp_path):
+    from connectonion.rem import catchup
+    rounds = [{'record': 'people/one.md', 'enrich': 'failed: Research captures need a URL: entry 2 of web/sources.json',
+               'muse': 'completed'},
+              {'record': 'people/two.md', 'enrich': 'completed', 'muse': 'refused'}]
+    counts = catchup._depth_counts(tmp_path, {'rounds': rounds, 'stopped': ''}, {})
+    assert counts == {'deepened': 1, 'deepen_reason': 'people/two.md: enrich completed, muse refused',
+                      'not_deepened': 1, 'not_deepened_reason': 'enrich failed: Research captures need a URL'}
 
 
 def test_default_one_night_and_later_invocation_gets_a_fresh_night(book, model):

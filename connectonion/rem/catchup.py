@@ -1,5 +1,6 @@
 """Run the existing night now; only its limit identity advances, never time."""
 
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -131,10 +132,29 @@ def _depth_counts(root, result, before):
         history = read_json(state_path(root, 'depth.json'), {})
         rounds = [{'record': record, **row} for record, saved in history.items()
                   for row in saved[len(before.get(record, [])):]]
-    problems = [f"{row['record']}: enrich {row['enrich']}, muse {row['muse']}" for row in rounds
+    # A page whose enrich was refused or failed was not deepened: it is counted apart, with a
+    # short cause. 2026-11-16: it counted as deepened and the line carried the raw refusal.
+    missed = [row for row in rounds if _stage_failed(row['enrich'])]
+    kept = [row for row in rounds if row not in missed]
+    problems = [f"{row['record']}: enrich {row['enrich']}, muse {_in_brief(row, 'muse')}" for row in kept
                 if any(row[name] != 'completed' for name in ('enrich', 'muse'))]
     reason = '; '.join(part for part in [result['stopped'], *problems] if part)
-    return {'deepened': len(rounds), 'deepen_reason': reason or ('no qualifying pages' if not rounds else '')}
+    return {'deepened': len(kept), 'deepen_reason': reason or ('no qualifying pages' if not rounds else ''),
+            'not_deepened': len(missed),
+            'not_deepened_reason': 'enrich ' + _in_brief(missed[0], 'enrich') if missed else ''}
+
+
+def _stage_failed(outcome):
+    return outcome == 'refused' or outcome.startswith('failed')
+
+
+def _in_brief(row, name):
+    """`refused: <cause>` or `failed: <cause>`; a round saved before causes were kept gives its first clause."""
+    outcome = row[name]
+    if not _stage_failed(outcome):
+        return outcome
+    cause = row.get(f'{name}_cause') or re.split(r':\s|;\s', outcome.removeprefix('failed: '), maxsplit=1)[0][:100]
+    return outcome.partition(':')[0] + (f': {cause}' if cause and cause != outcome else '')
 
 
 def _round(root, schedule, stage, say):
@@ -246,9 +266,11 @@ def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=No
 
 def _result(root, rows, reason, failed, held):
     totals = {name: sum(row[name] for row in rows) for name in
-              ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened')}
+              ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened', 'not_deepened')}
     return {'nights': rows, 'reason': reason, 'failed': failed, 'held': held,
             'parked': [page for row in rows for page in row['parked']], 'candidates': str(state_path(root, 'tasks')),
             'deepen_reason': '' if totals['deepened'] else
                 '; '.join(dict.fromkeys(row['deepen_reason'] for row in rows if row['deepen_reason']))
-                or (f'not started: {reason}' if not rows else ''), **totals}
+                or (f'not started: {reason}' if not rows else ''),
+            'not_deepened_reason': next((row['not_deepened_reason'] for row in rows if row['not_deepened_reason']), ''),
+            **totals}

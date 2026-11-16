@@ -2156,7 +2156,9 @@ def make_rem_app(factory):
         def deepen_text(value):
             count = value['deepened']
             text = f"{count} {'page' if count == 1 else 'pages'} deepened"
-            return text + (f" ({value['deepen_reason']})" if value['deepen_reason'] else '')
+            text += f" ({value['deepen_reason']})" if value['deepen_reason'] else ''
+            missed = value.get('not_deepened', 0)
+            return text + (f" · {missed} not deepened ({value['not_deepened_reason']}; see co rem logs)" if missed else '')
 
         def calendar_text(row):
             saved = row.get('calendar')

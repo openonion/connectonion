@@ -704,6 +704,15 @@ If exec is busy, reaches a quota floor or stops before the first portion, and
 when a night with nothing to investigate produces no pages, translations or
 drafts, catchup stops without starting deepen.
 Saved work survives interruption, including during deepen.
+A page whose enrich turn was refused or failed is not counted as deepened. It is
+counted after it, with the first page's cause in a few words and no local path;
+the full refusal is in `co rem logs`:
+
+```text
+Night 1: … · 2 pages deepened · 1 not deepened (enrich refused: Research captures need an HTTP(S) URL or a native read-only source ID; see co rem logs)
+```
+
+`--json` carries `not_deepened` and `not_deepened_reason` per night and in the totals.
 
 A long investigation queue never keeps the rest of the night from running.
 Once the night's share of investigations is used, the round goes on to its

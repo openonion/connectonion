@@ -140,13 +140,26 @@ def _stage(root, record, name) -> dict:
     return getattr(muse, name)(root, record)
 
 
+LOCAL_PATH = re.compile(r"""(?<![\w.<:/])/(?:[^\s/:;,)"']+/)+[^\s/:;,)"']*""")
+
+
+def _failure(error) -> tuple[str, str]:
+    """What went wrong without local paths, and its first clause: the night's line prints the clause.
+
+    2026-11-16: the line carried 200 raw characters of a refusal, a task directory included.
+    """
+    text = LOCAL_PATH.sub("<path>", str(error)).removeprefix("Candidate rejected, kept at <path>: ")
+    return text[:200], re.split(r":\s|;\s", text, maxsplit=1)[0][:100]
+
+
 def _run(root, record, name, stage) -> dict:
     # A failed enrich must leave a round record and still let muse think (#2533).
     try:
         result = stage(root, record, name)
         return {**result, "outcome": result.get("outcome", "completed")}
     except RemError as error:
-        return {"outcome": "refused" if "rejected" in str(error) else f"failed: {str(error)[:200]}",
+        text, cause = _failure(error)
+        return {"outcome": "refused" if "rejected" in str(error) else f"failed: {text}", "cause": cause,
                 "usage": getattr(error, "usage", None)}
 
 
@@ -167,6 +180,8 @@ def deepen(root, record, *, stage=None) -> dict:
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - page_quotes(text)),
            "insights_rejected": len(thought.get("insights_rejected", [])),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
+           **{f"{name}_cause": result["cause"] for name, result in (("enrich", enrich), ("muse", thought))
+              if "cause" in result},
            "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
     with _HISTORY_LOCK:
         history = read_json(state_path(root, "depth.json"), {})
