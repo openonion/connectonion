@@ -118,10 +118,25 @@ def group_points(runs: list[dict]) -> float:
     return sum(_token_points(run.get("usage"), run.get("speed") or "standard") for run in runs)
 
 
+def _measured(run: dict) -> bool:
+    quota = run.get("quota") or {}
+    return any("used_percent" in (quota.get(key) or {}) for key in ("before", "after"))
+
+
 def _groups(runs: list[dict]):
-    """Join overlapping intervals so parallel investigations cannot multiply spend."""
+    """Join overlapping intervals so parallel investigations cannot multiply spend.
+
+    Only a run with a reading of its own joins or extends a group; one without is
+    counted alone, from its tokens. A native round's own record has no reading and
+    lasts for hours: on 2026-11-16 those records joined every investigation task of
+    the day into one group, whose highest reading minus its lowest (44 - 6) was the
+    whole day's Codex week, and investigation was held at "38 of 35" for under a point.
+    """
     group, end = [], None
     for run in sorted(runs, key=lambda run: datetime.fromisoformat(run["started_at"])):
+        if not _measured(run):
+            yield [run]
+            continue
         start = datetime.fromisoformat(run["started_at"])
         finish = datetime.fromisoformat(run.get("finished_at") or run["started_at"])
         if group and start > end:

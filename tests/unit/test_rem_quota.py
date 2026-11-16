@@ -325,3 +325,35 @@ def test_group_readings_allow_reset_timestamp_jitter_but_not_drift():
     assert quota.group_points(runs) == 2
     runs[1]["quota"]["after"]["resets_at"] += 3600
     assert quota.group_points(runs) == 0
+
+
+def _umbrella(started, finished, phase="daily-investigation"):
+    """A native round's own record: hours long, no stage, no usage, no reading (native_round.prepare)."""
+    return {"started_at": started, "finished_at": finished, "phase": phase, "native_round": True,
+            "usage": None, "quota": {"before": {}}}
+
+
+def test_a_rounds_own_record_has_no_reading_and_does_not_join_the_days_runs_into_one_group():
+    """2026-11-16: the round records spanned the day, every investigation task fell inside one, and
+    the group's highest reading minus its lowest (44 - 6) was the whole day's Codex week, the owner's
+    own coding included: "investigation is waiting for its weekly budget (38 of 35)", 332 pages waiting."""
+    morning = {**_run("2026-09-30T01:00:00+00:00", 6, 6, finished="2026-09-30T01:10:00+00:00"), "stage": "investigate",
+               "usage": {"input_tokens": 2_400_000}}
+    evening = {**_run("2026-09-30T20:00:00+00:00", 43, 44, phase="daily-update", finished="2026-09-30T20:10:00+00:00"),
+               "stage": "investigate", "usage": {"input_tokens": 3_000_000}}
+    rounds = [_umbrella("2026-09-30T00:55:00+00:00", "2026-09-30T12:00:00+00:00"),
+              _umbrella("2026-09-30T11:00:00+00:00", "2026-09-30T21:00:00+00:00", phase="daily-update")]
+    now = {"used_percent": 44, "window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.points_spent([*rounds, morning, evening], now) == 1.2   # 0.2 in tokens, then the meter's 1
+    assert quota.run_spent(now, now, [*rounds, morning, evening], "2026-09-30T00:00:00+00:00") == 1.2
+    assert list(quota._groups([*rounds, morning, evening])) == [[rounds[0]], [rounds[1]], [morning], [evening]]
+
+
+def test_a_run_whose_meter_could_not_be_read_is_counted_from_its_own_tokens_beside_a_measured_group():
+    unread = {"started_at": "2026-09-30T01:05:00+00:00", "finished_at": "2026-09-30T03:00:00+00:00",
+              "phase": "investigate", "quota": {"before": {"unknown": "x"}, "after": {"unknown": "x"}},
+              "usage": {"input_tokens": 6_000_000}}
+    first = _run("2026-09-30T01:00:00+00:00", 40, 42, finished="2026-09-30T01:30:00+00:00")
+    later = _run("2026-09-30T02:30:00+00:00", 47, 48, finished="2026-09-30T02:50:00+00:00")
+    now = {"used_percent": 48, "window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.points_spent([unread, first, later], now) == 3.5   # not 48 - 40

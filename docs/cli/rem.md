@@ -2354,6 +2354,12 @@ below is good to about one point.
   whose times overlap are now one group, and a group costs what the meter moved
   from its first reading to its last. Gaps between groups are not counted, so
   your own coding between runs stays yours.
+- **Only a run with its own reading joins a group.** A round keeps one record
+  for itself that lasts as long as the round, with no reading and no tokens.
+  Those records used to join every investigation of a day into one group, which
+  then cost the whole day's meter movement, your own coding included: a night
+  read "38 of 35 points" and held 332 pages when investigation had used under
+  one. A run without a reading now counts alone, from its tokens.
 - **A group the meter cannot see is counted from its tokens** (#1990). Codex
   reports whole percents, so a small group can read the same before and after.
   It then counts `(input − cached input + output)` divided by 12,000,000 at
