@@ -729,7 +729,9 @@ def schedule_failure(root: Path) -> dict | None:
         return None
     evidence = ' '.join((last.get('reason') or f"{last.get('result')} (exit {last.get('exit_code')})").split())[:240]
     return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence,
-            **({'failures': len(failures), 'since': failures[-1].get('started_at', '')} if failures else {})}
+            # `empty`: how many of them exited 0 with no task served and nothing submitted.
+            **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
+                'empty': sum(bool(turn.get('produced_nothing')) for turn in failures)} if failures else {})}
 
 
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:

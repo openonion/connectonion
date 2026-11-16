@@ -50,7 +50,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
         if turn.get('reason'):
             lines += [rem_look.follow(highlight(turn['reason']), glyph='')]
-            if turn['result'] == 'failed':
+            if turn['result'] == 'failed' and not turn.get('produced_nothing'):
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
@@ -354,6 +354,14 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
     return lines
 
 
+def _turns_said(count: int, empty: int) -> str:
+    """"turns failed", and how many of them ran to the end with nothing to show for it."""
+    if empty == count:
+        return 'turn ran but produced nothing' if count == 1 else 'turns ran but produced nothing'
+    failed = 'turn failed' if count == 1 else 'turns failed'
+    return f"{failed} ({empty} ran but produced nothing)" if empty else failed
+
+
 def _today(root, value: dict) -> list[str]:
     """What the notebook did today, first: pages changed and material read, then what it cost."""
     from ...rem.config import read_config
@@ -369,7 +377,7 @@ def _today(root, value: dict) -> list[str]:
     if warning and warning.get('failures'):
         count = warning['failures']
         since = warning['since'][:16].replace('T', ' ')
-        failure = [highlight(f"Background: the last {count} {'turn failed' if count == 1 else 'turns failed'}, "
+        failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
                              f"since {since} UTC. Last error: {warning['evidence']}. Next: co rem logs")]
     if not runs:
         return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]

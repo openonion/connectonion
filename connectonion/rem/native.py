@@ -42,7 +42,8 @@ NEXT_DEADLINE_SECONDS = 600
 PROGRESS_SECONDS = 60
 DEADLINE_EXIT = 75  # EX_TEMPFAIL: run next again
 STALLED = "stalled-next.json"
-_WATCH = {"label": "starting", "skip": {}, "deadline": None}
+# `timings` is where this call's seconds went, keyed by what the progress line said.
+_WATCH = {"label": "starting", "skip": {}, "deadline": None, "step": None, "step_began": 0.0, "timings": {}}
 
 
 def pending(root):
@@ -197,9 +198,37 @@ def _stop(root, config, *, phase=None):
     return reason or None, meter
 
 
+def _open_step(name):
+    """Close the step being timed and start timing `name`."""
+    moment = time.monotonic()
+    if _WATCH["step"]:
+        spent = _WATCH["timings"].get(_WATCH["step"], 0) + moment - _WATCH["step_began"]
+        _WATCH["timings"] = {**_WATCH["timings"], _WATCH["step"]: spent}  # replaced whole: the watcher reads it
+    _WATCH.update(step=name, step_began=moment)
+
+
 def progress_step(label, **skip):
     """What next is doing now: the progress line says it, and a stall skips it next time."""
     _WATCH.update(label=label, skip=skip)
+    _open_step(label)
+
+
+def preparation_stage(stage, *counts):
+    """An investigation's `stage_progress` during next: the stage inside the page being prepared.
+
+    11-16: three calls in one turn each spent ten minutes "preparing" one
+    person's page and nothing said whether that was mail, attachments or
+    session folders. "gathering codex sessions: 40 scanned" is one stage at a
+    count, as in the manual investigation's stage_seconds."""
+    _open_step(f"{_WATCH['label']}: {stage.partition(':')[0]}")
+
+
+def _timings():
+    """Whole seconds per step of this call so far, the open step included, in the order they began."""
+    step, began, spent = _WATCH["step"], _WATCH["step_began"], dict(_WATCH["timings"])
+    if step:
+        spent[step] = spent.get(step, 0) + time.monotonic() - began
+    return {name: round(seconds) for name, seconds in spent.items()}
 
 
 def _watch(root, stop):
@@ -211,14 +240,21 @@ def _watch(root, stop):
             return
         if deadline is not None and time.monotonic() >= deadline:
             _stalled(root)
-        print(f"Still {_WATCH['label']} ({int(time.monotonic() - began)} s so far)…", file=sys.stderr, flush=True)
+        step = _WATCH["step"] or _WATCH["label"]
+        print(f"Still {step} ({_timings().get(step, 0)} s on this step, {int(time.monotonic() - began)} s so far)…",
+              file=sys.stderr, flush=True)
 
 
 def _stalled(root):
-    """Record what hung, say so, and end the process: the lock goes with it."""
-    write_json(state_path(root, STALLED), {"label": _WATCH["label"], "at": service.now().isoformat(),
-                                          **_WATCH["skip"]})
-    print(f"co rem next passed its deadline ({NEXT_DEADLINE_SECONDS // 60} minutes) while {_WATCH['label']}. "
+    """Record what hung and where the time went, say so, and end the process: the lock goes with it."""
+    from .codex_exec import record_stall
+    step, timings = _WATCH["step"] or _WATCH["label"], _timings()
+    write_json(state_path(root, STALLED), {"label": _WATCH["label"], "step": step, "timings": timings,
+                                          "at": service.now().isoformat(), **_WATCH["skip"]})
+    record_stall(root, step, timings)
+    spent = "; ".join(f"{name} {seconds} s" for name, seconds in timings.items())
+    print(f"Where the time went: {spent}", file=sys.stderr, flush=True)
+    print(f"co rem next passed its deadline ({NEXT_DEADLINE_SECONDS // 60} minutes) while {step}. "
           "Run co rem next again: it moves on to the next work.", flush=True)
     os._exit(DEADLINE_EXIT)
 
@@ -236,21 +272,31 @@ def _leave_job(root, task):
 
 
 def _skip_stalled(root):
-    """The last next hung: move the round past what it was preparing."""
+    """The last next hung: park the page it was preparing and move the round past it.
+
+    11-16: one call passes over jobs before it reaches the one that hangs, and
+    the round is saved only when a task is served. The stall named job 98, the
+    saved round was still at 97, the two were compared for equality, and three
+    calls in one turn prepared the same page. The page is parked by name; the
+    round's index moves only when it is at that page."""
     stall = read_json(state_path(root, STALLED), {})
     if not stall:
         return []
     state_path(root, STALLED).unlink()
     cursor = read_json(state_path(root, "round.json"), {})
-    why = f"parked: preparing it passed the {NEXT_DEADLINE_SECONDS // 60}-minute deadline"
     if cursor.get("started_at") != stall.get("round") or cursor.get("pending"):
         return [f"The last co rem next passed its deadline while {stall['label']}; trying again"]
     if "mail_slot" in stall:
         cursor["mail_slot"] = stall["mail_slot"]
-    if cursor.get("job_index") == stall.get("job_index"):
+    if stall.get("record"):
         from .refusals import remember_refusal
+        waited = stall.get("step", stall["label"]).partition(": ")[2]
+        why = (f"parked: preparing it passed the {NEXT_DEADLINE_SECONDS // 60}-minute deadline"
+               + (f" while {waited}" if waited else ""))
         remember_refusal(root, stall["record"], [], why, stage="parked", parked=True)
-        cursor.update(job_index=cursor["job_index"] + 1, current=None, project_quote=None)
+        jobs, index = cursor.get("jobs") or [], cursor.get("job_index", 0)
+        if index < len(jobs) and jobs[index]["record"] == stall["record"]:
+            cursor.update(job_index=index + 1, current=None, project_quote=None)
     write_json(state_path(root, "round.json"), cursor)
     return [f"Skipped {stall['label']}: the last co rem next passed its deadline there"]
 
@@ -291,8 +337,8 @@ def _next_task(root, *, scheduled, discard, own=False):
         record_nights(root)
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
+    _WATCH.update(deadline=None, step=None, timings={})
     progress_step("waiting for the maintenance lock")
-    _WATCH["deadline"] = None
     with _watching(root), maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next", wait_for_native=True,
                                            scheduled=scheduled) as waited_for, runner.private_task_mask():
         _WATCH["deadline"] = time.monotonic() + NEXT_DEADLINE_SECONDS
@@ -313,14 +359,17 @@ def _next_task(root, *, scheduled, discard, own=False):
                   else _next_round(root, cursor, scheduled=scheduled, notices=notices))
         if scheduled and result.get("reason") == "daily cap reached":
             record_cap_stop(root)
-        if scheduled and result.get("outcome") == "task":
+        if result.get("outcome") == "task":
+            from .fetch_stalls import _turn
             # Taking over a manual round must keep later submit/next calls in
             # this turn without claiming a slot that did not start the round.
             cursor = read_json(state_path(root, "round.json"), {})
-            if not cursor.get("slot"):
+            cursor['served_turn'] = _turn()
+            if scheduled and not cursor.get("slot"):
                 cursor["scheduled"] = True
-                write_json(state_path(root, "round.json"), cursor)
-            result["continuation"] = SCHEDULED_CONTINUATION
+            write_json(state_path(root, "round.json"), cursor)
+            if scheduled:
+                result["continuation"] = SCHEDULED_CONTINUATION
         return result
 
 

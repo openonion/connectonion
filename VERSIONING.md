@@ -400,7 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc17
+## Current Version: 1.9.6rc18
+Release candidate 1.9.6rc18 for 1.9.6: found on the owner's Mac, where one scheduled turn ran
+`co rem next` three times, each to its ten-minute deadline on the same person's page, and was
+recorded as completed. The page is now parked by name and the next call serves other work; a turn
+whose last `co rem next` passed its deadline with nothing served or submitted is recorded as failed
+and counted in words; the deadline says which step was waited on; and the session window no longer
+reads every coding-session log again once one of them has been compressed. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc18.md).
+
+- 1.9.6rc18 (REM background: a page that passes the deadline is parked and the round moves on; a turn that only stalled is not completed; the session window reads only changed rollouts).
+
+### Previous candidate: 1.9.6rc17
+
 Release candidate 1.9.6rc17 for 1.9.6: found on the owner's Mac, where every background round had
 failed since 2026-11-14. A session that names a folder REM may not read no longer stops the round:
 an unreadable folder is not a repository. A turn whose round could not be prepared is recorded as

@@ -214,10 +214,20 @@ def _run_locked(root, run, lock_fd):
     finally:
         code = result.returncode if result is not None else None
         outcome = 'skipped' if skipped else 'completed' if code == 0 and not failed else 'timed-out' if code == 124 else 'failed'
-        preparation_error = _preparation_error(root, receipt)
+        events = _turn_events(root, receipt)
+        preparation_error = events[-1].get('error', '') if events else ''
         if preparation_error and not skipped:
             outcome = 'failed'
             receipt['reason'] = preparation_error
+        nothing = _produced_nothing(events) if outcome == 'completed' else ''
+        if nothing:
+            # Exit 0 says Codex ended cleanly, not that the turn did anything (11-16:
+            # three deadlines, nothing served, nothing submitted, "completed").
+            outcome = 'failed'
+            receipt.update(reason=nothing, produced_nothing=True)
+        elif outcome == 'completed' and not events:
+            # Still completed: said, not counted, because nothing here proves the turn was empty.
+            receipt['reason'] = 'No co rem next was recorded in this turn'
         if code == 124 and not preparation_error:
             receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
         # Only the protocol's terminal busy line is a blocker, never a recovered narrative.
@@ -236,33 +246,68 @@ def _run_locked(root, run, lock_fd):
     return outcome
 
 
-def record_preparation(root, error=None):
-    """The next command reports its outcome to its own launcher, independently of Codex's exit code."""
+def _record(root, event):
+    """A next or submit reports to its own launcher, independently of Codex's exit code."""
     turn_id = os.environ.get('CO_REM_TURN_ID')
     if not turn_id:
         return
     turn = read_json(state_path(root, 'last-turn.json'), {})
     if turn.get('turn_id') != turn_id or turn.get('result') != 'running':
         return
-    event = {'type': 'rem.preparation_failed' if error else 'rem.prepared',
-             'at': datetime.now(timezone.utc).isoformat()}
-    if error:
-        event.update(error=str(error) or type(error).__name__, traceback=''.join(traceback.format_exception(error)))
     # A separate append stream avoids racing Codex's stdout offset. The launcher
     # copies these events into the turn log after the subprocess has exited.
     with state_path(root, f"turns/{turn['turn_id']}.preparation.jsonl").open('a') as output:
-        output.write(json.dumps(event) + '\n')
+        output.write(json.dumps({**event, 'at': datetime.now(timezone.utc).isoformat()}) + '\n')
 
 
-def _preparation_error(root, receipt):
+def record_preparation(root, error=None, result=None):
+    """What one `co rem next` came to: an error, or its outcome (task, done and why)."""
+    if error:
+        _record(root, {'type': 'rem.preparation_failed', 'error': str(error) or type(error).__name__,
+                       'traceback': ''.join(traceback.format_exception(error))})
+        return
+    said = {key: result[key] for key in ('outcome', 'reason') if result and result.get(key)}
+    _record(root, {'type': 'rem.prepared', **said})
+
+
+def record_submission(root, result):
+    _record(root, {'type': 'rem.submitted', 'outcome': result.get('outcome')})
+
+
+def record_stall(root, step, timings):
+    """A `co rem next` that passed its deadline: what it was waiting on and the seconds each step took."""
+    _record(root, {'type': 'rem.preparation_stalled', 'step': step, 'timings': timings})
+
+
+def _turn_events(root, receipt):
+    """What this turn's next and submit calls reported, copied into the turn log."""
     path = state_path(root, f"turns/{receipt['turn_id']}.preparation.jsonl")
     if not path.is_file():
-        return ''
+        return []
     text = path.read_text()
     with Path(receipt['log']).open('a') as output:
         output.write(text)
-    events = [json.loads(line) for line in text.splitlines()]
-    return events[-1].get('error', '') if events else ''
+    return [json.loads(line) for line in text.splitlines()]
+
+
+def _produced_nothing(events):
+    """Why a turn that exited 0 is not completed, in words; '' when it did work or had none to do.
+
+    Completed means a task was served, a submission was accepted, or the last
+    `co rem next` answered without a task (not due, round done, a cap or the
+    floor): that last one is how an idle turn is told from an empty one."""
+    served = any(event['type'] == 'rem.prepared' and event.get('outcome') == 'task' for event in events)
+    accepted = any(event['type'] == 'rem.submitted' and event.get('outcome') == 'accepted' for event in events)
+    if served or accepted:
+        return ''
+    calls = [event for event in events if event['type'] != 'rem.submitted']
+    # No call recorded is not evidence of an empty turn: the record may not have reached us.
+    if not calls or calls[-1]['type'] != 'rem.preparation_stalled':
+        return ''
+    stalls = [event for event in calls if event['type'] == 'rem.preparation_stalled']
+    times = '1 time' if len(stalls) == 1 else f'{len(stalls)} times'
+    return (f"The turn produced nothing: co rem next passed its deadline {times}, last while {stalls[-1]['step']}; "
+            'no task was served and nothing was submitted')
 
 
 if __name__ == '__main__':

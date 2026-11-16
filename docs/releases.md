@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc17**: a session that names a folder REM may not read no longer stops every
+Release candidate **1.9.6rc18**: a page whose preparation passes the ten-minute deadline is parked and the
+next call serves other work, a turn that only stalled is no longer recorded as completed, and a person's page no
+longer reads every coding-session log again. See [1.9.6rc18 notes](releases/1.9.6rc18.md).
+Before it, release candidate **1.9.6rc17**: a session that names a folder REM may not read no longer stops every
 background round, and a round that could not be prepared is recorded as failed. See [1.9.6rc17 notes](releases/1.9.6rc17.md).
 Before it, release candidate **1.9.6rc16**: the Organisations table never prints the not-investigated placeholder as a
 fact, a company's page renders, and long locations clamp to two lines. See [1.9.6rc16 notes](releases/1.9.6rc16.md).
@@ -94,7 +97,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc17'
+python -m pip install --upgrade 'connectonion==1.9.6rc18'
 ```
 
 ## Previous stable

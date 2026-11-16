@@ -1983,6 +1983,40 @@ Configuration, command resolution and spawn errors leave a failed receipt with
 the reason, which `co rem status` displays alongside the turn log and the command
 to restart after fixing the cause.
 
+`co rem next` has ten minutes to prepare a task. Every minute it prints what it
+is waiting on, with the step inside the page: `Still preparing people/<page>.md:
+gathering codex sessions (212 s on this step, 240 s so far)…`. The steps are the
+investigation's own stage names (`gathering sources`, `listing <mailbox>
+attachments`, `searching <mailbox> mail`, `gathering <mailbox> mail`, `gathering
+<source> sessions`, `searching project documents`, `preparing evidence`,
+`writing evidence files`). At the deadline it prints `Where the time went:` with
+the seconds of each step, writes the same numbers to the turn log as a
+`rem.preparation_stalled` event, and exits 75. The page it was preparing is
+parked with the reason in words (`parked: preparing it passed the 10-minute
+deadline while gathering codex sessions`), listed under Parked in `co rem
+status`, left out of the rest of the round, and retried by the same rule as a
+page refused again and again: after 20 hours, at most three times on the same
+material. The next `co rem next` serves other work. Pages the call had already
+passed over before the one that hung are not prepared again.
+
+A turn that exits 0 is `completed` only when a task was served, a submission was
+accepted, or its last `co rem next` answered without a task (not due, round
+done, a cap or the floor). When its last `co rem next` passed the deadline and
+nothing was served or submitted, the receipt says `failed` with
+`produced_nothing: true` and the reason in words. `co rem status` and Today
+count these in the same sentence as failed turns: `Background: the last 3 turns
+ran but produced nothing, since …`, or `the last 5 turns failed (2 ran but
+produced nothing)`. An idle turn is completed and ends the count. A turn in
+which no `co rem next` was recorded stays `completed` and says `No co rem next
+was recorded in this turn`: the record's absence does not prove the turn was
+empty.
+
+The session window (what the owner typed in coding sessions, shared by every
+page) is saved under `.state/session-windows/` and reads only rollouts that
+changed. A rollout Codex has compressed to `.jsonl.zst` is read once more, by
+itself; a deleted one takes only its own messages out of the window. The window
+is saved every 512 MB walked, so a build ended by the deadline resumes.
+
 REM treats an unreadable folder named in a coding session or scan as having no
 Git repository; that folder does not stop round preparation. Other file access
 errors name the affected path without blaming the notebook files.
@@ -3168,31 +3202,34 @@ when available. Otherwise usage remains unknown.
 
 ### When a mailbox fails on one page
 
-A mailbox failing while `next` prepares one page sets that page aside; `next`
-goes on to the next page in the same call. From 2026-11-12 every 15-minute turn
+A missing mail or attachment while `next` prepares one page sets that page aside;
+`next` goes on to the next page in the same call. From 2026-11-12 every 15-minute turn
 on a real notebook ended with no task: 16 turns on an Outlook HTTP 404, then 14
 on a ReadTimeout listing one mail's attachments, both while preparing one
 person's page. The error left `next` before the round was saved, so each turn
 tried the same page again, and four nights read no mail.
 
-- **Attachments are enrichment.** A listing that still fails after its retries
-  becomes a coverage line (`outlook: attachments for 1 message(s) not listed:
-  timed out`), and the page is written from the mail bodies. Those attachments
-  are not asked for again in that investigation; the page's next investigation
-  lists them again.
-- **A mail gone from the server is skipped** with a coverage line
-  (`outlook: 1 message(s) skipped: not found on the server (deleted or moved)`),
-  never a hint to open the inbox.
-- **Any other mailbox failure while preparing a page** (a body that times out, a
-  5xx, a network error) parks that page in `.state/fetch-parked.json` with the
-  mailbox, the reason and a retry time: 1 hour, then 6 hours, then once a day.
-  `next` prints `Set people/x.md aside: Outlook timed out; tried again no earlier than …`
-  (the retry time is the earliest; the page waits for the first round after it)
-  and serves the next page. Later rounds leave the page out until its retry time,
-  then bring back the same job; a page prepared again clears its entry. A bug in
-  REM is not a mailbox failure and still stops `next`, so it is seen.
-- **A mailbox failing for three pages in one turn, or whose authorization has
-  expired, is not asked again in that turn** (the turn is `CO_REM_TURN_ID`; a
+- **HTTP 404 and 410 mean that one piece of mail is gone.** Message bodies,
+  cited-original headers and bodies, and attachment metadata use the same check
+  for Gmail and Outlook. REM records the native message ID, operation, HTTP status
+  and reason under `.state/mail/dropped-missing/`. A page needing it is parked in
+  `.state/fetch-parked.json`; `next` names the missing ID and serves the next item.
+  The unchanged page stays parked across later turns, even after the old retry
+  time. A change to the page text makes it eligible again, for example after new
+  mail updates the page or the owner edits its evidence. Missing cited originals
+  appear as **could not be prepared** in the night outcomes and are not fetched
+  again for that same source ID; a new citation can be fetched. To retry an original
+  restored by the provider, remove its matching `mail/dropped-missing/` entry.
+  Queued sync mail is consumed with its ID in progress's `dropped_missing` and
+  the batch's missing count; an initial archive records it in `dropped_missing`.
+- **Other single-message read failures still fail preparation.** HTTP 401/403,
+  429, 5xx and network errors retain their messages after any existing retries;
+  they are not treated as deleted mail or a successful attachment listing.
+- **If no task was served and every remaining candidate is parked, the round
+  fails with that reason.** The background turn receipt, `co rem status` and Today
+  show the failure through the same preparation-failure reporting as other errors.
+- **A mailbox whose listing fails for three pages in one turn, or whose listing
+  reports expired authorization, is not asked again in that turn** (the turn is `CO_REM_TURN_ID`; a
   `next` typed by hand is a turn of its own). Pages that would ask it wait for
   the next turn without back-off, back in the same round, and work that needs no
   mail (projects, skills, retries from held material, summaries, translations)

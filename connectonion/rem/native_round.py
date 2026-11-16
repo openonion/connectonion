@@ -254,7 +254,11 @@ def prepare_task(root, cursor, config, directory):
         return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
     from .tasks import auto_dispatch
     auto_dispatch(root, config)
-    cursor["jobs"] += fetch_stalls.readmit(root, {job["record"] for job in cursor["jobs"][cursor["job_index"]:]})
+    readmitted = fetch_stalls.readmit(root, {job["record"] for job in cursor["jobs"][cursor["job_index"]:]})
+    if readmitted:
+        # readmit has already dropped their hold on disk: a call that ends here must not lose them.
+        cursor["jobs"] += readmitted
+        write_json(state_path(root, "round.json"), cursor)
     while cursor["job_index"] < len(cursor["jobs"]):
         if "investigation_left" not in cursor:
             cursor["investigation_left"] = PORTION
@@ -266,6 +270,9 @@ def prepare_task(root, cursor, config, directory):
         task = _guarded_job(root, cursor, config, directory)
         if task:
             return task
+        # A page passed over is passed over for good: a later page that hangs ends this
+        # process before the round is saved, and the next call would prepare them all again.
+        write_json(state_path(root, "round.json"), cursor)
     if cursor["summaries"]:
         rows = cursor["summaries"][:1]
         task = sessions.prepare(root, rows, config, directory=directory, native=True)
@@ -285,7 +292,17 @@ def prepare_task(root, cursor, config, directory):
     task = prepare_translation(root, cursor, config, directory)
     if task:
         return task
+    from .night import listing
+    parked = fetch_stalls.last_night(root)
+    reasons = [row['reason'] for row in listing(root)
+               if row['kind'] == 'could_not_prepare' and 'no longer exists' in row['reason']]
+    if cursor.get('served_turn') != fetch_stalls._turn() and ((parked or {}).get('parked') or reasons):
+        pages = [f"{row['record']}: {row.get('error') or fetch_stalls.PHRASES[row['reason']]}"
+                 for row in (parked or {}).get('parked', [])]
+        cursor['blocked_reason'] = 'All remaining candidates are parked: ' + '; '.join(pages + reasons)
     finish(root, cursor)
+    if cursor.get('blocked_reason'):
+        raise RemError(cursor['blocked_reason'])
     return None
 
 
@@ -387,12 +404,15 @@ def prepare_translation(root, cursor, config, directory):
 def finish(root, cursor):
     from .night_stats import recent
     cursor.update(done=True, pending=None)
-    cursor["run"].update(outcome="completed", finished_at=service.now().isoformat(), changed=cursor["changed"],
+    outcome = 'failed' if cursor.get('blocked_reason') else 'completed'
+    cursor["run"].update(outcome=outcome, finished_at=service.now().isoformat(), changed=cursor["changed"],
                          night=recent(root, nights=1)[0])
+    if cursor.get('blocked_reason'):
+        cursor['run']['reason'] = cursor['blocked_reason']
     write_json(state_path(root, f"runs/{cursor['run']['id']}.json"), cursor["run"])
     if cursor["slot"]:
         write_json(state_path(root, "worker.json"), {**service.worker_state(root), "last_scheduled_slot": cursor["slot"],
-                                                   "last_scheduled_outcome": "completed"})
+                                                   "last_scheduled_outcome": outcome})
     write_json(state_path(root, "round.json"), cursor)
 
 
@@ -404,6 +424,11 @@ def _guarded_job(root, cursor, config, directory):
     same page and ended with no task."""
     index = cursor["job_index"]
     job = cursor["jobs"][index]
+    from .refusals import parked_waiting
+    if cursor["current"] is None and not cursor.get("project_quote") and job["record"] in parked_waiting(root):
+        # Parked since this round listed it (a preparation that passed its deadline): not in this round.
+        cursor["job_index"] = index + 1
+        return None
     held = _stopped_mailboxes(root, job) if cursor["current"] is None else {}
     if held:
         # Not asked again this turn; the page comes back next round with no back-off.
@@ -503,6 +528,7 @@ def _retry_task(root, cursor, config, directory, job):
 
 
 def _prepare_investigation(root, cursor, job, directory):
+    from .native import preparation_stage
     record = job["record"]
     if job['kind'] == 'owner':
         from .catchup import key, marker
@@ -522,7 +548,7 @@ def _prepare_investigation(root, cursor, job, directory):
             clients=fetch_stalls.labelled(daily._clients(service.subscriptions(root))),
             subscriptions=service.subscriptions(root),
             sent_only=job["kind"] == "owner", rounds=job.get("rounds"), retry_refused=job.get("retry_refused", False),
-            prepare_only=True, lock_held=True, directory=directory)
+            prepare_only=True, lock_held=True, directory=directory, stage_progress=preparation_stage)
     except investigate.NothingFound as error:
         if not isinstance(error, investigate.NothingNew):
             daily._remember_nothing_found(root, record)
