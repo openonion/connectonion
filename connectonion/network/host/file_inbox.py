@@ -89,20 +89,31 @@ def _available(path: Path) -> Path:
     raise FileRefused("FILE_NAME", f"no free name for {path.name}")
 
 
+def _folder(path: Path) -> Path:
+    """`path`, or the first `path-N` that is a folder or free: a folder sent after
+    a file of the same name lands together, under one new name."""
+    if path.is_dir() or not path.exists():
+        return path
+    for index in range(1, 10_000):
+        candidate = path.with_name(f"{path.name}-{index}")
+        if candidate.is_dir() or not candidate.exists():
+            return candidate
+    raise FileRefused("FILE_NAME", f"no free name for {path.name}")
+
+
 def _landing(base: Path, name: str) -> Path:
-    """Where `name` lands under `base`: a folder segment that is already a file
-    there gets a free name of its own, rather than failing the mkdir every retry."""
+    """Where `name` lands under `base`; a folder segment that is already a file
+    there no longer fails the mkdir on every retry."""
     *folders, leaf = name.split("/")
     here = base
     for folder in folders:
-        here = here / folder
-        if here.exists() and not here.is_dir():
-            here = _available(here)
+        here = _folder(here / folder)
     return _available(here / leaf)
 
 
 def _remaining(writer) -> int:
-    return writer.offer["size"] - writer.received if writer.offer else 0
+    offer = writer.offer
+    return offer["size"] - writer.received if offer else 0
 
 
 def received(co_dir: Path) -> list[dict]:
@@ -143,6 +154,8 @@ class FileReceiver:
                 holder.close()
         _writers[self.key] = self
         self.superseded = False
+        # Here, on the event loop, so two offers never sweep the same folder.
+        self._forget_stale(keep=self.key)
 
     def accept(self, offer: dict) -> dict:
         """Check an offer and open its staging file; say how much is already here.
@@ -156,7 +169,6 @@ class FileReceiver:
         self.partial.mkdir(parents=True, exist_ok=True)
         part = self.partial / f"{sha256}.part"
         record = self.partial / f"{sha256}.json"
-        self._forget_stale(keep=part)
         held = part.stat().st_size if part.exists() else 0
         if held > size:
             part.unlink()
@@ -170,14 +182,21 @@ class FileReceiver:
                 f"{size - held} more bytes would leave less than 1 GB free on the receiver",
             )
         record.write_text(json.dumps({"sha256": sha256, "size": size, "name": name}))
-        self.digest = hashlib.sha256()
+        # Counted as promised from now on, before the rehash below takes its seconds.
+        with self.lock:
+            self.offer = {"sha256": sha256, "size": size, "name": name}
+            self.received = held
+        digest = hashlib.sha256()
         if held:
             with part.open("rb") as existing:
                 for block in iter(lambda: existing.read(CHUNK_BYTES), b""):
-                    self.digest.update(block)
-        self.handle = part.open("ab")
-        self.offer = {"sha256": sha256, "size": size, "name": name}
-        self.received = held
+                    digest.update(block)
+        with self.lock:
+            # Closed or taken over while rehashing: open nothing nobody will close.
+            if self.superseded or self.offer is None:
+                raise FileRefused("FILE_SUPERSEDED", "another send of this file took over")
+            self.digest = digest
+            self.handle = part.open("ab")
         return {"sha256": sha256, "received": held}
 
     def _forget_stale(self, keep: Path) -> None:

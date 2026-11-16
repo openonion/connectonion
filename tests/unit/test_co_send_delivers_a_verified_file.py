@@ -325,3 +325,15 @@ def test_a_send_given_up_a_week_ago_is_cleared(tmp_path):
     _store(receiver, "new.bin", b"new")
 
     assert not old.exists() and not old.with_suffix(".json").exists()
+
+
+def test_a_folder_after_a_same_named_file_stays_one_folder(tmp_path):
+    """Each file of the folder found `a` taken and picked the next name: a-1/x, a-2/y."""
+    root = file_inbox.files_dir(tmp_path)
+    receiver = file_inbox.FileReceiver(root, "0xsender")
+    _store(receiver, "a", b"a file")
+
+    x = _store(receiver, "a/x", b"x")
+    y = _store(receiver, "a/y", b"y")
+
+    assert x["path"].endswith("a-1/x") and y["path"].endswith("a-1/y")
