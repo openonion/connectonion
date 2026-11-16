@@ -687,6 +687,12 @@ does.
 
 One page never stops the night. When review refuses a candidate, exec (and so
 catchup) runs that task again with the refusal as its required corrections.
+An audit refusal names its findings under its first line, up to three, one
+line each (`Finding 1 of 2 — claim: … | cited: <source id> | problem: … |
+correction: …`); the task's instructions file lists up to five in full. Two
+audit refusals are the same reason only when they fail the same claims: the
+sentence above the findings is the same for every audit, so comparing it
+parked a page whose second refusal was about something else (#3083).
 A task refused twice for the same reason, or three times in all, is parked:
 the reason goes to the refusal ledger (`.state/refused-investigations.json`),
 the last candidate and its `review.json` stay in the task's folder under

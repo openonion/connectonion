@@ -519,6 +519,32 @@ def test_claim_audit_findings_are_inline_in_refusal_instructions(refused_investi
     assert 'Required correction: Attribute the pilot review request to the owner’s record.' in corrections
 
 
+def test_an_audit_refusal_says_which_claim_which_citation_and_what_is_wrong(trial, refused_investigation):
+    """Every audit refusal read "Cited-claim audit did not pass; see claim-review.json" (#3083)."""
+    saved = read_json(Path(refused_investigation['material']) / 'task.json', {})
+    reason = saved['last_result']['reason']
+    assert reason.splitlines()[0].endswith('Cited-claim audit did not pass; see claim-review.json')
+    assert ('Finding 1 of 1 — claim: Avery Lin requested a pilot review. | cited: reflection:' in reason
+            and '| problem: Scope needs qualification | correction: Attribute the pilot review request '
+                'to the owner’s record.' in reason)
+    assert saved['refusals'] == [reason]
+    corrections = (Path(refused_investigation['material']) / 'instructions.md').read_text().split('## Reference')[0]
+    assert 'Problem: Scope needs qualification' in corrections and 'Cited: reflection:' in corrections
+    assert corrections.count('Avery Lin requested a pilot review.') == 1
+
+
+def test_two_audit_refusals_are_the_same_reason_only_when_they_fail_the_same_claims():
+    """The park rule compared the generic sentence, so two different findings parked a page."""
+    head = 'Candidate rejected, kept at /n/candidate.md: Cited-claim audit did not pass; see claim-review.json\n'
+    first = head + 'Finding 1 of 1 — claim: The pilot starts in May. | cited: gmail:a | problem: No date | correction: Drop it'
+    other = head + 'Finding 1 of 1 — claim: Fern approved the scope. | cited: gmail:b | problem: A cc | correction: Name the sender'
+    reworded = head + 'Finding 1 of 1 — claim: The pilot starts in May. | cited: gmail:a | problem: The date is absent | correction: Remove'
+    assert native._park_reason([first, other]) is None
+    assert native._park_reason([first, reworded]).startswith('refused twice for the same reason: Cited-claim audit')
+    assert '\n' not in native._park_reason([first, reworded])
+    assert native._park_reason([first, other, reworded]).startswith('refused 3 times')
+
+
 def test_refusal_inlines_bounded_audit_findings_and_short_errors(trial, refused_investigation):
     task = native.pending(trial)[0]
     directory = Path(task['material'])
@@ -575,7 +601,9 @@ def test_native_refusal_prints_repair_files_and_same_turn_continuation(trial, fa
     if failure == 'claim-audit':
         assert 'Cited-claim audit did not pass; see claim-review.json' in data['reason']
         assert 'Fix every audit finding' in corrections
-        assert 'Attribute the request to the owner.' not in data['reason']
+        # The finding is named in the reason (#3083), cut to a line: not the 10,000 characters it came with.
+        assert '| problem: Scope needs qualification | correction: Attribute the request' in data['reason']
+        assert data['reason'].count('Attribute the request to the owner.') <= 5
     if not json_mode:
         for line in (f"Refused: {data['reason']}", f'Fix: {fix}', '"Required corrections" first',
                      f"Edit: {task['candidate']}", f"Submit: {task['submit']}"):

@@ -2111,7 +2111,8 @@ def make_rem_app(factory):
     from rich.markup import escape
 
     def native_text(value):
-        repair = (f"Refused: {value['reason'][:500]}\nFix: {value['fix']} — \"Required corrections\" first"
+        # 1200: an audit refusal carries up to three findings under its first line (#3083).
+        repair = (f"Refused: {value['reason'][:1200]}\nFix: {value['fix']} — \"Required corrections\" first"
                   + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}") if value.get("fix") else ""
         if value.get("outcome") == "refused":
             if value.get("stage") == "claim-audit":

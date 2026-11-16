@@ -864,10 +864,16 @@ def _repair_findings(directory, reason):
     lines = []
     for error in read_json(directory / "repair-findings.json", [])[:5]:
         lines.append(f"- Error: {error[:500]}")
-    if "Cited-claim audit did not pass" in reason:
+    if AUDIT_REFUSAL in reason:
         findings = read_json(directory / "claim-review.json", {}).get("findings", [])
+        from .project_claim_review import cited_beside
+        material = read_json(directory / "audit-material.json", {})
         for finding in findings[:5]:
-            lines.append(f"- Claim: {finding['claim'][:500]}\n  Required correction: {finding['required_correction'][:500]}")
+            cited = ", ".join(cited_beside(material, finding["claim"]))
+            lines.append(f"- Claim: {finding['claim'][:500]}"
+                         + (f"\n  Cited: {cited}" if cited else "")
+                         + (f"\n  Problem: {finding['issue'][:300]}" if finding.get("issue") else "")
+                         + f"\n  Required correction: {finding['required_correction'][:500]}")
         if len(findings) > 5:
             lines.append("Further findings: see claim-review.json.")
     return "\n".join(lines)
@@ -900,6 +906,7 @@ def _repair_instructions(task, reason):
 def _refuse_submission(root, task, reason):
     directory = Path(task["directory"])
     fix = _repair_instructions(task, reason)
+    reason = _with_findings(directory, reason)
     task["review_unreserved"] = False
     display = _display(root, task)
     task["last_result"] = {"outcome": "refused", "reason": reason, "fix": str(fix),
@@ -912,9 +919,27 @@ def _refuse_submission(root, task, reason):
     return _park(root, task, why) if why else task["last_result"]
 
 
+AUDIT_REFUSAL = "Cited-claim audit did not pass"
+FINDING_CLAIM = re.compile(r"(?m)^Finding \d+ of \d+ — claim: (.*?) \| cited: ")
+
+
+def _with_findings(directory, reason):
+    """An audit refusal with its findings under it; the instructions file already lists them in full."""
+    if AUDIT_REFUSAL not in reason:
+        return reason
+    from .project_claim_review import findings_in_words
+    return "\n".join([reason, *findings_in_words(directory)])
+
+
 def _same_reason(reason):
-    """Two refusals of one problem differ in counts and citation numbers, not words."""
-    return re.sub(r"\d+", "#", reason.strip().splitlines()[0] if reason.strip() else "")[:200]
+    """Two refusals of one problem differ in counts and citation numbers, not words.
+
+    Two audit refusals are one problem when they fail the same claims: the sentence
+    above the findings is the same for every audit, and the auditor words a problem
+    differently each time it finds it (#3083)."""
+    plain = lambda text: re.sub(r"\d+", "#", text)  # noqa: E731
+    first = plain(reason.strip().splitlines()[0] if reason.strip() else "")[:200]
+    return "\n".join([first, *sorted(plain(claim) for claim in FINDING_CLAIM.findall(reason))])
 
 
 def in_words(reason):
@@ -923,7 +948,7 @@ def in_words(reason):
     2026-11-16: the ledger keeps 300 characters and status prints 200; a task
     folder's path took them all, so a parked page showed where and never why.
     The path is recorded beside the reason instead."""
-    return re.sub(r"^Candidate rejected, kept at .*?: ", "", reason)[:300]
+    return " ".join(re.sub(r"^Candidate rejected, kept at .*?: ", "", reason).split())[:300]
 
 
 def _park_reason(refusals):

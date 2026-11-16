@@ -546,3 +546,32 @@ def _unavailable_claim(claim, contexts, unavailable, *, partial=False):
             if not adjacent or not adjacent & unavailable or (not partial and not adjacent <= unavailable):
                 return False
     return found
+
+
+def cited_beside(material: dict, claim: str) -> list[str]:
+    """The source ids cited on the audited line that holds this claim.
+
+    Ids, not numbers: promotion renumbers, so `[3]` in the audit need not be the
+    writer's `[3]`, and the id is what the writer searches the material for."""
+    ids = {str(row["citation"]): row["source_id"] for row in
+           [*material.get("sources", []), *material.get("unavailable_originals", [])]}
+    wanted = _claim_text(claim)
+    for line in prose(material.get("candidate", "")).partition("\n## Sources\n")[0].splitlines():
+        if wanted and wanted in _claim_text(line):
+            return [ids.get(number, f"[{number}]") for number in dict.fromkeys(CITATION.findall(line))]
+    return []
+
+
+def findings_in_words(directory: Path, *, limit: int = 3, width: int = 160) -> list[str]:
+    """One line a finding: the claim, what it cites, what is wrong, what to do.
+
+    2026-11-16 (#3083): every audit refusal read "Cited-claim audit did not pass; see
+    claim-review.json". The writer was sent to a file for what one line can say, and
+    the park rule compared that sentence, so two different findings were one reason."""
+    findings = read_json(directory / "claim-review.json", {}).get("findings") or []
+    material = read_json(directory / "audit-material.json", {})
+    cut = lambda finding, key: " ".join(str(finding.get(key) or "").split())[:width]  # noqa: E731
+    return [f"Finding {index} of {len(findings)} — claim: {cut(finding, 'claim')}"
+            f" | cited: {', '.join(cited_beside(material, finding.get('claim', ''))) or 'not located'}"
+            f" | problem: {cut(finding, 'issue')} | correction: {cut(finding, 'required_correction')}"
+            for index, finding in enumerate(findings[:limit], 1)]
