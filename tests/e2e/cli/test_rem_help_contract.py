@@ -145,7 +145,7 @@ def test_day_stage_groups_are_in_order_and_machinery_is_apart():
     headings = ["Collect — read new mail and sessions",
                 "Investigate — fill pages from originals",
                 "Deepen — follow leads, add insights",
-                "Abstract — decisions, then principles",
+                "Abstract — learn from pages",
                 "Translate — put pages in your language",
                 "Run a whole day now", "Background machinery"]
     assert [text.index(heading) for heading in headings] == sorted(text.index(heading) for heading in headings)
