@@ -190,7 +190,7 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     from ...rem.files import RemError
 
     _WRITTEN.clear()
-    preparation_error = None
+    preparation_error = response = None
     try:
         response = operation(ctx.obj["root"])
         value, arguments = response[:2]
@@ -208,9 +208,13 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
         _emit(ctx, message, next_step, failed=True)
         return
     finally:
+        # The scheduled turn's receipt is decided from what its own commands report.
         if ctx.info_name == "next":
             from ...rem.codex_exec import record_preparation
-            record_preparation(ctx.obj["root"], preparation_error or sys.exc_info()[1])
+            record_preparation(ctx.obj["root"], preparation_error or sys.exc_info()[1], response and response[0])
+        elif ctx.info_name == "submit" and response:
+            from ...rem.codex_exec import record_submission
+            record_submission(ctx.obj["root"], response[0])
     _emit(ctx, value, arguments, failed=failed, draw=draw)
 
 

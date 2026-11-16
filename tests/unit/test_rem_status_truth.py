@@ -68,6 +68,22 @@ def test_reader_today_background_status_says_failure_count_and_since(count, lang
     assert "/private/fixture" not in output
 
 
+@pytest.mark.parametrize("empty,language,said", [
+    (3, "en", "the last 3 turns ran but produced nothing"), (1, "en", "the last 3 turns failed (1 ran but produced nothing)"),
+    (3, "zh", "最近 3 轮运行了但没有产出"), (1, "zh", "最近 3 轮失败（其中 1 轮运行了但没有产出）")])
+def test_reader_today_says_how_many_turns_ran_but_produced_nothing(empty, language, said):
+    import json
+    import re
+    from connectonion.rem.reader import TEMPLATE
+    from tests.unit.test_rem_reader import _run_reader_js
+    function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
+    script = f'uiLanguage = {json.dumps(language)};\n' + function
+    script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
+        "code": "repeated_failure", "failures": 3, "empty": empty, "since": "2026-11-14T14:00:00+00:00",
+        "evidence": "The turn produced nothing: co rem next passed its deadline 3 times"}) + ')));'
+    assert said in _run_reader_js(script)
+
+
 def test_a_mailbox_last_read_more_than_a_day_ago_is_not_a_tick(mixed_sources):
     root = mixed_sources[0]
     write_json(state_path(root, "source_reads.json"), {"gmail": {

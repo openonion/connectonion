@@ -1660,6 +1660,40 @@ Configuration, command resolution and spawn errors leave a failed receipt with
 the reason, which `co rem status` displays alongside the turn log and the command
 to restart after fixing the cause.
 
+`co rem next` has ten minutes to prepare a task. Every minute it prints what it
+is waiting on, with the step inside the page: `Still preparing people/<page>.md:
+gathering codex sessions (212 s on this step, 240 s so far)…`. The steps are the
+investigation's own stage names (`gathering sources`, `listing <mailbox>
+attachments`, `searching <mailbox> mail`, `gathering <mailbox> mail`, `gathering
+<source> sessions`, `searching project documents`, `preparing evidence`,
+`writing evidence files`). At the deadline it prints `Where the time went:` with
+the seconds of each step, writes the same numbers to the turn log as a
+`rem.preparation_stalled` event, and exits 75. The page it was preparing is
+parked with the reason in words (`parked: preparing it passed the 10-minute
+deadline while gathering codex sessions`), listed under Parked in `co rem
+status`, left out of the rest of the round, and retried by the same rule as a
+page refused again and again: after 20 hours, at most three times on the same
+material. The next `co rem next` serves other work. Pages the call had already
+passed over before the one that hung are not prepared again.
+
+A turn that exits 0 is `completed` only when a task was served, a submission was
+accepted, or its last `co rem next` answered without a task (not due, round
+done, a cap or the floor). When its last `co rem next` passed the deadline and
+nothing was served or submitted, the receipt says `failed` with
+`produced_nothing: true` and the reason in words. `co rem status` and Today
+count these in the same sentence as failed turns: `Background: the last 3 turns
+ran but produced nothing, since …`, or `the last 5 turns failed (2 ran but
+produced nothing)`. An idle turn is completed and ends the count. A turn in
+which no `co rem next` was recorded stays `completed` and says `No co rem next
+was recorded in this turn`: the record's absence does not prove the turn was
+empty.
+
+The session window (what the owner typed in coding sessions, shared by every
+page) is saved under `.state/session-windows/` and reads only rollouts that
+changed. A rollout Codex has compressed to `.jsonl.zst` is read once more, by
+itself; a deleted one takes only its own messages out of the window. The window
+is saved every 512 MB walked, so a build ended by the deadline resumes.
+
 REM treats an unreadable folder named in a coding session or scan as having no
 Git repository; that folder does not stop round preparation. Other file access
 errors name the affected path without blaming the notebook files.

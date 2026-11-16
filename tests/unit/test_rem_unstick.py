@@ -40,9 +40,9 @@ def notebook(tmp_path, monkeypatch):
     return root
 
 
-def two_projects(root, monkeypatch):
+def two_projects(root, monkeypatch, names=("fern", "heron")):
     """Fern and Heron each have one unread input, so an unchanged candidate is refused."""
-    book, records = Notebook(root), ["projects/fern.md", "projects/heron.md"]
+    book, records = Notebook(root), [f"projects/{name}.md" for name in names]
     items = {}
     for number, record in enumerate(records, 1):
         book.stub_project(record, Path(record).stem.title())
@@ -154,6 +154,108 @@ def test_hung_preparation_hits_the_deadline_reports_it_and_the_next_call_moves_o
     assert following["outcome"] == "task" and following["record"] == heron, following
     assert any(fern in notice and "deadline" in notice for notice in following["notices"])
     assert refusals.refused_for(notebook, fern)["parked"].startswith("parked: preparing it passed")
+
+
+PASSED_OVER_THEN_HUNG = textwrap.dedent("""
+    import sys, threading
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from connectonion.rem import daily, native, native_round, quota, service
+    moment = datetime(2026, 9, 7, 12, tzinfo=timezone.utc)
+    service.now = lambda: moment
+    daily.now = lambda: moment
+    quota.read = lambda config: {"unknown": "fixture"}
+    daily._clients = lambda sources: {}
+    native.NEXT_DEADLINE_SECONDS = 3
+    native.PROGRESS_SECONDS = 0.5
+
+    def prepare(root, cursor, config, directory, record):
+        if record == "projects/fern.md":  # nothing to do for this page: passed over, in memory
+            cursor["job_index"] += 1
+            return None
+        native.preparation_stage("gathering fixture mail", 0, 4)
+        threading.Event().wait()  # never finishes
+
+    native_round._project_task = prepare
+    native.next_task(Path(sys.argv[1]))
+    print("NOT REACHED")
+""")
+
+
+def hang_on_heron(notebook):
+    """One `co rem next` in a scheduled turn: it passes over Fern, then never finishes preparing Heron."""
+    write_json(state_path(notebook, "last-turn.json"), {"turn_id": "fixture-turn", "result": "running",
+                                                         "started_at": service.now().isoformat()})
+    state_path(notebook, "turns").mkdir(exist_ok=True)
+    return subprocess.run([sys.executable, "-c", PASSED_OVER_THEN_HUNG, str(notebook)], capture_output=True,
+                          text=True, timeout=60,
+                          env={**os.environ, "OPENONION_API_KEY": "test-key", "CO_REM_TURN_ID": "fixture-turn"})
+
+
+def test_a_page_that_hangs_after_another_was_passed_over_is_parked_and_the_next_call_serves_other_work(
+        notebook, monkeypatch):
+    """11-16: the stall named job 98, the saved round said 97, and three calls prepared the same page."""
+    fern, heron, ibis = two_projects(notebook, monkeypatch, ("fern", "heron", "ibis"))
+    result = hang_on_heron(notebook)
+    assert result.returncode == native.DEADLINE_EXIT, result.stderr
+    assert "NOT REACHED" not in result.stdout
+    following = native.next_task(notebook)
+    assert following["outcome"] == "task" and following["record"] == ibis, following
+    assert any(heron in notice and "deadline" in notice for notice in following["notices"])
+    parked = refusals.refused_for(notebook, heron)["parked"]
+    assert parked == "parked: preparing it passed the 10-minute deadline while gathering fixture mail"
+    assert heron in refusals.parked_waiting(notebook) and heron not in refusals.due_for_retry(notebook)
+    status = CliRunner().invoke(app, ["rem", "--root", str(notebook), "status"])
+    assert heron in status.output and "preparing it passed" in status.output, status.output
+
+
+def test_a_deadline_says_which_step_was_waited_on_and_logs_the_seconds_of_each(notebook, monkeypatch):
+    fern, heron, _ = two_projects(notebook, monkeypatch, ("fern", "heron", "ibis"))
+    result = hang_on_heron(notebook)
+    step = f"preparing {heron}: gathering fixture mail"
+    assert f"Still {step} (" in result.stderr and "s on this step" in result.stderr, result.stderr
+    assert f"while {step}" in result.stdout, result.stdout
+    where = next(line for line in result.stderr.splitlines() if line.startswith("Where the time went: "))
+    assert f"preparing {fern} 0 s" in where and f"{step} " in where, where
+    events = [json.loads(line) for line in
+              state_path(notebook, "turns/fixture-turn.preparation.jsonl").read_text().splitlines()]
+    assert [event["type"] for event in events] == ["rem.preparation_stalled"]
+    assert events[0]["step"] == step and events[0]["timings"][step] >= 2
+    assert "waiting for the maintenance lock" in events[0]["timings"]
+
+
+def test_a_stall_recorded_past_the_saved_round_parks_the_page_and_keeps_the_rounds_place(notebook, monkeypatch):
+    """The live shape: stalled-next.json at one job, round.json at the job before it."""
+    fern, heron = two_projects(notebook, monkeypatch)
+    cursor = read_json(state_path(notebook, "round.json"), {})
+    write_json(state_path(notebook, native.STALLED), {
+        "label": f"preparing {heron}", "at": service.now().isoformat(), "round": cursor["started_at"],
+        "job_index": 1, "record": heron})
+    assert native._skip_stalled(notebook) == [
+        f"Skipped preparing {heron}: the last co rem next passed its deadline there"]
+    assert read_json(state_path(notebook, "round.json"), {})["job_index"] == 0
+    assert native.next_task(notebook)["record"] == fern
+    native.next_task(notebook, discard=True)
+    assert heron in refusals.parked_waiting(notebook)
+
+
+def test_a_page_that_stalls_again_on_its_retry_keeps_its_count_towards_the_retry_limit(notebook, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    fern, heron = two_projects(notebook, monkeypatch)
+    cursor = read_json(state_path(notebook, "round.json"), {})
+    stall = {"label": f"preparing {fern}", "at": service.now().isoformat(), "round": cursor["started_at"],
+             "job_index": 0, "record": fern}
+    later = datetime.now(timezone.utc) + timedelta(hours=refusals.RETRY_HOURS + 1)
+    for retries in range(refusals.MAX_RETRIES):
+        write_json(state_path(notebook, native.STALLED), stall)
+        native._skip_stalled(notebook)
+        assert refusals.refused_for(notebook, fern).get("retries", 0) == retries
+        assert fern in refusals.due_for_retry(notebook, now=later)
+        refusals.mark_retried(notebook, fern)  # what the retry job does before it prepares the page
+    write_json(state_path(notebook, native.STALLED), stall)
+    native._skip_stalled(notebook)
+    # The existing rule: three retries on the same material, then it waits for new material.
+    assert fern not in refusals.due_for_retry(notebook, now=later)
 
 
 def test_new_slot_reads_no_mail_while_a_page_is_open_and_reads_it_after(notebook, monkeypatch):
