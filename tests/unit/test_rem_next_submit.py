@@ -619,6 +619,35 @@ def test_a_stage_confined_to_its_folder_under_exec_is_not_told_to_write_outside_
         assert 'Now: check [1]' in native.driven_prompt(audit)
 
 
+@pytest.mark.parametrize('driven, runner_name, sent', [(True, 'codex', False), (False, 'codex', True),
+                                                       (True, 'coai', True)])
+def test_a_repair_confined_to_its_folder_under_exec_is_not_told_to_submit(trial, driven, runner_name, sent):
+    """The repair of a refused page still said "Run co rem submit again in this turn" to a worker whose
+    sandbox refuses the notebook's lock (#3083)."""
+    from connectonion.rem.config import set_config
+    set_config(trial, ['runner', runner_name])
+    record, source = _feedback(trial)
+    task = native.next_task(trial, in_round=driven)
+    path = Path(task['candidate'])
+    _candidate(trial, task, record, source)
+    path.write_text(path.read_text().replace(source, 'gmail:invented'))
+    assert native.submit(trial, task['id'])['outcome'] == 'refused'
+    repair = (Path(task['material']) / 'instructions.md').read_text().split('## Reference')[0]
+    assert (f"Run {task['submit']} again in this turn." in repair) is sent
+    assert ('run the printed submit command again in this turn' in repair) is sent
+    if not sent:
+        assert repair.count('end your turn: the run that started this task submits it') == 2
+        assert 'Do not run co rem submit; this sandbox refuses it.' in repair
+
+
+def test_the_investigation_skill_writes_memory_only_where_the_task_names_a_path():
+    """The Skill told every worker to append to `.state/memory.md`, whether or not its task named the file."""
+    text = ' '.join(runner.instructions('investigate', page_kind='person').split())
+    assert 'At the end, when the task instructions name a memory path, append 1–3 lines to it' in text
+    assert 'When they name none, skip this step' in text
+    assert "append 1–3 lines to the notebook's `.state/memory.md`" not in text
+
+
 def test_an_investigation_under_exec_keeps_its_memory_step(trial, refused_investigation):
     """Investigation runs with full access: it can append to memory.md, and submits its own page."""
     task = read_json(Path(refused_investigation['material']) / 'task.json', {})

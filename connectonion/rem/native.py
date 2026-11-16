@@ -517,7 +517,7 @@ def _offer_pending(root, task, *, preparer=None, takeover=False, driven=False):
     refusal = task.get("last_result", {})
     if (refusal.get("outcome") == "refused" and task["stage"] == task["render_stage"]
             and not task["instructions"].startswith("## Required corrections\n")):
-        refusal["fix"] = str(_repair_instructions(task, refusal["reason"]))
+        refusal["fix"] = str(_repair_instructions(root, task, refusal["reason"]))
         _write_instructions(task)
     # A claim is advisory: a session that died mid-task must not keep tonight's idle.
     _claim(task)
@@ -937,9 +937,10 @@ def _repair_findings(directory, reason):
     return "\n".join(lines)
 
 
-def _repair_instructions(task, reason):
+def _repair_instructions(root, task, reason):
     directory = Path(task["directory"])
     task["stage"] = task["render_stage"]
+    submits = keeps_memory_step(root, task)
     task["candidate"] = task["task"]["candidate"] or task["task"].get("task_root")
     fix = directory / "instructions.md"
     corrections = reason
@@ -947,13 +948,17 @@ def _repair_instructions(task, reason):
         errors = read_json(directory / "review.json", {}).get("errors") or [reason]
         corrections = runner.repair_instruction(
             task["record"], errors, directory, Path(task["task"]["root"]), native=True)
+        if not submits:
+            corrections = corrections.replace(runner.REPAIR_SUBMITS, runner.REPAIR_DRIVEN)
         fix = directory / "repair-instructions.md"
     task["instructions"] = (
         "## Required corrections\n"
         "The page is already written. Fix only the named problems in the existing candidate.\n"
         "Do not redo the investigation or outside research.\n"
         f"Save the candidate: {task['candidate']}\n"
-        f"Run {task['submit']} again in this turn.\n\n"
+        + (f"Run {task['submit']} again in this turn.\n\n" if submits else
+           "Then end your turn: the run that started this task submits it. "
+           "Do not run co rem submit; this sandbox refuses it.\n\n") +
         f"Refused: {reason}\n" + _repair_findings(directory, reason) + "\n\n" + corrections
         + "\n\n## Reference: full render instructions\n" + task["render_instructions"])
     if fix.name == "repair-instructions.md":
@@ -963,7 +968,7 @@ def _repair_instructions(task, reason):
 
 def _refuse_submission(root, task, reason):
     directory = Path(task["directory"])
-    fix = _repair_instructions(task, reason)
+    fix = _repair_instructions(root, task, reason)
     reason = _with_findings(directory, reason)
     task["review_unreserved"] = False
     display = _display(root, task)

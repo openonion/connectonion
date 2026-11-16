@@ -143,6 +143,8 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
 # 24.5k from #3083: "run `co commands` and the relevant `--help` first" became the
 # exact research calls (145 help calls in one day, 7–14 per investigation). 360
 # characters carried once cost less than the help pages they replace, re-sent every turn.
+# The same budget holds the 120 characters that make the memory step conditional on
+# the task naming a memory path.
 INSTRUCTION_BUDGET = 24_500
 
 

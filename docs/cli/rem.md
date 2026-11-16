@@ -738,6 +738,11 @@ that started this task submits it" instead of "run next again … run the
 printed Submit command", with the audit's `Now:` batch added to the prompt
 exec hands it. Both commands take the notebook's lock, which is outside the
 folder: 76 tool outputs in one day were permission errors, 58 on that lock.
+The repair of a refused page follows the same rule: its `## Required
+corrections` end "end your turn: the run that started this task submits it.
+Do not run co rem submit; this sandbox refuses it." instead of "Run co rem …
+submit again in this turn". The investigation Skill asks for the memory lines
+only "when the task instructions name a memory path".
 A task whose inputs changed while the worker ran, one
 that is no longer the round's pending task, and a turn that passes
 `limits.timeout_seconds` are parked with that error in words, listed like any
