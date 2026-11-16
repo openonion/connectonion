@@ -43,3 +43,13 @@ Two other jobs turned out to be missing from the same background path, and we
 found them the same way, by asking why a page was empty: pages had not been
 deepened since 2026-11-07, and the calendar had never been saved, so Agenda had
 nothing to show. Those are fixed on a branch and follow in the next release.
+
+Before this release went out the same day produced two more of the same kind.
+On another Mac the night had stopped on a mail that no longer existed: the
+mailbox answered 404 for one attachment, and every round after it asked for the
+same attachment again. And when we ran a whole night by hand on the first Mac,
+it never started: one worktree lived under Documents, macOS held the read of a
+74-byte file behind a privacy prompt, and nobody was there to answer it. Three
+causes, one shape. REM asked the outside world a question and had only planned
+for yes and no. The world also says gone, says you may not, and says wait.
+
