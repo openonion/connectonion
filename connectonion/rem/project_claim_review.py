@@ -48,8 +48,10 @@ def retain_cited_originals(notebook, candidate: str, items: list[dict]) -> None:
     retain_cited_github(notebook.root, originals, cited)
 
 
-def packet(notebook, candidate: str, record: str | None = None, items=()) -> tuple[dict, list[str]]:
-    """Give the reviewer the same original excerpts the reader can open, and the turn's own material."""
+def packet(notebook, candidate: str, record: str | None = None, items=(), removed=()) -> tuple[dict, list[str]]:
+    """Give the reviewer the same original excerpts the reader can open, and the turn's own material.
+
+    `removed`: the contact values promotion took off the candidate (see `runner_removed`)."""
     from .project_material import stored
 
     folders = {row["source"]: row["cwd"] for row in stored(notebook.root, record)} if record else {}
@@ -87,7 +89,32 @@ def packet(notebook, candidate: str, record: str | None = None, items=()) -> tup
                   if (numbers := set(CITATION.findall(line))) and numbers <= set(unretained)]
     return {"candidate": candidate, "sources": sources, "later_messages": later, "runner_facts": computed,
             "unretained_citations": unretained, "unverified_lines": unverified,
+            "runner_removed": sorted({_claim_text(value) for value in removed} - {""}),
             "unavailable_originals": unavailable}, missing
+
+
+# 2026-11-16 (#3083): promotion took an unverified phone off a candidate, the auditor
+# read the mail it came from and failed the page for saying Phone: Unknown. Nothing in
+# the packet said code had removed it, the worker could not put it back, and one page
+# was parked six times in a day (32% of the day's worker time, no page saved).
+REMOVED = (
+    "runner_removed lists contact values code took off this page before you saw it, because no "
+    "original shows them to be this person's own. Their absence, and a contact field that says "
+    "Unknown in their place, is not a finding; never ask for one of them to be restored. ")
+
+
+def _asks_for_removed(finding: dict, removed: list[str]) -> bool:
+    """The finding names a value code removed: it can only ask for that value back.
+
+    The instruction asks the auditor not to; this is what holds when it does anyway.
+    A phone is compared by its digits, as the auditor writes it without the spaces."""
+    said = " ".join(str(finding.get(key, "")) for key in ("claim", "issue", "evidence", "required_correction"))
+    digits = re.sub(r"\D", "", said)
+    for value in removed:
+        number = re.sub(r"\D", "", value)
+        if value.casefold() in said.casefold() or ("@" not in value and len(number) >= 6 and number in digits):
+            return True
+    return False
 
 
 # Who said and who owes: the errors a person page made on a real first run
@@ -281,17 +308,17 @@ def _carried_claim(claim: str, contexts: list[tuple], before: list[tuple]) -> bo
 
 
 def review(notebook, candidate: str, config: dict, workspace: Path, run,
-           *, record: str | None = None, items=(), carried: str = "") -> tuple[dict, dict]:
+           *, record: str | None = None, items=(), carried: str = "", removed=()) -> tuple[dict, dict]:
     """One read-only model turn; unreadable originals are not refutations."""
-    task = prepare(notebook, candidate, record=record, items=items, carried=carried)
+    task = prepare(notebook, candidate, record=record, items=items, carried=carried, removed=removed)
     if "report" in task:
         return task["report"], {}
     return check(task, run(workspace, task["prompt"], config, "claim-audit"))
 
 
-def prepare(notebook, candidate, *, record=None, items=(), carried="", native=False, directory=None):
+def prepare(notebook, candidate, *, record=None, items=(), carried="", native=False, directory=None, removed=()):
     audited = _changed_candidate(candidate, carried) if native and carried else candidate
-    material, missing = packet(notebook, audited, record, items)
+    material, missing = packet(notebook, audited, record, items, removed)
     unretained = {key: material[key] for key in ("unretained_citations", "unverified_lines")
                   if material["unretained_citations"]}
     # One citation without a readable original (a carried page, a URL) left
@@ -335,7 +362,8 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
         "the conclusion need not appear literally in a source. Judge the reasoning, not keyword overlap. "
         "An unlabelled speculation still fails. Keep quotes exact. "
         "Fail if any material claim is unsupported, even if other claims are sound; name the exact correction. "
-        + (PEOPLE if kind in ("people", "orgs") else PROJECTS if kind == "projects" else "") +
+        + (PEOPLE if kind in ("people", "orgs") else PROJECTS if kind == "projects" else "")
+        + (REMOVED if material["runner_removed"] else "") +
         ("Write the final decision as JSON" if native else "Return only JSON") +
         " with verdict PASS, FAIL or INSUFFICIENT and findings containing claim (the failing "
         "sentence copied exactly from the candidate, without its citation markers), issue, evidence and "
@@ -354,7 +382,8 @@ def prepare(notebook, candidate, *, record=None, items=(), carried="", native=Fa
                   for row in material["sources"]]
         views += [{"role": "later-message", **row} for row in material["later_messages"]]
         views += [{"role": key, "text": material[key]} for key in
-                  ("runner_facts", "unretained_citations", "unverified_lines", "unavailable_originals")]
+                  ("runner_facts", "unretained_citations", "unverified_lines", "runner_removed",
+                   "unavailable_originals")]
         (directory / "audit-material.md").write_text(readable_material(views), encoding="utf-8")
         prompt = (
             "Check the citations printed after Now: one by one, in Sources order. "
@@ -462,13 +491,16 @@ def check(task, result):
     else:
         report["verdict"] = verdict
         # The audit must not buy repairs or erase Rowan Ashdown's map address (2026-10-16 trial).
-        findings, carried_findings, unavailable_findings = [], [], []
+        findings, carried_findings, unavailable_findings, removed_findings = [], [], [], []
         contexts = _claim_contexts(candidate)
         before = _preserved_contexts(contexts, _claim_contexts(carried))
         unavailable = {row['source_id'] for row in material.get('unavailable_originals', [])}
         for finding in report["findings"]:
             claim = finding.get("claim", "")
             if uncited_field(claim):
+                continue
+            if _asks_for_removed(finding, material.get("runner_removed", [])):
+                removed_findings.append(finding)
                 continue
             if _unavailable_claim(claim, contexts, unavailable, partial=verdict == "insufficient"):
                 unavailable_findings.append(finding)
@@ -480,6 +512,7 @@ def check(task, result):
         report["findings"] = findings
         report["carried_findings"] = carried_findings
         report["unavailable_findings"] = unavailable_findings
+        report["runner_removed_findings"] = removed_findings
         if findings:
             report["verdict"] = "fail"
         elif carried_findings:

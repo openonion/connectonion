@@ -64,9 +64,12 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
     revisions = {row.get("source"): row.get("feedback_revision") for row in entry.get("material", [])}
     revised = any(row.get("feedback_revision") and
                   revisions.get(row.get("source")) != row["feedback_revision"] for row in material or [])
+    # Parked again in the same words from the same material: the next night would only
+    # buy the same refusal. 2026-11-16 (#3083) one page was parked six times in a day.
+    settled = parked and not new and not revised and _same_words(entry.get("parked"), why)
     ledger[record] = {"sources": sorted({*entry.get("sources", []), *sources}),
                       "at": datetime.now(timezone.utc).isoformat(), "why": why[:300], "stage": stage,
-                      "retries": 0 if new or revised else entry.get("retries", 0),
+                      "retries": 0 if new or revised else MAX_RETRIES if settled else entry.get("retries", 0),
                       **identity(root),
                       **({"material": list(held.values())} if held else {}),
                       **({"parked": why[:300], "parked_at": datetime.now(timezone.utc).isoformat(),
@@ -74,6 +77,14 @@ def remember_refusal(root: Path, record: str, sources: list[str], why: str, *, s
                          else {key: entry[key] for key in ("parked", "parked_at", "parked_night", "candidate")
                                if key in entry})}
     write_json(state_path(root, REFUSED), ledger)
+
+
+def _same_words(before: str | None, why: str) -> bool:
+    """Two park reasons for one problem differ in counts and citation numbers, not words."""
+    import re
+    plain = lambda text: re.sub(r"\d+", "#", text[:300])  # noqa: E731
+    # A page whose preparation hung says so each time and is not a verdict on its material.
+    return bool(before) and "refused" in why and plain(before) == plain(why)
 
 
 def forget_refusal(root: Path, record: str, sources: list[str] | None = None) -> None:
@@ -126,3 +137,12 @@ def parked_waiting(root: Path, *, now: datetime | None = None) -> dict:
     night = number(root)
     return {record: entry for record, entry in refused_pages(root).items()
             if (entry.get("parked_at", "") > cutoff if night is None else entry.get('parked_night') == night)}
+
+
+def waiting_for_material(root: Path) -> dict:
+    """Pages out of retries on the material they were refused for: {record: when they were last refused}.
+
+    They are not due for retry, and nothing kept their own queue from listing them
+    again the night after: a page stays unfinished while it is refused."""
+    return {record: entry.get("at", "") for record, entry in refused_pages(root).items()
+            if entry.get("retries", 0) >= MAX_RETRIES}

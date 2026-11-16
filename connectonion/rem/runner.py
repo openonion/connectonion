@@ -1100,7 +1100,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         from .project_claim_review import retain_cited_originals, review as review_claims
         if native:
             from .project_claim_review import prepare, check, audit_progress, preserve_checkpoints
-            audit = prepare(notebook, text, record=record, items=items, carried=carried, native=True, directory=directory)
+            audit = prepare(notebook, text, record=record, items=items, carried=carried, native=True,
+                            directory=directory, removed=[*removed, *unverified])
             output = directory / "audit-output.json"
             digest = hashlib.sha256(json.dumps(audit.get("material", {"candidate": text}),
                                                sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -1136,7 +1137,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             from .inquiry import stage_config
             report, audit_usage = review_claims(notebook, text, stage_config(notebook.root, claim_config, "claim-audit"),
                                                 directory, run_claim_task,
-                                                record=record, items=items, carried=carried)
+                                                record=record, items=items, carried=carried,
+                                                removed=[*removed, *unverified])
         write_json(directory / "claim-review.json", report)
         audit_status = "bounded citation audit " + {"pass": "passed", "fail": "failed"}.get(
             report["verdict"], report["verdict"])

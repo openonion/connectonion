@@ -693,7 +693,12 @@ the last candidate and its `review.json` stay in the task's folder under
 `.state/tasks/`, the pending task is cleared and the round continues with its
 next work. A parked page is not picked again in the same night and returns as
 a retry on a later one (after 20 hours on the schedule), up to three retries
-on the same material. The night's line and the totals say it:
+on the same material. A retry that is parked again in the same words, from the
+same material, uses the retries that were left: the next night would buy the
+same refusal. Out of retries, the page waits for new material, and its own
+queue does not list it again either until mail or a session newer than its
+last refusal arrives (it used to come straight back as an unfinished page, so
+one page was parked six times in a day, #3083). The night's line and the totals say it:
 
 ```text
 Night 1: … · 1 page parked (projects/fern.md: refused twice for the same reason: Dropped source id the page had: codex:fern:1; candidate kept at <root>/.state/tasks/native-<id>/candidate.md; co rem status lists them)
@@ -2624,7 +2629,12 @@ A contact detail must be right or `Unknown`. On a person's page an `Email`
 stays only if the person sends from it or is written to at it under their
 name, and never a relay; a `Phone` stays only if a mail it cites was sent by the
 person (or relayed under their name) with the number in it and nobody else
-named to call beside it. What goes is listed under `contacts_unverified`. An
+named to call beside it. What goes is listed under `contacts_unverified`, and
+the claim audit is told: its packet lists these values, and the owner's own
+that were taken off, under `runner_removed`, with the rule that their absence
+and an `Unknown` in their place are not findings. A finding that names one of
+them anyway is kept in `claim-review.json` under `runner_removed_findings` and
+does not refuse the page: the writer cannot put back what code removes. An
 unknown `Company` can be filled from their own organisation email domain when
 it maps unambiguously to an existing organisation page. Student subdomains
 can name a university affiliation; `(from email domain)` does not establish
@@ -2714,7 +2724,9 @@ before it refuses anything.
   overflow from capped rounds. In `claim-review.json`, `unretained_citations` lists
   handed citation numbers with no readable excerpt and `unverified_lines` lists
   prose citing only those originals (unverified, not refuted); `missing_citations`
-  lists citations never handed to the turn and unavailable in the archive.
+  lists citations never handed to the turn and unavailable in the archive;
+  `runner_removed` lists the contact values code took off the candidate before
+  the audit, and `runner_removed_findings` the findings that asked for one back.
 - **Up to two repair turns for every page type; one for enrich and muse.**
   What review names goes back to the writer with where to read the originals.
   Only project pages had repairs before; callum-reid and two skill pages

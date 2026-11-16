@@ -182,12 +182,20 @@ def _jobs(root, first, logs, sources, set_aside=None):
         rows += [{**row, "record": row["path"], "kind": daily._route(root, row["path"])}
                  for row in daily.unfinished_by_recency(root)
                  if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
-    from .refusals import due_for_retry, parked_waiting
-    retries, parked = due_for_retry(root), parked_waiting(root)
-    rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked]
+    from .refusals import due_for_retry, parked_waiting, waiting_for_material
+    retries, parked, spent = due_for_retry(root), parked_waiting(root), waiting_for_material(root)
+    rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked
+            and (row["record"] not in spent or _newer(row.get("last_activity"), spent[row["record"]]))]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
     return daily._owner_due(root) + rows
+
+
+def _newer(activity, refused_at):
+    """A page out of retries is listed again only by something that arrived after its last refusal."""
+    from .people_pages import _stamp
+    activity, refused_at = _stamp(activity), _stamp(refused_at)
+    return bool(activity and refused_at and activity > refused_at)
 
 
 def _with_parked(root, jobs):
