@@ -1,5 +1,6 @@
 """One page per owner conversation, with optional batched model summaries."""
 
+from functools import lru_cache
 import hashlib
 import io
 import json
@@ -60,7 +61,12 @@ def _touched(text: str, cwd: str) -> Counter:
     return paths
 
 
+@lru_cache(maxsize=None)
 def _project_path(path: str) -> str:
+    # One import asks about the same few folders thousands of times, and each answer opens a
+    # worktree's `.git` file: 8,728 opens took 128 s on the owner's Mac and the round never
+    # started inside its ten minutes. import_sessions clears this at its start, so a run sees
+    # the disk as it is now.
     folder = WORKTREE_FOLDER.match(path)
     if folder and is_repository(folder[1]):
         return folder[1] + (folder[3] or "")
@@ -567,6 +573,7 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
         raise RemError("Session import days must be positive")
     started = time.monotonic()
     now = now or (sessions.now if sessions is not None else datetime.now(timezone.utc))
+    _project_path.cache_clear()
     since = now - timedelta(days=days)
     notebook = Notebook(root)
     zone = ZoneInfo(config.read_config(root)["schedule"].get("timezone") or config.local_timezone() or "UTC")
