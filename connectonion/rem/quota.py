@@ -15,7 +15,10 @@ from pathlib import Path
 from .files import read_json, state_path, write_json
 
 # Runs whose points count against the investigation budget. Maintenance is the
-# incremental daily pass and is bounded by the call cap instead.
+# incremental daily pass and is bounded by the call cap instead. A round's Abstract
+# task carries the round's phase (stages.py tells it by its stage) and is not one of
+# them: `co rem abstract` never was, and a budget that only holds investigation must
+# not be spent by a stage that runs while it is held.
 INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write",
                         "same-person")
 DEPTH_PHASES = ("enrich", "muse")
@@ -139,6 +142,7 @@ def points_spent(logs: list[dict], now: dict, phases=INVESTIGATION_PHASES) -> fl
         return 0
     window_start = now["resets_at"] - now["window_minutes"] * 60
     runs = [run for run in logs if run.get("phase") in phases
+            and (run.get("stage") or "").removesuffix(" (repair)") != "abstract"
             and datetime.fromisoformat(run["started_at"]).timestamp() >= window_start]
     spent = round(sum(group_points(group) for group in _groups(runs)), 1)
     return int(spent) if spent == int(spent) else spent
@@ -177,6 +181,21 @@ def blocks(reading: dict, spent: int, limits: dict) -> str:
     if spent >= budget:
         return f"investigation has used {spent} of its {budget}-point weekly budget"
     return ""
+
+
+def investigation_hold(reading: dict, spent: float, limits: dict) -> dict | None:
+    """The weekly investigation budget is spent: why in words and until when, else None.
+
+    Not the floor, which holds every stage and is asked on its own. 2026-11-16: this
+    budget was a round's stop reason, so a night ended before Abstract, Translate and
+    Deepen with the Codex week at 37%. It holds investigation; the round goes on."""
+    budget = limits["investigation_quota_points"]
+    if "unknown" in reading or spent < budget:
+        return None
+    resets = reading.get("resets_at")
+    when = f"; the Codex week resets {datetime.fromtimestamp(resets).astimezone():%a %d %b %H:%M}" if resets else ""
+    return {"reason": f"investigation is waiting for its weekly budget ({spent} of {budget} points used{when})",
+            "until": resets}
 
 
 def floor_block(reading: dict, limits: dict) -> str:

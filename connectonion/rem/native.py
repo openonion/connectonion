@@ -238,14 +238,27 @@ def _display(root, task):
 
 
 def _stop(root, config, *, phase=None):
-    logs, meter = service.run_logs(root), quota.meter(root, config)
-    if phase == "daily-translation":
-        reason = quota.floor_block(meter, config["limits"])
-    else:
-        reason = quota.blocks(meter, quota.points_spent(logs, meter), config["limits"])
-        if not reason and service.daily_cap(root)["remaining"] <= 0:
-            reason = "daily cap reached"
+    """(why the round's model work stops now or None, the meter): the week's floor, or the daily cap.
+
+    The weekly investigation budget is not asked here: it holds investigation alone
+    (`_hold_investigation`), and the round goes on to its other stages."""
+    meter = quota.meter(root, config)
+    reason = quota.floor_block(meter, config["limits"])
+    if not reason and phase != "daily-translation" and service.daily_cap(root)["remaining"] <= 0:
+        reason = "daily cap reached"
     return reason or None, meter
+
+
+def _hold_investigation(root, cursor, config, meter):
+    """Mark the round while the weekly investigation budget is spent; read again before every task.
+
+    The mark is what `_job_turn` and the same-person checks look at, so a budget
+    reached in the middle of a night holds the pages not yet started and nothing else."""
+    hold = quota.investigation_hold(meter, quota.points_spent(service.run_logs(root), meter), config["limits"])
+    if hold:
+        cursor["investigation_held"] = hold
+    else:
+        cursor.pop("investigation_held", None)
 
 
 def _open_step(name):
@@ -654,6 +667,7 @@ def _new_task(root, cursor, config, meter, notices, *, translation_only=False, m
     task_id = "native-" + uuid4().hex
     directory = state_path(root, f"tasks/{task_id}")
     directory.mkdir(parents=True, mode=0o700)
+    _hold_investigation(root, cursor, config, meter)
     prepared = (native_round.prepare_batch(root, cursor, config, directory) if mail_only
                 else native_round.prepare_translation(root, cursor, config, directory) if translation_only
                 else native_round.prepare_task(root, cursor, config, directory))

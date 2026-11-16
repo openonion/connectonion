@@ -78,7 +78,7 @@ def _mail(root, batch):
 
 def _counts(root, night):
     from . import service
-    from .native_round import waiting_shares
+    from .native_round import hold_in_words, waiting_shares
     cursor = read_json(state_path(root, 'round.json'), {})
     if cursor.get('catchup_night') != night:
         cursor = {}
@@ -96,7 +96,9 @@ def _counts(root, night):
                            and row.get('draft') and row.get('outcome') == 'completed'}),
             'changed': sorted(changed), 'parked': _parked(root, night, runs=service.run_logs(root)),
             # A used share is work that waits, said in the night's line; it is not a stop reason.
-            'shares': waiting_shares(root, night=f'catchup:{night}')}
+            'shares': waiting_shares(root, night=f'catchup:{night}'),
+            # So is a spent weekly investigation budget: the night's other stages ran.
+            'investigation_hold': hold_in_words(root, night=f'catchup:{night}')}
 
 
 def _parked(root, night, *, runs):
@@ -218,7 +220,7 @@ def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=No
     """One exec round including its deepen slot per productive, completed night.
 
     `cut_short` prints the result when a deadline ends the process mid-night."""
-    from . import native, quota, service
+    from . import native, quota
     from .config import read_config
     if nights < 1:
         raise RemError('Use at least one night: co rem catchup --nights 1')
@@ -226,7 +228,9 @@ def run(root, *, nights=1, progress=lambda number, row: None, stage=None, say=No
     for _ in range(nights):
         config = read_config(root)
         meter = quota.meter(root, config)
-        reason = quota.blocks(meter, quota.points_spent(service.run_logs(root), meter), config['limits'])
+        # Only the floor holds a whole night. A spent investigation budget holds
+        # investigation, inside the round; the night still runs its other stages.
+        reason = quota.floor_block(meter, config['limits'])
         quota.record_pause(root, meter, config['limits'])
         if reason:
             # A night that ran has read the sources and the calendar already.

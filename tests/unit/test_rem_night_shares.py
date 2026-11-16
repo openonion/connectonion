@@ -194,6 +194,100 @@ def test_status_says_the_share_was_used_and_how_many_pages_wait(notebook, monkey
     assert row['shares']['investigations'] == {'done': 1, 'limit': 1, 'waiting': 2}
 
 
+HELD = {'reason': 'investigation is waiting for its weekly budget (35 of 35 points used; '
+                  'the Codex week resets Wed 09 Sep 22:00)', 'until': 4102444800}
+
+
+def other_stages(monkeypatch):
+    """One session summary, one Abstract round and one translation wait; each is a task once."""
+    left = {'sessions-summary': 1, 'abstract': 1, 'translate': 1}
+
+    def stage(name):
+        def prepared(root, cursor, config, directory):
+            if left[name]:
+                left[name] -= 1
+                return {'stage': name, 'record': ''}
+        return prepared
+    monkeypatch.setattr(native_round, '_summary_turn', stage('sessions-summary'))
+    monkeypatch.setattr(native_round, 'prepare_abstract', stage('abstract'))
+    monkeypatch.setattr(native_round, 'prepare_translation', stage('translate'))
+    monkeypatch.setattr(native_round, 'translation_share', lambda root: 1)
+
+
+def stages_served(root, cursor):
+    directory = root / 'task'
+    directory.mkdir(exist_ok=True)
+    served = []
+    while (task := native_round.prepare_task(root, cursor, read_config(root), directory)) is not None:
+        served.append(task['record'] or task['stage'])
+        if task['stage'] == 'investigate':
+            cursor.update(job_index=cursor['job_index'] + 1, current=None)
+    return served
+
+
+def test_a_spent_weekly_budget_holds_investigation_and_the_round_serves_its_other_stages(notebook, monkeypatch):
+    """2026-11-16: a catchup night ended at "investigation has used 35 of its 35-point weekly
+    budget" before Abstract, Translate and Deepen, with the Codex week at 37%."""
+    serve(monkeypatch)
+    other_stages(monkeypatch)
+    people = [person(name) for name in ('ivy', 'wren', 'fern')]
+    cursor = cursor_of(notebook, list(people), investigation_held=HELD)
+    assert stages_served(notebook, cursor) == ['sessions-summary', 'abstract', 'translate']
+    # The round completed, so its deepen slot is due; the pages wait as they do for a used share.
+    assert cursor['done'] and cursor['run']['outcome'] == 'completed'
+    saved = read_json(state_path(notebook, WAITING), {})
+    assert saved['jobs'] == people and saved['held'] == HELD
+    assert saved['investigations'] == {'done': 0, 'limit': 12, 'waiting': 3}
+
+
+def test_a_page_already_open_is_finished_when_the_weekly_budget_is_spent(notebook, monkeypatch):
+    serve(monkeypatch)
+    other_stages(monkeypatch)
+    cursor = cursor_of(notebook, [person('ivy'), person('wren')], current={'record': 'people/ivy.md'},
+                       investigation_held=HELD)
+    assert stages_served(notebook, cursor)[0] == 'people/ivy.md'
+    assert read_json(state_path(notebook, WAITING), {})['jobs'] == [person('wren')]
+
+
+def test_same_person_checks_wait_with_investigation(notebook, monkeypatch):
+    from connectonion.rem import same_person
+    monkeypatch.setattr(same_person, 'candidates', lambda *a, **k: pytest.fail('a same-person check was looked for'))
+    cursor = cursor_of(notebook, [], same_new_left=10, same_left=3, investigation_held=HELD)
+    assert stages_served(notebook, cursor) == [] and cursor['done']
+
+
+def test_status_says_investigation_waits_for_its_weekly_budget(notebook, monkeypatch):
+    serve(monkeypatch)
+    stages_served(notebook, cursor_of(notebook, [person('ivy'), person('wren')], investigation_held=HELD))
+    row = next(row for row in stages.status(notebook, read_config(notebook), []) if row['name'] == 'Investigate')
+    assert row['text'].endswith('; ' + HELD['reason'] + '; 2 pages wait')
+    assert "of the last night's" not in row['text'] and row['budget_hold'] == HELD['reason'] + '; 2 pages wait'
+    # Once the week has reset the hold is over, whether or not a round has run since.
+    saved = read_json(state_path(notebook, WAITING), {})
+    write_json(state_path(notebook, WAITING), {**saved, 'held': {**HELD, 'until': 1}})
+    row = next(row for row in stages.status(notebook, read_config(notebook), []) if row['name'] == 'Investigate')
+    assert 'weekly budget' not in row['text'] and 'budget_hold' not in row
+
+
+def test_the_nights_line_says_investigation_waits_and_never_exec_stopped(notebook, monkeypatch):
+    words = HELD['reason'] + '; 40 pages wait'
+    row = {'mail': 0, 'sessions': 5, 'written': 6, 'decisions': 1, 'translated': 2, 'drafts': 0, 'changed': [],
+           'parked': [], 'deepened': 3, 'deepen_reason': '', 'shares': {}, 'investigation_hold': words}
+
+    def run(root, *, nights, progress, stage, say, cut_short):
+        progress(1, row)
+        return {'nights': [row], 'reason': '', 'failed': False, 'held': None, 'parked': [], 'candidates': '',
+                'deepen_reason': '', **{name: row[name] for name in
+                                        ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened')}}
+
+    monkeypatch.setattr(catchup, 'run', run)
+    result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'catchup'])
+    assert result.exit_code == 0, result.output
+    line = next(line for line in result.output.splitlines() if line.startswith('Night 1:'))
+    assert f'3 pages deepened · {words}' in line
+    assert 'exec stopped' not in result.output and 'Stopped:' not in result.output
+
+
 def test_catchup_counts_carry_the_nights_shares(notebook, monkeypatch):
     serve(monkeypatch)
     set_config(notebook, ['limits.investigations_per_night', '1'])

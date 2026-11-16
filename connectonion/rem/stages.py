@@ -109,11 +109,16 @@ def status(root, config, logs):
             if rows[-1]['held']:
                 rows[-1]['text'] += f"; {rows[-1]['held']} held (source disabled or unapproved)"
         if name == 'Investigate':
-            from .native_round import shares_in_words, waiting_shares
+            from .native_round import hold_in_words, shares_in_words, waiting_shares
             # A used share is not a failure: the line says what was done and what waits.
             rows[-1]['shares'] = waiting_shares(root)
             rows[-1]['text'] += ''.join('; ' + words for words in
                                         shares_in_words(rows[-1]['shares'], "the last night's"))
+            # Nor is a spent weekly budget: only this stage waits, and the line says until when.
+            hold = hold_in_words(root)
+            if hold:
+                rows[-1]['budget_hold'] = hold
+                rows[-1]['text'] += '; ' + hold
         if name == 'Abstract':
             book = Notebook(root)
             counts = {category: len(book.list(category)) for category in ('decisions', 'knowledge', 'principles')}

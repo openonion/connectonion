@@ -271,20 +271,56 @@ def test_night_that_produces_nothing_stops(book, model, empty_model):
 
 
 @pytest.mark.parametrize('between', [False, True])
-@pytest.mark.parametrize('floor', ['usage', 'weekly'])
-def test_quota_floor_stops_with_plain_reason(book, model, monkeypatch, rem_clock, floor, between):
+def test_quota_floor_stops_with_plain_reason(book, model, monkeypatch, rem_clock, between):
     backlog(book, 60)
-    meter = {'used_percent': 90 if floor == 'usage' else 20,
-             'resets_at': (rem_clock + timedelta(days=5)).timestamp(), 'window_minutes': 10080}
+    meter = {'used_percent': 90, 'resets_at': (rem_clock + timedelta(days=5)).timestamp(), 'window_minutes': 10080}
     monkeypatch.setattr(quota, 'meter', lambda *a: {'unknown': 'fixture'} if between and not model[0] else meter)
-    monkeypatch.setattr(quota, 'points_spent', lambda *a: 100)
-    reason = quota.blocks(meter, 100, read_config(book.root)['limits'])
+    reason = quota.floor_block(meter, read_config(book.root)['limits'])
     result = invoke(book, '--nights', '3')
     assert result.exit_code == 0, result.output
     assert f'Stopped: {reason}' in result.output
     assert len(model[0]) == int(between)
     assert len(book.list('decisions')) == 20 * int(between)
     assert result.output.rstrip().endswith(f'Next: co rem --root {book.root} open')
+
+
+def test_a_spent_investigation_budget_holds_investigation_and_the_night_still_abstracts_and_deepens(
+        book, model, monkeypatch, rem_clock):
+    """2026-11-16: the night ended at "investigation has used 35 of its 35-point weekly budget";
+    Abstract, Translate and Deepen did not run though the Codex week was at 37%."""
+    backlog(book, 60)
+    book.write('people/person.md', '# Person\n')
+    meter = {'used_percent': 37, 'resets_at': (rem_clock + timedelta(days=5)).timestamp(), 'window_minutes': 10080}
+    monkeypatch.setattr(quota, 'meter', lambda *a: meter)
+    monkeypatch.setattr(quota, 'points_spent', lambda *a, **k: 35)
+    monkeypatch.setattr(native_round, '_jobs', lambda *a, **k: [{'record': 'people/person.md', 'kind': 'person'}])
+    monkeypatch.setattr(native_round, '_prepare_job', lambda *a: pytest.fail('a page was started past the budget'))
+    slots = []
+    monkeypatch.setattr(depth, 'slot', lambda *a, **k: slots.append(1) or {'rounds': [], 'stopped': ''})
+    result = invoke(book, '--nights', '2')
+    assert result.exit_code == 0, result.output
+    assert len(model[0]) == 2 and len(book.list('decisions')) == 40 and len(slots) == 2
+    for number in (1, 2):
+        line = next(line for line in result.stdout.splitlines() if line.startswith(f'Night {number}:'))
+        assert '20 decisions written' in line and 'exec stopped' not in line
+        assert re.search(r'investigation is waiting for its weekly budget \(35 of 35 points used; '
+                         r'the Codex week resets \w{3} \d{2} \w{3} \d{2}:\d{2}\); 1 page waits', line), line
+    assert 'Stopped:' not in result.stdout
+    assert not state_path(book.root, 'round-held.json').exists()
+
+
+def test_the_budget_is_read_before_every_task_so_one_reached_mid_night_holds_the_pages_not_started(
+        book, monkeypatch, rem_clock):
+    meter = {'used_percent': 37, 'resets_at': (rem_clock + timedelta(days=5)).timestamp(), 'window_minutes': 10080}
+    config, cursor, spent = read_config(book.root), {}, [34, 35, 0]
+    monkeypatch.setattr(quota, 'points_spent', lambda *a, **k: spent.pop(0))
+    native._hold_investigation(book.root, cursor, config, meter)
+    assert 'investigation_held' not in cursor
+    native._hold_investigation(book.root, cursor, config, meter)
+    assert cursor['investigation_held']['reason'].startswith('investigation is waiting for its weekly budget (35 of 35')
+    # The week reset: the next task's reading lifts the hold.
+    native._hold_investigation(book.root, cursor, config, meter)
+    assert 'investigation_held' not in cursor
 
 
 def test_daily_call_cap_resets_and_real_schedule_is_unchanged(book, model, rem_clock, monkeypatch):
@@ -688,18 +724,6 @@ def test_at_the_floor_catchup_still_collects_mail_and_saves_the_calendar_and_day
     cursor = read_json(state_path(book.root, 'round.json'), {})
     assert cursor['batch']['items'] == MAIL and not cursor['batch']['done'] and not cursor.get('pending')
     assert read_json(state_path(book.root, 'catchup.json'), {}) == {}, 'a held catchup must not spend a night'
-
-
-def test_a_weekly_budget_stop_says_when_the_week_resets(book, held, monkeypatch, rem_clock):
-    week = {'used_percent': 20, 'window_minutes': 10080, 'resets_at': (rem_clock + timedelta(days=2)).timestamp()}
-    monkeypatch.setattr(quota, 'meter', lambda *a: week)
-    monkeypatch.setattr(quota, 'points_spent', lambda *a: 100)
-    result = invoke(book)
-    assert result.exit_code == 0, result.output
-    assert len(held['reads']) == 1 and len(held['events']) == 1
-    assert re.search(r'^Waiting: Investigate, Deepen, Abstract and Translate call the model; '
-                     r'the Codex week resets \w{3} \d{2} \w{3} \d{2}:\d{2}$', result.stdout, re.M), result.stdout
-    assert 'Stopped: investigation has used 100 of its' in result.stdout
 
 
 def test_held_catchup_json_names_what_ran_and_what_waits(book, held, rem_clock):

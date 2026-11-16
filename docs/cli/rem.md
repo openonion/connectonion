@@ -595,6 +595,30 @@ failure: `12 of tonight's 12 investigations done; 319 wait for later nights`.
 These two shares are the only count caps on a night since D-104 retired the
 others; the weekly budgets and the Codex usage floor still apply on top.
 
+A weekly budget holds its own stage and no other (owner, 2026-11-16: a catchup
+night ended at "investigation has used 35 of its 35-point weekly budget" with
+Abstract, Translate and Deepen not run, while the Codex week was at 37%):
+
+| What is spent | What waits | What still runs |
+|---|---|---|
+| `limits.investigation_quota_points` (35) | New investigation pages and the same-person checks. A page already open is finished. | Collect and reading the batch into pages, reply drafts, session summaries, Abstract, Translate, Deepen |
+| `limits.depth_quota_points` (30) | Deepen | Everything else |
+| `limits.quota_floor_percent` (the Codex week at 90%) | Every step that calls the model | Collect without the model, the calendar and the day plan |
+
+A spent investigation budget works like a used share: the pages wait in
+`.state/investigation-waiting.json`, the round goes on to its other stages and
+completes, and the night's line and the Investigate line of `co rem status` say
+`investigation is waiting for its weekly budget (35 of 35 points used; the Codex
+week resets Wed 18 Nov 22:00); 40 pages wait`. It is not a stop reason, for
+`co rem exec`, the schedule or `co rem catchup`.
+The investigation budget counts investigation pages and same-person checks,
+by hand or scheduled. Abstract rounds are not counted against it (they were,
+while they ran inside the round, and never when run by `co rem abstract`);
+batch extract and maintain, session summaries, reply drafts and Translate
+never were. Those are bounded by the daily call cap
+(`limits.runner_calls_per_day`), `limits.abstract_rounds_per_night`, the
+round's five summaries, translation's share, and the floor.
+
 `co rem status` keeps its existing dashboard and adds five stage lines in the
 order above. Each says what is waiting (a count) and when that stage last ran
 in the notebook's timezone (a date or `never`). Counts come from saved source
@@ -627,7 +651,7 @@ daily rounds as well as standalone batches, and ignore empty checks. The same ro
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. At a weekly limit before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, the first reason and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. A spent weekly investigation budget holds only investigation: the night still reads the batch, summarises sessions, abstracts, translates and deepens, and its line says investigation is waiting and when the week resets. At the Codex usage floor before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, the first reason and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -654,7 +678,9 @@ now. A night with deepen can take an hour or more: large-page rounds measured
 35–97 minutes. The schedule is untouched. A notebook-local
 counter gives it fresh daily and nightly limits; page dates, source windows
 and scheduled due times stay real.
-Weekly investigation budgets and the Codex usage floor still stop the run.
+The Codex usage floor still stops the run. A spent weekly investigation budget
+does not: investigation waits for the week's reset, the night's line says so,
+and the night's other stages run.
 Deepen keeps its separate weekly budget and the same quota and usage floors
 as the scheduled slot. A spent deepen budget or no qualifying pages still
 counts the night; the line says why no pages were deepened.
@@ -779,7 +805,7 @@ Stopped: co ai did not complete (exit 1, outcome missing): usage limit reached
 A night in which a task was parked for its own error is a night that ran: the
 next night of `--nights N` starts as usual.
 
-When the weekly investigation budget or the Codex usage floor already holds the
+When the Codex usage floor already holds the
 model before the first night, catchup does not print an empty night. It does the
 steps that call no model, once, and spends no night:
 
@@ -801,7 +827,7 @@ Waiting: Investigate, Deepen, Abstract and Translate call the model
 Stopped: the Codex week is at 99%, at or past the 90% floor kept for your own work; investigation resumes when it resets Wed 09 Sep 22:00
 ```
 
-A weekly budget stop adds when the week resets to the `Waiting` line. `--json`
+`--json`
 carries the same under `held` (`note`, `mail`, `sessions`, `written`, `calendar`,
 `day_plan`, `waiting`, `resumes_at`); `held` is `null` when a night ran. The
 exit code is 0, as for every stop at a limit (`co rem exec`, `co rem
@@ -2298,6 +2324,9 @@ below is good to about one point.
   default **35** points of the weekly window. The
   scheduled round adds up the points its investigation runs used since the
   window last reset, and starts no new page once that reaches the budget.
+  Only investigation waits: the round's other stages run on
+  ([what each budget holds](#commands)). A round's Abstract tasks do
+  not count toward it.
 - **The initial investigation has no REM quota gate.** It attempts the whole
   selected cohort, even when the weekly meter passes the routine budget or
   safety floor. The runner provider can still enforce its own account limit.

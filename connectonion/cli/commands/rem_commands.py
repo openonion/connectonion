@@ -2179,10 +2179,7 @@ def make_rem_app(factory):
 
         def held_text(value):
             """No night ran: say which steps did and which wait, never a row of zeroes."""
-            from datetime import datetime
-            held, when = value['held'], ''
-            if held['resumes_at'] and 'resets' not in value['reason']:
-                when = f"; the Codex week resets {datetime.fromisoformat(held['resumes_at']):%a %d %b %H:%M}"
+            held = value['held']
             parts = [f"{held['mail']} mail collected"]
             if held['sessions'] is not None:  # a round already open read its sessions when it began
                 parts += [f"{held['sessions']} sessions read",
@@ -2193,7 +2190,7 @@ def make_rem_app(factory):
                 'No night ran: a limit holds the model, so only the steps that need no model were done.',
                 'Collect: ' + collected,
                 'Calendar: ' + (calendar_text(held) + plan_text(held)).removeprefix(' · '),
-                f"Waiting: {', '.join(first)} and {last} call the model{when}"])
+                f"Waiting: {', '.join(first)} and {last} call the model"])
 
         def parked_text(rows, kept=''):
             """Pages set aside after their retries: how many, the first reason, where the candidates are."""
@@ -2207,7 +2204,8 @@ def make_rem_app(factory):
 
         def shares_text(row):
             from ...rem.native_round import shares_in_words
-            return ''.join(' · ' + words for words in shares_in_words(row.get('shares', {})))
+            return ''.join(' · ' + words for words in [*shares_in_words(row.get('shares', {})),
+                                                       *filter(None, [row.get('investigation_hold')])])
 
         def progress(number, row):
             _WRITTEN.extend(row['changed'])

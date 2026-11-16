@@ -696,7 +696,8 @@ def round_state(root: Path, config: dict) -> dict | None:
     cursor = read_json(state_path(root, "round.json"), {})
     if not cursor or cursor.get("done") or not (cursor.get("slot") or cursor.get("pending")):
         return None
-    # Held by the floor, a budget or the cap: the round reads mail but its pages wait, and the reason says until when.
+    # Held by the floor or the cap: the round reads mail but its pages wait, and the reason says until when.
+    # A spent investigation budget is not a hold on the round: its other stages run (stages.status says it).
     held = read_json(state_path(root, "round-held.json"), {})
     if held and not cursor.get("pending"):
         return {"state": "stuck", "since": held["since"], "reason": held["reason"]}

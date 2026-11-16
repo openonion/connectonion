@@ -112,6 +112,28 @@ def test_the_budget_and_the_floor_stop_a_new_investigation():
     assert quota.blocks({"unknown": "no meter"}, 99, limits) == ""
 
 
+def test_a_spent_budget_holds_investigation_in_words_with_the_reset_and_the_floor_is_not_its_business():
+    limits = {"investigation_quota_points": 10, "quota_floor_percent": 70}
+    week = {"window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.investigation_hold({**week, "used_percent": 40}, 9, limits) is None
+    hold = quota.investigation_hold({**week, "used_percent": 40}, 10, limits)
+    assert hold["until"] == RESETS
+    assert hold["reason"].startswith("investigation is waiting for its weekly budget (10 of 10 points used; "
+                                     "the Codex week resets ")
+    # The floor holds every stage and is asked separately; no meter, no budget.
+    assert quota.investigation_hold({**week, "used_percent": 70}, 0, limits) is None
+    assert quota.investigation_hold({"unknown": "no meter"}, 99, limits) is None
+
+
+def test_a_rounds_abstract_task_is_not_an_investigation_point():
+    """It carries the round's phase (stages.py reads its stage), so it was charged to investigation."""
+    now = {"used_percent": 30, "window_minutes": WEEK, "resets_at": RESETS}
+    logs = [_run("2026-09-28T01:00:00+00:00", 5, 8),
+            {**_run("2026-09-29T01:00:00+00:00", 8, 14, phase="daily-update"), "stage": "abstract"},
+            {**_run("2026-09-29T03:00:00+00:00", 14, 15, phase="daily-update"), "stage": "investigate"}]
+    assert quota.points_spent(logs, now) == 4
+
+
 def test_old_notebooks_get_the_new_limits_without_rewriting_config(tmp_path):
     from connectonion.rem.config import prepare, read_config
     root = tmp_path / "rem"

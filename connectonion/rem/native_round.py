@@ -252,9 +252,10 @@ def _job_turn(root, cursor, config, directory):
         job = cursor["jobs"][cursor["job_index"]]
         share = _share(job)
         opened = cursor["current"] or cursor.get("project_quote")
-        if (not opened and job["record"] not in served[share]
-                and len(served[share]) >= config["limits"][SHARES[share]]):
-            # Tonight's share is used: the page waits for a later night and the round goes on.
+        used = job["record"] not in served[share] and len(served[share]) >= config["limits"][SHARES[share]]
+        if not opened and (used or cursor.get("investigation_held")):
+            # Tonight's share is used, or the weekly investigation budget is spent: the page
+            # waits for a later night and the round goes on. A page already open is finished.
             cursor.setdefault("waiting", []).append(job)
             cursor["job_index"] += 1
             continue
@@ -284,15 +285,35 @@ def _keep_waiting(root, cursor, config, served):
     waiting = cursor.get("waiting", [])
     counts = {name: {"done": len(served[name]), "limit": config["limits"][limit],
                      "waiting": sum(_share(job) == name for job in waiting)} for name, limit in SHARES.items()}
-    write_json(state_path(root, WAITING), {"night": served["day"], "jobs": waiting, **counts})
+    held = {"held": cursor["investigation_held"]} if cursor.get("investigation_held") else {}
+    write_json(state_path(root, WAITING), {"night": served["day"], "jobs": waiting, **counts, **held})
+
+
+def _waiting(root, night):
+    """What the last walked queue saved, or {} when that was not `night`'s round."""
+    saved = read_json(state_path(root, WAITING), {})
+    return {} if night is not None and saved.get("night") != night else saved
 
 
 def waiting_shares(root, *, night=None):
-    """What the last walked queue left waiting, or {} when that was not `night`'s round."""
-    saved = read_json(state_path(root, WAITING), {})
-    if not saved or (night is not None and saved.get("night") != night):
-        return {}
-    return {name: saved[name] for name in SHARES}
+    """What the last walked queue left waiting for a used share, or {}.
+
+    Empty while the weekly budget held that queue: its pages waited for the budget,
+    and "0 of tonight's 12 investigations done" would read as a share that was used."""
+    saved = _waiting(root, night)
+    return {} if not saved or saved.get("held") else {name: saved[name] for name in SHARES}
+
+
+def hold_in_words(root, *, night=None):
+    """'investigation is waiting for its weekly budget (…); 40 pages wait', or '' when it is not held.
+
+    Over once the week has reset, whether or not a round has walked the queue since."""
+    saved = _waiting(root, night)
+    held = saved.get("held")
+    if not held or (held["until"] and held["until"] <= service.now().timestamp()):
+        return ""
+    count = len(saved["jobs"])
+    return held["reason"] + (f"; {count} {'page waits' if count == 1 else 'pages wait'}" if count else "")
 
 
 def shares_in_words(shares, whose="tonight's"):
@@ -364,7 +385,10 @@ def prepare_task(root, cursor, config, directory):
     if cursor["current"] and cursor["current"].get("finalized"):
         _finish_investigation(root, cursor)
     from . import same_person
-    pair = next(iter(same_person.candidates(root, uninvestigated=True)), None) if cursor.get("same_new_left", 10) else None
+    # Same-person checks are investigation runs (quota.INVESTIGATION_PHASES): they wait with it.
+    held = cursor.get("investigation_held")
+    pair = (next(iter(same_person.candidates(root, uninvestigated=True)), None)
+            if cursor.get("same_new_left", 10) and not held else None)
     if pair and cursor["current"] is None:
         task = _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
         task["early_pair"] = True
@@ -389,7 +413,7 @@ def prepare_task(root, cursor, config, directory):
     task = _summary_turn(root, cursor, config, directory) or prepare_abstract(root, cursor, config, directory)
     if task:
         return task
-    pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] else None
+    pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] and not held else None
     if pair:
         return _task("same-person", same_person.prepare(root, pair, directory=directory), cursor, stage="same-person")
     if "translation_slot" not in cursor:
