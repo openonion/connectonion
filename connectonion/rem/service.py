@@ -1611,9 +1611,10 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
     if selected_feedback:
         feedback.synchronize(updated, selected_feedback)
+    from .runner import worker_effort
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
               "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-              "phase": "sync", "sources": list(selected), "items": len(items),
+              "effort": worker_effort(config), "phase": "sync", "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
               "extracted": not selected_feedback and len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a

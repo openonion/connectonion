@@ -2235,6 +2235,28 @@ REM's turn worker, using the same work-loop prompt as the desktop automation.
 Exec sessions can continue across tasks; desktop automation sessions can end early.
 The model remains `model` (default `gpt-6-luna`); `effort` defaults to `medium`.
 
+`effort` is the reasoning effort of every Codex worker REM starts, not only of
+the scheduled turn. The turns that `co rem exec`, `co rem catchup`, sync,
+investigate and deepen start are `co ai --harness codex --effort <effort>`;
+the scheduled `codex exec` turn and the cited-claim audit get
+`-c model_reasoning_effort=<effort>`; owed tasks and conversations pass it to
+the same adapter. Until 2026-11-17 the `co ai` turns and the audit passed
+none, so they ran at the owner's own `~/.codex/config.toml` setting: 81 worker
+turns of one night at `max` while `config.yaml` said `medium`. Claude Code and
+COAI runners take no effort from REM, and their records say none.
+`speed: fast` (the default) asks Codex for its priority service tier on every
+turn; `standard` leaves the tier Codex is configured with.
+
+Every run record keeps what its worker was started at (`harness`, `model`,
+`speed`, `effort`); a task `co rem exec` or catchup drives records its stage's
+model and runner, where it used to name the notebook's. `co rem status` says
+it under the last run:
+
+```text
+Last run         daily-update projects/fern.md · completed
+                 2026-11-17 01:12 · 1 page changed · … tokens in · gpt-6-luna at medium effort, fast
+```
+
 ```bash
 co rem config set schedule.runner codex-exec effort high
 co rem start

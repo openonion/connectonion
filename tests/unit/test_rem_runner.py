@@ -635,6 +635,22 @@ def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
     assert metrics["speed"] == "standard"
 
 
+def test_a_codex_worker_is_started_at_the_notebooks_effort_and_its_record_says_so(notebook, delegate):
+    """2026-11-17: no effort was passed, so all 81 worker turns of a night ran at the owner's
+    own ~/.codex setting (max) while config.yaml said medium."""
+    run_stage(notebook, [], default_config())
+    argv = delegate[0][0]
+    assert argv[argv.index("--effort") + 1] == "medium"
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert metrics["effort"] == "medium"
+    high = runner.harness_flags({**default_config(), "effort": "high"}, "maintain")
+    assert high[high.index("--effort") + 1] == "high"
+    # Claude Code and co's own loop take no effort from us: nothing is passed or claimed.
+    for other in ("claude-code", "coai"):
+        config = {**default_config(), "runner": other}
+        assert "--effort" not in runner.harness_flags(config, "maintain") and runner.worker_effort(config) == ""
+
+
 def test_claude_rem_does_not_inherit_an_api_billing_key(notebook, delegate, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient-test-key")
     config = default_config()

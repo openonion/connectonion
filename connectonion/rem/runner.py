@@ -269,6 +269,15 @@ def workspace_only(config: dict, stage: str) -> bool:
     return config["runner"] != "coai" and not full_access(stage)
 
 
+def worker_effort(config: dict) -> str:
+    """The reasoning effort a worker is started at, or "" where the harness takes none from us.
+
+    2026-11-17: nothing was passed, so a Codex worker ran at the owner's own
+    ~/.codex/config.toml setting: 81 turns of one night at max while config.yaml
+    said medium. Claude Code and co's own loop have no such setting to pass."""
+    return config["effort"] if config["runner"] == "codex" else ""
+
+
 def harness_flags(config: dict, stage: str) -> list[str]:
     harness = "ours" if config["runner"] == "coai" else config["runner"]
     flags = ["--harness", harness]
@@ -280,7 +289,7 @@ def harness_flags(config: dict, stage: str) -> list[str]:
     investigating = full_access(stage)
     if harness == "codex":
         flags += ["--sandbox", "danger-full-access" if investigating else "workspace-write"]
-        flags += ["--speed", config["speed"]]
+        flags += ["--speed", config["speed"], "--effort", worker_effort(config)]
     elif harness == "claude-code":
         flags += ["--permission-mode", "bypassPermissions" if investigating else "acceptEdits"]
     if config["model"] != "default":
@@ -397,7 +406,8 @@ def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> di
     schema.write_text(json.dumps({"insight-critic": CRITIC_SCHEMA, "same-person": SAME_PERSON_SCHEMA}.get(stage, SCHEMA)),
                       encoding="utf-8")
     command = [*binary[:-1], "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
-               "--json", "--output-schema", str(schema), "-o", str(answer)]
+               "--json", "--output-schema", str(schema), "-o", str(answer),
+               "-c", f"model_reasoning_effort={worker_effort(config)}"]
     if config["speed"] == "fast":
         command += ["-c", 'service_tier="priority"']
     if config["model"] != "default":
@@ -1783,7 +1793,7 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
         prompt = summary_prompt(directory) + POLICY
 
     metrics = {"stage": stage, "harness": config["runner"], "model": config["model"], "timeouts_retried": 0,
-               "speed": config["speed"],
+               "speed": config["speed"], "effort": worker_effort(config),
                "tier": "summary" if summary else "agent",
                "instructions_chars": len((directory / "instructions.md").read_text()),
                "material_chars": len((directory / "material.json").read_text()),

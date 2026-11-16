@@ -815,7 +815,8 @@ def _summary_run(root: Path, settings: dict) -> tuple[dict, Path]:
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": service.now().isoformat(),
               "outcome": "running", "runner_attempts": 0, "usage": None, "sources": [], "items": 0,
               "changed": [], "phase": "sessions-summary", "harness": settings["runner"],
-              "model": settings["model"], "speed": settings["speed"], **service.running_marker()}
+              "model": settings["model"], "speed": settings["speed"], "effort": runner.worker_effort(settings),
+              **service.running_marker()}
     path = state_path(root, f"runs/{record['id']}.json")
     write_json(path, record)
     return record, path

@@ -440,6 +440,9 @@ def _last_run(run, zone) -> str:
     tokens = (run.get("usage") or {}).get("input_tokens")
     if tokens is not None:
         detail.append(f"{_compact(tokens)} tokens in")
+    if run.get("model") and run.get("effort"):
+        # What the worker was started at: REM passes both, so an owner's own Codex setting is not it.
+        detail.append(f"{run['model']} at {run['effort']} effort, {run.get('speed') or 'standard'}")
     return highlight(what) + " · " + highlight(outcome) + "\n" + rem_look.follow(" · ".join(detail), glyph="")
 
 

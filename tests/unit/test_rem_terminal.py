@@ -202,6 +202,18 @@ def test_the_last_run_is_the_last_one_that_finished(tmp_path, monkeypatch):
     assert lines[2].strip() == "daily-update running since 19:05"
 
 
+def test_the_last_run_says_the_model_and_effort_its_worker_ran_at(tmp_path, monkeypatch):
+    from zoneinfo import ZoneInfo
+    from connectonion.cli.commands import rem_status
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, "runs/run_" + "a" * 32 + ".json"), {
+        "id": "run_" + "a" * 32, "started_at": "2026-10-15T08:01:43+00:00", "phase": "daily-update",
+        "outcome": "completed", "changed": [], "model": "gpt-6-luna", "effort": "medium", "speed": "fast"})
+    monkeypatch.setattr(rem_status, "_zone", lambda root: ZoneInfo("Australia/Sydney"))
+    lines = Text.from_markup("\n".join(rem_status._last_runs(tmp_path))).plain.splitlines()
+    assert lines[1].strip() == "2026-10-15 19:01 · 0 pages changed · gpt-6-luna at medium effort, fast"
+
+
 # ------------------------------------------------ #4: investigate all --list
 
 

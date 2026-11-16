@@ -527,10 +527,26 @@ def _next_task(root, *, scheduled, discard, own=False, in_round=False):
         return result
 
 
+def _worker(root, task):
+    """What the task's worker runs at, for its run record and `co rem status`.
+
+    Exec starts a worker with its stage's model (`stage_config`); the scheduled agent
+    does the task in its own thread, at the notebook's model. The record said the
+    notebook's model either way, and no effort at all (2026-11-17)."""
+    from .inquiry import stage_config
+    config = read_config(root)
+    if task.get("driven"):
+        config = stage_config(root, config, task["stage"].removesuffix(" (repair)"))
+    return {"harness": config["runner"], "model": config["model"], "speed": config["speed"],
+            "effort": runner.worker_effort(config)}
+
+
 def _offer_pending(root, task, *, preparer=None, takeover=False, driven=False):
     # Whoever offers the task now drives it: a task a stopped exec left is the scheduled agent's to run.
     redriven = bool(task.get("driven")) != driven
     task["driven"] = driven
+    if redriven:
+        task["run"].update(_worker(root, task))
     if task.get("review_unreserved"):
         return _offer_review(root, task)
     claim = task.get("claimed_by")
@@ -878,7 +894,7 @@ def _save(root, cursor, task):
     task["source_view"] = _source_view(root, stage_task, handler=task["handler"])
     task["run"].update(outcome="pending", task_id=task["id"], stage=task["stage"],
                        record=task["record"], items=len(stage_task.get("items", [])),
-                       instructions_chars=len(prompt))
+                       instructions_chars=len(prompt), **_worker(root, task))
     write_json(state_path(root, f"runs/{task['run']['id']}.json"), task["run"])
     cursor["pending"] = task["id"]
     write_json(state_path(root, "round.json"), cursor)

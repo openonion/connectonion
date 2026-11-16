@@ -63,6 +63,20 @@ def validate_speed(harness: str, speed: str | None) -> str | None:
     return None
 
 
+EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+
+
+def validate_effort(harness: str, effort: str | None) -> str | None:
+    """An explicit effort sets a Codex thread's model_reasoning_effort only."""
+    if effort is None:
+        return None
+    if harness != "codex":
+        return "--effort applies only to --harness codex. Drop --effort."
+    if effort not in EFFORTS:
+        return f"Unknown effort {effort!r}. Use minimal, low, medium, high or xhigh."
+    return None
+
+
 def validate_permission(harness: str, mode: str) -> str | None:
     """Claude's headless permission choice must be explicit at the caller."""
     from ...useful_tools.claude_code import PERMISSION_MODES

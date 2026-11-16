@@ -785,3 +785,25 @@ def test_the_night_says_each_cause_of_its_parked_pages_with_a_count(notebook, mo
     done = result.stdout[result.stdout.index("Done: 1 night"):]
     assert "2 pages parked (1 page, " in done and "1 page, refused twice for the same reason: " in done
     assert "; candidates kept under " in done
+
+
+def test_a_task_exec_drives_records_the_model_and_effort_its_worker_ran_at(notebook, monkeypatch):
+    """2026-11-17: the record named the notebook's model whatever the stage's worker ran, and no effort."""
+    from connectonion.rem import inquiry, schedule
+    fern, heron = two_projects(notebook, monkeypatch)
+    faulty_model(notebook, monkeypatch, lambda record, directory: None)
+    seen = []
+    write = runner.run_task
+
+    def run(directory, prompt, config, stage, **options):
+        seen.append((config["model"], stage))
+        return write(directory, prompt, config, stage, **options)
+
+    monkeypatch.setattr(runner, "run_task", run)
+    for stage in inquiry.ROUTABLE:
+        inquiry.set_route(notebook, stage, "codex", "gpt-routed-fixture")
+    schedule.exec_round(notebook, scheduled=False)
+    rows = [row for row in service.run_logs(notebook) if row.get("record") in (fern, heron)]
+    assert rows and {model for model, stage in seen} == {"gpt-routed-fixture"}
+    assert {(row["harness"], row["model"], row["effort"], row["speed"]) for row in rows} == {
+        ("codex", "gpt-routed-fixture", "medium", "fast")}
