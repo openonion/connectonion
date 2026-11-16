@@ -584,18 +584,24 @@ def test_a_night_that_parked_a_task_it_could_not_settle_lets_the_next_night_star
 # minutes "searching project documents". The deadline that parks such a page for a
 # single `co rem next` ends the process, and catchup runs next in its own process:
 # exit 75, no night line, no totals, and Abstract, Translate and Deepen never ran.
-def hanging_preparation(monkeypatch, hung, *, deadline=1.0):
-    """Preparing a page in `hung` waits until something interrupts it; the others are prepared as usual."""
+def hanging_preparation(monkeypatch, hung):
+    """Preparing a page in `hung` is past its deadline at once and waits until that
+    interrupts it; the others are prepared as usual, under the real deadline.
+
+    The deadline was one second for every call of the round, so on a slow CI
+    runner an ordinary preparation passed it too: a second page was parked, two
+    stalls in a row stopped the round, and catchup exited 1. Only the hung page
+    is late now, whatever the machine's speed."""
     prepare_page = native_round._project_task
 
     def prepare(root, cursor, config, directory, record):
         if record in hung:
             native.preparation_stage("searching project documents")
+            native._WATCH["deadline"] = time.monotonic()  # the watcher reads it on its next tick
             time.sleep(60)
         return prepare_page(root, cursor, config, directory, record)
 
     monkeypatch.setattr(native_round, "_project_task", prepare)
-    monkeypatch.setattr(native, "NEXT_DEADLINE_SECONDS", deadline)
     monkeypatch.setattr(native, "PROGRESS_SECONDS", 0.2)
 
 
