@@ -72,7 +72,8 @@ def test_every_command_and_subcommand_has_a_page():
 
 
 def test_config_help_describes_speed_default_and_override():
-    assert "speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed" in pages()["co rem config"]
+    # Unattended nights default to the standard tier (#3099).
+    assert "speed                          standard (default) | fast: Codex's Fast (priority) tier" in pages()["co rem config"]
 
 
 def test_every_command_is_on_the_root_page_the_advanced_page_or_is_an_old_name():
