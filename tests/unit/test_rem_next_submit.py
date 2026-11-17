@@ -2799,6 +2799,36 @@ def test_missing_config_refuses_saved_digest_without_reading_missing_file(tmp_pa
     assert native._input_matches(tmp_path, {"task": {}}, tmp_path / "config.yaml", "old-digest") is False
 
 
+def test_a_catchup_night_reads_each_slots_mail_like_a_scheduled_turn(trial, monkeypatch, translation_round):
+    """#3083 rc20 night: catchup runs exec with scheduled=False, so a slot's mail was never read;
+    the night read the coding sessions and 0 mail, and Gmail and Outlook stayed a day old."""
+    from connectonion.rem import catchup, native_round
+    cursor = translation_round
+    cursor.update(phase='daily-update', jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], job_index=0,
+                  current=None, investigation_left=3, catchup_night=1)
+    cursor['batch']['done'] = True
+    write_json(state_path(trial, 'round.json'), cursor)
+    reads = []
+    def fetch(root, selected, progress, config, *args, **kwargs):
+        reads.append(service.now())
+        return {'done': True, 'items': [], 'updated': progress, 'record': {'extracted': False}, 'kind': 'gmail',
+                'leads': [], 'digested': None}
+    monkeypatch.setattr(service, 'prepare_sync', fetch)
+    monkeypatch.setattr(native_round, '_prepare_job', lambda root, state, config, directory: {'stop': 'fixture'})
+    later = [service.now() + timedelta(hours=hours) for hours in (1, 2)]
+    with catchup.scope(trial, 1):
+        native.next_task(trial, scheduled=False)
+        assert reads == [], 'the slot that started the round already read mail'
+        monkeypatch.setattr(service, 'now', lambda: later[0])
+        native.next_task(trial, scheduled=False)
+        assert reads == [later[0]], 'a new slot reads new mail into the catchup night'
+        native.next_task(trial, scheduled=False)
+    assert reads == [later[0]], 'the same slot does not read again'
+    monkeypatch.setattr(service, 'now', lambda: later[1])
+    native.next_task(trial, scheduled=False)
+    assert reads == [later[0]], 'a manual call outside a night reads no slot'
+
+
 def test_each_new_scheduled_slot_reads_new_mail_into_a_long_round(trial, monkeypatch, translation_round):
     """A round that runs all day must not stop reading mail: mail was read only when a round began,
     so a 14-hour round left the mailboxes unread since morning."""

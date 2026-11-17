@@ -595,8 +595,9 @@ def _next_round(root, cursor, *, scheduled, notices, driven=False):
     # A round still working through its jobs reads each new slot's mail; one in its
     # translation tail is about to finish, and the next round reads mail anyway.
     # Not while a page is open: new mail that edits it would restart that page's
-    # investigation. It is read at the next slot after the page.
-    elif (cursor and scheduled and not continuing and not cursor.get("done") and cursor.get("phase") != "daily-translation"
+    # investigation. It is read at the next slot after the page. A catchup night is
+    # unattended like a scheduled turn: run with scheduled=False it read 0 mail (#3099).
+    elif (cursor and (scheduled or night is not None) and not continuing and not cursor.get("done") and cursor.get("phase") != "daily-translation"
             and cursor["batch"]["done"] and cursor["job_index"] < len(cursor["jobs"])
             and not cursor.get("current") and not cursor.get("project_quote")):
         _read_slot_mail(root, cursor, config)
