@@ -1628,6 +1628,9 @@ pinned to that edge: it comes into view with the draft.
   Opening it again returns the same conversation. When the live reader loads a
   newer page, the open conversation returns under its row with its context,
   replies and any unsent message; its composer continues the same agent session.
+- **The reader's pictures are two published sets, never drawn by hand**: interface icons are Lucide
+  0.468.0 (ISC) and service marks are Simple Icons 16.34.0 (CC0), copied from the published files;
+  `connectonion/_licenses/rem-reader-icons.txt` names every key, its source and both notices.
 - **The rail** (D-132) is a 72px column of places, each a picture with its
   word under it: **Today**, **Waiting on you** (*Waiting*), **Agenda**, **People**,
   **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,
@@ -1933,7 +1936,12 @@ pinned to that edge: it comes into view with the draft.
   **Open topics** (**还没结的话题**), what is still open with them, because it
   is what you open a person for: the top three, and **All N entries**
   (**全部 N 条**) opens the rest in place. On a phone the face stays in the
-  header beside the name and the contact buttons take the row below. The name is the page's one large mark;
+  header beside the name and the contact buttons take the row below. Each contact button says its kind
+  in words beside its value (**Email · …**, **Phone · …**, **GitHub · …**) on hover, on keyboard focus
+  and in its accessible name; the picture never stands alone. A phone number is a handset; a handle on
+  GitHub, X, WeChat, WhatsApp, Telegram or Discord carries that service's own mark in the page's ink
+  colour, and a service with no published mark (LinkedIn, Slack, Microsoft) is an @ with its name in
+  words. The name is the page's one large mark;
   it carries its script as `lang` and hyphenates (where the browser has no
   hyphenation dictionary and a word would overflow, the reader adds soft
   hyphens at likely syllable joins; copying the name drops them). Under it
