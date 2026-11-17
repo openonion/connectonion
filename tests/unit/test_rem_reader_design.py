@@ -228,7 +228,7 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
     # Hover must change something: N3's primary lifts (D-123); the older views' keys still turn over.
     lift = _rule(css, '.btn-act:hover')
     assert lift and 'translateY' in lift
-    for selector in ['.projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover', '.gx-open:hover']:
+    for selector in ['.sessions-view.r4 .btn-act:hover', '.gx-open:hover']:
         hover = _rule(css, selector)
         assert hover and 'background: var(--on-green)' in hover and 'color: var(--green)' in hover, selector
     a, b = sorted([luminance(colors['--green']), luminance(colors['--on-green'])])

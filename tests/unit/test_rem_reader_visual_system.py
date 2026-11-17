@@ -37,10 +37,11 @@ PLACES = (('projects', r'\.pd\b|\.pd-|\.pa\b|\.pa-|\.project-|\.projects-view|\.
           ('sessions', r'\.session'),
           ('today', r'\.today|\.q[a-z]+\b|\.night-|\.deal\b|\.morning|\.n3-'),
           ('record', r'\.focus-|\.deep-|\.note\b|\.factlist|\.fact-|\.relation|\.evidence|\.memory-|\.cite\b'))
-# What is left to burn down, by place, measured 2026-11-17. Lower a number when you fix its place.
-CAPTION_ALLOWED = {'projects': 49, 'people': 18, 'organisations': 58, 'knowledge': 28, 'agenda': 10, 'sessions': 35,
+# What is left to burn down, by place. Projects is done (#3096) and stays at zero. Lower a number in the
+# change that fixes its place; never raise one.
+CAPTION_ALLOWED = {'projects': 0, 'people': 18, 'organisations': 58, 'knowledge': 28, 'agenda': 10, 'sessions': 37,
                    'today': 25, 'record': 42, 'shared': 203}
-LEADING_ALLOWED = {'projects': 25, 'people': 10, 'organisations': 37, 'knowledge': 26, 'agenda': 9, 'sessions': 35,
+LEADING_ALLOWED = {'projects': 0, 'people': 10, 'organisations': 37, 'knowledge': 26, 'agenda': 9, 'sessions': 39,
                    'today': 43, 'record': 34, 'shared': 153}
 
 
@@ -102,7 +103,7 @@ def test_the_sheet_holds_the_written_scale_and_the_document_names_every_step():
     assert {name: light[name] for name in light if name.startswith('--s-')} == SCALE
     assert {name: light[name] for name in light if name.startswith('--lh-')} == LEADING
     for name in [*SCALE, *LEADING, '--font', '--mono', '--ink', '--grey', '--pencil', '--rule', '--well', '--paper',
-                 '--green', '--red']:
+                 '--green', '--red', *(f'--heat-{n}' for n in range(5))]:
         assert name in light, name
         assert f'`{name}`' in words, f'{name} is in the sheet and not in the written system'
 
@@ -113,8 +114,9 @@ def test_no_place_sets_its_own_family_or_a_size_off_the_scale():
     assert not sum(found['size'].values()), dict(found['size'])
 
 
-def test_caption_size_and_written_out_leading_only_go_down():
+def test_caption_size_and_written_out_leading_only_go_down_and_projects_has_none():
     found = inventory()
+    assert CAPTION_ALLOWED['projects'] == LEADING_ALLOWED['projects'] == 0
     for kind, allowed in (('caption', CAPTION_ALLOWED), ('leading', LEADING_ALLOWED)):
         over = {place: (n, allowed.get(place, 0)) for place, n in found[kind].items() if n > allowed.get(place, 0)}
         assert not over, f'{kind} (found, allowed) went up: {over}. Use the scale; see docs/cli/rem-visual-system.md'

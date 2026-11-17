@@ -73,7 +73,7 @@ NOT_PAINT = {'content', 'font-family', 'font', 'animation', 'animation-name', 't
 LAYOUT_VALUE = re.compile(r'-?[\d.]*(?:px|%|em|rem|vw|vh|ch)?')
 # Custom properties the reader may set outside the sheet: layout measures and per-element stagger counts
 # (--d, multiplied by --t-stagger), never a colour, size, weight, radius, shadow or duration.
-LAYOUT_VARS = {'--cols', '--name', '--note', '--d', '--depth', '--from', '--sheet-top',
+LAYOUT_VARS = {'--cols', '--name', '--cell', '--cgap', '--row', '--i', '--d', '--depth', '--from', '--sheet-top',
                '--evidence-top-height', '--evidence-find-height'}
 LAYOUT = '|'.join(re.escape(v) for v in sorted(LAYOUT_VARS))
 DESIGN_CAMEL = r'fontSize|fontWeight|font|borderRadius|boxShadow|textShadow|fontVariationSettings|filter'

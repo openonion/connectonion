@@ -34,8 +34,8 @@ Seven sizes:
 | Token | Size | For | Leading |
 |---|---|---|---|
 | `--s-display` | 44px (36 on a phone) | the single display element of a screen: a count or a name | `--lh-tight` |
-| `--s-head` | 24px | a card's subject, a widget's big number | `--lh-head` |
-| `--s-title` | 20px | a page's name; a section that leads a page | `--lh-head` |
+| `--s-head` | 24px | a page's name, a card's subject, a widget's big number | `--lh-head` |
+| `--s-title` | 20px | a page's name on a phone; the head of a section that leads a page | `--lh-head` |
 | `--s-lead` | 17px | the one sentence a page opens with | `--lh-read` |
 | `--s-body` | 15px | sentences, table cells, a row's name. **The smallest size for a sentence or a cell** | `--lh-body`, `--lh-read` for a paragraph |
 | `--s-ui` | 13px | labels, chips, column heads, a date beside a row. **The smallest size for anything read** | `--lh-ui` |
@@ -56,9 +56,9 @@ it is not emphasis inside a sentence. No italics for Chinese.
 
 ## Spacing
 
-A 4px grid. The named steps are `--u1` 4, `--u2` 8, `--u2h` 12, `--u3` 16, `--u4` 24, `--u4h` 32, `--u5` 40,
-`--u6` 64. Inside a row use 4, 8 or 12; between rows 12 or 16; between sections 32 or 40. A list's rows share
-one height so the eye can run down a column.
+A 4px grid: every gap and padding is a multiple of 4. The named steps are `--u1` 4, `--u2` 8, `--u3` 16,
+`--u4` 24, `--u5` 40 and `--u6` 64; 12 and 32 are written out. Inside a row use 4, 8 or 12; between rows 12 or
+16; between sections 24 or 32. A list's rows share one height so the eye can run down a column.
 
 ## Colour
 
@@ -88,19 +88,55 @@ Dark is the same names under the two theme selectors; a page never writes a dark
 - Numbers use tabular figures and align right; words align left.
 - Status is a word. A dot or a shade may repeat it; it may not replace it.
 
+## Projects, the first place built on it
+
+One idea per view, and the same row in all of them: a name in bold and one sentence in grey, both 15px.
+
+| View | The one idea | What a row holds |
+|---|---|---|
+| Timeline (`#c=projects&v=timeline`) | a contribution calendar per project | name; a sentence worked out from its weeks ("Busiest in October; quiet for 3 weeks"); a square a week under one axis of named months |
+| List (`&v=list`) | the same rows as a table | name and what the project is; status in words; last active; the last 12 weeks; how many open items are in Today |
+| Board (`&v=board`, the default) | which state each is in | a card: name, what it is, the last 12 weeks, the last date |
+| Record (`#r=projects/...`) | what is known | what it is, where it stands, 26 weeks of activity, what was decided, who is involved, sessions by date, then one line that counts open items and leads to Today |
+
+**What a square counts** (`connectonion/rem/project_activity.py`, said in words on the page): each message
+the owner typed to an agent in the project's folders; a recorded session, once, on a day none of its
+messages were kept; a mail the page cites, when the notebook holds its date; the day the page gives as last
+activity, when nothing else was counted that day. Decisions and commits are not counted: the notebook holds
+no date for either yet. A week starts on Monday in the notebook's zone.
+
+**One scale.** The four steps above "nothing" are the quartiles of every project's active weeks taken
+together, so a count is the same shade on every row and rows compare. A week before a project's first dated
+activity is not drawn, so a row begins where the project does; this week is ringed; weeks to come are outlines.
+
+**Order.** People's rule (newest contact first), for projects: the week it was last active, newest first;
+within a week, the busier of the last twelve first; then by name. Projects with no dated activity for more
+than 30 days sit below a worded divider. The page says the rule in one line.
+
+**Time has no end stop.** The timeline opens on this week with a year behind it and grows by half a year at
+whichever edge is reached. "Today" returns; ← and → move a month; Home returns too.
+
+**Records are not tasks.** A card quotes no request and names no owner; a record has no step rows and no
+"mark done". Open work is counted and linked to Today. The note that a translation is not ready closes a
+project's record instead of opening it.
+
+**A phone** shows the name and its sentence above the squares, which scroll under them: 14px squares, about
+twenty weeks, the same scale.
+
 ## What is left, by place
 
 Counted by `inventory()` in the test: `caption` is a declaration at 11px, `leading` a line-height written out
 instead of a `--lh-*` step. Families off the two stacks and sizes off the scale are at zero everywhere.
+Before #3096 Projects stood at 49 and 25; the whole reader at 468 and 372, now 419 and 351.
 
 | Place | caption | leading |
 |---|---|---|
-| Projects | 49 | 25 |
+| Projects | 0 | 0 |
 | People | 18 | 10 |
 | Organisations | 58 | 37 |
 | Knowledge | 28 | 26 |
 | Agenda | 10 | 9 |
-| Sessions | 35 | 35 |
+| Sessions | 37 | 39 |
 | Today | 25 | 43 |
 | Record pages | 42 | 34 |
 | Shell and shared | 203 | 153 |
