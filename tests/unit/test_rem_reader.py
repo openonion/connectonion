@@ -3659,7 +3659,8 @@ def test_agenda_counts_the_calendars_it_read_and_left_out_in_a_sentence():
             {'name': 'Saved before #3087', 'at': '2026-11-15T02:30:00Z'}]
     result = _run_reader_js(translations + _reader_function('agT') + _reader_function('agendaCalendars') + _reader_function('agendaRead')
         + '\nuiLanguage = "en"; const REM = {calendar: ' + json.dumps({'read': read, 'errors': [], 'events': [event]}) + '};'
-        + r'''const el = (tag, attrs) => ({tag, ...attrs});
+        + r'''const el = (tag, attrs, children = []) => ({tag, ...attrs, text: children.filter(child => typeof child === "string").join("")});
+        const agendaWeather = () => "";  // no forecast saved: the line is the calendars' alone
         console.log(JSON.stringify(agendaRead()));''')
     assert result['text'] == ('Google Calendar: 2 own calendars read; 2 left out (1 shared as free/busy, 1 not ticked in Google Calendar). '
                               'Outlook: 0 own calendars read; 1 left out (1 shared read-only).')
