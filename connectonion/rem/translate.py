@@ -38,6 +38,11 @@ MARKERS = ("Unknown", "None as of", "Nothing open as of", "Now:", "Changed:", "A
 STAMP = re.compile(r"^Investigation:[^\n]*$", re.M)
 SOURCE_SECTIONS = re.compile(r"^#{2,3} Sources[^\n]*\n([\s\S]*?)(?=^#{1,3} |^Investigation:|\Z)", re.M | re.I)
 PRESERVED = re.compile(r"<!-- co rem preserve \d+ -->")
+# Pages one native translation turn translates (#3099). The rc20 night ran 87 one-page
+# turns: about 20 s, 96K input and 21K fresh tokens a page, 9 of 9 and then 87 of 87
+# accepted first try, while 44.7K of each turn's first request is the harness and its
+# instructions. Eight pages pay that once, and a turn's context stays near 150K.
+BATCH = 8
 
 
 def digest(text: str) -> str:
@@ -91,13 +96,18 @@ def cached_languages(root: Path, record: str) -> dict[str, str]:
 
 
 def prompt(language: str, quotes=(), terms=(), names=()) -> str:
+    return ("Translate page.md, a Markdown notebook page, into the language tagged "
+            f"`{language}` and write the result to translation.md in this folder. Do not edit "
+            "page.md and do not read anything else. " + _rules(language, quotes, terms, names))
+
+
+def _rules(language: str, quotes=(), terms=(), names=()) -> str:
+    """What every translation keeps, for one page (`prompt`) or a batch (`prepare_batch`)."""
     from .runner import language_rules
     # Named one by one: told only the rule, the model still translated “zero-risk things”.
     keep = "".join(f"\n- {quote}" for quote in dict.fromkeys(quotes))
     keep_names = "".join(f"\n- {name}" for name in dict.fromkeys(names))
-    return ("Translate page.md, a Markdown notebook page, into the language tagged "
-            f"`{language}` and write the result to translation.md in this folder. Do not edit "
-            "page.md and do not read anything else. Translate the prose only: add nothing, drop "
+    return ("Translate the prose only: add nothing, drop "
             "nothing, keep every line's Markdown, every link target and every source id like [3] "
             "where it is. Keep every amount, number and currency symbol exactly as written "
             "(`$50,000`, `A$1,200`, `¥300`); never convert or name a currency the original doesn't name. "
@@ -232,6 +242,50 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
         run.update(finished_at=now().isoformat(), seconds=round(monotonic() - started, 3))
         write_json(state_path(root, f"runs/{run['id']}.json"), run)
         shutil.rmtree(workspace)
+
+
+def prepare_batch(root, records, language, *, directory):
+    """One native turn for several pages: each in pages/pN/ with its constraints, each answer
+    in translations/pN.md, each checked and accepted on its own (`check_batch`)."""
+    (directory / "translations").mkdir(parents=True, exist_ok=True)
+    pages = []
+    for number, record in enumerate(records, 1):
+        folder = directory / "pages" / f"p{number}"
+        folder.mkdir(parents=True, exist_ok=True)
+        page = prepare(root, record, language, directory=folder, native=True)
+        pages.append({**page, "id": f"p{number}", "candidate": str(directory / "translations" / f"p{number}.md")})
+    listed = "\n".join(f"- {page['id']}: pages/{page['id']}/page.md -> translations/{page['id']}.md"
+                       + (" (keep every <!-- co rem preserve N --> marker exactly once in its place)"
+                          if page["protected_sections"] else "") for page in pages)
+    instruction = (f"Translate {len(pages)} pages into the language tagged `{language}`, each on its own. "
+                   "For each, read its page.md and the "
+                   "translation-constraints.json beside it (exact quotes, terms and names to preserve), and "
+                   "write its translation to the file named below; do not edit the pages and read nothing "
+                   "else. Each page is checked on its own: one that fails does not hold back the others.\n"
+                   + listed + "\nFor every page: " + _rules(language))
+    return {"root": str(root), "language": language, "directory": str(directory), "pages": pages,
+            "records": list(records), "before": {page["record"]: page["before"][page["record"]] for page in pages},
+            "candidate": pages[0]["candidate"], "prompt": instruction}
+
+
+def check_batch(task, output):
+    """{"translated": records cached, "refused": {record: why}}. Raises only when no page passed."""
+    import json
+    answers = json.loads(output["result"] or "{}")
+    translated, refused = [], {}
+    for page in task["pages"]:
+        if not (answers.get(page["id"]) or "").strip():
+            refused[page["record"]] = f"no translation was written to translations/{page['id']}.md"
+            continue
+        try:
+            check(page, {"result": answers[page["id"]]})
+            translated.append(page["record"])
+        except RemError as error:
+            refused[page["record"]] = str(error)
+    if not translated:
+        ids = {page["record"]: page["id"] for page in task["pages"]}
+        raise RemError("No page of the batch passed: " + "; ".join(f"{ids[record]}: {why}" for record, why in refused.items()))
+    return {"translated": translated, "refused": refused}
 
 
 def prepare(root, record, language, *, directory, text=None, native=False):

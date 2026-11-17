@@ -1942,8 +1942,10 @@ def _translation_task(root):
 @pytest.fixture
 def translation_round(trial, monkeypatch):
     from datetime import timezone
-    from connectonion.rem import native_round
+    from connectonion.rem import native_round, translate
     from connectonion.rem.config import set_config
+    # These follow one page through its task; batches of pages have their own tests (#3099).
+    monkeypatch.setattr(translate, 'BATCH', 1)
     set_config(trial, ['languages', 'zh', 'schedule.timezone', 'UTC', 'schedule.times', '03:00,04:00'])
     moment = datetime(2026, 11, 5, 3, tzinfo=timezone.utc)
     monkeypatch.setattr(service, 'now', lambda: moment)
@@ -2114,7 +2116,9 @@ def _extraction_task(root):
 
 
 @pytest.mark.parametrize('handler', ['extract', 'translate', 'sessions'])
-def test_unrelated_lookup_edits_do_not_invalidate_non_page_tasks(trial, handler):
+def test_unrelated_lookup_edits_do_not_invalidate_non_page_tasks(trial, handler, monkeypatch):
+    from connectonion.rem import translate
+    monkeypatch.setattr(translate, 'BATCH', 1)  # the stubs below would join a batch as its pages
     book = Notebook(trial)
     book.stub_person('people/morgan.md', 'Morgan Vale', [], email='morgan@example.test')
     book.stub_org('orgs/cedar.md', 'Cedar Labs', [])
@@ -2939,3 +2943,50 @@ def test_a_restored_page_is_not_parked_for_a_source_no_sentence_of_the_old_page_
     assert result['outcome'] == 'accepted', result
     page = book.read(record)
     assert 'Avery Lin runs the pilot.' in page and OLD_SOURCE in page.partition('## Sources')[2]
+
+
+def _three_waiting(trial, texts):
+    from connectonion.rem import native_round
+    from connectonion.rem.config import set_config
+    set_config(trial, ['languages', 'zh'])
+    records = list(texts)
+    for record, text in texts.items():
+        Notebook(trial).write(record, text)
+    with maintenance_lock(trial):
+        cursor = native_round.prepare(trial, read_config(trial), scheduled=False)
+        cursor.update(changed=records, jobs=[], summaries=[], same_left=0)
+        write_json(state_path(trial, 'round.json'), cursor)
+    return records
+
+
+def test_one_translation_turn_translates_several_pages_and_accepts_each_on_its_own(trial):
+    """#3099: the rc20 night ran 87 one-page translation turns, each paying the harness and its
+    instructions again. A turn now takes up to translate.BATCH pages; a page whose translation
+    fails its checks is left for a later round, and the others are kept."""
+    from connectonion.rem import translate
+    texts = {f'notes/{name}.md': f'# {name.title()}\n\n## Notes\n\nRead the {name} notes.\n'
+             for name in ('launch', 'pilot', 'review')}
+    records = _three_waiting(trial, texts)
+    task = native.next_task(trial)
+    pages = task_pages = read_json(Path(task['material']) / 'task.json', {})['task']['pages']
+    assert task['stage'] == 'translate' and sorted(page['record'] for page in pages) == sorted(records)
+    assert all(f"pages/{page['id']}/page.md -> translations/{page['id']}.md" in task['instructions'] for page in pages)
+    good, bad = task_pages[:2], task_pages[2]
+    for page in good:
+        Path(page['candidate']).write_text(page['prose'].replace('Read the', '阅读'))
+    Path(bad['candidate']).write_text(bad['prose'].replace('## Notes\n', ''))   # a heading dropped
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+    assert [translate.cached(trial, page['record'], 'zh') is not None for page in task_pages] == [True, True, False]
+    cursor = read_json(state_path(trial, 'round.json'), {})
+    assert cursor['translated'] == 2 and sorted(record for _, record in cursor['translation_attempts']) == sorted(records)
+    following = native.next_task(trial)
+    assert following.get('stage') != 'translate', 'the refused page waits for the next round'
+
+
+def test_a_translation_batch_with_no_page_that_passes_is_refused_for_repair(trial):
+    texts = {f'notes/{name}.md': f'# {name.title()}\n\n## Notes\n\nRead the {name} notes.\n' for name in ('launch', 'pilot')}
+    _three_waiting(trial, texts)
+    task = native.next_task(trial)
+    result = native.submit(trial, task['id'])
+    assert result['outcome'] == 'refused', result
+    assert 'No page of the batch passed: p1: no translation was written' in result['reason']

@@ -599,11 +599,13 @@ def prepare_translation(root, cursor, config, directory):
         if language.split("-")[0].lower() == "en":
             continue
         attempted = cursor.get("translation_attempts", [])
-        for record in translate.backlog(root, language, changed=cursor["changed"], shown=cursor["shown_today"]):
-            if [language, record] in attempted:
-                continue
-            task = translate.prepare(root, record, language, directory=directory, native=True)
-            return _task("translate", task, cursor, stage="translate", record=record)
+        room = min(translate.BATCH, config["limits"]["translations_per_round"] - len(cursor.get("translations", [])))
+        records = [record for record in translate.backlog(root, language, changed=cursor["changed"],
+                                                          shown=cursor["shown_today"])
+                   if [language, record] not in attempted][:room]
+        if records:
+            task = translate.prepare_batch(root, records, language, directory=directory)
+            return _task("translate", task, cursor, stage="translate", record=records[0] if len(records) == 1 else "")
     return None
 
 
@@ -909,7 +911,10 @@ def check_task(root, task, output):
     if handler == "inquiry":
         from . import inquiry
         return {"value": inquiry.check(prepared, output)}
-    if handler == "translate":
+    if handler == "translate" and "pages" in prepared:
+        result = translate.check_batch(prepared, output)
+        return {"translated_records": result["translated"], "refused_pages": result["refused"]}
+    if handler == "translate":  # a one-page task prepared before batches (#3099)
         translate.check(prepared, output)
         return {}
     if handler == "tag":
@@ -1185,9 +1190,12 @@ def advance(root, cursor, task, result):
     elif operation == "tag":
         cursor["tagged"] = cursor.get("tagged", 0) + result.get("tagged", 0)
     elif operation == "translate":
-        cursor["translations"].append(task["record"])
-        cursor.setdefault("translation_attempts", []).append([task["task"]["language"], task["record"]])
+        # A page the batch's review refused is set aside for this round like a parked one-page task;
+        # the backlog offers it again in the next round.
+        records = task["task"].get("records") or [task["record"]]
+        cursor["translations"] += records
+        cursor.setdefault("translation_attempts", []).extend([task["task"]["language"], record] for record in records)
         if not result.get("discarded"):
-            cursor["translated"] += 1
+            cursor["translated"] += len(result.get("translated_records", records))
     cursor["pending"] = None
     write_json(state_path(root, "round.json"), cursor)

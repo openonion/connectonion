@@ -493,11 +493,11 @@ def test_translation_tail_still_runs_after_daily_call_cap(book, model, monkeypat
     def run(directory, prompt, config, stage, **options):
         if stage != 'translate':
             return original(directory, prompt, config, stage, **options)
-        task = read_json(directory / 'task.json', {})
-        prepared = task['task']
-        translated.append(task['record'])
-        Path(prepared['candidate']).write_text(prepared['prose'])
-        return {'result': prepared['prose']}
+        prepared = read_json(directory / 'task.json', {})['task']
+        for page in prepared['pages']:  # a batch of pages a turn (#3099)
+            translated.append(page['record'])
+            Path(page['candidate']).write_text(page['prose'])
+        return {'result': ''}
 
     monkeypatch.setattr(runner, 'run_task', run)
     result = invoke(book)

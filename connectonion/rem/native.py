@@ -987,7 +987,14 @@ def _submission_output(task):
     outputs = {candidate, Path(task["task"]["candidate"] or task["task"].get("task_root", candidate))}
     if any(path.is_symlink() or path.is_file() and path.stat().st_size > 1_000_000 for path in outputs):
         raise RemError("Output must be a regular file within the one-megabyte limit")
-    if task["handler"] in ("sessions", "translate", "same-person", "draft", "tag"):
+    if task["handler"] == "translate" and task["task"].get("pages"):
+        # One answer file a page; a missing one refuses that page alone (translate.check_batch).
+        files = {page["id"]: Path(page["candidate"]) for page in task["task"]["pages"]}
+        if any(path.is_symlink() or path.is_file() and path.stat().st_size > 1_000_000 for path in files.values()):
+            raise RemError("Output must be a regular file within the one-megabyte limit")
+        output["result"] = json.dumps({key: path.read_text(encoding="utf-8") if path.is_file() else ""
+                                       for key, path in files.items()}, ensure_ascii=False)
+    elif task["handler"] in ("sessions", "translate", "same-person", "draft", "tag"):
         if not candidate.is_file():
             raise RemError(f"Write the output file: {candidate}")
         output["result"] = (json.dumps(read_json(candidate, None), ensure_ascii=False) if candidate.suffix == ".json"

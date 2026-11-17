@@ -27,6 +27,10 @@ def waiting_pages(monkeypatch, pages=PAGES):
     monkeypatch.setattr(translate, 'shown_today', lambda root: [])
     monkeypatch.setattr(translate, 'backlog', lambda root, language, **k: [page for page in pages if page not in done])
     monkeypatch.setattr(translate, 'prepare', lambda root, record, language, **k: {'language': language})
+    # These count a round's bounds in pages: one page a turn keeps turns and pages equal.
+    monkeypatch.setattr(translate, 'BATCH', 1)
+    monkeypatch.setattr(translate, 'prepare_batch', lambda root, records, language, **k: {
+        'language': language, 'records': records})
     return done
 
 
