@@ -59,10 +59,12 @@
     --w-bold: 600;
     --lh-tight: 1.05;
     --lh-body: 1.55;
+    --lh-read: 1.75; /* long text read from top to bottom: room for Chinese */
     --track-display: -0.035em;
 
     /* grid */
     --measure: 720px;
+    --measure-read: 34em; /* a reading column: about 34 Chinese or 70 Latin characters */
     --gap: 36px;
     --rail: 300px;
     --u1: 4px; --u2: 8px; --u3: 16px; --u4: 24px; --u5: 40px; --u6: 64px;
@@ -2788,6 +2790,71 @@
   .gx-time-ends span:nth-child(2) { color: var(--grey); text-align: center; }
   .gx-prose { margin-top: 12px; color: var(--grey); }
   .gx-prose ul { margin: 0; padding-left: 18px; }
+  /* ---- an entry: knowledge, a decision, a principle, set like a reference-book article (#3097) ---- */
+  .entry.gx-topic { max-width: 880px; }
+  .entry .gx-topic-name { align-items: flex-start; gap: var(--u3); }
+  .entry .gx-topic-name .gx-glyph { flex: none; margin-top: 10px; }
+  .entry .gx-statement { font: var(--w-bold) var(--s-display)/1.14 var(--font); letter-spacing: var(--track-display); text-wrap: balance; }
+  .entry :is(.entry-aka, .entry-meta, .entry-counts, .gx-lede) { margin-top: var(--u2); color: var(--grey); font-size: var(--s-ui); line-height: 20px; }
+  .entry .entry-aka { margin-top: var(--u3); }
+  .entry-meta a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .entry-meta a:hover { color: var(--ink); }
+  .entry .gx-grid { grid-template-columns: minmax(0, var(--measure-read)) 260px; justify-content: space-between; gap: var(--u5); margin-top: var(--u5); font-size: var(--s-body); }
+  .entry .gx-grid.no-rail { grid-template-columns: minmax(0, var(--measure-read)); }
+  /* The text: body size, a line-height that suits Chinese, about 34 Chinese or 70 Latin characters a line. */
+  .entry-text.note { max-width: none; font: var(--s-body)/var(--lh-read) var(--font); color: var(--ink); }
+  .entry-text p { margin: 0 0 var(--u3); }
+  .entry-text > .entry-sec > :last-child { margin-bottom: 0; }
+  /* A heading belongs to what follows it: five times the room above that it has below. */
+  .entry-sec > h2 { margin: var(--u5) 0 var(--u2); font: var(--w-bold) var(--s-head)/1.3 var(--font); letter-spacing: -.02em; text-wrap: balance; scroll-margin-top: var(--u4); }
+  .entry-sec:first-child > h2:first-child { margin-top: 0; }
+  .entry-text h3 { margin: var(--u4) 0 var(--u1); font: var(--w-bold) var(--s-body)/1.5 var(--font); }
+  .entry-text :is(ul, ol) { margin: 0 0 var(--u3); padding-left: 1.3em; }
+  .entry-text li { margin: 6px 0; padding-left: 2px; }
+  /* The owner's own words: a quiet ruled block, in ink. */
+  .entry-text blockquote { margin: calc(-1 * var(--u2)) 0 var(--u3); padding: 2px 0 2px var(--u3); border-left: var(--rule-heavy) solid var(--ink); background: none; font: inherit; }
+  .entry-text blockquote p { margin: 0; }
+  .entry-text blockquote .said { text-decoration: none; background: none; }
+  .entry-text :not(p) + blockquote, .entry-text blockquote:first-child { margin-top: 0; }
+  /* A citation is a raised number; its tooltip says the source in words. */
+  .entry .cite { top: 0; border: 0; background: none; padding: 0 1px; margin: 0 0 0 1px; color: var(--grey); }
+  .entry .cite :is(.cite-full, .cite-short) { display: none; }
+  .entry .cite .cite-number { display: inline; font: var(--w-regular) var(--s-meta)/0 var(--font); vertical-align: super; font-variant-numeric: tabular-nums; }
+  .entry .cite:hover, .entry .cite:focus-visible { color: var(--ink); background: none; }
+  .entry .cite.flash, .entry-sources li.flash { background: var(--well); border-radius: var(--r-cell); outline: var(--u1) solid var(--well); }
+  /* Drawn from: the notebook pages a section rests on. An inset, so it is never read as evidence. */
+  .entry-drawn { display: block; margin: var(--u3) 0 0; padding: 12px var(--u3) 10px; border-radius: var(--radius); background: var(--well); font-size: var(--s-ui); line-height: 20px; }
+  .entry-label { display: block; margin-bottom: var(--u1); color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
+  .entry-text .entry-drawn ul { list-style: none; margin: 0; padding: 0; }
+  .entry-text .entry-drawn li { margin: 0; padding: 3px 0; color: var(--grey); }
+  .entry-drawn a { color: var(--ink); font-weight: var(--w-bold); text-decoration: underline; text-decoration-color: var(--pencil); text-underline-offset: 3px; }
+  .entry-drawn a:hover { text-decoration-color: var(--ink); }
+  .entry .gx-main > .gx-sec, .entry-missing { margin-top: var(--u5); }
+  .entry-missing { color: var(--grey); font-size: var(--s-ui); line-height: 20px; }
+  /* Sources: once, last, set small like the notes at the end of an article. */
+  .entry-sources { margin-top: var(--u6); padding-top: 12px; border-top: 1.5px solid var(--ink); }
+  .entry-sources-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
+  .entry-sources h2 { font: var(--w-bold) var(--s-body)/27px var(--font); scroll-margin-top: var(--u4); }
+  .entry .entry-ids { min-height: 32px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--s-meta)/18px var(--font); cursor: pointer; }
+  .entry .entry-ids:hover { color: var(--ink); text-decoration: underline; }
+  .entry-sources ol { list-style: none; margin: var(--u1) 0 0; padding: 0; color: var(--grey); font-size: var(--s-ui); line-height: 20px; }
+  .entry-sources li { display: grid; grid-template-columns: 28px minmax(0, 1fr); padding: 5px 0; scroll-margin-top: var(--u4); }
+  .entry-n { font-variant-numeric: tabular-nums; }
+  .entry-what { color: var(--ink); }
+  .entry-what a:not(.entry-back):hover { text-decoration: underline; text-underline-offset: 3px; }
+  .entry-back { margin-left: var(--u2); color: var(--grey); text-decoration: none; }
+  .entry-back:hover { color: var(--ink); }
+  .entry-id { display: none; grid-column: 2; padding: 0; background: none; color: var(--grey); font: var(--s-meta)/18px var(--mono); overflow-wrap: anywhere; }
+  .entry-sources.show-ids .entry-id { display: block; }
+  .entry .page-foot { max-width: none; margin-top: var(--u5); }
+  .entry .page-foot :is(.btn-action, .eyebrow-path) { font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); padding: 4px 10px; overflow-wrap: anywhere; text-align: left; }
+  .entry .page-foot :is(.btn-action, .eyebrow-path):hover { color: var(--ink); }
+  @media (max-width: 720px) {
+    .entry .gx-statement { font-size: var(--s-head); line-height: 1.3; letter-spacing: -.02em; }
+    .entry .gx-topic-name .gx-glyph { margin-top: 4px; }
+    .entry-sec > h2 { font-size: var(--s-body); line-height: 1.5; letter-spacing: 0; }
+    .entry .gx-grid, .entry .gx-grid.no-rail { grid-template-columns: minmax(0, 1fr); margin-top: var(--u4); }
+  }
   .gx-rail { display: flex; flex-direction: column; gap: 0; }
   .gx-rail h4, .gx-attach h4 { font-size: var(--s-meta); line-height: 18px; font-weight: var(--w-bold); color: var(--grey); margin: 28px 0 8px; }
   .gx-rail > :first-child h4, .gx-attach > :first-child h4 { margin-top: 0; }
@@ -6064,10 +6131,10 @@ function rawSection(r, name) {
   return m ? m[1].trim() : "";
 }
 function sourceList(r) {
+  // An entry's Sources blocks are gathered into one list, numbered as its page shows them (#3097).
+  if (["knowledge", "decisions", "principles"].includes(r.category)) return entryOf(r).sources;
   const out = [];
-  const sections = r.category === "knowledge"
-    ? [...r.text.replace(COMMENT, "").matchAll(/^#{2,3} Sources[^\n]*\n([\s\S]*?)(?=^#{1,3} |^Investigation:|(?![\s\S]))/gmi)].map(m => m[1]).join("\n")
-    : rawSection(r, "Sources");
+  const sections = rawSection(r, "Sources");
   const sources = sections.replace(/^([ \t]*)(\d{1,3})\.[ \t]+/gm, "$1- $2. ");
   for (const item of listItems(sources)) {
     const m = /^(?:[\[［](W?\d{1,3})[\]］]|(\d{1,3})\.)\s*(.*)$/.exec(item);
@@ -12329,6 +12396,8 @@ function record(path, heading) {
   const person = r.category === "people" && r.path !== REM.owner;
   const disclosed = person || ["projects", "orgs", "skills", "decisions"].includes(r.category);
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
+  // A knowledge entry, a decision and a principle are one reading with their notes last (#3097): no focus block, no Full memory.
+  if (ENTRY_KINDS.has(r.category)) { main.appendChild(entryPage(r)); entryReveal(heading); return; }
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
@@ -12338,8 +12407,7 @@ function record(path, heading) {
     main.appendChild(orgPage(r));
     fitNames();
     if (orgHidden(r)) return;
-  } else if (r.category === "knowledge") main.appendChild(topicPage(r));
-  else {
+  } else {
     main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
     main.appendChild(recordEyebrow(r, person));
     if (r.category === "projects") head.appendChild(projectStateLine(r));
@@ -13275,19 +13343,6 @@ function topicLinks(r) {
   return el("section", { class: "gx-sec" }, [el("h2", {}, [graphT("Linked here"), el("span", { text: String(rows.length) })]),
     ...groups.map(([k, list]) => topicGroup(k, list, aliases)), quiet]);
 }
-function topicHead(r) {
-  const topic = r.topic || {}, rows = topicRows(r), what = topicKnown(r, "what it is") || abstractKnowledge(r).replace(/^#{1,3} .*$/gm, "").trim(), first = rows.map(row => row.date).filter(Boolean).sort()[0];
-  const sub = what ? plainLine(what).split(/(?<=[.。!?！？])\s*/)[0]
-    : first ? graphT("REM has not written this page yet · named in {n} records since {date}", { n: rows.length, date: fmtDate(first) })
-    : graphT("REM has not written this page yet");
-  const count = kind => rows.filter(row => row.n.k === kind).length;
-  const stats = [[count("people"), "people"], [count("orgs"), "orgs"], [count("projects"), "projects"], [topic.sessions || 0, "sessions mention it"]]
-    .map(([n, name]) => el("div", {}, [el("b", { text: String(n) }), el("span", { text: graphT(name) })]));
-  if (topic.last) stats.push(el("div", {}, [el("b", { text: fmtDate(topic.last) }), el("span", { text: graphT("Last mentioned") })]));
-  return el("header", { class: "gx-topic-head" }, [el("a", { class: "gx-crumb", href: "#c=knowledge", text: graphT("Knowledge") }),
-    el("div", { class: "gx-topic-name" }, [graphGlyph("knowledge", 40, r.private), el("h1", { class: "gx-statement", text: topicName(r.title) })]),
-    el("p", { class: "gx-lede", text: sub }), el("div", { class: "gx-stats" }, stats)]);
-}
 // Time as a line: every dated mention is a dot; no labels to read, only where it clusters.
 function topicTimeline(r) {
   const dates = topicRows(r).map(row => row.date).filter(Boolean).sort();
@@ -13305,10 +13360,6 @@ function topicTimeline(r) {
   if (written) parts.push(el("div", { class: "gx-prose", html: markdown(written, r.path) }));
   return el("section", { class: "gx-sec" }, parts);
 }
-function topicProse(r, name, title) {
-  const text = topicKnown(r, name);
-  return text ? el("section", { class: "gx-sec" }, [el("h2", { text: graphT(title) }), el("div", { class: "gx-prose", html: markdown(text, r.path) })]) : null;
-}
 function topicDoubtful(r) {
   const doubtful = (r.topic?.doubtful || []).map(d => ({ ...d, n: GRAPH.byId.get(d.record) })).filter(d => d.n?.r);
   if (!doubtful.length) return null;
@@ -13325,30 +13376,233 @@ function topicRelated(r) {
   return others.length ? [el("h4", { text: graphT("Related knowledge") }), el("ul", { class: "gx-rail-list" }, others.map(({ other, shared }) =>
     el("li", {}, [el("a", { href: href(other) }, [graphGlyph("knowledge", 12, other.private), topicName(other.title)]), el("small", { text: graphT("{n} shared records", { n: shared }) })])))] : [];
 }
-function topicAbout(r) {
-  const topic = r.topic || {}, aliases = topicAliases(r).slice(1);
-  const rows = [aliases.length ? ["Aliases", aliases.join(" · ")] : null, topic.first ? ["First mentioned", fmtDate(topic.first)] : null, topic.last ? ["Last mentioned", fmtDate(topic.last)] : null].filter(Boolean);
-  return rows.length ? [el("h4", { text: graphT("About") }), el("dl", { class: "gx-kv" }, rows.flatMap(([k, v]) => [el("dt", { text: graphT(k) }), el("dd", { text: v })]))] : [];
-}
 function topicUnsure(r) {
   const items = listItems(section(r, "uncertainties")?.text || "").map(line => plainLine(line)).filter(line => line && !/^Unknown\b/.test(line)).slice(0, 2);
   return items.length ? [el("h4", { text: graphT("REM is not sure") }), el("ul", { class: "gx-rail-list" }, items.map(item => el("li", { text: item })))] : [];
 }
-function abstractKnowledge(r) {
-  let text = r.text.replace(COMMENT, "");
-  if (!/^#{2,3} Drawn from\s*$/m.test(text)) return "";
-  if (!/^## Drawn from\s*$/m.test(text))
-    text = text.split(/(?=^## )/m).filter(part => /^### Drawn from\s*$/m.test(part)).join("\n");
-  return text.replace(/^# [^\n]*\n/, "").replace(/^Investigation:[^\n]*$/gm, "")
-    .replace(/^#{2,3} Sources[^\n]*\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/gmi, "").trim();
+// ---------- an entry: a knowledge page, a decision, a principle (#3097) ----------
+// One reading, like a reference-book article: the title, the page's own text once, its notes at the end. The owner
+// saw a knowledge entry printed twice (a top block whose "summary" fell back to the whole body, then Full memory
+// with the same text), a Sources list after every section, and identifiers where a sentence should be.
+const ENTRY_KINDS = new Set(["knowledge", "decisions", "principles"]);
+const ENTRY_ZH = {
+  "Drawn from your notebook": "出自你的笔记", "Show identifiers": "显示标识符", "Hide identifiers": "收起标识符",
+  "Coding session": "编码会话", "Mail from {who}": "{who}的邮件", "Mail": "邮件", "WhatsApp from {who}": "{who}的 WhatsApp 消息",
+  "WhatsApp message": "WhatsApp 消息", "Back to where the text cites this": "回到正文引用的地方", "Also known as {names}": "又名 {names}",
+  "Updated {date}": "更新于 {date}", "{n} sources": "{n} 个来源", "1 source": "1 个来源", "Why": "为什么", "What it cost": "代价",
+  "Linked from {list}": "{list}链接到这里", "{n} people": "{n} 个人", "1 person": "1 个人", "{n} organisations": "{n} 个组织",
+  "1 organisation": "1 个组织", "{n} projects": "{n} 个项目", "1 project": "1 个项目", "named in {n} sessions": "{n} 个会话提到它",
+  "named in 1 session": "1 个会话提到它", "last mentioned {date}": "最近一次提到是 {date}", "Still unknown: {names}": "还不知道：{names}",
+  "On this page": "本页内容"
+};
+function entryT(key, values = {}) {
+  const words = uiLanguage === "zh" && ENTRY_ZH[key] || t(key);
+  return words.replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
-function topicPage(r) {
+// The page as written, cut into what a reader sees apart: the text by section, the pages each section is drawn
+// from, and every Sources block (at either heading level) with the stretch of text it defines numbers for.
+function entryParse(body) {
+  const sections = [{ title: "", lines: [], drawn: [] }], scopes = [[]], aka = [];
+  let mode = "text";
+  for (const line of body.split("\n")) {
+    const head = /^(#{2,3})\s+(.*?)\s*$/.exec(line), name = (head ? head[2] : line).trim().toLowerCase();
+    const item = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line);
+    const alias = !head && sections.length === 1 && /^\s*-?\s*(?:also known as|aka|别名)[:：]\s*(.*)$/i.exec(line);
+    const next = head && /^(?:sources?|来源)$/.test(name) ? "sources" : (head ? name === "drawn from" : /^drawn from[:：]$/.test(name)) ? "drawn"
+      : head?.[1].length === 2 ? "section" : alias ? "alias" : !line.trim() && mode !== "text" ? mode
+      : mode === "sources" && !head ? "source" : mode === "drawn" && item ? "link" : "text";
+    // Text after a Sources block starts a new stretch: its marks belong to the next block.
+    if (mode === "sources" && !["sources", "source"].includes(next) && scopes.at(-1).length) scopes.push([]);
+    if (next === "section") sections.push({ title: head[2], lines: [], drawn: [] });
+    else if (next === "alias") aka.push(...alias[1].split(/\s*[;；]\s*/).filter(Boolean));
+    else if (next === "source") scopes.at(-1).push(line.trim());
+    else if (next === "link") sections.at(-1).drawn.push(item[1].trim());
+    else if (next === "text") sections.at(-1).lines.push({ text: line, scope: scopes.length - 1 });
+    mode = next === "source" ? "sources" : next === "link" ? "drawn" : ["section", "alias"].includes(next) ? (next === "section" ? "text" : mode) : next;
+  }
+  return { sections, scopes, aka };
+}
+// One list for the whole page. A page with a single Sources block keeps the numbers it was written with, so the
+// page and Copy Markdown agree; with several, the list is numbered again in reading order and a source that two
+// sections cite is listed once. Lines without a number are kept as unnumbered notes.
+function entryNumbers(scopes) {
+  const keep = scopes.filter(defs => defs.length).length < 2, sources = [], notes = [], seen = new Map();
+  const maps = scopes.map(defs => {
+    const map = new Map();
+    for (const line of defs) {
+      const m = /^(?:[-*+]\s+)?(?:[\[［](W?\d{1,3})[\]］]|(\d{1,3})[.)])\s*(.*)$/.exec(line);
+      if (!m) { notes.push(line.replace(/^[-*+]\s+/, "")); continue; }
+      const old = m[1] || m[2], text = m[2] ? m[3] : m[3].replace(/[*`]/g, ""), key = sourceId(text, !!m[2]) || text;
+      if (map.has(old)) continue;
+      const n = keep ? old : seen.get(key) || String(sources.length + 1);
+      if (keep || !seen.has(key)) sources.push({ n, text, ...(m[2] ? { plain: true } : {}) });
+      seen.set(key, n); map.set(old, n);
+    }
+    return map;
+  });
+  return { maps, sources, notes };
+}
+function entryModel(body) {
+  const { sections, scopes, aka } = entryParse(body), { maps, sources, notes } = entryNumbers(scopes);
+  // A mark is defined by its own stretch's Sources; text with no Sources of its own reads the nearest definition.
+  // A number nothing defines stays as words: it must never borrow another source's number.
+  const number = (scope, old) => maps[scope].size ? maps[scope].get(old) : maps.findLast(map => map.has(old))?.get(old);
+  const line = ({ text, scope }) => {
+    const marked = text.replace(/[\[［](W?\d{1,3})[\]］]/g, (m, old) => "[" + (number(scope, old) || old + "​") + "]");
+    // A line that is wholly the owner's quoted words (and its marks) is set as a quote.
+    return /^\s*[“「][^\n]*[”」]\s*(?:\[[^\]]+\]\s*)*$/.test(marked) ? "\n> " + marked.trim() + "\n" : marked;
+  };
+  const read = sections.map(s => ({ title: s.title, text: s.lines.map(line).join("\n").trim(), drawn: s.drawn }));
+  return { aka, sections: read.filter(s => s.text || s.drawn.length), sources, notes };
+}
+// What the reader shows of a page: unknown lines, the stamp and tool markers are already out (known()).
+function entryBody(r) {
+  const k = known(r);
+  return [k.intro, ...k.kept.map(s => "## " + s.title + "\n" + s.text)].join("\n\n");
+}
+const ENTRY = new WeakMap();
+function entryOf(r) {
+  const held = ENTRY.get(r);
+  if (held?.text === r.text) return held.model;
+  const model = entryModel(entryBody(r));
+  ENTRY.set(r, { text: r.text, model });
+  return model;
+}
+// A source in words: what it is, who it is from, when. The identifier stays behind the row.
+function entrySourceWords(source) {
+  const id = sourceId(source.text, source.plain), context = (REM.source_context || {})[id], kind = (context?.source || id.split(":")[0]).toLowerCase();
+  const day = context?.time ? calendarDay(context.time) : /\d{4}-\d{2}-\d{2}/.exec(source.text)?.[0];
+  const who = context ? sourceSender(context) : "";
+  const what = /^(?:codex|claude)/.test(kind) ? entryT("Coding session") : /^(?:gmail|outlook)/.test(kind) ? entryT(who ? "Mail from {who}" : "Mail", { who })
+    : kind === "whatsapp" ? entryT(who ? "WhatsApp from {who}" : "WhatsApp message", { who }) : id ? sourceChannel(kind) : source.text;
+  return [what, day ? calendarDate(day) : ""].filter(Boolean).join(uiLanguage === "zh" ? "，" : ", ");
+}
+function entrySourceRow(r, source, refs) {
+  const origin = safeHref(r.path, "../" + (/originating page:\s*([\w./-]+\.md)/.exec(source.text)?.[1] || "")), words = entrySourceWords(source);
+  const backs = (refs.get(source.n) || []).map(id => el("a", { class: "entry-back", href: href(r) + "&h=" + id, "aria-label": entryT("Back to where the text cites this"), text: "↩" }));
+  return el("li", { ...(source.n ? { id: "src-" + source.n.toLowerCase() } : {}), title: source.text }, [el("span", { class: "entry-n", text: source.n || "·" }),
+    el("span", { class: "entry-what" }, [origin && byPath(decodeURIComponent(origin.href.slice(3))) ? el("a", { href: origin.href, text: words }) : words, ...backs]),
+    el("code", { class: "entry-id", text: source.text })]);
+}
+// Sources once, last: one list for every section, each row in words, back-links to the marks that cite it.
+function entrySources(r, model, refs) {
+  const trailer = model.sources.length ? [] : splitTrailers(r.text).sources.split(/,\s*/).filter(Boolean);
+  const rows = [...model.sources, ...[...model.notes, ...trailer].map(text => ({ n: "", text }))];
+  if (!rows.length) return null;
+  const out = el("section", { class: "entry-sources" }), ids = el("button", { type: "button", class: "entry-ids", "aria-pressed": "false", text: entryT("Show identifiers") });
+  ids.onclick = () => {
+    const shown = out.classList.toggle("show-ids");
+    ids.setAttribute("aria-pressed", String(shown));
+    ids.textContent = entryT(shown ? "Hide identifiers" : "Show identifiers");
+  };
+  out.append(el("div", { class: "entry-sources-head" }, [el("h2", { id: "sources", text: t("Sources") }), ids]), el("ol", {}, rows.map(source => entrySourceRow(r, source, refs))));
+  return out;
+}
+// Marks are raised numbers; a run of marks is written out so each one reaches its own note, and every mark has
+// an address its note can link back to.
+function entryMarks(r, box) {
+  for (const run of box.querySelectorAll("a.cite.run")) run.outerHTML = run.dataset.sources.split(" ").map(n => citeChip(n, r.path)).join("");
+  const refs = new Map();
+  for (const mark of box.querySelectorAll("a.cite")) {
+    const n = mark.dataset.sources, ids = refs.get(n) || refs.set(n, []).get(n);
+    mark.id = "ref-" + n.toLowerCase() + (ids.length ? "-" + (ids.length + 1) : "");
+    ids.push(mark.id);
+  }
+  return refs;
+}
+// The notebook pages a section rests on: where the learning came from, apart from the evidence under Sources.
+function entryDrawn(r, items, label = "Drawn from your notebook") {
+  return el("aside", { class: "entry-drawn" }, [el("span", { class: "entry-label", text: entryT(label) }),
+    el("ul", {}, items.map(item => el("li", { html: inline(item, r.path) })))]);
+}
+// A date in a sentence reads as a date ("27 Aug"), in the sentence's own language. The owner's quoted words and
+// anything inside a path or a link keep the characters they were written with.
+function entryDates(text) {
+  const day = /(?<![\w/.-])\d{4}-\d{2}-\d{2}(?![\w-]|\.\w)/g;
+  return text.split("\n").map(line => /^\s*>/.test(line) ? line
+    : line.replace(day, found => calendarDate(found, /\p{Script=Han}/u.test(line) ? "zh-CN" : "en-US"))).join("\n");
+}
+function entrySection(r, s, ids) {
+  const out = el("section", { class: "entry-sec" });
+  if (s.title) {
+    const base = s.title.toLowerCase().replace(/[^\p{L}\p{N}_\s-]/gu, "").trim().replace(/\s+/g, "-") || "section";
+    let id = base, n = 1;
+    while (ids.has(id)) id = base + "-" + n++;
+    ids.add(id);
+    out.appendChild(el("h2", { id, html: inline(entryT(s.title), r.path) }));
+  }
+  out.insertAdjacentHTML("beforeend", markdown(entryDates(s.text), r.path));
+  if (s.drawn.length) out.appendChild(entryDrawn(r, s.drawn));
+  return out;
+}
+// What links to a knowledge entry, in words, and only what is above zero: four counters reading 0 said nothing.
+function entryCounts(r) {
+  const rows = topicRows(r), topic = r.topic || {}, count = kind => rows.filter(row => row.n.k === kind).length;
+  const one = (n, single, many) => n ? entryT(n === 1 ? single : many, { n }) : "";
+  const linked = [one(count("people"), "1 person", "{n} people"), one(count("orgs"), "1 organisation", "{n} organisations"), one(count("projects"), "1 project", "{n} projects")].filter(Boolean);
+  const parts = [linked.length ? entryT("Linked from {list}", { list: linked.join(uiLanguage === "zh" ? "、" : ", ") }) : "",
+    one(topic.sessions || 0, "named in 1 session", "named in {n} sessions")].filter(Boolean);
+  if (!parts.length) return null;
+  if (topic.last) parts.push(entryT("last mentioned {date}", { date: fmtDate(topic.last) }));
+  return el("p", { class: "entry-counts", text: capFirst(parts.join(" · ")) });
+}
+function entryHead(r, model, written) {
+  const topic = r.category === "knowledge", title = topic ? topicName(r.title) : r.title, same = text => text.toLowerCase().replace(/\s+/g, "");
+  const aka = [...new Map([...model.aka, ...(r.topic?.aliases || [])].map(name => [same(name), name])).values()].filter(name => same(name) !== same(title) && same(name) !== same(r.title));
+  const first = topic ? topicRows(r).map(row => row.date).filter(Boolean).sort()[0] : "";
+  const unwritten = written ? "" : first ? graphT("REM has not written this page yet · named in {n} records since {date}", { n: topicRows(r).length, date: fmtDate(first) }) : graphT("REM has not written this page yet");
+  const sources = model.sources.length;
+  return el("header", { class: "gx-topic-head" }, [el("a", { class: "gx-crumb", href: categoryHref(r.category), text: categoryName(r.category) }),
+    el("div", { class: "gx-topic-name" }, [topic ? graphGlyph("knowledge", 32, r.private) : null, el("h1", { class: "gx-statement", text: title })]),
+    aka.length ? el("p", { class: "entry-aka", text: entryT("Also known as {names}", { names: aka.join(" · ") }) }) : null,
+    unwritten ? el("p", { class: "gx-lede", text: unwritten }) : null,
+    el("p", { class: "entry-meta" }, [entryT("Updated {date}", { date: fmtDate(r.updated) }),
+      sources ? " · " : null, sources ? el("a", { href: href(r) + "&h=sources", text: entryT(sources === 1 ? "1 source" : "{n} sources", { n: sources }) }) : null]),
+    topic ? entryCounts(r) : null, translationLine(r)]);
+}
+// The side column: this entry's place in the graph and its neighbours. An outline only from four sections up.
+function entryRail(r, text) {
+  const topic = r.category === "knowledge", heads = [...text.querySelectorAll(".entry-sec > h2")];
+  const toc = heads.length >= 4 ? [el("h4", { text: entryT("On this page") }), el("ul", { class: "gx-rail-list toc" }, heads.map(h =>
+    el("li", {}, [el("a", { href: href(r) + "&h=" + encodeURIComponent(h.id), text: h.textContent.trim() })])))] : [];
+  // A page nothing links to has no place in the graph to show: no card saying so.
+  const parts = [graphModel().adj.has(r.path) ? graphLocal(r) : null, ...(topic ? [...topicRelated(r), ...topicUnsure(r)] : []), ...toc].filter(Boolean);
+  return parts.length ? el("aside", { class: "gx-rail", "aria-label": graphT("About") }, parts) : null;
+}
+function entryFoot(r) {
+  const path = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: t("Copy the file path") });
+  path.onclick = () => copyToClipboard(REM.root + "/" + r.path, path, t("Path copied"));
+  const copy = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: t("Copy the page as written, unknowns included") });
+  copy.onclick = () => copyToClipboard(r.text, copy, t("Markdown copied"));
+  return el("div", { class: "page-foot" }, [path, copy, languageBar(r)]);
+}
+// What a knowledge entry gathers besides its own words: the records that link to it, when, and what only shares the
+// word. A page that names its sources under Drawn from does not list the same pages again as "Linked here".
+function entryGathered(r, text, written) {
+  if (r.category !== "knowledge") return [];
+  const drawn = new Set([...text.querySelectorAll(".entry-drawn a")].map(a => a.getAttribute("href")));
+  const more = topicRows(r).some(row => !row.n.r || !drawn.has(href(row.n.r)));
+  return [!written || more ? topicLinks(r) : null, topicTimeline(r), topicDoubtful(r)];
+}
+function entryPage(r) {
   graphModel();
-  const learning = abstractKnowledge(r);
-  const rail = el("aside", { class: "gx-rail", "aria-label": graphT("About") }, [graphLocal(r), ...topicAbout(r), ...topicRelated(r), ...topicUnsure(r)]);
-  return el("div", { class: "gx gx-topic" }, [topicHead(r), el("div", { class: "gx-grid" }, [el("div", { class: "gx-main" }, [
-    learning ? el("section", { class: "gx-sec gx-prose", html: markdown(learning, r.path) }) : null,
-    topicProse(r, "where you stand", "Where you stand"), topicLinks(r), topicTimeline(r), topicProse(r, "open threads", "Open threads"), topicDoubtful(r)]), rail])]);
+  const k = known(r), model = entryOf(r), ids = new Set(["sources"]), related = splitTrailers(r.text).related;
+  const drawnTimeline = r.category === "knowledge" && !!topicTimeline(r);
+  const sections = model.sections.filter(s => !(drawnTimeline && s.title.toLowerCase() === "timeline"));
+  const text = el("div", { class: "entry-text note" }, sections.map(s => entrySection(r, s, ids)));
+  if (related) text.appendChild(entryDrawn(r, [related], "Related"));
+  const refs = entryMarks(r, text), written = model.sections.length > 0;
+  const missing = k.missing.length ? el("p", { class: "entry-missing", text: entryT("Still unknown: {names}", { names: k.missing.map(name => t(name)).join(uiLanguage === "zh" ? "、" : ", ") }) }) : null;
+  const main = el("div", { class: "gx-main" }, [text, ...entryGathered(r, text, written), missing, threadDecisionHistory(r), entrySources(r, model, refs), entryFoot(r)]);
+  const rail = entryRail(r, text);
+  return el("article", { class: "gx gx-topic entry" }, [entryHead(r, model, written), el("div", { class: "gx-grid" + (rail ? "" : " no-rail") }, [main, rail])]);
+}
+// A deep link to a note, a mark or a heading: bring it to the middle of the page and light it briefly.
+function entryReveal(heading) {
+  const target = heading && (document.getElementById(heading) || document.getElementById(heading.toLowerCase()));
+  if (!target) return;
+  target.scrollIntoView({ block: /^(?:src|ref)-/.test(target.id) ? "center" : "start" });
+  if (/^(?:src|ref)-/.test(target.id)) target.classList.add("flash");
 }
 
 // ---------- a local graph for a record's rail: one hop, kind shapes, labels for the few that matter ----------
