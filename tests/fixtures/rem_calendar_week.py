@@ -51,3 +51,19 @@ FILING = """# Harbour filing
 Sources: outlook:aa11 (2026-09-28)
 """
 INVOICE = "# Fernhill invoice\n\n## Status\n2026-09-20 — Send the pilot invoice; due 2026-09-25 [1]\n"
+
+# An invented forecast for the first five days of the week, in Open-Meteo's own answer shape; the last two days
+# have none, so the calendar shows nothing for them.
+FORECAST = {"daily": {"time": [f"2026-10-0{day}" for day in range(1, 6)], "weather_code": [0, 80, 95, 2, 45],
+                      "temperature_2m_max": [22.4, 19.6, 17.2, 21.0, 16.3], "temperature_2m_min": [13.8, 12.1, 11.5, 12.9, 9.4],
+                      "precipitation_probability_max": [5, 70, 90, 20, 10]}}
+PLACE = {"results": [{"name": "Wellington", "latitude": -41.28664, "longitude": 174.77557, "country_code": "NZ"}]}
+
+
+def seed_weather(root, weather, moment=FROZEN):
+    """Save the invented forecast through the night's own code, with Open-Meteo replaced."""
+    real, weather.get_json = weather.get_json, lambda url, params: PLACE if url == weather.PLACES else FORECAST
+    try:
+        return weather.save(root, moment, {"weather": {"place": "Wellington"}, "schedule": {"timezone": "UTC"}})
+    finally:
+        weather.get_json = real

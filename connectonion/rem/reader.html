@@ -2266,6 +2266,10 @@
   .today > .cal-num { background: var(--ink); color: var(--paper); border-radius: var(--r-pill); padding: 0 6px; }
   .cal-today-word { order: 3; font: var(--w-bold) var(--s-meta)/16px var(--font); }
   .cal-head.sel, .cal-cell.sel { box-shadow: var(--e-ink); }
+  .cal-wx { order: 4; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--grey); font: var(--w-regular) var(--s-meta)/16px var(--font); white-space: nowrap; }
+  .cal-wx-ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .cal-wx-words { display: block; color: var(--grey); font-weight: var(--w-regular); font-size: var(--s-meta); }
+  .cal-detail .cal-wx-line { color: var(--grey); }
   .cal-allday { border-top: var(--hair) solid var(--rule); border-bottom: var(--hair) solid var(--rule); grid-auto-rows: 24px; row-gap: 2px; padding: 3px 0; min-height: 32px; }
   .cal-axis-word { grid-column: 1; grid-row: 1; align-self: center; padding-right: 8px; text-align: right; color: var(--grey); font-size: var(--s-meta); }
   .cal-allday-col { border-left: var(--hair) solid var(--rule); margin: -3px 0; }
@@ -2355,7 +2359,8 @@
     .cal-mweek { grid-template-rows: 52px; padding: 0; row-gap: 0; }
     .cal-mweek > :not(.cal-cell) { display: none; }
     .cal-cell { grid-row: 1; margin: 0; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; cursor: pointer; }
-    .cal-cell .cal-today-word { display: none; }
+    .cal-cell .cal-today-word, .cal-cell .cal-wx { display: none; }
+    .cal-jump .cal-wx { margin: 0; }
     .cal-count { display: block; color: var(--grey); font-size: var(--s-meta); line-height: 14px; }
     .cal-daylist { margin-top: 16px; }
   }
@@ -9398,7 +9403,10 @@ const AG_ZH = {
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
   "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开",
-  "{n} items": "{n} 项", "1 item": "1 项", "nothing": "没有安排", "Close": "关闭",
+  "{n} items": "{n} 项", "1 item": "1 项",
+  "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
+  "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
+  "Weather for {place} could not be read on {when} ({reason}).": "{when}没能读取 {place} 的天气（{reason}）。", "The forecast is from {when}.": "显示的是 {when}读到的预报。", "nothing": "没有安排", "Close": "关闭",
   "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
   "authorization expired": "授权已过期",
   "{name} · read {when}": "{name} · {when}读取",
@@ -9536,7 +9544,7 @@ function agDetail(e, anchor) {
   const phone = innerWidth <= 640, close = el("button", { type: "button", class: "ibtn", "aria-label": agT("Close") }, [icon("x")]);
   const dialog = el("dialog", { class: "cal-detail" + (phone ? " n3-sheet" : ""), "aria-label": e.title }, [
     el("div", { class: "sheet-head" }, [el("h2", { text: e.title }), close]),
-    el("p", { class: "cal-when", text: agWhen(e) }), e.where ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
+    el("p", { class: "cal-when", text: agWhen(e) }), agWeather(e.first) && e.first === e.last ? el("p", { class: "cal-wx-line", text: agWeatherSaid(agWeather(e.first)) }) : null, e.where ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
     e.source ? el("p", { class: "cal-source", text: agT("In {name}", { name: e.source }) }) : null,
     e.link ? el("a", { class: "cal-open", href: e.link, target: "_blank", rel: "noopener", text: agT("Open in {name}", { name: AG_SOURCE[e.provider] || e.source }) + " ↗" }) : null]);
   close.onclick = () => dialog.close();
@@ -9710,8 +9718,9 @@ function agendaCalendars(c) {
 // Small, under the header, on a desk and on a phone (#3085 review: under the week it was below a long scroll).
 // A file saved before #3087 has no counts; the sentence appears after the next read.
 function agendaRead() {
-  const counted = (REM.calendar?.read || []).filter(c => c.calendars != null);
-  return counted.length ? el("p", { class: "agenda-note agenda-read", text: counted.map(agendaCalendars).join(" ") }) : null;
+  const counted = (REM.calendar?.read || []).filter(c => c.calendars != null), weather = agendaWeather();
+  return counted.length || weather ? el("p", { class: "agenda-note agenda-read" }, [counted.map(agendaCalendars).join(" "),
+    weather ? el("span", { class: "agenda-weather", text: (counted.length ? " " : "") + weather }) : null]) : null;
 }
 function agendaNote() {
   if (REM.shared) return null;
@@ -9782,9 +9791,43 @@ function agendaView() {
     ...(month ? [agendaMonth(entries, first)] : [agendaWeek(entries, start), agendaPhone(entries, start)])]));
   agSizeWeek();
 }
-// Weather comes with the night's forecast (weather.py); until then a day carries none.
-function agWeatherMark() { return null; }
-function agWeatherWords() { return null; }
+// The forecast the night saved for these days (weather.py; the page never asks anyone). A day says its weather
+// in words on hover and in its list; the small picture and "22° / 14°" are the second cue. A day with no
+// forecast shows nothing.
+const AG_CLOUD = "M7 13h10a3.5 3.5 0 0 0 .4-7A4.8 4.8 0 0 0 8 6.5 3.5 3.5 0 0 0 7 13Z";
+const AG_WX = {
+  clear: ["M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8Z", "M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"],
+  "partly cloudy": ["M8 3v1.5M2.5 8.5H4M4 4.5l1.1 1.1M10.6 6.3A3.5 3.5 0 0 0 5.2 10.6", "M9 19h8a3.5 3.5 0 0 0 .4-7A4.8 4.8 0 0 0 10 12.5 3.5 3.5 0 0 0 9 19Z"],
+  cloudy: ["M7 18h10a4 4 0 0 0 .5-8A5.5 5.5 0 0 0 7 9.5 4.3 4.3 0 0 0 7 18Z"],
+  fog: [AG_CLOUD, "M5 17h14M7 20.5h10"], rain: [AG_CLOUD, "M8 16.5v3.5M12 16.5v3.5M16 16.5v3.5"],
+  showers: [AG_CLOUD, "M9 16.5l-.8 1.6M12.5 19l-.8 1.6M15.5 16.5l-.8 1.6"], snow: [AG_CLOUD, "M8 17v.01M12 19.5v.01M16 17v.01M10 21v.01M14 21v.01"],
+  storm: [AG_CLOUD, "M12.5 15l-2.5 3.5h3L11 22"],
+};
+function agWeather(day) { return (REM.weather?.days || []).find(w => w.date === day) || null; }
+function agDegrees(w, brief) { return brief ? w.high + "°" : w.high + "° / " + w.low + "°"; }
+function agWeatherSaid(w) {
+  const word = agT(w.condition), rain = w.rain == null ? "" : agT("{n}% chance of rain", { n: w.rain });
+  return [word[0].toUpperCase() + word.slice(1), rain, agDegrees(w)].filter(Boolean).join(agT(", "));
+}
+function agWeatherMark(day, brief = false) {
+  const w = agWeather(day);
+  if (!w) return null;
+  const picture = svgEl("svg", { class: "cal-wx-ic", viewBox: "0 0 24 24", "aria-hidden": "true" }, (AG_WX[w.condition] || AG_WX.cloudy).map(d => svgEl("path", { d })));
+  return el("span", { class: "cal-wx", title: agWeatherSaid(w), "aria-label": agWeatherSaid(w) }, [brief ? null : picture, agDegrees(w, brief)]);
+}
+function agWeatherWords(day) {
+  const w = agWeather(day);
+  return w ? el("span", { class: "cal-wx-words", text: agWeatherSaid(w) }) : null;
+}
+// Where the forecast is for and who it is from, in the small line under the header; a failed read says when and
+// why, and how old the forecast shown is.
+function agendaWeather() {
+  const w = REM.weather;
+  if (!w || (!w.read_at && !w.error)) return "";
+  if (!w.error) return agT("Weather for {place} from {source}, read {when}.", { place: w.place, source: w.source, when: fmtTime(w.read_at) });
+  return agT("Weather for {place} could not be read on {when} ({reason}).", { place: w.place, when: fmtTime(w.error.at), reason: agT(w.error.reason) + (w.error.error ? " · " + w.error.error : "") })
+    + (w.read_at ? " " + agT("The forecast is from {when}.", { when: fmtTime(w.read_at) }) : "");
+}
 
 // ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------
 // Ink is what REM knows from a source; pencil (always dashed) is what REM infers or forecasts.

@@ -80,7 +80,7 @@ def default_config() -> dict:
     # detected from his own mail and sessions (D-103), not "translate nothing".
     # tasks.auto: owed work starts after the night's drafts, with full access and Undo
     # (owner, D-100, 2026-11-09). An owner's own `config set tasks.auto false` wins.
-    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": True}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS), "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "weather": {"place": ""}, "tasks": {"auto": True}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS), "speed": "fast", "effort": "medium", "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
             # number of slots, bounds what the night spends.
@@ -167,6 +167,9 @@ def validate(config: dict) -> dict:
             or notify["channel"] not in ("none", "outlook", "telegram", "lark", "whatsapp", "email")
             or not isinstance(notify["target"], str)):
         raise RemError("notify.channel must be none, outlook, telegram, lark, whatsapp or email; notify.target must be text")
+    weather = config["weather"]
+    if not isinstance(weather, dict) or set(weather) != {"place"} or not isinstance(weather["place"], str):
+        raise RemError("weather.place must be a city name, off, or empty for the notebook timezone's city")
     models = config["models"]
     if (not isinstance(models, dict) or set(models) != set(LEVEL_MODELS)
             or any(not isinstance(name, str) or not name.strip() for name in models.values())):
@@ -301,6 +304,8 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
         config["limits"] = {**default_config()["limits"], **saved}
     config.setdefault("notify", {"channel": "none", "target": ""})
     config.setdefault("tasks", {"auto": True})
+    # Added with the Agenda forecast: '' is the notebook timezone's city, 'off' asks nobody (weather.py).
+    config.setdefault("weather", {"place": ""})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
     config.setdefault("speed", "fast")
@@ -404,16 +409,16 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
-        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks", "notify"):
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks", "notify", "weather"):
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
         elif len(parts) != 1 or key not in ("runner", "speed", "effort", "language", "languages"):
-            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, weather.place, limits.<name> and route.<stage> (see `co rem config`)")
         if parts[0] == "limits" and parts[-1] in RETIRED:
             raise RemError(f"{key} {RETIRED_NOTE}")
         if parts[-1] not in target:
-            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, weather.place, limits.<name> and route.<stage> (see `co rem config`)")
         if key == "tasks.auto":
             if raw not in ("true", "false"):
                 raise RemError("tasks.auto must be true or false")

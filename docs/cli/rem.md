@@ -1805,6 +1805,36 @@ pinned to that edge: it comes into view with the draft.
   spans), with no calendar library. The owner's own reader carries events and
   the plan; a page rendered for sharing (`render` without `local=True`)
   carries neither.
+- **Agenda shows the weather for its days.** Each day that has a forecast
+  carries a small line picture and *22° / 14°* in its column head (week) and
+  its cell (month); the condition and the chance of rain are words on hover, in
+  an event's detail and under the day's name on a phone (*Showers, 70% chance of
+  rain, 20° / 12°*), where the strip of dates shows the high only. There are
+  eight conditions (clear, partly cloudy, cloudy, fog, rain, showers, snow,
+  storm); a day with no forecast shows nothing. The small line under the header
+  says where it is for and from whom: *Weather for Sydney from Open-Meteo, read
+  Today · 06:10.* **The reader never asks for it**: the night's calendar step
+  (`weather.py`) reads the next seven days from
+  [Open-Meteo](https://open-meteo.com), which needs no key and no account, and
+  saves `.state/weather.json` (per date a condition word, high, low and chance
+  of rain, with `saved_at`, `read_at`, the place and the source). **What leaves
+  your computer, once a night**: the city's name to Open-Meteo's geocoding the
+  first time (its answer is kept), then that city's coordinates rounded to two
+  decimals to its forecast; never an address, a calendar entry or anything from
+  the notebook. The city is `weather.place` (`co rem config set weather.place
+  Sydney`); left empty it is the city of the notebook's timezone
+  (`Australia/Sydney` → Sydney; a zone with no city, such as `UTC`, asks
+  nobody); `co rem config set weather.place off` turns it off and nothing is
+  fetched. Temperatures are °C, or °F where the place reads forecasts in
+  Fahrenheit (the United States and a few others); there is no units setting.
+  A read that fails never stops the night: the earlier forecast is kept and the
+  line says when it failed, why, and when the forecast shown is from; a city
+  Open-Meteo does not know is said as *not found*; anything that is not the
+  provider's failure is a fault in REM, named with its exception and logged with
+  its traceback in `co rem logs`. Only the owner's own reader carries the
+  forecast. Open-Meteo's free API is for non-commercial use and its data is
+  CC BY 4.0, which is why the page names it. Today's *Your day* does not show
+  the weather yet.
   Events come from
   `.state/calendar.json`, which each background round writes once (scheduled
   sync, exec and native rounds, including `codex_exec`), outside the writer

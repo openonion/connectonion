@@ -46,6 +46,9 @@ def agenda(tmp_path, monkeypatch):
     monkeypatch.setattr(calendar, "available", lambda kind: True)
     monkeypatch.setattr(calendar, "calendar_events", lambda kind, start, end, zone: (GOOGLE, LISTED) if kind == "google" else (OUTLOOK, ALL_OWN))
     calendar.save_upcoming(root, FROZEN)
+    from rem_calendar_week import seed_weather
+    from connectonion.rem import weather
+    seed_weather(root, weather)  # an invented forecast for the first five days, saved by the night's own code
     # His open to-dos, read in the same step of the night (#3087): Graph's own task objects, invented.
     from connectonion.rem import todos
     monkeypatch.setattr(todos, "available", lambda: True)
@@ -314,7 +317,7 @@ def test_a_phone_gets_a_strip_of_dates_over_a_day_by_day_list(agenda):
     assert "All day" in offsite and "5 Oct" in offsite and "7 Oct" in offsite
     assert "Board dinner" in days.inner_text()
     # The first event is on the first screen; a row is a thumb's height.
-    assert page.locator(".agenda-days .cal-row").first.bounding_box()["y"] < 330
+    assert page.locator(".agenda-days .cal-row").first.bounding_box()["y"] < 360
     assert page.locator(".agenda-days .cal-row").evaluate_all("rows => rows.every(row => row.getBoundingClientRect().height >= 44)")
     # A date in the strip jumps to its day.
     strip.nth(1).click()
@@ -436,3 +439,36 @@ def test_a_calendar_that_failed_says_when_and_why_and_how_old_its_events_are(age
     shown["read"][0]["capped"] = 1000
     note = _show(page, shown)
     assert "Google Calendar has more than 1000 events in these weeks; REM kept the first 1000 and skipped the rest." in note
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_each_day_with_a_forecast_says_its_weather_and_the_page_says_where_it_is_for_and_from_whom(agenda, width):
+    """Owner, 2026-11-17: «Why isn't the weather for these days shown on the calendar?»"""
+    page = agenda
+    _open(page, width)
+    note = page.locator(".agenda-read .agenda-weather").inner_text()
+    assert "Weather for Wellington from Open-Meteo, read Today" in note
+    if width > 640:
+        marks = page.locator(".cal-heads .cal-head .cal-wx")
+        assert marks.count() == 5, "the two days with no forecast show nothing"
+        assert marks.first.inner_text() == "22° / 14°" and marks.first.locator("svg").count() == 1
+        # The condition and the chance of rain are words on hover, never the picture alone.
+        assert marks.nth(1).get_attribute("title") == "Showers, 70% chance of rain, 20° / 12°"
+        assert marks.nth(2).get_attribute("title").startswith("Storm, 90% chance of rain")
+        _column(page, 1).get_by_role("button", name="Dentist").click()
+        assert "Clear, 5% chance of rain, 22° / 14°" in page.locator("dialog.cal-detail").inner_text()
+        page.keyboard.press("Escape")
+        page.get_by_role("button", name="Month", exact=True).click()
+        assert page.locator('.cal-cell[data-day="2026-10-02"] .cal-wx').inner_text() == "20° / 12°"
+        assert page.locator('.cal-cell[data-day="2026-10-08"] .cal-wx').count() == 0
+    else:
+        strip = page.locator(".cal-strip .cal-jump")
+        assert strip.first.locator(".cal-wx").inner_text() == "22°" and strip.nth(6).locator(".cal-wx").count() == 0
+        assert "Showers, 70% chance of rain, 20° / 12°" in page.locator("#cal-day-2026-10-02 .ag-dayhead").inner_text()
+    # A failed read keeps the earlier forecast and says when it failed, why, and how old the forecast is.
+    page.evaluate("""() => { REM.weather = { ...REM.weather, error: { at: '2026-10-01T06:10:00+00:00', reason: 'timed out', error: '' }, read_at: '2026-09-30T06:10:00+00:00' }; render(); }""", isolated_context=False)
+    note = page.locator(".agenda-read .agenda-weather").inner_text()
+    assert "Weather for Wellington could not be read on" in note and "(timed out)" in note and "The forecast is from" in note
+    page.evaluate("() => { REM.weather = null; render(); }", isolated_context=False)
+    assert page.locator(".cal-wx").count() == 0 and page.locator(".agenda-weather").count() == 0
+    assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
