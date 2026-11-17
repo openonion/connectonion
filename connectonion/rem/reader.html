@@ -2681,14 +2681,21 @@
   .gx-link { display: inline-block; margin-top: 16px; }
   .gx-link:hover, .gx-quiet-line a:hover { color: var(--ink); text-decoration-color: currentColor; }
 
-  /* ---- the settled map: full bleed, heading over the canvas, panel at the right ---- */
-  #main:has(> .gx-map) { padding: 0; max-width: none; }
-  .gx-map { position: relative; height: 100vh; overflow: hidden; background: var(--paper); }
-  .gx-stage { position: absolute; inset: 0; }
+  /* ---- the settled map (#3085): the heading, one sentence that is also the key, then the map down to the window's
+     foot with its quiet line under it. The heading sits where Entries' heading sits, so the switch does not jump. ---- */
+  #main:has(> .gx-map), #main:has(> .gx-topics) { padding: 0; max-width: none; }
+  .gx-map { position: relative; display: flex; flex-direction: column; padding: 4px 40px 0; overflow: hidden; background: var(--paper); }
+  .gx-stage { position: relative; flex: 1; min-height: 0; margin: 0 -40px; }
   .gx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  .gx-head { position: absolute; z-index: 2; left: 40px; top: 32px; right: 436px; pointer-events: none; }
-  .gx-head > * { pointer-events: auto; }
-  .gx-bar { display: flex; align-items: flex-end; gap: 32px; margin-top: 18px; flex-wrap: wrap; width: fit-content; }
+  .gx-canvas:focus-visible { outline: 1.5px solid var(--ink); outline-offset: -2px; }
+  .gx-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 48px; }
+  .gx-says { max-width: 880px; margin: 0 0 12px !important; font: var(--w-regular) var(--s-body)/27px var(--font); color: var(--ink); }
+  .gx-key { white-space: nowrap; font-weight: var(--w-bold); }
+  .gx-busiest { display: block; color: var(--grey); }
+  .gx-says .gx-glyph { display: inline-block; vertical-align: -1px; margin-right: 5px; }
+  .gx-says button { font-weight: var(--w-bold) !important; text-decoration: underline !important; text-decoration-color: var(--rule) !important; text-underline-offset: 4px; text-align: left; }
+  .gx-says button:hover { text-decoration-color: currentColor !important; }
+  .gx-bar { display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap; width: fit-content; margin-bottom: 12px; }
   .gx-find { position: relative; width: 320px; }
   .gx-search { width: 100%; height: 36px; border: 0; border-bottom: 1.5px solid var(--ink); background: transparent; color: var(--ink); font: var(--w-regular) var(--s-body) var(--font); padding: 0 28px 0 0; border-radius: var(--radius); }
   .gx-search::placeholder { color: var(--grey); }
@@ -2702,10 +2709,9 @@
   .gx-tabs { display: flex; gap: 20px; }
   .gx-tabs button { height: 36px; color: var(--grey) !important; border-bottom: 1.5px solid transparent !important; }
   .gx-tabs button[aria-selected="true"] { color: var(--ink) !important; font-weight: var(--w-bold); border-bottom-color: var(--ink) !important; }
-  .gx-legend { position: absolute; left: 40px; right: 540px; bottom: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); pointer-events: none; }
-  .gx-key { display: inline-flex; align-items: center; gap: 6px; }
-  .gx-key-head { color: var(--grey); }
-  .gx-zoom { position: absolute; right: 420px; bottom: 16px; display: flex; gap: 2px; }
+  .gx-foot { display: flex; align-items: center; gap: 16px; min-height: 44px; }
+  .gx-legend { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 18px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .gx-zoom { display: flex; gap: 2px; }
   .gx-zoom button { width: 32px; height: 32px; color: var(--grey) !important; font-size: var(--s-body) !important; border-radius: var(--radius) !important; }
   .gx-zoom button:hover { background: var(--rule) !important; color: var(--ink) !important; }
   .gx-tip { position: absolute; pointer-events: none; padding: 4px 9px; border-radius: var(--radius); background: var(--ink); color: var(--paper); font-size: var(--s-meta); white-space: nowrap; }
@@ -2713,15 +2719,16 @@
   .gx-empty { padding: 200px 40px; color: var(--grey); }
 
   /* The panel is a transient layer, so it may be a card: the one lifted object on the map. */
-  .gx-panel { position: absolute; right: 24px; top: 24px; bottom: 24px; width: 348px; display: flex; flex-direction: column; background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); overflow: hidden; z-index: 3; }
+  .gx-panel { position: absolute; right: 24px; width: 348px; display: flex; flex-direction: column; background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); overflow: hidden; z-index: 3; }
   .gx-panel-head { padding: 22px 22px 18px; border-bottom: 1px solid var(--rule); }
   .gx-kicker { display: flex; align-items: center; gap: 8px; color: var(--grey); font-size: var(--s-meta); }
   .gx-panel h2 { font: var(--w-bold) var(--s-body)/27px var(--font); margin-top: 6px; overflow-wrap: anywhere; }
   .gx-panel-head p { color: var(--grey); margin-top: 4px; }
+  .gx-panel-head .gx-summary { color: var(--ink); margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .gx-counts { display: flex; gap: 18px; margin-top: 12px; color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
   .gx-counts b { display: block; color: var(--ink); font-size: var(--s-body); line-height: 24px; }
-  .gx-open { display: flex; align-items: center; justify-content: center; height: 40px; margin-top: 16px; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; font-weight: var(--w-bold); transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
-  .gx-open:hover { background: var(--on-green); color: var(--green) !important; }
+  .gx-open { display: flex; align-items: center; justify-content: center; height: 40px; margin-top: 16px; border-radius: var(--radius); background: var(--paper); border: var(--hair) solid var(--rule); color: var(--ink) !important; font-weight: var(--w-bold); transition: background var(--t-press) var(--ease-out); }
+  .gx-open:hover { background: var(--well); }
   .gx-depth { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: var(--s-meta); color: var(--grey); }
   .gx-depth button { color: var(--grey) !important; border-bottom: 1.5px solid transparent !important; line-height: 20px; }
   .gx-depth button[aria-pressed="true"] { color: var(--ink) !important; font-weight: var(--w-bold); border-bottom-color: var(--ink) !important; }
@@ -2729,15 +2736,18 @@
   .gx-panel-body { flex: 1; overflow: auto; padding: 4px 12px 18px; }
   .gx-panel-body h3 { display: flex; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--grey); padding: 16px 10px 6px; }
   .gx-panel-body h3 span { margin-left: auto; font-weight: var(--w-regular); }
-  .gx-item { display: flex !important; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: var(--radius) !important; min-height: 40px; }
+  .gx-item { display: flex !important; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: var(--radius) !important; min-height: 40px; }
   .gx-item:hover { background: var(--rule) !important; }
   .gx-item-body { min-width: 0; display: flex; flex-direction: column; }
-  .gx-item b { font-weight: var(--w-regular); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .gx-item small { font-size: var(--s-meta); line-height: 16px; color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gx-item > .gx-glyph { margin-top: 4px; }
+  .gx-item b { font-weight: var(--w-regular); overflow-wrap: anywhere; }
+  .gx-item small { font-size: var(--s-meta); line-height: 16px; color: var(--grey); overflow-wrap: anywhere; }
   .gx-more { display: block; color: var(--grey) !important; font-size: var(--s-meta) !important; padding: 4px 10px 4px 36px !important; text-align: left; }
 
   /* ---- topics: the list and the record ---- */
-  .gx-topics, .gx-topic { max-width: 1040px; margin: 0 auto; }
+  .gx-topic { max-width: 1040px; margin: 0 auto; }
+  .gx-topics { padding: 4px 40px 64px; }
+  .gx-topics > :not(.knowledge-head) { max-width: 1040px; }
   .gx-rows, .gx-link-rows, .gx-rail-list { list-style: none; margin: 0; padding: 0; }
   .gx-rows { border-top: 1.5px solid var(--ink); }
   .gx-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
@@ -2750,7 +2760,6 @@
   .knowledge-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; width: fit-content; }
   .knowledge-head h1 { margin: 0; }
   .knowledge-switch .theme-btn { display: inline-flex; align-items: center; min-height: 32px; text-decoration: none; }
-  .gx-head .knowledge-head h1 { font: var(--w-bold) var(--s-body)/24px var(--font); letter-spacing: 0; color: var(--grey); }
   .gx-panel-guide { padding-top: 10px; }
   .gx-rule { border: 0; border-top: 1px solid var(--rule); margin: 10px; }
   .gx-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -2817,22 +2826,26 @@
   @media (prefers-reduced-motion: reduce) { .gx * { transition: none !important; } }
   @media (max-width: 720px) {
     .gx-statement { font-size: var(--s-head); line-height: 40px; }
-    .gx-map { height: auto; overflow: visible; padding: 20px 16px 24px; }
-    .gx-head { position: static; right: auto; }
-    .gx-bar { width: auto; gap: 12px; margin-top: 12px; }
+    /* A phone draws the entries and what they link (the map says so in its sentence); the filters have nothing to
+       filter, one finger scrolls the page and two zoom the map, and the lists scroll with the page, not inside it. */
+    .gx-map { overflow: visible; padding: 4px 16px 0; }
+    .gx-panel[hidden] { display: none; }
+    .gx-topics { padding: 4px 16px 40px; }
+    .gx-says { font-size: var(--s-body); line-height: 24px; }
+    .gx-bar { width: 100%; }
     .gx-find { width: 100%; }
-    .gx-tabs { overflow-x: auto; scrollbar-width: none; gap: 18px; width: 100%; }
-    .gx-tabs button { flex: none; }
-    .gx-stage { position: relative; inset: auto; height: 320px; margin: 4px -16px 0; }
-    .gx-legend, .gx-zoom { display: none; }
-    .gx-panel { position: static; width: auto; margin: 4px -4px 0; border-radius: var(--radius); max-height: none; }
-    .gx-panel-head { padding: 14px 18px 14px; }
-    .gx-panel-head p { display: none; }
-    .gx-counts { margin-top: 6px; }
-    .gx-open { margin-top: 12px; }
-    .gx-open { height: 46px; }
+    .gx-tabs, .gx-foot { display: none; }
+    .gx-stage { flex: none; height: 320px; margin: 0 -16px; }
+    .gx-canvas { touch-action: pan-y; }
+    .gx-panel { position: static; width: auto; margin: 4px -4px 0; max-height: none !important; overflow: visible; }
+    .gx-panel-head { display: flex; flex-direction: column; padding: 14px 18px 14px; }
+    .gx-panel-head .gx-open { order: 1; height: 46px; margin-top: 12px; }
+    .gx-panel-head .gx-summary, .gx-panel-head .gx-counts { order: 2; }
+    .gx-panel-head .gx-summary { margin-top: 12px; }
+    .gx-counts { margin-top: 10px; }
     .gx-depth { display: none; }
-    .gx-panel-body { max-height: 360px; }
+    .gx-panel-body { overflow: visible; }
+    .gx-item { min-height: 44px; }
     .gx-grid { grid-template-columns: 1fr; gap: 40px; margin-top: 32px; }
     .gx-stats { gap: 10px 24px; }
     .gx-stats div:nth-child(n+4) { display: none; }
@@ -12744,7 +12757,7 @@ const GRAPH_UI_ZH = {
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
 
   "Search people, organisations, knowledge": "搜索人、组织、知识，看它连着谁", "Clear focus": "清除聚焦",
-  "Shape = kind": "形状 = 类型", "size = links": "大小 = 连接数", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
+  "A bigger mark has more links": "记号越大，连接越多", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
   "{n} records link to nothing yet": "{n} 条还没连上任何记录",
 
   "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
@@ -12767,7 +12780,12 @@ const GRAPH_UI_ZH = {
   "REM files knowledge from your records on its night run.": "REM 会在夜里那一轮从已有记录里整理知识。",
   "Explore linked records →": "探索相连的记录 →",
   "Entries": "条目", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
-  "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定"
+  "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定",
+  "1 knowledge entry": "1 条知识", "{n} knowledge entries": "{n} 条知识", "1 person": "1 个人", "{n} people": "{n} 个人",
+  "1 organisation": "1 个组织", "{n} organisations": "{n} 个组织", "1 project": "1 个项目", "{n} projects": "{n} 个项目",
+  "1 skill or decision": "1 条技能或决定", "{n} skills and decisions": "{n} 条技能和决定", "1 session": "1 个会话", "{n} sessions": "{n} 个会话",
+  " link ": "连着 ", " links ": "连着 ", ", with ": "，另有 ", " link to each other": "互相连着", ", ": "、", " and ": "和 ", ".": "。",
+  "The busiest is ": "最忙的是 ", ", with {n} links.": "（{n} 条连接）。"
 };
 function graphT(key, values = {}) {
   const words = uiLanguage === "zh" ? GRAPH_UI_ZH[key] : null;
@@ -12775,6 +12793,10 @@ function graphT(key, values = {}) {
 }
 const GRAPH_ORDER = ["knowledge", "people", "orgs", "projects", "notes", "sessions"];
 const GRAPH_NAME = { knowledge: "Knowledge", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions" };
+// A count in words, beside its shape: [one, many]. The sentence over the map and the panel both read these.
+const GRAPH_COUNT = { knowledge: ["1 knowledge entry", "{n} knowledge entries"], people: ["1 person", "{n} people"], orgs: ["1 organisation", "{n} organisations"],
+  projects: ["1 project", "{n} projects"], notes: ["1 skill or decision", "{n} skills and decisions"], sessions: ["1 session", "{n} sessions"] };
+function graphCount(k, n) { return graphT(GRAPH_COUNT[k][n === 1 ? 0 : 1], { n }); }
 const GRAPH_ONE = { knowledge: "Knowledge entry", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session" };
 const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"]];
 function graphKind(kind) { return GRAPH_NAME[kind] ? kind : "notes"; }
@@ -12818,35 +12840,88 @@ function graphModel() {
 function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 // A labelled-private record keeps its name only on this Mac and only while passages are shown.
 function graphHidden(n) { return n.private && (!n.r || document.documentElement.classList.contains("hide-private")); }
-function graphTitle(n) { return graphHidden(n) ? graphT("Personal") : topicName(n.r?.title || n.title || n.id).replace(" (automated candidate)", ""); }
-function topicName(title) { return title.replace(/\s*\[personal\]\s*$/i, ""); }
-// `n` counts Latin letters; a CJK glyph is as wide as two, so a Chinese session title is cut at half the count.
-function graphShort(text, n = 22) {
-  text = text.replace(/\s*\([^)]*\)\s*$/, "");
-  const wide = ch => /[\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u{20000}-\u{3ffff}]/u.test(ch) ? 2 : 1;
-  if ([...text].reduce((sum, ch) => sum + wide(ch), 0) <= n) return text;
-  let out = "", used = 0;
-  for (const ch of text) { if ((used += wide(ch)) > n - 1) break; out += ch; }
-  return out.trimEnd() + "…";
+// The name in the reading language when the page has a current translation: its translated heading.
+function graphTitle(n) {
+  if (graphHidden(n)) return graphT("Personal");
+  const translated = uiLanguage !== "en" && /^# +(.+)$/m.exec(n.r?.translations?.[uiLanguage] || "")?.[1];
+  return topicName(translated || n.r?.title || n.title || n.id).replace(" (automated candidate)", "");
 }
+function topicName(title) { return title.replace(/\s*\[personal\]\s*$/i, ""); }
+// Width counts Latin letters; a CJK glyph is as wide as two.
+function graphWidth(text) { return [...text].reduce((sum, ch) => sum + (/[\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u{20000}-\u{3ffff}]/u.test(ch) ? 2 : 1), 0); }
+// A name on up to `max` lines of `per` letters, cut only between words (#3085: four of five labels ended
+// mid-phrase). A CJK title has no spaces and any glyph is a boundary, so a word wider than a line is split by glyph.
+function graphLines(text, per = 22, max = 1) {
+  const parts = text.replace(/\s*\([^)]*\)\s*$/, "").split(/\s+/).flatMap(word => graphWidth(word) > per ? [...word].map((ch, i) => (i ? "" : " ") + ch) : [" " + word]);
+  const lines = [""], said = (from, to) => parts.slice(from, to).join("").trimStart();
+  let from = 0;
+  for (const [i, part] of parts.entries()) {
+    const line = lines.at(-1), next = line ? line + part : part.trimStart();
+    if (graphWidth(next) <= per) { lines[lines.length - 1] = next; continue; }
+    if (lines.length < max) { lines.push(part.trimStart()); from = i; continue; }
+    let end = i;  // the ellipsis takes a letter's room
+    while (end - from > 1 && graphWidth(said(from, end)) > per - 1) end--;
+    lines[lines.length - 1] = said(from, end) + "…";
+    return { lines, text: said(0, end) + "…" };
+  }
+  return { lines, text: said(0) };
+}
+function graphShort(text, n = 22) { return graphLines(text, n).lines[0]; }
 function graphRadius(n) {
   const d = GRAPH.adj.get(n.id)?.size || 0;
   if (n.k === "sessions") return 1.8;
   if (n.k === "knowledge") return Math.min(17, 6 + Math.sqrt(d) * 1.25);
   return Math.max(3, Math.min(14, 2.6 + Math.sqrt(d) * 1.5));
 }
-// d3-force from a fixed start is deterministic: the same notebook always lands in the same place.
+// How far a mark's outline reaches from its centre: a diamond and a triangle reach past their radius.
+function graphReach(n) { return (n.private ? Math.max(graphRadius(n), GRAPH_PRIVATE_MIN) : graphRadius(n)) * ({ projects: 1.25, notes: 1.15, sessions: 1.2 }[n.k] || 1); }
+const GRAPH_LABELS = 12, GRAPH_LINE = 15;
+// The most-linked records that are not knowledge entries: the ones the fitted map names. The owner is every
+// page's hub by definition, so ranking him says nothing (sprint 15).
+function graphHubs(nodes, degree, count = GRAPH_LABELS) {
+  return nodes.filter(n => n.k !== "knowledge" && n.k !== "sessions" && !(REM.owner && n.id === REM.owner)).sort((a, b) => degree(b) - degree(a)).slice(0, count);
+}
+// d3-force from a fixed start is deterministic: the same notebook always lands in the same place. A mark that
+// will carry a name keeps clear ground around it, so its label has somewhere to sit that is not another mark.
 function graphLayout(nodes, edges, byId) {
   if (!nodes.length || typeof d3 === "undefined") return;
   const links = edges.map(e => ({ source: e.s, target: e.t, k: e.k }));
-  const degree = id => links.filter(l => l.source === id || l.target === id).length;
-  const size = new Map(nodes.map(n => [n.id, degree(n.id)]));
+  const size = new Map(nodes.map(n => [n.id, 0]));
+  for (const l of links) for (const id of [l.source, l.target]) size.set(id, size.get(id) + 1);
   const radius = n => n.k === "knowledge" ? Math.min(17, 6 + Math.sqrt(size.get(n.id)) * 1.25) : Math.max(3, Math.min(14, 2.6 + Math.sqrt(size.get(n.id)) * 1.5));
+  // Entries last: the last strip cleared in a pass is the surest to be clear, and an entry is always named.
+  const named = [...graphHubs(nodes, n => size.get(n.id)), ...nodes.filter(n => n.k === "knowledge")];
+  const room = graphNameRoom(nodes, named, radius);
   d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d => d.id).distance(l => l.k === "topic" ? 70 : 34).strength(l => l.k === "topic" ? .06 : .5))
-    .force("charge", d3.forceManyBody().strength(-46).distanceMax(420))
-    .force("x", d3.forceX().strength(.035)).force("y", d3.forceY().strength(.05))
-    .force("collide", d3.forceCollide(d => radius(d) + 1.5)).stop().tick(320);
+    .force("link", d3.forceLink(links).id(d => d.id).distance(l => l.k === "topic" ? 90 : 46).strength(l => l.k === "topic" ? .06 : .5))
+    .force("charge", d3.forceManyBody().strength(-80).distanceMax(460))
+    .force("x", d3.forceX().strength(.022)).force("y", d3.forceY().strength(.06))
+    .force("collide", d3.forceCollide(n => radius(n) + 2.5))
+    .force("names", room).stop().tick(320);
+  // The other forces have the last word in a tick and can leave a mark in a strip: the strips have it here.
+  for (let pass = 0; pass < 6; pass++) room();
+}
+// A force that keeps the strip to the right of a named mark empty, where its name is written: any other mark
+// in the strip is pushed out above or below it. The strip is as long as the name at the map's fitted size.
+function graphNameRoom(nodes, named, radius) {
+  const strips = named.map(n => {
+    const top = n.k === "knowledge", { lines } = graphLines(topicName(n.title || ""), top ? 28 : 24, top ? 2 : 1);
+    return { n, w: Math.max(...lines.map(graphWidth)) * 6.4 + 14, h: lines.length * GRAPH_LINE / 2 + 5 };
+  });
+  const reach = strip => radius(strip.n) * 1.25 + strip.w;
+  return () => {
+    // Two names that would be written over each other move their marks apart, up and down.
+    for (const a of strips) for (const b of strips) {
+      const dy = b.n.y - a.n.y, over = a.h + b.h + 2 - Math.abs(dy);
+      if (a === b || over <= 0 || b.n.x > a.n.x + reach(a) || a.n.x > b.n.x + reach(b)) continue;
+      b.n.y += over / 4 * (dy < 0 ? -1 : 1);
+      a.n.y -= over / 4 * (dy < 0 ? -1 : 1);
+    }
+    for (const strip of strips) for (const m of nodes) {
+      const { n, h } = strip, r = radius(m) * 1.25 + 2, dx = m.x - n.x, dy = m.y - n.y;
+      if (m !== n && dx > -r && dx < reach(strip) + r && Math.abs(dy) < h + r) m.y += (h + r - Math.abs(dy)) * (dy < 0 ? -1 : 1);
+    }
+  };
 }
 
 // ---------- the view ----------
@@ -12890,46 +12965,60 @@ function graphView() {
   main.textContent = "";
   const model = graphModel(), params = new URLSearchParams(location.hash.slice(1));
   const asked = params.get("focus") || "";
-  graphState.focus = model.adj.has(asked) ? asked : graphPhone() ? graphFirst() : "";
+  graphState.focus = model.adj.has(asked) ? asked : "";
+  graphState.preview = "";
   graphState.depth = params.get("depth") === "2" ? 2 : 1;
-  graphState.tab = "all";
+  // A phone cannot show two hundred marks a thumb could hit (#3085): it draws the knowledge entries and what
+  // they link directly, which is the Knowledge filter; with no entry yet it draws everything.
+  graphState.tab = graphPhone() && model.linked.some(n => n.k === "knowledge") ? "knowledge" : "all";
   graphFocusSets();
-  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Graph"), role: "img" }),
-    el("div", { class: "gx-tip", hidden: "" })]), graphLegend(model), graphZoom(), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
+  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Graph"), role: "img", tabindex: "0" }),
+    el("div", { class: "gx-tip", hidden: "" })]), el("div", { class: "gx-foot" }, [graphLegend(model), graphZoom()]), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
   main.appendChild(box);
   if (!model.linked.length) { box.querySelector(".gx-stage").replaceWith(el("p", { class: "gx-empty", text: graphT("Nothing links here yet") })); return; }
   graphListen();
   graphBind(box);
+  graphPanel();
   graphResize();
   graphFit();
-  graphPanel();
+  graphReturn();
   graphDraw();
-}
-function graphFirst() {
-  const topics = GRAPH.linked.filter(n => n.k === "knowledge" && !n.private).sort((a, b) => graphDegree(b) - graphDegree(a));
-  return (topics[0] || [...GRAPH.linked].sort((a, b) => graphDegree(b) - graphDegree(a))[0])?.id || "";
 }
 function graphHead(model) {
   const search = el("input", { type: "search", class: "gx-search", placeholder: graphT("Search people, organisations, knowledge"), "aria-label": graphT("Search people, organisations, knowledge"), autocomplete: "off" });
   const tabs = el("div", { class: "gx-tabs", role: "tablist" }, GRAPH_TABS.map(([key, name]) =>
     el("button", { type: "button", role: "tab", "data-tab": key, "aria-selected": String(key === "all"), text: graphT(name) })));
-  // The counts live in the legend under the map; the heading only names the place (#2994).
-  return el("header", { class: "gx-head" }, [knowledgeHead("graph"),
+  return el("header", { class: "gx-head" }, [el("div", { class: "gx-top" }, [knowledgeHead("graph"),
     el("div", { class: "gx-bar" }, [el("div", { class: "gx-find" }, [search, el("button", { type: "button", class: "gx-clear", "aria-label": graphT("Clear focus"), text: "✕", hidden: "" }),
-      el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]);
+      el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]), graphSays(model)]);
 }
-// The legend is one line under the map, so it never covers a point.
-function graphLegend(model) {
+function graphKey(k, n) { return el("span", { class: "gx-key" }, [graphGlyph(k, 13), graphCount(k, n)]); }
+function graphListed(parts) {
+  return parts.flatMap((part, i) => [i ? graphT(i === parts.length - 1 ? " and " : ", ") : null, part]);
+}
+// The first second (#3085): one sentence, counted from the map, that says what it shows. Each kind stands in
+// it beside its shape, so the sentence is also the key: no mark on the map is a shape alone, and the key is
+// where a newcomer starts reading, not under the fold. No instructions.
+function graphSays(model) {
   const count = {};
   for (const n of model.linked) count[n.k] = (count[n.k] || 0) + 1;
-  const kinds = GRAPH_ORDER.filter(k => k !== "sessions" && count[k]).map(k =>
-    el("span", { class: "gx-key" }, [graphGlyph(k, 12), graphT(GRAPH_NAME[k]) + " " + count[k]]));
+  const key = k => graphKey(k, count[k]), others = ["people", "projects", "orgs"].filter(k => count[k]).map(key);
+  const hub = graphHubs(model.linked.filter(n => !graphHidden(n)), graphDegree, 1)[0];
+  const open = hub && el("button", { type: "button", text: graphTitle(hub) });
+  if (open) open.onclick = () => graphFocus(hub.id);
+  return el("p", { class: "gx-says" }, [
+    ...(count.knowledge ? [key("knowledge"), graphT(count.knowledge === 1 ? " links " : " link "), ...graphListed(others)] : [...graphListed(others), graphT(" link to each other")]),
+    ...(count.notes ? [graphT(", with "), key("notes")] : []), graphT("."), " ",
+    open ? el("span", { class: "gx-busiest" }, [graphT("The busiest is "), open, graphT(", with {n} links.", { n: graphDegree(hub) })]) : null]);
+}
+// Under the map, quietly: what size means, and what the map does not draw.
+function graphLegend(model) {
   const folded = REM.graph?.folded_sessions || 0, alone = {};
   for (const n of model.isolated) alone[n.k] = (alone[n.k] || 0) + 1;
-  const breakdown = Object.entries(alone).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => graphT(GRAPH_NAME[k]) + " " + n).join(" · ");
-  return el("footer", { class: "gx-legend" }, [el("span", { class: "gx-key-head", text: graphT("Shape = kind") + " · " + graphT("size = links") }), ...kinds,
-    folded ? el("span", { class: "gx-quiet", text: graphT("{n} sessions folded into their projects", { n: folded }) }) : null,
-    model.isolated.length ? el("span", { class: "gx-quiet", text: graphT("{n} records link to nothing yet", { n: model.isolated.length }) + ": " + breakdown }) : null]);
+  const breakdown = Object.entries(alone).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => graphCount(k, n)).join(" · ");
+  return el("footer", { class: "gx-legend" }, [el("span", { text: graphT("A bigger mark has more links") }),
+    folded ? el("span", { text: graphT("{n} sessions folded into their projects", { n: folded }) }) : null,
+    model.isolated.length ? el("span", { text: graphT("{n} records link to nothing yet", { n: model.isolated.length }) + ": " + breakdown }) : null]);
 }
 function graphZoom() {
   return el("div", { class: "gx-zoom" }, [["+", "Zoom in", 1.4], ["−", "Zoom out", 1 / 1.4], ["⤢", "Fit", 0]].map(([text, name, by]) =>
@@ -12980,14 +13069,14 @@ function graphColours() {
 function graphDraw() {
   const canvas = graphCanvas();
   if (!canvas) return;
-  const ctx = canvas.getContext("2d"), T = graphState.T, colours = graphColours(), { focus, near1, near2 } = graphState;
+  const ctx = canvas.getContext("2d"), T = graphState.T, colours = graphColours(), { focus, near1, near2, preview } = graphState;
   ctx.save();
   ctx.clearRect(0, 0, graphState.W, graphState.H);
   ctx.translate(T.x, T.y); ctx.scale(T.k, T.k);
   for (const e of GRAPH.edges) {
     const a = GRAPH.byId.get(e.s), b = GRAPH.byId.get(e.t);
     if (!graphVisible(a) || !graphVisible(b)) continue;
-    const on = focus && (e.s === focus || e.t === focus);
+    const on = (focus && (e.s === focus || e.t === focus)) || (preview && (e.s === preview || e.t === preview));
     const outer = focus && !on && ((near1.has(e.s) && near2.has(e.t)) || (near2.has(e.s) && near1.has(e.t)));
     ctx.globalAlpha = on ? .75 : outer ? .3 : focus ? .04 : 1;
     ctx.strokeStyle = on ? colours.ink : e.k === "topic" ? colours.topicEdge : colours.edge;
@@ -12998,44 +13087,95 @@ function graphDraw() {
   for (const n of order) {
     ctx.globalAlpha = graphAlpha(n);
     graphMark(ctx, n, n.x, n.y, graphRadius(n), colours);
-    if (n.id === focus) { ctx.beginPath(); ctx.arc(n.x, n.y, graphRadius(n) + 6 / T.k, 0, 2 * Math.PI); ctx.lineWidth = 1.5 / T.k; ctx.strokeStyle = colours.ink; ctx.stroke(); }
+    if (n.id === focus || n.id === preview) { ctx.beginPath(); ctx.arc(n.x, n.y, graphRadius(n) + 6 / T.k, 0, 2 * Math.PI); ctx.lineWidth = 1.5 / T.k; ctx.strokeStyle = colours.ink; ctx.stroke(); }
   }
   ctx.restore();
   graphLabels(ctx, order, colours);
 }
-// Topics always carry a name; others when big enough on screen. Greedy, so labels never overlap.
+// Which marks carry a name (#3085): every knowledge entry, then the most-linked other records: twelve when the
+// whole map is fitted, more as he zooms in (the count grows with the area the zoom opens). A phone's fitted map
+// names only the entries. A focused map names the record and what it links directly.
+function graphLabelBudget() {
+  const base = graphPhone() ? 0 : GRAPH_LABELS, zoom = graphState.T.k / (graphState.fitK || graphState.T.k);
+  return zoom < 1.1 ? base : Math.round(Math.max(base, 6) * zoom * zoom);
+}
+function graphNamed(order) {
+  const { focus, near1 } = graphState, shown = order.filter(n => graphAlpha(n) >= .4 && !graphHidden(n)), byLinks = (a, b) => graphDegree(b) - graphDegree(a);
+  if (focus) return shown.filter(n => n.id === focus || near1.has(n.id)).sort((a, b) => (b.id === focus) - (a.id === focus) || (b.k === "knowledge") - (a.k === "knowledge") || byLinks(a, b));
+  return [...shown.filter(n => n.k === "knowledge").sort(byLinks), ...graphHubs(shown, graphDegree, graphLabelBudget())];
+}
+// Every mark on screen as a box, so a label can keep off them.
+function graphMarkBoxes() {
+  const { T, focus } = graphState;
+  return GRAPH.linked.filter(n => graphVisible(n) && graphAlpha(n) >= .4).map(n => {
+    const x = T.applyX(n.x), y = T.applyY(n.y), r = graphReach(n) * T.k + (n.id === focus ? 7 : 1);
+    return { id: n.id, box: [x - r, y - r, x + r, y + r] };
+  });
+}
+function graphBoxesMeet(a, b) { return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]; }
+// Right of its mark, else left, below, above: the first place inside the map that touches no other label and no
+// other mark. With none free a record goes unnamed (pointing at it still says its name); an entry or the focused
+// record is always named, at the place that covers the fewest marks.
+function graphLabelSpot(n, w, h, taken, marks, must) {
+  const { T, W, H } = graphState, x = T.applyX(n.x), y = T.applyY(n.y), r = graphReach(n) * T.k + (n.id === graphState.focus ? 11 : 5);
+  const right = W - graphPanelWidth();
+  const spots = [[x + r, y - h / 2], [x - r - w, y - h / 2], [x - w / 2, y + r], [x - w / 2, y - r - h]].map(([left, top], side) => {
+      // A name that must be written is slid back inside the map's edge rather than dropped.
+      if (must) { left = Math.max(0, Math.min(left, right - w)); top = Math.max(0, Math.min(top, H - h)); }
+      return { side, box: [left, top, left + w, top + h] };
+    }).filter(spot => spot.box[0] >= 0 && spot.box[2] <= right && spot.box[1] >= 0 && spot.box[3] <= H && !taken.some(box => graphBoxesMeet(spot.box, box)));
+  const covers = spot => marks.filter(mark => mark.id !== n.id && graphBoxesMeet(spot.box, mark.box)).length;
+  return spots.find(spot => !covers(spot)) || (must && spots.sort((a, b) => covers(a) - covers(b))[0]) || null;
+}
+function graphLabelText(ctx, lines, { side, box }, ink, ground) {
+  // A plate of paper under the name: the links it crosses stay faint behind it instead of striking it through.
+  ctx.globalAlpha = .82; ctx.fillStyle = ground; ctx.fillRect(box[0], box[1], box[2] - box[0], box[3] - box[1]); ctx.globalAlpha = 1;
+  ctx.textAlign = ["left", "right", "center", "center"][side];
+  const x = [box[0] + 2, box[2] - 2, (box[0] + box[2]) / 2, (box[0] + box[2]) / 2][side];
+  lines.forEach((line, i) => {
+    const y = box[1] + 1 + GRAPH_LINE / 2 + i * GRAPH_LINE;
+    ctx.lineWidth = 3.5; ctx.strokeStyle = ground; ctx.strokeText(line, x, y);
+    ctx.fillStyle = ink; ctx.fillText(line, x, y);
+  });
+}
+// What was named is kept on graphState.labels, so a test can read what the canvas drew.
 function graphLabels(ctx, order, colours) {
-  const { focus, near1, T, W, H } = graphState, phone = graphPhone(), boxes = [], right = phone ? 4 : graphPanelWidth();
-  const want = order.filter(n => {
-    if (graphAlpha(n) < .4 || graphHidden(n)) return false;
-    if (focus) return n.id === focus || near1.has(n.id);
-    return n.k === "knowledge" || graphRadius(n) * T.k >= (phone ? 11 : 8.5);
-  }).sort((a, b) => (b.id === focus) - (a.id === focus) || (b.k === "knowledge") - (a.k === "knowledge") || graphRadius(b) - graphRadius(a));
-  ctx.textBaseline = "middle"; ctx.lineJoin = "round";
-  const centre = focus && GRAPH.byId.get(focus);
-  if (centre) { const x = T.applyX(centre.x), y = T.applyY(centre.y), r = graphRadius(centre) * T.k + 7; boxes.push([x - r, y - r, x + r, y + r]); }
+  const marks = graphMarkBoxes(), taken = [];
   const font = graphCss("--font"), size = graphCss("--s-meta"), weight = [graphCss("--w-regular"), graphCss("--w-bold")];
-  for (const n of want) {
-    const top = n.k === "knowledge" || n.id === focus, x = T.applyX(n.x), y = T.applyY(n.y), r = graphRadius(n) * T.k;
+  ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+  graphState.labels = [];
+  for (const n of graphNamed(order)) {
+    const top = n.k === "knowledge" || n.id === graphState.focus;
     ctx.font = `${weight[+top]} ${size} ${font}`;
-    const text = graphShort(graphTitle(n)), w = ctx.measureText(text).width, bx = x + r + (n.id === focus ? 10 : 5);
-    const box = [bx - 2, y - 8, bx + w + 2, y + 8];
-    if (bx + w > W - right || bx < 0 || y < 8 || y > H - 8 || boxes.slice(n.id === focus ? 1 : 0).some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
-    boxes.push(box);
-    ctx.lineWidth = 3.5; ctx.strokeStyle = colours.bg; ctx.strokeText(text, bx, y);
-    ctx.fillStyle = top ? colours.ink : colours.ink2; ctx.fillText(text, bx, y);
+    const { lines, text } = graphLines(graphTitle(n), top ? (graphPhone() ? 22 : 28) : 24, top ? (graphPhone() ? 3 : 2) : 1);
+    const spot = graphLabelSpot(n, Math.max(...lines.map(line => ctx.measureText(line).width)) + 4, lines.length * GRAPH_LINE + 2, taken, marks, top);
+    if (!spot) continue;
+    taken.push(spot.box);
+    graphState.labels.push({ id: n.id, text, box: spot.box });
+    graphLabelText(ctx, lines, spot, top ? colours.ink : colours.ink2, colours.bg);
   }
+  ctx.textAlign = "left";
 }
 function graphPanelWidth() { return graphPhone() ? 0 : 396; }
-// The canvas starts under the heading and ends above the legend: a canvas under a see-through heading
-// drew nodes on the tabs and the title, and panning could push any node there. On a phone the stage
-// is already its own block between the heading and the panel.
+// The map ends at the window's foot (#3085: it was as tall as the window but began under the top bar, so its
+// key and the end of its panel were under the fold). The panel hangs beside the map, as tall as its list and
+// never taller than the map. On a phone the map leaves room under it for the panel's first lines above the tab bar.
 function graphStage() {
-  const map = document.querySelector(".gx-map"), stage = map.querySelector(".gx-stage");
-  if (graphPhone()) { stage.style.top = stage.style.bottom = ""; return; }
-  const head = map.querySelector(".gx-head"), foot = Math.min(...[".gx-legend", ".gx-zoom"].map(selector => map.querySelector(selector).offsetTop));
-  stage.style.top = head.offsetTop + head.offsetHeight + 12 + "px";
-  stage.style.bottom = map.clientHeight - foot + 8 + "px";
+  const map = document.querySelector(".gx-map"), stage = map.querySelector(".gx-stage"), panel = map.querySelector(".gx-panel");
+  const top = map.getBoundingClientRect().top + scrollY;
+  if (graphPhone()) {
+    map.style.height = panel.style.top = panel.style.maxHeight = "";
+    // Nothing selected: the map ends above the tab bar and nothing is under it. A selected record's name and
+    // its way in take the 180 px under a shorter map.
+    panel.hidden = !graphState.focus;
+    stage.style.height = Math.max(240, innerHeight - top - stage.offsetTop - 88 - (graphState.focus ? 180 : 0)) + "px";
+    return;
+  }
+  stage.style.height = "";
+  panel.hidden = false;
+  map.style.height = Math.max(520, innerHeight - top) + "px";
+  panel.style.top = stage.offsetTop + 8 + "px";
+  panel.style.maxHeight = stage.offsetHeight - 16 + "px";
 }
 // Fit what is shown, leaving room for the heading above, the panel at the right and the legend below.
 function graphFit() {
@@ -13044,28 +13184,33 @@ function graphFit() {
   const points = GRAPH.linked.filter(n => ids ? ids.has(n.id) : graphVisible(n));
   if (!points.length) return;
   const [x0, x1] = d3.extent(points, n => n.x), [y0, y1] = d3.extent(points, n => n.y);
-  const L = phone ? 16 : 40, R = phone ? 16 : graphPanelWidth() + 24, top = 20, bottom = 20;
+  const L = phone ? 28 : 40, R = phone ? 28 : graphPanelWidth() + 24, top = 24, bottom = 24;
   const k = Math.min((W - L - R) / ((x1 - x0) || 1), (H - top - bottom) / ((y1 - y0) || 1), ids ? 2 : 4) * (ids ? .8 : .92);
+  if (!ids) graphState.fitK = k;
   graphState.T = d3.zoomIdentity.translate(L + (W - L - R) / 2 - k * (x0 + x1) / 2, top + (H - top - bottom) / 2 - k * (y0 + y1) / 2).scale(k);
   if (graphState.zoom) d3.select(graphCanvas()).call(graphState.zoom.transform, graphState.T);
 }
+// A pointer must be on the mark; a thumb only near it: on a phone a mark answers within 22 px of its centre
+// (a 44 px target however small it is drawn), a knowledge entry before anything else in reach.
 function graphHit(event) {
-  const canvas = graphCanvas(), rect = canvas.getBoundingClientRect(), T = graphState.T;
+  const canvas = graphCanvas(), rect = canvas.getBoundingClientRect(), T = graphState.T, thumb = graphPhone() ? 22 / T.k : 0;
   const x = T.invertX(event.clientX - rect.left), y = T.invertY(event.clientY - rect.top);
-  let best = null, bestD = Infinity;
-  for (const n of GRAPH.linked) {
-    if (!graphVisible(n) || graphAlpha(n) < .4) continue;
-    const d = Math.hypot(n.x - x, n.y - y);
-    if (d < graphRadius(n) + 4 / T.k && d < bestD) { best = n; bestD = d; }
-  }
-  return best;
+  const reach = GRAPH.linked.filter(n => graphVisible(n) && graphAlpha(n) >= .4).map(n => ({ n, d: Math.hypot(n.x - x, n.y - y) }))
+    .filter(({ n, d }) => d < Math.max(graphRadius(n) + 4 / T.k, thumb));
+  return reach.sort((a, b) => (thumb ? (b.n.k === "knowledge") - (a.n.k === "knowledge") : 0) || a.d - b.d)[0]?.n || null;
 }
 function graphBind(box) {
   const canvas = box.querySelector(".gx-canvas");
-  graphState.zoom = d3.zoom().scaleExtent([.2, 8]).on("zoom", event => { graphState.T = event.transform; graphDraw(); });
+  // On a phone one finger scrolls the page past the map; two fingers move and zoom it.
+  const fingers = event => !graphPhone() || !event.touches || event.touches.length > 1;
+  graphState.zoom = d3.zoom().scaleExtent([.2, 8]).filter(event => (!event.ctrlKey || event.type === "wheel") && !event.button && fingers(event))
+    .on("zoom", event => { graphState.T = event.transform; graphDraw(); });
   d3.select(canvas).call(graphState.zoom).on("dblclick.zoom", null);
-  canvas.addEventListener("click", event => graphFocus(graphHit(event)?.id || ""));
-  canvas.addEventListener("mousemove", event => graphTip(event, graphHit(event)));
+  // One click opens the record's page (#3095: focusing it and then pressing Open was two). Pointing at a mark is
+  // what previews it in the panel; a click on empty paper lets go of whatever was focused.
+  canvas.addEventListener("click", event => { const n = graphHit(event); if (n) graphOpen(n); else graphFocus(""); });
+  canvas.addEventListener("mousemove", event => { const n = graphHit(event); graphTip(event, n); graphPoint(n); });
+  canvas.addEventListener("keydown", event => { if (event.key === "Enter" && graphState.focus) graphOpen(GRAPH.byId.get(graphState.focus)); });
   canvas.addEventListener("mouseleave", () => { box.querySelector(".gx-tip").hidden = true; });
   for (const button of box.querySelectorAll("[data-zoom]")) button.onclick = () => {
     const by = Number(button.dataset.zoom);
@@ -13088,17 +13233,43 @@ function graphTip(event, n) {
   tip.style.left = event.clientX - rect.left + 12 + "px";
   tip.style.top = event.clientY - rect.top - 30 + "px";
 }
+// The record's page, leaving the graph's address naming this mark: the browser's Back returns to the graph with
+// the mark focused, and the pan and zoom he left are kept for that return. A mark with no page is only focused.
+function graphOpen(n) {
+  if (!n.r) return graphFocus(n.id);
+  clearTimeout(graphState.dwell);
+  history.replaceState(null, "", "#view=graph&focus=" + encodeURIComponent(n.id));
+  graphState.left = { focus: n.id, T: graphState.T, width: innerWidth };
+  location.hash = href(n.r);
+}
+function graphReturn() {
+  const left = graphState.left;
+  graphState.left = null;
+  if (!left || left.focus !== graphState.focus || left.width !== innerWidth) return;
+  graphState.T = left.T;
+  d3.select(graphCanvas()).call(graphState.zoom.transform, left.T);
+}
+// Pointing at a mark for a moment shows it in the panel and rings it, without moving the map or dimming the
+// rest (a dimmed mark could not be pointed at next). It stays until another mark is pointed at, so the panel
+// can be reached with the pointer.
+function graphPoint(n) {
+  clearTimeout(graphState.dwell);
+  if (!n || n.id === (graphState.preview || graphState.focus)) return;
+  graphState.dwell = setTimeout(() => { graphState.preview = n.id; graphPanel(); graphDraw(); }, 140);
+}
 // Focus lives in the URL, so a topic page's "open in graph" lands focused; no re-render on change.
 function graphFocus(id) {
   graphState.focus = id;
+  graphState.preview = "";
   graphFocusSets();
   const hash = "#view=graph" + (id ? "&focus=" + encodeURIComponent(id) : "") + (id && graphState.depth > 1 ? "&depth=2" : "");
   history.replaceState(null, "", hash);
   const search = document.querySelector(".gx-search"), clear = document.querySelector(".gx-clear");
   search.value = id ? graphTitle(GRAPH.byId.get(id)) : "";
   clear.hidden = !id;
-  graphFit();
   graphPanel();
+  graphResize();
+  graphFit();
   graphDraw();
 }
 function graphMatches(query) {
@@ -13150,19 +13321,30 @@ function graphRole(n) {
 }
 function graphPanel() {
   const panel = document.querySelector(".gx-map .gx-panel");
-  panel.replaceChildren(...(graphState.focus ? graphPanelFocus(GRAPH.byId.get(graphState.focus)) : graphPanelGuide()));
+  const shown = graphState.preview || graphState.focus;
+  panel.replaceChildren(...(shown ? graphPanelFocus(GRAPH.byId.get(shown)) : graphPanelGuide()));
 }
+// What a record ties together, in words: "15 people · 9 projects · 2 organisations".
+function graphTies(n) {
+  const count = {};
+  for (const id of GRAPH.adj.get(n.id) || []) { const k = GRAPH.byId.get(id).k; count[k] = (count[k] || 0) + 1; }
+  return ["people", "projects", "orgs", "knowledge", "notes"].filter(k => count[k]).map(k => graphCount(k, count[k])).join(" · ");
+}
+// A record's own first sentence: a knowledge entry's What it is, anything else's lead.
+function graphSummary(n) {
+  if (!n.r || graphHidden(n)) return "";
+  const line = n.k === "knowledge" ? plainLine(topicKnown(n.r, "what it is")) : summaryLine(known(n.r).summary);
+  return /^Unknown\b/.test(line) ? "" : line.length > 220 ? line.slice(0, 217) + "…" : line;
+}
+// With nothing selected (#3085): the knowledge entries, each with its whole title and what it ties together,
+// then the busiest pages under a rule. No instructions (#2994), and the card is as tall as the list.
 function graphPanelGuide() {
   const topics = GRAPH.linked.filter(n => n.k === "knowledge").sort((a, b) => graphDegree(b) - graphDegree(a));
-  // The owner is every page's hub by definition, so ranking him says nothing (sprint 15).
-  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n) && !(REM.owner && n.id === REM.owner)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
-  const count = n => graphT("{n} links", { n: graphDegree(n) });
-  // No instructions over the lists (#2994): the entries come first, then the busiest pages, each with its count,
-  // and the order says which is which; a rule divides the two.
+  const hubs = graphHubs(GRAPH.linked.filter(n => !graphHidden(n)), graphDegree, 5);
   return [el("div", { class: "gx-panel-body gx-panel-guide" }, [
-      ...topics.map(n => graphItem(n, count(n) + (graphLast(n) ? " · " + fmtDate(graphLast(n)) : ""))),
+      ...topics.map(n => graphItem(n, graphTies(n))),
       topics.length && hubs.length ? el("hr", { class: "gx-rule" }) : null,
-      ...hubs.map(n => graphItem(n, count(n) + " · " + graphT(GRAPH_NAME[n.k])))])];
+      ...hubs.map(n => graphItem(n, graphT("{n} links", { n: graphDegree(n) }) + " · " + graphT(GRAPH_ONE[n.k])))])];
 }
 function graphGroups(ids) {
   const groups = new Map(GRAPH_ORDER.map(k => [k, []]));
@@ -13174,9 +13356,10 @@ function graphOpenLabel(n) {
   return graphT({ knowledge: "Open knowledge page", people: "Open person page", orgs: "Open organisation page", projects: "Open project page" }[n.k] || "Open page");
 }
 function graphPanelFocus(n) {
-  const groups = graphGroups(graphState.near1), phone = graphPhone();
+  const groups = graphGroups(GRAPH.adj.get(n.id) || []), phone = graphPhone(), focused = n.id === graphState.focus;
   const counts = groups.filter(([k]) => k !== "sessions" && k !== "notes").map(([k, list]) => el("span", {}, [el("b", { text: String(list.length) }), graphT(GRAPH_NAME[k])]));
-  const sub = n.k === "knowledge" ? (graphLast(n) ? graphT("Last mentioned") + " " + fmtDate(graphLast(n)) : "") : graphRole(n) || graphT(GRAPH_NAME[n.k]);
+  const sub = n.k === "knowledge" ? (graphLast(n) ? graphT("Last mentioned") + " " + fmtDate(graphLast(n)) : "") : graphRole(n);
+  const summary = graphSummary(n);
   const depth = el("div", { class: "gx-depth" }, [el("span", { text: graphT("Depth") }), ...[1, 2].map(d => {
     const button = el("button", { type: "button", "aria-pressed": String(graphState.depth === d), text: graphT(d === 1 ? "1 hop" : "2 hops") });
     button.onclick = () => { graphState.depth = d; graphFocus(n.id); };
@@ -13189,15 +13372,15 @@ function graphPanelFocus(n) {
       list.length > max ? el("p", { class: "gx-more", text: graphT("{n} more", { n: list.length - max }) }) : null];
   });
   return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker" }, [graphGlyph(n.k, 12, n.private), graphT(GRAPH_ONE[n.k])]),
-      el("h2", { text: graphTitle(n) }), sub ? el("p", { text: sub }) : null, el("div", { class: "gx-counts" }, counts),
-      n.r ? el("a", { class: "gx-open", href: href(n.r), text: graphOpenLabel(n) + " →" }) : null, depth]),
+      el("h2", { text: graphTitle(n) }), summary ? el("p", { class: "gx-summary", text: summary }) : null, sub ? el("p", { text: sub }) : null, el("div", { class: "gx-counts" }, counts),
+      n.r ? el("a", { class: "gx-open", href: href(n.r), text: graphOpenLabel(n) + " →" }) : null, focused ? depth : null]),
     el("div", { class: "gx-panel-body" }, lists)];
 }
 // Listeners are added the first time the map opens, so loading the reader registers nothing for it.
 function graphListen() {
   if (graphState.listening) return;
   graphState.listening = true;
-  addEventListener("resize", () => { if (document.querySelector(".gx-map")) { graphResize(); graphFit(); graphDraw(); } });
+  addEventListener("resize", () => { if (document.querySelector(".gx-map .gx-canvas")) { graphResize(); graphFit(); graphDraw(); } });
   addEventListener("keydown", event => {
     if (event.key === "/" && document.querySelector(".gx-map") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
       event.preventDefault(); event.stopImmediatePropagation(); document.querySelector(".gx-search").focus();

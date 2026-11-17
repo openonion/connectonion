@@ -56,7 +56,7 @@ def test_knowledge_opens_the_graph_and_search_focuses_a_knowledge_entry(page):
     page, uri = page
     page.locator('#nav a[href="#c=knowledge"]').click()  # #3085: the rail's Knowledge is the graph
     page.locator(".gx-map canvas").wait_for()
-    assert "Knowledge 1" in page.locator(".gx-legend").inner_text()  # the counts are the legend's, not a heading
+    assert "1 knowledge entry" in page.locator(".gx-says").inner_text()  # the counts are the sentence's, each beside its shape (#3085)
     assert page.locator(".gx-panel .gx-open").count() == 0  # the whole map has no green action
     page.locator(".gx-search").fill("thermal")
     page.locator(".gx-results li").first.click()
@@ -211,7 +211,8 @@ def test_the_map_never_draws_over_its_own_heading_tabs_or_legend(page):
         page.goto(uri + "#view=graph")
         page.locator(".gx-map canvas").wait_for()
         canvas = page.locator(".gx-map canvas").bounding_box()
-        for selector in (".gx-head .knowledge-head", ".gx-bar", ".gx-tabs"):
+        # A phone draws only the entries and what they link, so it has no filters (#3085).
+        for selector in (".gx-head .knowledge-head", ".gx-bar", ".gx-says") + ((".gx-tabs",) if width > 720 else ()):
             box = page.locator(selector).bounding_box()
             assert canvas["y"] >= box["y"] + box["height"], (width, selector, canvas, box)
         if width > 720:

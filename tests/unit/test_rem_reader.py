@@ -396,9 +396,27 @@ def test_every_record_on_screen_is_named_by_what_it_is_not_a_generic_heading(tmp
     assert all(n["title"].casefold() not in ("the draft", "") for n in data["graph"]["nodes"] if not n["private"])
 
 
+def _graph_cut():
+    """graphShort and what it is made of: a width, and lines cut only between words."""
+    text = TEMPLATE.read_text()
+    return "\n".join([re.search(r"function graphWidth\(.*", text).group(0), re.search(r"function graphLines\(.*?\n\}", text, re.S).group(0),
+                      re.search(r"function graphShort\(.*", text).group(0)])
+
+
+def test_a_graph_name_is_cut_only_between_words_and_wraps_onto_the_lines_it_is_given():
+    """#3085: four of five names on the map ended mid-phrase ("Lantern glass sourcin…")."""
+    cases = [["Lantern glass sourcing after the kiln cooperative closed", 24, 1], ["Lantern glass sourcing after the kiln cooperative closed", 28, 2],
+             ["Heat storage for off-grid dairy barns in cold valleys and the hills beyond them", 28, 2], ["Wool grading", 28, 2]]
+    out = _run_reader_js(_graph_cut() + "\nconsole.log(JSON.stringify(" + json.dumps(cases) + ".map(([t, per, max]) => graphLines(t, per, max))));")
+    assert out[0] == {"lines": ["Lantern glass sourcing…"], "text": "Lantern glass sourcing…"}
+    assert out[1] == {"lines": ["Lantern glass sourcing after", "the kiln cooperative closed"], "text": "Lantern glass sourcing after the kiln cooperative closed"}
+    assert out[2]["lines"] == ["Heat storage for off-grid", "dairy barns in cold valleys…"] and out[2]["text"].endswith("cold valleys…")
+    assert out[3] == {"lines": ["Wool grading"], "text": "Wool grading"}
+
+
 def test_graph_labels_cut_chinese_titles_by_width_so_they_stay_inside_the_card():
     """A one-hop label of 18 Chinese characters ran across the neighbouring card."""
-    short = re.search(r"function graphShort\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+    short = _graph_cut()
     cases = [["Dina Morrow", 18], ["Brightlane annual planning review", 18],
              ["接收港湾租约邮件订单处理项目交接", 18], ["接收港湾租约邮件订单处理项目交接", 10], ["𠀀𠀁𠀂𠀃𠀄𠀅", 8]]
     out = _run_reader_js(short + "\nconsole.log(JSON.stringify(" + json.dumps(cases) + ".map(([t, n]) => graphShort(t, n))));")
@@ -407,7 +425,7 @@ def test_graph_labels_cut_chinese_titles_by_width_so_they_stay_inside_the_card()
 
 def test_one_hop_label_gets_the_room_past_its_offset_and_is_dropped_under_three_letters():
     label = re.search(r"function graphLocalLabel\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
-    short = re.search(r"function graphShort\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+    short = _graph_cut()
     cases = [["Dina Morrow", 120, 236, True], ["Applied Brightlane Holdings", 61, 236, False],
              ["Applied Brightlane Holdings", 25, 236, False], ["Ian Chan", 230, 236, True]]
     out = _run_reader_js(short + "\n" + label + "\nconsole.log(JSON.stringify(" + json.dumps(cases)

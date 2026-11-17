@@ -1637,14 +1637,51 @@ pinned to that edge: it comes into view with the draft.
   also offers **Explore linked records →** when the graph has links. With
   nothing linked yet the graph has nothing to draw, so Knowledge shows the
   entries instead, with **Entries** selected.
+- **The graph says what it shows** (#3085, #3095). Under the heading is one
+  sentence counted from the map, and it is also the key: each kind stands in it
+  beside its shape with its count in words (*◎ 5 knowledge entries link ● 110
+  people, ◇ 32 projects and ■ 24 organisations, with ▲ 6 skills and decisions.
+  The busiest is …, with 19 links.*); the busiest record's name focuses it.
+  There are no instructions. The map ends at the window's foot, so the sentence,
+  the map and the quiet line under it (*A bigger mark has more links*, sessions
+  folded, records that link to nothing) are on one screen at 1440×900 with
+  nothing to scroll to. **Names on the map**: every knowledge entry is named,
+  on up to two lines, then the twelve most-linked other records (your own page
+  left out); zooming in names more, in proportion to the area the zoom opens.
+  A name is cut only between words, with an ellipsis, is the translated title
+  when the page has a current translation in the interface's language, and is
+  placed right of its mark, else left, below or above, wherever it touches no
+  other name and no other mark; a record with no free place goes unnamed, and
+  the layout keeps the strip beside each named mark clear. Pointing at any mark
+  says its whole name and its link count. **The panel** beside the map is as
+  tall as its list: with nothing chosen, the knowledge entries with their whole
+  titles (wrapped, never cut) and what each ties together (*15 people · 10
+  projects · 2 organisations*), then the five busiest pages under a rule.
+  Pointing at a mark for a moment previews it there (its kind, name, first
+  sentence, counts, links and a neutral **Open … page →** button) and rings it
+  on the map without moving anything. **One click on a mark opens that
+  record's page**, as does Enter on the map while a mark is focused; the
+  browser's Back returns to the graph with that mark focused and the pan and
+  zoom you left. A row in the panel, a search result or `&focus=` focuses a
+  mark instead: the map closes in on it and what it links. No colour on the
+  page is saturated. **On a phone** the map draws only the knowledge entries
+  and the records they link directly, names the entries, and fills the screen
+  down to the tab bar with nothing under it and nothing to scroll to; an
+  entry answers a tap within 22 px of its centre (a 44 px target however small
+  it is drawn), a tap opens the record's page, one finger scrolls the page and
+  two move the map. The filters are not shown there. A focused record's card
+  (name, **Open … page →**) sits under a shorter map, above the tab bar, and
+  its lists scroll with the page. The heading and the **Graph / Entries**
+  switch are the same size at the same place in both views.
 - **Headings name a page, they do not explain it** (#2994): a category page
   shows its name and its count, not a sentence about its order. Skills opens
   with its name and its finder (*Find among N skills…*) on one line, the most
   used as cards with no **Most used** heading, then the families' buttons with
   no caption. Today's number stands beside the faces it starts with, without
   *Start with these N people*. The graph's heading is **Knowledge** and its
-  switch; its counts are in the legend under the map, and the panel lists the
-  entries, then the busiest pages, divided by a rule. Sessions keeps its count
+  switch; its counts are in the one sentence under the heading, each beside
+  its shape, and the panel lists the entries, then the busiest pages, divided
+  by a rule. Sessions keeps its count
   without an explanatory subtitle; Projects keeps its factual summary at body
   size and drops the sentences describing its sort order and board axes. The
   [category heading audit](rem-heading-audit.md) records each keep/drop decision
@@ -1793,7 +1830,8 @@ pinned to that edge: it comes into view with the draft.
   giving two letters or more, never a person's name, and only when it is the
   one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
-  Graph labels are cut by width, so a Chinese title stays inside its card.
+  Graph labels are cut by width and only between words (any glyph of a Chinese
+  title is a boundary), so a Chinese title stays inside its card.
   The graph's list of the busiest pages leaves your own page out: you are every
   page's hub by definition (the notebook's owner field, not a name).
 - **Merged threads**: the same request copied onto several pages is shown
