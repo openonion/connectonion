@@ -373,12 +373,14 @@ def test_the_reader_paints_only_from_the_token_sheet():
     assert not found, f'{len(found)} literals outside the Fuse sheet:\n' + '\n'.join(found[:80])
 
 
-def test_the_sheet_has_five_sizes_two_weights_and_three_elevations():
-    """N3 (D-123): 44 / 24 / 15 / 13 / 11, regular and semibold, e1 resting, e2 the one focus card, e3 menus and sheets."""
+def test_the_sheet_has_seven_sizes_two_weights_and_three_elevations():
+    """N3 (D-123) with the written scale of #3096: 44 / 24 / 20 / 17 / 15 / 13 / 11, regular and semibold,
+    e1 resting, e2 the one focus card, e3 menus and sheets."""
     blocks = _blocks(_parts()[0])
     light = blocks.get(('', ':root'), {})
     sizes = {n: light[n] for n in light if n.startswith('--s-')}
-    assert sizes == {'--s-display': '44px', '--s-head': '24px', '--s-body': '15px', '--s-ui': '13px', '--s-meta': '11px'}
+    assert sizes == {'--s-display': '44px', '--s-head': '24px', '--s-title': '20px', '--s-lead': '17px',
+                     '--s-body': '15px', '--s-ui': '13px', '--s-meta': '11px'}
     assert {n: light[n] for n in light if n.startswith('--w-')} == {'--w-regular': '400', '--w-bold': '600'}
     assert {'--e1', '--e2', '--e3'} <= set(light) and not any('shadow' in n for n in light)
     assert {'--r-card', '--r-inner', '--r-pill', '--radius'} <= set(light)

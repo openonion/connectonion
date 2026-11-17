@@ -49,16 +49,24 @@
 
     /* type: five sizes, two weights, one family (CJK + Latin); fonts are local on purpose */
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", Inter, sans-serif;
+    /* The scale is seven steps (docs/cli/rem-visual-system.md, #3096). 15 is the smallest size for a sentence
+       or a table cell, 13 the smallest for a label; 11 is a caption for axis ticks and badges only. */
     --s-display: 44px; /* the single display element per screen: a count or a name */
     --s-head: 24px; /* a card's subject, a widget's big number */
-    --s-body: 15px; /* sentences, letters, quotes */
-    --s-ui: 13px; /* rows, chips, buttons in menus; the smallest size for running Chinese */
-    --s-meta: 11px; /* dates, labels, badges: short labels only */
+    --s-title: 20px; /* a page's name, a section that leads a page */
+    --s-lead: 17px; /* the one sentence a page opens with */
+    --s-body: 15px; /* sentences, letters, quotes, table cells */
+    --s-ui: 13px; /* labels, chips, dates beside a row; the smallest size for running Chinese */
+    --s-meta: 11px; /* captions: axis ticks and badges, never a sentence or a table cell */
     --mono: ui-monospace, "SF Mono", Menlo, monospace; /* code and paths only */
     --w-regular: 400;
     --w-bold: 600;
-    --lh-tight: 1.05;
-    --lh-body: 1.55;
+    /* leading: five steps. Chinese has no descenders to borrow room from, so a paragraph reads at 1.7. */
+    --lh-tight: 1.05; /* display */
+    --lh-head: 1.25; /* titles and heads */
+    --lh-ui: 1.4; /* a label or a row of one line */
+    --lh-body: 1.55; /* sentences */
+    --lh-read: 1.7; /* a paragraph, and any running Chinese */
     --track-display: -0.035em;
 
     /* grid */
@@ -1749,10 +1757,10 @@
   .pd .pd-inf { border-bottom: 1px dashed var(--pencil); }
   .pd .tag { display: inline-block; font: var(--s-meta)/1.5 var(--font); color: var(--grey); border: 1px dashed var(--pencil); border-radius: var(--radius); padding: 0 5px; margin-left: 6px; white-space: nowrap; }
   .pd-head { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
-  .pd-title { margin: 0; font: var(--w-bold) var(--s-head)/1.2 var(--font); letter-spacing: -.01em; }
+  .pd-title { margin: 0; font: var(--w-bold) var(--s-title)/var(--lh-head) var(--font); letter-spacing: -.01em; }
   .pd-count { margin-left: 8px; color: var(--grey); font-weight: var(--w-regular); font-size: var(--s-body); }
   .pd-views { display: flex; gap: 18px; }
-  .pd-views a { padding: 4px 0; color: var(--grey); font-size: var(--s-body); border-bottom: 2px solid transparent; }
+  .pd-views a { padding: 4px 0; color: var(--grey); font: var(--s-body)/var(--lh-ui) var(--font); border-bottom: 2px solid transparent; }
   .pd-views a.on { color: var(--ink); font-weight: var(--w-bold); border-bottom-color: var(--ink); }
   .pd-views a:hover { text-decoration: none; color: var(--ink); }
   .pd-head-end { margin-left: auto; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
@@ -1763,7 +1771,7 @@
   .pd-seg a:hover { text-decoration: none; color: var(--ink); }
   .pd-seg a.on { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); outline: var(--hair) solid var(--rule); }
   .pd-rem { margin: 16px 0 0; max-width: 900px; }
-  .pd-lede { margin: 0; font: var(--w-regular) var(--s-body)/1.65 var(--font); letter-spacing: .005em; color: var(--ink); }
+  .pd-lede { margin: 0; font: var(--w-regular) var(--s-lead)/var(--lh-read) var(--font); letter-spacing: .005em; color: var(--ink); }
   .pd-lede .pd-asked { color: var(--grey); }  /* a promise gone stale is asked about, never shouted in red */
   .pd-basis { margin: 10px 0 0; color: var(--grey); font-size: var(--s-meta); }
   .pd-rule { border: 0; border-top: 1px solid var(--ink); margin: 30px 0 0; }
