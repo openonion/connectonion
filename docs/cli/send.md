@@ -24,15 +24,13 @@ in /home/kim/editing-agent/.co/inbox/files/
 
 ## What the receiver needs
 
-- **A running Host.** `co ai`, `co host` or the background service. Files are
-  received by the Host, so a stopped agent receives nothing.
+- **A running Host, for a direct send.** `co ai`, `co host` or the background
+  service. When there is none, small files wait on the server instead (below).
 - **The sender as a contact.** A contact, a whitelisted address or an admin
   may send; anyone else is refused, even on a `trust: open` agent. Add one
   with `co trust add 0x29d7...`.
-- **Reachable directly.** On the same network, or at a public address
-  (`AGENT_PUBLIC_DOMAIN`, as `co deploy --to` sets up). The bytes never go
-  through the relay; when the relay is the only way to reach the receiver,
-  `co send` says so and stops.
+- **Reachable directly, for large files.** On the same network, or at a
+  public address (`AGENT_PUBLIC_DOMAIN`, as `co deploy --to` sets up).
 - **Room on its disk.** An offer that would leave less than 1 GB free is
   refused before anything is sent.
 
@@ -48,6 +46,32 @@ in /home/kim/editing-agent/.co/inbox/files/
 
 A file appears under its date only after its size and sha256 match what the
 sender offered. Bytes that do not match are deleted, not kept.
+
+## When the receiver cannot be reached
+
+Behind a home or office router, or with its Host stopped, the receiver cannot
+take a direct send. A file of up to 10 MB then waits on the server for 7 days,
+encrypted so that only the receiver can open it:
+
+```text
+$ co send 0x1e85... ./cut-notes.pdf
+co send: 0x1e85d1… is not reachable directly from here: its Host is behind a router or not running.
+cut-notes.pdf  2.4 MB  sha256 9c1f0e7a2b44…  waiting for the receiver, encrypted to it, for 7 days; `co receive` there takes it, and it is deleted once taken or when the days are up
+
+$ co receive                           # on the receiving machine, any time in the next 7 days
+took 2026-11-17/cut-notes.pdf from 0x29d79879…, which was waiting on the server
+2026-11-17/cut-notes.pdf  2.4 MB  from 0x29d79879…  sha256 9c1f0e7a2b44… verified
+```
+
+- The server holds a box sealed to the receiver's key, and the name and sha256
+  sealed the same way. It sees addresses and sizes, never a name or the
+  contents.
+- `co receive` takes files only from a contact, a whitelisted address or an
+  admin, the same rule as a direct send. A file from anyone else stays where
+  it is, and `co receive` names the sender and the day it will be deleted.
+- The box proves who made it. A file the sender's key did not seal, or whose
+  sha256 does not match, is deleted, not kept.
+- Larger files need the receiver to be reachable directly.
 
 ## When the connection drops
 

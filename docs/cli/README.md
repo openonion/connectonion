@@ -1021,9 +1021,10 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 Files, and folders as the files inside them, to another agent's running Host.
 They arrive byte for byte and are checked against their sha256; an interrupted
-send continues from where it stopped. Only the receiver's contacts may send, the
-receiver must be reachable directly, and the bytes never go through the relay.
-`co receive` lists what arrived. See [send.md](send.md).
+send continues from where it stopped. Only the receiver's contacts may send.
+When the receiver cannot be reached directly, a file of up to 10 MB waits on the
+server for 7 days, encrypted to the receiver. `co receive` takes what is waiting
+and lists what arrived. See [send.md](send.md).
 
 ```bash
 co send 0x1e85... ./C2350.MP4        # one file, any size
