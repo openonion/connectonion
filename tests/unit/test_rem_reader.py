@@ -3597,6 +3597,22 @@ def test_empty_agenda_explains_never_read_or_last_read_with_no_events(language, 
         assert ('还没有读过日历' if language == 'zh' else 'No calendar read yet') in result['text']
 
 
+def test_agenda_counts_the_calendars_it_read_and_left_out_in_a_sentence():
+    """#3087: only the owner's own calendars are read; the page says how many, and how many were left out and why."""
+    page = TEMPLATE.read_text()
+    translations = re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0]
+    event = {'id': 'e1'}
+    read = [{'name': 'Google Calendar', 'at': '2026-11-15T02:30:00Z', 'calendars': 2, 'left_out': {'freeBusyReader': 1, 'unticked': 1}},
+            {'name': 'Outlook', 'at': '2026-11-15T02:30:00Z', 'calendars': 0, 'left_out': {'reader': 1}},
+            {'name': 'Saved before #3087', 'at': '2026-11-15T02:30:00Z'}]
+    result = _run_reader_js(translations + _reader_function('agT') + _reader_function('agendaCalendars') + _reader_function('agendaRead')
+        + '\nuiLanguage = "en"; const REM = {calendar: ' + json.dumps({'read': read, 'errors': [], 'events': [event]}) + '};'
+        + r'''const el = (tag, attrs) => ({tag, ...attrs});
+        console.log(JSON.stringify(agendaRead()));''')
+    assert result['text'] == ('Google Calendar: 2 own calendars read; 2 left out (1 shared as free/busy, 1 not ticked in Google Calendar). '
+                              'Outlook: 0 own calendars read; 1 left out (1 shared read-only).')
+
+
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_the_phone_tab_bar_uses_the_rail_pictures_and_keeps_its_words(language):
     assert _rail(language)['tabs'] == list(map(list, zip(['sun', 'message-square-reply', 'users', 'search', 'ellipsis'], RAIL[language]['tabs'])))

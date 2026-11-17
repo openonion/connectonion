@@ -2252,6 +2252,7 @@
   .ag-range { font: var(--w-bold) var(--s-body)/22px var(--font); margin-left: 6px; }
   .ag-source { font-size: var(--s-meta); color: var(--grey); margin-left: 12px; }
   .agenda-note { margin: -4px 0 14px; font-size: var(--s-meta); color: var(--grey); }
+  .agenda-note.agenda-read { margin: 14px 0 0; }
   .agenda-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
   .ag-col { min-height: 300px; padding: 10px 8px 14px; border-left: var(--hair) solid var(--rule); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .ag-col:first-child { border-left: 0; }
@@ -9289,6 +9290,9 @@ const AG_ZH = {
   "permission denied": "没有权限", "provider unavailable": "暂时不可用", "not found on the server (deleted or moved)": "服务器上找不到",
   "a fault in REM": "REM 自身出错",
   "{name} has more than {n} events in these weeks; REM kept the first {n} and skipped the rest.": "{name} 这几周的日程超过 {n} 条；REM 只保存了前 {n} 条，其余跳过了。",
+  "{name}: 1 own calendar read": "{name}：读了 1 个自己的日历", "{name}: {n} own calendars read": "{name}：读了 {n} 个自己的日历",
+  "none left out": "没有略过的日历", "{n} left out ({why})": "{n} 个没有读（{why}）", ", ": "，", "; ": "；", ".": "。",
+  "{n} shared as free/busy": "{n} 个只共享忙闲", "{n} shared read-only": "{n} 个只读共享", "{n} not ticked in Google Calendar": "{n} 个没在 Google 日历里勾选",
 };
 function agT(key, values = {}) {
   const words = uiLanguage === "zh" ? AG_ZH[key] : null;
@@ -9407,6 +9411,20 @@ function agendaEarlier(items) {
     ...unique.flatMap((item, i) => [i ? " · " : null, el("a", { href: item.href, class: item.late ? "late" : "", text: item.title }),
       el("span", { class: "mono", text: " " + calendarDate(item.day) })])]);
 }
+// Only his own calendars are read (#3087): the page says how many, and how many were left out and why, in words.
+function agendaCalendars(c) {
+  const kinds = { freeBusyReader: "{n} shared as free/busy", reader: "{n} shared read-only", unticked: "{n} not ticked in Google Calendar" };
+  const out = Object.entries(c.left_out || {}), total = out.reduce((sum, [, n]) => sum + n, 0);
+  const why = out.map(([kind, n]) => agT(kinds[kind] || kinds.reader, { n })).join(agT(", "));
+  return agT(c.calendars === 1 ? "{name}: 1 own calendar read" : "{name}: {n} own calendars read", { name: c.name, n: c.calendars })
+    + agT("; ") + (total ? agT("{n} left out ({why})", { n: total, why }) : agT("none left out")) + agT(".");
+}
+// It sits under the calendar: what was read is provenance, and the week stays at the top of the page.
+// A file saved before #3087 has no counts; the sentence appears after the next read.
+function agendaRead() {
+  const counted = (REM.calendar?.read || []).filter(c => c.calendars != null);
+  return counted.length ? el("p", { class: "agenda-note agenda-read", text: counted.map(agendaCalendars).join(" ") }) : null;
+}
 function agendaNote() {
   if (REM.shared) return null;
   if (!REM.calendar) return el("p", { class: "agenda-note", text: agT("No calendar read yet: REM reads your connected Google and Outlook calendars each night.") });
@@ -9451,7 +9469,7 @@ function agendaView() {
     range = agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(end, { day: "numeric", month: "short", year: "numeric" });
     body = agendaWeek(items, start);
   }
-  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items)]));
+  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items), agendaRead()]));
 }
 
 // ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------

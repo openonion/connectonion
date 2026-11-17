@@ -2,9 +2,13 @@
 
 The reader never calls a calendar: opening Agenda must be instant and work
 offline, and a calendar login must never start from a page. The night run
-reads the next DAYS days from every calendar of each account co can already
-read (Google via `co auth google`, Outlook via `co auth microsoft`) and saves
-them to `.state/calendar.json`; the reader shows that file. A calendar that
+reads the next DAYS days from the owner's own calendars in each account co
+can already read (Google via `co auth google`, Outlook via `co auth microsoft`)
+and saves them to `.state/calendar.json`; the reader shows that file. A
+calendar someone shared with him as free/busy or read-only is never read
+(#3087): 15 of his 20 saved events were other people's untitled Busy entries.
+The file records how many calendars were read and how many were left out, by
+access, so Agenda can say it in words. A calendar that
 fails one night keeps the events it saved before, with when and why beside
 them, so one expired login does not empty the week.
 
@@ -46,7 +50,33 @@ def _zone_name(zone) -> str:
     return getattr(zone, 'key', 'UTC')
 
 
-def _google_events(start, end, zone) -> list[dict]:
+OWN = ('owner', 'writer')  # Google's accessRole for a calendar that is his, or that he can write to
+
+
+def _google_left_out(listed: dict) -> str | None:
+    """Why a listed Google calendar is not read, as the word calendar.json counts it under; None for one that is.
+
+    Shared without write access is never his schedule; one of his own that he
+    unticked in Google Calendar is one he chose not to see."""
+    access = listed.get('accessRole', '')
+    if access not in OWN:
+        return access or 'reader'
+    return None if listed.get('primary') or listed.get('selected') else 'unticked'
+
+
+def _counted(listed: list, left_out) -> tuple[list, dict]:
+    """The calendars to read, and {'read': n, 'left_out': {why: n}} for the page's sentence."""
+    read, why = [], {}
+    for one in listed:
+        reason = left_out(one)
+        if reason:
+            why[reason] = why.get(reason, 0) + 1
+        else:
+            read.append(one)
+    return read, {'read': len(read), 'left_out': why}
+
+
+def _google_events(start, end, zone) -> tuple[list[dict], dict]:
     from ..useful_tools.google_calendar import GoogleCalendar
     service = GoogleCalendar()._get_service()  # the tool's login and token refresh
     calendars, token = [], None
@@ -57,10 +87,10 @@ def _google_events(start, end, zone) -> list[dict]:
         if not token:
             break
     events = []
-    # The calendars he shows in Google Calendar: his own and the shared ones he ticked, not every subscribed feed.
-    for listed in [c for c in calendars if c.get('primary') or c.get('selected')]:
+    own, counts = _counted(calendars, _google_left_out)
+    for listed in own:
         token = None
-        # Each event carries its calendar's name and his access to it: one shared as free/busy has no title to show.
+        # Each event carries its calendar's name and his access to it.
         shown = {'name': listed.get('summaryOverride') or listed.get('summary', ''), 'access': listed.get('accessRole', '')}
         while len(events) < CAP:
             # No `fields`: the whole event resource comes back, `summary` and `eventType` included.
@@ -71,7 +101,7 @@ def _google_events(start, end, zone) -> list[dict]:
             token = page.get('nextPageToken')
             if not token:
                 break
-    return events
+    return events, counts
 
 
 def _graph_pages(client, endpoint, params, headers, limit=CAP) -> list[dict]:
@@ -84,23 +114,28 @@ def _graph_pages(client, endpoint, params, headers, limit=CAP) -> list[dict]:
     return rows
 
 
-def _microsoft_events(start, end, zone) -> list[dict]:
+def _microsoft_events(start, end, zone) -> tuple[list[dict], dict]:
     from ..useful_tools.microsoft_calendar import MicrosoftCalendar
     client = MicrosoftCalendar()
     # Times in the owner's zone: in UTC an all-day event in Sydney starts the afternoon before.
     headers = {'Prefer': f'outlook.timezone="{_zone_name(zone)}"'}
     events = []
-    for listed in _graph_pages(client, '/me/calendars', {'$select': 'id,name'}, headers):
+    # Graph has no access role. `canEdit` is true for a calendar he created and for one shared with write
+    # access, which is Google's owner-or-writer; a calendar shared to read (free/busy included) has it false.
+    own, counts = _counted(_graph_pages(client, '/me/calendars', {'$select': 'id,name,canEdit'}, headers),
+                           lambda listed: None if listed.get('canEdit') else 'reader')
+    for listed in own:
         if len(events) >= CAP:
             break
         events += _graph_pages(client, f"/me/calendars/{listed['id']}/calendarView", {
             'startDateTime': start.isoformat(), 'endDateTime': end.isoformat(), '$top': 250,
             '$select': 'id,subject,start,end,isAllDay,isCancelled,location,attendees,webLink'}, headers, CAP - len(events))
-    return events
+    return events, counts
 
 
-def calendar_events(kind: str, start, end, zone) -> list[dict]:
-    """The provider's own event objects between two instants, from every calendar he shows; tests replace this.
+def calendar_events(kind: str, start, end, zone) -> tuple[list[dict], dict]:
+    """The provider's own event objects between two instants from his own calendars, and the count of
+    calendars read and left out ({'read': n, 'left_out': {access: n}}); tests replace this.
 
     It goes through the co calendar tools for their login and token refresh,
     but asks the API directly: the tools' public methods return text for an
@@ -169,19 +204,19 @@ def _reason(error: Exception) -> str | None:
     return 'unavailable' if isinstance(error, OSError) else None
 
 
-def _read(kind: str, start, end, zone) -> tuple[list[dict], bool] | None:
-    """The kind's events in one shape and whether CAP cut them short, or None when co cannot read that calendar."""
+def _read(kind: str, start, end, zone) -> tuple[list[dict], bool, dict] | None:
+    """The kind's events in one shape, whether CAP cut them short, and its calendar counts; None when co cannot read it."""
     if not available(kind):
         return None
     shape = _google if kind == 'google' else _microsoft
-    items = calendar_events(kind, start, end, zone)
+    items, counts = calendar_events(kind, start, end, zone)
     rows = [{**shape(item, zone), 'calendar': kind} for item in items]
     unique = {}
     for row in rows:
-        # One meeting comes from his own calendar with its title and from a colleague's shared one without: keep the titled.
+        # One meeting can come from two of his calendars: keep the copy with a title.
         if not row['skip'] and row['start'] and (row['id'] not in unique or (row['title'] and not unique[row['id']]['title'])):
             unique[row['id']] = row
-    return [{key: value for key, value in row.items() if key != 'skip'} for row in unique.values()], len(items) >= CAP
+    return [{key: value for key, value in row.items() if key != 'skip'} for row in unique.values()], len(items) >= CAP, counts
 
 
 def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
@@ -189,7 +224,7 @@ def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
     path = state_path(root, 'calendar.json')
     saved = read_json(path, {})
     stamp = moment.isoformat(timespec='seconds')
-    events, errors, read_at, capped = [], {}, {}, []
+    events, errors, read_at, capped, calendars = [], {}, {}, [], {}
     start = moment.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
     for kind in KINDS:
         try:
@@ -201,16 +236,20 @@ def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
                             **({} if reason else {'error': type(error).__name__, 'traceback': traceback.format_exc()})}
             if kind in saved.get('read_at', {}):
                 read_at[kind] = saved['read_at'][kind]
+                # The counts belong to the night its kept events are from; a file saved before #3087 has none.
+                calendars |= {kind: saved['calendars'][kind]} if kind in saved.get('calendars', {}) else {}
                 events += [event for event in saved.get('events', []) if event['calendar'] == kind]
             continue
         if result is not None:
             events += result[0]
             read_at[kind] = stamp
+            calendars[kind] = result[2]
             if result[1]:
                 capped.append(kind)
     events.sort(key=lambda event: event['start'])
     shown = {kind: {key: value for key, value in error.items() if key != 'traceback'} for kind, error in errors.items()}
-    write_json(path, {'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': shown, 'capped': capped, 'events': events})
+    write_json(path, {'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': shown, 'capped': capped,
+                      'calendars': calendars, 'events': events})
     return {'events': len(events), 'read': sorted(set(read_at) - set(errors)), 'errors': errors, 'capped': capped}
 
 
@@ -242,9 +281,10 @@ def upcoming(root, records: list[dict], owner: str) -> dict | None:
         pages = list(dict.fromkeys(people[a.casefold()] for a in event.get('attendees', []) if a.casefold() in people))
         events.append({**{key: value for key, value in event.items() if key != 'attendees'},
                        'people': pages, 'guests': len(event.get('attendees', []))})
-    errors, read_at = saved.get('errors', {}), saved.get('read_at', {})
+    errors, read_at, counts = saved.get('errors', {}), saved.get('read_at', {}), saved.get('calendars', {})
     return {'saved_at': saved.get('saved_at', ''),
-            'read': [{'name': NAMES[kind], 'at': at, **({'capped': CAP} if kind in saved.get('capped', []) else {})}
+            'read': [{'name': NAMES[kind], 'at': at, **({'capped': CAP} if kind in saved.get('capped', []) else {}),
+                      **({'calendars': counts[kind]['read'], 'left_out': counts[kind]['left_out']} if kind in counts else {})}
                      for kind, at in read_at.items() if kind not in errors],
             'errors': [{'name': NAMES[kind], 'at': error['at'], 'read_at': read_at.get(kind, ''),
                         'reason': PHRASES.get(error['reason'], 'a fault in REM'), 'error': error.get('error', '')}

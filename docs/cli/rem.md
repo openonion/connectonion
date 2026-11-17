@@ -1721,10 +1721,20 @@ pinned to that edge: it comes into view with the draft.
   `.state/calendar.json`, which each background round writes once (scheduled
   sync, exec and native rounds, including `codex_exec`), outside the writer
   lock, from every account co can already read (Google after `co auth google`
-  with a calendar scope: the calendars ticked in Google Calendar; Outlook after
-  `co auth microsoft` with `Calendars.*`: all its calendars, times asked in the
-  notebook's zone): three weeks from yesterday in the notebook's zone, every
-  page followed, cancelled events left out. The reader never calls a calendar.
+  with a calendar scope; Outlook after `co auth microsoft` with `Calendars.*`,
+  times asked in the notebook's zone): three weeks from yesterday in the
+  notebook's zone, every page followed, cancelled events left out. **Only your
+  own calendars are read** (#3087): in Google, a calendar ticked in Google
+  Calendar whose access is `owner` or `writer`; in Outlook, a calendar you can
+  write to (Graph's `canEdit`: true for one you created and for one shared with
+  write access). A calendar shared as free/busy or read-only is never read, so
+  another person's *Busy* entries are not in Agenda or Today, and events saved
+  from such a calendar earlier are gone after the next read. `calendar.json`
+  records, per account, how many calendars were read and how many were left
+  out by access kind (`calendars`: `read`, and `left_out` counting
+  `freeBusyReader`, `reader` and `unticked`), and Agenda says it in a sentence
+  under the calendar: *Google Calendar: 1 own calendar read; 3 left out
+  (2 shared as free/busy, 1 shared read-only).* The reader never calls a calendar.
   No calendar failure stops the night: a calendar that fails keeps the events it
   saved before, and the page says when it failed, why, and when its events are
   from; anything that is not the provider's failure is a fault in REM, named

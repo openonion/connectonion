@@ -38,6 +38,9 @@ OUTLOOK = [
      "start": {"dateTime": "2026-10-01T08:00:00.0000000", "timeZone": "UTC"},
      "end": {"dateTime": "2026-10-01T08:30:00.0000000", "timeZone": "UTC"}},
 ]
+# What each account listed (#3087): Google has one calendar of his and three shared ones that are never read.
+LISTED = {"read": 1, "left_out": {"freeBusyReader": 2, "reader": 1}}
+ALL_OWN = {"read": 2, "left_out": {}}
 FILING = """# Harbour filing
 
 ## Status
@@ -59,7 +62,7 @@ def agenda(tmp_path, monkeypatch):
     Notebook(root).write("agenda/harbour-filing.md", FILING)
     Notebook(root).write("agenda/fernhill-invoice.md", "# Fernhill invoice\n\n## Status\n2026-09-20 — Send the pilot invoice; due 2026-09-25 [1]\n")
     monkeypatch.setattr(calendar, "available", lambda kind: True)
-    monkeypatch.setattr(calendar, "calendar_events", lambda kind, start, end, zone: GOOGLE if kind == "google" else OUTLOOK)
+    monkeypatch.setattr(calendar, "calendar_events", lambda kind, start, end, zone: (GOOGLE, LISTED) if kind == "google" else (OUTLOOK, ALL_OWN))
     calendar.save_upcoming(root, FROZEN)
     snapshot = rem_reader.snapshot
 
@@ -115,7 +118,7 @@ def _night(tmp_path, monkeypatch, connected, failing=None):
     def events(kind, start, end, zone):
         if failing and kind == failing[0] and len(nights) > 1:
             raise failing[1]
-        return GOOGLE if kind == "google" else OUTLOOK
+        return (GOOGLE, LISTED) if kind == "google" else (OUTLOOK, ALL_OWN)
 
     root = tmp_path / "night"
     monkeypatch.setattr(calendar, "available", lambda kind: kind in connected)
@@ -212,9 +215,24 @@ def test_chinese(agenda):
     assert page.get_by_role("button", name="月", exact=True).is_visible()
 
 
+@pytest.mark.parametrize("width", [1440, 390])
+def test_agenda_says_in_words_which_calendars_it_read_and_which_it_left_out(agenda, width):
+    """Owner, 2026-11-17 (#3087): other people's entries were on his day. Only his own calendars are read, and the page says so."""
+    page = agenda
+    _open(page, width)
+    note = page.locator(".agenda-read").inner_text()
+    assert "Google Calendar: 1 own calendar read; 3 left out (2 shared as free/busy, 1 shared read-only)." in note
+    assert "Outlook: 2 own calendars read; none left out." in note
+    page.evaluate("() => setInterfaceLanguage('zh')", isolated_context=False)
+    note = page.locator(".agenda-read").inner_text()
+    assert "Google Calendar：读了 1 个自己的日历；3 个没有读（2 个只共享忙闲，1 个只读共享）。" in note
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
 def _show(page, shown):
     page.evaluate("shown => { REM.calendar = shown; render(); }", shown, isolated_context=False)
-    return page.locator(".agenda-note").inner_text() if page.locator(".agenda-note").count() else ""
+    note = page.locator(".agenda-note:not(.agenda-read)")
+    return note.inner_text() if note.count() else ""
 
 
 def test_before_any_night_and_with_no_calendar_connected_the_page_says_so(agenda, tmp_path, monkeypatch):

@@ -69,7 +69,7 @@ def test_catchup_reports_calendar_for_each_round(book, model, monkeypatch):
     backlog(book, 40)
     calls = []
     monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
-    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: calls.append(args) or [])
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: (calls.append(args) or [], {'read': 1, 'left_out': {}}))
     result = invoke(book, '--nights', '2', json_out=True)
     assert result.exit_code == 0, result.output
     rows = json.loads(result.stdout)['data']['nights']
@@ -84,7 +84,7 @@ def test_catchup_prints_calendar_result_in_each_night(book, model, monkeypatch):
     from connectonion.rem import calendar
     backlog(book, 20)
     monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
-    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: [])
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: ([], {'read': 1, 'left_out': {}}))
     result = invoke(book)
     assert result.exit_code == 0, result.output
     assert '0 calendar events saved' in next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
@@ -735,7 +735,7 @@ def held(book, monkeypatch, rem_clock):
     monkeypatch.setattr(quota, 'meter', lambda *a: week)
     monkeypatch.setattr(service, 'prepare_sync', fetch)
     monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
-    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: events.append(args) or [])
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: (events.append(args) or [], {'read': 1, 'left_out': {}}))
     monkeypatch.setattr(runner, 'run_task', lambda *a, **k: pytest.fail('a held catchup called the model'))
     monkeypatch.setattr(depth, 'slot', lambda *a, **k: pytest.fail('a held catchup started deepen'))
     return {'reads': reads, 'events': events, 'reason': quota.floor_block(week, read_config(book.root)['limits'])}
