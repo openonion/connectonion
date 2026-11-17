@@ -114,8 +114,15 @@ def handle_receive(as_json: bool) -> int:
     from connectonion.network.host.file_inbox import files_dir, received
     from connectonion.project import project_co_dir
 
+    import requests
+
     co_dir = project_co_dir()
-    taken = collect(_this_callers_identity(), co_dir)
+    try:
+        taken = collect(_this_callers_identity(), co_dir)
+    except requests.ConnectionError as offline:   # what arrived directly is still worth listing
+        print(f"co receive: could not reach the server to take waiting files ({offline.__class__.__name__}); "
+              "listing what is here", file=sys.stderr)
+        taken = {"landed": [], "waiting": [], "refused": []}
     entries = received(co_dir)
     if as_json:
         print(json.dumps({"files": entries, **taken}))
@@ -137,6 +144,7 @@ def _say_collected(taken: dict) -> None:
     for entry in taken["refused"]:
         print(f"refused a file from {entry['from'][:10]}…: {entry['reason']}", file=sys.stderr)
     for entry in taken["waiting"]:
-        print(f"a file ({_human(entry['size'])}) from {entry['from'][:10]}… is waiting, but that sender is not "
-              f"a contact; `co trust add {entry['from']}` and run co receive again to take it "
-              f"(it is deleted on {entry['expires_at'][:10]})", file=sys.stderr)
+        fix = (f"`co trust add {entry['from']}` and run co receive again to take it"
+               if entry["reason"] == "not a contact" else "free some space and run co receive again")
+        print(f"a file ({_human(entry['size'])}) from {entry['from'][:10]}… is waiting: {entry['reason']}; "
+              f"{fix} (it is deleted on {entry['expires_at'][:10]})", file=sys.stderr)
