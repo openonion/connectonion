@@ -788,7 +788,10 @@ def _summary_batch(root: Path, rows: list[dict], settings: dict, run) -> dict:
 
 
 def prepare(root, rows, settings, *, directory, native=False):
-    tags = read_json(state_path(root, "session-tags.json"), {})
+    # The shared vocabulary (#3093): its session topics, organisations, courses and roles, most used first.
+    from .tags import vocabulary
+    used = read_json(state_path(root, "session-tags.json"), {})
+    tags = {slug: max(entry["count"], used.get(slug, 0)) for slug, entry in vocabulary(root).items()}
     output = directory / "candidate.json"
     prompt = (_native_summary_prompt(rows, tags, directory, output) if native else _summary_prompt(rows, tags))
     return {"rows": rows, "prompt": prompt, "candidate": str(output)}

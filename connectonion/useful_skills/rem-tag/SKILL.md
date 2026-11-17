@@ -21,7 +21,7 @@ Each tag has a kind, one of:
 | kind | use it for | example slug → label |
 |---|---|---|
 | `course` | a university course; the slug is its number | `9900` → `COMP9900` |
-| `team` | a named team inside a course or company | `9900-f13` → `COMP9900 F13` |
+| `team` | a named team inside a course | `9900-f13-cake` → `COMP9900 F13-CAKE` |
 | `organisation` | a company, university, school, fund | `harbour-university` → `Harbour University` |
 | `project` | a named project or product | `tide` → `Tide` |
 | `role` | what the person is to the owner or in their unit | `student`, `tutor`, `investor`, `client` |
@@ -62,10 +62,34 @@ organisation, a role he will see again). Declare each new tag once under
 ## Courses and teams
 
 A page that names a course gets the **course** tag, its number alone (`3900`,
-`9900`), even when it also gets a team tag. A team tag never replaces its
-course: a student in COMP3900 team W16A gets `3900` and `3900-w16a`. If the
-course is not in the vocabulary, declare it in `new_tags` with kind `course`,
-the code as its label (`COMP3900`) and the code as an alias (`comp3900`).
+`9900`), even when it also gets a team tag. If the course is not in the
+vocabulary, declare it in `new_tags` with kind `course`, the code as its label
+(`COMP3900`) and the code as an alias (`comp3900`).
+
+A page that names a team in a course gets the **team** tag too, always in this
+one form: the course number, `-`, then the team's name exactly as written,
+lowercase, with spaces and punctuation as `-`.
+
+| the page says | course tag | team tag | team label |
+|---|---|---|---|
+| `COMP9900 team F13-CAKE` | `9900` | `9900-f13-cake` | `COMP9900 F13-CAKE` |
+| `3900 W16A` | `3900` | `3900-w16a` | `COMP3900 W16A` |
+| `team T09B in COMP9900` | `9900` | `9900-t09b` | `COMP9900 T09B` |
+
+Courses and teams that have their own page are already in `vocabulary.json`
+(kind `course` or `team`, slug from the page title: `9900`, `9900-f13f-cake`).
+Once a team is in `vocabulary.json`, write its slug exactly as listed. Code
+adds a known team named in a page's Facts, and the course of every team tag,
+when you leave them out.
+
+## Organisations
+
+Every organisation page is already a tag: its file name is the slug
+(`orgs/harbour-university.md` is `harbour-university`), and the vocabulary
+lists them, each with its file name as an alias. Code gives an organisation page its own tag, and every page the
+organisations its Facts link to. When other text on a page names an
+organisation, use that organisation's slug from the vocabulary; never coin a
+second spelling for it.
 
 ## Every tag quotes its page
 

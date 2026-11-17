@@ -84,3 +84,23 @@ def test_an_open_item_inherits_its_record_and_its_person():
     item = "You owe [Mira Osei](../people/mira-osei.md) feedback on the demo [2]"
     assert tags.item_tags(texts, "projects/f13-demo.md", item) == ["demo", "9900"]
     assert tags.item_tags(texts, "people/unknown.md", "nothing linked") == []
+
+
+def test_every_organisation_page_is_an_organisation_tag(tmp_path):
+    book = notebook(tmp_path)
+    write_json(state_path(tmp_path, "tags.json"), {"tags": {"harbour-university": {
+        "label": "harbour-university", "kind": "topic", "aliases": ["harbour-uni"]}}})
+    book.write("orgs/harbour-university.md", "# Harbour University\n\n## Facts\n- Kind: university\n")
+    assert tags.entries(tmp_path)["harbour-university"] == {
+        "label": "Harbour University", "kind": "organisation", "aliases": ["harbour-uni"]}
+    assert tags.org_links(PERSON) == ["harbour-university"]
+
+
+def test_the_session_summary_reads_the_shared_vocabulary(tmp_path):
+    from connectonion.rem import sessions
+    notebook(tmp_path)
+    write_json(state_path(tmp_path, "tags.json"), {"tags": {"9900": {"label": "COMP9900", "kind": "course", "aliases": []}}})
+    write_json(state_path(tmp_path, "session-tags.json"), {"deploy": 4})
+    task = sessions.prepare(tmp_path, [], {}, directory=tmp_path)
+    existing = task["prompt"].split("Existing tags: ")[1].split(", ")
+    assert existing[0] == "deploy" and "9900" in existing and "student" in existing

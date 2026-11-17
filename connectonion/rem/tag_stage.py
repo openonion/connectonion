@@ -151,6 +151,54 @@ def _review(page: str, rows, known: dict, new: dict, refused_new: dict) -> tuple
     return accepted, refused
 
 
+def _facts(page: str) -> str:
+    found = re.search(r"(?ms)^## Facts[ \t]*\n(.*?)(?=^#{1,2} |\Z)", tags.without_tags(page))
+    return found[1] if found else ""
+
+
+def _team_named(facts: str, slug: str) -> bool:
+    """`9900-f13-cake` is named when the Facts hold its course number and each other part as a word."""
+    words = tags.normalise(re.sub(r"\]\([^)]*\)", "]", facts)).split("-")
+    course, *parts = slug.split("-")
+    return bool(parts) and any(course in word for word in words) and all(part in words for part in parts)
+
+
+def _line_citation(facts: str, needle) -> str:
+    line = next((line for line in facts.splitlines() if needle(line)), "")
+    found = tags.CITE.findall(line)
+    return found[0] if found else ""
+
+
+def _implied(record: str, page: str, known: dict, accepted: list[dict]) -> list[dict]:
+    """Tags the page carries by rule, added by code whatever the reply said (docs/cli/rem-tags.md):
+    an organisation page its own tag, a page its Facts' organisations, a known course or team named
+    in its Facts (`COMP9900` names `9900`), and the course of every team tag."""
+    facts, have = _facts(page), {row["tag"] for row in accepted}
+    rows = []
+
+    def add(slug, citation, reason):
+        if slug in known and slug not in have:
+            have.add(slug)
+            rows.append({"tag": slug, "citation": citation, "reason": reason})
+    if record.startswith("orgs/"):
+        add(tags.resolve(known, Path(record).stem), "", "the organisation's own tag")
+    for stem in tags.org_links(page):
+        add(tags.resolve(known, stem), _line_citation(facts, lambda line, stem=stem: f"orgs/{stem}" in line.lower()),
+            "an organisation in its Facts")
+    for slug, entry in known.items():
+        if entry["kind"] == "team" and _team_named(facts, slug):
+            add(slug, _line_citation(facts, lambda line, slug=slug: _team_named(line, slug)), "a team named in its Facts")
+    words = tags.normalise(re.sub(r"\]\([^)]*\)", "]", facts)).split("-")
+    for slug, entry in known.items():
+        if entry["kind"] == "course" and any(re.fullmatch(rf"[a-z]*{re.escape(slug)}", word) for word in words):
+            add(slug, _line_citation(facts, lambda line, slug=slug: slug in line), "a course named in its Facts")
+    for slug in list(have):
+        course = slug.split("-")[0]
+        if known.get(slug, {}).get("kind") == "team" and known.get(course, {}).get("kind") == "course":
+            add(course, "", "the course of its team")
+    return rows
+
+
 def check(root: Path, task: dict, output: dict) -> dict:
     """The reviewed plan: each page's accepted tags, the new vocabulary entries used, and every refusal."""
     reply = re.sub(r"\A```(?:json)?\s*\n?(.*?)\n?```\Z", r"\1", str(output.get("result") or "").strip(), flags=re.S)
@@ -161,10 +209,13 @@ def check(root: Path, task: dict, output: dict) -> dict:
         raise RemError("The tag reply must return every page id exactly once: " + ", ".join(task["ids"]))
     known = tags.vocabulary(root)
     new, refused_new = _new_entries(root, value.get("new_tags"), known)
-    plan = {"pages": {}, "new": {}, "refused": [], "usage": output.get("usage") or {}}
+    plan = {"pages": {}, "new": {}, "refused": [], "added": [], "usage": output.get("usage") or {}}
     for row in pages:
         record = task["ids"][row["id"]]
         accepted, refused = _review(task["before"][record], row.get("tags"), known, new, refused_new)
+        implied = _implied(record, task["before"][record], {**known, **new}, accepted)
+        plan["added"] += [{"record": record, **item} for item in implied]
+        accepted += [{"tag": item["tag"], "citation": item["citation"]} for item in implied]
         plan["pages"][record] = {"before": task["before"][record], "rows": accepted}
         plan["refused"] += [{"record": record, **item} for item in refused]
         plan["new"].update({row["tag"]: new[row["tag"]] for row in accepted if row["tag"] in new})

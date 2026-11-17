@@ -20,7 +20,7 @@ tag; search resolves `tag:9900` through aliases.
 | Tags on open items (`today_queue[].tags`) | `today.py` | built |
 | Tag nodes and edges (`graph.tags`) | `reader_model.py` | built |
 | Chips, tag pages, `tag:` in search, graph drawing | `reader.html` | **not built**: the reader branch, on the contract below |
-| Tags on decisions, knowledge, principles | Abstract | **not built**: those pages have no Facts block |
+| Tags on decisions, knowledge, principles | Abstract | **not built**: owned by Abstract, format below |
 
 ## Data
 
@@ -52,6 +52,20 @@ line of its `## Facts` section, in the format session pages already use:
   lecturer, colleague, client, investor, partner, supplier, candidate,
   recruiter, mentor, founder, advisor), so a person's commonest tag is never new.
   Added after the first real trial, where people got topics and no roles.
+- **Every organisation page is a tag** (`tags.organisations`): its file name is
+  the slug (`orgs/harbour-university.md` is `harbour-university`), its title the
+  label, kind `organisation`. So "all of one organisation" is a filter. The
+  notebook keeps courses and teams as organisation pages too (`- Kind: course`
+  or `team`, titled `9900` or `9900-F13F-CAKE`, file names ending in a hash):
+  those are `course` and `team` tags whose slug is the normalised title (`9900`,
+  `9900-f13f-cake`). The file name is always an alias, so a link to the page
+  (Markdown or `[[orgs/…]]`) finds its tag.
+- **A team** is `<course number>-<team name as written>`, lowercase, spaces and
+  punctuation as `-`: `COMP9900 team F13-CAKE` is `9900-f13-cake`, labelled
+  `COMP9900 F13-CAKE`, and always comes with its course `9900`.
+- **The session summary reads this vocabulary** (`sessions.prepare`): its
+  "Existing tags" are the shared tags, ranked by the larger of their page count
+  and their count in `session-tags.json`.
 - Counts are not stored: `vocabulary(root)` counts the Tags lines of every page
   each time, so a count can never disagree with the pages.
 - **Session tags migrate without rewriting a session page**: every slug in
@@ -101,6 +115,14 @@ person's page name.
   - `too many`: past `PER_PAGE`.
   The whole reply is refused (the batch waits for the next turn) when it is not
   JSON or does not return every id exactly once.
+- **Tags by rule** (`tag_stage._implied`), added by code whatever the reply
+  said, and listed in the run as `added` with the reason: an organisation page
+  its own tag; a page the organisations its Facts link to (cited from that
+  line); a known course named as a word in the page's Facts (`COMP9900` names
+  `9900`); a known team whose course number and every part appear as words in the
+  page's Facts; the course of every team tag. Added after the first trials, where
+  organisation pages got topics only and team tags came and went between runs.
+  They come on top of `PER_PAGE`.
 - **Promotion** writes only the Tags line: `with_tags(page, line)` then
   `only_tags_changed(before, after)` must hold, or nothing is written. A page
   that changed between preparation and promotion is skipped and stays waiting.
@@ -141,3 +163,16 @@ Every field is new; the current reader ignores all of them.
   `-`), then match a slug, then a normalised label, then an alias. Python:
   `tags.resolve(vocabulary, "tag:comp9900") == "9900"` and
   `tags.matching(records, vocabulary, "tag:9900")` lists the records.
+
+## Decisions, knowledge and principles: owned by Abstract
+
+These pages have no `## Facts`, so `co rem tag` does not read them. Abstract
+writes them and owns their tags: one line directly under the title, the same
+grammar, each tag cited from the page's own sources:
+
+    # Keep one vocabulary for every kind
+
+    - Tags: rem [2], reader-ui [2]
+
+`tags.page_tags` already reads such a line anywhere on a page; `with_tags`
+would need a second insertion point (under the title) before Abstract can use it.

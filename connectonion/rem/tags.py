@@ -89,12 +89,44 @@ def save(root, entries: dict) -> None:
                                                        for slug, entry in sorted(entries.items())}})
 
 
+def organisations(root) -> dict:
+    """Every organisation page is a tag, {slug: {label, kind, aliases}}.
+
+    The notebook keeps courses and teams as organisation pages too (`- Kind: course`,
+    `- Kind: team`, titled `9900` and `9900-F13F-CAKE`, file names with a hash): those are
+    course and team tags named by their title. Any other is an organisation named by its
+    file name. The file name is always an alias, so a link to the page finds its tag."""
+    from pathlib import PurePosixPath
+    from .files import Notebook
+    book, found = Notebook(root), {}
+    for record in book.list("orgs"):
+        text, stem = book.read(record), normalise(PurePosixPath(record).stem)
+        title = text.partition("\n")[0].lstrip("# ").strip()
+        kind = re.search(r"(?m)^- Kind:[ \t]*(\w+)", text)
+        unit = kind[1] if kind and kind[1] in ("course", "team") else ""
+        slug = normalise(title) if unit and normalise(title) else stem
+        found[slug] = {"label": title or stem, "kind": unit or "organisation",
+                       "aliases": [stem] if stem != slug else []}
+    return found
+
+
+def org_links(text: str) -> list[str]:
+    """The organisation pages a page's Facts link to, as file-name slugs (Markdown or [[wiki]] links)."""
+    facts = re.search(r"(?ms)^## Facts[ \t]*\n(.*?)(?=^#{1,2} |\Z)", text)
+    found = re.findall(r"(?:\]\(|\[\[)(?:\.\./)?orgs/([^)\]#\s/]+)\.md", facts[1] if facts else "")
+    return list(dict.fromkeys(normalise(stem) for stem in found))
+
+
 def entries(root) -> dict:
-    """tags.json, with session tags it lacks read as topics (sessions are not rewritten)."""
+    """tags.json, every organisation page, the starter roles, and session tags read as topics
+    (sessions are not rewritten)."""
     found = {slug: {"label": entry.get("label") or slug, "kind": entry.get("kind", "topic"),
                     "aliases": list(entry.get("aliases", []))} for slug, entry in _saved(root).items()}
     for slug in ROLES:
         found.setdefault(slug, {"label": slug, "kind": "role", "aliases": []})
+    for slug, entry in organisations(root).items():
+        kept = [alias for alias in found.get(slug, {}).get("aliases", []) if alias not in entry["aliases"]]
+        found[slug] = {**entry, "aliases": entry["aliases"] + kept}
     for slug in read_json(state_path(root, "session-tags.json"), {}):
         slug = normalise(slug)
         if slug and resolve(found, slug) is None:

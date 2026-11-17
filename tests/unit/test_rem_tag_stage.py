@@ -77,7 +77,9 @@ def test_review_keeps_supported_tags_with_their_citations_and_merges_aliases(boo
     assert plan["pages"]["people/mira-osei.md"]["rows"] == [
         {"tag": "9900", "citation": "3"}, {"tag": "student", "citation": "3"}, {"tag": "harbour-university", "citation": "1"}]
     # `comp9900` is the new course's alias: the org gets `9900`, cited from its line.
-    assert plan["pages"]["orgs/harbour-university.md"]["rows"] == [{"tag": "9900", "citation": "2"}]
+    # An organisation page carries its own tag by rule.
+    assert plan["pages"]["orgs/harbour-university.md"]["rows"] == [
+        {"tag": "9900", "citation": "2"}, {"tag": "harbour-university", "citation": ""}]
     assert plan["new"] == {"9900": {"label": "COMP9900", "kind": "course", "aliases": ["comp9900"]}}
     assert plan["refused"] == []
 
@@ -95,7 +97,10 @@ def test_review_refuses_an_unsupported_tag_and_keeps_the_rest(book, row, new, re
     _, plan = planned(book, reply([{"id": "p1", "tags": []},
                                    {"id": "p2", "tags": [row, {"tag": "student", "evidence": "Presents the F13 demo"}]}], new))
     assert plan["refused"] == [{"record": "people/mira-osei.md", "tag": tags.normalise(row["tag"]), "reason": reason}]
-    assert plan["pages"]["people/mira-osei.md"]["rows"] == [{"tag": "student", "citation": "3"}]
+    # The organisation her Facts link to is added by rule, cited from that line (and a known course they name).
+    added = {row["tag"] for row in plan["added"] if row["tag"] == "9900"}
+    assert [row for row in plan["pages"]["people/mira-osei.md"]["rows"] if row["tag"] not in added] == [
+        {"tag": "student", "citation": "3"}, {"tag": "harbour-university", "citation": "1"}]
 
 
 def test_review_caps_new_tags_a_turn_and_tags_a_page(book):
@@ -108,7 +113,9 @@ def test_review_caps_new_tags_a_turn_and_tags_a_page(book):
     write_json(state_path(book.root, "tags.json"), {"tags": {
         f"topic-{n}": {"label": f"Topic {n}", "kind": "topic", "aliases": []} for n in range(10)}})
     _, plan = planned(book, reply([{"id": "p1", "tags": []}, {"id": "p2", "tags": rows + rows[:2]}]))
-    assert len(plan["pages"]["people/mira-osei.md"]["rows"]) == tag_stage.PER_PAGE
+    # The reply's tags stop at PER_PAGE; a tag added by rule (her organisation) comes on top.
+    rows = plan["pages"]["people/mira-osei.md"]["rows"]
+    assert len(rows) == tag_stage.PER_PAGE + 1 and rows[-1]["tag"] == "harbour-university"
     assert [row["reason"] for row in plan["refused"]] == ["too many"] * (10 - tag_stage.PER_PAGE)
 
 
@@ -157,3 +164,47 @@ def test_a_failed_turn_leaves_its_pages_waiting(book, monkeypatch):
     monkeypatch.setattr("connectonion.rem.runner.ready", lambda settings: (None, None))
     report = tag_stage.tag_pages(book.root, run=lambda *a: {"result": "not json"})
     assert report["failed"] == 2 and report["outcome"] == "failed" and report["waiting"] == 2
+
+
+def test_rules_add_the_organisation_a_named_team_and_its_course_whatever_the_reply_said(book):
+    write_json(state_path(book.root, "tags.json"), {"tags": {
+        "9900": {"label": "COMP9900", "kind": "course", "aliases": ["comp9900"]},
+        "9900-f13": {"label": "COMP9900 F13", "kind": "team", "aliases": []},
+        "9900-f1": {"label": "COMP9900 F1", "kind": "team", "aliases": []}}})
+    _, plan = planned(book, reply([{"id": "p1", "tags": []}, {"id": "p2", "tags": []}]))
+    assert plan["pages"]["people/mira-osei.md"]["rows"] == [
+        {"tag": "harbour-university", "citation": "1"}, {"tag": "9900-f13", "citation": "3"}, {"tag": "9900", "citation": "3"}]
+    assert plan["pages"]["orgs/harbour-university.md"]["rows"] == [
+        {"tag": "harbour-university", "citation": ""}, {"tag": "9900", "citation": "2"}]
+    assert {row["reason"] for row in plan["added"]} == {
+        "the organisation's own tag", "an organisation in its Facts", "a team named in its Facts", "a course named in its Facts"}
+
+
+def test_a_team_is_named_only_by_its_course_and_every_part_as_a_word():
+    assert tag_stage._team_named("- Unit: COMP9900 team F13-CAKE [3]", "9900-f13-cake")
+    assert not tag_stage._team_named("- Unit: COMP9900 team F13 [3]", "9900-f13-cake")
+    assert not tag_stage._team_named("- Unit: COMP3900 team F13 [3]", "9900-f13")
+    assert not tag_stage._team_named("- Unit: COMP9900 [3]", "9900")
+
+
+def test_course_and_team_pages_are_course_and_team_tags_that_their_members_carry(book):
+    """The notebook keeps a course and a team as organisation pages (Kind course/team), file names hashed."""
+    book.write("orgs/9900-c5a1.md", "# 9900\n\n## Facts\n- Kind: course [1]\n")
+    book.write("orgs/9900-f13f-cake-af4d.md", "# 9900-F13F-CAKE\n\n## Facts\n- Kind: team [1]\n- Parent: [[orgs/9900-c5a1.md]] [1]\n")
+    book.write("people/mira-osei.md", PERSON.replace("- Unit: COMP9900 team F13 [3]", "- Unit: [[orgs/9900-f13f-cake-af4d.md]] [3]"))
+    found = tags.vocabulary(book.root)
+    assert found["9900"]["kind"] == "course" and found["9900-f13f-cake"] == {
+        "label": "9900-F13F-CAKE", "kind": "team", "aliases": ["9900-f13f-cake-af4d"], "count": 0}
+    task = tag_stage.prepare(book.root, ["people/mira-osei.md", "orgs/9900-f13f-cake-af4d.md"], directory=book.root / "work")
+    plan = tag_stage.check(book.root, task, {"result": json.dumps(reply([{"id": "p1", "tags": []}, {"id": "p2", "tags": []}]))})
+    assert plan["pages"]["people/mira-osei.md"]["rows"] == [
+        {"tag": "harbour-university", "citation": "1"}, {"tag": "9900-f13f-cake", "citation": "3"}, {"tag": "9900", "citation": "3"}]
+    assert [row["tag"] for row in plan["pages"]["orgs/9900-f13f-cake-af4d.md"]["rows"]] == ["9900-f13f-cake", "9900"]
+
+
+def test_a_known_course_named_in_the_facts_is_added_and_a_number_inside_another_word_is_not(book):
+    write_json(state_path(book.root, "tags.json"), {"tags": {"9900": {"label": "9900", "kind": "course", "aliases": []},
+                                                             "990": {"label": "990", "kind": "course", "aliases": []}}})
+    _, plan = planned(book, reply([{"id": "p1", "tags": []}, {"id": "p2", "tags": []}]))
+    assert {"tag": "9900", "citation": "3"} in plan["pages"]["people/mira-osei.md"]["rows"]
+    assert all(row["tag"] != "990" for row in plan["pages"]["people/mira-osei.md"]["rows"])
