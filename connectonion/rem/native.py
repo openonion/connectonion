@@ -103,7 +103,8 @@ def _hash(path):
 RUN_LIMITS = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
               "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
               "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
-              "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
+              "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
+              "summaries_per_round", "translations_per_round"}
 # Evidence-sizing limits decide what a prepared task holds, so they are hashed.
 # A new default limit belongs in one of the two sets: unclassified it is hashed, and
 # every task the release before it prepared is parked "Task input changed" (2026-11-17,

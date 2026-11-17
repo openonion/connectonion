@@ -93,6 +93,10 @@ def _counts(root, night):
             'sessions': imported, 'written': len(changed),
             'decisions': sum(record.startswith('decisions/') for record in changed),
             'translated': cursor.get('translated', 0),
+            # Cheap stages are finished in a night: what the round's bound left is said, not hidden.
+            'translations_waiting': cursor.get('translations_waiting', 0),
+            'summarised': sum(row.get('phase') == 'sessions-summary' and row.get('outcome') == 'completed'
+                              for row in runs),
             'drafts': len({row['draft'] for row in runs if row.get('phase') == 'reply-draft'
                            and row.get('draft') and row.get('outcome') == 'completed'}),
             'changed': sorted(changed), 'parked': _parked(root, night, runs=service.run_logs(root)),
@@ -282,7 +286,8 @@ def _nights(root, nights, progress, stage, say, cut_short):
 
 def _result(root, rows, reason, failed, held):
     totals = {name: sum(row[name] for row in rows) for name in
-              ('mail', 'sessions', 'written', 'decisions', 'translated', 'drafts', 'deepened', 'not_deepened')}
+              ('mail', 'sessions', 'written', 'decisions', 'translated', 'summarised', 'drafts', 'deepened',
+               'not_deepened')}
     return {'nights': rows, 'reason': reason, 'failed': failed, 'held': held,
             'parked': [page for row in rows for page in row['parked']], 'candidates': str(state_path(root, 'tasks')),
             'deepen_reason': '' if totals['deepened'] else

@@ -80,7 +80,7 @@ Compatibility: sync — Collect, then investigate what is unfinished; use co rem
 Do the night's work, including its one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
-Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round and Translate's share; the night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
+Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round and Translate's share. After the queue the round finishes the cheap stages: up to limits.summaries_per_round session summaries, default 40, and every page waiting for translation up to limits.translations_per_round, default 400. The night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
 A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then finishes the other stages. The pages that did not fit wait for later nights; none are dropped.
 A night with deepen can take an hour or more.
 Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
@@ -852,6 +852,8 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
           limits.abstract_rounds_per_night 6: successive abstract slices after summaries
           limits.investigations_per_night 12: pages investigated a night; the rest wait for later nights
           limits.skill_pages_per_night   3: skill pages investigated a night, counted on their own
+          limits.summaries_per_round     40: session summaries a round writes
+          limits.translations_per_round  400: the most pages a round translates; it goes on until none wait
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  pins one stage above to a model ("default" clears it);
                                          a route on plan, extract, synthesize or render also

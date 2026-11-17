@@ -120,6 +120,14 @@ def default_config() -> dict:
                        # wait for later nights. Skill pages (147 of the 333) are counted
                        # on their own so they cannot take the people's and projects' places.
                        "investigations_per_night": 12, "skill_pages_per_night": 3,
+                       # Cheap stages are finished, not rationed (owner, 2026-11-17). A
+                       # translation turn measured 11 to 83 s with 9 of 9 accepted first try
+                       # and a session summary 24 to 57 s, against 9 to 35 minutes for one
+                       # deepen turn; four nights translated 9, 8, 9 and 0 of some 350
+                       # waiting pages and a round summarised five sessions. These two are
+                       # above what a notebook has waiting: they are a round's stated end
+                       # (400 turns are about 4 hours), not a share to live within.
+                       "summaries_per_round": 40, "translations_per_round": 400,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no

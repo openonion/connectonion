@@ -2658,7 +2658,9 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
                 'timeout_seconds', 'workers', 'investigation_quota_points', 'quota_floor_percent',
                 'depth_quota_points', 'depth_workers', 'depth_pages_per_slot', 'depth_slot_minutes',
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                'investigations_per_night', 'skill_pages_per_night', 'abstract_rounds_per_night'}
+                'investigations_per_night', 'skill_pages_per_night', 'abstract_rounds_per_night',
+                # Nor a round's two stated ends for the cheap stages (2026-11-17).
+                'summaries_per_round', 'translations_per_round'}
     material = {key: value for key, value in previous.items() if key not in ('schedule', 'effort')}
     material['limits'] = {key: value for key, value in previous['limits'].items() if key not in controls}
     saved['inputs'][str(trial / 'config.yaml')] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
@@ -2735,7 +2737,8 @@ def test_pre_model_split_digest_accepts_model_controls(trial, languages, change)
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
+                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
+                "summaries_per_round", "translations_per_round"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
     material = {k: v for k, v in previous.items() if k not in ignored}
     material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}
@@ -2762,7 +2765,8 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
+                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
+                "summaries_per_round", "translations_per_round"}
     ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
     material = {k: v for k, v in previous.items() if k not in ignored}
     material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}

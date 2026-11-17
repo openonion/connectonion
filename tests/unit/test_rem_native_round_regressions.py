@@ -97,10 +97,11 @@ def test_native_offers_jobs_before_summaries(notebook, monkeypatch):
     assert native_round.prepare_task(notebook, cursor, read_config(notebook), notebook)["stage"] == "investigate"
 
 
-def test_native_queues_at_most_five_summaries(notebook, monkeypatch):
+def test_native_queues_at_most_its_configured_summaries(notebook, monkeypatch):
+    # Five until 2026-11-17: a summary is under a minute, so a round takes limits.summaries_per_round (40).
     monkeypatch.setattr(native_round.sessions, "_summary_candidates", lambda root, limit: list(range(limit)))
     cursor = native_round.prepare(notebook, read_config(notebook), scheduled=False)
-    assert len(cursor["summaries"]) == 5
+    assert len(cursor["summaries"]) == 40
 
 
 @pytest.mark.parametrize("own_page", [False, True])

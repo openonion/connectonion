@@ -565,9 +565,14 @@ def _day_plan_round(root, moment):
 
 
 def _depth_due(root, cursor):
-    from .catchup import _counts, number
     if not cursor.get('done') or cursor.get('phase') == 'daily-translation':
         return False
+    return _night_produced(root)
+
+
+def _night_produced(root):
+    """A catchup night has written, translated or drafted something; the schedule's night is not asked."""
+    from .catchup import _counts, number
     night = number(root)
     if night is None:
         return True
@@ -584,8 +589,14 @@ def _depth_early(root, cursor):
     asked here: a night that served a portion is working, and its first page may be an
     hour from written. A night with nothing to investigate has no portion and still
     meets that question after its round. Not due once the slot is claimed: only the
-    call that ran it reports it here; the completed round reports it once more."""
-    return (bool(cursor.get('portions')) and 'depth' not in cursor and not cursor.get('done')
+    call that ran it reports it here; the completed round reports it once more.
+
+    2026-11-17: the closing translation goes on until no page waits, which is hours. A
+    round with no portion (nothing to investigate, or investigation held by its weekly
+    budget) starts the slot once that pass has begun (`closing`), and there it is asked
+    `_depth_due`'s question, since no portion has shown the night to be working."""
+    started = cursor.get('portions') or (cursor.get('closing') and _night_produced(root))
+    return (bool(started) and 'depth' not in cursor and not cursor.get('done')
             and cursor.get('phase') != 'daily-translation')
 
 

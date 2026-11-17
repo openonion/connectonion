@@ -2221,13 +2221,18 @@ def make_rem_app(factory):
             return ''.join(' · ' + words for words in [*shares_in_words(row.get('shares', {})),
                                                        *filter(None, [row.get('investigation_hold')])])
 
+        def left_text(row):
+            left = row.get('translations_waiting')
+            return f" ({left} wait for the next round: limits.translations_per_round)" if left else ''
+
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
             planned = parked_text(row['parked']) + plan_text(row)
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{written_text(row)} · "
-                           f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
+                           f"{row['translated']} pages translated{left_text(row)} · "
+                           f"{row['drafts']} drafts prepared · {row.get('summarised', 0)} sessions summarised · "
                            + deepen_text(row) + shares_text(row) + calendar_text(row) + planned)
 
         def summary(value):
