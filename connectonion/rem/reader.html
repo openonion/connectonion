@@ -2242,67 +2242,122 @@
   .day-plan-when { font-weight: var(--w-bold); }
   .todo-list-name, .todo-note { color: var(--grey); font-size: var(--s-meta); }
   .day-plan-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  /* Agenda (#2998): a week from today, a month, and on a phone the same items day by day. */
+  /* Agenda (#2998), drawn as a calendar (owner, 2026-11-17): a week is a time grid, a month a grid of weeks.
+     Neutral: paper, hairlines, ink. Today is the one inked numeral; a weekend is a shade quieter. */
   .agenda { color: var(--ink); font: var(--w-regular) var(--s-ui)/18px var(--font); font-feature-settings: "tnum" 1; }
   .agenda a, .agenda a:hover { color: inherit; text-decoration: none; }
-  .agenda-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+  main:has(> .agenda) { padding-bottom: 16px; }
+  .agenda-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
   .agenda-bar button { font: var(--s-ui) var(--font); color: var(--ink); background: var(--paper); border: var(--hair) solid var(--rule); border-radius: var(--radius); min-height: 32px; padding: 4px 12px; cursor: pointer; }
   .agenda-bar .ag-step { min-width: 32px; padding: 4px 8px; }
   .agenda-bar .ag-views button[aria-pressed="true"] { box-shadow: var(--e-ink); }
   .agenda-bar .ag-views { margin-left: auto; }
   .ag-range { font: var(--w-bold) var(--s-body)/22px var(--font); margin-left: 6px; }
   .ag-source { font-size: var(--s-meta); color: var(--grey); margin-left: 12px; }
-  .agenda-note { margin: -4px 0 14px; font-size: var(--s-meta); color: var(--grey); }
-  .agenda-note.agenda-read { margin: 14px 0 0; }
-  .agenda-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
-  .ag-col { min-height: 300px; padding: 10px 8px 14px; border-left: var(--hair) solid var(--rule); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .ag-col:first-child { border-left: 0; }
-  .ag-col.today { background: var(--well); }
-  .ag-colhead { display: flex; flex-direction: column; padding: 0 4px 6px; }
-  .ag-colhead .ag-date { font: var(--w-bold) var(--s-ui)/18px var(--font); }
-  .ag-now { font-size: var(--s-meta); color: var(--grey); }
-  .ag-col.past .ag-colhead { color: var(--grey); }
-  .ag-empty { color: var(--grey); padding: 0 4px; }
-  .ag-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: var(--radius); background: var(--raised); box-shadow: var(--e-ring); min-width: 0; }
-  .ag-item.ag-event { box-shadow: var(--e1); }
-  .ag-main { display: flex; flex-direction: column; min-width: 0; }
-  .ag-main:hover .ag-title { text-decoration: underline; text-underline-offset: 3px; }
-  .ag-time { font-size: var(--s-meta); color: var(--grey); }
-  .ag-item.late .ag-time, .agenda-earlier a.late { color: var(--red); }
-  .ag-title { font-weight: var(--w-bold); overflow-wrap: anywhere; }
-  .ag-note { font-size: var(--s-meta); color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .ag-who, .ag-where { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
-  .ag-where { white-space: pre-wrap; }
-  .ag-who a:hover { text-decoration: underline; }
-  .agenda-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); background: var(--rule); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
-  .ag-wd { background: var(--paper); padding: 6px 8px; font-size: var(--s-meta); color: var(--grey); }
-  .ag-cell { background: var(--paper); min-height: 112px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .ag-cell.out { color: var(--grey); }
-  .ag-cell.today { background: var(--well); }
-  .ag-cell > .ag-date { font: var(--w-bold) var(--s-meta)/16px var(--font); }
-  .ag-cell .ag-item { padding: 3px 6px; }
-  .ag-cell .ag-main { flex-direction: row; gap: 6px; }
-  .ag-cell .ag-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: var(--w-regular); }
-  .ag-cell .ag-time { flex: none; }
-  .ag-cell .ag-note, .ag-cell .ag-who, .ag-cell .ag-where { display: none; }
-  .ag-more { font-size: var(--s-meta); color: var(--grey); padding: 0 6px; }
-  .agenda-days { display: none; }
-  .agenda-earlier { margin: 14px 0 0; font-size: var(--s-meta); color: var(--grey); line-height: 20px; }
-  .agenda-earlier a { color: var(--ink); }
-  .agenda-earlier a:hover { text-decoration: underline; }
-  .agenda-earlier .k { color: var(--grey); }
+  .agenda-note { margin: 0 0 10px; font-size: var(--s-meta); line-height: 16px; color: var(--grey); }
+  .agenda button { font: inherit; color: inherit; }
+
+  /* the week: heads, the all-day strip, then the hours scrolling under them; one grid of an axis and seven days */
+  .cal-week { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .cal-heads, .cal-allday, .cal-grid { display: grid; grid-template-columns: 72px repeat(7, minmax(0, 1fr)); }
+  .cal-head { display: flex; align-items: baseline; gap: 6px; padding: 8px 8px 6px; border-left: var(--hair) solid var(--rule); min-width: 0; white-space: nowrap; }
+  .cal-wd { color: var(--grey); font-size: var(--s-meta); }
+  .cal-num { font: var(--w-bold) var(--s-body)/24px var(--font); min-width: 24px; text-align: center; }
+  .today > .cal-num { background: var(--ink); color: var(--paper); border-radius: var(--r-pill); padding: 0 6px; }
+  .cal-today-word { order: 3; font: var(--w-bold) var(--s-meta)/16px var(--font); }
+  .cal-head.sel, .cal-cell.sel { box-shadow: var(--e-ink); }
+  .cal-allday { border-top: var(--hair) solid var(--rule); border-bottom: var(--hair) solid var(--rule); grid-auto-rows: 24px; row-gap: 2px; padding: 3px 0; min-height: 32px; }
+  .cal-axis-word { grid-column: 1; grid-row: 1; align-self: center; padding-right: 8px; text-align: right; color: var(--grey); font-size: var(--s-meta); }
+  .cal-allday-col { border-left: var(--hair) solid var(--rule); margin: -3px 0; }
+  .weekend.cal-allday-col, .weekend.cal-day, .weekend.cal-cell { background: var(--well); }
+  .cal-bar { display: flex; align-items: center; min-width: 0; height: 22px; margin: 0 3px 0 4px; padding: 0 8px; border: 0; border-radius: var(--r-cell); background: var(--ink); color: var(--paper) !important; font: var(--w-bold) var(--s-meta)/22px var(--font) !important; cursor: pointer; text-align: left; position: relative; z-index: 1; }
+  .cal-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-bar.cal-microsoft { background: var(--grey); }
+  .cal-bar.cal-due, .cal-bar.cal-page { background: var(--paper); color: var(--ink) !important; box-shadow: var(--e-ring); font-weight: var(--w-regular) !important; }
+  .cal-bar.late { color: var(--red) !important; }
+  .cal-bar.before { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+  .cal-bar.after { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+  .cal-scroll { overflow-y: auto; overscroll-behavior: contain; }
+  .cal-scroll:focus-visible { outline: none; }
+  .cal-grid { position: relative; }
+  .cal-axis { position: relative; }
+  .cal-hour { position: absolute; right: 8px; transform: translateY(-50%); color: var(--grey); font-size: var(--s-meta); line-height: 14px; white-space: nowrap; }
+  .cal-now-word { color: var(--ink); font-weight: var(--w-bold); right: 4px; }
+  .cal-rule { position: absolute; left: 72px; right: 0; border-top: var(--hair) solid var(--rule); pointer-events: none; }
+  .cal-rule.half { opacity: .45; }
+  .cal-day { position: relative; border-left: var(--hair) solid var(--rule); min-width: 0; }
+  .cal-now { position: absolute; left: -1px; right: 0; border-top: var(--rule-heavy) solid var(--ink); z-index: 2; pointer-events: none; }
+  .cal-now::before { content: ""; position: absolute; left: -4px; top: -5px; width: 8px; height: 8px; border-radius: var(--round); background: var(--ink); }
+  .cal-ev { position: absolute; z-index: 1; box-sizing: border-box; min-height: 0; display: flex; flex-direction: column; margin-left: 2px; padding: 2px 6px; overflow: hidden; border: 0; border-left: 3px solid var(--ink); border-radius: var(--r-cell); background: var(--rule); cursor: pointer; text-align: left; font: var(--w-regular) var(--s-meta)/15px var(--font) !important; }
+  .cal-ev.cal-microsoft { border-left-color: var(--grey); }
+  .cal-ev:hover, .cal-ev:focus-visible { box-shadow: var(--e-ink); outline: none; }
+  .cal-ev-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; }
+  .cal-ev.short .cal-ev-title { white-space: nowrap; }
+  .cal-ev-time, .cal-ev-where { color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-ev.short .cal-ev-time, .cal-ev:not(.tall) .cal-ev-where { display: none; }
+
+  /* an event's detail: a small card beside it */
+  dialog.cal-detail:not(.n3-sheet) { position: fixed; margin: 0; width: 320px; padding: 16px 18px; border: 0; border-radius: var(--r-inner); background: var(--raised); color: var(--ink); box-shadow: var(--e3); z-index: 60; }
+  .cal-detail .sheet-head h2 { font: var(--w-bold) var(--s-body)/22px var(--font); letter-spacing: 0; }
+  .cal-detail p { margin: 4px 0 0; font: var(--w-regular) var(--s-ui)/20px var(--font); }
+  .cal-detail .cal-where, .cal-detail .cal-source, .cal-detail .cal-who { color: var(--grey); }
+  .cal-detail .cal-who a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .cal-detail .cal-open { display: inline-flex; align-items: center; min-height: 32px; margin-top: 12px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); color: var(--ink); font: var(--w-bold) var(--s-ui) var(--font); text-decoration: none; }
+  .cal-detail .cal-open:hover { background: var(--well); }
+
+  /* the month: weekday names, then one grid a week; bars and lines sit in the rows under each date */
+  .cal-month { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .cal-wds { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cal-wds .cal-wd { padding: 6px 10px; }
+  .cal-mweek { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 30px 22px 22px 22px 20px; row-gap: 2px; border-top: var(--hair) solid var(--rule); padding-bottom: 4px; }
+  .cal-cell { grid-row: 1 / -1; margin-bottom: -4px; display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; border-left: var(--hair) solid var(--rule); min-width: 0; cursor: default; }
+  .cal-cell:first-child { border-left: 0; }
+  .cal-cell.out > .cal-num { color: var(--grey); font-weight: var(--w-regular); }
+  .cal-cell > .cal-num { font-size: var(--s-ui); text-align: left; min-width: 0; }
+  .cal-cell.today > .cal-num { text-align: center; min-width: 24px; }
+  .cal-count { display: none; }
+  .cal-line { display: flex; gap: 6px; min-width: 0; height: 22px; margin: 0 4px; padding: 0 6px; border: 0; border-radius: var(--r-cell); background: none; cursor: pointer; text-align: left; font: var(--w-regular) var(--s-meta)/22px var(--font) !important; position: relative; z-index: 1; }
+  .cal-line:hover, .cal-more:hover { background: var(--rule); }
+  .cal-line-time { color: var(--grey); flex: none; }
+  .cal-line-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-more { grid-row: 5; justify-self: start; margin: 0 4px; padding: 0 6px; border: 0; border-radius: var(--r-cell); background: none; color: var(--grey) !important; cursor: pointer; font: var(--w-regular) var(--s-meta)/20px var(--font) !important; position: relative; z-index: 1; }
+  .cal-daylist, .cal-phone { display: none; }
+  .cal-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0 12px; align-items: baseline; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-left: 3px solid var(--ink); border-radius: var(--r-cell); background: var(--rule); cursor: pointer; text-align: left; }
+  .cal-row.cal-microsoft { border-left-color: var(--grey); }
+  .cal-row.cal-due, .cal-row.cal-page { background: var(--paper); box-shadow: var(--e-ring); border-left-color: var(--rule); }
+  .cal-row-bar.cal-event { grid-template-columns: minmax(0, 1fr); background: var(--ink); color: var(--paper) !important; border-left-color: var(--ink); }
+  .cal-row-bar.cal-event.cal-microsoft { background: var(--grey); border-left-color: var(--grey); }
+  .cal-row-bar.cal-event .cal-row-time { color: inherit; grid-row: 2; }
+  .cal-row-time { color: var(--grey); font-size: var(--s-meta); }
+  .cal-row.late .cal-row-time { color: var(--red); }
+  .cal-row-title { font: var(--w-bold) var(--s-body)/22px var(--font); overflow-wrap: anywhere; }
+  .cal-row-where { grid-column: 2; color: var(--grey); font-size: var(--s-meta); overflow-wrap: anywhere; }
+  .cal-row-bar.cal-event .cal-row-where { grid-column: 1; color: inherit; }
   @media (max-width: 640px) {
-    .agenda-bar, .agenda-week, .agenda-month { display: none; }
+    /* a phone: the week is a strip of dates over a day-by-day list; the month keeps its grid with a count in each
+       cell and the chosen day's list under it */
+    .cal-week { display: none; }
+    .agenda-bar { gap: 6px; }
+    .agenda-bar .ag-source { display: none; }
+    .agenda-bar button { min-height: 40px; }
+    .ag-range { flex: 1 1 100%; order: -1; margin-left: 0; }
+    .cal-phone, .cal-daylist { display: block; }
+    .cal-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin: 0 0 16px; }
+    .cal-jump { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 56px; padding: 6px 0; border: 0; border-radius: var(--radius); background: none; cursor: pointer; }
+    .cal-jump:disabled { cursor: default; }
+    .cal-jump:disabled .cal-num { color: var(--grey); font-weight: var(--w-regular); }
+    .cal-jump.weekend { background: var(--well); }
     .agenda-days { display: flex; flex-direction: column; gap: 18px; }
-    .ag-day { display: flex; flex-direction: column; gap: 8px; }
+    .ag-day { display: flex; flex-direction: column; gap: 6px; scroll-margin-top: 8px; }
     .ag-dayhead { margin: 0; font: var(--w-bold) var(--s-ui)/18px var(--font); }
-    .ag-day.today .ag-dayhead { color: var(--ink); }
-    .ag-day .ag-item { padding: 0 12px 8px; }
-    .ag-day .ag-main { min-height: 44px; justify-content: center; padding-top: 8px; }
-    .ag-day .ag-title { font-size: var(--s-body); line-height: 22px; }
-    .ag-day .ag-who a { display: inline-block; min-height: 32px; line-height: 32px; }
-    .ag-day .ag-empty { margin: 0; padding: 0; }
-    .agenda-earlier { line-height: 32px; }
+    .cal-month { border-radius: var(--radius); overflow: visible; border: 0; }
+    .cal-wds .cal-wd { padding: 4px 0; text-align: center; }
+    .cal-mweek { grid-template-rows: 52px; padding: 0; row-gap: 0; }
+    .cal-mweek > :not(.cal-cell) { display: none; }
+    .cal-cell { grid-row: 1; margin: 0; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; cursor: pointer; }
+    .cal-cell .cal-today-word { display: none; }
+    .cal-count { display: block; color: var(--grey); font-size: var(--s-meta); line-height: 14px; }
+    .cal-daylist { margin-top: 16px; }
   }
 </style>
 <style id="org-style">
@@ -9330,13 +9385,20 @@ function category(c) {
 // Monday-first week is mostly finished days. Month is the usual Monday-first grid. Events are what the night
 // saved from his connected calendars (calendar.py; the page never calls a calendar), beside the notebook's
 // own dates: promises with a due date and agenda pages. Every item is a link: an event to the calendar it
-// came from, a notebook item to its page. Open notebook items dated before the range stay in one line under
-// it, so a page the calendar cannot place is never lost. On a phone the same items are a day-by-day list.
+// came from, a notebook item to its page.
+// Owner, 2026-11-17: «The Agenda does not look like a calendar at all… show it with that kind of very fine,
+// precise calendar.» So the week is a time grid (hours down a quiet axis, events as blocks placed by their start
+// and sized by their length, overlaps side by side, an all-day strip where a three-day event is one bar, a now
+// line on today) and the month is a grid of weeks whose bars run across cells and rows. No calendar library:
+// minutes become pixels in agBlock, agLanes and agBars, which the unit tests run in Node.
+// A dated notebook item that is late is shown on today, saying its due date: the line of "earlier, still open"
+// links that used to sit under the calendar was a second list beside it (#3085 review).
 const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Still open from earlier": "更早、仍开着",
+  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开",
+  "{n} items": "{n} 项", "1 item": "1 项", "nothing": "没有安排", "Close": "关闭",
   "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
   "authorization expired": "授权已过期",
   "{name} · read {when}": "{name} · {when}读取",
@@ -9355,15 +9417,54 @@ function agT(key, values = {}) {
   const words = uiLanguage === "zh" ? AG_ZH[key] : null;
   return (words || t(key)).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
-const agendaState = { view: "week", offset: 0 };
+const agendaState = { view: "week", start: "", month: "", sel: "" };
+const AG_HOUR = 44;  // pixels to an hour: 07:00–21:00 is 616 px, one screen at 1440×900
 function agDay(day, n) {
   const d = new Date(day + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
+function agSpan(a, b) { return Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000); }
+function agMinutes(clock) { const [h, m] = clock.split(":").map(Number); return h * 60 + m; }
+// Minutes into pixels: where a block starts and how tall it is. A short event keeps the height of its title.
+function agBlock(start, end, hour = AG_HOUR, least = 20) {
+  return { top: start * hour / 60, height: Math.max(least, (end - start) * hour / 60) };
+}
+// Events that overlap share the column side by side. Each takes the first lane free at its start; every event
+// in one run of overlaps is as wide as that run's lanes allow. Back-to-back events do not overlap.
+function agLanes(segments) {
+  const out = [];
+  let run = [], ends = [], runEnd = -1;
+  const close = () => { for (const item of run) item.lanes = ends.length; run = []; ends = []; };
+  for (const seg of [...segments].sort((a, b) => a.start - b.start || b.end - a.end)) {
+    if (seg.start >= runEnd) close();
+    const free = ends.findIndex(end => end <= seg.start), lane = free < 0 ? ends.length : free;
+    ends[lane] = seg.end;
+    run.push({ ...seg, lane, lanes: 1 });
+    out.push(run.at(-1));
+    runEnd = Math.max(runEnd, seg.end);
+  }
+  close();
+  return out;
+}
+// All-day bars for a row of `days` days from `start`: one bar an entry, clipped to the row and packed into the
+// first line free at its first day. `before` and `after` say it runs past the row's edge.
+function agBars(entries, start, days) {
+  const end = agDay(start, days - 1), free = [], bars = [];
+  const shown = entries.filter(e => e.first <= end && e.last >= start).sort((a, b) => a.first.localeCompare(b.first) || b.last.localeCompare(a.last) || a.title.localeCompare(b.title));
+  for (const entry of shown) {
+    const from = Math.max(0, agSpan(start, entry.first)), to = Math.min(days - 1, agSpan(start, entry.last));
+    const open = free.findIndex(column => column <= from), line = open < 0 ? free.length : open;
+    free[line] = to + 1;
+    bars.push({ entry, from, to, line, before: entry.first < start, after: entry.last > end });
+  }
+  return bars;
+}
 function agToday() { return calendarDay(REM.as_of || new Date().toISOString()); }
+function agNow() { return agMinutes(agTime(REM.as_of || new Date().toISOString())); }
 function agLocale() { return uiLanguage === "zh" ? "zh-CN" : "en-GB"; }
 function agFormat(day, options) { return new Date(day + "T00:00:00Z").toLocaleDateString(agLocale(), { timeZone: "UTC", ...options }); }
+function agDate(day) { return agFormat(day, { weekday: "short", day: "numeric", month: "short" }); }
 // 24-hour in the notebook's zone, the zone calendarDay files the event under.
 function agTime(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: REM.status?.timezone || "UTC" }); }
 // Both calendars end an all-day event on the day after its last. A timed one runs to the day its last
@@ -9373,100 +9474,230 @@ function agLastDay(e, first) {
   const start = new Date(e.start), end = new Date(e.end);
   return end > start ? calendarDay(new Date(end - 1).toISOString()) : first;
 }
-function agendaItems() {
-  const today = agToday(), items = [];
-  for (const e of REM.calendar?.events || []) {
-    const first = calendarDay(e.start);
-    if (!first) continue;
-    const last = agLastDay(e, first), ends = e.all_day ? "" : agTime(e.end);
-    // Its start time on the day it starts, "Until 17:00" on the day it ends, all day on the days between.
-    for (let day = first, n = 0; n === 0 || (day <= last && n < 62); day = agDay(day, 1), n++)
-      items.push({ day, time: e.all_day || day !== first ? "" : agTime(e.start), title: eventTitle(e), href: e.link, external: true,
-        when: day !== first && day === last && ends !== "00:00" ? agT("Until {time}", { time: ends }) : "", where: e.location || "",
-        people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, kind: "event" });
-  }
-  const placed = new Set();
+const AG_SOURCE = { google: "Google Calendar", microsoft: "Outlook" };
+function agEvent(e, first) {
+  return { kind: "event", allDay: !!e.all_day, first, last: agLastDay(e, first), start: e.start, end: e.end, title: eventTitle(e), link: e.link || "", where: e.location || "",
+    people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, provider: e.calendar || "",
+    source: [AG_SOURCE[e.calendar], e.calendar_name].filter(Boolean).join(" · ") };
+}
+// What the calendar holds: each event once, with the days it covers, and the notebook's own dates as all-day
+// entries. A late one sits on today and keeps its due date in words.
+function agendaEntries() {
+  const today = agToday(), entries = [], placed = new Set();
+  for (const e of REM.calendar?.events || []) if (calendarDay(e.start)) entries.push(agEvent(e, calendarDay(e.start)));
+  const dated = (day, late, rest) => entries.push({ allDay: true, first: late ? today : day, last: late ? today : day, due: day, late, ...rest });
   for (const row of REM.today_queue || []) {
     if (!row.due || row.closed || row.quiet) continue;
-    const page = byPath(row.record);
+    const page = byPath(row.record), mine = row.record === REM.owner, note = stripCites(row.text);
     placed.add(row.record + "@" + row.due);
     // A promise on the owner's own page is named by what it is, not by his name.
-    const mine = row.record === REM.owner, note = stripCites(row.text);
-    items.push({ day: row.due, time: "", title: mine ? datesInProse(note) : page ? page.title : row.title, href: "#r=" + encodeURIComponent(row.record),
-      note: mine ? "" : note, late: row.due < today, kind: "due" });
+    dated(row.due, row.due < today, { kind: "due", title: mine ? datesInProse(note) : page ? page.title : row.title, href: "#r=" + encodeURIComponent(row.record), note: mine ? "" : note });
   }
   for (const r of inCategory("agenda")) {
     const due = (r.text || "").match(/\b(?:due|deadline|by)(?:\s+(?:on|is))?\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i)?.[1];
     // Otherwise the first date the page states (its status line, in whatever language its headings are), never its Sources.
     const noted = (r.text || "").split("\n").filter(line => !/^\s*Sources?:/i.test(line)).join("\n").match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
     const day = due || noted || calendarDay(r.last_activity || r.updated);
-    if (!day || placed.has(r.path + "@" + day)) continue;
-    items.push({ day, time: "", title: r.title, href: href(r), late: !!due && due < today, kind: due ? "due" : "page" });
+    if (day && !placed.has(r.path + "@" + day)) dated(day, !!due && due < today, { kind: due ? "due" : "page", title: r.title, href: href(r) });
   }
-  // All-day and dated items lead a day, then events by time.
-  return items.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title));
+  return entries;
 }
-function agItem(item) {
-  const when = item.kind === "event" ? (item.when || item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
-  const main = el("a", { class: "ag-main", title: item.title, href: item.href || "#", ...(item.external ? { target: "_blank", rel: "noopener" } : {}) }, [
-    el("span", { class: "ag-time", text: when }), el("span", { class: "ag-title", text: item.title }),
-    item.note ? el("span", { class: "ag-note", text: datesInProse(item.note) }) : null]);
-  if (item.external && !item.href) main.removeAttribute("href");
-  const who = item.people?.length ? el("span", { class: "ag-who" }, item.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]))
-    : item.guests ? el("span", { class: "ag-who", text: item.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: item.guests }) }) : null;
-  const where = item.where ? el("span", { class: "ag-where", text: item.where }) : null;
-  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, where, who]);
+// A timed event's part of one day, in minutes of that day: its start on the first, midnight to its end on the last.
+function agSegments(entries, day) {
+  return entries.filter(e => !e.allDay && e.first <= day && e.last >= day).map(entry => ({ entry, day,
+    start: entry.first === day ? agMinutes(agTime(entry.start)) : 0, end: entry.last === day ? agMinutes(agTime(entry.end)) || 1440 : 1440 }))
+    .sort((a, b) => a.start - b.start || a.entry.title.localeCompare(b.entry.title));
 }
-function agColumnHead(day, today) {
-  return el("header", { class: "ag-colhead" }, [day === today ? el("span", { class: "ag-now", text: agT("Today") }) : null,
-    el("span", { class: "ag-date", text: agFormat(day, { weekday: "short" }) + " " + Number(day.slice(8)) })]);
+function agClock(minutes) { return String(Math.floor(minutes / 60) % 24).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0"); }
+// A day's part of an event, in words: its hours; for one that runs over several days its start time on the
+// first, "All day" between, "Until 17:00" on the last.
+function agHours({ entry, day, start, end }) {
+  const before = entry.first < day, after = entry.last > day;
+  if (before && after) return agT("All day");
+  if (before) return agT("Until {time}", { time: agClock(end) });
+  return after ? agClock(start) : agClock(start) + " – " + agClock(end);
 }
-function agendaWeek(items, start) {
-  const today = agToday();
-  return el("div", { class: "agenda-week" }, Array.from({ length: 7 }, (_, i) => {
-    const day = agDay(start, i), mine = items.filter(item => item.day === day);
-    return el("section", { class: "ag-col" + (day === today ? " today" : day < today ? " past" : "") }, [agColumnHead(day, today),
-      ...(mine.length ? mine.map(agItem) : [el("span", { class: "ag-empty", "aria-hidden": "true", text: "—" })])]);
+// When, in words: "All day, Mon 5 – Wed 7 Oct", "Fri 2 Oct, 09:30 – 10:00", "Late, due 25 Sep".
+function agWhen(e) {
+  if (e.kind !== "event") return e.kind === "page" ? agT("Noted") : e.late ? agT("Late, due {date}", { date: calendarDate(e.due) }) : agT("Due");
+  if (e.allDay) return agT("All day") + agT(", ") + (e.first === e.last ? agDate(e.first) : agDate(e.first) + " – " + agDate(e.last));
+  if (e.first === e.last) return agDate(e.first) + agT(", ") + agTime(e.start) + " – " + agTime(e.end);
+  return agDate(e.first) + " " + agTime(e.start) + " – " + agDate(e.last) + " " + agTime(e.end);
+}
+function agSaid(e) { return [e.title, agWhen(e), e.where, e.source].filter(Boolean).join(" · "); }
+function agGuests(e) {
+  if (e.people.length) return el("p", { class: "cal-who" }, e.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]));
+  return e.guests ? el("p", { class: "cal-who", text: e.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: e.guests }) }) : null;
+}
+// An event's detail: beside the event on a desk, a sheet from the foot on a phone. Which calendar it is from is
+// said in words here and on hover; the edge of a block is only the second cue.
+function agDetail(e, anchor) {
+  document.querySelector(".cal-detail")?.remove();
+  const phone = innerWidth <= 640, close = el("button", { type: "button", class: "ibtn", "aria-label": agT("Close") }, [icon("x")]);
+  const dialog = el("dialog", { class: "cal-detail" + (phone ? " n3-sheet" : ""), "aria-label": e.title }, [
+    el("div", { class: "sheet-head" }, [el("h2", { text: e.title }), close]),
+    el("p", { class: "cal-when", text: agWhen(e) }), e.where ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
+    e.source ? el("p", { class: "cal-source", text: agT("In {name}", { name: e.source }) }) : null,
+    e.link ? el("a", { class: "cal-open", href: e.link, target: "_blank", rel: "noopener", text: agT("Open in {name}", { name: AG_SOURCE[e.provider] || e.source }) + " ↗" }) : null]);
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.addEventListener("keydown", event => { if (event.key === "Escape") dialog.close(); });
+  dialog.addEventListener("click", event => { if (event.target.closest("a[href^='#']")) dialog.close(); });
+  document.body.appendChild(dialog);
+  if (phone) return dialog.showModal();
+  dialog.show();
+  agPlaceBeside(dialog, anchor.getBoundingClientRect());
+  close.focus();
+}
+function agPlaceBeside(dialog, at) {
+  const width = dialog.offsetWidth, height = dialog.offsetHeight, right = at.right + 8 + width <= innerWidth - 8;
+  dialog.style.left = Math.max(8, right ? at.right + 8 : at.left - 8 - width) + "px";
+  dialog.style.top = Math.max(8, Math.min(at.top, innerHeight - height - 8)) + "px";
+}
+// An entry as something to press: an event opens its detail, a notebook date goes to its page.
+function agPress(e, cls, children) {
+  if (e.kind !== "event") return el("a", { class: cls + " cal-" + e.kind + (e.late ? " late" : ""), href: e.href, title: agSaid(e) }, children);
+  const button = el("button", { type: "button", class: cls + " cal-event cal-" + (e.provider || "other"), title: agSaid(e) }, children);
+  button.onclick = () => agDetail(e, button);
+  return button;
+}
+function agDayClass(day, today) {
+  const weekday = new Date(day + "T00:00:00Z").getUTCDay();
+  return (day === today ? " today" : "") + (weekday === 0 || weekday === 6 ? " weekend" : "") + (day < today ? " past" : "") + (day === agendaState.sel ? " sel" : "");
+}
+// A column's head: the weekday and the date; today is marked and says so.
+function agHead(day, today) {
+  return el("header", { class: "cal-head" + agDayClass(day, today), "data-day": day }, [day === today ? el("span", { class: "cal-today-word", text: agT("Today") }) : null,
+    el("span", { class: "cal-wd", text: agFormat(day, { weekday: "short" }) }), el("span", { class: "cal-num", text: String(Number(day.slice(8))) }), agWeatherMark(day)]);
+}
+function agBar(bar, column) {
+  const e = bar.entry, word = e.kind === "event" ? "" : agWhen(e) + " · ";
+  const node = agPress(e, "cal-bar" + (bar.before ? " before" : "") + (bar.after ? " after" : ""), [el("span", { text: word + e.title })]);
+  node.style.gridColumn = (bar.from + column) + " / " + (bar.to + column + 1);
+  node.style.gridRow = String(bar.line + 1);
+  return node;
+}
+function agAllDay(entries, days, today) {
+  const bars = agBars(entries.filter(e => e.allDay), days[0], days.length), lines = Math.max(1, ...bars.map(bar => bar.line + 1));
+  return el("div", { class: "cal-allday" }, [el("span", { class: "cal-axis-word", text: bars.length ? agT("All day") : "" }),
+    ...days.map((day, i) => el("span", { class: "cal-allday-col" + agDayClass(day, today), style: `grid-column:${i + 2};grid-row:1 / span ${lines}` })),
+    ...bars.map(bar => agBar(bar, 2))]);
+}
+function agEventBlock({ entry, day, start, end, lane, lanes }) {
+  const { top, height } = agBlock(start, end), cls = "cal-ev" + (height < 34 ? " short" : height >= 56 ? " tall" : "");
+  const node = agPress(entry, cls, [el("span", { class: "cal-ev-title", text: entry.title }), el("span", { class: "cal-ev-time", text: agHours({ entry, day, start, end }) }),
+    entry.where ? el("span", { class: "cal-ev-where", text: entry.where }) : null]);
+  Object.assign(node.style, { top: top + "px", height: height - 1 + "px", left: lane / lanes * 100 + "%", width: `calc(${100 / lanes}% - 3px)` });
+  return node;
+}
+function agDayColumn(entries, day, today) {
+  // A short event is drawn taller than its minutes, so what follows within that height stands beside it.
+  const least = 20 * 60 / AG_HOUR, placed = agLanes(agSegments(entries, day).map(seg => ({ ...seg, end: Math.max(seg.end, seg.start + least), till: seg.end })));
+  return el("div", { class: "cal-day" + agDayClass(day, today), "data-day": day }, [...placed.map(seg => agEventBlock({ ...seg, end: seg.till })),
+    day === today ? el("div", { class: "cal-now", style: `top:${agNow() * AG_HOUR / 60}px`, "aria-hidden": "true" }) : null]);
+}
+// The hours, a quiet axis; on a week that holds today, where now is, in words.
+function agAxis(now) {
+  const near = hour => now != null && Math.abs(hour * 60 - now) < 24;
+  return el("div", { class: "cal-axis" }, [...Array.from({ length: 23 }, (_, i) => near(i + 1) ? null : el("span", { class: "cal-hour", style: `top:${(i + 1) * AG_HOUR}px`, text: agClock((i + 1) * 60) })),
+    now == null ? null : el("span", { class: "cal-hour cal-now-word", style: `top:${now * AG_HOUR / 60}px`, text: agT("Now {time}", { time: agClock(now) }) })]);
+}
+function agRules() {
+  return Array.from({ length: 47 }, (_, i) => el("i", { class: "cal-rule" + (i % 2 ? "" : " half"), style: `top:${(i + 1) * AG_HOUR / 2}px`, "aria-hidden": "true" }));
+}
+function agendaWeek(entries, start) {
+  const today = agToday(), days = Array.from({ length: 7 }, (_, i) => agDay(start, i)), now = days.includes(today) ? agNow() : null;
+  const grid = el("div", { class: "cal-grid", style: `height:${24 * AG_HOUR}px` }, [agAxis(now), ...agRules(), ...days.map(day => agDayColumn(entries, day, today))]);
+  return el("div", { class: "cal-week" }, [el("div", { class: "cal-heads" }, [el("span", {}), ...days.map(day => agHead(day, today))]),
+    agAllDay(entries, days, today), el("div", { class: "cal-scroll", tabindex: "0", "data-first": String(agFirstMinute(entries, days, now)) }, [grid])]);
+}
+// Where the grid opens: 07:00, so working hours to 21:00 are on screen; earlier when the week's first event or
+// now is earlier, later only when now is past what would be shown.
+function agFirstMinute(entries, days, now) {
+  const starts = days.flatMap(day => agSegments(entries, day).filter(seg => seg.entry.first === day).map(seg => seg.start));
+  const first = Math.min(7 * 60, ...starts, ...(now == null ? [] : [now]));
+  return now != null && now > first + 13 * 60 ? now - 10 * 60 : Math.max(0, Math.floor(first / 60) * 60);
+}
+// The grid ends at the window's foot and scrolls inside it, so the heads and the all-day strip stay in view.
+function agSizeWeek() {
+  const scroll = document.querySelector(".agenda .cal-scroll");
+  if (!scroll || !scroll.offsetParent) return;
+  const height = Math.max(240, innerHeight - scroll.getBoundingClientRect().top - scrollY - 16);
+  scroll.style.height = height + "px";
+  // Whatever sits under the calendar (the page's own foot) comes off the grid, so the page itself has nothing to scroll.
+  scroll.style.height = Math.max(240, height - Math.max(0, document.documentElement.scrollHeight - innerHeight)) + "px";
+  scroll.scrollTop = Number(scroll.dataset.first) * AG_HOUR / 60 - 10;
+}
+function agMonthFirst() { return (agendaState.month || agToday().slice(0, 7)) + "-01"; }
+function agMonthStep(first, n) {
+  const d = new Date(first + "T00:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + n);
+  return d.toISOString().slice(0, 7);
+}
+function agOnDay(entries, day) { return entries.filter(e => e.first <= day && e.last >= day); }
+function agCount(n) { return n === 1 ? agT("1 item") : agT("{n} items", { n }); }
+// One week of the month: seven cells, the all-day bars running across them, then each day's timed events in the
+// lines the bars leave, three lines in all; what does not fit is counted in words, and that count opens the day.
+function agMonthWeek(entries, start, month, today) {
+  const days = Array.from({ length: 7 }, (_, i) => agDay(start, i)), bars = agBars(entries.filter(e => e.allDay), start, 7), parts = [];
+  for (const bar of bars.filter(bar => bar.line < 3)) { const node = agBar(bar, 1); node.style.gridRow = String(bar.line + 2); parts.push(node); }
+  days.forEach((day, i) => {
+    const taken = new Set(bars.filter(bar => bar.from <= i && bar.to >= i).map(bar => bar.line)), timed = agSegments(entries, day);
+    const free = [0, 1, 2].filter(line => !taken.has(line)), all = agOnDay(entries, day).length, shown = [...taken].filter(line => line < 3).length + Math.min(free.length, timed.length);
+    const cell = el("div", { class: "cal-cell" + (day.slice(0, 7) !== month ? " out" : "") + agDayClass(day, today), "data-day": day, style: `grid-column:${i + 1}`, "aria-label": agDate(day) + agT(", ") + (all ? agCount(all) : agT("nothing")) }, [
+      el("span", { class: "cal-num", text: String(Number(day.slice(8))) }), day === today ? el("span", { class: "cal-today-word", text: agT("Today") }) : null,
+      agWeatherMark(day), all ? el("span", { class: "cal-count", text: String(all) }) : null]);
+    cell.onclick = () => { agendaState.sel = day; agendaView(); };
+    parts.push(cell, ...timed.slice(0, free.length).map((seg, n) => agMonthLine(seg, i, free[n])));
+    if (all > shown) parts.push(agMore(day, all - shown, i));
+  });
+  return el("div", { class: "cal-mweek" }, parts);
+}
+function agMonthLine(seg, column, line) {
+  const node = agPress(seg.entry, "cal-line", [el("span", { class: "cal-line-time", text: agHours(seg).split(" – ")[0] }), el("span", { class: "cal-line-title", text: seg.entry.title })]);
+  Object.assign(node.style, { gridColumn: String(column + 1), gridRow: String(line + 2) });
+  return node;
+}
+function agMore(day, n, column) {
+  const more = el("button", { type: "button", class: "cal-more", style: `grid-column:${column + 1}`, text: "+" + agT("{n} more", { n }) });
+  more.onclick = () => { Object.assign(agendaState, { view: "week", start: day, sel: day }); agendaView(); };
+  return more;
+}
+function agendaMonth(entries, first) {
+  const today = agToday(), lead = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7, month = first.slice(0, 7);
+  const length = agSpan(first, agMonthStep(first, 1) + "-01"), start = agDay(first, -lead), weeks = Math.ceil((lead + length) / 7);
+  const sel = agendaState.sel && agendaState.sel.slice(0, 7) === month ? agendaState.sel : today.slice(0, 7) === month ? today : first;
+  return el("div", { class: "cal-month" }, [el("div", { class: "cal-wds" }, Array.from({ length: 7 }, (_, i) => el("span", { class: "cal-wd" + (i > 4 ? " weekend" : ""), text: agFormat(agDay(start, i), { weekday: "short" }) }))),
+    ...Array.from({ length: weeks }, (_, i) => agMonthWeek(entries, agDay(start, 7 * i), month, today)),
+    el("div", { class: "cal-daylist agenda-days" }, [agDaySection(entries, sel, today, sel)])]);
+}
+// One day as a short list in time order, its all-day bars first. A bar that covers several days is listed once,
+// on the first of them shown, with its whole range in words.
+function agRow(e, when) {
+  return agPress(e, "cal-row" + (e.allDay ? " cal-row-bar" : ""), [el("span", { class: "cal-row-time", text: when }), el("span", { class: "cal-row-title", text: e.title }),
+    e.where ? el("span", { class: "cal-row-where", text: e.where }) : null]);
+}
+function agDayRows(entries, day, from) {
+  const bars = entries.filter(e => e.allDay && e.first <= day && e.last >= day && (e.first === day || day === from));
+  const short = e => e.kind !== "event" ? agWhen(e) : e.first === e.last ? agT("All day") : agWhen(e);
+  return [...bars.map(e => agRow(e, short(e))), ...agSegments(entries, day).map(seg => agRow(seg.entry, agHours(seg)))];
+}
+function agDaySection(entries, day, today, from) {
+  const rows = agDayRows(entries, day, from), name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";
+  return el("section", { class: "ag-day" + (day === today ? " today" : ""), id: "cal-day-" + day }, [
+    el("h2", { class: "ag-dayhead" }, [name ? name + " · " + agDate(day) : agDate(day), agWeatherWords(day)]), ...rows]);
+}
+// A phone's week: the seven dates as a strip to jump by, then three weeks day by day. A day with nothing has no
+// section and its date in the strip is quiet.
+function agendaPhone(entries, start) {
+  const today = agToday(), days = Array.from({ length: 21 }, (_, i) => agDay(start, i)), full = days.filter(day => day === today || agOnDay(entries, day).length);
+  const strip = el("div", { class: "cal-strip" }, days.slice(0, 7).map(day => {
+    const n = agOnDay(entries, day).length, jump = el("button", { type: "button", class: "cal-jump" + agDayClass(day, today), "aria-label": agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")), ...(full.includes(day) ? {} : { disabled: "" }) }, [
+      el("span", { class: "cal-wd", text: agFormat(day, { weekday: "narrow" }) }), el("span", { class: "cal-num", text: String(Number(day.slice(8))) }), agWeatherMark(day, true)]);
+    jump.onclick = () => document.getElementById("cal-day-" + day)?.scrollIntoView({ block: "start" });
+    return jump;
   }));
-}
-function agMonthStart(offset) {
-  const d = new Date(agToday().slice(0, 7) + "-01T00:00:00Z");
-  d.setUTCMonth(d.getUTCMonth() + offset);
-  return d.toISOString().slice(0, 10);
-}
-function agendaMonth(items, first) {
-  const today = agToday(), lead = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7;
-  const next = agMonthStart(agendaState.offset + 1), length = Math.round((new Date(next) - new Date(first)) / 86400000);
-  const start = agDay(first, -lead), cells = Math.ceil((lead + length) / 7) * 7;
-  const names = Array.from({ length: 7 }, (_, i) => el("span", { class: "ag-wd", text: agFormat(agDay(start, i), { weekday: "short" }) }));
-  return el("div", { class: "agenda-month" }, [...names, ...Array.from({ length: cells }, (_, i) => {
-    const day = agDay(start, i), mine = items.filter(item => item.day === day);
-    return el("div", { class: "ag-cell" + (day.slice(0, 7) !== first.slice(0, 7) ? " out" : "") + (day === today ? " today" : "") }, [
-      el("span", { class: "ag-date", text: String(Number(day.slice(8))) }), ...mine.slice(0, 3).map(agItem),
-      mine.length > 3 ? el("span", { class: "ag-more", text: agT("{n} more", { n: mine.length - 3 }) }) : null]);
-  })]);
-}
-function agendaDays(items) {
-  const today = agToday(), end = agDay(today, 20), list = el("div", { class: "agenda-days" });
-  for (let day = today; day <= end; day = agDay(day, 1)) {
-    const mine = items.filter(item => item.day === day);
-    if (!mine.length && day !== today) continue;
-    const name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";
-    const date = agFormat(day, { weekday: "short", day: "numeric", month: "short" });
-    list.appendChild(el("section", { class: "ag-day" + (day === today ? " today" : "") }, [
-      el("h2", { class: "ag-dayhead", text: name ? name + " · " + date : date }),
-      ...(mine.length ? mine.map(agItem) : [el("p", { class: "ag-empty", text: agT("Nothing in these days.") })])]));
-  }
-  return list;
-}
-// Earlier than today, whatever range is on screen: still open is about now, not about the week shown.
-function agendaEarlier(items) {
-  const open = items.filter(item => item.kind !== "event" && item.day < agToday());
-  if (!open.length) return null;
-  const seen = new Set(), unique = open.reverse().filter(item => !seen.has(item.href) && seen.add(item.href));
-  return el("p", { class: "agenda-earlier" }, [el("span", { class: "k", text: agT("Still open from earlier") + " " }),
-    ...unique.flatMap((item, i) => [i ? " · " : null, el("a", { href: item.href, class: item.late ? "late" : "", text: item.title }),
-      el("span", { class: "mono", text: " " + calendarDate(item.day) })])]);
+  return el("div", { class: "cal-phone" }, [strip, el("div", { class: "agenda-days" }, full.map(day => agDaySection(entries, day, today, start)))]);
 }
 // Only his own calendars are read (#3087): the page says how many, and how many were left out and why, in words.
 function agendaCalendars(c) {
@@ -9476,7 +9707,7 @@ function agendaCalendars(c) {
   return agT(c.calendars === 1 ? "{name}: 1 own calendar read" : "{name}: {n} own calendars read", { name: c.name, n: c.calendars })
     + agT("; ") + (total ? agT("{n} left out ({why})", { n: total, why }) : agT("none left out")) + agT(".");
 }
-// It sits under the calendar: what was read is provenance, and the week stays at the top of the page.
+// Small, under the header, on a desk and on a phone (#3085 review: under the week it was below a long scroll).
 // A file saved before #3087 has no counts; the sentence appears after the next read.
 function agendaRead() {
   const counted = (REM.calendar?.read || []).filter(c => c.calendars != null);
@@ -9500,34 +9731,60 @@ function agendaNote() {
   }
   return lines.length ? el("p", { class: "agenda-note", text: lines.join(" ") }) : null;
 }
+function agStep(n) {
+  if (agendaState.view === "month") agendaState.month = agMonthStep(agMonthFirst(), n);
+  else agendaState.start = agDay(agendaState.start || agToday(), 7 * n);
+  agendaState.sel = "";
+  agendaView();
+}
 function agendaBar(range) {
-  const week = agendaState.view === "week", step = n => () => { agendaState.offset += n; agendaView(); };
+  const week = agendaState.view === "week";
   const button = (text, attrs, act) => { const b = el("button", { type: "button", ...attrs }, [text]); b.onclick = act; return b; };
   const views = el("div", { class: "seg ag-views", role: "group" }, [["week", "Week"], ["month", "Month"]].map(([view, name]) =>
-    button(agT(name), { "aria-pressed": String(agendaState.view === view) }, () => { agendaState.view = view; agendaState.offset = 0; agendaView(); })));
+    button(agT(name), { "aria-pressed": String(agendaState.view === view) }, () => { Object.assign(agendaState, { view, start: "", month: "", sel: "" }); agendaView(); })));
   const read = REM.calendar?.read?.length ? el("span", { class: "ag-source", text: REM.calendar.read.map(c =>
     agT("{name} · read {when}", { name: c.name, when: fmtTime(c.at) })).join(" · ") }) : null;
   return el("div", { class: "agenda-bar" }, [
-    button("‹", { class: "ag-step", "aria-label": agT(week ? "Previous week" : "Previous month") }, step(-1)),
-    button(agT("Today"), { class: "ag-today" }, () => { agendaState.offset = 0; agendaView(); }),
-    button("›", { class: "ag-step", "aria-label": agT(week ? "Next week" : "Next month") }, step(1)),
+    button("‹", { class: "ag-step", "aria-label": agT(week ? "Previous week" : "Previous month") }, () => agStep(-1)),
+    button(agT("Today"), { class: "ag-today" }, () => { Object.assign(agendaState, { start: "", month: "", sel: "" }); agendaView(); }),
+    button("›", { class: "ag-step", "aria-label": agT(week ? "Next week" : "Next month") }, () => agStep(1)),
     el("span", { class: "ag-range", text: range }), read, views]);
 }
-function agendaView() {
-  const main = document.getElementById("main"), items = agendaItems();
-  let body, range;
-  if (agendaState.view === "month") {
-    const first = agMonthStart(agendaState.offset);
-    range = agFormat(first, { month: "long", year: "numeric" });
-    body = agendaMonth(items, first);
-  } else {
-    const start = agDay(agToday(), 7 * agendaState.offset);
-    const end = agDay(start, 6);
-    range = agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(end, { day: "numeric", month: "short", year: "numeric" });
-    body = agendaWeek(items, start);
+// Arrows move the chosen day (left and right a day, up and down a week) and the view follows it; T is today;
+// Enter opens the chosen day's first event.
+function agKey(event) {
+  if (!document.querySelector(".agenda") || document.querySelector("dialog[open]") || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || event.metaKey || event.ctrlKey || event.altKey) return;
+  const move = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
+  if (event.key === "Enter" && !event.target.closest("button, a")) {
+    event.preventDefault();  // or the same Enter presses the detail's Close, which takes the focus
+    return void document.querySelector(`.agenda .cal-day[data-day="${agendaState.sel || agToday()}"] .cal-event`)?.click();
   }
-  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items), agendaRead()]));
+  if (!move && event.key.toLowerCase() !== "t") return;
+  event.preventDefault();
+  const sel = move ? agDay(agendaState.sel || agToday(), move) : agToday(), start = agendaState.start || agToday();
+  Object.assign(agendaState, { sel, month: sel.slice(0, 7), start: sel < start || sel > agDay(start, 6) ? (move ? agDay(start, 7 * Math.sign(move)) : "") : agendaState.start });
+  agendaView();
 }
+function agListen() {
+  if (agendaState.listening) return;
+  agendaState.listening = true;
+  addEventListener("keydown", agKey);
+  addEventListener("resize", agSizeWeek);
+  addEventListener("mousedown", event => { if (!event.target.closest(".cal-detail, .cal-event")) document.querySelector(".cal-detail:not(.n3-sheet)")?.close(); });
+}
+function agendaView() {
+  const main = document.getElementById("main"), entries = agendaEntries(), month = agendaState.view === "month";
+  const start = agendaState.start || agToday(), first = agMonthFirst();
+  const range = month ? agFormat(first, { month: "long", year: "numeric" })
+    : agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(agDay(start, 6), { day: "numeric", month: "short", year: "numeric" });
+  agListen();
+  main.replaceChildren(el("div", { class: "agenda agenda-" + agendaState.view, "aria-label": label("agenda") }, [agendaBar(range), agendaRead(), agendaNote(),
+    ...(month ? [agendaMonth(entries, first)] : [agendaWeek(entries, start), agendaPhone(entries, start)])]));
+  agSizeWeek();
+}
+// Weather comes with the night's forecast (weather.py); until then a day carries none.
+function agWeatherMark() { return null; }
+function agWeatherWords() { return null; }
 
 // ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------
 // Ink is what REM knows from a source; pencil (always dashed) is what REM infers or forecasts.

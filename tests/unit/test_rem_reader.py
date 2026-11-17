@@ -396,6 +396,40 @@ def test_every_record_on_screen_is_named_by_what_it_is_not_a_generic_heading(tmp
     assert all(n["title"].casefold() not in ("the draft", "") for n in data["graph"]["nodes"] if not n["private"])
 
 
+def _calendar_maths():
+    """The Agenda calendar's layout maths (owner, 2026-11-17): minutes into pixels, lanes for overlaps, all-day bars."""
+    text = TEMPLATE.read_text()
+    many = [re.search(r"function " + name + r"\(.*?\n\}", text, re.S).group(0) for name in ("agDay", "agBlock", "agLanes", "agBars")]
+    return "\n".join(["const AG_HOUR = 44;", re.search(r"function agSpan\(.*", text).group(0), re.search(r"function agMinutes\(.*", text).group(0), *many])
+
+
+def test_a_calendar_block_is_placed_by_its_start_and_sized_by_its_minutes():
+    out = _run_reader_js(_calendar_maths() + """
+      console.log(JSON.stringify([agMinutes("09:30"), agBlock(600, 690, 44), agBlock(510, 525, 44), agBlock(0, 1440, 60)]));""")
+    assert out[0] == 570
+    assert out[1] == {"top": 440, "height": 66}, "10:00 for 90 minutes is ten hour-rows down and one and a half tall"
+    assert out[2] == {"top": 374, "height": 20}, "a quarter of an hour keeps the height of its title"
+    assert out[3] == {"top": 0, "height": 1440}
+
+
+def test_overlapping_calendar_events_share_the_column_and_back_to_back_ones_do_not():
+    segments = [{"id": "renewal", "start": 570, "end": 600}, {"id": "review", "start": 600, "end": 690}, {"id": "supplier", "start": 630, "end": 660},
+                {"id": "third", "start": 640, "end": 700}, {"id": "later", "start": 660, "end": 680}, {"id": "lunch", "start": 750, "end": 810}]
+    out = {seg["id"]: (seg["lane"], seg["lanes"]) for seg in _run_reader_js(_calendar_maths() + "\nconsole.log(JSON.stringify(agLanes(" + json.dumps(segments) + ")));")}
+    assert out["renewal"] == (0, 1) and out["lunch"] == (0, 1), "alone in its time, the whole column"
+    assert out["review"] == (0, 3) and out["supplier"] == (1, 3) and out["third"] == (2, 3)
+    assert out["later"] == (1, 3), "it takes the lane the supplier call left at 11:00"
+
+
+def test_an_all_day_event_is_one_bar_clipped_to_the_row_and_packed_into_the_first_free_line():
+    entries = [{"title": "Offsite", "first": "2026-10-05", "last": "2026-10-07"}, {"title": "Kiln", "first": "2026-10-03", "last": "2026-10-03"},
+               {"title": "Filing", "first": "2026-10-06", "last": "2026-10-06"}, {"title": "Fair", "first": "2026-09-29", "last": "2026-10-02"},
+               {"title": "Elsewhere", "first": "2026-10-20", "last": "2026-10-20"}, {"title": "Voyage", "first": "2026-10-07", "last": "2026-10-12"}]
+    bars = _run_reader_js(_calendar_maths() + "\nconsole.log(JSON.stringify(agBars(" + json.dumps(entries) + ", '2026-10-01', 7).map(bar => [bar.entry.title, bar.from, bar.to, bar.line, bar.before, bar.after])));")
+    assert bars == [["Fair", 0, 1, 0, True, False], ["Kiln", 2, 2, 0, False, False], ["Offsite", 4, 6, 0, False, False],
+                    ["Filing", 5, 5, 1, False, False], ["Voyage", 6, 6, 1, False, True]]
+
+
 def _graph_cut():
     """graphShort and what it is made of: a width, and lines cut only between words."""
     text = TEMPLATE.read_text()
@@ -4692,16 +4726,20 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
 
 
 def _agenda_items(events, language='en'):
+    """Each event's days as the calendar files them: [{day, card}], the card holding its title, its hours in words and its place."""
     page = TEMPLATE.read_text()
-    functions = '\n'.join(_reader_function(name) for name in
-                          ['agT', 'agDay', 'agToday', 'agTime', 'agLastDay', 'agendaItems', 'agItem', 'calendarDay', 'eventTitle'])
+    line = lambda name: re.search(r'function ' + name + r'\(.*', page)[0]
+    functions = '\n'.join([_reader_function(name) for name in ['agT', 'agDay', 'agLastDay', 'agEvent', 'agendaEntries', 'agSegments', 'agHours', 'calendarDay', 'eventTitle']]
+                          + [line(name) for name in ['agMinutes', 'agToday', 'agTime', 'agClock']])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     return _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
         + ';\nuiLanguage = ' + json.dumps(language) + ';\nconst REM = {as_of: "2026-11-16T01:06:00+00:00", status: {timezone: "Australia/Sydney"},'
         + ' today_queue: [], calendar: {events: ' + json.dumps(events) + '}};'
-        + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s;
-        const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean), removeAttribute() {}});
-        console.log(JSON.stringify(agendaItems().map(item => ({day: item.day, card: JSON.stringify(agItem(item))}))));""")
+        + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s, AG_SOURCE = {};
+        const rows = [];
+        for (const e of agendaEntries()) for (let day = e.first; day <= e.last; day = agDay(day, 1))
+          rows.push({day, card: JSON.stringify(e.allDay ? [e.title, agT("All day")] : agSegments([e], day).map(seg => [e.title, agHours(seg), e.where]))});
+        console.log(JSON.stringify(rows));""")
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])

@@ -1757,20 +1757,55 @@ pinned to that edge: it comes into view with the draft.
   *Google Tasks are not read: Google must be reconnected with access to tasks*;
   REM never adds a scope or starts a login by itself. Only the owner's own
   reader carries to-dos; a shared page has none.
-- **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
-  **Today** returns) and a Monday-first **Month**, with no heading above them. It
-  shows your calendar events beside the notebook's own dates: promises with a
-  due date (**Due**, or **Late** in red once past) and agenda pages on the date
-  they state (**Noted**). An event links to the calendar it came from and to the
-  people pages of its guests (matched on a page's Email and Handles lines); a
-  promise or page links to its page. An event prints its location under its
-  title in the week and on a phone. A timed event is on every day it covers:
-  its start time on the first, **All day** between, **Until 17:00** (到 17:00)
-  on the last; one that ends at midnight is not on the next day. The owner's
-  own reader carries events and the plan; a page rendered for sharing
-  (`render` without `local=True`) carries neither. Open notebook items
-  dated before today sit in one line under it, whichever week or month is shown.
-  On a phone it is a day-by-day list of the next three weeks. Events come from
+- **Agenda** is a calendar (#2998), drawn as one: no heading, then **‹ Today ›**,
+  the range in words, **Week / Month**, and under them one small line saying
+  which calendars were read. **Week** is a time grid starting today (‹ › move
+  it a week): hours down a quiet axis at 44 px an hour, hairline hour lines and
+  lighter half-hour lines, seven day columns with weekday and date heads. Today's
+  date is the one inked numeral and its head says **Today**; weekends are a shade
+  quieter. Each timed event is a block placed by its start and as tall as its
+  minutes (a 90-minute event is one and a half hour-rows), its title first, then
+  its hours, then its place when the block is tall enough; a short event keeps
+  the height of its title. Events that overlap share the column side by side;
+  back-to-back events do not. A line across today marks now, and the axis says
+  **Now 12:00**. The grid ends at the window's foot and scrolls inside it under
+  the heads; it opens at 07:00, so 07:00–21:00 is on screen at 1440×900, earlier
+  when the week's first event or now is earlier. Above the hours is the
+  **all-day strip**: an all-day event is a bar, and one that runs several days is
+  **one bar across its days**, never a card a day. The notebook's own dates sit
+  in the strip too, as outlined bars linking to their pages: promises with a due
+  date (**Due**) and agenda pages on the date they state (**Noted**); one that
+  is past due sits on **today** in red saying *Late, due Sep 25*, so there is no
+  second list of earlier open items under the calendar (that line of links
+  is gone: the same items are on today, and undated-late pages are in search and
+  on their own dates). An empty day is empty: no placeholder. **Month** is a
+  Monday-first grid of weeks (the reader's one week-start rule): each cell has
+  its date, today marked and said, days outside the month dimmed; all-day and
+  multi-day events are bars continuing across cells, then up to three lines in
+  all of *time title*; what does not fit is counted in words (**+2 more**), and
+  that count opens the day as a week starting there. **An event opens its
+  detail** on a click: a small card beside it (a sheet from the foot on a
+  phone) with its title, its time in words (*Fri 2 Oct, 09:30 – 10:00*; *All
+  day, Mon 5 Oct – Wed 7 Oct*), place, guests (their people pages when a page's
+  Email or Handles line matches, else a count), which calendar it is in
+  (*In Google Calendar*) and **Open in Google Calendar ↗**. Which provider an
+  event is from is also in its hover title; the edge of a block (ink for
+  Google, grey for Outlook) is only a second cue. A timed event that crosses
+  midnight is a block on each day it covers: its start time on the first,
+  **All day** between, **Until 17:00** (到 17:00) on the last; one that ends at
+  midnight is not on the next day. **Keys**: ← → move the chosen day, ↑ ↓ move
+  it a week (the view follows), **T** is today, **Enter** opens the chosen
+  day's first event, Esc closes the detail. **On a phone** the week is a strip
+  of seven dates (tap one to jump to its day; a date with nothing is quiet)
+  over a day-by-day list of three weeks, each day its all-day bars then its
+  events in time order, a several-day event listed once with its range in
+  words; the month keeps its grid with a count in each cell (*3*) and the
+  tapped day's list under it. The layout is arithmetic in the page (`agBlock`,
+  `agLanes`, `agBars`: minutes into pixels, lanes for overlaps, bars for
+  spans), with no calendar library. The owner's own reader carries events and
+  the plan; a page rendered for sharing (`render` without `local=True`)
+  carries neither.
+  Events come from
   `.state/calendar.json`, which each background round writes once (scheduled
   sync, exec and native rounds, including `codex_exec`), outside the writer
   lock, from every account co can already read (Google after `co auth google`
@@ -1785,8 +1820,8 @@ pinned to that edge: it comes into view with the draft.
   from such a calendar earlier are gone after the next read. `calendar.json`
   records, per account, how many calendars were read and how many were left
   out by access kind (`calendars`: `read`, and `left_out` counting
-  `freeBusyReader`, `reader` and `unticked`), and Agenda says it in a sentence
-  under the calendar: *Google Calendar: 1 own calendar read; 3 left out
+  `freeBusyReader`, `reader` and `unticked`), and Agenda says it in a small
+  sentence under its header, above the calendar: *Google Calendar: 1 own calendar read; 3 left out
   (2 shared as free/busy, 1 shared read-only).* The reader never calls a calendar.
   No calendar failure stops the night: a calendar that fails keeps the events it
   saved before, and the page says when it failed, why, and when its events are
