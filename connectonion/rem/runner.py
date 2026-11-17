@@ -314,10 +314,22 @@ RESTORE_DROPS = contextvars.ContextVar("rem_restore_drops", default=False)
 ADAPTER_CLEANUP_S = 30
 
 
+# #3099: the rule `co init` writes into ~/.codex/AGENTS.md ("run `co commands` and read
+# --help first") reaches every worker as its first user message: 74 `co commands` and
+# 124 help calls in one night's investigation turns, each output resent with every later
+# request. The Skill names each command a task may run, with its arguments. Native task
+# packets carry it (native.py); every turn run here gets it at the end of its prompt, after
+# a leading /skill: the A/B trial of manual investigations ran 63 `co commands` without it.
+NO_DISCOVERY_NOTE = ("This task packet contains everything the task needs, including every command it may run "
+                     "and how: do not run `co commands` or any `--help`.\n")
+
+
 def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: str = "") -> dict:
     """Run every co rem model turn from its stable task workspace."""
     # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
     prompt = prompt.replace("\0", "")
+    if NO_DISCOVERY_NOTE not in prompt:
+        prompt = prompt.rstrip("\n") + "\n\n" + NO_DISCOVERY_NOTE
     timeout = config["limits"]["timeout_seconds"]
     # Let the shared native adapter time out and close its subprocesses first.
     # Killing the co parent before its own deadline bypasses that cleanup: the Codex

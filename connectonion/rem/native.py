@@ -771,12 +771,7 @@ def _alive(pid) -> bool:
 # 2026-11-16 (#3083): workers opened task.json 134 times in a day, 180–344 KB each.
 # It holds this prompt again plus the runner's hashes; nothing in it is evidence.
 TASK_JSON_NOTE = "task.json is the runner's own record of this task, not material: do not read it.\n"
-# #3099: the rule `co init` writes into ~/.codex/AGENTS.md ("run `co commands` and read
-# --help first") reaches every worker as its first user message: 74 `co commands` and
-# 124 help calls in one night's investigation turns, each output resent with every later
-# request. The Skill names each command a task may run, with its arguments.
-NO_DISCOVERY_NOTE = ("This task packet contains everything the task needs, including every command it may run "
-                     "and how: do not run `co commands` or any `--help`.\n")
+NO_DISCOVERY_NOTE = runner.NO_DISCOVERY_NOTE
 
 
 MEMORY_CHARS = 4000

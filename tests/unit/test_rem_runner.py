@@ -490,8 +490,18 @@ def test_run_task_drops_null_bytes_from_prompt(tmp_path, delegate):
     result = runner.run_task(tmp_path, "Continue\0 investigating\0.", default_config(), "investigate")
     argv = delegate[0][0]
     assert all("\0" not in argument for argument in argv)
-    assert argv[-1] == "Continue investigating."
+    assert argv[-1] == "Continue investigating.\n\n" + runner.NO_DISCOVERY_NOTE
     assert result["outcome"] == "natural"
+
+
+def test_every_runner_turn_is_told_not_to_explore_co(tmp_path, delegate):
+    """#3099 A/B trial: manual investigations, which run here and not as native task packets,
+    ran 63 `co commands` and 24 help calls on the global co rule; the note follows any /skill."""
+    runner.run_task(tmp_path, "/rem-tag Tag the pages.", default_config(), "tag")
+    prompt = delegate[0][0][-1]
+    assert prompt.startswith("/rem-tag") and prompt.endswith(runner.NO_DISCOVERY_NOTE)
+    runner.run_task(tmp_path, prompt, default_config(), "tag")
+    assert delegate[1][0][-1].count("do not run `co commands`") == 1
 
 
 def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebook, monkeypatch):
