@@ -852,17 +852,27 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     models.level1                  gpt-6-luna (Codex default): sessions-summary, topic
-          models.level2                  gpt-6.1-terra: translate, extract, same-person, plan
-          models.level3                  gpt-6.1-sol: maintain, investigate, render, projects,
-                                         reply-draft, native (the scheduled session), init, abstract
-          models.level4                  gpt-6-astra: enrich, muse, claim-audit, insight-critic,
+Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag (twenty pages a turn, every tag
+                                         checked by code; the owner, 2026-11-17: "even Terra is enough")
+          models.level2 efforts.level2   gpt-6.1-sol at low: sessions-summary, topic, translate,
+                                         extract, same-person, plan
+          models.level3 efforts.level3   gpt-6.1-sol at low: maintain, projects, reply-draft,
+                                         native (the scheduled session), init, abstract
+          models.level4 efforts.level4   gpt-6.1-sol at low: enrich, muse, claim-audit, insight-critic,
                                          synthesize, task (owed work)
-                                         co rem status lists the stages on each level. A notebook on
-                                         another runner keeps its one model on every level;
-                                         the old names model (level3) and models.summary (level1) still work
+          models.investigate efforts.investigate
+                                         gpt-6.1-sol at medium: investigate and render (the turn
+                                         that writes the investigated page), set on their own
+                                         Every stage but tag and investigation runs Sol at low (the
+                                         owner, #3099: no Astra; "Sol light" read as low). Efforts:
+                                         minimal | low | medium | high | xhigh | max; effort VALUE
+                                         sets every level at once. co rem status lists the stages on
+                                         each level. A notebook on another runner keeps its one model on
+                                         every level; the old names model (level3 and investigate) and
+                                         models.summary (level1) still work
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
-          speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
+          speed                          standard (default) | fast: Codex's Fast (priority) tier, faster
+                                         and dearer; unattended nights default to standard (#3099)
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
                                          headings, labels and quotes stay as they are
           languages                      zh,en: the languages you read, first in the reader's
@@ -888,6 +898,7 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
                                          a route on plan, extract, synthesize or render also
                                          turns on three-call planned investigation
 Example:  co rem config set models.level2 gpt-6.1-sol route.translate gpt-6.1-terra
+Example:  co rem config set efforts.level2 medium efforts.investigate high
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
           Measured when level3's model or the runner changes, never read off the name. Unchecked runs
@@ -1349,7 +1360,7 @@ Arguments:
 Options:
   --agent       codex or claude: who runs a task that has not started.
 
-Codex uses models.level4 and the configured effort. Claude Code keeps its own
+Codex uses models.level4 at efforts.level4. Claude Code keeps its own
 model and loads your own Claude setup (user CLAUDE.md, skills, settings).
 Both run with full access. Work happens in
 a git worktree of the project page's repository on branch rem/task-ID when there

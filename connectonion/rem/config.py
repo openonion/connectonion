@@ -38,20 +38,34 @@ def schedule_runner() -> str:
     return 'codex-app' if ready({'runner': 'codex'})[0] and app_installed() else 'codex-exec'
 
 
-# The cheapest model that does each kind of call well, measured on the owner's
-# runs 2026-10-10..11-09 (sprint-12/model-levels.md). Level 1 is the weakest.
-LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-terra",
-                "level3": "gpt-6.1-sol", "level4": "gpt-6-astra"}
+# Levels were the cheapest model that does each kind of call well, measured on the
+# owner's runs 2026-10-10..11-09 (sprint-12/model-levels.md). The owner, 2026-11-17
+# (#3099), after the rc20 night used 9 points of a Codex week and the max-effort night
+# 44: no Astra, and every stage but investigation on Sol "light", read here as Sol at
+# low effort (one `config set effort ...` changes it). Tag stays on Luna: three trials
+# tagged on it with every tag checked by code, and he said even Terra is enough.
+# Investigation is a level of its own so it can be measured and set apart: Sol at
+# medium until an A/B on his notebook shows something better (#3099).
+LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-sol", "level3": "gpt-6.1-sol",
+                "level4": "gpt-6.1-sol", "investigate": "gpt-6.1-sol"}
+LEVEL_EFFORTS = {"level1": "medium", "level2": "low", "level3": "low", "level4": "low", "investigate": "medium"}
+# Codex's own names (`codex debug models`, 0.162): every model takes low to max.
+# "ultra" is left out: it delegates the turn to further agents.
+EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 STAGE_LEVELS = {
-    # 1: short, structured, checked by code afterwards.
-    "sessions-summary": 1, "topic": 1, "tag": 1,
+    # 1: short, structured, and every answer checked by code afterwards.
+    "tag": "level1",
     # 2: faithful transformation or a narrow judgement over small input.
-    "translate": 2, "extract": 2, "same-person": 2, "plan": 2,
+    "sessions-summary": "level2", "topic": "level2",
+    "translate": "level2", "extract": "level2", "same-person": "level2", "plan": "level2",
     # 3: writing pages and drafts the owner reads, from cited evidence.
-    "maintain": 3, "abstract": 3, "init": 3, "investigate": 3, "render": 3,
-    "projects": 3, "reply-draft": 3, "native": 3,
+    "maintain": "level3", "abstract": "level3", "init": "level3",
+    "projects": "level3", "reply-draft": "level3", "native": "level3",
     # 4: deep rounds, independent audits, and owed work done for the owner.
-    "enrich": 4, "muse": 4, "claim-audit": 4, "insight-critic": 4, "synthesize": 4, "task": 4,
+    "enrich": "level4", "muse": "level4", "claim-audit": "level4", "insight-critic": "level4",
+    "synthesize": "level4", "task": "level4",
+    # Investigation, and render: the turn that writes an investigated page (runner._run_stage).
+    "investigate": "investigate", "render": "investigate",
 }
 
 
@@ -60,13 +74,18 @@ OLD_NAMES = {"model": "models.level3", "models.summary": "models.level1"}
 
 
 def level_model(config: dict, stage: str) -> str:
-    return config["models"][f"level{STAGE_LEVELS[stage]}"]
+    return config["models"][STAGE_LEVELS[stage]]
+
+
+def level_effort(config: dict, stage: str) -> str:
+    return config["efforts"][STAGE_LEVELS[stage]]
 
 
 def describe_levels(config: dict) -> list[str]:
-    """One line per level for status and config: its model, then the stages on it."""
-    return [f"level {n} {config['models'][f'level{n}']} · "
-            + ", ".join(stage for stage, level in STAGE_LEVELS.items() if level == n) for n in range(1, 5)]
+    """One line per level for status and config: its model and effort, then the stages on it."""
+    efforts = config.get("efforts") or dict.fromkeys(LEVEL_MODELS, config.get("effort", ""))
+    return [f"{key.replace('level', 'level ')} {config['models'][key]} at {efforts[key]} · "
+            + ", ".join(stage for stage, level in STAGE_LEVELS.items() if level == key) for key in LEVEL_MODELS]
 
 
 def default_config() -> dict:
@@ -80,7 +99,11 @@ def default_config() -> dict:
     # detected from his own mail and sessions (D-103), not "translate nothing".
     # tasks.auto: owed work starts after the night's drafts, with full access and Undo
     # (owner, D-100, 2026-11-09). An owner's own `config set tasks.auto false` wins.
-    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": True}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS), "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": True}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS),
+            # speed: the standard service tier. Unattended nights have no one waiting, and
+            # `fast` selects Codex's priority tier, which costs more of the week (#3099).
+            "speed": "standard", "effort": LEVEL_EFFORTS["level3"], "efforts": dict(LEVEL_EFFORTS),
+            "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
             # number of slots, bounds what the night spends.
@@ -167,7 +190,8 @@ PROFILES = {"default": default_config()["schedule"]["times"],
 
 def validate(config: dict) -> dict:
     defaults = default_config()
-    if not isinstance(config, dict) or set(config) - {"model"} != set(defaults) - {"model"} or config["version"] != 1:
+    if (not isinstance(config, dict) or set(config) - DERIVED != set(defaults) - DERIVED
+            or config["version"] != 1):
         raise RemError("Invalid co rem config keys or version")
     if config["runner"] not in RUNNERS:
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}")
@@ -181,9 +205,11 @@ def validate(config: dict) -> dict:
     models = config["models"]
     if (not isinstance(models, dict) or set(models) != set(LEVEL_MODELS)
             or any(not isinstance(name, str) or not name.strip() for name in models.values())):
-        raise RemError("models.level1 to models.level4 must each be a model name or default")
-    if config["effort"] not in ("minimal", "low", "medium", "high", "xhigh"):
-        raise RemError("effort must be minimal, low, medium, high or xhigh")
+        raise RemError("models.level1 to models.level4 and models.investigate must each be a model name or default")
+    efforts = config["efforts"]
+    if not isinstance(efforts, dict) or set(efforts) != set(LEVEL_EFFORTS) or any(e not in EFFORTS for e in efforts.values()):
+        raise RemError("efforts.level1 to efforts.level4 and efforts.investigate must each be "
+                       "minimal, low, medium, high, xhigh or max")
     if config["speed"] not in ("fast", "standard"):
         raise RemError("speed must be fast or standard")
     if not isinstance(config["language"], str) or not LANGUAGE.fullmatch(config["language"]):
@@ -228,7 +254,13 @@ def validate(config: dict) -> dict:
 # the defaults of the day it was made: one from 2026-09-20 ran the refused
 # gpt-5.3-codex-spark for four nights (#1714). A saved value equal to one of
 # these is read as unset, unless the owner chose it with `config set`.
+# "model" is the pre-1.9.3 work model: Luna was its default once, and a saved
+# `model: gpt-6-luna` from then is that default, not a choice. A level the owner sets
+# to Luna (`config set models.investigate gpt-6-luna`) is a models.* key and stays.
 SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
+              # #3099: init saved these defaults into every config.yaml.
+              "models.level2": {"gpt-6.1-terra"}, "models.level4": {"gpt-6-astra"},
+              "speed": {"fast"},
               "limits.timeout_seconds": {600},
               "limits.extract_chars_per_batch": {300000},
               "limits.runner_calls_per_day": {6, 30, 50},
@@ -238,6 +270,9 @@ SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "tasks.auto": {False},
               "schedule.times": {("03:00", "04:00", "06:00", "17:00", "18:00", "19:00")}}
 EXPLICIT = "config-explicit.json"
+# Kept beside the saved keys for code that reads one value, never saved: `model` and
+# `effort` are level3's.
+DERIVED = {"model", "effort"}
 # Count caps the owner retired on 2026-11-09 (D-104, "启动的时候，数量可以不用受限制"):
 # none of them stops night work any more. A saved value is dropped when read.
 RETIRED = ("tasks_per_night", "drafts_per_night", "jobs_per_round", "translations_per_day")
@@ -289,7 +324,7 @@ def _drop_superseded(root: Path, config: dict) -> None:
     for key, old in SUPERSEDED.items():
         section, _, name = key.rpartition(".")
         saved = config.get(section) if section else config
-        current = defaults[section] if section else {"model": LEVEL_MODELS["level3"]}
+        current = defaults[section] if section else {**defaults, "model": LEVEL_MODELS["level3"]}
         value = saved.get(name) if isinstance(saved, dict) else None
         if key not in explicit and isinstance(saved, dict) and (tuple(value) if isinstance(value, list) else value) in old:
             saved[name] = current[name]
@@ -314,8 +349,7 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
     config.setdefault("tasks", {"auto": True})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
-    config.setdefault("speed", "fast")
-    config.setdefault("effort", "medium")
+    config.setdefault("speed", default_config()["speed"])
     if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
         config['schedule']['runner'] = default_config()['schedule']['runner']
     if isinstance(config.get("schedule"), dict):
@@ -326,7 +360,18 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
             and config["schedule"].get("profile") in PROFILES):
         config["schedule"]["times"] = PROFILES[config["schedule"]["profile"]]
     _migrate_models(config)
+    _migrate_efforts(config, explicit)
     return validate(config) if validated else config
+
+
+def _migrate_efforts(config: dict, explicit: set) -> None:
+    """Before #3099 one `effort` ran every level. Saved by init it was a default; set by
+    the owner it still applies to each level he has not set on its own."""
+    single = config.pop("effort", None)
+    saved = config.get("efforts") if isinstance(config.get("efforts"), dict) else {}
+    efforts = dict.fromkeys(LEVEL_EFFORTS, single) if single and "effort" in explicit else dict(LEVEL_EFFORTS)
+    config["efforts"] = {**efforts, **saved}
+    config["effort"] = config["efforts"]["level3"]
 
 
 def _migrate_models(config: dict) -> None:
@@ -336,7 +381,7 @@ def _migrate_models(config: dict) -> None:
     work = config.pop("model", None)
     saved = config.get("models") if isinstance(config.get("models"), dict) else {}
     levels = dict(LEVEL_MODELS) if config.get("runner") == "codex" else dict.fromkeys(LEVEL_MODELS, work or "default")
-    levels.update({"level3": work} if work else {})
+    levels.update({"level3": work, "investigate": work} if work else {})
     levels.update({"level1": saved["summary"]} if "summary" in saved else {})
     levels.update({key: value for key, value in saved.items() if key in LEVEL_MODELS})
     config["models"] = levels
@@ -374,8 +419,8 @@ def prepare(root: Path) -> None:
 
 
 def saved(config: dict) -> dict:
-    """What config.yaml holds: the levels, not the `model` derived from them."""
-    return {key: value for key, value in config.items() if key != "model"}
+    """What config.yaml holds: the levels, not the `model` and `effort` derived from them."""
+    return {key: value for key, value in config.items() if key not in DERIVED}
 
 
 def first_runner(config: dict) -> dict:
@@ -411,20 +456,26 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     migrate_schedule_pin(root)
     config = copy.deepcopy(read_config(root, validated=False))
     previous_runner = config["runner"]
+    # `model` was the work model, and investigation was work: it sets both levels.
+    pairs = [part for key, raw in zip(pairs[::2], pairs[1::2])
+             for part in ([key, raw, "models.investigate", raw] if key == "model" else [key, raw])]
     pairs = [OLD_NAMES.get(part, part) if index % 2 == 0 else part for index, part in enumerate(pairs)]
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
-        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks", "notify"):
+        if key == "effort":  # Every level at once; a later efforts.<level> in the same command wins.
+            config["efforts"] = dict.fromkeys(config["efforts"], raw)
+            continue
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "efforts", "tasks", "notify"):
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
         elif len(parts) != 1 or key not in ("runner", "speed", "effort", "language", "languages"):
-            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, models.investigate, efforts.<level>, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
         if parts[0] == "limits" and parts[-1] in RETIRED:
             raise RemError(f"{key} {RETIRED_NOTE}")
         if parts[-1] not in target:
-            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, models.investigate, efforts.<level>, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
         if key == "tasks.auto":
             if raw not in ("true", "false"):
                 raise RemError("tasks.auto must be true or false")
@@ -446,7 +497,7 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
         config["models"].update({level: LEVEL_MODELS[level] if config["runner"] == "codex" else "default"
                                  for level in LEVEL_MODELS if f"models.{level}" not in pairs[::2]})
     explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
-    config["model"] = config["models"]["level3"]
+    config["model"], config["effort"] = config["models"]["level3"], config["efforts"]["level3"]
     validate(config)
     atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(saved(config), sort_keys=False))
     write_json(state_path(root, EXPLICIT), sorted(explicit))

@@ -470,8 +470,10 @@ def _clause_rows(text: str) -> list[str]:
 
 
 def _level_rows(line: str) -> list[str]:
-    """"level 1 gpt-6-luna · sessions-summary, topic": the level in the margin,
-    its stages wrapped under the model so status stays 80 columns wide."""
+    """"level 1 gpt-6-luna at medium · tag": the level in the margin, its stages
+    wrapped under the model so status stays 80 columns wide. "investigate ..." is
+    the level investigation has to itself."""
     import textwrap
-    first, *rest = textwrap.wrap(line[8:], 80 - rem_look.COLUMN, break_on_hyphens=False)
-    return [rem_look.row(line[:7], first), *(" " * rem_look.COLUMN + part for part in rest)]
+    label, value = (line[:7], line[8:]) if line.startswith("level ") else line.split(" ", 1)
+    first, *rest = textwrap.wrap(value, 80 - rem_look.COLUMN, break_on_hyphens=False)
+    return [rem_look.row(label, first), *(" " * rem_look.COLUMN + part for part in rest)]

@@ -986,15 +986,16 @@ def test_rem_session_earlier_reply_is_not_final_after_a_later_owner_turn(noteboo
 def test_session_summary_uses_summary_model_only(notebook, summary_ready):
     from connectonion.rem.config import read_config
     root, _, _ = notebook
-    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol"])
+    # Summaries are level 2 since #3099; a distinct model shows which level ran.
+    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol", "models.level2", "gpt-6.1-terra"])
     transcript(notebook)
     import_sessions(root, now=NOW)
     def run(directory, prompt, settings, stage):
-        assert settings["model"] == "gpt-6-luna"
+        assert settings["model"] == "gpt-6.1-terra"
         assert read_config(root)["model"] == "gpt-6.1-sol"
         return summary_answer("s1")
     assert summarise_sessions(root, run=run)["summarised"] == 1
-    assert read_summary(root, "codex:3456-abcdef12")["model"] == "gpt-6-luna"
+    assert read_summary(root, "codex:3456-abcdef12")["model"] == "gpt-6.1-terra"
 
 
 def test_code_evidence_excludes_sessions_that_change_cwd(notebook):

@@ -117,7 +117,7 @@ def _config_hash(config, *, include_languages=False, include_models=False, inclu
     # Prepared material (including its language and local dates) is already saved.
     # Reader translation targets do not change page-task material.
     run_limits = RUN_LIMITS
-    ignored = {"schedule", "effort", "notify"}
+    ignored = {"schedule", "effort", "efforts", "notify"}
     if include_notify:
         ignored.remove("notify")
     if not include_languages:

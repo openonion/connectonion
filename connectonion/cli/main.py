@@ -892,7 +892,7 @@ def ai(
         help="Codex only: fast selects the Fast tier; standard leaves your configured tier unchanged.",
     ),
     effort: Optional[str] = typer.Option(
-        None, "--effort", metavar="minimal|low|medium|high|xhigh",
+        None, "--effort", metavar="minimal|low|medium|high|xhigh|max",
         help="Codex only: the reasoning effort of this run. Without it Codex uses your own configured effort.",
     ),
 ):
