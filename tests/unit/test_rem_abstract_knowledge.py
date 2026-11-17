@@ -94,6 +94,71 @@ def test_abstract_appends_experience_without_changing_one_original_byte(book, na
     assert '### Sources\n- [1] ' + SOURCE in saved[len(original):]
 
 
+SECTION = f'''
+## Settled experience: recovery
+Recovery reads the plain page first.
+“Keep pages inspectable.” [3]
+“{WORDS}” [4]
+
+### Drawn from
+- [Storage choice](../sessions/fixture.md)
+- [Storage trial](../projects/fixture.md)
+'''
+DEFINITIONS = f'- [3] codex:fixture:8 — originating page: `projects/fixture.md`.\n- [4] {SOURCE} — originating page: `sessions/fixture.md`.\n'
+
+
+def one_sources_last(saved, original):
+    """The page #3097 asks the night for: every earlier line kept, the new section above one closing Sources."""
+    head, _, sources = original.partition('\n## Sources\n')
+    assert saved.startswith(head) and len(re.findall(r'(?m)^#{2,3} Sources$', saved)) == 1
+    after_head, _, after_sources = saved.partition('\n## Sources\n')
+    assert '## Settled experience: recovery' in after_head[len(head):] and '### Drawn from' in after_head[len(head):]
+    assert after_sources == sources + DEFINITIONS
+    assert not re.search(r'(?m)^#', after_sources)
+
+
+@pytest.mark.parametrize('native', [True, False])
+def test_a_section_added_to_a_page_that_ends_with_sources_goes_above_them(book, native):
+    book.write('knowledge/storage.md', KNOWLEDGE)
+    prepared = task(book, native=native)
+    head, marker, sources = KNOWLEDGE.partition('\n## Sources\n')
+    Notebook(Path(prepared['task_root'])).write('knowledge/storage.md', head + '\n' + SECTION + marker + sources + DEFINITIONS)
+    assert runner.check(prepared, {}, native=native) == []
+    one_sources_last(book.read('knowledge/storage.md'), KNOWLEDGE)
+
+
+def test_an_appendix_written_after_the_closing_sources_is_folded_into_the_one_list(book):
+    book.write('knowledge/storage.md', KNOWLEDGE)
+    prepared = task(book)
+    Notebook(Path(prepared['task_root'])).write('knowledge/storage.md', KNOWLEDGE + SECTION + '\n### Sources\n' + DEFINITIONS)
+    assert runner.check(prepared, {}, native=True) == []
+    one_sources_last(book.read('knowledge/storage.md'), KNOWLEDGE)
+
+
+@pytest.mark.parametrize('change,reason', [
+    (lambda text: text.replace('Plain pages made', 'Plain pages once made'), 'preserve'),
+    (lambda text: text.replace(f'- [1] {SOURCE}', '- [1] codex:fixture:8'), 'preserve'),
+    (lambda text: text.replace('[3]', '[1]').replace('[4]', '[2]'), 'fresh citation numbers'),
+])
+def test_a_section_added_above_sources_may_not_change_what_was_there(book, change, reason):
+    book.write('knowledge/storage.md', KNOWLEDGE)
+    prepared = task(book)
+    head, marker, sources = KNOWLEDGE.partition('\n## Sources\n')
+    Notebook(Path(prepared['task_root'])).write('knowledge/storage.md', change(head + '\n' + SECTION + marker + sources + DEFINITIONS))
+    with pytest.raises(runner.RunFailed, match=reason):
+        runner.check(prepared, {}, native=True)
+    assert book.read('knowledge/storage.md') == KNOWLEDGE
+
+
+def test_the_skill_says_a_knowledge_page_ends_with_one_sources_and_shows_it():
+    skill = (runner.useful_skills_dir() / 'rem-abstract/SKILL.md').read_text(encoding='utf-8')
+    lift = skill.split('## Knowledge lift', 1)[1]
+    assert 'ends with one `## Sources`' in lift and 'above `## Sources`' in lift
+    for example in re.findall(r'(?s)```markdown\n(.*?)```', lift):  # every example ends with its one Sources list
+        assert example.count('\n## Sources\n') == 1 and '### Sources' not in example
+        assert not re.search(r'(?m)^#', example.partition('\n## Sources\n')[2])
+
+
 @pytest.mark.parametrize('body,reason', [
     (KNOWLEDGE.replace('- [Storage trial](../projects/fixture.md)\n', ''), 'two notebook pages'),
     (KNOWLEDGE.replace('../projects/fixture.md', '../projects/missing.md'), 'two notebook pages'),
