@@ -1074,7 +1074,8 @@ def _repair_instructions(root, task, reason):
     if task["handler"] in ("runner", "project") and task.get("record"):
         errors = read_json(directory / "review.json", {}).get("errors") or [reason]
         corrections = runner.repair_instruction(
-            task["record"], errors, directory, Path(task["task"]["root"]), native=True)
+            task["record"], errors, directory, Path(task["task"]["root"]), native=True,
+            inline="<material>" in task["render_instructions"])
         if not submits:
             corrections = corrections.replace(runner.REPAIR_SUBMITS, runner.REPAIR_DRIVEN)
         fix = directory / "repair-instructions.md"

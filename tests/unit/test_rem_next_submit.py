@@ -494,6 +494,16 @@ def test_native_repair_instruction_resubmits_in_the_same_turn(tmp_path):
     assert 'save' in instruction.lower() and 'submit command again in this turn' in instruction
 
 
+def test_a_repair_of_an_inline_task_is_sent_to_the_material_it_already_has(tmp_path):
+    """#3099: 15 of the 27 material.md reads in inline investigation turns one night were
+    repairs, told to read the cited originals in material.md while they were in the prompt."""
+    args = ('people/avery-lin.md', ['Unresolved citation'], tmp_path, tmp_path)
+    inline = runner.repair_instruction(*args, native=True, inline=True)
+    assert 'material.md' not in inline.replace('do not read material.md', '')
+    assert 'in the <material> block' in inline and 'do not read material.md' in inline
+    assert f"{tmp_path / 'material.md'}" in runner.repair_instruction(*args, native=True)
+
+
 @pytest.fixture
 def refused_investigation(trial):
     from uuid import uuid4

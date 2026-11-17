@@ -778,13 +778,20 @@ REPAIR_SUBMITS = "Save the same candidate file and run the printed submit comman
 REPAIR_DRIVEN = "Save the same candidate file and end your turn: the run that started this task submits it."
 
 
-def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path, *, native=False) -> str:
-    """What the review refused, and where the writer reads the originals to fix it."""
+def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path, *, native=False,
+                       inline=False) -> str:
+    """What the review refused, and where the writer reads the originals to fix it.
+
+    `inline`: the originals are in the prompt's <material> block. 2026-11-17 (#3099): 15 of
+    the 27 material.md reads in one night's inline investigation turns were repairs sent
+    to the file for what their prompt already held."""
     if native:
         write_json(directory / "repair-findings.json", errors, readable=True)
     findings = f"read {directory / 'repair-findings.json'}" if native else '; '.join(errors)
-    text = (f"Review refused the page: {findings}. Read the cited originals in "
-            f"{directory / 'material.md'} and its evidence index. Fix each named problem in the "
+    originals = ("The cited originals are in the <material> block of the render instructions below, with "
+                 "their evidence index; do not read material.md. " if inline else
+                 f"Read the cited originals in {directory / 'material.md'} and its evidence index. ")
+    text = (f"Review refused the page: {findings}. {originals}Fix each named problem in the "
             "existing candidate: for an unresolved citation, copy the exact source ids of the originals "
             "that support the claim; a quote must be copied character for character from the message its "
             "line cites, in its original language, or the line rewritten without quotation marks; a "
