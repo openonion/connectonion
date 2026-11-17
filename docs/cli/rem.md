@@ -1678,7 +1678,9 @@ pinned to that edge: it comes into view with the draft.
   organisations, projects and skills). The text is set at the body size with a
   line-height of 1.75 and a measure of about 34 Chinese or 70 Latin characters;
   a heading has clearly more room above it than below it; a line that is
-  wholly the owner's quoted words is a quiet ruled block.
+  wholly the owner's quoted words is a quiet ruled block. A date written as
+  `2026-08-27` in a sentence reads *Aug 27* (*8月27日* in a Chinese sentence);
+  quoted words, paths and links keep their characters.
   **Sources come once and last.** Citations stay in the text as raised numbers.
   Every `Sources` block in the file, at any heading level, is gathered into one
   list after the last section. A file with a single `Sources` block keeps the
