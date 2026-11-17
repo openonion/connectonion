@@ -2,7 +2,8 @@
 
 The file is hashed first, offered by its sha256, and sent in signed chunks on
 the sealed direct socket. The relay is never used for the bytes: if the
-receiver cannot be reached directly, the send stops and says so.
+receiver cannot be reached directly, the send raises NotDirect, and `co send`
+leaves a small file waiting on the backend instead (file_stash.py).
 
 A dropped connection is not the end of a transfer. The receiver keeps what
 arrived under the file's sha256, and the next offer is answered with how much
@@ -30,6 +31,10 @@ RETRIES = 20
 
 class SendRefused(Exception):
     """The receiver said no, or cannot be reached directly. Retrying will not help."""
+
+
+class NotDirect(SendRefused):
+    """Only the relay reaches the receiver, or nothing does: its Host is behind a router or not running."""
 
 
 class _Resync(Exception):
@@ -96,10 +101,9 @@ async def _send_once(remote, path: Path, name: str, size: int, sha256: str, on_p
     connection, is_direct = await remote._open_best_connection(websockets)
     async with connection as ws:
         if not is_direct:
-            raise SendRefused(
-                f"{remote.address[:10]}… is not reachable directly from here, only through "
-                "the relay, which does not carry files. Send from the same network, or give "
-                "the receiver a public address (AGENT_PUBLIC_DOMAIN)."
+            raise NotDirect(
+                f"{remote.address[:10]}… is not reachable directly from here: its Host is "
+                "behind a router or not running."
             )
         await ws.send(json.dumps(remote._build_connect_message(True)))
         refused = await remote._wait_for_direct_command_connected(ws)

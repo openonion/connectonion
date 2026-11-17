@@ -799,11 +799,12 @@ def send(
 ):
     """Sends files to another agent, verified by sha256; an interrupted send resumes.
 
-    The receiving agent must be running and reachable on the same network or
-    at a public address. Files go straight to it, never through a relay server.
-    Only a contact, a whitelisted address or an admin of the receiver may
-    send; files land in its .co/inbox/files/<date>/ and never overwrite
-    anything. A folder arrives as the files inside it, under its own name.
+    Files go directly to the receiver when it is online and reachable. When it
+    is not, a file of up to 10 MB is held on the server for 7 days, encrypted
+    so only the receiver can open it; `co receive` there takes it. Only a contact, a
+    whitelisted address or an admin of the receiver may send; files land in
+    its .co/inbox/files/<date>/ and never overwrite anything. A folder arrives
+    as the files inside it, under its own name.
     """
     from .commands.send_commands import handle_send
     raise typer.Exit(handle_send(address, paths, relay))
@@ -813,9 +814,12 @@ def send(
 def receive(
     json_output: bool = typer.Option(False, "--json", help="Print the list as JSON"),
 ):
-    """Read-only: list the files other agents sent here, verified ones only.
+    """Writes: takes files waiting for this agent, then lists every file received.
 
-    Run it in the folder where the receiving agent runs. Files are in its
+    Files sent while this agent was unreachable are held on the server for 7
+    days; this downloads the ones from contacts, whitelisted addresses and
+    admins, verifies them, and deletes the server copies. Run it
+    in the folder where the receiving agent runs. Files are in its
     .co/inbox/files/<date>/; `co send` on the other machine sends them.
     """
     from .commands.send_commands import handle_receive
