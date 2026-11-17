@@ -1002,9 +1002,16 @@ notebook pages from `decisions/`, `sessions/` or `projects/` under `## Drawn fro
 It keeps the same verbatim body quote, immediate `[n]`, original source ID and
 originating-page citation rule as decisions. This is learning from notebook
 experience; Investigate topic pages describe a subject from raw sources.
-Abstract may create knowledge pages or append clearly headed sections to existing
+Abstract may create knowledge pages or add clearly headed sections to existing
 ones, including Investigate pages; it must preserve all existing text exactly.
-An appended section carries its own `### Sources` with fresh citation numbers.
+**A knowledge page ends with one `## Sources`** (#3097). When the page already
+ends with its `## Sources`, the new section goes above it with its own
+`### Drawn from`, and its source definitions are added to the end of that one
+list, continuing its numbers. Only a page with text after its `## Sources` (an
+Investigate topic page with its stamp, or a page written before this rule) still
+takes the section at the end with its own `### Sources` and fresh citation
+numbers; existing pages are not rewritten, and the reader gathers both shapes
+into one list.
 Knowledge passes the same promotion/review path and joins translation discovery
 alongside decisions and principles.
 Translation includes appended experience while preserving every source definition
@@ -1663,6 +1670,34 @@ pinned to that edge: it comes into view with the draft.
   also offers **Explore linked records →** when the graph has links. With
   nothing linked yet the graph has nothing to draw, so Knowledge shows the
   entries instead, with **Entries** selected.
+- **A knowledge entry, a decision and a principle read as one entry** (#3097),
+  set like a reference-book article with its notes at the end. The page is
+  printed **once**: the title, the page's own first paragraph as its lead, then
+  its sections in the order the file has them. There is no summary block above
+  and no **Full memory and sources** drawer below (those stay on people,
+  organisations, projects and skills). The text is set at the body size with a
+  line-height of 1.75 and a measure of about 34 Chinese or 70 Latin characters;
+  a heading has clearly more room above it than below it; a line that is
+  wholly the owner's quoted words is a quiet ruled block.
+  **Sources come once and last.** Citations stay in the text as raised numbers.
+  Every `Sources` block in the file, at any heading level, is gathered into one
+  list after the last section. A file with a single `Sources` block keeps the
+  numbers it was written with; a file with several (an older page that carries
+  `### Sources` under each appended section) is renumbered continuously in
+  reading order, and a source cited by two sections is listed once. Each mark
+  links to its entry and each entry links back to every place that cites it.
+  An entry says what the source is in words (*Coding session, 27 Aug*, *Mail
+  from Mara, 3 Sep*); the raw identifier and file path are in the entry's
+  tooltip and behind **Show identifiers**. Nothing follows Sources except the
+  page's footer. **Drawn from** (the notebook pages an entry rests on) appears
+  once per section, as links in an inset block labelled *Drawn from your
+  notebook*, apart from Sources: one is where the learning came from in the
+  notebook, the other is the evidence. *Also known as* is left out when it only
+  repeats the title. The counters under a knowledge title (people,
+  organisations and projects that link to the entry, sessions that name it) show
+  only the ones above zero, and the row is absent when all are zero. The side
+  column keeps the local graph and related entries; **On this page** appears
+  from four sections up; on a phone the column folds below the text.
 - **Headings name a page, they do not explain it** (#2994): a category page
   shows its name and its count, not a sentence about its order. Skills opens
   with its name and its finder (*Find among N skills…*) on one line, the most
