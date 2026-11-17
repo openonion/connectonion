@@ -23,7 +23,9 @@ pytestmark = pytest.mark.skipif(
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "fixtures"))
 
-RAIL = ["#", "#view=open", "#c=agenda", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#c=knowledge"]
+# #3091: one ordered list; Decisions and Principles follow Knowledge, Memory changes is last.
+RAIL = ["#", "#view=open", "#c=agenda", "#c=people", "#c=orgs", "#c=projects", "#c=knowledge", "#c=decisions", "#c=principles",
+        "#c=skills", "#view=changes"]
 
 
 def notebook(root):
@@ -183,8 +185,7 @@ def test_what_only_all_records_reached_is_reachable_from_knowledge_or_search(bro
     page = open_page(browser, built)
     labels = page.evaluate("paletteItems().map(item => item.label)", isolated_context=False)
     assert "Open Graph" in labels and "Open Knowledge" in labels and "Open All records" not in labels
-    # The All records list was every listed record; each one still sits in a rail place or under 更多.
-    page.locator(".nav.more").click()
+    # The All records list was every listed record; each one still sits in a rail place (or under 更多 in a low window).
     unplaced = page.evaluate("""() => {
       const places = new Set([...document.querySelectorAll('#nav a[href^="#c="], #rail-more a[href^="#c="]')].map(a => a.getAttribute('href').slice(3)));
       return listedRecords().filter(r => !places.has(r.category)).map(r => r.path);

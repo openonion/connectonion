@@ -126,25 +126,28 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
 
 @pytest.mark.parametrize('place', ['', '#c=knowledge'], ids=['today', 'knowledge-active'])
 def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, place):
-    """D-132: a 72px rail of pictures with their words under them. Its content is 656 tall: a window that tall
-    shows all of it, and in a lower one the rail itself scrolls, so every place, 更多, settings and you stay in reach."""
+    """D-132, #3091: a 72px rail of pictures with their words under them. It shows as many places as its height holds
+    and folds the rest under 更多, so in a low window nothing is clipped, nothing scrolls, and every place, settings
+    and you stay in reach."""
     page, uri = reader
-    page.set_viewport_size({'width': 960, 'height': 700})
+    page.set_viewport_size({'width': 960, 'height': 1000})
     page.goto(uri + place)
-    boxes = "nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return [b.top, b.bottom, b.width]; })"
-    tall = page.locator('.rail .nav').evaluate_all(boxes)
-    assert len(tall) == 10 and all(top >= 0 and bottom <= 700 and width == 56 for top, bottom, width in tall)
-    assert all(a[1] <= b[0] for a, b in zip(tall, tall[1:])), tall
-    assert page.locator('.rail').evaluate('rail => [rail.scrollHeight, rail.clientHeight, rail.getBoundingClientRect().width]') == [700, 700, 72]
-    page.set_viewport_size({'width': 960, 'height': 540})
-    assert page.locator('.rail').evaluate('rail => [rail.scrollHeight, rail.clientHeight, rail.getBoundingClientRect().width]') == [656, 540, 72]
-    short = page.locator('.rail .nav').evaluate_all(boxes)
-    assert [round(bottom - top) for top, bottom, _ in short] == [round(bottom - top) for top, bottom, _ in tall]  # none squeezed
-    assert all(a[1] <= b[0] for a, b in zip(short, short[1:])), short
-    reached = page.locator('.rail .nav').evaluate_all("""nodes => nodes.map(n => { n.scrollIntoView({block: 'nearest'});
-      const b = n.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })""")
-    assert reached == [True] * 10
-    assert page.evaluate('scrollY') == 0  # the rail scrolled, not the page
+    boxes = """nodes => nodes.filter(n => n.getClientRects().length).map(n => { const b = n.getBoundingClientRect();
+      return [b.top, b.bottom, b.width, n.getAttribute('href')]; })"""
+    every = [box[3] for box in page.locator('#nav > a.nav').evaluate_all(boxes)]
+    assert len(every) == 10 and not page.locator('.nav.more').is_visible()  # room for all of them: no 更多
+    for height, places in ((700, 7), (540, 4)):
+        page.set_viewport_size({'width': 960, 'height': height})
+        page.wait_for_function(f"[...document.querySelectorAll('#nav > a.nav')].filter(n => n.getClientRects().length).length === {places}")
+        cells = page.locator('.rail .nav').evaluate_all(boxes)
+        assert len(cells) == places + 3  # the places, 更多, settings, you
+        assert all(top >= 0 and bottom <= height and width == 56 for top, bottom, width, _ in cells), cells
+        assert all(a[1] <= b[0] for a, b in zip(cells, cells[1:])), cells
+        assert [round(bottom - top) for top, bottom, _, _ in cells[:-1]] == [52] * (places + 2)  # none squeezed
+        assert page.locator('.rail').evaluate('rail => [rail.scrollHeight, rail.clientHeight, rail.getBoundingClientRect().width]') == [height, height, 72]
+        folded = page.locator('#rail-more a').evaluate_all("links => links.map(a => a.getAttribute('href'))")
+        assert [href for *_, href in cells[:places]] + folded == every  # the same places in the same order, none lost
+    assert page.evaluate('scrollY') == 0
     # Each place is named under its picture without a hover; the full name is the link's accessible name.
     people = page.locator('#nav a[href="#c=people"]')
     assert people.get_attribute('aria-label') == 'People' and people.locator('.w').inner_text() == 'People'
@@ -153,7 +156,8 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, 
       cell = w.parentElement.getBoundingClientRect(), picture = w.parentElement.querySelector('.ic').getBoundingClientRect();
       return {word: w.textContent, shown: s.opacity === '1' && s.visibility === 'visible', size: s.fontSize, height: b.height,
         inside: b.left >= cell.left && b.right <= cell.right && b.bottom <= cell.bottom, under: b.top >= picture.bottom}; })""")
-    assert [w['word'] for w in words] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings']
+    words = [w for w in words if w['height']]  # the folded places are not drawn
+    assert [w['word'] for w in words] == ['Today', 'Waiting', 'Agenda', 'People', 'More', 'Settings']
     expected = {'shown': True, 'size': '11px', 'height': 14, 'inside': True, 'under': True}
     failures = [{'word': w['word'], **{key: w[key] for key, value in expected.items() if w[key] != value}}
                 for w in words if any(w[key] != value for key, value in expected.items())]
@@ -2132,22 +2136,19 @@ def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
 
 # Owner, 2026-11-09: «我们的版本号是不是可以在侧边栏显示一下？顺便把侧边栏优化一下，现在看起来不是很好。»
 # The sidebar keeps one number, the one that asks for action, and names the release in its footer.
-SIDEBAR_ORDER = ['Today', 'Waiting on you', 'Memory changes', 'People', 'Organisations', 'Projects', 'Skills',
-                 'Knowledge', 'Opportunities', 'Decisions', 'Principles', 'Works', 'Agenda', 'Agent sessions']
-
-
-def test_the_rail_counts_only_what_waits_on_you_and_keeps_the_rest_behind_more(reader):
-    """D-132: seven places, each a picture with its word (today, waiting, people, orgs, projects, skills, knowledge),
-    the rest one 更多 away. #2996: Knowledge replaced All records; the owner could not tell the two apart."""
+def test_the_rail_counts_only_what_waits_on_you_and_shows_every_place_it_has_room_for(reader):
+    """D-132, #3091: one ordered list of places, each a picture with its word; with room for all of them nothing is
+    behind 更多. #2996: Knowledge replaced All records; the owner could not tell the two apart."""
     page, _ = reader
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
     # #2961: each name starts with the word you see (Orgs · Organisations)
-    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Skills', 'Knowledge']
-    assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == ['Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge']
+    assert names == ['Today', 'Waiting on you', 'Agenda', 'People', 'Orgs · Organisations', 'Projects', 'Knowledge', 'Decisions', 'Skills',
+                     'Changes · Memory changes']
+    assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == [
+        'Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Knowledge', 'Decisions', 'Skills', 'Changes']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
-    assert more[0] == 'Memory changes' and more[1:] == [name for name in SIDEBAR_ORDER if name in more[1:]]
-    assert 'Skills' not in more and 'Decisions' in more  # Skills has its own place now; the rest stay behind 更多
+    assert more == [] and not page.locator('.nav.more').is_visible()  # the rail is filled before anything folds
     assert not {'Graph', 'Activity', 'Questions & connections'} & set(names + more)  # D-02, D-03
     # Only Waiting on you carries a number; a category's size is not a task.
     counted = page.locator('#nav a').evaluate_all("rows => rows.filter(row => row.querySelector('.n')).map(row => row.getAttribute('href'))")
@@ -2210,8 +2211,10 @@ def test_the_sidebar_has_one_activity_entry_after_the_memory_categories(reader, 
     nav = page.locator('#nav a').all_inner_texts()
     assert not any('Run logs' in item or 'AI notes' in item for item in nav)
     labels = [item.split('\n')[0] for item in nav]
-    # #2996: Knowledge ends the rail's places, with no All records beside it. 2026-11-09: Activity is REM's run log, at the foot.
-    assert page.locator('#nav > a').last.get_attribute('aria-label') == 'Knowledge' and 'Activity' not in labels and 'Graph' not in labels
+    # #2996: one Knowledge place, with no All records beside it. 2026-11-09: Activity is REM's run log, at the foot.
+    # #3091: Memory changes ends the rail's places.
+    assert page.locator('#nav > a').last.get_attribute('aria-label') == 'Changes · Memory changes'
+    assert labels.count('Knowledge') == 1 and 'Activity' not in labels and 'Graph' not in labels
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     listed = page.evaluate('listedRecords().map(r => r.path)', isolated_context=False)
     assert not [path for path in listed if path.startswith(('logs/', 'notes/'))]

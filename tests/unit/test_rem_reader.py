@@ -3487,19 +3487,28 @@ def test_the_graph_and_the_old_all_records_address_land_on_knowledge():
 
 # The drawings the owner could not read (#2953): a rounded square, a triangle, three linked dots, two sliders.
 RETIRED_RAIL_DRAWINGS = ['M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7', 'M12 4.5 20.5 19h-17z', 'M8.2 7.2l7.5 0.6', '<circle cx="9" cy="8" r="2.2"/>']
-RAIL_PICTURES = ['sun', 'message-square-reply', 'calendar', 'users', 'building-2', 'folder', 'zap', 'book', 'ellipsis', 'settings']
+# One ordered list (#3091): act | who and what | what the notebook concluded | raw material, then Settings.
+RAIL_LINKS = ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=knowledge', '#c=decisions', '#c=principles',
+              '#c=skills', '#c=sessions', '#c=opportunities', '#c=works', '#view=changes']
+RAIL_PICTURES = ['sun', 'message-square-reply', 'calendar', 'users', 'building-2', 'folder', 'book', 'scale', 'quote', 'zap',
+                 'terminal', 'activity', 'doc', 'activity', 'settings']
 RAIL = {
-    'en': {'names': ['Today', 'Waiting on you', 'Agenda', 'People', 'Organisations', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
-           'words': ['Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Skills', 'Knowledge', 'More', 'Settings'],
+    'en': {'names': ['Today', 'Waiting on you', 'Agenda', 'People', 'Organisations', 'Projects', 'Knowledge', 'Decisions', 'Principles',
+                     'Skills', 'Agent sessions', 'Opportunities', 'Works', 'Memory changes', 'Settings'],
+           'words': ['Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Knowledge', 'Decisions', 'Principles',
+                     'Skills', 'Sessions', 'Opps', 'Works', 'Changes', 'Settings'],
            'you': 'You · Ada Example', 'tabs': ['Today', 'Waiting', 'People', 'Search', 'More']},
-    'zh': {'names': ['今天', '等你处理', '日程', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
-           'words': ['今天', '等你处理', '日程', '人物', '组织', '项目', '技能', '知识', '更多', '设置'],
+    'zh': {'names': ['今天', '等你处理', '日程', '人物', '组织', '项目', '知识', '决定', '原则', '技能', '智能体会话', '机会', '作品', '记忆变化', '设置'],
+           'words': ['今天', '等你处理', '日程', '人物', '组织', '项目', '知识', '决定', '原则', '技能', '会话', '机会', '作品', '记忆变化', '设置'],
            'you': '你 · Ada Example', 'tabs': ['今天', '等你', '人物', '搜索', '更多']},
 }
 
 
-def _rail(language):
-    """The rail, its foot and the phone tab bar as the reader's own functions build them, over a stand-in DOM."""
+def _rail(language, room=2000, active='skills', filled=True):
+    """The rail, its foot and the phone tab bar as the reader's own functions build them, over a stand-in DOM.
+
+    The stand-in has no layout, so it measures as the page does: a shown cell is 52 tall with a gap of 4, and
+    `room` is the height the rail has between the mark and its foot."""
     page = TEMPLATE.read_text()
     english = re.search(r'\n  en: (\{.*?\}),', page)[1]
     chinese = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
@@ -3509,30 +3518,35 @@ def _rail(language):
         'Object.assign(UI, {en: ' + english + ', zh: ' + chinese + '}); uiLanguage = ' + json.dumps(language) + ';',
         labels, re.search(r'function label\(.*', page)[0], re.search(r'function memoryCategories\(.*', page)[0],
         # renderRail names the header's language button too: the page's own function, not a stand-in.
-        re.search(r'function renderLangToggle\(.*?\n\}', page, re.S)[0], r"""
+        re.search(r'function renderLangToggle\(.*?\n\}', page, re.S)[0],
+        f'const STAND_ROOM = {room}, STAND_ACTIVE = {json.dumps(active)}, STAND_FILLED = {json.dumps(filled)};', r"""
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: (children || []).filter(Boolean)});
       const node = () => ({children: [], replaceChildren(...kids) { this.children = kids.filter(Boolean); },
         querySelectorAll: () => [], setAttribute() {}, classList: {add() {}}});
-      const nodes = {nav: node(), 'rail-end': node(), tabbar: node(), 'brand-sub': node(), q: node(),
+      const shown = n => (n.class || '').split(' ').includes('nav') && (n.hidden === undefined || n.hidden === false);
+      const nodes = {nav: {...node(), parentNode: {clientHeight: STAND_ROOM}, get offsetHeight() { return this.children.filter(shown).length * 56 - 4; }},
+        'rail-end': {...node(), offsetHeight: 0}, tabbar: node(), 'brand-sub': node(), q: node(),
         'lang-toggle': {...node(), setAttribute(name, value) { this[name] = value; }, getAttribute(name) { return this[name]; }}}, toggle = node();
       nodes.tabbar.querySelector = () => toggle;
       const document = {getElementById: id => nodes[id], body: {classList: {add() {}}}};
-      const ACTIVITY = new Set(['notes', 'logs']), detailReady = true;
-      const REM = {owner: 'people/ada.md', categories: ['people', 'orgs', 'projects', 'skills', 'agenda', 'knowledge', 'notes']};
+      const ACTIVITY = new Set(['notes', 'logs']), detailReady = true, matchMedia = () => ({matches: false});
+      const REM = {owner: 'people/ada.md', categories: ['people', 'orgs', 'projects', 'skills', 'agenda', 'knowledge', 'notes',
+        'decisions', 'principles', 'sessions', 'opportunities', 'works']};
       const byPath = () => ({path: 'people/ada.md', title: 'Ada Example'}), href = r => '#r=' + r.path, route = () => ({});
       const face = name => ({tag: 'span', class: 'face', text: name}), threadCounts = () => ({mine: 2});
-      const inCategory = () => [{}], openSettings = () => {}, renderSettings = () => {};
+      const inCategory = () => STAND_FILLED ? [{}] : [], openSettings = () => {}, renderSettings = () => {};
     """, drawn, r"""
-      renderRail('skills');
+      renderRail(STAND_ACTIVE);
       const child = (entry, cls) => entry.children.find(c => (c.class || '').split(' ').includes(cls));
       const picture = entry => Object.keys(ICONS).find(name => entry.children.some(c => c.html && c.html.includes('>' + ICONS[name] + '<'))) || null;
       const cell = entry => ({name: entry['aria-label'], word: child(entry, 'w')?.text ?? null, wordHidden: child(entry, 'w')?.['aria-hidden'] ?? null,
-        tip: !!child(entry, 'tip'), title: entry.title ?? null, label: child(entry, 'you-name')?.text ?? null, picture: picture(entry), href: entry.href ?? null, active: entry.class.includes('active'),
+        tip: !!child(entry, 'tip'), title: entry.title ?? null, current: entry['aria-current'] ?? null, group: entry.class.includes('group'), label: child(entry, 'you-name')?.text ?? null, picture: picture(entry), href: entry.href ?? null, active: entry.class.includes('active'),
         badge: child(entry, 'n')?.text ?? null});
-      const cells = [...nodes.nav.children, ...nodes['rail-end'].children].filter(n => n.class.split(' ').includes('nav'));
+      const cells = [...nodes.nav.children, ...nodes['rail-end'].children].filter(shown);
       const menu = nodes.nav.children.find(n => n.id === 'rail-more');
       const tabs = [...nodes.tabbar.children.slice(0, 4), {children: toggle.children}];
       console.log(JSON.stringify({cells: cells.map(cell), menu: menu.children.map(a => a.href),
+        menuCurrent: menu.children.filter(a => a['aria-current'] === 'page').map(a => a.href),
         tabs: tabs.map(tab => [picture(tab), tab.children.find(c => c.tag === 'span' && c.text && !c.class)?.text]),
         drawings: JSON.stringify([cells, tabs])}));
     """]))
@@ -3556,25 +3570,50 @@ def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
     assert you['title'] is None  # its name shows beside it on hover and keyboard focus (#2961), not in a title
     assert [cell['picture'] for cell in cells] == RAIL_PICTURES
     assert not [drawing for drawing in RETIRED_RAIL_DRAWINGS if drawing in rail['drawings']]
-    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 8
+    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 13
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
-def test_skills_has_its_own_rail_entry_and_is_no_longer_behind_more(language):
+def test_a_rail_with_room_shows_every_place_in_one_order_and_has_no_more(language):
+    """#3091: "Why isn't the left rail filled? You put a lot of things into More." Raw data (sessions) comes after
+    what the notebook knows; three hairlines part the four groups."""
     rail = _rail(language)
-    links = [cell['href'] for cell in rail['cells'][:8]]
-    assert links == ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=skills', '#c=knowledge']
-    assert [cell['active'] for cell in rail['cells'][:8]] == [link == '#c=skills' for link in links]
-    assert rail['menu'] == ['#view=changes']  # Knowledge has its own place now (#2996); Agenda is in the rail
+    places = rail['cells'][:-2]  # then Settings and you
+    assert [cell['href'] for cell in places] == RAIL_LINKS
+    assert rail['menu'] == []  # nothing folded, so More is not drawn
+    assert [cell['href'] for cell in places if cell['group']] == ['#c=people', '#c=knowledge', '#c=sessions']
+    # The active place is marked and named.
+    assert [(cell['href'], cell['current']) for cell in places if cell['active'] or cell['current']] == [('#c=skills', 'page')]
+
+
+@pytest.mark.parametrize('room, shown', [(56 * 12, 11), (56 * 9, 8), (56 * 2, 1), (40, 0)])
+def test_a_rail_without_room_folds_its_last_places_under_more(room, shown):
+    """The height rule: as many places as fit, in order, leaving room for More; only the overflow is under it."""
+    rail = _rail('en', room=room)
+    column = rail['cells'][:-2]
+    assert [cell['href'] for cell in column[:-1]] == RAIL_LINKS[:shown] and column[-1]['word'] == 'More'
+    assert rail['menu'] == RAIL_LINKS[shown:]
+    # Skills is the current place wherever it sits: its own cell, or More with its row named current.
+    folded = '#c=skills' in rail['menu']
+    assert column[-1]['active'] is folded and rail['menuCurrent'] == (['#c=skills'] if folded else [])
+    assert [cell['href'] for cell in column if cell['current']] == ([] if folded else ['#c=skills'])
+
+
+def test_a_later_category_is_a_place_only_once_it_holds_a_page():
+    """One rule (docs/cli/rem.md): the first eight and Memory changes always show, each with its own empty state;
+    Decisions, Principles, Agent sessions, Opportunities and Works show once they hold a page, or while you are on one."""
+    empty = [cell['href'] for cell in _rail('en', filled=False)['cells'][:-2]]
+    assert empty == ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=knowledge', '#c=skills', '#view=changes']
+    on_it = [cell['href'] for cell in _rail('en', filled=False, active='decisions')['cells'][:-2]]
+    assert on_it == empty[:7] + ['#c=decisions'] + empty[7:]
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
-def test_agenda_follows_waiting_in_rail_and_phone_sheet_without_more_duplicate(language):
+def test_agenda_follows_waiting_in_rail_and_phone_sheet(language):
     rail = _rail(language)
     agenda = rail['cells'][2]
     assert agenda['href'] == '#c=agenda' and agenda['picture'] == 'calendar'
     assert agenda['word'] == ('日程' if language == 'zh' else 'Agenda')
-    assert '#c=agenda' not in rail['menu']
     # The phone sheet reuses these cells and displays their full data-name in CSS.
     assert '.rail[data-open="true"] .nav::after { content: attr(data-name);' in TEMPLATE.read_text()
 
