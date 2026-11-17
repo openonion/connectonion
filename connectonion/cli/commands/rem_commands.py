@@ -274,12 +274,16 @@ def _logged(root, record, phase, call, quiet=False):
     from ...rem import quota
     from ...rem.investigate import NothingFound, NothingNew
     from ...rem.service import abandon_stale_runs, running_marker
-    config = read_config(root)
+    from ...rem.inquiry import stage_config
+    from ...rem.runner import worker_effort
+    # The model and effort its turns run at: investigation's level (#3099), which the
+    # weekly budget charges by. It said the notebook's level-3 model and no effort.
+    config = stage_config(root, read_config(root), "investigate")
     abandon_stale_runs(root)
     # Manual investigation counts toward the weekly budget like the round (#1842).
     run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
            "record": record, "harness": config["runner"], "model": config["model"],
-           "speed": config["speed"], "outcome": "running",
+           "speed": config["speed"], "effort": worker_effort(config), "outcome": "running",
            "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0,
            "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
