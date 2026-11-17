@@ -19,7 +19,7 @@ from connectonion.cli.main import app
 
 runner = CliRunner()
 REM = get_command(app).commands["rem"]
-ROOT_COMMANDS = ["init", "collect", "investigate", "deepen", "enrich", "muse", "abstract", "decisions", "translate", "catchup",
+ROOT_COMMANDS = ["init", "collect", "investigate", "deepen", "enrich", "muse", "abstract", "decisions", "translate", "tag", "catchup",
                  "open", "list", "show", "search", "start", "stop", "status", "task", "exec", "next", "submit",
                  "sources", "config", "logs", "morning", "doctor", "history"]
 ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "reflect", "reflections", "propose", "review", "capture",
@@ -147,6 +147,7 @@ def test_day_stage_groups_are_in_order_and_machinery_is_apart():
                 "Deepen — follow leads, add insights",
                 "Abstract — learn from pages",
                 "Translate — put pages in your language",
+                "Tag — organise pages by tag",
                 "Run a whole day now", "Background machinery"]
     assert [text.index(heading) for heading in headings] == sorted(text.index(heading) for heading in headings)
     machinery = text.split("Background machinery\n")[1].split("Settings\n")[0]
@@ -158,7 +159,8 @@ def test_day_stage_groups_are_in_order_and_machinery_is_apart():
 def test_stage_verbs_are_real_commands_and_decisions_has_no_write():
     text = help_of([])
     for heading, verb in [('Collect —', 'collect'), ('Investigate —', 'investigate'),
-                          ('Deepen —', 'deepen'), ('Abstract —', 'abstract'), ('Translate —', 'translate')]:
+                          ('Deepen —', 'deepen'), ('Abstract —', 'abstract'), ('Translate —', 'translate'),
+                          ('Tag —', 'tag')]:
         section = text.split(heading, 1)[1].split('\n', 1)[1]
         assert re.match(rf'  {verb}\s{{2,}}', section)
     assert 'think' not in next(line for line in text.splitlines() if line.startswith('Deepen —'))

@@ -24,6 +24,8 @@ Abstract — learn from pages
   decisions     Count decision and principle pages and decisions waiting. No model.
 Translate — put pages in your language
   translate     Translate every page not yet in your language, or one page.
+Tag — organise pages by tag
+  tag           Tag the people, organisation and project pages that wait, from one vocabulary.
 Run a whole day now
   catchup       Do a whole night's work now, all five stages; several nights with --nights.
 Read
@@ -80,7 +82,7 @@ Compatibility: sync — Collect, then investigate what is unfinished; use co rem
 Do the night's work, including its one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
-Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round and Translate's share. After the queue the round finishes the cheap stages: up to limits.summaries_per_round session summaries, default 40, and every page waiting for translation up to limits.translations_per_round, default 400. The night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
+Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round, one Tag turn and Translate's share. After the queue the round finishes the cheap stages: up to limits.summaries_per_round session summaries, default 40, every page waiting for translation up to limits.translations_per_round, default 400, then every page waiting for tags up to limits.tags_per_round, default 400. The night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
 A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then finishes the other stages. The pages that did not fit wait for later nights; none are dropped.
 A night with deepen can take an hour or more.
 Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
@@ -516,6 +518,32 @@ Next:     co rem open
 Back:     co rem --help
 ```
 
+## co rem tag
+
+```
+Tag the people, organisation and project pages that wait, from one vocabulary.
+A page waits when it was never tagged or its text changed since (an investigation
+or deepen rewrote it). Reads pages, never mail or sessions.
+
+Usage:    co rem tag [--pages N]
+Example:  co rem tag
+          co rem tag --pages 40
+Options:  --pages N   Tag at most N waiting pages (default 200).
+Cost:     One level-1 model turn per 20 pages on the notebook's runner.
+Output:   One line per turn, then: Tagged N of M pages (K changed); R tags refused;
+          F pages failed; W still waiting. --json returns the run record, with each
+          refused tag and its reason (no evidence, not named, not in vocabulary,
+          bad new tag, too many).
+Effects:  Writes only each page's "- Tags:" line, the last line of its Facts, with
+          the citation of the line that supports each tag; adds new tags to
+          .state/tags.json (label, kind, aliases) and marks the pages tagged in
+          .state/tag-pages.json. A tag the page does not support is dropped, never
+          written. A failed turn leaves its pages waiting. Every co rem catchup
+          round tags too, up to limits.tags_per_round pages.
+Next:     co rem status
+Back:     co rem --help
+```
+
 ## co rem list
 
 ```
@@ -649,7 +677,7 @@ Usage:    co rem status [--verbose]
 Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; Collect, Investigate, Deepen,
-          Abstract and Translate, each with a waiting count and last-run date
+          Abstract, Translate and Tag, each with a waiting count and last-run date
           (or never), and on Investigate how many pages wait for later nights
           when the last night used its share; --json includes the same data under stages;
           the notebook (people, projects,
@@ -854,6 +882,7 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
           limits.skill_pages_per_night   3: skill pages investigated a night, counted on their own
           limits.summaries_per_round     40: session summaries a round writes
           limits.translations_per_round  400: the most pages a round translates; it goes on until none wait
+          limits.tags_per_round          400: the most pages a round tags; it goes on until none wait
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  pins one stage above to a model ("default" clears it);
                                          a route on plan, extract, synthesize or render also

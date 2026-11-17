@@ -716,7 +716,7 @@ MAIL = [{'role': 'user', 'source': 'gmail:fixture:1', 'timestamp': '2026-09-07T1
          'speaker': 'wren@example.test', 'text': 'Can we move the pilot review to Friday?'},
         {'role': 'user', 'source': 'gmail:fixture:2', 'timestamp': '2026-09-07T11:00:00Z',
          'speaker': 'wren@example.test', 'text': 'Friday at ten works for the whole team.'}]
-WAITING = ['Investigate', 'Deepen', 'Abstract', 'Translate']
+WAITING = ['Investigate', 'Deepen', 'Abstract', 'Translate', 'Tag']
 
 
 @pytest.fixture
@@ -751,7 +751,7 @@ def test_at_the_floor_catchup_still_collects_mail_and_saves_the_calendar_and_day
     assert lines[1] == ('Collect: 2 mail collected · 0 sessions read · 0 pages updated; '
                         'reading them into pages waits for the model')
     assert lines[2] == 'Calendar: 0 calendar events saved · day plan saved for 2026-09-07 and 2026-09-08'
-    assert lines[3] == 'Waiting: Investigate, Deepen, Abstract and Translate call the model'
+    assert lines[3] == 'Waiting: Investigate, Deepen, Abstract, Translate and Tag call the model'
     assert lines[4] == f"Stopped: {held['reason']}"
     assert 'resumes when it resets' in lines[4]
     cursor = read_json(state_path(book.root, 'round.json'), {})

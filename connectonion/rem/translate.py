@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .config import LANGUAGE
 from .files import Notebook, RemError, atomic_write, state_path, write_json
+from .tags import without_tags
 
 # Glossary and preservation rules apply to new translations. Keep the version:
 # invalidating every cache would leave existing notebooks in English until retranslated.
@@ -61,7 +62,8 @@ def cached(root: Path, record: str, language: str) -> str | None:
     saved = path.read_text(encoding="utf-8")
     match = HEADER.match(saved)
     original = Notebook(root).read(record)
-    if not match or match.group(1) != record or match.group(2) != digest(original):
+    # The Tags line is not prose (#3093): tagging a page leaves its translation current.
+    if not match or match.group(1) != record or match.group(2) not in (digest(original), digest(without_tags(original))):
         return None
     translation = saved[match.end():]
     if _reader_sources(translation) != _reader_sources(original):
@@ -261,7 +263,7 @@ def check(task, output):
     translation += ("\n" + task["sources"] if task["sources"] else "")
     translation += (("" if task["sources"] else "\n") + task["stamp"] + "\n" if task["stamp"] else "")
     atomic_write(translation_path(Path(task["root"]), task["record"], task["language"]),
-                 f"<!-- co rem translation of {task['record']} sha256:{digest(original)} -->\n" + translation)
+                 f"<!-- co rem translation of {task['record']} sha256:{digest(without_tags(original))} -->\n" + translation)
     return translation
 
 
@@ -443,7 +445,7 @@ def in_language(text: str, language: str) -> bool:
 
 def _prose_lines(text, language):
     from .languages import language_of
-    prose, _, _, _ = _page_parts(re.sub(r"<!--[\s\S]*?-->", "", text))
+    prose, _, _, _ = _page_parts(re.sub(r"<!--[\s\S]*?-->", "", without_tags(text)))
     prose = re.sub(r"^```[\s\S]*?^```[ \t]*$", "", prose, flags=re.M)
     base, names = language.split("-")[0].lower(), page_names(prose)
     found, ours, worded = [], 0, []

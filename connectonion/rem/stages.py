@@ -1,4 +1,4 @@
-"""Read-only counts and last-run dates for the five stages of a REM day."""
+"""Read-only counts and last-run dates for the stages of a REM day: the five, then Tag (#3093)."""
 
 from datetime import datetime, timezone
 
@@ -11,6 +11,7 @@ STAGES = (
     ('Deepen', 'page', ('enrich', 'muse')),
     ('Abstract', 'captured decision', ('abstract',)),
     ('Translate', 'page translation', ('daily-translation', 'translate')),
+    ('Tag', 'untagged page', ('tag',)),
 )
 
 
@@ -73,11 +74,12 @@ def _investigate(root):
 
 
 def _counts(root):
-    from . import captured_decisions, depth, translate
+    from . import captured_decisions, depth, tag_stage, translate
     return (collection_backlog(root)['waiting'], _investigate(root), len(depth.candidates(root)),
             captured_decisions.pending_count(Notebook(root)),
             sum(len(translate.backlog(root, language)) for language in translate.languages(root)
-                if language.split('-')[0].lower() != 'en'))
+                if language.split('-')[0].lower() != 'en'),
+            len(tag_stage.candidates(root)))
 
 
 def _last_run(logs, phases, zone):
@@ -138,6 +140,9 @@ def status(root, config, logs, *, budget=None):
             # Translation is finished in a round, not rationed; this is the round's stated end.
             rows[-1]['round_limit'] = config['limits']['translations_per_round']
             rows[-1]['text'] += f"; a round translates up to {rows[-1]['round_limit']}"
+        if name == 'Tag' and count:
+            rows[-1]['round_limit'] = config['limits']['tags_per_round']
+            rows[-1]['text'] += f"; a round tags up to {rows[-1]['round_limit']}"
         if name == 'Abstract':
             book = Notebook(root)
             counts = {category: len(book.list(category)) for category in ('decisions', 'knowledge', 'principles')}

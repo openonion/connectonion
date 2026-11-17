@@ -44,7 +44,7 @@ LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-terra",
                 "level3": "gpt-6.1-sol", "level4": "gpt-6-astra"}
 STAGE_LEVELS = {
     # 1: short, structured, checked by code afterwards.
-    "sessions-summary": 1, "topic": 1,
+    "sessions-summary": 1, "topic": 1, "tag": 1,
     # 2: faithful transformation or a narrow judgement over small input.
     "translate": 2, "extract": 2, "same-person": 2, "plan": 2,
     # 3: writing pages and drafts the owner reads, from cited evidence.
@@ -128,6 +128,9 @@ def default_config() -> dict:
                        # above what a notebook has waiting: they are a round's stated end
                        # (400 turns are about 4 hours), not a share to live within.
                        "summaries_per_round": 40, "translations_per_round": 400,
+                       # Tagging is the cheapest stage: 20 pages a level-1 turn, checked
+                       # by code (#3093). A round's stated end, like translation's.
+                       "tags_per_round": 400,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no

@@ -152,7 +152,7 @@ def test_the_nights_line_says_the_summaries_and_what_the_translation_bound_left(
     assert result.exit_code == 0, result.output
     line = next(line for line in result.output.splitlines() if line.startswith('Night 1:'))
     assert ('400 pages translated (25 wait for the next round: limits.translations_per_round) · '
-            '0 drafts prepared · 15 sessions summarised · ') in line
+            '0 pages tagged · 0 drafts prepared · 15 sessions summarised · ') in line
 
 
 def test_status_says_how_many_pages_a_round_translates_at_most_while_pages_wait(notebook, monkeypatch):

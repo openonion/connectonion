@@ -269,7 +269,8 @@ def _around(text: str, aliases: list[str], limit: int = 220) -> str:
     return '…' + _clip(text[start:], limit - 1)
 
 
-def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict | None = None) -> dict:
+def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict | None = None,
+                   vocabulary: dict | None = None) -> dict:
     """Explicit undirected links only; sessions fold into their linked project.
 
     `topics` maps a topic page to the records whose cited sentences name it
@@ -314,7 +315,24 @@ def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict 
                       'degree': degree[path], 'has_owed': has_owed, 'private': private})
     isolated = Counter(n['kind'] for n in nodes if not n['degree'])
     return {'nodes': nodes, 'edges': list(edges.values()), 'folded_sessions': len(folded),
-            'unconnected': {'count': sum(isolated.values()), 'by_kind': dict(isolated)}}
+            'unconnected': {'count': sum(isolated.values()), 'by_kind': dict(isolated)},
+            'tags': tag_layer(nodes, paths, vocabulary or {})}
+
+
+def tag_layer(nodes: list[dict], paths: dict, vocabulary: dict) -> dict:
+    """Tag nodes and record→tag edges, beside the record graph (docs/cli/rem-tags.md).
+
+    Only drawn nodes: a folded session or a private record adds no edge, and a tag no
+    drawn node carries has no node."""
+    from collections import Counter
+    from .tags import page_tags
+    edges = [{'source': node['id'], 'target': 'tag:' + slug, 'kind': 'tagged'}
+             for node in nodes if not node['private'] for slug in page_tags(paths[node['id']]['text'])]
+    counted = Counter(edge['target'] for edge in edges)
+    tag_nodes = [{'id': target, 'kind': 'tag', 'label': vocabulary.get(target[4:], {}).get('label', target[4:]),
+                  'tag_kind': vocabulary.get(target[4:], {}).get('kind', 'topic'), 'count': count}
+                 for target, count in sorted(counted.items())]
+    return {'nodes': tag_nodes, 'edges': edges}
 
 
 def _source_ids(records: list[dict]) -> set[str]:

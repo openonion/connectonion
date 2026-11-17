@@ -202,6 +202,8 @@ def test_native_project_coverage_moves_only_for_changed_accepted_candidate(noteb
         {"role": "page", "record": record, "source": "investigation:page", "text": before}, item], new))
     monkeypatch.setattr(project_pages, "pending", lambda *a: ([item], "update"))
     save_round(notebook, [{"record": record, "kind": "project"}])
+    # This is about the project's coverage: the round's tagging of the written page is not.
+    monkeypatch.setattr("connectonion.rem.tag_stage.candidates", lambda root: [])
     task = native.next_task(notebook)
     if changed:
         Path(task["candidate"]).write_text(before.replace("## What it is\n", "## What it is\n- A pilot review was requested. [2]\n")

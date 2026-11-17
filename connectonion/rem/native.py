@@ -104,7 +104,7 @@ RUN_LIMITS = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", 
               "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
               "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
               "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
-              "summaries_per_round", "translations_per_round"}
+              "summaries_per_round", "translations_per_round", "tags_per_round"}
 # Evidence-sizing limits decide what a prepared task holds, so they are hashed.
 # A new default limit belongs in one of the two sets: unclassified it is hashed, and
 # every task the release before it prepared is parked "Task input changed" (2026-11-17,
@@ -980,7 +980,7 @@ def _submission_output(task):
     outputs = {candidate, Path(task["task"]["candidate"] or task["task"].get("task_root", candidate))}
     if any(path.is_symlink() or path.is_file() and path.stat().st_size > 1_000_000 for path in outputs):
         raise RemError("Output must be a regular file within the one-megabyte limit")
-    if task["handler"] in ("sessions", "translate", "same-person", "draft"):
+    if task["handler"] in ("sessions", "translate", "same-person", "draft", "tag"):
         if not candidate.is_file():
             raise RemError(f"Write the output file: {candidate}")
         output["result"] = (json.dumps(read_json(candidate, None), ensure_ascii=False) if candidate.suffix == ".json"
@@ -1396,7 +1396,7 @@ def _offer_review(root, task):
 
 
 def _source_view(root, task, *, handler):
-    if handler in ("extract", "translate", "sessions", "draft"):
+    if handler in ("extract", "translate", "sessions", "draft", "tag"):
         return None
     from .reader_model import _source_ids, cited_context, later_in_threads
     items = [*task.get("items", []), *task.get("prior_items", [])]

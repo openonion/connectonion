@@ -95,6 +95,7 @@ def _counts(root, night):
             'translated': cursor.get('translated', 0),
             # Cheap stages are finished in a night: what the round's bound left is said, not hidden.
             'translations_waiting': cursor.get('translations_waiting', 0),
+            'tagged': cursor.get('tagged', 0), 'tags_waiting': cursor.get('tags_waiting', 0),
             'summarised': sum(row.get('phase') == 'sessions-summary' and row.get('outcome') == 'completed'
                               for row in runs),
             'drafts': len({row['draft'] for row in runs if row.get('phase') == 'reply-draft'
@@ -132,7 +133,7 @@ def _stop(result, row, index):
         reason = ''
     else:
         reason = reason or result.get('outcome', 'round stopped')
-    if not (row['written'] or row['translated'] or row['drafts']):
+    if not (row['written'] or row['translated'] or row['drafts'] or row.get('tagged')):
         reason = f'night {index} produced nothing' + (f'; {reason}' if reason else '')
     return reason, failed
 
@@ -225,7 +226,7 @@ def _ended(root, night, rows, progress, why):
     return _result(root, rows, reason, True, None)
 
 
-MODEL_STAGES = ['Investigate', 'Deepen', 'Abstract', 'Translate']
+MODEL_STAGES = ['Investigate', 'Deepen', 'Abstract', 'Translate', 'Tag']
 
 
 def _held(root, reason, meter):
@@ -288,6 +289,7 @@ def _result(root, rows, reason, failed, held):
     totals = {name: sum(row[name] for row in rows) for name in
               ('mail', 'sessions', 'written', 'decisions', 'translated', 'summarised', 'drafts', 'deepened',
                'not_deepened')}
+    totals['tagged'] = sum(row.get('tagged', 0) for row in rows)
     return {'nights': rows, 'reason': reason, 'failed': failed, 'held': held,
             'parked': [page for row in rows for page in row['parked']], 'candidates': str(state_path(root, 'tasks')),
             'deepen_reason': '' if totals['deepened'] else

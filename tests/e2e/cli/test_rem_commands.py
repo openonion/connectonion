@@ -943,7 +943,7 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'round', 'nights', 'paused',
                                  # The five stage rows (#3053), calendar freshness (#3057), the saved day plan (#3058).
                                  'stages', 'calendar', 'day_plan'}
-    assert [row['name'] for row in data['data']['stages']] == ['Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate']
+    assert [row['name'] for row in data['data']['stages']] == ['Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate', 'Tag']
     assert data['data']['calendar'] == {'last_read': None, 'events': 0, 'text': 'Calendars: never read'}
     assert set(data['data']['day_plan']) == {'saved_at', 'text'}
     assert data['data']['schedule_runner'] == schedule_runner

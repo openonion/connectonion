@@ -328,7 +328,8 @@ def shares_in_words(shares, whose="tonight's"):
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
-    phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation", "draft": "reply-draft"}
+    phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation",
+              "draft": "reply-draft", "tag": "tag"}
     return {"handler": handler, "task": task, "stage": stage, "record": record, "round": number,
             "operation": operation or handler,
             "phase": "sync" if operation == "batch" else phases.get(handler, cursor["phase"])}
@@ -422,7 +423,7 @@ def prepare_task(root, cursor, config, directory):
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
-    task = _closing_translation(root, cursor, config, directory)
+    task = _closing_translation(root, cursor, config, directory) or _closing_tags(root, cursor, config, directory)
     if task:
         return task
     from .night import listing
@@ -514,7 +515,7 @@ PORTION = 2
 
 
 def _between_portions(root, cursor, config, directory):
-    """Between two portions of investigation: one session summary, one Abstract round, then translation's share.
+    """Between two portions of investigation: one session summary, one Abstract round, one tag turn, then translation's share.
 
     Each of them used to wait for the whole night's share of investigations (12 pages
     of many turns each), so a night that was cut short had only investigated. Abstract
@@ -523,10 +524,11 @@ def _between_portions(root, cursor, config, directory):
     `portions` counts the breaks begun; whoever runs whole rounds starts the round's
     one deepen slot once the first has been served (`schedule.early_depth`)."""
     if "between" not in cursor:
-        cursor["between"] = ["sessions", "abstract"]
+        cursor["between"] = ["sessions", "abstract", "tag"]
         cursor["portions"] = cursor.get("portions", 0) + 1
     while cursor["between"]:
-        step = {"sessions": _summary_turn, "abstract": prepare_abstract}[cursor["between"].pop(0)]
+        step = {"sessions": _summary_turn, "abstract": prepare_abstract,
+                "tag": prepare_tagging}[cursor["between"].pop(0)]
         task = step(root, cursor, config, directory)
         if task:
             return task
@@ -601,6 +603,33 @@ def prepare_translation(root, cursor, config, directory):
             task = translate.prepare(root, record, language, directory=directory, native=True)
             return _task("translate", task, cursor, stage="translate", record=record)
     return None
+
+
+def _closing_tags(root, cursor, config, directory):
+    """After the closing translation, tag turns go on until no page waits; `prepare_tagging` holds the bound."""
+    task = prepare_tagging(root, cursor, config, directory)
+    if task:
+        cursor["closing"] = True
+    return task
+
+
+def prepare_tagging(root, cursor, config, directory):
+    """The next batch of pages waiting for tags, or None: none waits, or the round offered its
+    `limits.tags_per_round`. A batch offered once is not offered again in the same round,
+    so a reply the review refuses cannot hold the round (docs/cli/rem-tags.md)."""
+    from . import tag_stage
+    attempted = cursor.setdefault("tag_attempts", [])
+    room = config["limits"]["tags_per_round"] - len(attempted)
+    waiting = [record for record in tag_stage.candidates(root) if record not in set(attempted)]
+    if room <= 0:
+        cursor.setdefault("tags_waiting", len(waiting))
+        return None
+    records = waiting[:min(room, tag_stage.BATCH)]
+    if not records:
+        return None
+    attempted += records
+    task = tag_stage.prepare(root, records, directory=directory, native=True)
+    return _task("tag", task, cursor, stage="tag")
 
 
 def finish(root, cursor):
@@ -881,6 +910,10 @@ def check_task(root, task, output):
     if handler == "translate":
         translate.check(prepared, output)
         return {}
+    if handler == "tag":
+        from . import tag_stage
+        plan = tag_stage.check(root, prepared, output)
+        return {"changed": tag_stage.promote(root, plan), "tagged": len(plan["pages"]), "refused_tags": plan["refused"]}
     if handler == "same-person":
         from . import same_person
         plan = same_person.prepare_verdict(prepared, output)
@@ -1147,6 +1180,8 @@ def advance(root, cursor, task, result):
         if not result.get("discarded"):
             from .approvals import send_direct
             send_direct(root, row["id"])  # only a send=now reply to a partner/close person; 10-minute Undo
+    elif operation == "tag":
+        cursor["tagged"] = cursor.get("tagged", 0) + result.get("tagged", 0)
     elif operation == "translate":
         cursor["translations"].append(task["record"])
         cursor.setdefault("translation_attempts", []).append([task["task"]["language"], task["record"]])
