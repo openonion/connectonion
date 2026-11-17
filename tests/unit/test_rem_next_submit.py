@@ -2828,6 +2828,16 @@ def test_a_native_task_says_what_is_inline_and_that_task_json_is_not_for_reading
     assert prompt == (Path(task['material']) / 'instructions.md').read_text()
 
 
+def test_a_native_task_says_it_holds_everything_and_co_need_not_be_explored(trial):
+    """#3099: the global co rule sent night workers to `co commands` and `--help` 198 times
+    in one night (74 and 124), each output carried in every later request of the turn."""
+    _feedback(trial)
+    prompt = native.next_task(trial)['instructions']
+    assert 'This task packet contains everything the task needs' in prompt
+    assert 'do not run `co commands` or any `--help`' in prompt
+    assert prompt.index('do not run `co commands`') < prompt.index('<material>')
+
+
 OLD_SOURCE = 'codex:fixture:7'
 
 
