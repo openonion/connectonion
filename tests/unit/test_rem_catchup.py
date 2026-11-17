@@ -74,7 +74,7 @@ def test_catchup_reports_calendar_for_each_round(book, model, monkeypatch):
     assert result.exit_code == 0, result.output
     rows = json.loads(result.stdout)['data']['nights']
     assert len(calls) == len(rows) == 2
-    assert all({k: v for k, v in row['calendar'].items() if k != 'day_plan'} ==
+    assert all({k: v for k, v in row['calendar'].items() if k not in ('day_plan', 'todos')} ==
                {'events': 0, 'read': ['google'], 'errors': {}, 'capped': []} for row in rows)
     assert all(row['day_plan'] == row['calendar']['day_plan'] for row in rows)
     assert all(row['day_plan']['dates'] == ['2026-09-07', '2026-09-08'] for row in rows)

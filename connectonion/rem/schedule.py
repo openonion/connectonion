@@ -518,12 +518,34 @@ def calendar_round(root, *, native=False):
             'traceback': traceback.format_exc()}}}
     _log_calendar_faults(root, result)
     result['day_plan'] = _day_plan_round(root, moment)
+    result['todos'] = _todos_round(root, moment)
     if native:
         with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
             current = read_json(path, {})
             if _round_identity(current) == _round_identity(cursor):
                 current['calendar'] = result
                 write_json(path, current)
+    return result
+
+
+def _todos_round(root, moment):
+    """His open to-dos, saved beside the calendar (#3087). A fault in REM is a failed run with its traceback
+    in `co rem logs`, out of the round's result; no failure stops the rest of the night."""
+    import traceback
+    from .config import read_config
+    from .daily import _reserve
+    from .files import write_json
+    from .service import notebook_zone
+    from .todos import save
+    try:
+        result = save(root, moment, notebook_zone(read_config(root)))
+    except Exception as error:  # same background isolation as the calendar snapshot
+        result = {'tasks': 0, 'error': {'reason': 'bug', 'at': moment.isoformat(), 'error': type(error).__name__},
+                  'traceback': traceback.format_exc()}
+    if 'traceback' in result:
+        record, path = _reserve(root, 'todos', 0, {})
+        record.update(outcome='failed', error='to-dos: ' + result.pop('traceback'), finished_at=moment.isoformat())
+        write_json(path, record)
     return result
 
 

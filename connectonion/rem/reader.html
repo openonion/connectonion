@@ -2240,6 +2240,7 @@
   .day-plan-item a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
   .day-plan-address { white-space: pre-wrap; }
   .day-plan-when { font-weight: var(--w-bold); }
+  .todo-list-name, .todo-note { color: var(--grey); font-size: var(--s-meta); }
   .day-plan-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   /* Agenda (#2998): a week from today, a month, and on a phone the same items day by day. */
   .agenda { color: var(--ink); font: var(--w-regular) var(--s-ui)/18px var(--font); font-feature-settings: "tnum" 1; }
@@ -3847,6 +3848,13 @@ const UI = {
     "Not confirmed by the sources": "来源未确认",
     "not confirmed by sources": "来源未确认",
     "Your day": "今天的安排",
+    "To-dos": "待办", "To-do": "待办", "List: {list}": "清单：{list}", "No open to-dos.": "没有未完成的待办。",
+    "overdue since {date}": "{date}起已过期", "due today": "今天到期", "due {date}": "{date}到期", "no due date": "没有期限",
+    "{n} more to-dos in Microsoft To Do.": "Microsoft To Do 里还有 {n} 项待办。",
+    "Microsoft To Do could not be read on {when} ({reason}).": "{when}没能读取 Microsoft To Do（{reason}）。",
+    "These to-dos are from {when}.": "显示的是 {when}读到的待办。",
+    "Google Tasks are not read: Google must be reconnected with access to tasks.": "没有读取 Google Tasks：需要重新连接 Google 并允许读取任务。",
+    "Google Tasks are not read yet.": "REM 还不读取 Google Tasks。",
     "Today": "今天",
     "Waiting on you": "等你处理",
     "Waiting on others": "等对方回复",
@@ -8169,6 +8177,40 @@ function yourDay() {
       ...events.filter(item => item.location).flatMap(item => [el("h3", {text: t("Tomorrow: place to go")}),
         el("ul", {class: "day-plan-list"}, [dayPlanItem(item)])])]) : null]);
 }
+// To-dos are not events (#3087): they sit in their own short section, each row saying in words that it is a
+// to-do, when it is due (or that it is overdue), and which list it is on. Nothing is ticked off here: that is
+// done in Microsoft To Do, and the next read drops it. What could not be read is said, never skipped silently.
+function todoDue(task, today) {
+  if (!task.due) return t("no due date");
+  return task.due === today ? t("due today") : t(task.due < today ? "overdue since {date}" : "due {date}", {date: calendarDate(task.due)});
+}
+function todoNotes(todos) {
+  const failed = todos.error && t("Microsoft To Do could not be read on {when} ({reason}).", {when: fmtTime(todos.error.at),
+    reason: t(todos.error.reason) + (todos.error.error ? " · " + todos.error.error : "")})
+    + (todos.read_at ? " " + t("These to-dos are from {when}.", {when: fmtTime(todos.read_at)}) : "");
+  const google = todos.google === "reconnect" ? t("Google Tasks are not read: Google must be reconnected with access to tasks.")
+    : todos.google === "not_read" ? t("Google Tasks are not read yet.") : null;
+  return [failed, google].filter(Boolean);
+}
+function todoRow(task, today) {
+  return el("li", {class: "day-plan-item todo-item"}, [
+    el("p", {class: "day-plan-when", text: t("To-do") + " — " + todoDue(task, today)}),
+    el("p", {class: "day-plan-text", title: task.title, text: task.title}),
+    task.list ? el("p", {class: "todo-list-name", text: t("List: {list}", {list: task.list})}) : null]);
+}
+function todoSection() {
+  const todos = REM.todos, limit = 8;
+  if (!todos || REM.shared) return null;
+  const today = calendarDay(REM.as_of), notes = todoNotes(todos);
+  // Overdue first, then by due day; the ones with no date last.
+  const tasks = [...todos.tasks].sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
+  if (!tasks.length && !notes.length && !todos.read_at) return null;
+  return el("section", {class: "day-plan todos", "aria-label": t("To-dos")}, [el("h2", {text: t("To-dos")}),
+    tasks.length ? el("ul", {class: "day-plan-list"}, tasks.slice(0, limit).map(task => todoRow(task, today)))
+      : todos.read_at ? el("p", {text: t("No open to-dos.")}) : null,
+    tasks.length > limit ? el("p", {text: t("{n} more to-dos in Microsoft To Do.", {n: tasks.length - limit})}) : null,
+    ...notes.map(text => el("p", {class: "todo-note", text}))]);
+}
 
 function overview() {
   const main = document.getElementById("main"), inDeck = !!document.activeElement?.closest("#main .qcard");
@@ -8180,6 +8222,8 @@ function overview() {
   shownCount = groups.length;
   const dayPlan = yourDay();
   if (dayPlan) main.appendChild(dayPlan);
+  const todoList = todoSection();
+  if (todoList) main.appendChild(todoList);
   main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
     staleWidget(todayEntries(entries).filter(staleEntry)), todayFolds(entries, counts)].filter(Boolean));

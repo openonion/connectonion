@@ -1704,6 +1704,22 @@ pinned to that edge: it comes into view with the draft.
   moving other proposed times. A question from you is not labelled a promise.
   Dated promises silent and overdue for over 60 days are set aside as Today
   does; the remaining proposals keep their existing order.
+- **To-dos** (待办) sit on Today in their own short section under **Your day**,
+  apart from events (#3087). The same background step that saves
+  `.state/calendar.json` reads your open Microsoft To Do tasks (every list of
+  `/me/todo/lists`, tasks whose status is not `completed`; the Microsoft login
+  from `co auth microsoft` already carries `Tasks.ReadWrite`) into
+  `.state/todos.json` beside it. Each row says in words that it is a **To-do**,
+  the list it is on, and its due date: *due 20 Nov*, *overdue since 12 Nov*, or
+  *no due date*; overdue ones come first, then by due date, and past eight the
+  section says how many more there are. Nothing here is a button: a to-do is
+  ticked off in Microsoft To Do, and the next read drops it. A read that fails
+  keeps the tasks saved before and the section says when it failed and why,
+  like a calendar; no failure stops the night. **Google Tasks are not read
+  yet.** The Google login has only the calendar scope, so the section says
+  *Google Tasks are not read: Google must be reconnected with access to tasks*;
+  REM never adds a scope or starts a login by itself. Only the owner's own
+  reader carries to-dos; a shared page has none.
 - **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
   **Today** returns) and a Monday-first **Month**, with no heading above them. It
   shows your calendar events beside the notebook's own dates: promises with a

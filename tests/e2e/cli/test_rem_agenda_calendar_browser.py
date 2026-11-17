@@ -41,6 +41,14 @@ OUTLOOK = [
 # What each account listed (#3087): Google has one calendar of his and three shared ones that are never read.
 LISTED = {"read": 1, "left_out": {"freeBusyReader": 2, "reader": 1}}
 ALL_OWN = {"read": 2, "left_out": {}}
+TODOS = [
+    {"id": "t1", "title": "Order lantern glass", "status": "notStarted", "_list": "Workshop"},
+    {"id": "t2", "title": "Renew the harbour permit", "status": "notStarted", "_list": "Tasks",
+     "dueDateTime": {"dateTime": "2026-10-06T00:00:00.0000000", "timeZone": "UTC"}},
+    {"id": "t3", "title": "Post the old invoice", "status": "inProgress", "_list": "Tasks",
+     "dueDateTime": {"dateTime": "2026-09-24T00:00:00.0000000", "timeZone": "UTC"}},
+    {"id": "t4", "title": "Already done", "status": "completed", "_list": "Tasks"},
+]
 FILING = """# Harbour filing
 
 ## Status
@@ -64,6 +72,12 @@ def agenda(tmp_path, monkeypatch):
     monkeypatch.setattr(calendar, "available", lambda kind: True)
     monkeypatch.setattr(calendar, "calendar_events", lambda kind, start, end, zone: (GOOGLE, LISTED) if kind == "google" else (OUTLOOK, ALL_OWN))
     calendar.save_upcoming(root, FROZEN)
+    # His open to-dos, read in the same step of the night (#3087): Graph's own task objects, invented.
+    from connectonion.rem import todos
+    monkeypatch.setattr(todos, "available", lambda: True)
+    monkeypatch.setattr(todos, "google_tasks", lambda: "reconnect")
+    monkeypatch.setattr(todos, "todo_tasks", lambda zone: TODOS)
+    todos.save(root, FROZEN)
     snapshot = rem_reader.snapshot
 
     def fixed_snapshot(root, local=False, today=False):
@@ -227,6 +241,31 @@ def test_agenda_says_in_words_which_calendars_it_read_and_which_it_left_out(agen
     note = page.locator(".agenda-read").inner_text()
     assert "Google Calendar：读了 1 个自己的日历；3 个没有读（2 个只共享忙闲，1 个只读共享）。" in note
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_today_shows_his_to_dos_in_their_own_section_in_words(agenda, width):
+    """Owner, 2026-11-17 (#3087): none of his to-dos were on Today. They are, apart from events, each named a to-do."""
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("() => { location.hash = '#'; }", isolated_context=False)
+    section = page.locator("section.todos")
+    section.wait_for()
+    assert section.get_attribute("aria-label") == section.locator("h2").inner_text() == "To-dos"
+    rows = [" | ".join(line for line in text.split("\n") if line) for text in section.locator("li").all_inner_texts()]
+    assert rows == ["To-do — overdue since Sep 24 | Post the old invoice | List: Tasks",
+                    "To-do — due Oct 6 | Renew the harbour permit | List: Tasks",
+                    "To-do — no due date | Order lantern glass | List: Workshop"]
+    assert "Google Tasks are not read: Google must be reconnected with access to tasks." in section.inner_text()
+    # Read, not acted on: a to-do is ticked off in Microsoft To Do, so the section has no button and no command.
+    assert section.locator("button, input, code").count() == 0 and "co auth" not in section.inner_text()
+    # Events stay in Your day; no to-do is listed among them.
+    assert page.locator("section.day-plan:not(.todos)").count() <= 1
+    assert "Post the old invoice" not in page.locator("section.day-plan:not(.todos)").all_inner_texts().__str__()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.evaluate("() => setInterfaceLanguage('zh')", isolated_context=False)
+    assert "待办 — 没有期限" in section.inner_text()
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
 
 
 def _show(page, shown):
