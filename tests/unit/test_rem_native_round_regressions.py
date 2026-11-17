@@ -327,3 +327,28 @@ def test_native_abstract_submit_promotes_a_batch_and_leaves_other_pages_alone(no
     assert result['outcome'] == 'accepted', result
     assert result['changed'] == ['decisions/existing.md', 'decisions/new.md']
     assert native.next_task(notebook)['outcome'] == 'done'
+
+
+def test_a_session_still_being_written_is_not_summarised_this_round(notebook, monkeypatch):
+    """#3083 rc20 night: a live Claude Code session file changed under its summary task in 21 s
+    and the task was parked "Task input changed". A file written since the round imported it waits."""
+    from connectonion.rem import sessions
+    live, still = notebook / "live.jsonl", notebook / "still.jsonl"
+    live.write_text("{}\n")
+    still.write_text("{}\n")
+    imported = {path: {"size": path.stat().st_size, "mtime_ns": path.stat().st_mtime_ns} for path in (live, still)}
+    write_json(state_path(notebook, "sessions.json"), {"files": {
+        str(live): {**imported[live], "session": "claude:live", "record": "sessions/live.md"},
+        str(still): {**imported[still], "session": "claude:still", "record": "sessions/still.md"}}, "sessions": {}})
+    live.write_text("{}\n{\"more\": 1}\n")  # the session goes on after the import
+    for name in ("live", "still"):
+        page = Notebook(notebook).path(f"sessions/{name}.md")
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(f"# {name}\n")
+    monkeypatch.setattr(sessions, "prepare", lambda root, rows, config, **kw: {"rows": rows})
+    cursor = {"phase": "daily-update", "summaries": [{"key": "claude:live", "record": "sessions/live.md"},
+                                                     {"key": "claude:still", "record": "sessions/still.md"}]}
+    task = native_round._summary_turn(notebook, cursor, read_config(notebook), notebook)
+    assert task["record"] == "sessions/still.md" and task["task"]["input_paths"] == [str(still)]
+    assert [row["key"] for row in cursor["summaries"]] == ["claude:still"]
+    assert not sessions.being_written(notebook, "claude:still")

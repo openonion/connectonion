@@ -442,6 +442,8 @@ def prepare_task(root, cursor, config, directory):
 
 def _summary_turn(root, cursor, config, directory):
     """The next session summary of the round's (`limits.summaries_per_round`), or None when none waits."""
+    # A session still being written changes under its task: wait for a later round (#3099).
+    cursor["summaries"] = [row for row in cursor["summaries"] if not sessions.being_written(root, row["key"])]
     if not cursor["summaries"]:
         return None
     rows = cursor["summaries"][:1]

@@ -647,6 +647,24 @@ def _typed_messages(page: str) -> list[dict]:
             for stamp, text in re.findall(r"^### ([^\n]+)\n(.*?)(?=^### |\Z)", typed, re.M | re.S)]
 
 
+def being_written(root: Path, key: str) -> bool:
+    """Has one of this session's files changed since the round imported it? Then it is still open.
+
+    #3083 rc20 night: a live Claude Code session file changed 21 s into its summary task, which
+    was parked "Task input changed". Its page is the import's, so a summary now would also
+    describe a session that has moved on; the next round imports and summarises it again.
+    (A clock window of "modified in the last minutes" was the first idea; the import's own
+    size and mtime say the same thing without a clock.)"""
+    files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
+    for path, entry in files.items():
+        if entry.get("session") != key or not Path(path).is_file():
+            continue
+        stat = Path(path).stat()
+        if (entry.get("size"), entry.get("mtime_ns")) != (stat.st_size, stat.st_mtime_ns):
+            return True
+    return False
+
+
 def _summary_candidates(root: Path, limit: int) -> list[dict]:
     notebook = Notebook(root)
     progress = read_json(state_path(root, "sessions.json"), {})
