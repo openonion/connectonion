@@ -54,7 +54,7 @@ def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today
     assert page.locator("#today-stale > summary").inner_text() == "1 has gone quiet for a long time · Look"
     _open_stale(page)
     assert asked.locator(".stale-when").inner_text() == "Due Apr 14; no new message for 174 days"
-    assert asked.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]  # the Today strip (#2990)
+    assert asked.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # the Today strip (#2990)
     assert asked.evaluate("li => getComputedStyle(li).color") != "rgb(192, 42, 23)"
     # Still open: the owner says it is live, so it counts and burns again.
     asked.get_by_role("button", name="Still open", exact=True).click()
@@ -216,7 +216,9 @@ def test_every_row_says_its_three_ways_to_close_in_words_without_a_hover(today, 
     page.locator("#done-notice").get_by_role("button", name="撤销").click()
     row = page.locator(".today-brief .qcard.open .qitem:visible").first
     row.get_by_role("button", name="暂不处理", exact=True).click()
-    assert page.locator("#done-notice").inner_text().startswith("暂不处理 · 有新邮件会回来 · 撤销") and states()[-1] == "skipped"
+    # Not now asks when (#3072), and the notice says the day it comes back.
+    row.get_by_role("button", name="明天", exact=True).click()
+    assert page.locator("#done-notice").inner_text().startswith("已推后 · ") and "回来 · 撤销" in page.locator("#done-notice").inner_text() and states()[-1] == "skipped"
     page.locator("#done-notice").get_by_role("button", name="撤销").click()
     page.locator(".today-brief .qcard.open .qitem:visible").first.get_by_role("button", name="忽略", exact=True).click()
     page.evaluate("() => { location.hash = '#view=open'; }", isolated_context=False)
@@ -235,6 +237,8 @@ def test_all_three_closes_leave_the_way_mark_done_does(today):
         page.evaluate("() => { REM.live = true; render(); dealCard('people/mara-ostrowski.md'); scrollTo(0, 0); }", isolated_context=False)
         row = page.locator(".today-brief .qcard.open .qitem:visible").first
         row.get_by_role("button", name=name, exact=True).click()
+        if name == "Not now":  # it asks when first (#3072); the row leaves once he has chosen
+            row.get_by_role("button", name="Tomorrow", exact=True).click()
         assert page.locator(".today-brief .leaving").count() == 1, name
         page.locator("#done-notice").get_by_role("button", name="Undo").click()
 
@@ -255,7 +259,7 @@ def test_the_stale_widgets_more_link_opens_gone_quiet_and_shows_it(today):
     quiet = page.locator("#gone-quiet")
     page.wait_for_function("() => document.getElementById('gone-quiet')?.open")
     box = quiet.bounding_box()
-    assert 0 <= box["y"] < page.viewport_size["height"]
+    assert -1 < box["y"] < page.viewport_size["height"]  # scrolled to the top of the view, to within a pixel
     assert quiet.get_by_text("signed form 5 for the van").first.is_visible()
 
 

@@ -129,7 +129,7 @@ def test_waiting_rows_say_ignore(today, size):
 
 CLOSE_WHY = "This is an offline snapshot; open REM to mark it."
 HAND_WHY = "Handing work to an agent happens in the live reader."
-STRIP = ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "More"]
+STRIP = ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]
 WRITTEN = """() => ({states: Object.keys(threadStates).length, stored: localStorage.getItem(threadStorageKey())})"""
 # A thread on Today that has gone quiet but is not a long-past promise, so it belongs to Today's Gone quiet fold.
 QUIET = """() => { REM.today_queue.find(row => row.section === 'today' && !/loan agreement|banner files/.test(JSON.stringify(row))).quiet = true;

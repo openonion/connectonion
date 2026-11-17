@@ -218,14 +218,13 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     for i in range(rows.count()):
         # On Today the three closes come first, then the two hand-offs, still visible words (D-100; sprint 14).
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
+        assert names == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # Show more is the item's second level (#3072)
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
         # One order on every strip (#2990 review, D-100): Waiting's too, the talk behind its worded More.
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
-        assert " ".join(mine.nth(i).locator(".strip-more > summary").inner_text().split()) == "More ▾"
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
     assert not set(fills) & set(GREEN)
@@ -318,9 +317,12 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     answers["/rem/task"] = [(200, {"id": "a1b2", "result": "starting", "agent": "claude", "by": "owner"})]
     card.locator(".qitem").first.hover()  # the row's actions are its second level (D-120)
     _hand(card.locator(".handoff").first, "交给 Claude")
-    card.get_by_text("Claude 正在做").wait_for()
+    # On a Today card the row is the agent's from the click: it leaves the deck and the work shows in one strip (#3072).
+    strip = page.locator("#work-strip")
+    strip.get_by_text("Claude 正在做 1 件事").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
-    assert card.get_by_role("button", name="停止").is_visible()
+    strip.locator("summary").click()
+    assert strip.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]
     other = page.locator(".deal").evaluate_all(FACES)[1]
     page.locator(f'.deal[data-path="{other}"]').click()
@@ -357,7 +359,7 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
     assert page.get_by_text(SNAPSHOT_LINE, exact=True).count() == 1
     # Every strip button is disabled work in a snapshot, the three closes included (#2990 review: nothing carries a
     # snapshot's mark to the notebook); the card says why in words, never a command.
-    assert page.locator(".handoff button:not(:disabled)").count() == 0
+    assert page.locator(".handoff button:not(:disabled):not(.strip-more)").count() == 0  # Show more only reads, so it works
     assert page.locator(".handoff .strip-done:disabled").count() > 0
     assert "This is an offline snapshot; open REM to mark it." in page.locator("#main").inner_text()
     assert page.locator(".handoff-status").evaluate_all("nodes => nodes.map(n => n.textContent).join('')") == ""
@@ -617,9 +619,8 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     slot.fill("Thursday afternoon")
     row = card.locator(".qitem").first
     row.hover()
-    row.locator(".strip-more > summary").click()
-    row.locator(".strip-more .talk-menu > summary").click()
-    row.locator('[data-talk="codex"]').click()
+    row.locator(".strip-more").click()  # the talk's choices are in the item's second level (#3072)
+    page.locator('#item-context [data-talk="codex"]').click()
     talk = page.get_by_role("textbox", name="Your message")
     talk.fill("Draft it short")
     talk.evaluate("node => node.setSelectionRange(6, 8)")

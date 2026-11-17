@@ -1428,7 +1428,7 @@ def test_written_thread_dates_and_evidence_backed_request_groups():
 @pytest.mark.parametrize('blocked', [False, True])
 def test_done_threads_filter_today_and_counts_without_changing_record_threads(blocked):
     page = TEMPLATE.read_text()
-    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'answered', 'waitingOnYou', 'threadCounts']
+    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'closedMark', 'putOffOver', 'clockNow', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone', 'shortHash', 'readerStorage', 'todayEntries', 'answered', 'waitingOnYou', 'threadCounts']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + 'const blocked = ' + json.dumps(blocked) + ';' + r'''
       const REM = {root: '/fixture/notebook', as_of: '2026-10-20T12:00:00Z'}, DAY_MS = 86400000;
@@ -3328,13 +3328,13 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
 HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
-        'handButtons', 'todayStrip', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu', 'snapshotWhy', 'stripDone']
+        'handButtons', 'handOver', 'handRefusal', 'handFailedNote', 'putOffNote', 'putOffOver', 'clockNow', 'todayStrip', 'moreButton', 'handState', 'followTask', 'seeResult', 'dotted', 'talkMenu', 'snapshotWhy', 'stripDone']
 
 
 def _hand_js(body):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in HAND)
-    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
+    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
                           + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -3364,9 +3364,10 @@ def test_a_handed_row_says_where_the_work_is_with_stop_take_back_and_see_result(
     assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Take back from Codex']
     assert result['open'] == ['Hand to Codex', 'Hand to Claude']
     assert result['snapshot'] == ['Codex is working', 'REM started this']
-    # One line, a dot between each action, the conversation behind one quiet menu.
-    assert result['line'] == ['Hand to Codex', '·', 'Hand to Claude', '·', 'menu']
-    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Take back from Codex', '·', 'menu']
+    # One line, a dot between each action. The conversation is in the item's second level (Show more, #3072), which
+    # only a row of the notebook has: these stand-in rows carry no page, so they end at the hand-offs.
+    assert result['line'] == ['Hand to Codex', '·', 'Hand to Claude']
+    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Take back from Codex']
 
 
 def test_take_back_puts_the_hand_buttons_back_on_the_row_in_place():
@@ -3651,6 +3652,21 @@ def test_the_to_do_section_stays_short_and_says_what_it_could_not_read():
     assert _todo_section({'tasks': [], 'read_at': '2026-11-17T02:30:00Z', 'google': None, 'error': None})['words'] == ['To-dos', 'No open to-dos.']
     assert _todo_section({'tasks': [], 'read_at': '', 'google': None, 'error': None}) is None
     assert _todo_section(None) is None and _todo_section({'tasks': tasks, 'read_at': 'x', 'google': None, 'error': None}, shared=True) is None
+
+
+def test_an_empty_to_do_section_says_one_thing_and_never_no_to_dos_over_an_unread_list():
+    """#3085, designer: «No open to-dos» stood over «a task list was not read»: a false empty. The words "No open
+    to-dos" are for every connected list read and none holding one; an unread list is named, with why."""
+    read = {'tasks': [], 'read_at': '2026-11-17T02:30:00Z', 'error': None}
+    assert _todo_section({**read, 'google': 'reconnect'})['words'] == ['To-dos',
+        'Microsoft To Do has no open to-dos. Google Tasks are not read: Google must be reconnected with access to tasks.']
+    assert _todo_section({**read, 'google': 'not_read'})['words'] == ['To-dos', 'Microsoft To Do has no open to-dos. Google Tasks are not read yet.']
+    failed = {'at': '2026-11-17T02:30:00Z', 'reason': 'authorization expired', 'error': ''}
+    assert _todo_section({'tasks': [], 'read_at': '2026-11-16T02:30:00Z', 'google': None, 'error': failed})['words'] == ['To-dos',
+        'Microsoft To Do could not be read on 2026-11-17 (authorization expired). The last read, on 2026-11-16, found none open.']
+    assert _todo_section({'tasks': [], 'read_at': '', 'google': None, 'error': failed})['words'] == ['To-dos',
+        'Microsoft To Do could not be read on 2026-11-17 (authorization expired).']
+    assert _todo_section({**read, 'google': None})['words'] == ['To-dos', 'No open to-dos.']
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -4387,7 +4403,7 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
     """#2909: the private project's own page is the key; the same /rem/task run as 交给 Codex, followed in place."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in INVESTIGATE)
-    result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
+    result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
                             + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -4733,7 +4749,7 @@ def test_a_proposal_row_is_a_time_a_two_line_sentence_and_one_short_link(languag
     """The row was one underlined link holding a two-to-four-line sentence; five of them filled a phone."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(_reader_function(name) for name in
-                          ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'dayPlanItem'])
+                          ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'proposalWords', 'dayPlanItem'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     sentence = 'Send Mara the revised harbour mooring schedule with the three berth options and the ferry timetable she asked for'
     rows = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + r""";
@@ -4789,7 +4805,7 @@ def test_day_plan_reader_names_an_untitled_event_and_keeps_the_address_sentence_
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_day_plan_reader_words_links_addresses_tomorrow_and_no_calendar(language):
     page = TEMPLATE.read_text()
-    names = ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'dayPlanItem', 'dayPlanVisible', 'yourDay']
+    names = ['planWhen', 'planReason', 'planWords', 'eventTitle', 'proposalItem', 'proposalWords', 'dayPlanItem', 'dayPlanVisible', 'closedMark', 'putOffOver', 'clockNow', 'yourDay']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nuiLanguage = ' + json.dumps(language) + ';\n' + r'''
@@ -4830,12 +4846,14 @@ def test_day_plan_reader_words_links_addresses_tomorrow_and_no_calendar(language
     unread = json.dumps(result['unread'], ensure_ascii=False)
     assert ('还没有读取过日历。' if language == 'zh' else 'No calendar has been read yet.') in unread
     assert ('计划已过期' if language == 'zh' else 'This saved plan is out of date') in json.dumps(result['stale'], ensure_ascii=False)
-    assert page.index('main.appendChild(dayPlan)') < page.index('el("div", { class: "tgrid"', page.index('main.appendChild(dayPlan)'))
+    # #3072: the cards he can act on come first; the to-dos and the day's schedule are read below them.
+    overview = page[page.index('function overview()'):page.index('function scheduleFailure()')]
+    assert overview.index('class: "tgrid"') < overview.index('todoSection()') < overview.index('yourDay()')
 
 
 def test_day_plan_reader_hides_closed_grouped_items_and_restores_undo():
     page = TEMPLATE.read_text()
-    function = re.search(r'function dayPlanVisible\(.*?\n\}', page, re.S).group(0)
+    function = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in ['dayPlanVisible', 'closedMark', 'putOffOver', 'clockNow'])
     result = _run_reader_js(function + r'''
       let threadStates = {};
       const REM = {today_queue: [{key: 'one', keys: ['one', 'two'], closed: false, reply: {state: 'queued'}}]};

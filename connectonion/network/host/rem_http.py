@@ -99,6 +99,17 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 404, "not found")
 
 
+def _moment_or_none(value) -> bool:
+    """A put-off's `until` is absent or one ISO moment (threads.put_off_over reads it)."""
+    from datetime import datetime
+    if value is None:
+        return True
+    try:
+        return isinstance(value, str) and len(value) <= 40 and bool(datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except ValueError:
+        return False
+
+
 async def _action(scope, receive, send, root, headers):
     if headers.get("content-type", "").split(";")[0].strip() != "application/json":
         await _reply(send, 415, "application/json required")
@@ -162,10 +173,11 @@ async def _action(scope, receive, send, root, headers):
                 or not isinstance(body.get("keys"), (list, type(None)))
                 or any(not isinstance(key, str) for key in body.get("keys") or [])
                 or not isinstance(body.get("versions"), (dict, type(None)))
-                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())):
+                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())
+                or not _moment_or_none(body.get("until"))):
             await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped, ignored or open"}), "application/json")
             return
-        operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
+        operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"), until=body.get("until"))
     elif scope["path"] == "/rem/sender":
         from ...rem.files import EMAIL
         # 忽略 this sender from Today, or undo it: one address, never a pattern that could stop a whole domain.
