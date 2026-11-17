@@ -697,6 +697,19 @@ SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim
                "Key decision without the owner's words:",
                "Open thread rests only on coding sessions:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
+MISQUOTE = "Quote is not in its cited source:"
+
+
+def restorable(errors: list[str]) -> bool:
+    """Lost quotes and sources, with at most misquotes beside them: what a native last resort settles.
+
+    It puts the lost lines back and drops each misquoted line with its claim. #3083, rc20
+    night: 4 dropped quotes plus 4 misquotes parked a page because the restore asked that
+    every error be a drop."""
+    return (bool(errors) and all(error.startswith(("Dropped ", MISQUOTE)) for error in errors)
+            and any(error.startswith("Dropped ") for error in errors))
+
+
 MAX_REPAIRS = 2
 # 2026-10-20 notebook trial: review, claim audit and repairs took 580–990 s of
 # 40–55 min enrich/muse stages. Last resort restores drops and removes refuted
@@ -882,8 +895,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             result["result"] = str(result.get("result") or "") + '\n' + str(repair.get("result") or "")
     # A native page has its repair turns between submits, so its last resort is submit's to
     # ask for (RESTORE_DROPS), and only for what restoring settles: lost quotes and sources.
-    salvageable = "Dropped " if native else SALVAGEABLE
-    if (native and not RESTORE_DROPS.get()) or not errors or not all(error.startswith(salvageable) for error in errors):
+    salvage = restorable(errors) if native else bool(errors) and all(error.startswith(SALVAGEABLE) for error in errors)
+    if (native and not RESTORE_DROPS.get()) or not salvage:
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                        lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried,

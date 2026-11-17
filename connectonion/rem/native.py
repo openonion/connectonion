@@ -1034,8 +1034,8 @@ def _check_or_restore(root, task, output):
         return native_round.check_task(root, task, output)
     except runner.RunFailed as error:
         errors = read_json(directory / "review.json", {}).get("errors") or []
-        only_drops = errors and all(e.startswith("Dropped ") for e in errors) and str(error).endswith("; ".join(errors))
-        if not only_drops or not _park_reason([*task.get("refusals", []), str(error)]):
+        restorable = runner.restorable(errors) and str(error).endswith("; ".join(errors))
+        if not restorable or not _park_reason([*task.get("refusals", []), str(error)]):
             raise
     token = runner.RESTORE_DROPS.set(True)
     try:
