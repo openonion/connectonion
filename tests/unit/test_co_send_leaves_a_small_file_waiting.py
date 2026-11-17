@@ -123,7 +123,7 @@ def test_a_strangers_file_is_left_waiting_and_named(backend, parrot, tmp_path):
 
     backend["as"](parrot["keys"])
     taken = file_stash.collect(parrot["keys"], parrot["co_dir"])
-    assert taken["landed"] == [] and [w["from"] for w in taken["waiting"]] == [stranger["address"]]
+    assert taken["landed"] == [] and [(w["from"], w["size"]) for w in taken["waiting"]] == [(stranger["address"], 10)]
     assert file_inbox.received(parrot["co_dir"]) == []
     assert len(backend["files"]) == 1   # kept until the receiver decides, or it expires
 

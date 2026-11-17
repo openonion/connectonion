@@ -27,6 +27,8 @@ from pathlib import Path
 
 STASH_BYTES = 10 * 1024 * 1024
 KEPT_DAYS = 7
+# What a NaCl box adds to what it seals: the backend's size is the box's.
+BOX_OVERHEAD = 40
 
 
 def _headers() -> dict:
@@ -72,7 +74,8 @@ def collect(keys, co_dir: Path) -> dict:
     found = {"landed": [], "waiting": [], "refused": []}
     for row in response.json()["files"]:
         if not _trusted(row["from_address"], co_dir):
-            found["waiting"].append({"from": row["from_address"], "size": row["size"], "expires_at": row["expires_at"]})
+            found["waiting"].append({"from": row["from_address"], "size": row["size"] - BOX_OVERHEAD,
+                                     "expires_at": row["expires_at"]})
             continue
         outcome, entry = _take(keys, co_dir, row)
         found[outcome].append(entry)
