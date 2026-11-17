@@ -3630,7 +3630,9 @@ def test_knowledge_switch_uses_bookmarkable_paths_without_storage(mode):
     ''')
     title, nav = result['children']
     assert title['text'] == 'Knowledge'
-    assert [link['href'] for link in nav['children']] == ['#c=knowledge', '#view=graph']
+    # #3085: the graph is first; the entries have an address of their own, since the rail's opens the graph.
+    assert [(link['text'], link['href']) for link in nav['children']] == [
+        ('Graph', '#view=graph'), ('Entries', '#c=knowledge&view=entries')]
     assert [link['text'] for link in nav['children'] if link.get('aria-current') == 'page'] == [
         'Entries' if mode == 'entries' else 'Graph']
 

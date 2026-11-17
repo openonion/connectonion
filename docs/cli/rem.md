@@ -1624,15 +1624,19 @@ pinned to that edge: it comes into view with the draft.
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
 - **Knowledge** (#2996) is the notebook's wiki and its one place for how
-  records link: there is no **All records** any more. **Entries** lists one row
-  per topic, the most linked first, each row showing the people, organisations
-  and projects it ties together as links; **Graph** is the two-way map of every
-  linked record that All records used to draw (`#view=graph`; the old `#c=all`
-  address opens it too). Every record the All records list held is still in its
-  own category (a rail place or **More**) and in search; **Graph** is also in
-  the ⌘K palette. A list with one or two entries also offers **Explore linked
-  records →** when the graph has links. With nothing linked yet, **Graph** shows
-  the entries instead.
+  records link: there is no **All records** any more. It **opens on the graph**
+  (#3085): the rail's Knowledge (`#c=knowledge`) draws the two-way map of every
+  linked record that All records used to draw, and its switch reads **Graph**,
+  selected, then **Entries**. `#view=graph` and the old `#c=all` address open
+  the same graph. **Entries** (`#c=knowledge&view=entries`) lists one row per
+  topic, the most linked first, each row showing the people, organisations and
+  projects it ties together as links; an address that names the entries always
+  opens the entries. The phone follows the same default. Every record the All
+  records list held is still in its own category (a rail place or **More**) and
+  in search; **Graph** is also in the ⌘K palette. A list with one or two entries
+  also offers **Explore linked records →** when the graph has links. With
+  nothing linked yet the graph has nothing to draw, so Knowledge shows the
+  entries instead, with **Entries** selected.
 - **Headings name a page, they do not explain it** (#2994): a category page
   shows its name and its count, not a sentence about its order. Skills opens
   with its name and its finder (*Find among N skills…*) on one line, the most

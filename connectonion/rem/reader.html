@@ -6551,7 +6551,7 @@ function route() {
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
   const kind = r && r.split("/")[0];
-  return reviews ? "reviews" : view === "graph" || c === "all" ? "knowledge" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
+  return reviews ? "reviews" : view === "graph" || c === "all" || c === "knowledge" ? "knowledge" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
 }
 function scheduleState(s) {
   const state = s.state || "";
@@ -12808,14 +12808,17 @@ function graphAlpha(n) {
   if (!focus || n.id === focus || near1.has(n.id)) return 1;
   return near2.has(n.id) ? .5 : .07;
 }
-// Knowledge holds two ways to look (#2996): its entries, one per topic, and the graph of how every record links.
-// With nothing linked yet the graph would be an empty canvas, so the entries show instead.
+// Knowledge holds two ways to look (#2996): the graph of how every record links, and its entries, one per topic.
+// It opens on the graph (#3085): the rail's #c=knowledge draws it, and only an address that names the entries
+// (#c=knowledge&view=entries) opens the list. With nothing linked yet the graph would be an empty canvas, so
+// the entries show instead.
+function knowledgeShowsGraph({ category: c, view }) { return view === "graph" || c === "all" || (c === "knowledge" && view !== "entries"); }
 function knowledgeGraph() {
   if (graphModel().linked.length) graphView();
   else topicList();
 }
 function knowledgeHead(mode) {
-  const ways = [["entries", "Entries", "#c=knowledge"], ["graph", "Graph", "#view=graph"]];
+  const ways = [["graph", "Graph", "#view=graph"], ["entries", "Entries", "#c=knowledge&view=entries"]];
   return el("div", { class: "knowledge-head" }, [el("h1", { text: label("knowledge") }),
     el("nav", { class: "knowledge-switch theme-switch", "aria-label": label("knowledge") }, ways.map(([key, name, link]) =>
       el("a", { href: link, class: "theme-btn" + (mode === key ? " active" : ""), ...(mode === key ? { "aria-current": "page" } : {}), text: graphT(name) })))]);
@@ -13377,7 +13380,7 @@ function render() {
   else if (view === "open" || view === "changes") taskView(view);
   else if (view === "activity") activityView();
   // #c=all was All records' address (#2996); a kept bookmark opens the graph it drew, now under Knowledge.
-  else if (view === "graph" || c === "all") knowledgeGraph();
+  else if (knowledgeShowsGraph({ category: c, view })) knowledgeGraph();
   else if (c) category(c);
   else overview();
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
