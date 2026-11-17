@@ -3242,6 +3242,9 @@
   @media (max-width: 640px) {
     dialog.context-sheet { inset: auto 0 0 0; width: 100%; height: auto; max-height: 85vh; border-radius: var(--r-card); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
     .work-row .btn-quiet, .closed-fold > summary, .work-strip > summary, .later-choice, .later-cancel { min-height: 44px; }
+    /* A card with a reply ready keeps Send on the first screen: its rows stay short until More of this card, and the
+       item's second level waits behind that same word instead of taking a third line of the strip. */
+    .qcard:has(.qdraft):not(.full) .handoff-line > .strip-more, .qcard:has(.qdraft):not(.full) .handoff-line > .sep:has(+ .strip-more) { display: none; }
   }
   #today-stale { max-width: 760px; margin: 28px 0 0; }
   #today-stale > summary { display: list-item; padding: 12px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/20px var(--font); cursor: pointer; }
