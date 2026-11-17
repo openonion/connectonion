@@ -409,8 +409,8 @@ separately; it may show zero even when coding sessions contain name matches.
 Neither count proves that this installed version ran or that the task succeeded.
 The Skills page is one table, the same one People and Organisations use
 (#3094): a row per skill, one line high, with **Skill**, **What it does**,
-**Family**, **Last used** and **Times used**. Headers sort, **Columns** adds
-**Installed copies**, and a row opens the skill's page.
+**Family**, **Last used** and **Times used · 180 days**. Headers sort,
+**Columns** hides a column, and a row opens the skill's page.
 
 - **Family tabs** sit above the table: **All** first, then each name family
   with its count (Lark, LinkedIn, co …; a family of fewer than three skills
@@ -426,8 +426,9 @@ The Skills page is one table, the same one People and Organisations use
   skill's name, its line and its page; Enter opens the first match.
 - **Last used** is in words (*Yesterday*, *3 weeks ago*, *2 months ago*; the
   date is one hover away) and **Never** in grey for a skill with no match in the
-  window. **Times used** is the skill-name match count over the usage window;
-  the line under the table says so, because a match is not a completed run.
+  window. **Times used** is the skill-name match count over the usage window,
+  which its header names (as People's *Messages · 90 days* does); there is no
+  caption about how the count is made.
 - There are no **most used** cards any more: with Most used as the default view
   the first eight rows are those eight skills, and two rows of cards pushed the
   table below the first screen at 900 px.
@@ -436,7 +437,8 @@ Each skill's line is the first clause of its description, in the reader's
 language when the skill has its own text in it or a translation is cached;
 otherwise the original. A skill with no description keeps its row with that
 cell empty. A row keeps the "last night" marker for a page last night's pass
-rewrote. On a phone the tabs are one row that scrolls sideways and each skill
+rewrote and "N installed copies" beside the name when the skill is installed in
+more than one place. On a phone the tabs are one row that scrolls sideways and each skill
 is two lines: its name with last used and times used at the right, then its
 line. A skill page keeps the match details, scope
 explanation and usage bar, and names where the skill lives in words (Claude

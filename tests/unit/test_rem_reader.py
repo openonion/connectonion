@@ -1064,6 +1064,29 @@ def test_reader_language_swap_reuses_parsing_and_restores_original():
     assert _run_reader_js(script) == ['An original lead.', '中文摘要.', 'An original lead.', 'An original lead.']
 
 
+def test_skills_table_says_last_used_in_words_keeps_tab_and_view_in_the_address_and_orders_families():
+    """#3094: the Skills table's pure parts. Last used reads in words; the tab and the view are in the address
+    (the default view adds nothing); the largest family is the first tab and Other the last."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['calendarDay', 'skillAgo', 'skillsHref', 'skillsState', 'skillFamilyCounts'])
+    result = _run_reader_js(re.search(r'const SKILL_VIEWS = .*', page)[0] + '\n' + functions + r"""
+      const REM = {as_of: '2026-10-01T12:00:00Z'}, location = {hash: ''};
+      const rows = ['Lark', 'Other', 'Other', 'Other', 'Other', 'co', 'co', 'Lark', 'Lark'].map(family => ({family}));
+      const at = hash => { location.hash = hash; return skillsState(rows); };
+      console.log(JSON.stringify({
+        ago: ['2026-10-01', '2026-09-30', '2026-09-26', '2026-09-18', '2026-09-17', '2026-08-03', '2026-08-02', '2026-06-23'].map(skillAgo),
+        hrefs: [{family: '', view: 'most'}, {family: 'Lark', view: 'most'}, {family: '', view: 'recent'}, {family: 'A B', view: 'family'}].map(skillsHref),
+        states: ['#c=skills', '#c=skills&family=Lark&v=recent', '#c=skills&family=Gone&v=nope', '#c=skills&v=family'].map(at),
+        families: skillFamilyCounts(rows)}));
+    """)
+    assert result['ago'] == ['Today', 'Yesterday', '5 days ago', '13 days ago', '2 weeks ago', '8 weeks ago', '2 months ago', '3 months ago']
+    assert result['hrefs'] == ['#c=skills', '#c=skills&family=Lark', '#c=skills&v=recent', '#c=skills&family=A%20B&v=family']
+    assert result['states'] == [{'family': '', 'view': 'most'}, {'family': 'Lark', 'view': 'recent'},
+                                {'family': '', 'view': 'most'}, {'family': '', 'view': 'family'}]  # an unknown tab or view is All, Most used
+    assert result['families'] == [['Lark', 3], ['co', 2], ['Other', 4]]
+
+
 def test_reader_skill_line_is_the_first_plain_clause():
     """Sprint 13: a skill shows one line of what it does, not the description's whole paragraph."""
     page = TEMPLATE.read_text()

@@ -1799,13 +1799,14 @@ def test_skill_roster_links_are_touch_sized_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#c=skills')
-    links = page.locator('.skills-view :is(a.skill-card, a.skill-item, .skill-shape button):visible')
+    # #3094: the tabs and the views are the controls; a skill's whole two-line row is its tap target, as People's cards are.
+    links = page.locator('.skills-view :is(.skill-tabs a, .skill-views a, .skill-table tbody tr[data-href]):visible')
     assert links.count() > 0
     for link in links.all():
         box = link.bounding_box()
         assert box['width'] >= 44 and box['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    links.first.click()
+    page.locator('.skill-table tbody tr[data-href] td.c-what').first.click()
     assert page.locator('.record-focus.skills').is_visible()
 
 
@@ -3693,10 +3694,9 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
     }''', language, isolated_context=False)
     # #2994: no sentence explains the order; the count lives in the finder beside the page's name.
     assert page.locator('#main .lede').count() == 0
-    assert page.locator('.category-head .skills-find').get_attribute('placeholder') == ('在 3 个技能里找…' if language == 'zh' else 'Find among 3 skills…')
+    assert page.locator('.people-head .skills-find').get_attribute('placeholder') == ('在 3 个技能里找…' if language == 'zh' else 'Find among 3 skills…')
     assert page.locator('.skills-view .bar').count() == 0
-    assert page.locator('.skill-card .skill-uses').first.inner_text().endswith(
-        '最近 昨天' if language == 'zh' else 'last Yesterday')
+    assert page.locator('.skill-table tbody tr').first.locator('td.c-last').inner_text() == ('昨天' if language == 'zh' else 'Yesterday')
     assert page.evaluate(r"byPath('skills/catalog/weekly-brief.md').text", isolated_context=False) == original
     page.evaluate(r"""() => {
       const r = byPath('skills/catalog/weekly-brief.md');
@@ -6234,41 +6234,42 @@ def _add_skills(page):
     }''', SKILL_SET, isolated_context=False)
 
 
+def _skill_row(page, name):
+    return page.locator('.skill-table tbody tr[data-href]').filter(has=page.locator('.c-name a', has_text=name))
+
+
 @pytest.mark.parametrize('width', [1440, 390])
 def test_skills_rank_what_you_use_and_fill_the_width(reader, width):
+    """#3094: the eight cards and the three-column index are one table, most used first, under a tab per family."""
     page, uri = reader
     page.set_viewport_size({'width': width, 'height': 900})
     page.goto(uri + '#c=skills')
     _add_skills(page)
-    top = page.locator('.skills-top .skill-card .skill-name').all_inner_texts()
-    assert top[:4] == ['lark-mail', 'deck-maker', 'weekly-brief', 'lark-calendar']  # by uses: 40, 25, 14, 9
-    assert 'lark-sheets' not in top and 'tool-1' not in top  # never used: not in the top group
-    assert '40 matches in 180 days' in page.locator('.skills-top .skill-card').first.inner_text()  # name matches, not "calls"
-    families = page.locator('.skill-families')
-    # Family names read as names ("Tool", not "tool"); a family left with fewer than three goes under Other.
-    # A family's size counts the members shown in Most used too, so Lark keeps its group and its button.
-    assert [h.split('\n')[0].rstrip('0123456789') for h in families.locator('h3').all_inner_texts()] == ['Tool', 'Lark', 'Other']
-    assert page.locator('.skill-shape button').filter(has_text='Lark').count() == 1
-    assert families.locator('.skill-name').filter(has_text='lark-mail').count() == 0  # shown once, in the top group
-    boxes = [b for b in (families.locator('li').nth(i).bounding_box() for i in range(families.locator('li').count()))]
-    main = page.locator('#main').bounding_box()
-    lefts = {round(b['x']) for b in boxes}
+    names = page.locator('.skill-table tbody tr[data-href] .c-name a').all_inner_texts()
+    assert names[:4] == ['lark-mail', 'deck-maker', 'weekly-brief', 'lark-calendar']  # by uses: 40, 25, 14, 9
+    assert len(names) == 21 and names.count('lark-mail') == 1  # every skill once
+    assert names.index('lark-sheets') > names.index('lark-doc')  # never used: after everything that was
+    assert _skill_row(page, 'lark-mail').locator('td.c-uses').inner_text() == '40'
+    # Family names read as names ("Tool", not "tool"); a family of fewer than three goes under Other, which is last.
+    assert [' '.join(text.split()) for text in page.locator('.skill-tabs a').all_inner_texts()] == ['All 21', 'Tool 12', 'Lark 4', 'Other 5']
+    assert page.locator('.skill-card, .skills-top, .skill-families').count() == 0
+    main, table = page.locator('#main').bounding_box(), page.locator('.skill-table').bounding_box()
     if width >= 1200:
-        assert len(lefts) >= 3  # several columns, not one 760px list
-        assert max(b['x'] + b['width'] for b in boxes) >= main['x'] + main['width'] - 80  # the right side is used
-        assert page.locator('.skill-shape').bounding_box()['y'] < 900  # the shape of the rest is on the first screen
+        assert table['x'] + table['width'] >= main['x'] + main['width'] - 80  # the right side is used
+        assert page.locator('.skill-table tbody tr').first.bounding_box()['y'] < 300  # the table starts high on the first screen
     else:
-        assert len(lefts) == 1
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-def test_skills_with_only_a_name_go_to_one_quiet_line(reader):
+def test_a_skill_with_only_a_name_keeps_its_row(reader):
+    """#3094: one table holds every skill; a skill with no description has an empty cell, not a line of its own."""
     page, uri = reader
     page.goto(uri + '#c=skills')
     _add_skills(page)
-    assert page.locator('.skill-families .skill-name').filter(has_text='poster-cut').count() == 0
-    assert page.locator('.skills-empty').inner_text() == '1 skill has only a name: poster-cut'
-    assert page.locator('.skills-empty a').get_attribute('href') == '#r=skills%2Fcatalog%2Fposter-cut.md'
+    row = _skill_row(page, 'poster-cut')
+    assert row.count() == 1 and row.locator('td.c-what').inner_text().strip() in ('', '—')
+    assert page.locator('.skills-empty').count() == 0
+    assert row.get_attribute('data-href') == '#r=skills%2Fcatalog%2Fposter-cut.md'
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -6277,7 +6278,7 @@ def test_skills_say_what_each_does_in_one_plain_line(reader, language):
     page.goto(uri + '#c=skills')
     _add_skills(page)
     page.evaluate('language => setInterfaceLanguage(language)', language, isolated_context=False)
-    line = lambda name: page.locator('.skill-item, .skill-card').filter(has=page.locator('.skill-name', has_text=name)).locator('.skill-line').inner_text()
+    line = lambda name: _skill_row(page, name).locator('td.c-what').inner_text()
     assert line('deck-maker') == ('用故事化漫画讲客户案例' if language == 'zh' else 'Guides creation of a bilingual, story-led pitch deck')
     assert line('lark-calendar') == 'Book a Lark meeting room'
     assert line('lark-mail') == 'Send and read Lark mail for you'
@@ -6298,7 +6299,7 @@ def test_skills_have_one_search_that_is_big_enough_to_use(reader):
     assert box['height'] >= 44 and box['width'] >= 320
     assert search.get_attribute('placeholder') == 'Find among 21 skills…'
     search.fill('meeting room')
-    assert page.locator('#main .skill-name').all_inner_texts() == ['lark-calendar']
+    assert page.locator('#main .skill-table .c-name a').all_inner_texts() == ['lark-calendar']
     assert page.locator('.skills-top').count() == 0
 
 
@@ -6313,12 +6314,16 @@ def test_skill_page_says_where_it_lives_in_words(reader):
     assert page.locator('.pill.status').count() == 0  # no research-state chip the owner cannot act on
 
 
-def test_skill_family_buttons_move_focus_to_their_group(reader):
+def test_a_skill_family_tab_shows_only_its_family(reader):
+    """#3094: the family buttons were scroll-to links over one long page; each is now a tab that filters."""
     page, uri = reader
     page.goto(uri + '#c=skills')
     _add_skills(page)
-    page.locator('.skill-shape button').filter(has_text='Tool').click()
-    assert page.evaluate("document.activeElement.matches('.skill-family h3') && document.activeElement.textContent.startsWith('Tool')")
+    page.locator('.skill-tabs a').filter(has_text='Tool').click()
+    page.wait_for_function("location.hash === '#c=skills&family=Tool'")
+    shown = page.locator('.skill-table tbody tr[data-href] .c-name a').all_inner_texts()
+    assert len(shown) == 12 and all(name.startswith('tool-') for name in shown)
+    assert page.locator('.skill-tabs [aria-current]').inner_text().split() == ['Tool', '12']
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -6331,11 +6336,12 @@ def test_skill_rows_keep_last_night_and_installed_copies_and_say_matches(reader,
       byPath('skills/catalog/lark-sheets.md').installations = [{path: 'a'}, {path: 'b'}];
       setInterfaceLanguage(language);
     }''', language, isolated_context=False)
-    item = page.locator('.skill-item').filter(has=page.locator('.skill-name', has_text='lark-sheets'))
+    item = _skill_row(page, 'lark-sheets')
     assert item.locator('.fresh-label').inner_text() == ('昨夜' if language == 'zh' else 'last night')
     assert ('2 份安装副本' if language == 'zh' else '2 installed copies') in item.inner_text()
-    card = page.locator('.skill-card').filter(has=page.locator('.skill-name', has_text='lark-mail'))
-    assert ('近 180 天用到 40 次' if language == 'zh' else '40 matches in 180 days') in card.inner_text()
+    # The column says what the number is and over how long, as People's "Messages · 90 days" does.
+    assert ('近 180 天使用次数' if language == 'zh' else 'Times used · 180 days') in page.locator('.skill-table thead th.c-uses').inner_text()
+    assert _skill_row(page, 'lark-mail').locator('td.c-uses').inner_text() == '40'
 
 
 def test_skill_line_reads_regional_chinese_and_windows_paths(reader):
@@ -6346,6 +6352,5 @@ def test_skill_line_reads_regional_chinese_and_windows_paths(reader):
       byPath('skills/catalog/lark-sheets.md').translations = {'zh-CN': '# lark-sheets\n\n## What it does\n从表格填写飞书电子表格。\n'};
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    item = page.locator('.skill-item').filter(has=page.locator('.skill-name', has_text='lark-sheets'))
-    assert item.locator('.skill-line').inner_text() == '从表格填写飞书电子表格'
+    assert _skill_row(page, 'lark-sheets').locator('td.c-what').inner_text() == '从表格填写飞书电子表格'
     assert page.evaluate(r"skillHome('C:\\Users\\u\\.codex\\skills\\x\\SKILL.md')", isolated_context=False) == 'Codex'

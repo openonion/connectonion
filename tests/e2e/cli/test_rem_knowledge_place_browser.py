@@ -204,8 +204,8 @@ def test_what_only_all_records_reached_is_reachable_from_knowledge_or_search(bro
 @pytest.mark.parametrize("language", ["en", "zh"])
 def test_pages_lose_the_sentences_that_explained_their_order(browser, built, language):
     gone = {
-        "#c=skills": ["What your agents can do", "Most used", "Everything they can do", "Contents\n", "你的 agent 会做的事",
-                      "最常用", "全部能力", "目录"],
+        # #3094: "Most used" is no longer a heading over cards; it is the name of the table's default view, a control.
+        "#c=skills": ["What your agents can do", "Everything they can do", "Contents\n", "你的 agent 会做的事", "全部能力", "目录"],
         "#": ["Start with this", "Start with these", "先看这"],
         "#c=knowledge&view=entries": ["Subjects that tie your records together", "knowledge entr", "See them in the graph",
                          "把记录串起来的知识", "条知识", "在图谱里看"],
@@ -229,11 +229,12 @@ def test_pages_lose_the_sentences_that_explained_their_order(browser, built, lan
         text = page.locator("#main").inner_text()
         for sentence in sentences:
             assert sentence not in text, (hash_, sentence)
-    # Most used still leads, as cards, and the first one sits near the top of the first screen.
+    # Most used still leads (#3094: as the table's first rows), and the first one sits high on the first screen.
     go(page, "#c=skills")
-    first = page.locator(".skills-top .skill-card").first.bounding_box()
-    assert first["y"] < 200, first
-    assert page.locator(".skills-top .skill-card").count() >= 1
+    assert page.locator("#main :is(h2, h3, .section, .lede)").count() == 0  # nothing on the page is a heading or a sentence about order
+    first = page.locator(".skill-table tbody tr").first.bounding_box()
+    assert first["y"] < 300, first
+    assert page.locator(".skill-views [aria-current]").inner_text() == ("最常用" if language == "zh" else "Most used")
     # The page still names itself.
     assert page.locator("#main h1").inner_text() == ("技能" if language == "zh" else "Skills")
     assert not page.errors, page.errors
