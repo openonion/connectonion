@@ -143,7 +143,7 @@ def _budget(root, value: dict, verbose: bool) -> list[str]:
     budget = value.get("investigation_quota")
     if not budget:
         return []
-    from ...rem.quota import TOKENS_PER_POINT
+    from ...rem.quota import FAST_COST, TOKENS_PER_POINT
     # "0% used on pro; resets Thu 22 Oct 17:24" is one line; a longer note goes under --verbose.
     parts = f"Codex week {value.get('codex_week') or 'unknown'}".split("; ")
     week = [" · ".join(parts)] if len(" · ".join(parts)) <= 80 - rem_look.COLUMN else parts
@@ -153,7 +153,8 @@ def _budget(root, value: dict, verbose: bool) -> list[str]:
              rem_look.follow(highlight(week[0]), glyph="")]
     if verbose:
         from ...rem.config import read_config
-        tokens = TOKENS_PER_POINT[read_config(root)["speed"]]
+        config = read_config(root)
+        tokens = TOKENS_PER_POINT[config["efforts"]["investigate"]] // (FAST_COST if config["speed"] == "fast" else 1)
         lines += [*(rem_look.follow(highlight(part), glyph="") for part in week[1:]),
                   rem_look.follow(style.muted("a point is 1% of your Codex week, spent by investigations only"),
                                   glyph=""),

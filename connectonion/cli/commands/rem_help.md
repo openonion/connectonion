@@ -401,6 +401,10 @@ Options:
 Budget:   Deepening has its own weekly allowance: 30 points of your Codex week
           by default (limits.depth_quota_points). Investigation has a separate
           35-point target. Both stop starting new pages at 90% weekly usage.
+          A run is charged its own fresh tokens at the effort it ran at (about 1.66M a
+          point at medium, 140K at max, half that on the fast tier; measured on the
+          owner's nights of 16-17 Nov); the week's meter, which your own coding also
+          moves, only caps the charge, and counts a run alone when it reported no tokens.
           If weekly usage cannot be measured, count the last seven days of runs.
           Stop starting new pages after 60 minutes by default
           (limits.depth_slot_minutes). This also applies to named pages.

@@ -161,6 +161,15 @@ def _run(root, record, name, stage) -> dict:
                 "usage": getattr(error, "usage", None)}
 
 
+def _points(root, *results) -> float:
+    """What enrich and muse spent, from their tokens at the effort and tier they ran at (#3099)."""
+    from .inquiry import stage_config
+    config = read_config(root)
+    return sum(quota._token_points(result.get("usage"), config["speed"],
+                                   stage_config(root, config, name)["effort"])
+               for name, result in zip(("enrich", "muse"), results))
+
+
 def deepen(root, record, *, stage=None) -> dict:
     notebook = Notebook(root)
     text = notebook.read(record)
@@ -180,7 +189,7 @@ def deepen(root, record, *, stage=None) -> dict:
            "enrich": enrich["outcome"], "muse": thought["outcome"],
            **{f"{name}_cause": result["cause"] for name, result in (("enrich", enrich), ("muse", thought))
               if "cause" in result},
-           "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
+           "points": _points(root, enrich, thought)}
     with _HISTORY_LOCK:
         history = read_json(state_path(root, "depth.json"), {})
         rounds = history.setdefault(record, [])
