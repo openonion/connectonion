@@ -2003,10 +2003,11 @@ pinned to that edge: it comes into view with the draft.
   the heads; it opens at 07:00, so 07:00–21:00 is on screen at 1440×900, earlier
   when the week's first event or now is earlier. Above the hours is the
   **all-day strip**: an all-day event is a bar, and one that runs several days is
-  **one bar across its days**, never a card a day. A timed event whose days
-  are more than one (an afternoon to a morning two days on) is a bar there too,
-  as a calendar draws it, saying its start and end times in words; it is never a
-  block from midnight in the hours. The notebook's own dates sit
+  **one bar across its days**, never a card a day. A timed event that lasts a
+  day or more (an afternoon to a morning two days on) is a bar there too, as a
+  calendar draws it, saying its start and end times in words; it is never a
+  block from midnight in the hours. A shorter one past midnight (22:00 to 01:00)
+  stays a block on each of its two days. The notebook's own dates sit
   in the strip too, as outlined bars linking to their pages: promises with a due
   date (**Due**) and agenda pages on the date they state (**Noted**); one that
   is past due sits on **today** in red saying *Late, due Sep 25*, so there is no

@@ -4811,7 +4811,7 @@ def _agenda_items(events, language='en'):
     page = TEMPLATE.read_text()
     line = lambda name: re.search(r'function ' + name + r'\(.*', page)[0]
     functions = '\n'.join([_reader_function(name) for name in ['agT', 'agDay', 'agLastDay', 'agEvent', 'agendaEntries', 'agSegments', 'agHours', 'calendarDay', 'eventTitle']]
-                          + [line(name) for name in ['agMinutes', 'agToday', 'agTime', 'agClock']])
+                          + [line(name) for name in ['agMinutes', 'agToday', 'agTime', 'agClock', 'agOnStrip']])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     return _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
         + ';\nuiLanguage = ' + json.dumps(language) + ';\nconst REM = {as_of: "2026-11-16T01:06:00+00:00", status: {timezone: "Australia/Sydney"},'
@@ -4819,7 +4819,8 @@ def _agenda_items(events, language='en'):
         + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s, AG_SOURCE = {};
         const rows = [];
         for (const e of agendaEntries()) for (let day = e.first; day <= e.last; day = agDay(day, 1))
-          rows.push({day, card: JSON.stringify(e.allDay ? [e.title, agT("All day")] : agSegments([e], day).map(seg => [e.title, agHours(seg), e.where]))});
+          rows.push({day, card: JSON.stringify(e.allDay ? [e.title, agT("All day")] : agOnStrip(e) ? [e.title, "strip", e.where]
+            : agSegments([e], day).map(seg => [e.title, agHours(seg), e.where]))});
         console.log(JSON.stringify(rows));""")
 
 
@@ -4835,9 +4836,8 @@ def test_agenda_files_a_timed_event_on_every_day_it_covers_and_prints_its_place(
     zh = language == 'zh'
     days = lambda title: [row['day'] for row in rows if title in row['card']]
     assert days('Harbour sprint') == ['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18']
-    cards = [row['card'] for row in rows if 'Harbour sprint' in row['card']]
-    assert '09:00' in cards[0] and ('全天' if zh else 'All day') in cards[1]
-    assert ('到 17:00' if zh else 'Until 17:00') in cards[3]
+    # Four days long, it is one bar in the all-day strip on each of them, not a block from midnight.
+    assert all('"strip"' in row['card'] for row in rows if 'Harbour sprint' in row['card'])
     assert days('无标题' if zh else 'No title') == ['2026-11-16']
     assert days('Late call') == ['2026-11-19', '2026-11-20'] and days('Harbour Cafe') == ['2026-11-19', '2026-11-20']
     assert days('Ends at midnight') == ['2026-11-20'] and days('Reminder') == ['2026-11-21']

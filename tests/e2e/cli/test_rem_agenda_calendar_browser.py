@@ -172,7 +172,7 @@ def test_an_event_opens_its_detail_in_words_and_a_notebook_date_goes_to_its_page
     box = detail.bounding_box()
     assert 0 <= box["x"] and box["x"] + box["width"] <= 1440 and 0 <= box["y"] and box["y"] + box["height"] <= 900
     page.keyboard.press("Escape")
-    assert detail.count() == 0
+    detail.wait_for(state="detached", timeout=3000)  # it closes on Escape; counted at once it can still be leaving
     page.locator(".cal-allday").get_by_role("link", name="Harbour filing").click()
     page.wait_for_function("() => location.hash === '#r=agenda%2Fharbour-filing.md'")
 

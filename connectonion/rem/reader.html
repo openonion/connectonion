@@ -10398,9 +10398,10 @@ function agendaEntries() {
   }
   return entries;
 }
-// What goes in the all-day strip as a bar: an all-day event, and a timed one whose days are more than one, as a
-// calendar draws it; a block from midnight would hide its title above the first screen. It keeps its times in words.
-function agOnStrip(e) { return e.allDay || (e.kind === "event" && e.first !== e.last); }
+// What goes in the all-day strip as a bar: an all-day event, and a timed one that lasts a day or more and so covers
+// several days, as Google and Apple Calendar draw it; a block from midnight would hide its title above the first
+// screen. It keeps its times in words. A shorter one past midnight (22:00 to 01:00) stays a block on both days.
+function agOnStrip(e) { return e.allDay || (e.kind === "event" && e.first !== e.last && new Date(e.end) - new Date(e.start) >= 864e5); }
 // A timed event's part of one day, in minutes of that day: its start on the first, midnight to its end on the last.
 function agSegments(entries, day) {
   return entries.filter(e => !agOnStrip(e) && e.first <= day && e.last >= day).map(entry => ({ entry, day,
