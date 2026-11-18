@@ -3523,6 +3523,59 @@
   .n3-person .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; font: inherit; }
   .hero-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
   .hero-acts:empty { display: none; }
+  /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
+     while there is something to read (Investigate, Update): the one primary action of the page. */
+  .inv { position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+  .inv-row { display: inline-flex; align-items: center; gap: 6px; }
+  .inv-go { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill);
+    background: var(--green); color: var(--on-green); font: var(--w-bold) var(--s-body)/var(--lh-tight) var(--font); box-shadow: var(--e-green);
+    cursor: pointer; transition: box-shadow var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); white-space: nowrap; }
+  .inv-go:hover:not(:disabled) { transform: translateY(-1px); }
+  .inv-go .n { font-weight: var(--w-regular); }
+  .inv[data-label="deeper"] .inv-go { background: var(--raised); color: var(--ink); box-shadow: var(--e-ink); }
+  .inv-go:disabled { background: var(--well); color: var(--grey); box-shadow: none; cursor: default; transform: none; }
+  .inv-more { position: relative; }
+  .inv-more > summary { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--round); box-shadow: var(--e-ring);
+    color: var(--grey); cursor: pointer; list-style: none; }
+  .inv-more > summary::-webkit-details-marker { display: none; }
+  .inv-more > summary:hover, .inv-more[open] > summary { box-shadow: var(--e-ink); color: var(--ink); }
+  .inv-more > summary .ic { width: 18px; height: 18px; }
+  .inv-menu { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: 300px; max-width: calc(100vw - 32px); padding: var(--u1);
+    border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); text-align: left; }
+  .inv-menu .inv-h { margin: 0; padding: 8px 12px 4px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .inv-menu button { display: block; width: 100%; padding: 10px 12px; border: 0; border-radius: var(--radius); background: transparent; color: var(--ink);
+    font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); text-align: left; cursor: pointer; }
+  .inv-menu button:hover, .inv-menu button:focus-visible { background: var(--well); }
+  .inv-menu button:disabled { color: var(--grey); cursor: default; background: transparent; }
+  .inv-menu small { display: block; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .inv-menu .inv-default { color: var(--grey); font-weight: var(--w-regular); }
+  .inv-line { margin: 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-align: right; }
+  .inv-line button, .inv-line a { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline;
+    text-underline-offset: 3px; text-decoration-thickness: var(--hair); cursor: pointer; }
+  .inv-line .inv-fail { color: var(--red); }
+  .inv-steps { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 16px; margin: 0; padding: 0; list-style: none;
+    color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .inv-steps li { display: inline-flex; align-items: center; gap: 6px; }
+  .inv-steps li::before { content: ""; width: 8px; height: 8px; border-radius: var(--round); box-shadow: var(--e-ring); }
+  .inv-steps li.done { color: var(--ink); }
+  .inv-steps li.done::before { background: var(--ink); box-shadow: none; }
+  .inv-steps li.running { color: var(--ink); font-weight: var(--w-bold); }
+  .inv-steps li.running::before { box-shadow: var(--e-ink); animation: inv-beat var(--t-ember) var(--ease-out) infinite; }
+  .inv-steps li.failed { color: var(--red); }
+  .inv-steps .inv-stage { font-weight: var(--w-regular); color: var(--grey); }
+  @keyframes inv-beat { 50% { transform: scale(1.35); } }
+  @media (prefers-reduced-motion: reduce) { .inv-steps li.running::before { animation: none; } }
+  /* What changed opens over the page like the ⋯ menu, so the name beside it never gives up its width. */
+  .inv-changed { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: 420px; max-width: calc(100vw - 32px); margin: 0;
+    padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); color: var(--ink);
+    font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-align: left; }
+  .inv-changed ul { margin: 6px 0 0; padding-left: 18px; }
+  .inv-changed li + li { margin-top: 4px; }
+  .ov-say .inv, .page-head .inv { align-items: flex-start; margin-top: 16px; }
+  .ov-say .inv .inv-line, .page-head .inv .inv-line, .ov-say .inv .inv-steps, .page-head .inv .inv-steps { text-align: left; justify-content: flex-start; }
+  .ov-say :is(.inv-menu, .inv-changed), .page-head :is(.inv-menu, .inv-changed) { right: auto; left: 0; }
+  .hero-acts:has(.inv) { align-items: flex-start; }
+  .hero-acts:has(.inv) .r4-today { align-self: flex-start; }
   /* The dek: who they are in one line of words, role · organisation · unit (owner, 2026-11-18). */
   .n3-person .r4-sub.dek { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; max-width: none; margin: 8px 0 0; color: var(--ink); font: var(--w-regular) var(--s-lead)/var(--lh-body) var(--font); }
   .n3-person .dek a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
@@ -3624,6 +3677,9 @@
     .n3-person .hero .face.xl { align-self: flex-start; width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
     .hero-who { flex: 1 1 0; }
     .hero-acts { flex: 1 1 100%; justify-content: flex-start; gap: 6px; }
+    .hero-acts .inv { align-items: flex-start; width: 100%; }
+    .hero-acts .inv-line, .hero-acts .inv-steps { text-align: left; justify-content: flex-start; }
+    .hero-acts :is(.inv-menu, .inv-changed) { right: auto; left: 0; }
     .n3-person .r4-today { height: 40px; margin-left: 0; padding: 0 12px; }
     .n3-person .r4-sub.dek { font-size: var(--s-body); }
     /* On a phone each fact is one line, its label in a narrow column, so the card fits the first screen. */
@@ -9729,7 +9785,7 @@ function personHead(r) {
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
         el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]),
-      el("div", { class: "hero-acts" }, [personTodayLink(r, late)])]),
+      el("div", { class: "hero-acts" }, [investigateControl(r), personTodayLink(r, late)])]),
     profileCard(r)]);
 }
 // Who they are in one line of words: role, organisation (→ its page) and units (→ theirs). These are said here
@@ -9849,6 +9905,168 @@ function personTodayLink(r, late = 0) {
     : t(n === 1 ? "1 item in Today" : "{n} items in Today", { n }) });
   link.onclick = () => { todayLead = r.path; };
   return link;
+}
+// ---------- 调查 (#3105): one button in the person, organisation and project heads ----------
+// Its words follow the page (r.investigation, page_runs.states): 调查 when it was never investigated, 更新 · N
+// 封新邮件 when material arrived since, 深挖 · N 条线索 when the last enrich left leads open, 已是最新 greyed. A
+// click runs `co rem investigate PAGE --enrich` through the Host (POST /rem/investigate); the ⋯ beside it holds
+// the levels for whoever wants them. The run's steps show under the button while it works, then what changed,
+// with Undo; a rewrite waits as a draft to replace or discard. In a snapshot the button is off and says why.
+Object.assign(UI.zh, { "Investigate": "调查", "Update": "更新", "Dig deeper": "深挖", "Up to date · {date}": "已是最新 · {date}",
+  "1 new mail": "1 封新邮件", "{n} new mails": "{n} 封新邮件", "1 new session": "1 个新会话", "{n} new sessions": "{n} 个新会话",
+  "1 lead": "1 条线索", "{n} leads": "{n} 条线索", "Investigation level": "调查深度",
+  "Quick update": "快速更新", "Full investigation": "完整调查", "Rewrite the page": "整页重写", "default": "默认",
+  "Reads only the new material, no web": "只读新材料，不联网", "Adds the web follow-up": "含联网补充",
+  "Writes a new draft; replaces the page only when you accept it": "生成新稿，确认后替换",
+  "Last time about {n} points": "上次约 {n} 点", "Last investigated {date}": "上次调查 {date}", "Never investigated": "从未调查",
+  "Investigating…": "正在调查…", "Write": "写", "Append": "追加", "Web follow-up": "联网补充", "Rewrite": "重写",
+  "Updated · {n} lines added": "已更新 · 新增 {n} 行", "Updated · 1 line added": "已更新 · 新增 1 行", "Updated": "已更新",
+  "Nothing new to add": "没有可补充的内容", "What changed": "改了什么", "Undone · the page is back as it was": "已撤销 · 页面已恢复",
+  "A rewrite is ready · {before} → {after} characters": "整页重写稿已就绪 · {before} → {after} 字",
+  "Replace the page": "替换页面", "Discard": "丢弃", "Rewrite discarded": "已丢弃重写稿",
+  "The investigation stopped: {why}": "调查没有完成：{why}", "The investigation stopped": "调查没有完成",
+  "Could not do that: {why}": "没有做成：{why}",
+  "This is a snapshot: investigate from the live reader.": "这是快照：请在实时阅读器里调查。" });
+const INV_STEPS = { write: "Write", append: "Append", rewrite: "Rewrite", enrich: "Web follow-up" };
+const INV_LEVELS = [["full", "Full investigation", "Adds the web follow-up"],
+  ["quick", "Quick update", "Reads only the new material, no web"], ["rewrite", "Rewrite the page", "Writes a new draft; replaces the page only when you accept it"]];
+const INV_RUNS = new Map();  // what this tab has seen of a page's run since the page data was built
+function investigateControl(r) {
+  if (!r.investigation) return null;
+  const box = el("div", { class: "inv" });
+  const paint = () => {
+    const s = { ...r.investigation, ...(INV_RUNS.get(r.path) || {}) };
+    box.dataset.label = s.run?.result === "running" ? "running" : s.label;
+    box.replaceChildren(...invParts(r, s, paint).filter(Boolean));
+  };
+  paint();
+  return box;
+}
+function invCount(one, many, n) { return t(n === 1 ? one : many, { n }); }
+function invLabel(s) {
+  if (s.label === "investigate") return [t("Investigate")];
+  if (s.label === "update") return [t("Update"), el("span", { class: "n", text: "· " + (s.new_mails
+    ? invCount("1 new mail", "{n} new mails", s.new_mails) : invCount("1 new session", "{n} new sessions", s.new_sessions)) })];
+  if (s.label === "deeper") return [t("Dig deeper"), el("span", { class: "n", text: "· " + invCount("1 lead", "{n} leads", s.leads) })];
+  return [t("Up to date · {date}", { date: s.last ? fmtDate(s.last) : "" })];
+}
+function invParts(r, s, paint) {
+  const run = s.run, running = run?.result === "running", live = liveHere();
+  const go = el("button", { type: "button", class: "inv-go", ...(live ? {} : { disabled: "disabled", title: t("This is a snapshot: investigate from the live reader.") }) },
+    running ? [t("Investigating…")] : invLabel(s));
+  if (running || s.label === "current") go.disabled = true;
+  go.onclick = () => invRun(r, "full", paint);
+  const parts = [el("div", { class: "inv-row" }, [go, invMenu(r, s, paint, running || !live)])];
+  if (running) parts.push(invSteps(run));
+  else if (s.notice) parts.push(el("p", { class: "inv-line", role: "status", text: s.notice }));
+  else if (run && invRecent(run)) parts.push(...invResult(r, s, paint));
+  if (!running && s.rewrite) parts.push(invDraft(r, s, paint));
+  if (!running && !(run && invRecent(run)) && !s.notice && s.label !== "current") parts.push(el("p", { class: "inv-line", text: s.last ? t("Last investigated {date}", { date: fmtDate(s.last) }) : t("Never investigated") }));
+  if (!live) parts.push(liveReaderLine("This is a snapshot: investigate from the live reader."));
+  if (running && live) invFollow(r, paint);
+  return parts;
+}
+function invMenu(r, s, paint, off) {
+  const menu = el("details", { class: "inv-more" }, [el("summary", { "aria-label": t("Investigation level"), title: t("Investigation level") }, [icon("ellipsis")])]);
+  const cost = mode => mode !== "rewrite" && s.cost?.[mode] ? " · " + t("Last time about {n} points", { n: s.cost[mode] }) : "";
+  menu.append(el("div", { class: "inv-menu", role: "menu" }, [el("p", { class: "inv-h", text: t("Investigation level") }),
+    ...INV_LEVELS.map(([mode, name, says]) => {
+      const item = el("button", { type: "button", role: "menuitem", "data-level": mode, ...(off ? { disabled: "disabled" } : {}) },
+        [t(name), mode === "full" ? el("span", { class: "inv-default", text: " · " + t("default") }) : null, el("small", { text: t(says) + cost(mode) })]);
+      item.onclick = () => { menu.open = false; invRun(r, mode, paint); };
+      return item;
+    })]));
+  menu.onkeydown = event => { if (event.key === "Escape" && menu.open) { event.stopPropagation(); menu.open = false; menu.querySelector("summary").focus(); } };
+  return menu;
+}
+function invSteps(run) {
+  return el("ol", { class: "inv-steps", "aria-live": "polite" }, (run.progress || run.steps.map(step => ({ step, state: "waiting" }))).map(row =>
+    el("li", { class: row.state }, [t(INV_STEPS[row.step] || row.step),
+      row.state === "running" && row.stage ? el("span", { class: "inv-stage", text: " · " + invStage(row.stage) }) : null])));
+}
+// The run record's stage, in the reader's language: the common ones by name, a round with its numbers.
+Object.assign(UI.zh, { "gathering sources": "收集材料", "searching project documents": "查找项目文档", "preparing evidence": "整理材料",
+  "writing evidence files": "整理材料", "writing investigation": "写作", "reviewing": "审核", "claim audit": "核对引用",
+  "following leads": "跟进线索", "recording result": "保存", "reading the organisation's website": "读组织网站",
+  "repair round": "修补", "editing round": "编辑", "quote round": "补引语", "insight critic": "复核洞见",
+  "processing attributed feedback": "处理反馈" });
+function invStage(stage) {
+  const round = /^investigation round (\d+) of (\d+)/.exec(stage), repair = /^repair (\d+)/.exec(stage);
+  if (round) return uiLanguage === "zh" ? `第 ${round[1]}/${round[2]} 轮` : `round ${round[1]} of ${round[2]}`;
+  if (repair) return uiLanguage === "zh" ? `修补 ${repair[1]}` : stage;
+  const turn = /^turn (\d+) of (\d+)/.exec(stage), source = /^(gathering|searching|listing) (\S+) (mail|attachments)$/.exec(stage);
+  if (turn) return uiLanguage === "zh" ? `第 ${turn[1]}/${turn[2]} 步` : stage;
+  if (source && uiLanguage === "zh") return { gathering: "读取", searching: "搜索", listing: "列出" }[source[1]] + " " + source[2]
+    + (source[3] === "mail" ? " 邮件" : " 附件");
+  const scanned = /^gathering (.+?): [\d,]+ scanned/.exec(stage);
+  if (scanned) return uiLanguage === "zh" ? `读取 ${scanned[1]}` : `gathering ${scanned[1]}`;
+  return t(stage.replace(/:\s*[\d,]+\b.*$/, ""));
+}
+// A finished run is said for half a day after it ends, then the head goes back to the page's state.
+function invRecent(run) { return run.result !== "running" && Date.now() - Date.parse(run.finished_at || run.started_at) < 12 * 3600 * 1000; }
+function invResult(r, s, paint) {
+  const run = s.run;
+  if (run.result === "failed") return [el("p", { class: "inv-line", role: "status" }, [el("span", { class: "inv-fail",
+    text: run.reason ? t("The investigation stopped: {why}", { why: run.reason }) : t("The investigation stopped") })])];
+  if (run.mode === "rewrite") return [];
+  const added = run.added_lines || [], count = run.added_count ?? added.length;
+  const words = !run.changed ? t("Nothing new to add") : count === 1 ? t("Updated · 1 line added")
+    : count ? t("Updated · {n} lines added", { n: count }) : t("Updated");
+  const line = el("p", { class: "inv-line", role: "status" }, [words]);
+  const changes = added.length ? el("div", { class: "inv-changed", hidden: "" }, [el("b", { text: t("What changed") }),
+    el("ul", {}, added.slice(0, 12).map(text => el("li", { html: inline(text.replace(/^[-*]\s+/, ""), r.path) })))]) : null;
+  if (changes) {
+    const open = el("button", { type: "button", "aria-expanded": "false", text: t("What changed") });
+    open.onclick = () => { changes.hidden = !changes.hidden; open.setAttribute("aria-expanded", String(!changes.hidden)); };
+    line.append(" · ", open);
+  }
+  if (s.undo && liveHere()) {
+    const undo = el("button", { type: "button", text: t("Undo") });
+    undo.onclick = () => invAct(r, "undo", paint, t("Undone · the page is back as it was"));
+    line.append(" · ", undo);
+  }
+  return [line, changes];
+}
+function invDraft(r, s, paint) {
+  const [before, after] = s.rewrite.chars || [0, 0];
+  const line = el("p", { class: "inv-line", role: "status" }, [t("A rewrite is ready · {before} → {after} characters",
+    { before: before.toLocaleString(uiLocale()), after: after.toLocaleString(uiLocale()) })]);
+  if (liveHere()) {
+    const accept = el("button", { type: "button", text: t("Replace the page") }), discard = el("button", { type: "button", text: t("Discard") });
+    accept.onclick = () => invAct(r, "accept", paint, t("Updated"));
+    discard.onclick = () => invAct(r, "discard", paint, t("Rewrite discarded"));
+    line.append(" · ", accept, " · ", discard);
+  }
+  return line;
+}
+async function invRun(r, mode, paint) {
+  const reply = await hostPost("/rem/investigate", { action: "run", page: r.path, mode });
+  const { ok, code, error, ...run } = reply;
+  INV_RUNS.set(r.path, ok ? { run, notice: "" } : { notice: invRefusal(code, error) });
+  paint();
+}
+function invRefusal(code, error) {
+  return code === 401 ? t("Your session expired. Reload the page.") : code === 0 ? t("REM is not answering right now. Try again in a moment.")
+    : t("Could not do that: {why}", { why: error || code });
+}
+async function invAct(r, action, paint, done) {
+  const { ok, code, error } = await hostPost("/rem/investigate", { action, page: r.path });
+  // Said here at once; the rebuilt page that follows shows the page as it now is.
+  INV_RUNS.set(r.path, { notice: ok ? done : invRefusal(code, error), run: null, rewrite: action === "undo" ? r.investigation.rewrite : null,
+    undo: false });
+  paint();
+}
+function invFollow(r, paint) {
+  if (invFollow.on?.has(r.path)) return;
+  (invFollow.on ||= new Set()).add(r.path);
+  const tick = async () => {
+    const { ok, code, ...run } = await hostPost("/rem/investigate", { page: r.path });
+    if (ok) INV_RUNS.set(r.path, { run, notice: "", undo: run.undo, rewrite: run.rewrite });
+    if (ok && run.result === "running") { paint(); setTimeout(tick, 4000); return; }
+    invFollow.on.delete(r.path);
+    paint();
+  };
+  setTimeout(tick, 4000);
 }
 // The contact rhythm: one cell per day for the last half year (or since you first spoke), dark where the
 // record dates an exchange. Beside it the counts that say how close you are.
@@ -11838,7 +12056,7 @@ function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }),
-      translationLine(r), orgOpening(v)]), orgTree(v)]);
+      translationLine(r), orgOpening(v), investigateControl(r)]), orgTree(v)]);
 }
 function orgOpening(v) {
   const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
@@ -13493,7 +13711,7 @@ function record(path, heading) {
   } else {
     main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
     main.appendChild(recordEyebrow(r, person));
-    if (r.category === "projects") head.appendChild(projectStateLine(r));
+    if (r.category === "projects") head.append(projectStateLine(r), investigateControl(r) || "");
     if (r.category !== "projects") head.appendChild(leadRow(r));
     main.appendChild(head);
     // On a project the note that no translation is ready yet closes the record instead of opening it (#3096).

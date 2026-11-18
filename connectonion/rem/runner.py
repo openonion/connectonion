@@ -708,7 +708,8 @@ CITATION_ONLY = ("Citation has no identifiable source:", "Unused citation:", "Ci
 SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim audit did not pass",
                "Key decision without the owner's words:",
                "Open thread rests only on coding sessions:",
-               "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
+               "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:",
+               "Dropped claim line the page had:")
 MISQUOTE = "Quote is not in its cited source:"
 
 
@@ -840,6 +841,10 @@ def repair_instruction(record: str, errors: list[str], directory: Path, workdir:
         text += (" For each named quote or source, restore the sentence that cited it, with its citation, "
                  "unchanged, unless an original contradicts it. A Sources entry that no sentence cites is "
                  "removed again, so adding the id to Sources alone is refused for the same reason.")
+    if any(error.startswith("Dropped claim line") for error in errors):
+        # #3105: an append removes nothing; a line the new material contradicts is corrected in place.
+        text += (" For each named claim line, put the line back with its citation; if a newer original "
+                 "contradicts it, correct it in place and keep the old value: '<new> (was <old> until <date>)'.")
     if record.startswith("projects/"):
         text += (" Replace invented `git:` or `file:` citations with supplied source ids, or with pinned ones: "
                  "a `file:` id needs a file under mapped Paths and its current SHA-256, a `git:` id a full "
@@ -1029,6 +1034,11 @@ def _captures(root, directory, items, candidate, usage) -> list[dict]:
         raise RunFailed(f"Candidate rejected, kept at {candidate}: {error}", usage) from error
 
 
+def appending(items) -> bool:
+    """Is this turn an append to a page investigated before, or an enrich (#3105)? Its page item says so."""
+    return any(item.get("role") == "page" and item.get("append") for item in items)
+
+
 def _promote_candidate(notebook, record, candidate, original, items, directory, usage, lock_held=False,
                        investigation=True, claim_config=None, last_resort=False, carried="", ask_quotes=False,
                        stage_progress=None, native=False, report="", draft_only=False):
@@ -1156,10 +1166,12 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         restored = [*restored, *again]
         text = drop_uncited_sources(text)
     exempt = unverified_quotes(notebook.root, record, carried, items) if carried else frozenset()
+    # #3105: an append (or enrich) keeps every cited line it was given, or marks it corrected.
+    claims = appending(items)
     if last_resort and carried:
         before_restore = text
         # A restored History line can take it past sixteen: fold again (2026-10-21, 17 lines refused an update).
-        text = fold_history(restore_dropped(carried, text, exempt))
+        text = fold_history(restore_dropped(carried, text, exempt, claims=claims))
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
@@ -1190,7 +1202,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
     if carried:
-        errors += dropped_content(carried, text, exempt)
+        errors += dropped_content(carried, text, exempt, claims=claims)
     if ask_quotes and record.startswith("projects/"):
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)

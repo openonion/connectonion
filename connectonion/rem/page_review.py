@@ -1433,10 +1433,13 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 external.update(source for source in cited_texts(root, candidate, items)
                                 if not source.startswith(("investigation:", "codex:", "claude-code:")))
             numbers = _cited_sources(candidate)
+            # A line the page already had is not this run's claim: the 2026-11-18 append A/B was refused
+            # for keeping onionwright's existing Open threads when no new session had arrived (#3105).
+            carried = {_line_key(line) for line in prose(original).splitlines()}
             for heading in ('Insight', 'Open threads'):
                 section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
                 if section and not re.fullmatch(r'-?\s*Unknown', section[1].strip(), re.I):
-                    lines = [line for line in section[1].splitlines() if line.strip()]
+                    lines = [line for line in section[1].splitlines() if line.strip() and _line_key(line) not in carried]
                     if not all(any(numbers.get(n) in external for n in CITATION.findall(line)) for line in lines):
                         errors.append(f'No assigned project session inputs: keep {heading} Unknown')
         for label in ('Sessions', 'First seen', 'Last seen'):
@@ -2170,19 +2173,69 @@ def _lost_quotes(before: str, after: str, exempt=frozenset()) -> set[str]:
     return lost
 
 
-def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
+# Sections whose lines an append may change: History is folded by the program at
+# sixteen lines, and an Uncertainties question goes once it is answered. The lead is
+# the page's summary and is rewritten with what is live; its quotes and sources stay guarded.
+CLAIM_FREE = ('History', 'Uncertainties', 'Sources')
+# A line kept with its old value says so: "CEO (was CTO until 2026-10-01)".
+CORRECTED = re.compile(r'\b(?:was|were|until|previously|formerly|earlier|corrected|superseded|no longer)\b'
+                       r'|此前|曾|原为|直到|更正', re.I)
+
+
+def _line_key(line: str) -> str:
+    """A line's words without citation numbers, links or layout: renumbering is not a change."""
+    words = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', line)
+    words = re.sub(r'\[(?:W?\d+|personal|sensitive)\](?!\()', '', words)
+    return ' '.join(words.strip().lstrip('-*').split()).rstrip(' .;').casefold()
+
+
+def claim_lines(text: str) -> dict[str, str]:
+    """{key: line} for every cited line an append must keep: outside the lead, History,
+    Uncertainties and Sources, and not a Facts field (facts keep their own guard)."""
+    section, found = '', {}
+    for line in prose(text).splitlines():
+        if line.startswith('## '):
+            section = line[3:].strip()
+            continue
+        if (not section or section in CLAIM_FREE or not CITATION.search(line)
+                or CONTACT_LINE.match(line) or not line.strip()):
+            continue
+        key = _line_key(line)
+        if len(key) >= 12:
+            found.setdefault(key, line.strip())
+    return found
+
+
+def _lost_claims(before: str, after: str) -> dict[str, str]:
+    """The cited lines `after` neither keeps (word for word, extended or lightly edited)
+    nor marks corrected. A line may move to another section."""
+    rows = [_line_key(line) for line in prose(after).partition('\n## Sources\n')[0].splitlines() if line.strip()]
+    joined = '\n'.join(rows)
+
+    def kept(key):
+        if key in joined:
+            return True
+        return any(row and (len(row) * 2 >= len(key) and _contained(key, row) >= 0.85
+                            or CORRECTED.search(row) and _contained(key, row) >= 0.5) for row in rows)
+    return {key: line for key, line in claim_lines(before).items() if not kept(key)}
+
+
+def dropped(before: str, after: str, exempt=frozenset(), *, claims=False) -> list[str]:
     """Name each loss so a resumed writer can restore it exactly.
 
     `exempt` are quotes the page had that are not in their cited source: guarding one put a broken
     quote back over the writer's correction, and the round was refused (2026-10-20).
+    `claims`: an append (#3105) also keeps every cited line, or marks it corrected.
     """
     return ([f'Dropped quote the page had: “{quote}”'
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
-               for source in sorted(_evidence_sources(before) - _listed_sources(after))])
+               for source in sorted(_evidence_sources(before) - _listed_sources(after))]
+            + ([f'Dropped claim line the page had: {re.sub(r"[ ]*(?:\[W?\d+\](?!\()[ ]*)+", "", line).rstrip()}'
+                for line in _lost_claims(before, after).values()] if claims else []))
 
 
-def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
+def restore_dropped(before: str, after: str, exempt=frozenset(), *, claims=False) -> str:
     """Restore missing evidence beside a rewrite that keeps every non-lost quote and source.
 
     Never replace a line carrying a new source or quote. Insert the original immediately after
@@ -2201,7 +2254,8 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
         lost_quotes = _lost_quotes(before, after, exempt)
         lost_sources = _evidence_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
-        if not (quotes(visible) & lost_quotes or cited & lost_sources):
+        lost_claim = claims and _line_key(visible) in _lost_claims(before, after)
+        if not (quotes(visible) & lost_quotes or cited & lost_sources or lost_claim):
             continue
         seen.add(line)
         restored, after = _restore_citations(line, after, before)

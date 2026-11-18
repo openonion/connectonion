@@ -3065,7 +3065,7 @@ def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
 def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retried(tmp_path, monkeypatch):
     """connectonion (2026-10-15): round six left zero of round five's fifteen owner quotes."""
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), **kw: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/co.md'
     notebook.stub_project(record, 'co', ['/w/co'])
@@ -3092,7 +3092,7 @@ def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retri
 
 def test_a_round_repairs_its_carried_quotes_and_keeps_its_other_change(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), **kw: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/example.md'
     notebook.stub_project(record, 'example', ['/work/example'])
@@ -3177,7 +3177,7 @@ def test_org_gather_queries_each_distinct_server_term_once():
 
 def test_quote_loss_with_no_accepted_round_still_records_material_for_retry(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), **kw: after)
     root = _notebook(tmp_path, 'codex')
     notebook, record = inv.Notebook(root), 'people/rowan.md'
     full = notebook.read(record).replace('## History\n',
@@ -3678,3 +3678,60 @@ def test_domain_billing_notice_is_not_marked_as_outside_the_org(tmp_path, archiv
                          subscriptions={}, archive_root=tmp_path, record='orgs/lantern.md')
     assert len(items) == 1
     assert not items[0].get('relationship_scope')
+
+
+# #3105: an investigated page is appended to; an unfilled one is written.
+INVESTIGATED_PERSON = ('# Rowan Ashdown\n\nRowan teaches design at UNSW and asked the user for a guest talk. [1]\n\n'
+                       '## Facts\n- Email: rowan.ashdown@unsw.edu.au [1]\n\n'
+                       '## Who they are\n- Rowan teaches design at UNSW. [1]\n\n'
+                       '## Sources\n- [1] outlook:aaaaaaaaaaaa — 2026-09-01\n\n'
+                       'Investigation: investigated 2026-09-02 (outlook)\n')
+NEW_MAIL = [{"role": "other", "source": "outlook:bbbbbbbbbbbb", "speaker": "rowan.ashdown@unsw.edu.au",
+             "timestamp": "2026-09-05T00:00:00+00:00", "subject": "Talk", "text": "The talk moves to Friday."}]
+
+
+def _appendable(tmp_path, monkeypatch, text=INVESTIGATED_PERSON):
+    root = _notebook(tmp_path, "codex")
+    inv.Notebook(root).write("people/rowan.md", text)
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([dict(item) for item in NEW_MAIL], ["outlook: 1 mail"]))
+    monkeypatch.setattr(inv, "project_mentions", lambda *args, **kwargs: ([], "project documents: none"))
+    return root
+
+
+def test_an_investigated_page_is_appended_to_with_its_own_task_and_the_archive(tmp_path, monkeypatch):
+    root = _appendable(tmp_path, monkeypatch)
+    seen = []
+    result = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan.ashdown@unsw.edu.au"], days=7,
+                             clients={}, subscriptions={},
+                             runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    page = next(item for item in seen if item.get("role") == "page")
+    assert page["append"] is True
+    task = next(item for item in seen if item.get("source") == "investigation:append")
+    assert "Never remove" in task["text"] and "was" in task["text"] and "until" in task["text"]
+    assert str(root / ".state" / "mail") in task["text"]
+    assert result["mode"] == "append"
+
+
+def test_an_unfilled_page_and_a_rewrite_are_written_whole(tmp_path, monkeypatch):
+    root = _appendable(tmp_path, monkeypatch)
+    for mode in ("rewrite",):
+        seen = []
+        result = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan.ashdown@unsw.edu.au"], days=7,
+                                 clients={}, subscriptions={}, mode=mode,
+                                 runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+        assert not any(item.get("source") == "investigation:append" for item in seen)
+        assert not next(item for item in seen if item.get("role") == "page").get("append")
+        assert result["mode"] == "write"
+
+
+def test_an_append_runs_no_whole_page_synthesis_editing_or_quote_round(tmp_path, monkeypatch):
+    root = _appendable(tmp_path, monkeypatch)
+    state = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan.ashdown@unsw.edu.au"], days=7,
+                            clients={}, subscriptions={}, prepare_only=True)
+    assert state["append"] is True
+    state["multi"] = True
+    book = inv.Notebook(root)
+    state["number"], state["edited"] = len(state["parts"]) + 1, True
+    assert inv.prepare_round(book, state) is None
+    from connectonion.rem import native_round
+    assert native_round._followup_items(book, state) is None

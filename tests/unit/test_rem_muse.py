@@ -1279,3 +1279,18 @@ def test_a_capture_entry_that_is_neither_a_url_nor_a_source_id_gets_a_repair_tur
             and '"url": "https://<host>/<path>"' in prompts[1] and "is not a capture: remove it" in prompts[1])
     review = json.loads(next((notebook.root / ".state").rglob("review.json")).read_text())
     assert review["accepted"] is False and review["errors"][0].startswith("Research captures need")
+
+
+def test_enrich_page_is_guarded_as_an_append_and_muse_is_not(notebook, monkeypatch):
+    """#3105: enrich never removes a line, so review keeps its cited lines; muse may still reshape the page."""
+    from connectonion.rem.runner import appending
+    monkeypatch.setattr(feature, "gather", lambda *a, **kw: ([], []))
+    seen = {}
+
+    def fake(book, items, config, stage, **kw):
+        seen[stage] = items
+        return {"changed": [], "usage": None}
+
+    feature.enrich(notebook.root, RECORD, runner=fake)
+    feature.muse(notebook.root, RECORD, runner=fake)
+    assert appending(seen["enrich"]) and not appending(seen["muse"])

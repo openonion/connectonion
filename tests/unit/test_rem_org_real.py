@@ -231,7 +231,7 @@ def test_org_location_keeps_free_text_and_qualifiers_on_the_page(location):
       const document = {createTextNode: text => ({text})};
       const orgTableT = orgT, categoryHref = () => '#c=orgs', label = () => 'Organisations';
       const orgView = r => ({r,people:r.people.map(byPath),events:[]});
-      const orgOver = orgCrumb, translationLine = () => null, orgTree = () => null, orgMilestones = () => null;
+      const orgOver = orgCrumb, translationLine = () => null, orgTree = () => null, orgMilestones = () => null, investigateControl = () => null;
       const nameLang = () => 'en', r = byPath('orgs/cedar.md');
       const row = orgTableRow({r,people:[],pages:[]});
       console.log(JSON.stringify({location:row.location,cell:textCell(row.location),page:orgPage(r)}));

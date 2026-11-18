@@ -5633,7 +5633,8 @@ FIRST_SCREEN = r"""() => {
     for (let p = e; p && p !== document.body; p = p.parentElement) { const ps = getComputedStyle(p); if (+ps.opacity < 0.05) return false;
       if (p !== e && ps.overflow === 'hidden') { const pr = p.getBoundingClientRect(); if (r.top >= pr.bottom || r.bottom <= pr.top || pr.height < 1) return false; } }
     return true; };
-  const all = [...main.querySelectorAll('*')].filter(vis);
+  // The head's one Investigate control (#3105, the owner's decision) has its own test; the record is audited around it.
+  const all = [...main.querySelectorAll('*')].filter(vis).filter(e => !e.closest('.inv'));
   const textLeaves = all.filter(e => e.tagName !== 'text' && e.tagName !== 'tspan' && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
   const svgText = all.filter(e => (e.tagName === 'text' || e.tagName === 'tspan') && e.textContent.trim());
   const sizes = new Set(), weights = new Set();
@@ -5828,7 +5829,7 @@ def test_org_milestones_have_real_dates_and_the_hierarchy_steps_down_for_the_key
     assert dates.count() == len(expected) == 4
     assert dates.evaluate_all("nodes => nodes.map(n => n.dateTime)") == expected
     assert all(re.search(r'\d', text) for text in dates.all_inner_texts())
-    assert page.locator('.ov-page .ov-time, .ov-page svg').count() == 0
+    assert page.locator('.ov-page .ov-time, .ov-page svg:not(.inv svg)').count() == 0
     # Nested tree rows indent, and arrow navigation follows their reading order.
     steps = page.evaluate("""() => [...document.querySelectorAll('.ov-org-tree [role=treeitem] [role=treeitem]')]
       .filter(n => n.checkVisibility()).map(n => [n.querySelector('.ov-trow').getBoundingClientRect().x,

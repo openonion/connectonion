@@ -812,6 +812,8 @@ def _prepare_investigation(root, cursor, job, directory):
 
 def _followup_items(book, state):
     record = state["record"]
+    if state.get("append"):
+        return None  # An append ends with its parts: no editing or quote turn rewrites lines it did not touch (#3105).
     page = state.get("draft", book.read(record))
     if not state.get("tail"):
         state["tail"] = "editing" if state["multi"] else "quotes"
