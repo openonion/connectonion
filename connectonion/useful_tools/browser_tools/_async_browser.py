@@ -1567,12 +1567,12 @@ class AsyncBrowserCore:
             await self.page.keyboard.press(key)
             return f"Pressed: '{key}'"
 
-    async def keyboard_type(self, text: str) -> str:
-        """Type into the focused element without blocking the event loop."""
+    async def keyboard_type(self, text: str, human: bool = False) -> str:
+        """Paste into the focused element; human=True types it key by key, as a person would."""
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
-            await humanize.type_text(self.page, text, self._clipboard_lock)
+            await humanize.type_text(self.page, text, self._clipboard_lock, human)
             return f"""Typed: '{text}'
 
 SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
@@ -1663,9 +1663,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             return f"Clicked element {index + 1}/{count} matching selector: {selector}{where}"
 
     async def type_text_by_selector(
-        self, selector: str, text: str, index: int = 0
+        self, selector: str, text: str, index: int = 0, human: bool = False
     ) -> str:
-        """Focus a stable selector and type through async humanized input."""
+        """Focus a stable selector and paste the text; human=True types it key by key."""
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
@@ -1678,7 +1678,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                     f"Selector matched {count} elements; index {index} is out of range"
                 )
             await locator.nth(index).click(force=True)
-            await humanize.type_text(self.page, text, self._clipboard_lock)
+            await humanize.type_text(self.page, text, self._clipboard_lock, human)
             await self.page.wait_for_timeout(1000)
             return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
 

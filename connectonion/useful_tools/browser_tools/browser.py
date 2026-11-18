@@ -1181,8 +1181,8 @@ class BrowserAutomation:
 
         return locator.nth(index).inner_text()
 
-    def type_text_by_selector(self, selector: str, text: str, index: int = 0) -> str:
-        """Focus an element by CSS selector and type text via Playwright keyboard."""
+    def type_text_by_selector(self, selector: str, text: str, index: int = 0, human: bool = False) -> str:
+        """Focus an element by CSS selector and paste text; human=True types it key by key."""
         if not self.page:
             return "Browser not open"
 
@@ -1195,7 +1195,7 @@ class BrowserAutomation:
 
         target = locator.nth(index)
         target.click(force=True)
-        humanize.type_text(self.page, text)
+        humanize.type_text(self.page, text, human)
         self.page.wait_for_timeout(1000)
         return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
 
@@ -1842,14 +1842,17 @@ class BrowserAutomation:
         print(f"\n[browser] DOUBLE-CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Double-clicked [{element.index}] '{element.text}' at ({x}, {y})"
 
-    def keyboard_type(self, text: str) -> str:
-        """Type text using keyboard input (Playwright keyboard API wrapper).
+    def keyboard_type(self, text: str, human: bool = False) -> str:
+        """Paste text into the focused element; human=True types it key by key.
 
-        Simulates keyboard typing character by character into the currently focused element.
+        Pasting is one event however long the text. Key by key takes about 0.1 s a
+        character, for fields where the cadence matters. A field that refuses the
+        paste is typed key by key either way.
         Works with any element type (input, textarea, contenteditable, etc).
 
         Args:
-            text: The text to type
+            text: The text to enter
+            human: Type it key by key with human timing instead of pasting
 
         Returns:
             Success message with system reminder to verify with screenshot
@@ -1857,7 +1860,7 @@ class BrowserAutomation:
         if not self.page:
             return "Browser not open"
 
-        humanize.type_text(self.page, text)
+        humanize.type_text(self.page, text, human)
 
         return f"""Typed: '{text}'
 
