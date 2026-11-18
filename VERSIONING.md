@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc20
+## Current Version: 1.9.6rc21
+Release candidate 1.9.6rc21 for 1.9.6: when `co send` cannot reach the receiver directly, because
+its Host is behind a router or not running, a file of up to 10 MB waits on the server for 7 days,
+boxed to the receiver so the server never sees its name or bytes, and `co receive` there takes it
+from a trusted sender. `co browser keyboard_type` and `type_text_by_selector` paste the text in one
+event (measured: a 1,402-character post had 610 characters in when the CLI's 120 s timeout cut it
+off); `--human` types key by key. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc21.md).
+
+- 1.9.6rc21 (co send: small files wait on the server; co browser: keyboard_type pastes).
+
+### Previous candidate: 1.9.6rc20
+
 Release candidate 1.9.6rc20 for 1.9.6: the night's Codex workers run at the reasoning effort the
 notebook's config names instead of inheriting the global Codex setting (measured: every worker of
 three real nights ran at `max` against a configured `medium`). `co rem catchup` and the scheduled
