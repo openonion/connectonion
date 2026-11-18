@@ -9912,13 +9912,15 @@ function personTodayLink(r, late = 0) {
 // click runs `co rem investigate PAGE --enrich` through the Host (POST /rem/investigate); the ⋯ beside it holds
 // the levels for whoever wants them. The run's steps show under the button while it works, then what changed,
 // with Undo; a rewrite waits as a draft to replace or discard. In a snapshot the button is off and says why.
-Object.assign(UI.zh, { "Investigate": "调查", "Update": "更新", "Dig deeper": "深挖", "Up to date · {date}": "已是最新 · {date}",
-  "1 new mail": "1 封新邮件", "{n} new mails": "{n} 封新邮件", "1 new session": "1 个新会话", "{n} new sessions": "{n} 个新会话",
-  "1 lead": "1 条线索", "{n} leads": "{n} 条线索", "Investigation level": "调查深度",
+Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "Not investigated yet": "还没调查过这页", "last {date}": "上次 {date}",
+  "1 new mail not in this page yet": "有 1 封新邮件还没写进这页", "{n} new mails not in this page yet": "有 {n} 封新邮件还没写进这页",
+  "1 new session not in this page yet": "有 1 个新会话还没写进这页", "{n} new sessions not in this page yet": "有 {n} 个新会话还没写进这页",
+  "1 lead not followed yet (uses the web)": "还有 1 条线索没查（会联网）", "{n} leads not followed yet (uses the web)": "还有 {n} 条线索没查（会联网）",
+  "Investigation level": "调查深度",
   "Quick update": "快速更新", "Full investigation": "完整调查", "Rewrite the page": "整页重写", "default": "默认",
   "Reads only the new material, no web": "只读新材料，不联网", "Adds the web follow-up": "含联网补充",
   "Writes a new draft; replaces the page only when you accept it": "生成新稿，确认后替换",
-  "Last time about {n} points": "上次约 {n} 点", "Last investigated {date}": "上次调查 {date}", "Never investigated": "从未调查",
+  "Last time about {n} points": "上次约 {n} 点", "Last investigated {date}": "上次调查 {date}", "Never investigated": "还没调查过这页",
   "Investigating…": "正在调查…", "Write": "写", "Append": "追加", "Web follow-up": "联网补充", "Rewrite": "重写",
   "Updated · {n} lines added": "已更新 · 新增 {n} 行", "Updated · 1 line added": "已更新 · 新增 1 行", "Updated": "已更新",
   "Nothing new to add": "没有可补充的内容", "What changed": "改了什么", "Undone · the page is back as it was": "已撤销 · 页面已恢复",
@@ -9943,12 +9945,16 @@ function investigateControl(r) {
   return box;
 }
 function invCount(one, many, n) { return t(n === 1 ? one : many, { n }); }
-function invLabel(s) {
-  if (s.label === "investigate") return [t("Investigate")];
-  if (s.label === "update") return [t("Update"), el("span", { class: "n", text: "· " + (s.new_mails
-    ? invCount("1 new mail", "{n} new mails", s.new_mails) : invCount("1 new session", "{n} new sessions", s.new_sessions)) })];
-  if (s.label === "deeper") return [t("Dig deeper"), el("span", { class: "n", text: "· " + invCount("1 lead", "{n} leads", s.leads) })];
-  return [t("Up to date · {date}", { date: s.last ? fmtDate(s.last) : "" })];
+// One verb on the button, always (owner, 2026-11-18: «更新是什么意思呢？»); the reason is the line under it,
+// in words that say what the click will do.
+function invLabel(s) { return [t(s.label === "current" ? "Up to date" : "Investigate")]; }
+function invWhy(s) {
+  const last = s.last ? " · " + t("last {date}", { date: fmtDate(s.last) }) : "";
+  if (s.label === "investigate") return t("Not investigated yet");
+  if (s.label === "update") return (s.new_mails ? invCount("1 new mail not in this page yet", "{n} new mails not in this page yet", s.new_mails)
+    : invCount("1 new session not in this page yet", "{n} new sessions not in this page yet", s.new_sessions)) + last;
+  if (s.label === "deeper") return invCount("1 lead not followed yet (uses the web)", "{n} leads not followed yet (uses the web)", s.leads) + last;
+  return s.last ? t("Last investigated {date}", { date: fmtDate(s.last) }) : t("Never investigated");
 }
 function invParts(r, s, paint) {
   const run = s.run, running = run?.result === "running", live = liveHere();
@@ -9961,7 +9967,7 @@ function invParts(r, s, paint) {
   else if (s.notice) parts.push(el("p", { class: "inv-line", role: "status", text: s.notice }));
   else if (run && invRecent(run)) parts.push(...invResult(r, s, paint));
   if (!running && s.rewrite) parts.push(invDraft(r, s, paint));
-  if (!running && !(run && invRecent(run)) && !s.notice && s.label !== "current") parts.push(el("p", { class: "inv-line", text: s.last ? t("Last investigated {date}", { date: fmtDate(s.last) }) : t("Never investigated") }));
+  if (!running && !(run && invRecent(run)) && !s.notice) parts.push(el("p", { class: "inv-line", text: invWhy(s) }));
   if (!live) parts.push(liveReaderLine("This is a snapshot: investigate from the live reader."));
   if (running && live) invFollow(r, paint);
   return parts;

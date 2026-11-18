@@ -1329,12 +1329,17 @@ translation-only exec rounds skip the slot.
 ### What the reader shows
 
 **The Investigate button (#3105).** A person's, organisation's and project's head
-has one button whose words are the page's state, from `page_runs.states` (no
-model): **Investigate** (never investigated), **Update · N new mails** or **N new
-sessions** (mail exchanged with the person or the organisation's domains, or
-project sessions not yet written from, since the last investigation), **Dig
-deeper · N leads** (open leads in the last enrich report), or **Up to date ·
-<date>**, greyed. Every state runs `co rem investigate PAGE --enrich` through the
+has one button whose verb never changes: **Investigate** (调查), or **Up to date**
+(已是最新), greyed, when there is nothing to do. The reason is the line under it,
+in words that say what the click will do, from `page_runs.states` (no model):
+"Not investigated yet" (还没调查过这页); "3 new mails not in this page yet · last
+6 Nov" (有 3 封新邮件还没写进这页 · 上次 11月6日), or "N new sessions" for a project,
+counting mail exchanged with the person or the organisation's domains, or project
+sessions not yet written from, since the last investigation; "5 leads not
+followed yet (uses the web) · last 6 Nov" (还有 5 条线索没查（会联网）), from the last
+enrich report; or "Last investigated 6 Nov" (上次调查 11月6日) when up to date. The
+owner could not tell what a button labelled "Update" would do (2026-11-18).
+Every state runs `co rem investigate PAGE --enrich` through the
 live Host (`POST /rem/investigate`): a detached worker runs the public CLI and
 the head follows it step by step from the run records (Append or Write, then Web
 follow-up, with the run's current stage). When it ends the head says how many
