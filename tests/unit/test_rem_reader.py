@@ -396,9 +396,61 @@ def test_every_record_on_screen_is_named_by_what_it_is_not_a_generic_heading(tmp
     assert all(n["title"].casefold() not in ("the draft", "") for n in data["graph"]["nodes"] if not n["private"])
 
 
+def _calendar_maths():
+    """The Agenda calendar's layout maths (owner, 2026-11-17): minutes into pixels, lanes for overlaps, all-day bars."""
+    text = TEMPLATE.read_text()
+    many = [re.search(r"function " + name + r"\(.*?\n\}", text, re.S).group(0) for name in ("agDay", "agBlock", "agLanes", "agBars")]
+    return "\n".join(["const AG_HOUR = 44;", re.search(r"function agSpan\(.*", text).group(0), re.search(r"function agMinutes\(.*", text).group(0), *many])
+
+
+def test_a_calendar_block_is_placed_by_its_start_and_sized_by_its_minutes():
+    out = _run_reader_js(_calendar_maths() + """
+      console.log(JSON.stringify([agMinutes("09:30"), agBlock(600, 690, 44), agBlock(510, 525, 44), agBlock(0, 1440, 60)]));""")
+    assert out[0] == 570
+    assert out[1] == {"top": 440, "height": 66}, "10:00 for 90 minutes is ten hour-rows down and one and a half tall"
+    assert out[2] == {"top": 374, "height": 20}, "a quarter of an hour keeps the height of its title"
+    assert out[3] == {"top": 0, "height": 1440}
+
+
+def test_overlapping_calendar_events_share_the_column_and_back_to_back_ones_do_not():
+    segments = [{"id": "renewal", "start": 570, "end": 600}, {"id": "review", "start": 600, "end": 690}, {"id": "supplier", "start": 630, "end": 660},
+                {"id": "third", "start": 640, "end": 700}, {"id": "later", "start": 660, "end": 680}, {"id": "lunch", "start": 750, "end": 810}]
+    out = {seg["id"]: (seg["lane"], seg["lanes"]) for seg in _run_reader_js(_calendar_maths() + "\nconsole.log(JSON.stringify(agLanes(" + json.dumps(segments) + ")));")}
+    assert out["renewal"] == (0, 1) and out["lunch"] == (0, 1), "alone in its time, the whole column"
+    assert out["review"] == (0, 3) and out["supplier"] == (1, 3) and out["third"] == (2, 3)
+    assert out["later"] == (1, 3), "it takes the lane the supplier call left at 11:00"
+
+
+def test_an_all_day_event_is_one_bar_clipped_to_the_row_and_packed_into_the_first_free_line():
+    entries = [{"title": "Offsite", "first": "2026-10-05", "last": "2026-10-07"}, {"title": "Kiln", "first": "2026-10-03", "last": "2026-10-03"},
+               {"title": "Filing", "first": "2026-10-06", "last": "2026-10-06"}, {"title": "Fair", "first": "2026-09-29", "last": "2026-10-02"},
+               {"title": "Elsewhere", "first": "2026-10-20", "last": "2026-10-20"}, {"title": "Voyage", "first": "2026-10-07", "last": "2026-10-12"}]
+    bars = _run_reader_js(_calendar_maths() + "\nconsole.log(JSON.stringify(agBars(" + json.dumps(entries) + ", '2026-10-01', 7).map(bar => [bar.entry.title, bar.from, bar.to, bar.line, bar.before, bar.after])));")
+    assert bars == [["Fair", 0, 1, 0, True, False], ["Kiln", 2, 2, 0, False, False], ["Offsite", 4, 6, 0, False, False],
+                    ["Filing", 5, 5, 1, False, False], ["Voyage", 6, 6, 1, False, True]]
+
+
+def _graph_cut():
+    """graphShort and what it is made of: a width, and lines cut only between words."""
+    text = TEMPLATE.read_text()
+    return "\n".join([re.search(r"function graphWidth\(.*", text).group(0), re.search(r"function graphLines\(.*?\n\}", text, re.S).group(0),
+                      re.search(r"function graphShort\(.*", text).group(0)])
+
+
+def test_a_graph_name_is_cut_only_between_words_and_wraps_onto_the_lines_it_is_given():
+    """#3085: four of five names on the map ended mid-phrase ("Lantern glass sourcin…")."""
+    cases = [["Lantern glass sourcing after the kiln cooperative closed", 24, 1], ["Lantern glass sourcing after the kiln cooperative closed", 28, 2],
+             ["Heat storage for off-grid dairy barns in cold valleys and the hills beyond them", 28, 2], ["Wool grading", 28, 2]]
+    out = _run_reader_js(_graph_cut() + "\nconsole.log(JSON.stringify(" + json.dumps(cases) + ".map(([t, per, max]) => graphLines(t, per, max))));")
+    assert out[0] == {"lines": ["Lantern glass sourcing…"], "text": "Lantern glass sourcing…"}
+    assert out[1] == {"lines": ["Lantern glass sourcing after", "the kiln cooperative closed"], "text": "Lantern glass sourcing after the kiln cooperative closed"}
+    assert out[2]["lines"] == ["Heat storage for off-grid", "dairy barns in cold valleys…"] and out[2]["text"].endswith("cold valleys…")
+    assert out[3] == {"lines": ["Wool grading"], "text": "Wool grading"}
+
+
 def test_graph_labels_cut_chinese_titles_by_width_so_they_stay_inside_the_card():
     """A one-hop label of 18 Chinese characters ran across the neighbouring card."""
-    short = re.search(r"function graphShort\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+    short = _graph_cut()
     cases = [["Dina Morrow", 18], ["Brightlane annual planning review", 18],
              ["接收港湾租约邮件订单处理项目交接", 18], ["接收港湾租约邮件订单处理项目交接", 10], ["𠀀𠀁𠀂𠀃𠀄𠀅", 8]]
     out = _run_reader_js(short + "\nconsole.log(JSON.stringify(" + json.dumps(cases) + ".map(([t, n]) => graphShort(t, n))));")
@@ -407,7 +459,7 @@ def test_graph_labels_cut_chinese_titles_by_width_so_they_stay_inside_the_card()
 
 def test_one_hop_label_gets_the_room_past_its_offset_and_is_dropped_under_three_letters():
     label = re.search(r"function graphLocalLabel\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
-    short = re.search(r"function graphShort\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+    short = _graph_cut()
     cases = [["Dina Morrow", 120, 236, True], ["Applied Brightlane Holdings", 61, 236, False],
              ["Applied Brightlane Holdings", 25, 236, False], ["Ian Chan", 230, 236, True]]
     out = _run_reader_js(short + "\n" + label + "\nconsole.log(JSON.stringify(" + json.dumps(cases)
@@ -3650,7 +3702,8 @@ def test_agenda_counts_the_calendars_it_read_and_left_out_in_a_sentence():
             {'name': 'Saved before #3087', 'at': '2026-11-15T02:30:00Z'}]
     result = _run_reader_js(translations + _reader_function('agT') + _reader_function('agendaCalendars') + _reader_function('agendaRead')
         + '\nuiLanguage = "en"; const REM = {calendar: ' + json.dumps({'read': read, 'errors': [], 'events': [event]}) + '};'
-        + r'''const el = (tag, attrs) => ({tag, ...attrs});
+        + r'''const el = (tag, attrs, children = []) => ({tag, ...attrs, text: children.filter(child => typeof child === "string").join("")});
+        const agendaWeather = () => "";  // no forecast saved: the line is the calendars' alone
         console.log(JSON.stringify(agendaRead()));''')
     assert result['text'] == ('Google Calendar: 2 own calendars read; 2 left out (1 shared as free/busy, 1 not ticked in Google Calendar). '
                               'Outlook: 0 own calendars read; 1 left out (1 shared read-only).')
@@ -4717,16 +4770,20 @@ def test_a_record_page_names_a_pending_translation_in_words_and_otherwise_says_n
 
 
 def _agenda_items(events, language='en'):
+    """Each event's days as the calendar files them: [{day, card}], the card holding its title, its hours in words and its place."""
     page = TEMPLATE.read_text()
-    functions = '\n'.join(_reader_function(name) for name in
-                          ['agT', 'agDay', 'agToday', 'agTime', 'agLastDay', 'agendaItems', 'agItem', 'calendarDay', 'eventTitle'])
+    line = lambda name: re.search(r'function ' + name + r'\(.*', page)[0]
+    functions = '\n'.join([_reader_function(name) for name in ['agT', 'agDay', 'agLastDay', 'agEvent', 'agendaEntries', 'agSegments', 'agHours', 'calendarDay', 'eventTitle']]
+                          + [line(name) for name in ['agMinutes', 'agToday', 'agTime', 'agClock']])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     return _run_reader_js(re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0] + functions + '\nUI.zh = ' + ui
         + ';\nuiLanguage = ' + json.dumps(language) + ';\nconst REM = {as_of: "2026-11-16T01:06:00+00:00", status: {timezone: "Australia/Sydney"},'
         + ' today_queue: [], calendar: {events: ' + json.dumps(events) + '}};'
-        + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s;
-        const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean), removeAttribute() {}});
-        console.log(JSON.stringify(agendaItems().map(item => ({day: item.day, card: JSON.stringify(agItem(item))}))));""")
+        + r"""const byPath = () => null, inCategory = () => [], href = r => '#', stripCites = s => s, datesInProse = s => s, AG_SOURCE = {};
+        const rows = [];
+        for (const e of agendaEntries()) for (let day = e.first; day <= e.last; day = agDay(day, 1))
+          rows.push({day, card: JSON.stringify(e.allDay ? [e.title, agT("All day")] : agSegments([e], day).map(seg => [e.title, agHours(seg), e.where]))});
+        console.log(JSON.stringify(rows));""")
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])

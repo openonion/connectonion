@@ -519,6 +519,8 @@ def calendar_round(root, *, native=False):
     _log_calendar_faults(root, result)
     result['day_plan'] = _day_plan_round(root, moment)
     result['todos'] = _todos_round(root, moment)
+    from .weather import night as weather_night
+    result['weather'] = weather_night(root, moment)  # the week's forecast for Agenda; never stops the round
     if native:
         with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
             current = read_json(path, {})

@@ -127,16 +127,16 @@ twenty weeks, the same scale.
 
 Counted by `inventory()` in the test: `caption` is a declaration at 11px, `leading` a line-height written out
 instead of a `--lh-*` step. Families off the two stacks and sizes off the scale are at zero everywhere.
-Before #3096 Projects stood at 49 and 25; the whole reader at 468 and 372, now 419 and 351.
+Before #3096 Projects stood at 49 and 25; the whole reader at 468 and 372, now 421 and 347. The Agenda calendar's `.cal-` rules count as Agenda.
 
 | Place | caption | leading |
 |---|---|---|
 | Projects | 0 | 0 |
 | People | 18 | 10 |
 | Organisations | 58 | 37 |
-| Knowledge | 28 | 26 |
-| Agenda | 10 | 9 |
+| Knowledge | 28 | 25 |
+| Agenda | 10 | 8 |
 | Sessions | 37 | 39 |
 | Today | 25 | 43 |
 | Record pages | 42 | 34 |
-| Shell and shared | 203 | 153 |
+| Shell and shared | 203 | 151 |

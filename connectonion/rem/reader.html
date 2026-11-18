@@ -2248,67 +2248,127 @@
   .day-plan-when { font-weight: var(--w-bold); }
   .todo-list-name, .todo-note { color: var(--grey); font-size: var(--s-meta); }
   .day-plan-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  /* Agenda (#2998): a week from today, a month, and on a phone the same items day by day. */
+  /* Agenda (#2998), drawn as a calendar (owner, 2026-11-17): a week is a time grid, a month a grid of weeks.
+     Neutral: paper, hairlines, ink. Today is the one inked numeral; a weekend is a shade quieter. */
   .agenda { color: var(--ink); font: var(--w-regular) var(--s-ui)/18px var(--font); font-feature-settings: "tnum" 1; }
   .agenda a, .agenda a:hover { color: inherit; text-decoration: none; }
-  .agenda-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+  main:has(> .agenda) { padding-bottom: 16px; }
+  .agenda-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
   .agenda-bar button { font: var(--s-ui) var(--font); color: var(--ink); background: var(--paper); border: var(--hair) solid var(--rule); border-radius: var(--radius); min-height: 32px; padding: 4px 12px; cursor: pointer; }
   .agenda-bar .ag-step { min-width: 32px; padding: 4px 8px; }
   .agenda-bar .ag-views button[aria-pressed="true"] { box-shadow: var(--e-ink); }
   .agenda-bar .ag-views { margin-left: auto; }
   .ag-range { font: var(--w-bold) var(--s-body)/22px var(--font); margin-left: 6px; }
   .ag-source { font-size: var(--s-meta); color: var(--grey); margin-left: 12px; }
-  .agenda-note { margin: -4px 0 14px; font-size: var(--s-meta); color: var(--grey); }
-  .agenda-note.agenda-read { margin: 14px 0 0; }
-  .agenda-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
-  .ag-col { min-height: 300px; padding: 10px 8px 14px; border-left: var(--hair) solid var(--rule); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .ag-col:first-child { border-left: 0; }
-  .ag-col.today { background: var(--well); }
-  .ag-colhead { display: flex; flex-direction: column; padding: 0 4px 6px; }
-  .ag-colhead .ag-date { font: var(--w-bold) var(--s-ui)/18px var(--font); }
-  .ag-now { font-size: var(--s-meta); color: var(--grey); }
-  .ag-col.past .ag-colhead { color: var(--grey); }
-  .ag-empty { color: var(--grey); padding: 0 4px; }
-  .ag-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: var(--radius); background: var(--raised); box-shadow: var(--e-ring); min-width: 0; }
-  .ag-item.ag-event { box-shadow: var(--e1); }
-  .ag-main { display: flex; flex-direction: column; min-width: 0; }
-  .ag-main:hover .ag-title { text-decoration: underline; text-underline-offset: 3px; }
-  .ag-time { font-size: var(--s-meta); color: var(--grey); }
-  .ag-item.late .ag-time, .agenda-earlier a.late { color: var(--red); }
-  .ag-title { font-weight: var(--w-bold); overflow-wrap: anywhere; }
-  .ag-note { font-size: var(--s-meta); color: var(--grey); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .ag-who, .ag-where { font-size: var(--s-meta); color: var(--grey); overflow-wrap: anywhere; }
-  .ag-where { white-space: pre-wrap; }
-  .ag-who a:hover { text-decoration: underline; }
-  .agenda-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); background: var(--rule); border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
-  .ag-wd { background: var(--paper); padding: 6px 8px; font-size: var(--s-meta); color: var(--grey); }
-  .ag-cell { background: var(--paper); min-height: 112px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .ag-cell.out { color: var(--grey); }
-  .ag-cell.today { background: var(--well); }
-  .ag-cell > .ag-date { font: var(--w-bold) var(--s-meta)/16px var(--font); }
-  .ag-cell .ag-item { padding: 3px 6px; }
-  .ag-cell .ag-main { flex-direction: row; gap: 6px; }
-  .ag-cell .ag-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: var(--w-regular); }
-  .ag-cell .ag-time { flex: none; }
-  .ag-cell .ag-note, .ag-cell .ag-who, .ag-cell .ag-where { display: none; }
-  .ag-more { font-size: var(--s-meta); color: var(--grey); padding: 0 6px; }
-  .agenda-days { display: none; }
-  .agenda-earlier { margin: 14px 0 0; font-size: var(--s-meta); color: var(--grey); line-height: 20px; }
-  .agenda-earlier a { color: var(--ink); }
-  .agenda-earlier a:hover { text-decoration: underline; }
-  .agenda-earlier .k { color: var(--grey); }
+  .agenda-note { margin: 0 0 10px; font-size: var(--s-meta); line-height: 16px; color: var(--grey); }
+  .agenda button { font: inherit; color: inherit; }
+
+  /* the week: heads, the all-day strip, then the hours scrolling under them; one grid of an axis and seven days */
+  .cal-week { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .cal-heads, .cal-allday, .cal-grid { display: grid; grid-template-columns: 72px repeat(7, minmax(0, 1fr)); }
+  .cal-head { display: flex; align-items: baseline; gap: 6px; padding: 8px 8px 6px; border-left: var(--hair) solid var(--rule); min-width: 0; white-space: nowrap; }
+  .cal-wd { color: var(--grey); font-size: var(--s-meta); }
+  .cal-num { font: var(--w-bold) var(--s-body)/24px var(--font); min-width: 24px; text-align: center; }
+  .today > .cal-num { background: var(--ink); color: var(--paper); border-radius: var(--r-pill); padding: 0 6px; }
+  .cal-today-word { order: 3; font: var(--w-bold) var(--s-ui)/var(--lh-head) var(--font); }
+  .cal-head.sel, .cal-cell.sel { box-shadow: var(--e-ink); }
+  .cal-wx { order: 4; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-ui) var(--font); white-space: nowrap; }
+  .cal-wx-ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .cal-wx-words { display: block; color: var(--grey); font-weight: var(--w-regular); font-size: var(--s-ui); }
+  .cal-detail .cal-wx-line { color: var(--grey); }
+  .cal-allday { border-top: var(--hair) solid var(--rule); border-bottom: var(--hair) solid var(--rule); grid-auto-rows: 24px; row-gap: 2px; padding: 3px 0; min-height: 32px; }
+  .cal-axis-word { grid-column: 1; grid-row: 1; align-self: center; padding-right: 8px; text-align: right; color: var(--grey); font-size: var(--s-meta); }
+  .cal-allday-col { border-left: var(--hair) solid var(--rule); margin: -3px 0; }
+  .weekend.cal-allday-col, .weekend.cal-day, .weekend.cal-cell { background: var(--well); }
+  .cal-bar { display: flex; align-items: center; min-width: 0; height: 22px; margin: 0 3px 0 4px; padding: 0 8px; border: 0; border-radius: var(--r-cell); background: var(--ink); color: var(--paper) !important; font: var(--w-bold) var(--s-meta)/22px var(--font) !important; cursor: pointer; text-align: left; position: relative; z-index: 1; }
+  .cal-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-bar.cal-microsoft { background: var(--grey); }
+  .cal-bar.cal-due, .cal-bar.cal-page { background: var(--paper); color: var(--ink) !important; box-shadow: var(--e-ring); font-weight: var(--w-regular) !important; }
+  .cal-bar.late { color: var(--red) !important; }
+  .cal-bar.before { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+  .cal-bar.after { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+  .cal-scroll { overflow-y: auto; overscroll-behavior: contain; }
+  .cal-scroll:focus-visible { outline: none; }
+  .cal-grid { position: relative; }
+  .cal-axis { position: relative; }
+  .cal-hour { position: absolute; right: 8px; transform: translateY(-50%); color: var(--grey); font-size: var(--s-meta); line-height: var(--lh-head); white-space: nowrap; }
+  .cal-now-word { color: var(--ink); font-weight: var(--w-bold); right: 4px; }
+  .cal-rule { position: absolute; left: 72px; right: 0; border-top: var(--hair) solid var(--rule); pointer-events: none; }
+  .cal-rule.half { opacity: .45; }
+  .cal-day { position: relative; border-left: var(--hair) solid var(--rule); min-width: 0; }
+  .cal-now { position: absolute; left: -1px; right: 0; border-top: var(--rule-heavy) solid var(--ink); z-index: 2; pointer-events: none; }
+  .cal-now::before { content: ""; position: absolute; left: -4px; top: -5px; width: 8px; height: 8px; border-radius: var(--round); background: var(--ink); }
+  .cal-ev { position: absolute; z-index: 1; box-sizing: border-box; min-height: 0; display: flex; flex-direction: column; margin-left: 2px; padding: 2px 6px; overflow: hidden; border: 0; border-left: 3px solid var(--ink); border-radius: var(--r-cell); background: var(--rule); cursor: pointer; text-align: left; font: var(--w-regular) var(--s-meta)/15px var(--font) !important; }
+  .cal-ev.cal-microsoft { border-left-color: var(--grey); }
+  .cal-ev:hover, .cal-ev:focus-visible { box-shadow: var(--e-ink); outline: none; }
+  .cal-ev-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; }
+  .cal-ev.short .cal-ev-title { white-space: nowrap; }
+  .cal-ev-time, .cal-ev-where { color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-ev.short .cal-ev-time, .cal-ev:not(.tall) .cal-ev-where { display: none; }
+
+  /* an event's detail: a small card beside it */
+  dialog.cal-detail:not(.n3-sheet) { position: fixed; margin: 0; width: 320px; padding: 16px 18px; border: 0; border-radius: var(--r-inner); background: var(--raised); color: var(--ink); box-shadow: var(--e3); z-index: 60; }
+  .cal-detail .sheet-head h2 { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); letter-spacing: 0; }
+  .cal-detail p { margin: 4px 0 0; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .cal-detail .cal-where, .cal-detail .cal-source, .cal-detail .cal-who { color: var(--grey); }
+  .cal-detail .cal-who a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .cal-detail .cal-open { display: inline-flex; align-items: center; min-height: 32px; margin-top: 12px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); color: var(--ink); font: var(--w-bold) var(--s-ui) var(--font); text-decoration: none; }
+  .cal-detail .cal-open:hover { background: var(--well); }
+
+  /* the month: weekday names, then one grid a week; bars and lines sit in the rows under each date */
+  .cal-month { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .cal-wds { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cal-wds .cal-wd { padding: 6px 10px; }
+  .cal-mweek { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 30px 22px 22px 22px 20px; row-gap: 2px; border-top: var(--hair) solid var(--rule); padding-bottom: 4px; }
+  .cal-cell { grid-row: 1 / -1; margin-bottom: -4px; display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; border-left: var(--hair) solid var(--rule); min-width: 0; cursor: default; }
+  .cal-cell:first-child { border-left: 0; }
+  .cal-cell.out > .cal-num { color: var(--grey); font-weight: var(--w-regular); }
+  .cal-cell > .cal-num { font-size: var(--s-ui); text-align: left; min-width: 0; }
+  .cal-cell.today > .cal-num { text-align: center; min-width: 24px; }
+  .cal-count { display: none; }
+  .cal-line { display: flex; gap: 6px; min-width: 0; height: 22px; margin: 0 4px; padding: 0 6px; border: 0; border-radius: var(--r-cell); background: none; cursor: pointer; text-align: left; font: var(--w-regular) var(--s-meta)/22px var(--font) !important; position: relative; z-index: 1; }
+  .cal-line:hover, .cal-more:hover { background: var(--rule); }
+  .cal-line-time { color: var(--grey); flex: none; }
+  .cal-line-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-more { grid-row: 5; justify-self: start; margin: 0 4px; padding: 0 6px; border: 0; border-radius: var(--r-cell); background: none; color: var(--grey) !important; cursor: pointer; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font) !important; position: relative; z-index: 1; }
+  .cal-daylist, .cal-phone { display: none; }
+  .cal-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0 12px; align-items: baseline; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-left: 3px solid var(--ink); border-radius: var(--r-cell); background: var(--rule); cursor: pointer; text-align: left; }
+  .cal-row.cal-microsoft { border-left-color: var(--grey); }
+  .cal-row.cal-due, .cal-row.cal-page { background: var(--paper); box-shadow: var(--e-ring); border-left-color: var(--rule); }
+  .cal-row-bar.cal-event { grid-template-columns: minmax(0, 1fr); background: var(--ink); color: var(--paper) !important; border-left-color: var(--ink); }
+  .cal-row-bar.cal-event.cal-microsoft { background: var(--grey); border-left-color: var(--grey); }
+  .cal-row-bar.cal-event .cal-row-time { color: inherit; grid-row: 2; }
+  .cal-row-time { color: var(--grey); font-size: var(--s-ui); }
+  .cal-row.late .cal-row-time { color: var(--red); }
+  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; }
+  .cal-row-where { grid-column: 2; color: var(--grey); font-size: var(--s-ui); overflow-wrap: anywhere; }
+  .cal-row-bar.cal-event .cal-row-where { grid-column: 1; color: inherit; }
   @media (max-width: 640px) {
-    .agenda-bar, .agenda-week, .agenda-month { display: none; }
+    /* a phone: the week is a strip of dates over a day-by-day list; the month keeps its grid with a count in each
+       cell and the chosen day's list under it */
+    .cal-week { display: none; }
+    .agenda-bar { gap: 6px; }
+    .agenda-bar .ag-source { display: none; }
+    .agenda-bar button { min-height: 40px; }
+    .ag-range { flex: 1 1 100%; order: -1; margin-left: 0; }
+    .cal-phone, .cal-daylist { display: block; }
+    .cal-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin: 0 0 16px; }
+    .cal-jump { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 56px; padding: 6px 0; border: 0; border-radius: var(--radius); background: none; cursor: pointer; }
+    .cal-jump:disabled { cursor: default; }
+    .cal-jump:disabled .cal-num { color: var(--grey); font-weight: var(--w-regular); }
+    .cal-jump.weekend { background: var(--well); }
     .agenda-days { display: flex; flex-direction: column; gap: 18px; }
-    .ag-day { display: flex; flex-direction: column; gap: 8px; }
+    .ag-day { display: flex; flex-direction: column; gap: 6px; scroll-margin-top: 8px; }
     .ag-dayhead { margin: 0; font: var(--w-bold) var(--s-ui)/18px var(--font); }
-    .ag-day.today .ag-dayhead { color: var(--ink); }
-    .ag-day .ag-item { padding: 0 12px 8px; }
-    .ag-day .ag-main { min-height: 44px; justify-content: center; padding-top: 8px; }
-    .ag-day .ag-title { font-size: var(--s-body); line-height: 22px; }
-    .ag-day .ag-who a { display: inline-block; min-height: 32px; line-height: 32px; }
-    .ag-day .ag-empty { margin: 0; padding: 0; }
-    .agenda-earlier { line-height: 32px; }
+    .cal-month { border-radius: var(--radius); overflow: visible; border: 0; }
+    .cal-wds .cal-wd { padding: 4px 0; text-align: center; }
+    .cal-mweek { grid-template-rows: 52px; padding: 0; row-gap: 0; }
+    .cal-mweek > :not(.cal-cell) { display: none; }
+    .cal-cell { grid-row: 1; margin: 0; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; cursor: pointer; }
+    .cal-cell .cal-today-word, .cal-cell .cal-wx { display: none; }
+    .cal-jump .cal-wx { margin: 0; }
+    .cal-count { display: block; color: var(--grey); font-size: var(--s-meta); line-height: var(--lh-head); }
+    .cal-daylist { margin-top: 16px; }
   }
 </style>
 <style id="org-style">
@@ -2687,14 +2747,21 @@
   .gx-link { display: inline-block; margin-top: 16px; }
   .gx-link:hover, .gx-quiet-line a:hover { color: var(--ink); text-decoration-color: currentColor; }
 
-  /* ---- the settled map: full bleed, heading over the canvas, panel at the right ---- */
-  #main:has(> .gx-map) { padding: 0; max-width: none; }
-  .gx-map { position: relative; height: 100vh; overflow: hidden; background: var(--paper); }
-  .gx-stage { position: absolute; inset: 0; }
+  /* ---- the settled map (#3085): the heading, one sentence that is also the key, then the map down to the window's
+     foot with its quiet line under it. The heading sits where Entries' heading sits, so the switch does not jump. ---- */
+  #main:has(> .gx-map), #main:has(> .gx-topics) { padding: 0; max-width: none; }
+  .gx-map { position: relative; display: flex; flex-direction: column; padding: 4px 40px 0; overflow: hidden; background: var(--paper); }
+  .gx-stage { position: relative; flex: 1; min-height: 0; margin: 0 -40px; }
   .gx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  .gx-head { position: absolute; z-index: 2; left: 40px; top: 32px; right: 436px; pointer-events: none; }
-  .gx-head > * { pointer-events: auto; }
-  .gx-bar { display: flex; align-items: flex-end; gap: 32px; margin-top: 18px; flex-wrap: wrap; width: fit-content; }
+  .gx-canvas:focus-visible { outline: 1.5px solid var(--ink); outline-offset: -2px; }
+  .gx-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 48px; }
+  .gx-says { max-width: 880px; margin: 0 0 12px !important; font: var(--w-regular) var(--s-body)/var(--lh-read) var(--font); color: var(--ink); }
+  .gx-key { white-space: nowrap; font-weight: var(--w-bold); }
+  .gx-busiest { display: block; color: var(--grey); }
+  .gx-says .gx-glyph { display: inline-block; vertical-align: -1px; margin-right: 5px; }
+  .gx-says button { font-weight: var(--w-bold) !important; text-decoration: underline !important; text-decoration-color: var(--rule) !important; text-underline-offset: 4px; text-align: left; }
+  .gx-says button:hover { text-decoration-color: currentColor !important; }
+  .gx-bar { display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap; width: fit-content; margin-bottom: 12px; }
   .gx-find { position: relative; width: 320px; }
   .gx-search { width: 100%; height: 36px; border: 0; border-bottom: 1.5px solid var(--ink); background: transparent; color: var(--ink); font: var(--w-regular) var(--s-body) var(--font); padding: 0 28px 0 0; border-radius: var(--radius); }
   .gx-search::placeholder { color: var(--grey); }
@@ -2708,10 +2775,9 @@
   .gx-tabs { display: flex; gap: 20px; }
   .gx-tabs button { height: 36px; color: var(--grey) !important; border-bottom: 1.5px solid transparent !important; }
   .gx-tabs button[aria-selected="true"] { color: var(--ink) !important; font-weight: var(--w-bold); border-bottom-color: var(--ink) !important; }
-  .gx-legend { position: absolute; left: 40px; right: 540px; bottom: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); pointer-events: none; }
-  .gx-key { display: inline-flex; align-items: center; gap: 6px; }
-  .gx-key-head { color: var(--grey); }
-  .gx-zoom { position: absolute; right: 420px; bottom: 16px; display: flex; gap: 2px; }
+  .gx-foot { display: flex; align-items: center; gap: 16px; min-height: 44px; }
+  .gx-legend { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 18px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .gx-zoom { display: flex; gap: 2px; }
   .gx-zoom button { width: 32px; height: 32px; color: var(--grey) !important; font-size: var(--s-body) !important; border-radius: var(--radius) !important; }
   .gx-zoom button:hover { background: var(--rule) !important; color: var(--ink) !important; }
   .gx-tip { position: absolute; pointer-events: none; padding: 4px 9px; border-radius: var(--radius); background: var(--ink); color: var(--paper); font-size: var(--s-meta); white-space: nowrap; }
@@ -2719,15 +2785,16 @@
   .gx-empty { padding: 200px 40px; color: var(--grey); }
 
   /* The panel is a transient layer, so it may be a card: the one lifted object on the map. */
-  .gx-panel { position: absolute; right: 24px; top: 24px; bottom: 24px; width: 348px; display: flex; flex-direction: column; background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); overflow: hidden; z-index: 3; }
+  .gx-panel { position: absolute; right: 24px; width: 348px; display: flex; flex-direction: column; background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); overflow: hidden; z-index: 3; }
   .gx-panel-head { padding: 22px 22px 18px; border-bottom: 1px solid var(--rule); }
   .gx-kicker { display: flex; align-items: center; gap: 8px; color: var(--grey); font-size: var(--s-meta); }
   .gx-panel h2 { font: var(--w-bold) var(--s-body)/27px var(--font); margin-top: 6px; overflow-wrap: anywhere; }
   .gx-panel-head p { color: var(--grey); margin-top: 4px; }
+  .gx-panel-head .gx-summary { color: var(--ink); margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .gx-counts { display: flex; gap: 18px; margin-top: 12px; color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
   .gx-counts b { display: block; color: var(--ink); font-size: var(--s-body); line-height: 24px; }
-  .gx-open { display: flex; align-items: center; justify-content: center; height: 40px; margin-top: 16px; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; font-weight: var(--w-bold); transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
-  .gx-open:hover { background: var(--on-green); color: var(--green) !important; }
+  .gx-open { display: flex; align-items: center; justify-content: center; height: 40px; margin-top: 16px; border-radius: var(--radius); background: var(--paper); border: var(--hair) solid var(--rule); color: var(--ink) !important; font-weight: var(--w-bold); transition: background var(--t-press) var(--ease-out); }
+  .gx-open:hover { background: var(--well); }
   .gx-depth { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: var(--s-meta); color: var(--grey); }
   .gx-depth button { color: var(--grey) !important; border-bottom: 1.5px solid transparent !important; line-height: 20px; }
   .gx-depth button[aria-pressed="true"] { color: var(--ink) !important; font-weight: var(--w-bold); border-bottom-color: var(--ink) !important; }
@@ -2735,15 +2802,18 @@
   .gx-panel-body { flex: 1; overflow: auto; padding: 4px 12px 18px; }
   .gx-panel-body h3 { display: flex; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--grey); padding: 16px 10px 6px; }
   .gx-panel-body h3 span { margin-left: auto; font-weight: var(--w-regular); }
-  .gx-item { display: flex !important; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: var(--radius) !important; min-height: 40px; }
+  .gx-item { display: flex !important; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: var(--radius) !important; min-height: 40px; }
   .gx-item:hover { background: var(--rule) !important; }
   .gx-item-body { min-width: 0; display: flex; flex-direction: column; }
-  .gx-item b { font-weight: var(--w-regular); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .gx-item small { font-size: var(--s-meta); line-height: 16px; color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gx-item > .gx-glyph { margin-top: 4px; }
+  .gx-item b { font-weight: var(--w-regular); overflow-wrap: anywhere; }
+  .gx-item small { font-size: var(--s-meta); line-height: 16px; color: var(--grey); overflow-wrap: anywhere; }
   .gx-more { display: block; color: var(--grey) !important; font-size: var(--s-meta) !important; padding: 4px 10px 4px 36px !important; text-align: left; }
 
   /* ---- topics: the list and the record ---- */
-  .gx-topics, .gx-topic { max-width: 1040px; margin: 0 auto; }
+  .gx-topic { max-width: 1040px; margin: 0 auto; }
+  .gx-topics { padding: 4px 40px 64px; }
+  .gx-topics > :not(.knowledge-head) { max-width: 1040px; }
   .gx-rows, .gx-link-rows, .gx-rail-list { list-style: none; margin: 0; padding: 0; }
   .gx-rows { border-top: 1.5px solid var(--ink); }
   .gx-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
@@ -2756,7 +2826,6 @@
   .knowledge-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; width: fit-content; }
   .knowledge-head h1 { margin: 0; }
   .knowledge-switch .theme-btn { display: inline-flex; align-items: center; min-height: 32px; text-decoration: none; }
-  .gx-head .knowledge-head h1 { font: var(--w-bold) var(--s-body)/24px var(--font); letter-spacing: 0; color: var(--grey); }
   .gx-panel-guide { padding-top: 10px; }
   .gx-rule { border: 0; border-top: 1px solid var(--rule); margin: 10px; }
   .gx-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -2888,22 +2957,26 @@
   @media (prefers-reduced-motion: reduce) { .gx * { transition: none !important; } }
   @media (max-width: 720px) {
     .gx-statement { font-size: var(--s-head); line-height: 40px; }
-    .gx-map { height: auto; overflow: visible; padding: 20px 16px 24px; }
-    .gx-head { position: static; right: auto; }
-    .gx-bar { width: auto; gap: 12px; margin-top: 12px; }
+    /* A phone draws the entries and what they link (the map says so in its sentence); the filters have nothing to
+       filter, one finger scrolls the page and two zoom the map, and the lists scroll with the page, not inside it. */
+    .gx-map { overflow: visible; padding: 4px 16px 0; }
+    .gx-panel[hidden] { display: none; }
+    .gx-topics { padding: 4px 16px 40px; }
+    .gx-says { font-size: var(--s-body); line-height: var(--lh-body); }
+    .gx-bar { width: 100%; }
     .gx-find { width: 100%; }
-    .gx-tabs { overflow-x: auto; scrollbar-width: none; gap: 18px; width: 100%; }
-    .gx-tabs button { flex: none; }
-    .gx-stage { position: relative; inset: auto; height: 320px; margin: 4px -16px 0; }
-    .gx-legend, .gx-zoom { display: none; }
-    .gx-panel { position: static; width: auto; margin: 4px -4px 0; border-radius: var(--radius); max-height: none; }
-    .gx-panel-head { padding: 14px 18px 14px; }
-    .gx-panel-head p { display: none; }
-    .gx-counts { margin-top: 6px; }
-    .gx-open { margin-top: 12px; }
-    .gx-open { height: 46px; }
+    .gx-tabs, .gx-foot { display: none; }
+    .gx-stage { flex: none; height: 320px; margin: 0 -16px; }
+    .gx-canvas { touch-action: pan-y; }
+    .gx-panel { position: static; width: auto; margin: 4px -4px 0; max-height: none !important; overflow: visible; }
+    .gx-panel-head { display: flex; flex-direction: column; padding: 14px 18px 14px; }
+    .gx-panel-head .gx-open { order: 1; height: 46px; margin-top: 12px; }
+    .gx-panel-head .gx-summary, .gx-panel-head .gx-counts { order: 2; }
+    .gx-panel-head .gx-summary { margin-top: 12px; }
+    .gx-counts { margin-top: 10px; }
     .gx-depth { display: none; }
-    .gx-panel-body { max-height: 360px; }
+    .gx-panel-body { overflow: visible; }
+    .gx-item { min-height: 44px; }
     .gx-grid { grid-template-columns: 1fr; gap: 40px; margin-top: 32px; }
     .gx-stats { gap: 10px 24px; }
     .gx-stats div:nth-child(n+4) { display: none; }
@@ -9469,13 +9542,23 @@ function category(c) {
 // Monday-first week is mostly finished days. Month is the usual Monday-first grid. Events are what the night
 // saved from his connected calendars (calendar.py; the page never calls a calendar), beside the notebook's
 // own dates: promises with a due date and agenda pages. Every item is a link: an event to the calendar it
-// came from, a notebook item to its page. Open notebook items dated before the range stay in one line under
-// it, so a page the calendar cannot place is never lost. On a phone the same items are a day-by-day list.
+// came from, a notebook item to its page.
+// Owner, 2026-11-17: «The Agenda does not look like a calendar at all… show it with that kind of very fine,
+// precise calendar.» So the week is a time grid (hours down a quiet axis, events as blocks placed by their start
+// and sized by their length, overlaps side by side, an all-day strip where a three-day event is one bar, a now
+// line on today) and the month is a grid of weeks whose bars run across cells and rows. No calendar library:
+// minutes become pixels in agBlock, agLanes and agBars, which the unit tests run in Node.
+// A dated notebook item that is late is shown on today, saying its due date: the line of "earlier, still open"
+// links that used to sit under the calendar was a second list beside it (#3085 review).
 const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Still open from earlier": "更早、仍开着",
+  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开",
+  "{n} items": "{n} 项", "1 item": "1 项",
+  "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
+  "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
+  "Weather for {place} could not be read on {when} ({reason}).": "{when}没能读取 {place} 的天气（{reason}）。", "The forecast is from {when}.": "显示的是 {when}读到的预报。", "nothing": "没有安排", "Close": "关闭",
   "No calendar read yet: REM reads your connected Google and Outlook calendars each night.": "还没有读过日历：REM 每晚读你已连接的 Google 和 Outlook 日历。",
   "authorization expired": "授权已过期",
   "{name} · read {when}": "{name} · {when}读取",
@@ -9494,15 +9577,54 @@ function agT(key, values = {}) {
   const words = uiLanguage === "zh" ? AG_ZH[key] : null;
   return (words || t(key)).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
-const agendaState = { view: "week", offset: 0 };
+const agendaState = { view: "week", start: "", month: "", sel: "" };
+const AG_HOUR = 44;  // pixels to an hour: 07:00–21:00 is 616 px, one screen at 1440×900
 function agDay(day, n) {
   const d = new Date(day + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
+function agSpan(a, b) { return Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000); }
+function agMinutes(clock) { const [h, m] = clock.split(":").map(Number); return h * 60 + m; }
+// Minutes into pixels: where a block starts and how tall it is. A short event keeps the height of its title.
+function agBlock(start, end, hour = AG_HOUR, least = 20) {
+  return { top: start * hour / 60, height: Math.max(least, (end - start) * hour / 60) };
+}
+// Events that overlap share the column side by side. Each takes the first lane free at its start; every event
+// in one run of overlaps is as wide as that run's lanes allow. Back-to-back events do not overlap.
+function agLanes(segments) {
+  const out = [];
+  let run = [], ends = [], runEnd = -1;
+  const close = () => { for (const item of run) item.lanes = ends.length; run = []; ends = []; };
+  for (const seg of [...segments].sort((a, b) => a.start - b.start || b.end - a.end)) {
+    if (seg.start >= runEnd) close();
+    const free = ends.findIndex(end => end <= seg.start), lane = free < 0 ? ends.length : free;
+    ends[lane] = seg.end;
+    run.push({ ...seg, lane, lanes: 1 });
+    out.push(run.at(-1));
+    runEnd = Math.max(runEnd, seg.end);
+  }
+  close();
+  return out;
+}
+// All-day bars for a row of `days` days from `start`: one bar an entry, clipped to the row and packed into the
+// first line free at its first day. `before` and `after` say it runs past the row's edge.
+function agBars(entries, start, days) {
+  const end = agDay(start, days - 1), free = [], bars = [];
+  const shown = entries.filter(e => e.first <= end && e.last >= start).sort((a, b) => a.first.localeCompare(b.first) || b.last.localeCompare(a.last) || a.title.localeCompare(b.title));
+  for (const entry of shown) {
+    const from = Math.max(0, agSpan(start, entry.first)), to = Math.min(days - 1, agSpan(start, entry.last));
+    const open = free.findIndex(column => column <= from), line = open < 0 ? free.length : open;
+    free[line] = to + 1;
+    bars.push({ entry, from, to, line, before: entry.first < start, after: entry.last > end });
+  }
+  return bars;
+}
 function agToday() { return calendarDay(REM.as_of || new Date().toISOString()); }
+function agNow() { return agMinutes(agTime(REM.as_of || new Date().toISOString())); }
 function agLocale() { return uiLanguage === "zh" ? "zh-CN" : "en-GB"; }
 function agFormat(day, options) { return new Date(day + "T00:00:00Z").toLocaleDateString(agLocale(), { timeZone: "UTC", ...options }); }
+function agDate(day) { return agFormat(day, { weekday: "short", day: "numeric", month: "short" }); }
 // 24-hour in the notebook's zone, the zone calendarDay files the event under.
 function agTime(iso) { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: REM.status?.timezone || "UTC" }); }
 // Both calendars end an all-day event on the day after its last. A timed one runs to the day its last
@@ -9512,100 +9634,230 @@ function agLastDay(e, first) {
   const start = new Date(e.start), end = new Date(e.end);
   return end > start ? calendarDay(new Date(end - 1).toISOString()) : first;
 }
-function agendaItems() {
-  const today = agToday(), items = [];
-  for (const e of REM.calendar?.events || []) {
-    const first = calendarDay(e.start);
-    if (!first) continue;
-    const last = agLastDay(e, first), ends = e.all_day ? "" : agTime(e.end);
-    // Its start time on the day it starts, "Until 17:00" on the day it ends, all day on the days between.
-    for (let day = first, n = 0; n === 0 || (day <= last && n < 62); day = agDay(day, 1), n++)
-      items.push({ day, time: e.all_day || day !== first ? "" : agTime(e.start), title: eventTitle(e), href: e.link, external: true,
-        when: day !== first && day === last && ends !== "00:00" ? agT("Until {time}", { time: ends }) : "", where: e.location || "",
-        people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, kind: "event" });
-  }
-  const placed = new Set();
+const AG_SOURCE = { google: "Google Calendar", microsoft: "Outlook" };
+function agEvent(e, first) {
+  return { kind: "event", allDay: !!e.all_day, first, last: agLastDay(e, first), start: e.start, end: e.end, title: eventTitle(e), link: e.link || "", where: e.location || "",
+    people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, provider: e.calendar || "",
+    source: [AG_SOURCE[e.calendar], e.calendar_name].filter(Boolean).join(" · ") };
+}
+// What the calendar holds: each event once, with the days it covers, and the notebook's own dates as all-day
+// entries. A late one sits on today and keeps its due date in words.
+function agendaEntries() {
+  const today = agToday(), entries = [], placed = new Set();
+  for (const e of REM.calendar?.events || []) if (calendarDay(e.start)) entries.push(agEvent(e, calendarDay(e.start)));
+  const dated = (day, late, rest) => entries.push({ allDay: true, first: late ? today : day, last: late ? today : day, due: day, late, ...rest });
   for (const row of REM.today_queue || []) {
     if (!row.due || row.closed || row.quiet) continue;
-    const page = byPath(row.record);
+    const page = byPath(row.record), mine = row.record === REM.owner, note = stripCites(row.text);
     placed.add(row.record + "@" + row.due);
     // A promise on the owner's own page is named by what it is, not by his name.
-    const mine = row.record === REM.owner, note = stripCites(row.text);
-    items.push({ day: row.due, time: "", title: mine ? datesInProse(note) : page ? page.title : row.title, href: "#r=" + encodeURIComponent(row.record),
-      note: mine ? "" : note, late: row.due < today, kind: "due" });
+    dated(row.due, row.due < today, { kind: "due", title: mine ? datesInProse(note) : page ? page.title : row.title, href: "#r=" + encodeURIComponent(row.record), note: mine ? "" : note });
   }
   for (const r of inCategory("agenda")) {
     const due = (r.text || "").match(/\b(?:due|deadline|by)(?:\s+(?:on|is))?\s*[:：]?\s*(\d{4}-\d{2}-\d{2})/i)?.[1];
     // Otherwise the first date the page states (its status line, in whatever language its headings are), never its Sources.
     const noted = (r.text || "").split("\n").filter(line => !/^\s*Sources?:/i.test(line)).join("\n").match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0];
     const day = due || noted || calendarDay(r.last_activity || r.updated);
-    if (!day || placed.has(r.path + "@" + day)) continue;
-    items.push({ day, time: "", title: r.title, href: href(r), late: !!due && due < today, kind: due ? "due" : "page" });
+    if (day && !placed.has(r.path + "@" + day)) dated(day, !!due && due < today, { kind: due ? "due" : "page", title: r.title, href: href(r) });
   }
-  // All-day and dated items lead a day, then events by time.
-  return items.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title));
+  return entries;
 }
-function agItem(item) {
-  const when = item.kind === "event" ? (item.when || item.time || agT("All day")) : item.kind === "page" ? agT("Noted") : agT(item.late ? "Late" : "Due");
-  const main = el("a", { class: "ag-main", title: item.title, href: item.href || "#", ...(item.external ? { target: "_blank", rel: "noopener" } : {}) }, [
-    el("span", { class: "ag-time", text: when }), el("span", { class: "ag-title", text: item.title }),
-    item.note ? el("span", { class: "ag-note", text: datesInProse(item.note) }) : null]);
-  if (item.external && !item.href) main.removeAttribute("href");
-  const who = item.people?.length ? el("span", { class: "ag-who" }, item.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]))
-    : item.guests ? el("span", { class: "ag-who", text: item.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: item.guests }) }) : null;
-  const where = item.where ? el("span", { class: "ag-where", text: item.where }) : null;
-  return el("div", { class: "ag-item ag-" + item.kind + (item.late ? " late" : "") }, [main, where, who]);
+// A timed event's part of one day, in minutes of that day: its start on the first, midnight to its end on the last.
+function agSegments(entries, day) {
+  return entries.filter(e => !e.allDay && e.first <= day && e.last >= day).map(entry => ({ entry, day,
+    start: entry.first === day ? agMinutes(agTime(entry.start)) : 0, end: entry.last === day ? agMinutes(agTime(entry.end)) || 1440 : 1440 }))
+    .sort((a, b) => a.start - b.start || a.entry.title.localeCompare(b.entry.title));
 }
-function agColumnHead(day, today) {
-  return el("header", { class: "ag-colhead" }, [day === today ? el("span", { class: "ag-now", text: agT("Today") }) : null,
-    el("span", { class: "ag-date", text: agFormat(day, { weekday: "short" }) + " " + Number(day.slice(8)) })]);
+function agClock(minutes) { return String(Math.floor(minutes / 60) % 24).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0"); }
+// A day's part of an event, in words: its hours; for one that runs over several days its start time on the
+// first, "All day" between, "Until 17:00" on the last.
+function agHours({ entry, day, start, end }) {
+  const before = entry.first < day, after = entry.last > day;
+  if (before && after) return agT("All day");
+  if (before) return agT("Until {time}", { time: agClock(end) });
+  return after ? agClock(start) : agClock(start) + " – " + agClock(end);
 }
-function agendaWeek(items, start) {
-  const today = agToday();
-  return el("div", { class: "agenda-week" }, Array.from({ length: 7 }, (_, i) => {
-    const day = agDay(start, i), mine = items.filter(item => item.day === day);
-    return el("section", { class: "ag-col" + (day === today ? " today" : day < today ? " past" : "") }, [agColumnHead(day, today),
-      ...(mine.length ? mine.map(agItem) : [el("span", { class: "ag-empty", "aria-hidden": "true", text: "—" })])]);
+// When, in words: "All day, Mon 5 – Wed 7 Oct", "Fri 2 Oct, 09:30 – 10:00", "Late, due 25 Sep".
+function agWhen(e) {
+  if (e.kind !== "event") return e.kind === "page" ? agT("Noted") : e.late ? agT("Late, due {date}", { date: calendarDate(e.due) }) : agT("Due");
+  if (e.allDay) return agT("All day") + agT(", ") + (e.first === e.last ? agDate(e.first) : agDate(e.first) + " – " + agDate(e.last));
+  if (e.first === e.last) return agDate(e.first) + agT(", ") + agTime(e.start) + " – " + agTime(e.end);
+  return agDate(e.first) + " " + agTime(e.start) + " – " + agDate(e.last) + " " + agTime(e.end);
+}
+function agSaid(e) { return [e.title, agWhen(e), e.where, e.source].filter(Boolean).join(" · "); }
+function agGuests(e) {
+  if (e.people.length) return el("p", { class: "cal-who" }, e.people.flatMap((r, i) => [i ? ", " : null, el("a", { href: href(r), text: r.title })]));
+  return e.guests ? el("p", { class: "cal-who", text: e.guests === 1 ? agT("1 guest") : agT("{n} guests", { n: e.guests }) }) : null;
+}
+// An event's detail: beside the event on a desk, a sheet from the foot on a phone. Which calendar it is from is
+// said in words here and on hover; the edge of a block is only the second cue.
+function agDetail(e, anchor) {
+  document.querySelector(".cal-detail")?.remove();
+  const phone = innerWidth <= 640, close = el("button", { type: "button", class: "ibtn", "aria-label": agT("Close") }, [icon("x")]);
+  const dialog = el("dialog", { class: "cal-detail" + (phone ? " n3-sheet" : ""), "aria-label": e.title }, [
+    el("div", { class: "sheet-head" }, [el("h2", { text: e.title }), close]),
+    el("p", { class: "cal-when", text: agWhen(e) }), agWeather(e.first) && e.first === e.last ? el("p", { class: "cal-wx-line", text: agWeatherSaid(agWeather(e.first)) }) : null, e.where ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
+    e.source ? el("p", { class: "cal-source", text: agT("In {name}", { name: e.source }) }) : null,
+    e.link ? el("a", { class: "cal-open", href: e.link, target: "_blank", rel: "noopener", text: agT("Open in {name}", { name: AG_SOURCE[e.provider] || e.source }) + " ↗" }) : null]);
+  close.onclick = () => dialog.close();
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.addEventListener("keydown", event => { if (event.key === "Escape") dialog.close(); });
+  dialog.addEventListener("click", event => { if (event.target.closest("a[href^='#']")) dialog.close(); });
+  document.body.appendChild(dialog);
+  if (phone) return dialog.showModal();
+  dialog.show();
+  agPlaceBeside(dialog, anchor.getBoundingClientRect());
+  close.focus();
+}
+function agPlaceBeside(dialog, at) {
+  const width = dialog.offsetWidth, height = dialog.offsetHeight, right = at.right + 8 + width <= innerWidth - 8;
+  dialog.style.left = Math.max(8, right ? at.right + 8 : at.left - 8 - width) + "px";
+  dialog.style.top = Math.max(8, Math.min(at.top, innerHeight - height - 8)) + "px";
+}
+// An entry as something to press: an event opens its detail, a notebook date goes to its page.
+function agPress(e, cls, children) {
+  if (e.kind !== "event") return el("a", { class: cls + " cal-" + e.kind + (e.late ? " late" : ""), href: e.href, title: agSaid(e) }, children);
+  const button = el("button", { type: "button", class: cls + " cal-event cal-" + (e.provider || "other"), title: agSaid(e) }, children);
+  button.onclick = () => agDetail(e, button);
+  return button;
+}
+function agDayClass(day, today) {
+  const weekday = new Date(day + "T00:00:00Z").getUTCDay();
+  return (day === today ? " today" : "") + (weekday === 0 || weekday === 6 ? " weekend" : "") + (day < today ? " past" : "") + (day === agendaState.sel ? " sel" : "");
+}
+// A column's head: the weekday and the date; today is marked and says so.
+function agHead(day, today) {
+  return el("header", { class: "cal-head" + agDayClass(day, today), "data-day": day }, [day === today ? el("span", { class: "cal-today-word", text: agT("Today") }) : null,
+    el("span", { class: "cal-wd", text: agFormat(day, { weekday: "short" }) }), el("span", { class: "cal-num", text: String(Number(day.slice(8))) }), agWeatherMark(day)]);
+}
+function agBar(bar, column) {
+  const e = bar.entry, word = e.kind === "event" ? "" : agWhen(e) + " · ";
+  const node = agPress(e, "cal-bar" + (bar.before ? " before" : "") + (bar.after ? " after" : ""), [el("span", { text: word + e.title })]);
+  node.style.gridColumn = (bar.from + column) + " / " + (bar.to + column + 1);
+  node.style.gridRow = String(bar.line + 1);
+  return node;
+}
+function agAllDay(entries, days, today) {
+  const bars = agBars(entries.filter(e => e.allDay), days[0], days.length), lines = Math.max(1, ...bars.map(bar => bar.line + 1));
+  return el("div", { class: "cal-allday" }, [el("span", { class: "cal-axis-word", text: bars.length ? agT("All day") : "" }),
+    ...days.map((day, i) => el("span", { class: "cal-allday-col" + agDayClass(day, today), style: `grid-column:${i + 2};grid-row:1 / span ${lines}` })),
+    ...bars.map(bar => agBar(bar, 2))]);
+}
+function agEventBlock({ entry, day, start, end, lane, lanes }) {
+  const { top, height } = agBlock(start, end), cls = "cal-ev" + (height < 34 ? " short" : height >= 56 ? " tall" : "");
+  const node = agPress(entry, cls, [el("span", { class: "cal-ev-title", text: entry.title }), el("span", { class: "cal-ev-time", text: agHours({ entry, day, start, end }) }),
+    entry.where ? el("span", { class: "cal-ev-where", text: entry.where }) : null]);
+  Object.assign(node.style, { top: top + "px", height: height - 1 + "px", left: lane / lanes * 100 + "%", width: `calc(${100 / lanes}% - 3px)` });
+  return node;
+}
+function agDayColumn(entries, day, today) {
+  // A short event is drawn taller than its minutes, so what follows within that height stands beside it.
+  const least = 20 * 60 / AG_HOUR, placed = agLanes(agSegments(entries, day).map(seg => ({ ...seg, end: Math.max(seg.end, seg.start + least), till: seg.end })));
+  return el("div", { class: "cal-day" + agDayClass(day, today), "data-day": day }, [...placed.map(seg => agEventBlock({ ...seg, end: seg.till })),
+    day === today ? el("div", { class: "cal-now", style: `top:${agNow() * AG_HOUR / 60}px`, "aria-hidden": "true" }) : null]);
+}
+// The hours, a quiet axis; on a week that holds today, where now is, in words.
+function agAxis(now) {
+  const near = hour => now != null && Math.abs(hour * 60 - now) < 24;
+  return el("div", { class: "cal-axis" }, [...Array.from({ length: 23 }, (_, i) => near(i + 1) ? null : el("span", { class: "cal-hour", style: `top:${(i + 1) * AG_HOUR}px`, text: agClock((i + 1) * 60) })),
+    now == null ? null : el("span", { class: "cal-hour cal-now-word", style: `top:${now * AG_HOUR / 60}px`, text: agT("Now {time}", { time: agClock(now) }) })]);
+}
+function agRules() {
+  return Array.from({ length: 47 }, (_, i) => el("i", { class: "cal-rule" + (i % 2 ? "" : " half"), style: `top:${(i + 1) * AG_HOUR / 2}px`, "aria-hidden": "true" }));
+}
+function agendaWeek(entries, start) {
+  const today = agToday(), days = Array.from({ length: 7 }, (_, i) => agDay(start, i)), now = days.includes(today) ? agNow() : null;
+  const grid = el("div", { class: "cal-grid", style: `height:${24 * AG_HOUR}px` }, [agAxis(now), ...agRules(), ...days.map(day => agDayColumn(entries, day, today))]);
+  return el("div", { class: "cal-week" }, [el("div", { class: "cal-heads" }, [el("span", {}), ...days.map(day => agHead(day, today))]),
+    agAllDay(entries, days, today), el("div", { class: "cal-scroll", tabindex: "0", "data-first": String(agFirstMinute(entries, days, now)) }, [grid])]);
+}
+// Where the grid opens: 07:00, so working hours to 21:00 are on screen; earlier when the week's first event or
+// now is earlier, later only when now is past what would be shown.
+function agFirstMinute(entries, days, now) {
+  const starts = days.flatMap(day => agSegments(entries, day).filter(seg => seg.entry.first === day).map(seg => seg.start));
+  const first = Math.min(7 * 60, ...starts, ...(now == null ? [] : [now]));
+  return now != null && now > first + 13 * 60 ? now - 10 * 60 : Math.max(0, Math.floor(first / 60) * 60);
+}
+// The grid ends at the window's foot and scrolls inside it, so the heads and the all-day strip stay in view.
+function agSizeWeek() {
+  const scroll = document.querySelector(".agenda .cal-scroll");
+  if (!scroll || !scroll.offsetParent) return;
+  const height = Math.max(240, innerHeight - scroll.getBoundingClientRect().top - scrollY - 16);
+  scroll.style.height = height + "px";
+  // Whatever sits under the calendar (the page's own foot) comes off the grid, so the page itself has nothing to scroll.
+  scroll.style.height = Math.max(240, height - Math.max(0, document.documentElement.scrollHeight - innerHeight)) + "px";
+  scroll.scrollTop = Number(scroll.dataset.first) * AG_HOUR / 60 - 10;
+}
+function agMonthFirst() { return (agendaState.month || agToday().slice(0, 7)) + "-01"; }
+function agMonthStep(first, n) {
+  const d = new Date(first + "T00:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + n);
+  return d.toISOString().slice(0, 7);
+}
+function agOnDay(entries, day) { return entries.filter(e => e.first <= day && e.last >= day); }
+function agCount(n) { return n === 1 ? agT("1 item") : agT("{n} items", { n }); }
+// One week of the month: seven cells, the all-day bars running across them, then each day's timed events in the
+// lines the bars leave, three lines in all; what does not fit is counted in words, and that count opens the day.
+function agMonthWeek(entries, start, month, today) {
+  const days = Array.from({ length: 7 }, (_, i) => agDay(start, i)), bars = agBars(entries.filter(e => e.allDay), start, 7), parts = [];
+  for (const bar of bars.filter(bar => bar.line < 3)) { const node = agBar(bar, 1); node.style.gridRow = String(bar.line + 2); parts.push(node); }
+  days.forEach((day, i) => {
+    const taken = new Set(bars.filter(bar => bar.from <= i && bar.to >= i).map(bar => bar.line)), timed = agSegments(entries, day);
+    const free = [0, 1, 2].filter(line => !taken.has(line)), all = agOnDay(entries, day).length, shown = [...taken].filter(line => line < 3).length + Math.min(free.length, timed.length);
+    const cell = el("div", { class: "cal-cell" + (day.slice(0, 7) !== month ? " out" : "") + agDayClass(day, today), "data-day": day, style: `grid-column:${i + 1}`, "aria-label": agDate(day) + agT(", ") + (all ? agCount(all) : agT("nothing")) }, [
+      el("span", { class: "cal-num", text: String(Number(day.slice(8))) }), day === today ? el("span", { class: "cal-today-word", text: agT("Today") }) : null,
+      agWeatherMark(day), all ? el("span", { class: "cal-count", text: String(all) }) : null]);
+    cell.onclick = () => { agendaState.sel = day; agendaView(); };
+    parts.push(cell, ...timed.slice(0, free.length).map((seg, n) => agMonthLine(seg, i, free[n])));
+    if (all > shown) parts.push(agMore(day, all - shown, i));
+  });
+  return el("div", { class: "cal-mweek" }, parts);
+}
+function agMonthLine(seg, column, line) {
+  const node = agPress(seg.entry, "cal-line", [el("span", { class: "cal-line-time", text: agHours(seg).split(" – ")[0] }), el("span", { class: "cal-line-title", text: seg.entry.title })]);
+  Object.assign(node.style, { gridColumn: String(column + 1), gridRow: String(line + 2) });
+  return node;
+}
+function agMore(day, n, column) {
+  const more = el("button", { type: "button", class: "cal-more", style: `grid-column:${column + 1}`, text: "+" + agT("{n} more", { n }) });
+  more.onclick = () => { Object.assign(agendaState, { view: "week", start: day, sel: day }); agendaView(); };
+  return more;
+}
+function agendaMonth(entries, first) {
+  const today = agToday(), lead = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7, month = first.slice(0, 7);
+  const length = agSpan(first, agMonthStep(first, 1) + "-01"), start = agDay(first, -lead), weeks = Math.ceil((lead + length) / 7);
+  const sel = agendaState.sel && agendaState.sel.slice(0, 7) === month ? agendaState.sel : today.slice(0, 7) === month ? today : first;
+  return el("div", { class: "cal-month" }, [el("div", { class: "cal-wds" }, Array.from({ length: 7 }, (_, i) => el("span", { class: "cal-wd" + (i > 4 ? " weekend" : ""), text: agFormat(agDay(start, i), { weekday: "short" }) }))),
+    ...Array.from({ length: weeks }, (_, i) => agMonthWeek(entries, agDay(start, 7 * i), month, today)),
+    el("div", { class: "cal-daylist agenda-days" }, [agDaySection(entries, sel, today, sel)])]);
+}
+// One day as a short list in time order, its all-day bars first. A bar that covers several days is listed once,
+// on the first of them shown, with its whole range in words.
+function agRow(e, when) {
+  return agPress(e, "cal-row" + (e.allDay ? " cal-row-bar" : ""), [el("span", { class: "cal-row-time", text: when }), el("span", { class: "cal-row-title", text: e.title }),
+    e.where ? el("span", { class: "cal-row-where", text: e.where }) : null]);
+}
+function agDayRows(entries, day, from) {
+  const bars = entries.filter(e => e.allDay && e.first <= day && e.last >= day && (e.first === day || day === from));
+  const short = e => e.kind !== "event" ? agWhen(e) : e.first === e.last ? agT("All day") : agWhen(e);
+  return [...bars.map(e => agRow(e, short(e))), ...agSegments(entries, day).map(seg => agRow(seg.entry, agHours(seg)))];
+}
+function agDaySection(entries, day, today, from) {
+  const rows = agDayRows(entries, day, from), name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";
+  return el("section", { class: "ag-day" + (day === today ? " today" : ""), id: "cal-day-" + day }, [
+    el("h2", { class: "ag-dayhead" }, [name ? name + " · " + agDate(day) : agDate(day), agWeatherWords(day)]), ...rows]);
+}
+// A phone's week: the seven dates as a strip to jump by, then three weeks day by day. A day with nothing has no
+// section and its date in the strip is quiet.
+function agendaPhone(entries, start) {
+  const today = agToday(), days = Array.from({ length: 21 }, (_, i) => agDay(start, i)), full = days.filter(day => day === today || agOnDay(entries, day).length);
+  const strip = el("div", { class: "cal-strip" }, days.slice(0, 7).map(day => {
+    const n = agOnDay(entries, day).length, jump = el("button", { type: "button", class: "cal-jump" + agDayClass(day, today), "aria-label": agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")), ...(full.includes(day) ? {} : { disabled: "" }) }, [
+      el("span", { class: "cal-wd", text: agFormat(day, { weekday: "narrow" }) }), el("span", { class: "cal-num", text: String(Number(day.slice(8))) }), agWeatherMark(day, true)]);
+    jump.onclick = () => document.getElementById("cal-day-" + day)?.scrollIntoView({ block: "start" });
+    return jump;
   }));
-}
-function agMonthStart(offset) {
-  const d = new Date(agToday().slice(0, 7) + "-01T00:00:00Z");
-  d.setUTCMonth(d.getUTCMonth() + offset);
-  return d.toISOString().slice(0, 10);
-}
-function agendaMonth(items, first) {
-  const today = agToday(), lead = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7;
-  const next = agMonthStart(agendaState.offset + 1), length = Math.round((new Date(next) - new Date(first)) / 86400000);
-  const start = agDay(first, -lead), cells = Math.ceil((lead + length) / 7) * 7;
-  const names = Array.from({ length: 7 }, (_, i) => el("span", { class: "ag-wd", text: agFormat(agDay(start, i), { weekday: "short" }) }));
-  return el("div", { class: "agenda-month" }, [...names, ...Array.from({ length: cells }, (_, i) => {
-    const day = agDay(start, i), mine = items.filter(item => item.day === day);
-    return el("div", { class: "ag-cell" + (day.slice(0, 7) !== first.slice(0, 7) ? " out" : "") + (day === today ? " today" : "") }, [
-      el("span", { class: "ag-date", text: String(Number(day.slice(8))) }), ...mine.slice(0, 3).map(agItem),
-      mine.length > 3 ? el("span", { class: "ag-more", text: agT("{n} more", { n: mine.length - 3 }) }) : null]);
-  })]);
-}
-function agendaDays(items) {
-  const today = agToday(), end = agDay(today, 20), list = el("div", { class: "agenda-days" });
-  for (let day = today; day <= end; day = agDay(day, 1)) {
-    const mine = items.filter(item => item.day === day);
-    if (!mine.length && day !== today) continue;
-    const name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";
-    const date = agFormat(day, { weekday: "short", day: "numeric", month: "short" });
-    list.appendChild(el("section", { class: "ag-day" + (day === today ? " today" : "") }, [
-      el("h2", { class: "ag-dayhead", text: name ? name + " · " + date : date }),
-      ...(mine.length ? mine.map(agItem) : [el("p", { class: "ag-empty", text: agT("Nothing in these days.") })])]));
-  }
-  return list;
-}
-// Earlier than today, whatever range is on screen: still open is about now, not about the week shown.
-function agendaEarlier(items) {
-  const open = items.filter(item => item.kind !== "event" && item.day < agToday());
-  if (!open.length) return null;
-  const seen = new Set(), unique = open.reverse().filter(item => !seen.has(item.href) && seen.add(item.href));
-  return el("p", { class: "agenda-earlier" }, [el("span", { class: "k", text: agT("Still open from earlier") + " " }),
-    ...unique.flatMap((item, i) => [i ? " · " : null, el("a", { href: item.href, class: item.late ? "late" : "", text: item.title }),
-      el("span", { class: "mono", text: " " + calendarDate(item.day) })])]);
+  return el("div", { class: "cal-phone" }, [strip, el("div", { class: "agenda-days" }, full.map(day => agDaySection(entries, day, today, start)))]);
 }
 // Only his own calendars are read (#3087): the page says how many, and how many were left out and why, in words.
 function agendaCalendars(c) {
@@ -9615,11 +9867,12 @@ function agendaCalendars(c) {
   return agT(c.calendars === 1 ? "{name}: 1 own calendar read" : "{name}: {n} own calendars read", { name: c.name, n: c.calendars })
     + agT("; ") + (total ? agT("{n} left out ({why})", { n: total, why }) : agT("none left out")) + agT(".");
 }
-// It sits under the calendar: what was read is provenance, and the week stays at the top of the page.
+// Small, under the header, on a desk and on a phone (#3085 review: under the week it was below a long scroll).
 // A file saved before #3087 has no counts; the sentence appears after the next read.
 function agendaRead() {
-  const counted = (REM.calendar?.read || []).filter(c => c.calendars != null);
-  return counted.length ? el("p", { class: "agenda-note agenda-read", text: counted.map(agendaCalendars).join(" ") }) : null;
+  const counted = (REM.calendar?.read || []).filter(c => c.calendars != null), weather = agendaWeather();
+  return counted.length || weather ? el("p", { class: "agenda-note agenda-read" }, [counted.map(agendaCalendars).join(" "),
+    weather ? el("span", { class: "agenda-weather", text: (counted.length ? " " : "") + weather }) : null]) : null;
 }
 function agendaNote() {
   if (REM.shared) return null;
@@ -9639,33 +9892,93 @@ function agendaNote() {
   }
   return lines.length ? el("p", { class: "agenda-note", text: lines.join(" ") }) : null;
 }
+function agStep(n) {
+  if (agendaState.view === "month") agendaState.month = agMonthStep(agMonthFirst(), n);
+  else agendaState.start = agDay(agendaState.start || agToday(), 7 * n);
+  agendaState.sel = "";
+  agendaView();
+}
 function agendaBar(range) {
-  const week = agendaState.view === "week", step = n => () => { agendaState.offset += n; agendaView(); };
+  const week = agendaState.view === "week";
   const button = (text, attrs, act) => { const b = el("button", { type: "button", ...attrs }, [text]); b.onclick = act; return b; };
   const views = el("div", { class: "seg ag-views", role: "group" }, [["week", "Week"], ["month", "Month"]].map(([view, name]) =>
-    button(agT(name), { "aria-pressed": String(agendaState.view === view) }, () => { agendaState.view = view; agendaState.offset = 0; agendaView(); })));
+    button(agT(name), { "aria-pressed": String(agendaState.view === view) }, () => { Object.assign(agendaState, { view, start: "", month: "", sel: "" }); agendaView(); })));
   const read = REM.calendar?.read?.length ? el("span", { class: "ag-source", text: REM.calendar.read.map(c =>
     agT("{name} · read {when}", { name: c.name, when: fmtTime(c.at) })).join(" · ") }) : null;
   return el("div", { class: "agenda-bar" }, [
-    button("‹", { class: "ag-step", "aria-label": agT(week ? "Previous week" : "Previous month") }, step(-1)),
-    button(agT("Today"), { class: "ag-today" }, () => { agendaState.offset = 0; agendaView(); }),
-    button("›", { class: "ag-step", "aria-label": agT(week ? "Next week" : "Next month") }, step(1)),
+    button("‹", { class: "ag-step", "aria-label": agT(week ? "Previous week" : "Previous month") }, () => agStep(-1)),
+    button(agT("Today"), { class: "ag-today" }, () => { Object.assign(agendaState, { start: "", month: "", sel: "" }); agendaView(); }),
+    button("›", { class: "ag-step", "aria-label": agT(week ? "Next week" : "Next month") }, () => agStep(1)),
     el("span", { class: "ag-range", text: range }), read, views]);
 }
-function agendaView() {
-  const main = document.getElementById("main"), items = agendaItems();
-  let body, range;
-  if (agendaState.view === "month") {
-    const first = agMonthStart(agendaState.offset);
-    range = agFormat(first, { month: "long", year: "numeric" });
-    body = agendaMonth(items, first);
-  } else {
-    const start = agDay(agToday(), 7 * agendaState.offset);
-    const end = agDay(start, 6);
-    range = agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(end, { day: "numeric", month: "short", year: "numeric" });
-    body = agendaWeek(items, start);
+// Arrows move the chosen day (left and right a day, up and down a week) and the view follows it; T is today;
+// Enter opens the chosen day's first event.
+function agKey(event) {
+  if (!document.querySelector(".agenda") || document.querySelector("dialog[open]") || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || event.metaKey || event.ctrlKey || event.altKey) return;
+  const move = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
+  if (event.key === "Enter" && !event.target.closest("button, a")) {
+    event.preventDefault();  // or the same Enter presses the detail's Close, which takes the focus
+    return void document.querySelector(`.agenda .cal-day[data-day="${agendaState.sel || agToday()}"] .cal-event`)?.click();
   }
-  main.replaceChildren(el("div", { class: "agenda", "aria-label": label("agenda") }, [agendaBar(range), agendaNote(), body, agendaDays(items), agendaEarlier(items), agendaRead()]));
+  if (!move && event.key.toLowerCase() !== "t") return;
+  event.preventDefault();
+  const sel = move ? agDay(agendaState.sel || agToday(), move) : agToday(), start = agendaState.start || agToday();
+  Object.assign(agendaState, { sel, month: sel.slice(0, 7), start: sel < start || sel > agDay(start, 6) ? (move ? agDay(start, 7 * Math.sign(move)) : "") : agendaState.start });
+  agendaView();
+}
+function agListen() {
+  if (agendaState.listening) return;
+  agendaState.listening = true;
+  addEventListener("keydown", agKey);
+  addEventListener("resize", agSizeWeek);
+  addEventListener("mousedown", event => { if (!event.target.closest(".cal-detail, .cal-event")) document.querySelector(".cal-detail:not(.n3-sheet)")?.close(); });
+}
+function agendaView() {
+  const main = document.getElementById("main"), entries = agendaEntries(), month = agendaState.view === "month";
+  const start = agendaState.start || agToday(), first = agMonthFirst();
+  const range = month ? agFormat(first, { month: "long", year: "numeric" })
+    : agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(agDay(start, 6), { day: "numeric", month: "short", year: "numeric" });
+  agListen();
+  main.replaceChildren(el("div", { class: "agenda agenda-" + agendaState.view, "aria-label": label("agenda") }, [agendaBar(range), agendaRead(), agendaNote(),
+    ...(month ? [agendaMonth(entries, first)] : [agendaWeek(entries, start), agendaPhone(entries, start)])]));
+  agSizeWeek();
+}
+// The forecast the night saved for these days (weather.py; the page never asks anyone). A day says its weather
+// in words on hover and in its list; the small picture and "22° / 14°" are the second cue. A day with no
+// forecast shows nothing.
+const AG_CLOUD = "M7 13h10a3.5 3.5 0 0 0 .4-7A4.8 4.8 0 0 0 8 6.5 3.5 3.5 0 0 0 7 13Z";
+const AG_WX = {
+  clear: ["M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8Z", "M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"],
+  "partly cloudy": ["M8 3v1.5M2.5 8.5H4M4 4.5l1.1 1.1M10.6 6.3A3.5 3.5 0 0 0 5.2 10.6", "M9 19h8a3.5 3.5 0 0 0 .4-7A4.8 4.8 0 0 0 10 12.5 3.5 3.5 0 0 0 9 19Z"],
+  cloudy: ["M7 18h10a4 4 0 0 0 .5-8A5.5 5.5 0 0 0 7 9.5 4.3 4.3 0 0 0 7 18Z"],
+  fog: [AG_CLOUD, "M5 17h14M7 20.5h10"], rain: [AG_CLOUD, "M8 16.5v3.5M12 16.5v3.5M16 16.5v3.5"],
+  showers: [AG_CLOUD, "M9 16.5l-.8 1.6M12.5 19l-.8 1.6M15.5 16.5l-.8 1.6"], snow: [AG_CLOUD, "M8 17v.01M12 19.5v.01M16 17v.01M10 21v.01M14 21v.01"],
+  storm: [AG_CLOUD, "M12.5 15l-2.5 3.5h3L11 22"],
+};
+function agWeather(day) { return (REM.weather?.days || []).find(w => w.date === day) || null; }
+function agDegrees(w, brief) { return brief ? w.high + "°" : w.high + "° / " + w.low + "°"; }
+function agWeatherSaid(w) {
+  const word = agT(w.condition), rain = w.rain == null ? "" : agT("{n}% chance of rain", { n: w.rain });
+  return [word[0].toUpperCase() + word.slice(1), rain, agDegrees(w)].filter(Boolean).join(agT(", "));
+}
+function agWeatherMark(day, brief = false) {
+  const w = agWeather(day);
+  if (!w) return null;
+  const picture = svgEl("svg", { class: "cal-wx-ic", viewBox: "0 0 24 24", "aria-hidden": "true" }, (AG_WX[w.condition] || AG_WX.cloudy).map(d => svgEl("path", { d })));
+  return el("span", { class: "cal-wx", title: agWeatherSaid(w), "aria-label": agWeatherSaid(w) }, [brief ? null : picture, agDegrees(w, brief)]);
+}
+function agWeatherWords(day) {
+  const w = agWeather(day);
+  return w ? el("span", { class: "cal-wx-words", text: agWeatherSaid(w) }) : null;
+}
+// Where the forecast is for and who it is from, in the small line under the header; a failed read says when and
+// why, and how old the forecast shown is.
+function agendaWeather() {
+  const w = REM.weather;
+  if (!w || (!w.read_at && !w.error)) return "";
+  if (!w.error) return agT("Weather for {place} from {source}, read {when}.", { place: w.place, source: w.source, when: fmtTime(w.read_at) });
+  return agT("Weather for {place} could not be read on {when} ({reason}).", { place: w.place, when: fmtTime(w.error.at), reason: agT(w.error.reason) + (w.error.error ? " · " + w.error.error : "") })
+    + (w.read_at ? " " + agT("The forecast is from {when}.", { when: fmtTime(w.read_at) }) : "");
 }
 
 // ---------- projects: one directory, three views (墨与铅 · Ink & Pencil, art direction sprints 10–11) ----------
@@ -12834,7 +13147,7 @@ const GRAPH_UI_ZH = {
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
 
   "Search people, organisations, knowledge": "搜索人、组织、知识，看它连着谁", "Clear focus": "清除聚焦",
-  "Shape = kind": "形状 = 类型", "size = links": "大小 = 连接数", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
+  "A bigger mark has more links": "记号越大，连接越多", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
   "{n} records link to nothing yet": "{n} 条还没连上任何记录",
 
   "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
@@ -12857,7 +13170,12 @@ const GRAPH_UI_ZH = {
   "REM files knowledge from your records on its night run.": "REM 会在夜里那一轮从已有记录里整理知识。",
   "Explore linked records →": "探索相连的记录 →",
   "Entries": "条目", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
-  "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定"
+  "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定",
+  "1 knowledge entry": "1 条知识", "{n} knowledge entries": "{n} 条知识", "1 person": "1 个人", "{n} people": "{n} 个人",
+  "1 organisation": "1 个组织", "{n} organisations": "{n} 个组织", "1 project": "1 个项目", "{n} projects": "{n} 个项目",
+  "1 skill or decision": "1 条技能或决定", "{n} skills and decisions": "{n} 条技能和决定", "1 session": "1 个会话", "{n} sessions": "{n} 个会话",
+  " link ": "连着 ", " links ": "连着 ", ", with ": "，另有 ", " link to each other": "互相连着", ", ": "、", " and ": "和 ", ".": "。",
+  "The busiest is ": "最忙的是 ", ", with {n} links.": "（{n} 条连接）。"
 };
 function graphT(key, values = {}) {
   const words = uiLanguage === "zh" ? GRAPH_UI_ZH[key] : null;
@@ -12865,6 +13183,10 @@ function graphT(key, values = {}) {
 }
 const GRAPH_ORDER = ["knowledge", "people", "orgs", "projects", "notes", "sessions"];
 const GRAPH_NAME = { knowledge: "Knowledge", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions" };
+// A count in words, beside its shape: [one, many]. The sentence over the map and the panel both read these.
+const GRAPH_COUNT = { knowledge: ["1 knowledge entry", "{n} knowledge entries"], people: ["1 person", "{n} people"], orgs: ["1 organisation", "{n} organisations"],
+  projects: ["1 project", "{n} projects"], notes: ["1 skill or decision", "{n} skills and decisions"], sessions: ["1 session", "{n} sessions"] };
+function graphCount(k, n) { return graphT(GRAPH_COUNT[k][n === 1 ? 0 : 1], { n }); }
 const GRAPH_ONE = { knowledge: "Knowledge entry", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session" };
 const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"]];
 function graphKind(kind) { return GRAPH_NAME[kind] ? kind : "notes"; }
@@ -12908,35 +13230,88 @@ function graphModel() {
 function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 // A labelled-private record keeps its name only on this Mac and only while passages are shown.
 function graphHidden(n) { return n.private && (!n.r || document.documentElement.classList.contains("hide-private")); }
-function graphTitle(n) { return graphHidden(n) ? graphT("Personal") : topicName(n.r?.title || n.title || n.id).replace(" (automated candidate)", ""); }
-function topicName(title) { return title.replace(/\s*\[personal\]\s*$/i, ""); }
-// `n` counts Latin letters; a CJK glyph is as wide as two, so a Chinese session title is cut at half the count.
-function graphShort(text, n = 22) {
-  text = text.replace(/\s*\([^)]*\)\s*$/, "");
-  const wide = ch => /[\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u{20000}-\u{3ffff}]/u.test(ch) ? 2 : 1;
-  if ([...text].reduce((sum, ch) => sum + wide(ch), 0) <= n) return text;
-  let out = "", used = 0;
-  for (const ch of text) { if ((used += wide(ch)) > n - 1) break; out += ch; }
-  return out.trimEnd() + "…";
+// The name in the reading language when the page has a current translation: its translated heading.
+function graphTitle(n) {
+  if (graphHidden(n)) return graphT("Personal");
+  const translated = uiLanguage !== "en" && /^# +(.+)$/m.exec(n.r?.translations?.[uiLanguage] || "")?.[1];
+  return topicName(translated || n.r?.title || n.title || n.id).replace(" (automated candidate)", "");
 }
+function topicName(title) { return title.replace(/\s*\[personal\]\s*$/i, ""); }
+// Width counts Latin letters; a CJK glyph is as wide as two.
+function graphWidth(text) { return [...text].reduce((sum, ch) => sum + (/[\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u{20000}-\u{3ffff}]/u.test(ch) ? 2 : 1), 0); }
+// A name on up to `max` lines of `per` letters, cut only between words (#3085: four of five labels ended
+// mid-phrase). A CJK title has no spaces and any glyph is a boundary, so a word wider than a line is split by glyph.
+function graphLines(text, per = 22, max = 1) {
+  const parts = text.replace(/\s*\([^)]*\)\s*$/, "").split(/\s+/).flatMap(word => graphWidth(word) > per ? [...word].map((ch, i) => (i ? "" : " ") + ch) : [" " + word]);
+  const lines = [""], said = (from, to) => parts.slice(from, to).join("").trimStart();
+  let from = 0;
+  for (const [i, part] of parts.entries()) {
+    const line = lines.at(-1), next = line ? line + part : part.trimStart();
+    if (graphWidth(next) <= per) { lines[lines.length - 1] = next; continue; }
+    if (lines.length < max) { lines.push(part.trimStart()); from = i; continue; }
+    let end = i;  // the ellipsis takes a letter's room
+    while (end - from > 1 && graphWidth(said(from, end)) > per - 1) end--;
+    lines[lines.length - 1] = said(from, end) + "…";
+    return { lines, text: said(0, end) + "…" };
+  }
+  return { lines, text: said(0) };
+}
+function graphShort(text, n = 22) { return graphLines(text, n).lines[0]; }
 function graphRadius(n) {
   const d = GRAPH.adj.get(n.id)?.size || 0;
   if (n.k === "sessions") return 1.8;
   if (n.k === "knowledge") return Math.min(17, 6 + Math.sqrt(d) * 1.25);
   return Math.max(3, Math.min(14, 2.6 + Math.sqrt(d) * 1.5));
 }
-// d3-force from a fixed start is deterministic: the same notebook always lands in the same place.
+// How far a mark's outline reaches from its centre: a diamond and a triangle reach past their radius.
+function graphReach(n) { return (n.private ? Math.max(graphRadius(n), GRAPH_PRIVATE_MIN) : graphRadius(n)) * ({ projects: 1.25, notes: 1.15, sessions: 1.2 }[n.k] || 1); }
+const GRAPH_LABELS = 12, GRAPH_LINE = 15;
+// The most-linked records that are not knowledge entries: the ones the fitted map names. The owner is every
+// page's hub by definition, so ranking him says nothing (sprint 15).
+function graphHubs(nodes, degree, count = GRAPH_LABELS) {
+  return nodes.filter(n => n.k !== "knowledge" && n.k !== "sessions" && !(REM.owner && n.id === REM.owner)).sort((a, b) => degree(b) - degree(a)).slice(0, count);
+}
+// d3-force from a fixed start is deterministic: the same notebook always lands in the same place. A mark that
+// will carry a name keeps clear ground around it, so its label has somewhere to sit that is not another mark.
 function graphLayout(nodes, edges, byId) {
   if (!nodes.length || typeof d3 === "undefined") return;
   const links = edges.map(e => ({ source: e.s, target: e.t, k: e.k }));
-  const degree = id => links.filter(l => l.source === id || l.target === id).length;
-  const size = new Map(nodes.map(n => [n.id, degree(n.id)]));
+  const size = new Map(nodes.map(n => [n.id, 0]));
+  for (const l of links) for (const id of [l.source, l.target]) size.set(id, size.get(id) + 1);
   const radius = n => n.k === "knowledge" ? Math.min(17, 6 + Math.sqrt(size.get(n.id)) * 1.25) : Math.max(3, Math.min(14, 2.6 + Math.sqrt(size.get(n.id)) * 1.5));
+  // Entries last: the last strip cleared in a pass is the surest to be clear, and an entry is always named.
+  const named = [...graphHubs(nodes, n => size.get(n.id)), ...nodes.filter(n => n.k === "knowledge")];
+  const room = graphNameRoom(nodes, named, radius);
   d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d => d.id).distance(l => l.k === "topic" ? 70 : 34).strength(l => l.k === "topic" ? .06 : .5))
-    .force("charge", d3.forceManyBody().strength(-46).distanceMax(420))
-    .force("x", d3.forceX().strength(.035)).force("y", d3.forceY().strength(.05))
-    .force("collide", d3.forceCollide(d => radius(d) + 1.5)).stop().tick(320);
+    .force("link", d3.forceLink(links).id(d => d.id).distance(l => l.k === "topic" ? 90 : 46).strength(l => l.k === "topic" ? .06 : .5))
+    .force("charge", d3.forceManyBody().strength(-80).distanceMax(460))
+    .force("x", d3.forceX().strength(.022)).force("y", d3.forceY().strength(.06))
+    .force("collide", d3.forceCollide(n => radius(n) + 2.5))
+    .force("names", room).stop().tick(320);
+  // The other forces have the last word in a tick and can leave a mark in a strip: the strips have it here.
+  for (let pass = 0; pass < 6; pass++) room();
+}
+// A force that keeps the strip to the right of a named mark empty, where its name is written: any other mark
+// in the strip is pushed out above or below it. The strip is as long as the name at the map's fitted size.
+function graphNameRoom(nodes, named, radius) {
+  const strips = named.map(n => {
+    const top = n.k === "knowledge", { lines } = graphLines(topicName(n.title || ""), top ? 28 : 24, top ? 2 : 1);
+    return { n, w: Math.max(...lines.map(graphWidth)) * 6.4 + 14, h: lines.length * GRAPH_LINE / 2 + 5 };
+  });
+  const reach = strip => radius(strip.n) * 1.25 + strip.w;
+  return () => {
+    // Two names that would be written over each other move their marks apart, up and down.
+    for (const a of strips) for (const b of strips) {
+      const dy = b.n.y - a.n.y, over = a.h + b.h + 2 - Math.abs(dy);
+      if (a === b || over <= 0 || b.n.x > a.n.x + reach(a) || a.n.x > b.n.x + reach(b)) continue;
+      b.n.y += over / 4 * (dy < 0 ? -1 : 1);
+      a.n.y -= over / 4 * (dy < 0 ? -1 : 1);
+    }
+    for (const strip of strips) for (const m of nodes) {
+      const { n, h } = strip, r = radius(m) * 1.25 + 2, dx = m.x - n.x, dy = m.y - n.y;
+      if (m !== n && dx > -r && dx < reach(strip) + r && Math.abs(dy) < h + r) m.y += (h + r - Math.abs(dy)) * (dy < 0 ? -1 : 1);
+    }
+  };
 }
 
 // ---------- the view ----------
@@ -12980,46 +13355,60 @@ function graphView() {
   main.textContent = "";
   const model = graphModel(), params = new URLSearchParams(location.hash.slice(1));
   const asked = params.get("focus") || "";
-  graphState.focus = model.adj.has(asked) ? asked : graphPhone() ? graphFirst() : "";
+  graphState.focus = model.adj.has(asked) ? asked : "";
+  graphState.preview = "";
   graphState.depth = params.get("depth") === "2" ? 2 : 1;
-  graphState.tab = "all";
+  // A phone cannot show two hundred marks a thumb could hit (#3085): it draws the knowledge entries and what
+  // they link directly, which is the Knowledge filter; with no entry yet it draws everything.
+  graphState.tab = graphPhone() && model.linked.some(n => n.k === "knowledge") ? "knowledge" : "all";
   graphFocusSets();
-  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Graph"), role: "img" }),
-    el("div", { class: "gx-tip", hidden: "" })]), graphLegend(model), graphZoom(), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
+  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Graph"), role: "img", tabindex: "0" }),
+    el("div", { class: "gx-tip", hidden: "" })]), el("div", { class: "gx-foot" }, [graphLegend(model), graphZoom()]), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
   main.appendChild(box);
   if (!model.linked.length) { box.querySelector(".gx-stage").replaceWith(el("p", { class: "gx-empty", text: graphT("Nothing links here yet") })); return; }
   graphListen();
   graphBind(box);
+  graphPanel();
   graphResize();
   graphFit();
-  graphPanel();
+  graphReturn();
   graphDraw();
-}
-function graphFirst() {
-  const topics = GRAPH.linked.filter(n => n.k === "knowledge" && !n.private).sort((a, b) => graphDegree(b) - graphDegree(a));
-  return (topics[0] || [...GRAPH.linked].sort((a, b) => graphDegree(b) - graphDegree(a))[0])?.id || "";
 }
 function graphHead(model) {
   const search = el("input", { type: "search", class: "gx-search", placeholder: graphT("Search people, organisations, knowledge"), "aria-label": graphT("Search people, organisations, knowledge"), autocomplete: "off" });
   const tabs = el("div", { class: "gx-tabs", role: "tablist" }, GRAPH_TABS.map(([key, name]) =>
     el("button", { type: "button", role: "tab", "data-tab": key, "aria-selected": String(key === "all"), text: graphT(name) })));
-  // The counts live in the legend under the map; the heading only names the place (#2994).
-  return el("header", { class: "gx-head" }, [knowledgeHead("graph"),
+  return el("header", { class: "gx-head" }, [el("div", { class: "gx-top" }, [knowledgeHead("graph"),
     el("div", { class: "gx-bar" }, [el("div", { class: "gx-find" }, [search, el("button", { type: "button", class: "gx-clear", "aria-label": graphT("Clear focus"), text: "✕", hidden: "" }),
-      el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]);
+      el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]), graphSays(model)]);
 }
-// The legend is one line under the map, so it never covers a point.
-function graphLegend(model) {
+function graphKey(k, n) { return el("span", { class: "gx-key" }, [graphGlyph(k, 13), graphCount(k, n)]); }
+function graphListed(parts) {
+  return parts.flatMap((part, i) => [i ? graphT(i === parts.length - 1 ? " and " : ", ") : null, part]);
+}
+// The first second (#3085): one sentence, counted from the map, that says what it shows. Each kind stands in
+// it beside its shape, so the sentence is also the key: no mark on the map is a shape alone, and the key is
+// where a newcomer starts reading, not under the fold. No instructions.
+function graphSays(model) {
   const count = {};
   for (const n of model.linked) count[n.k] = (count[n.k] || 0) + 1;
-  const kinds = GRAPH_ORDER.filter(k => k !== "sessions" && count[k]).map(k =>
-    el("span", { class: "gx-key" }, [graphGlyph(k, 12), graphT(GRAPH_NAME[k]) + " " + count[k]]));
+  const key = k => graphKey(k, count[k]), others = ["people", "projects", "orgs"].filter(k => count[k]).map(key);
+  const hub = graphHubs(model.linked.filter(n => !graphHidden(n)), graphDegree, 1)[0];
+  const open = hub && el("button", { type: "button", text: graphTitle(hub) });
+  if (open) open.onclick = () => graphFocus(hub.id);
+  return el("p", { class: "gx-says" }, [
+    ...(count.knowledge ? [key("knowledge"), graphT(count.knowledge === 1 ? " links " : " link "), ...graphListed(others)] : [...graphListed(others), graphT(" link to each other")]),
+    ...(count.notes ? [graphT(", with "), key("notes")] : []), graphT("."), " ",
+    open ? el("span", { class: "gx-busiest" }, [graphT("The busiest is "), open, graphT(", with {n} links.", { n: graphDegree(hub) })]) : null]);
+}
+// Under the map, quietly: what size means, and what the map does not draw.
+function graphLegend(model) {
   const folded = REM.graph?.folded_sessions || 0, alone = {};
   for (const n of model.isolated) alone[n.k] = (alone[n.k] || 0) + 1;
-  const breakdown = Object.entries(alone).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => graphT(GRAPH_NAME[k]) + " " + n).join(" · ");
-  return el("footer", { class: "gx-legend" }, [el("span", { class: "gx-key-head", text: graphT("Shape = kind") + " · " + graphT("size = links") }), ...kinds,
-    folded ? el("span", { class: "gx-quiet", text: graphT("{n} sessions folded into their projects", { n: folded }) }) : null,
-    model.isolated.length ? el("span", { class: "gx-quiet", text: graphT("{n} records link to nothing yet", { n: model.isolated.length }) + ": " + breakdown }) : null]);
+  const breakdown = Object.entries(alone).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => graphCount(k, n)).join(" · ");
+  return el("footer", { class: "gx-legend" }, [el("span", { text: graphT("A bigger mark has more links") }),
+    folded ? el("span", { text: graphT("{n} sessions folded into their projects", { n: folded }) }) : null,
+    model.isolated.length ? el("span", { text: graphT("{n} records link to nothing yet", { n: model.isolated.length }) + ": " + breakdown }) : null]);
 }
 function graphZoom() {
   return el("div", { class: "gx-zoom" }, [["+", "Zoom in", 1.4], ["−", "Zoom out", 1 / 1.4], ["⤢", "Fit", 0]].map(([text, name, by]) =>
@@ -13070,14 +13459,14 @@ function graphColours() {
 function graphDraw() {
   const canvas = graphCanvas();
   if (!canvas) return;
-  const ctx = canvas.getContext("2d"), T = graphState.T, colours = graphColours(), { focus, near1, near2 } = graphState;
+  const ctx = canvas.getContext("2d"), T = graphState.T, colours = graphColours(), { focus, near1, near2, preview } = graphState;
   ctx.save();
   ctx.clearRect(0, 0, graphState.W, graphState.H);
   ctx.translate(T.x, T.y); ctx.scale(T.k, T.k);
   for (const e of GRAPH.edges) {
     const a = GRAPH.byId.get(e.s), b = GRAPH.byId.get(e.t);
     if (!graphVisible(a) || !graphVisible(b)) continue;
-    const on = focus && (e.s === focus || e.t === focus);
+    const on = (focus && (e.s === focus || e.t === focus)) || (preview && (e.s === preview || e.t === preview));
     const outer = focus && !on && ((near1.has(e.s) && near2.has(e.t)) || (near2.has(e.s) && near1.has(e.t)));
     ctx.globalAlpha = on ? .75 : outer ? .3 : focus ? .04 : 1;
     ctx.strokeStyle = on ? colours.ink : e.k === "topic" ? colours.topicEdge : colours.edge;
@@ -13088,44 +13477,95 @@ function graphDraw() {
   for (const n of order) {
     ctx.globalAlpha = graphAlpha(n);
     graphMark(ctx, n, n.x, n.y, graphRadius(n), colours);
-    if (n.id === focus) { ctx.beginPath(); ctx.arc(n.x, n.y, graphRadius(n) + 6 / T.k, 0, 2 * Math.PI); ctx.lineWidth = 1.5 / T.k; ctx.strokeStyle = colours.ink; ctx.stroke(); }
+    if (n.id === focus || n.id === preview) { ctx.beginPath(); ctx.arc(n.x, n.y, graphRadius(n) + 6 / T.k, 0, 2 * Math.PI); ctx.lineWidth = 1.5 / T.k; ctx.strokeStyle = colours.ink; ctx.stroke(); }
   }
   ctx.restore();
   graphLabels(ctx, order, colours);
 }
-// Topics always carry a name; others when big enough on screen. Greedy, so labels never overlap.
+// Which marks carry a name (#3085): every knowledge entry, then the most-linked other records: twelve when the
+// whole map is fitted, more as he zooms in (the count grows with the area the zoom opens). A phone's fitted map
+// names only the entries. A focused map names the record and what it links directly.
+function graphLabelBudget() {
+  const base = graphPhone() ? 0 : GRAPH_LABELS, zoom = graphState.T.k / (graphState.fitK || graphState.T.k);
+  return zoom < 1.1 ? base : Math.round(Math.max(base, 6) * zoom * zoom);
+}
+function graphNamed(order) {
+  const { focus, near1 } = graphState, shown = order.filter(n => graphAlpha(n) >= .4 && !graphHidden(n)), byLinks = (a, b) => graphDegree(b) - graphDegree(a);
+  if (focus) return shown.filter(n => n.id === focus || near1.has(n.id)).sort((a, b) => (b.id === focus) - (a.id === focus) || (b.k === "knowledge") - (a.k === "knowledge") || byLinks(a, b));
+  return [...shown.filter(n => n.k === "knowledge").sort(byLinks), ...graphHubs(shown, graphDegree, graphLabelBudget())];
+}
+// Every mark on screen as a box, so a label can keep off them.
+function graphMarkBoxes() {
+  const { T, focus } = graphState;
+  return GRAPH.linked.filter(n => graphVisible(n) && graphAlpha(n) >= .4).map(n => {
+    const x = T.applyX(n.x), y = T.applyY(n.y), r = graphReach(n) * T.k + (n.id === focus ? 7 : 1);
+    return { id: n.id, box: [x - r, y - r, x + r, y + r] };
+  });
+}
+function graphBoxesMeet(a, b) { return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]; }
+// Right of its mark, else left, below, above: the first place inside the map that touches no other label and no
+// other mark. With none free a record goes unnamed (pointing at it still says its name); an entry or the focused
+// record is always named, at the place that covers the fewest marks.
+function graphLabelSpot(n, w, h, taken, marks, must) {
+  const { T, W, H } = graphState, x = T.applyX(n.x), y = T.applyY(n.y), r = graphReach(n) * T.k + (n.id === graphState.focus ? 11 : 5);
+  const right = W - graphPanelWidth();
+  const spots = [[x + r, y - h / 2], [x - r - w, y - h / 2], [x - w / 2, y + r], [x - w / 2, y - r - h]].map(([left, top], side) => {
+      // A name that must be written is slid back inside the map's edge rather than dropped.
+      if (must) { left = Math.max(0, Math.min(left, right - w)); top = Math.max(0, Math.min(top, H - h)); }
+      return { side, box: [left, top, left + w, top + h] };
+    }).filter(spot => spot.box[0] >= 0 && spot.box[2] <= right && spot.box[1] >= 0 && spot.box[3] <= H && !taken.some(box => graphBoxesMeet(spot.box, box)));
+  const covers = spot => marks.filter(mark => mark.id !== n.id && graphBoxesMeet(spot.box, mark.box)).length;
+  return spots.find(spot => !covers(spot)) || (must && spots.sort((a, b) => covers(a) - covers(b))[0]) || null;
+}
+function graphLabelText(ctx, lines, { side, box }, ink, ground) {
+  // A plate of paper under the name: the links it crosses stay faint behind it instead of striking it through.
+  ctx.globalAlpha = .82; ctx.fillStyle = ground; ctx.fillRect(box[0], box[1], box[2] - box[0], box[3] - box[1]); ctx.globalAlpha = 1;
+  ctx.textAlign = ["left", "right", "center", "center"][side];
+  const x = [box[0] + 2, box[2] - 2, (box[0] + box[2]) / 2, (box[0] + box[2]) / 2][side];
+  lines.forEach((line, i) => {
+    const y = box[1] + 1 + GRAPH_LINE / 2 + i * GRAPH_LINE;
+    ctx.lineWidth = 3.5; ctx.strokeStyle = ground; ctx.strokeText(line, x, y);
+    ctx.fillStyle = ink; ctx.fillText(line, x, y);
+  });
+}
+// What was named is kept on graphState.labels, so a test can read what the canvas drew.
 function graphLabels(ctx, order, colours) {
-  const { focus, near1, T, W, H } = graphState, phone = graphPhone(), boxes = [], right = phone ? 4 : graphPanelWidth();
-  const want = order.filter(n => {
-    if (graphAlpha(n) < .4 || graphHidden(n)) return false;
-    if (focus) return n.id === focus || near1.has(n.id);
-    return n.k === "knowledge" || graphRadius(n) * T.k >= (phone ? 11 : 8.5);
-  }).sort((a, b) => (b.id === focus) - (a.id === focus) || (b.k === "knowledge") - (a.k === "knowledge") || graphRadius(b) - graphRadius(a));
-  ctx.textBaseline = "middle"; ctx.lineJoin = "round";
-  const centre = focus && GRAPH.byId.get(focus);
-  if (centre) { const x = T.applyX(centre.x), y = T.applyY(centre.y), r = graphRadius(centre) * T.k + 7; boxes.push([x - r, y - r, x + r, y + r]); }
+  const marks = graphMarkBoxes(), taken = [];
   const font = graphCss("--font"), size = graphCss("--s-meta"), weight = [graphCss("--w-regular"), graphCss("--w-bold")];
-  for (const n of want) {
-    const top = n.k === "knowledge" || n.id === focus, x = T.applyX(n.x), y = T.applyY(n.y), r = graphRadius(n) * T.k;
+  ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+  graphState.labels = [];
+  for (const n of graphNamed(order)) {
+    const top = n.k === "knowledge" || n.id === graphState.focus;
     ctx.font = `${weight[+top]} ${size} ${font}`;
-    const text = graphShort(graphTitle(n)), w = ctx.measureText(text).width, bx = x + r + (n.id === focus ? 10 : 5);
-    const box = [bx - 2, y - 8, bx + w + 2, y + 8];
-    if (bx + w > W - right || bx < 0 || y < 8 || y > H - 8 || boxes.slice(n.id === focus ? 1 : 0).some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
-    boxes.push(box);
-    ctx.lineWidth = 3.5; ctx.strokeStyle = colours.bg; ctx.strokeText(text, bx, y);
-    ctx.fillStyle = top ? colours.ink : colours.ink2; ctx.fillText(text, bx, y);
+    const { lines, text } = graphLines(graphTitle(n), top ? (graphPhone() ? 22 : 28) : 24, top ? (graphPhone() ? 3 : 2) : 1);
+    const spot = graphLabelSpot(n, Math.max(...lines.map(line => ctx.measureText(line).width)) + 4, lines.length * GRAPH_LINE + 2, taken, marks, top);
+    if (!spot) continue;
+    taken.push(spot.box);
+    graphState.labels.push({ id: n.id, text, box: spot.box });
+    graphLabelText(ctx, lines, spot, top ? colours.ink : colours.ink2, colours.bg);
   }
+  ctx.textAlign = "left";
 }
 function graphPanelWidth() { return graphPhone() ? 0 : 396; }
-// The canvas starts under the heading and ends above the legend: a canvas under a see-through heading
-// drew nodes on the tabs and the title, and panning could push any node there. On a phone the stage
-// is already its own block between the heading and the panel.
+// The map ends at the window's foot (#3085: it was as tall as the window but began under the top bar, so its
+// key and the end of its panel were under the fold). The panel hangs beside the map, as tall as its list and
+// never taller than the map. On a phone the map leaves room under it for the panel's first lines above the tab bar.
 function graphStage() {
-  const map = document.querySelector(".gx-map"), stage = map.querySelector(".gx-stage");
-  if (graphPhone()) { stage.style.top = stage.style.bottom = ""; return; }
-  const head = map.querySelector(".gx-head"), foot = Math.min(...[".gx-legend", ".gx-zoom"].map(selector => map.querySelector(selector).offsetTop));
-  stage.style.top = head.offsetTop + head.offsetHeight + 12 + "px";
-  stage.style.bottom = map.clientHeight - foot + 8 + "px";
+  const map = document.querySelector(".gx-map"), stage = map.querySelector(".gx-stage"), panel = map.querySelector(".gx-panel");
+  const top = map.getBoundingClientRect().top + scrollY;
+  if (graphPhone()) {
+    map.style.height = panel.style.top = panel.style.maxHeight = "";
+    // Nothing selected: the map ends above the tab bar and nothing is under it. A selected record's name and
+    // its way in take the 180 px under a shorter map.
+    panel.hidden = !graphState.focus;
+    stage.style.height = Math.max(240, innerHeight - top - stage.offsetTop - 88 - (graphState.focus ? 180 : 0)) + "px";
+    return;
+  }
+  stage.style.height = "";
+  panel.hidden = false;
+  map.style.height = Math.max(520, innerHeight - top) + "px";
+  panel.style.top = stage.offsetTop + 8 + "px";
+  panel.style.maxHeight = stage.offsetHeight - 16 + "px";
 }
 // Fit what is shown, leaving room for the heading above, the panel at the right and the legend below.
 function graphFit() {
@@ -13134,28 +13574,33 @@ function graphFit() {
   const points = GRAPH.linked.filter(n => ids ? ids.has(n.id) : graphVisible(n));
   if (!points.length) return;
   const [x0, x1] = d3.extent(points, n => n.x), [y0, y1] = d3.extent(points, n => n.y);
-  const L = phone ? 16 : 40, R = phone ? 16 : graphPanelWidth() + 24, top = 20, bottom = 20;
+  const L = phone ? 28 : 40, R = phone ? 28 : graphPanelWidth() + 24, top = 24, bottom = 24;
   const k = Math.min((W - L - R) / ((x1 - x0) || 1), (H - top - bottom) / ((y1 - y0) || 1), ids ? 2 : 4) * (ids ? .8 : .92);
+  if (!ids) graphState.fitK = k;
   graphState.T = d3.zoomIdentity.translate(L + (W - L - R) / 2 - k * (x0 + x1) / 2, top + (H - top - bottom) / 2 - k * (y0 + y1) / 2).scale(k);
   if (graphState.zoom) d3.select(graphCanvas()).call(graphState.zoom.transform, graphState.T);
 }
+// A pointer must be on the mark; a thumb only near it: on a phone a mark answers within 22 px of its centre
+// (a 44 px target however small it is drawn), a knowledge entry before anything else in reach.
 function graphHit(event) {
-  const canvas = graphCanvas(), rect = canvas.getBoundingClientRect(), T = graphState.T;
+  const canvas = graphCanvas(), rect = canvas.getBoundingClientRect(), T = graphState.T, thumb = graphPhone() ? 22 / T.k : 0;
   const x = T.invertX(event.clientX - rect.left), y = T.invertY(event.clientY - rect.top);
-  let best = null, bestD = Infinity;
-  for (const n of GRAPH.linked) {
-    if (!graphVisible(n) || graphAlpha(n) < .4) continue;
-    const d = Math.hypot(n.x - x, n.y - y);
-    if (d < graphRadius(n) + 4 / T.k && d < bestD) { best = n; bestD = d; }
-  }
-  return best;
+  const reach = GRAPH.linked.filter(n => graphVisible(n) && graphAlpha(n) >= .4).map(n => ({ n, d: Math.hypot(n.x - x, n.y - y) }))
+    .filter(({ n, d }) => d < Math.max(graphRadius(n) + 4 / T.k, thumb));
+  return reach.sort((a, b) => (thumb ? (b.n.k === "knowledge") - (a.n.k === "knowledge") : 0) || a.d - b.d)[0]?.n || null;
 }
 function graphBind(box) {
   const canvas = box.querySelector(".gx-canvas");
-  graphState.zoom = d3.zoom().scaleExtent([.2, 8]).on("zoom", event => { graphState.T = event.transform; graphDraw(); });
+  // On a phone one finger scrolls the page past the map; two fingers move and zoom it.
+  const fingers = event => !graphPhone() || !event.touches || event.touches.length > 1;
+  graphState.zoom = d3.zoom().scaleExtent([.2, 8]).filter(event => (!event.ctrlKey || event.type === "wheel") && !event.button && fingers(event))
+    .on("zoom", event => { graphState.T = event.transform; graphDraw(); });
   d3.select(canvas).call(graphState.zoom).on("dblclick.zoom", null);
-  canvas.addEventListener("click", event => graphFocus(graphHit(event)?.id || ""));
-  canvas.addEventListener("mousemove", event => graphTip(event, graphHit(event)));
+  // One click opens the record's page (#3095: focusing it and then pressing Open was two). Pointing at a mark is
+  // what previews it in the panel; a click on empty paper lets go of whatever was focused.
+  canvas.addEventListener("click", event => { const n = graphHit(event); if (n) graphOpen(n); else graphFocus(""); });
+  canvas.addEventListener("mousemove", event => { const n = graphHit(event); graphTip(event, n); graphPoint(n); });
+  canvas.addEventListener("keydown", event => { if (event.key === "Enter" && graphState.focus) graphOpen(GRAPH.byId.get(graphState.focus)); });
   canvas.addEventListener("mouseleave", () => { box.querySelector(".gx-tip").hidden = true; });
   for (const button of box.querySelectorAll("[data-zoom]")) button.onclick = () => {
     const by = Number(button.dataset.zoom);
@@ -13178,17 +13623,43 @@ function graphTip(event, n) {
   tip.style.left = event.clientX - rect.left + 12 + "px";
   tip.style.top = event.clientY - rect.top - 30 + "px";
 }
+// The record's page, leaving the graph's address naming this mark: the browser's Back returns to the graph with
+// the mark focused, and the pan and zoom he left are kept for that return. A mark with no page is only focused.
+function graphOpen(n) {
+  if (!n.r) return graphFocus(n.id);
+  clearTimeout(graphState.dwell);
+  history.replaceState(null, "", "#view=graph&focus=" + encodeURIComponent(n.id));
+  graphState.left = { focus: n.id, T: graphState.T, width: innerWidth };
+  location.hash = href(n.r);
+}
+function graphReturn() {
+  const left = graphState.left;
+  graphState.left = null;
+  if (!left || left.focus !== graphState.focus || left.width !== innerWidth) return;
+  graphState.T = left.T;
+  d3.select(graphCanvas()).call(graphState.zoom.transform, left.T);
+}
+// Pointing at a mark for a moment shows it in the panel and rings it, without moving the map or dimming the
+// rest (a dimmed mark could not be pointed at next). It stays until another mark is pointed at, so the panel
+// can be reached with the pointer.
+function graphPoint(n) {
+  clearTimeout(graphState.dwell);
+  if (!n || n.id === (graphState.preview || graphState.focus)) return;
+  graphState.dwell = setTimeout(() => { graphState.preview = n.id; graphPanel(); graphDraw(); }, 140);
+}
 // Focus lives in the URL, so a topic page's "open in graph" lands focused; no re-render on change.
 function graphFocus(id) {
   graphState.focus = id;
+  graphState.preview = "";
   graphFocusSets();
   const hash = "#view=graph" + (id ? "&focus=" + encodeURIComponent(id) : "") + (id && graphState.depth > 1 ? "&depth=2" : "");
   history.replaceState(null, "", hash);
   const search = document.querySelector(".gx-search"), clear = document.querySelector(".gx-clear");
   search.value = id ? graphTitle(GRAPH.byId.get(id)) : "";
   clear.hidden = !id;
-  graphFit();
   graphPanel();
+  graphResize();
+  graphFit();
   graphDraw();
 }
 function graphMatches(query) {
@@ -13240,19 +13711,30 @@ function graphRole(n) {
 }
 function graphPanel() {
   const panel = document.querySelector(".gx-map .gx-panel");
-  panel.replaceChildren(...(graphState.focus ? graphPanelFocus(GRAPH.byId.get(graphState.focus)) : graphPanelGuide()));
+  const shown = graphState.preview || graphState.focus;
+  panel.replaceChildren(...(shown ? graphPanelFocus(GRAPH.byId.get(shown)) : graphPanelGuide()));
 }
+// What a record ties together, in words: "15 people · 9 projects · 2 organisations".
+function graphTies(n) {
+  const count = {};
+  for (const id of GRAPH.adj.get(n.id) || []) { const k = GRAPH.byId.get(id).k; count[k] = (count[k] || 0) + 1; }
+  return ["people", "projects", "orgs", "knowledge", "notes"].filter(k => count[k]).map(k => graphCount(k, count[k])).join(" · ");
+}
+// A record's own first sentence: a knowledge entry's What it is, anything else's lead.
+function graphSummary(n) {
+  if (!n.r || graphHidden(n)) return "";
+  const line = n.k === "knowledge" ? plainLine(topicKnown(n.r, "what it is")) : summaryLine(known(n.r).summary);
+  return /^Unknown\b/.test(line) ? "" : line.length > 220 ? line.slice(0, 217) + "…" : line;
+}
+// With nothing selected (#3085): the knowledge entries, each with its whole title and what it ties together,
+// then the busiest pages under a rule. No instructions (#2994), and the card is as tall as the list.
 function graphPanelGuide() {
   const topics = GRAPH.linked.filter(n => n.k === "knowledge").sort((a, b) => graphDegree(b) - graphDegree(a));
-  // The owner is every page's hub by definition, so ranking him says nothing (sprint 15).
-  const hubs = GRAPH.linked.filter(n => ["people", "orgs", "projects"].includes(n.k) && !graphHidden(n) && !(REM.owner && n.id === REM.owner)).sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5);
-  const count = n => graphT("{n} links", { n: graphDegree(n) });
-  // No instructions over the lists (#2994): the entries come first, then the busiest pages, each with its count,
-  // and the order says which is which; a rule divides the two.
+  const hubs = graphHubs(GRAPH.linked.filter(n => !graphHidden(n)), graphDegree, 5);
   return [el("div", { class: "gx-panel-body gx-panel-guide" }, [
-      ...topics.map(n => graphItem(n, count(n) + (graphLast(n) ? " · " + fmtDate(graphLast(n)) : ""))),
+      ...topics.map(n => graphItem(n, graphTies(n))),
       topics.length && hubs.length ? el("hr", { class: "gx-rule" }) : null,
-      ...hubs.map(n => graphItem(n, count(n) + " · " + graphT(GRAPH_NAME[n.k])))])];
+      ...hubs.map(n => graphItem(n, graphT("{n} links", { n: graphDegree(n) }) + " · " + graphT(GRAPH_ONE[n.k])))])];
 }
 function graphGroups(ids) {
   const groups = new Map(GRAPH_ORDER.map(k => [k, []]));
@@ -13264,9 +13746,10 @@ function graphOpenLabel(n) {
   return graphT({ knowledge: "Open knowledge page", people: "Open person page", orgs: "Open organisation page", projects: "Open project page" }[n.k] || "Open page");
 }
 function graphPanelFocus(n) {
-  const groups = graphGroups(graphState.near1), phone = graphPhone();
+  const groups = graphGroups(GRAPH.adj.get(n.id) || []), phone = graphPhone(), focused = n.id === graphState.focus;
   const counts = groups.filter(([k]) => k !== "sessions" && k !== "notes").map(([k, list]) => el("span", {}, [el("b", { text: String(list.length) }), graphT(GRAPH_NAME[k])]));
-  const sub = n.k === "knowledge" ? (graphLast(n) ? graphT("Last mentioned") + " " + fmtDate(graphLast(n)) : "") : graphRole(n) || graphT(GRAPH_NAME[n.k]);
+  const sub = n.k === "knowledge" ? (graphLast(n) ? graphT("Last mentioned") + " " + fmtDate(graphLast(n)) : "") : graphRole(n);
+  const summary = graphSummary(n);
   const depth = el("div", { class: "gx-depth" }, [el("span", { text: graphT("Depth") }), ...[1, 2].map(d => {
     const button = el("button", { type: "button", "aria-pressed": String(graphState.depth === d), text: graphT(d === 1 ? "1 hop" : "2 hops") });
     button.onclick = () => { graphState.depth = d; graphFocus(n.id); };
@@ -13279,15 +13762,15 @@ function graphPanelFocus(n) {
       list.length > max ? el("p", { class: "gx-more", text: graphT("{n} more", { n: list.length - max }) }) : null];
   });
   return [el("div", { class: "gx-panel-head" }, [el("span", { class: "gx-kicker" }, [graphGlyph(n.k, 12, n.private), graphT(GRAPH_ONE[n.k])]),
-      el("h2", { text: graphTitle(n) }), sub ? el("p", { text: sub }) : null, el("div", { class: "gx-counts" }, counts),
-      n.r ? el("a", { class: "gx-open", href: href(n.r), text: graphOpenLabel(n) + " →" }) : null, depth]),
+      el("h2", { text: graphTitle(n) }), summary ? el("p", { class: "gx-summary", text: summary }) : null, sub ? el("p", { text: sub }) : null, el("div", { class: "gx-counts" }, counts),
+      n.r ? el("a", { class: "gx-open", href: href(n.r), text: graphOpenLabel(n) + " →" }) : null, focused ? depth : null]),
     el("div", { class: "gx-panel-body" }, lists)];
 }
 // Listeners are added the first time the map opens, so loading the reader registers nothing for it.
 function graphListen() {
   if (graphState.listening) return;
   graphState.listening = true;
-  addEventListener("resize", () => { if (document.querySelector(".gx-map")) { graphResize(); graphFit(); graphDraw(); } });
+  addEventListener("resize", () => { if (document.querySelector(".gx-map .gx-canvas")) { graphResize(); graphFit(); graphDraw(); } });
   addEventListener("keydown", event => {
     if (event.key === "/" && document.querySelector(".gx-map") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
       event.preventDefault(); event.stopImmediatePropagation(); document.querySelector(".gx-search").focus();

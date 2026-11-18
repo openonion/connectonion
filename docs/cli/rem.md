@@ -1706,6 +1706,42 @@ pinned to that edge: it comes into view with the draft.
   also offers **Explore linked records →** when the graph has links. With
   nothing linked yet the graph has nothing to draw, so Knowledge shows the
   entries instead, with **Entries** selected.
+- **The graph says what it shows** (#3085, #3095). Under the heading is one
+  sentence counted from the map, and it is also the key: each kind stands in it
+  beside its shape with its count in words (*◎ 5 knowledge entries link ● 110
+  people, ◇ 32 projects and ■ 24 organisations, with ▲ 6 skills and decisions.
+  The busiest is …, with 19 links.*); the busiest record's name focuses it.
+  There are no instructions. The map ends at the window's foot, so the sentence,
+  the map and the quiet line under it (*A bigger mark has more links*, sessions
+  folded, records that link to nothing) are on one screen at 1440×900 with
+  nothing to scroll to. **Names on the map**: every knowledge entry is named,
+  on up to two lines, then the twelve most-linked other records (your own page
+  left out); zooming in names more, in proportion to the area the zoom opens.
+  A name is cut only between words, with an ellipsis, is the translated title
+  when the page has a current translation in the interface's language, and is
+  placed right of its mark, else left, below or above, wherever it touches no
+  other name and no other mark; a record with no free place goes unnamed, and
+  the layout keeps the strip beside each named mark clear. Pointing at any mark
+  says its whole name and its link count. **The panel** beside the map is as
+  tall as its list: with nothing chosen, the knowledge entries with their whole
+  titles (wrapped, never cut) and what each ties together (*15 people · 10
+  projects · 2 organisations*), then the five busiest pages under a rule.
+  Pointing at a mark for a moment previews it there (its kind, name, first
+  sentence, counts, links and a neutral **Open … page →** button) and rings it
+  on the map without moving anything. **One click on a mark opens that
+  record's page**, as does Enter on the map while a mark is focused; the
+  browser's Back returns to the graph with that mark focused and the pan and
+  zoom you left. A row in the panel, a search result or `&focus=` focuses a
+  mark instead: the map closes in on it and what it links. No colour on the
+  page is saturated. **On a phone** the map draws only the knowledge entries
+  and the records they link directly, names the entries, and fills the screen
+  down to the tab bar with nothing under it and nothing to scroll to; an
+  entry answers a tap within 22 px of its centre (a 44 px target however small
+  it is drawn), a tap opens the record's page, one finger scrolls the page and
+  two move the map. The filters are not shown there. A focused record's card
+  (name, **Open … page →**) sits under a shorter map, above the tab bar, and
+  its lists scroll with the page. The heading and the **Graph / Entries**
+  switch are the same size at the same place in both views.
 - **A knowledge entry, a decision and a principle read as one entry** (#3097),
   set like a reference-book article with its notes at the end. The page is
   printed **once**: the title, the page's own first paragraph as its lead, then
@@ -1741,8 +1777,9 @@ pinned to that edge: it comes into view with the draft.
   with its name, its view switch and its finder (*Find among N skills…*) on one
   line, then the family tabs with no caption, then the table. Today's number stands beside the faces it starts with, without
   *Start with these N people*. The graph's heading is **Knowledge** and its
-  switch; its counts are in the legend under the map, and the panel lists the
-  entries, then the busiest pages, divided by a rule. Sessions keeps its count
+  switch; its counts are in the one sentence under the heading, each beside
+  its shape, and the panel lists the entries, then the busiest pages, divided
+  by a rule. Sessions keeps its count
   without an explanatory subtitle; Projects keeps its factual summary at body
   size and drops the sentences describing its sort order and board axes. The
   [category heading audit](rem-heading-audit.md) records each keep/drop decision
@@ -1818,20 +1855,85 @@ pinned to that edge: it comes into view with the draft.
   *Google Tasks are not read: Google must be reconnected with access to tasks*;
   REM never adds a scope or starts a login by itself. Only the owner's own
   reader carries to-dos; a shared page has none.
-- **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
-  **Today** returns) and a Monday-first **Month**, with no heading above them. It
-  shows your calendar events beside the notebook's own dates: promises with a
-  due date (**Due**, or **Late** in red once past) and agenda pages on the date
-  they state (**Noted**). An event links to the calendar it came from and to the
-  people pages of its guests (matched on a page's Email and Handles lines); a
-  promise or page links to its page. An event prints its location under its
-  title in the week and on a phone. A timed event is on every day it covers:
-  its start time on the first, **All day** between, **Until 17:00** (到 17:00)
-  on the last; one that ends at midnight is not on the next day. The owner's
-  own reader carries events and the plan; a page rendered for sharing
-  (`render` without `local=True`) carries neither. Open notebook items
-  dated before today sit in one line under it, whichever week or month is shown.
-  On a phone it is a day-by-day list of the next three weeks. Events come from
+- **Agenda** is a calendar (#2998), drawn as one: no heading, then **‹ Today ›**,
+  the range in words, **Week / Month**, and under them one small line saying
+  which calendars were read. **Week** is a time grid starting today (‹ › move
+  it a week): hours down a quiet axis at 44 px an hour, hairline hour lines and
+  lighter half-hour lines, seven day columns with weekday and date heads. Today's
+  date is the one inked numeral and its head says **Today**; weekends are a shade
+  quieter. Each timed event is a block placed by its start and as tall as its
+  minutes (a 90-minute event is one and a half hour-rows), its title first, then
+  its hours, then its place when the block is tall enough; a short event keeps
+  the height of its title. Events that overlap share the column side by side;
+  back-to-back events do not. A line across today marks now, and the axis says
+  **Now 12:00**. The grid ends at the window's foot and scrolls inside it under
+  the heads; it opens at 07:00, so 07:00–21:00 is on screen at 1440×900, earlier
+  when the week's first event or now is earlier. Above the hours is the
+  **all-day strip**: an all-day event is a bar, and one that runs several days is
+  **one bar across its days**, never a card a day. The notebook's own dates sit
+  in the strip too, as outlined bars linking to their pages: promises with a due
+  date (**Due**) and agenda pages on the date they state (**Noted**); one that
+  is past due sits on **today** in red saying *Late, due Sep 25*, so there is no
+  second list of earlier open items under the calendar (that line of links
+  is gone: the same items are on today, and undated-late pages are in search and
+  on their own dates). An empty day is empty: no placeholder. **Month** is a
+  Monday-first grid of weeks (the reader's one week-start rule): each cell has
+  its date, today marked and said, days outside the month dimmed; all-day and
+  multi-day events are bars continuing across cells, then up to three lines in
+  all of *time title*; what does not fit is counted in words (**+2 more**), and
+  that count opens the day as a week starting there. **An event opens its
+  detail** on a click: a small card beside it (a sheet from the foot on a
+  phone) with its title, its time in words (*Fri 2 Oct, 09:30 – 10:00*; *All
+  day, Mon 5 Oct – Wed 7 Oct*), place, guests (their people pages when a page's
+  Email or Handles line matches, else a count), which calendar it is in
+  (*In Google Calendar*) and **Open in Google Calendar ↗**. Which provider an
+  event is from is also in its hover title; the edge of a block (ink for
+  Google, grey for Outlook) is only a second cue. A timed event that crosses
+  midnight is a block on each day it covers: its start time on the first,
+  **All day** between, **Until 17:00** (到 17:00) on the last; one that ends at
+  midnight is not on the next day. **Keys**: ← → move the chosen day, ↑ ↓ move
+  it a week (the view follows), **T** is today, **Enter** opens the chosen
+  day's first event, Esc closes the detail. **On a phone** the week is a strip
+  of seven dates (tap one to jump to its day; a date with nothing is quiet)
+  over a day-by-day list of three weeks, each day its all-day bars then its
+  events in time order, a several-day event listed once with its range in
+  words; the month keeps its grid with a count in each cell (*3*) and the
+  tapped day's list under it. The layout is arithmetic in the page (`agBlock`,
+  `agLanes`, `agBars`: minutes into pixels, lanes for overlaps, bars for
+  spans), with no calendar library. The owner's own reader carries events and
+  the plan; a page rendered for sharing (`render` without `local=True`)
+  carries neither.
+- **Agenda shows the weather for its days.** Each day that has a forecast
+  carries a small line picture and *22° / 14°* in its column head (week) and
+  its cell (month); the condition and the chance of rain are words on hover, in
+  an event's detail and under the day's name on a phone (*Showers, 70% chance of
+  rain, 20° / 12°*), where the strip of dates shows the high only. There are
+  eight conditions (clear, partly cloudy, cloudy, fog, rain, showers, snow,
+  storm); a day with no forecast shows nothing. The small line under the header
+  says where it is for and from whom: *Weather for Sydney from Open-Meteo, read
+  Today · 06:10.* **The reader never asks for it**: the night's calendar step
+  (`weather.py`) reads the next seven days from
+  [Open-Meteo](https://open-meteo.com), which needs no key and no account, and
+  saves `.state/weather.json` (per date a condition word, high, low and chance
+  of rain, with `saved_at`, `read_at`, the place and the source). **What leaves
+  your computer, once a night**: the city's name to Open-Meteo's geocoding the
+  first time (its answer is kept), then that city's coordinates rounded to two
+  decimals to its forecast; never an address, a calendar entry or anything from
+  the notebook. The city is `weather.place` (`co rem config set weather.place
+  Sydney`); left empty it is the city of the notebook's timezone
+  (`Australia/Sydney` → Sydney; a zone with no city, such as `UTC`, asks
+  nobody); `co rem config set weather.place off` turns it off and nothing is
+  fetched. Temperatures are °C, or °F where the place reads forecasts in
+  Fahrenheit (the United States and a few others); there is no units setting.
+  A read that fails never stops the night: the earlier forecast is kept and the
+  line says when it failed, why, and when the forecast shown is from; a city
+  Open-Meteo does not know is said as *not found*; anything that is not the
+  provider's failure is a fault in REM, named with its exception and logged with
+  its traceback in `co rem logs`. Only the owner's own reader carries the
+  forecast. Open-Meteo's free API is for non-commercial use and its data is
+  CC BY 4.0, which is why the page names it. Today's *Your day* does not show
+  the weather yet.
+  Events come from
   `.state/calendar.json`, which each background round writes once (scheduled
   sync, exec and native rounds, including `codex_exec`), outside the writer
   lock, from every account co can already read (Google after `co auth google`
@@ -1846,8 +1948,8 @@ pinned to that edge: it comes into view with the draft.
   from such a calendar earlier are gone after the next read. `calendar.json`
   records, per account, how many calendars were read and how many were left
   out by access kind (`calendars`: `read`, and `left_out` counting
-  `freeBusyReader`, `reader` and `unticked`), and Agenda says it in a sentence
-  under the calendar: *Google Calendar: 1 own calendar read; 3 left out
+  `freeBusyReader`, `reader` and `unticked`), and Agenda says it in a small
+  sentence under its header, above the calendar: *Google Calendar: 1 own calendar read; 3 left out
   (2 shared as free/busy, 1 shared read-only).* The reader never calls a calendar.
   No calendar failure stops the night: a calendar that fails keeps the events it
   saved before, and the page says when it failed, why, and when its events are
@@ -1891,7 +1993,8 @@ pinned to that edge: it comes into view with the draft.
   giving two letters or more, never a person's name, and only when it is the
   one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
-  Graph labels are cut by width, so a Chinese title stays inside its card.
+  Graph labels are cut by width and only between words (any glyph of a Chinese
+  title is a boundary), so a Chinese title stays inside its card.
   The graph's list of the busiest pages leaves your own page out: you are every
   page's hub by definition (the notebook's owner field, not a name).
 - **Merged threads**: the same request copied onto several pages is shown

@@ -33,7 +33,7 @@ PLACES = (('projects', r'\.pd\b|\.pd-|\.pa\b|\.pa-|\.project-|\.projects-view|\.
           ('people', r'\.r4-people|\.people-|\.rhythm|\.person-|\.contact-|\.rh-'),
           ('organisations', r'\.ov\b|\.ov-|\.org-'),
           ('knowledge', r'\.gx\b|\.gx-|\.topic-'),
-          ('agenda', r'\.ag\b|\.ag-|\.agenda'),
+          ('agenda', r'\.ag\b|\.ag-|\.agenda|\.cal-'),
           ('sessions', r'\.session'),
           ('today', r'\.today|\.q[a-z]+\b|\.night-|\.deal\b|\.morning|\.n3-'),
           ('record', r'\.focus-|\.deep-|\.note\b|\.factlist|\.fact-|\.relation|\.evidence|\.memory-|\.cite\b'))
@@ -41,8 +41,8 @@ PLACES = (('projects', r'\.pd\b|\.pd-|\.pa\b|\.pa-|\.project-|\.projects-view|\.
 # change that fixes its place; never raise one.
 CAPTION_ALLOWED = {'projects': 0, 'people': 18, 'organisations': 58, 'knowledge': 28, 'agenda': 10, 'sessions': 37,
                    'today': 25, 'record': 42, 'shared': 203}
-LEADING_ALLOWED = {'projects': 0, 'people': 10, 'organisations': 37, 'knowledge': 26, 'agenda': 9, 'sessions': 39,
-                   'today': 43, 'record': 34, 'shared': 153}
+LEADING_ALLOWED = {'projects': 0, 'people': 10, 'organisations': 37, 'knowledge': 25, 'agenda': 8, 'sessions': 39,
+                   'today': 43, 'record': 34, 'shared': 151}
 
 
 def _rules(html=None):

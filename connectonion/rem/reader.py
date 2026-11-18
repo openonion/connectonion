@@ -374,6 +374,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # His open to-dos as the night saved them (#3087); a shared page carries none.
     from .todos import read as read_todos
     data['todos'] = read_todos(root) if local else None
+    from .weather import read as read_weather
+    data['weather'] = read_weather(root) if local else None  # the forecast is for his place: his own reader only
     from .day_plan import read as read_day_plan
     data['day_plan'] = read_day_plan(root, items=data['today_queue']) if local else None
     from .night import listing as night_outcomes
