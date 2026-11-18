@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc22
+## Current Version: 1.9.6rc23
+Release candidate 1.9.6rc23 for 1.9.6: `co whatsapp listen --phone <number>` prints an 8-character
+pairing code to type on the phone under Linked devices, instead of a QR that changes every ~20 s and
+has to be seen. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc23.md).
+
+- 1.9.6rc23 (co whatsapp listen --phone: link by pairing code).
+
+### Previous candidate: 1.9.6rc22
+
 Release candidate 1.9.6rc22 for 1.9.6: when `co browser keyboard_type` or `type_text_by_selector`
 cannot paste, the whole text goes in through one CDP `Input.insertText` call, which needs no OS
 clipboard (measured on rc21: headless Chrome on Windows over SSH never took the paste and typed 920
