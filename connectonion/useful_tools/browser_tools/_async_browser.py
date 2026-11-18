@@ -453,6 +453,14 @@ def _write_page_context_files(
     return out_dir
 
 
+# How the text went in, so a caller sees a fallback instead of guessing from the time it took.
+_ENTERED = {
+    "pasted": "Entered by paste.",
+    "inserted": "Entered by CDP insertText: the field did not take the paste.",
+    "typed": "Entered key by key.",
+}
+
+
 class AsyncBrowserCore:
     """Internal async browser runtime with one persistent context and one tab per session."""
 
@@ -1572,8 +1580,9 @@ class AsyncBrowserCore:
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
-            await humanize.type_text(self.page, text, self._clipboard_lock, human)
+            how = await humanize.type_text(self.page, text, self._clipboard_lock, human)
             return f"""Typed: '{text}'
+{_ENTERED[how]}
 
 SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
 
@@ -1678,9 +1687,10 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                     f"Selector matched {count} elements; index {index} is out of range"
                 )
             await locator.nth(index).click(force=True)
-            await humanize.type_text(self.page, text, self._clipboard_lock, human)
+            how = await humanize.type_text(self.page, text, self._clipboard_lock, human)
             await self.page.wait_for_timeout(1000)
-            return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
+            return (f"Typed text into element {index + 1}/{count} matching selector: {selector}\n"
+                    f"{_ENTERED[how]}")
 
     async def mouse_click(self, x: int, y: int) -> str:
         """Humanize an exact coordinate click without blocking the event loop."""
