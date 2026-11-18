@@ -441,6 +441,7 @@ def test_ensure_listener_pins_the_directory_and_forwards_the_env_file(tmp_path, 
 
     assert box.ensure_listener() == 4321
     assert seen["env"]["CO_INBOX_HOME"] == str(box.root.parent)
+    assert seen["env"]["PYTHONIOENCODING"] == "utf-8", "the log is UTF-8, not the Windows ANSI code page"
     assert seen["argv"][3:5] == ["--env-file", str(tmp_path / "app.env")]
     assert seen["argv"][-2:] == ["feishu", "listen"]
 
