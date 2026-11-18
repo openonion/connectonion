@@ -124,8 +124,11 @@ def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width,
     assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
     assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
+    # Quiet means the smallest step the place allows: a caption on people and organisations, the 13px label
+    # on a project, where nothing is under 13px (#3096).
+    step = "--s-ui" if head == ".page-head" else "--s-meta"
     assert line.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
-        "getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
+        f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
     assert any(path == "/rem/translation-request" for path, _ in calls)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 

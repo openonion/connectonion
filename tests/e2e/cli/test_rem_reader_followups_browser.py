@@ -45,6 +45,7 @@ def test_more_opens_beside_its_button_in_a_low_window(reader, height):
     page.set_viewport_size({"width": 960, "height": height})
     page.goto(uri)
     page.locator(".nav.more").click()  # #3091: a low rail folds its last places under More; it does not scroll
+    page.evaluate("Promise.all(document.getElementById('rail-more').getAnimations().map(a => a.finished))")  # measured settled, not mid pop-in
     button, menu = page.locator(".nav.more").bounding_box(), page.locator("#rail-more").bounding_box()
     _shot(page, f"rail-more-scrolled-{height}.png")
     assert menu["y"] >= 0 and menu["y"] + menu["height"] <= height, menu      # none of it past the window
