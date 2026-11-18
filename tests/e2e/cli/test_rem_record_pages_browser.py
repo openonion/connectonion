@@ -160,14 +160,14 @@ def test_open_topics_lead_the_person_page_with_the_top_three(reader, width):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-# 4. The Skills page says what its numbers are on the cards, not in a caption about name matching.
+# 4. The Skills page says what its numbers are in the column's header (#3094), not in a caption about name matching.
 def test_skills_has_no_matching_jargon(reader):
     open_page, _ = reader
     page = open_page("c=skills")
-    page.locator(".skill-card").first.wait_for()
+    page.locator(".skill-table tbody tr").first.wait_for()
     text = page.locator("#main").inner_text()
     assert "按技能名称匹配计数" not in text and "匹配" not in text
-    assert "近 180 天" in page.locator(".skill-card").first.inner_text()
+    assert "近 180 天" in page.locator(".skill-table thead th.c-uses").inner_text()
 
 
 # 5. On a phone the face belongs to the header beside the name, not in the row of contact buttons.

@@ -41,7 +41,7 @@ def _drawn():
     """ICONS and icon() as the page declares them, over a stand-in el()."""
     page = _page()
     return ('const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: (children || []).filter(Boolean)});\n'
-            + page[page.index('const ICONS = {'):page.index('// 更多 lists the categories')])
+            + page[page.index('const ICONS = {'):page.index('// The pictures of the places that are also record categories.')])
 
 
 def _icons():

@@ -407,21 +407,40 @@ The reader calls these **skill-name matches**: invocation attempts in coding
 sessions matched by name. `Run evidence` counts retained evaluation attempts
 separately; it may show zero even when coding sessions contain name matches.
 Neither count proves that this installed version ran or that the task succeeded.
-The Skills page answers two questions at a glance. **Most used** shows up to
-eight skills as cards, ranked by their skill-name match count over the usage
-window (ties by the latest date), each with one line of what it does and "N
-matches in 180 days · last date"; the cards say what the number is, so
-the section has no caption. Everything else is an index grouped by name
-family (Lark, LinkedIn, co …; a family of fewer than three skills in all goes
-under Other) that fills the width; a strip of family names above it moves to
-each group and focuses its heading. Cards and rows keep the "last night" marker
-for a page last night's pass rewrote and "N installed copies" when the skill is
-installed in more than one place. Each skill's line is the first
-clause of its description, in the reader's language when the skill has its own
-text in it or a translation is cached; otherwise the original. A skill with no
-description at all is named once on a quiet line at the end ("1 skill has only
-a name: …") instead of being listed. The page has one filter, sized like the
-other directory filters. A skill page keeps the match details, scope
+The Skills page is one table, the same one People and Organisations use
+(#3094): a row per skill, one line high, with **Skill**, **What it does**,
+**Family**, **Last used** and **Times used · 180 days**. Headers sort,
+**Columns** hides a column, and a row opens the skill's page.
+
+- **Family tabs** sit above the table: **All** first, then each name family
+  with its count (Lark, LinkedIn, co …; a family of fewer than three skills
+  goes under **Other**), the largest first. A tab shows only that family, and
+  the choice is in the address (`#c=skills&family=Lark`), so Back and a
+  bookmark return to it.
+- **Views** beside the page's name re-order the table in one click: **Most
+  used** (the default: times used, ties by the page's latest date), **Recently
+  used** (`&v=recent`) and **By family** (`&v=family`: every family under its
+  own sub-head with its count, the busiest skill first). A header click still
+  sorts inside the view you are in.
+- **The finder** (*Find among N skills…*) filters within the current tab, on a
+  skill's name, its line and its page; Enter opens the first match.
+- **Last used** is in words (*Yesterday*, *3 weeks ago*, *2 months ago*; the
+  date is one hover away) and **Never** in grey for a skill with no match in the
+  window. **Times used** is the skill-name match count over the usage window,
+  which its header names (as People's *Messages · 90 days* does); there is no
+  caption about how the count is made.
+- There are no **most used** cards any more: with Most used as the default view
+  the first eight rows are those eight skills, and two rows of cards pushed the
+  table below the first screen at 900 px.
+
+Each skill's line is the first clause of its description, in the reader's
+language when the skill has its own text in it or a translation is cached;
+otherwise the original. A skill with no description keeps its row with that
+cell empty. A row keeps the "last night" marker for a page last night's pass
+rewrote and "N installed copies" beside the name when the skill is installed in
+more than one place. On a phone the tabs are one row that scrolls sideways and each skill
+is two lines: its name with last used and times used at the right, then its
+line. A skill page keeps the match details, scope
 explanation and usage bar, and names where the skill lives in words (Claude
 Code, Codex, shared agent skills, ConnectOnion) with an "Open SKILL.md" link.
 
@@ -1408,7 +1427,7 @@ then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
 languages still take precedence. Page prose stays as written. On phones the sidebar's places sit in a floating tab bar at the bottom edge
-(Today, Waiting, People, Search, More); **More** opens every other place as a sheet. Today's Send is not
+(Today, Waiting, People, Search, More); **More** opens every place as a sheet, in the rail's order. Today's Send is not
 pinned to that edge: it comes into view with the draft.
 
 - **Home** is a morning brief, read top to bottom. A date line and one
@@ -1638,24 +1657,38 @@ pinned to that edge: it comes into view with the draft.
 - **The reader's pictures are two published sets, never drawn by hand**: interface icons are Lucide
   0.468.0 (ISC) and service marks are Simple Icons 16.34.0 (CC0), copied from the published files;
   `connectonion/_licenses/rem-reader-icons.txt` names every key, its source and both notices.
-- **The rail** (D-132) is a 72px column of places, each a picture with its
-  word under it: **Today**, **Waiting on you** (*Waiting*), **Agenda**, **People**,
-  **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,
-  then **More**, and at the foot **Settings** and your face. A short word is
-  the start of the place's accessible name (*Orgs* is named "Orgs ·
-  Organisations"), so saying the word you see finds it. **More** opens beside
-  its button, wherever the rail has scrolled to, and is never taller than the
-  window: **Memory changes**, then Decisions, Principles,
-  Agent sessions, Opportunities and Works when they hold pages. Your face opens
-  your own page and shows **You · name** beside it on hover and on keyboard
-  focus. Only **Waiting on you** carries a number; a category's size is not
-  something to do. The current place is in ink, in bold, on a raised cell. In a
-  window lower than the rail (712px) the rail itself scrolls, so every place
-  stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
-  People, Search, More); **More** opens a sheet with every place by its full
-  name, Agenda directly after Waiting on you, Skills and Knowledge among them,
-  the More list under them with its labels in the same column, and Settings and
-  you at its foot. There is
+- **The rail** (D-132, #3091) is a 72px column of places, each a picture with
+  its word under it, in ONE order that reads from what you act on, to who and
+  what it is about, to what the notebook concluded, to the raw material it was
+  built from. A short hairline parts the four groups:
+  **Today**, **Waiting on you** (*Waiting*), **Agenda** | **People**,
+  **Organisations** (*Orgs*), **Projects** | **Knowledge**, **Decisions**,
+  **Principles**, **Skills** | **Agent sessions** (*Sessions*),
+  **Opportunities** (*Opps*), **Works**, **Memory changes** (*Changes*). At
+  the foot are **Settings** and your face.
+  **The rail shows as many places as its height holds, in that order, and only
+  what does not fit goes under More**: at 1440×900 twelve cells fit (eleven
+  places and More, or all twelve places of a notebook with no Opportunities or
+  Works yet), at 720 the first eight and More, and from about 1000 px every
+  place is in the rail and **More is not there at all**. The rail never scrolls
+  and never clips a cell; it refits when the window changes height. **More**
+  opens beside its button and lists the folded places in the same order.
+  **Which places show**: the first eight every notebook has (Today to
+  Projects, Knowledge, Skills) and Memory changes always show, and their pages
+  have an empty state; Decisions, Principles, Agent sessions, Opportunities and
+  Works show once they hold a page (or while you are on one), as they did
+  under More.
+  A short word is the start of the place's accessible name (*Orgs* is named
+  "Orgs · Organisations"), so saying the word you see finds it. Tab moves
+  through the places in the order you see them, then More, Settings and you;
+  the current place is in ink, in bold, on a raised cell and is announced as
+  the current page (`aria-current`), also when it sits under More. Your face
+  opens your own page and shows **You · name** beside it on hover and on
+  keyboard focus. Only **Waiting on you** carries a number; a category's size
+  is not something to do. On a phone the rail gives way to the tab bar (Today,
+  Waiting, People, Search, More); **More** opens a sheet with every place by
+  its full name in the rail's order, the same hairlines between the groups,
+  and Settings and you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
@@ -1705,9 +1738,8 @@ pinned to that edge: it comes into view with the draft.
   from four sections up; on a phone the column folds below the text.
 - **Headings name a page, they do not explain it** (#2994): a category page
   shows its name and its count, not a sentence about its order. Skills opens
-  with its name and its finder (*Find among N skills…*) on one line, the most
-  used as cards with no **Most used** heading, then the families' buttons with
-  no caption. Today's number stands beside the faces it starts with, without
+  with its name, its view switch and its finder (*Find among N skills…*) on one
+  line, then the family tabs with no caption, then the table. Today's number stands beside the faces it starts with, without
   *Start with these N people*. The graph's heading is **Knowledge** and its
   switch; its counts are in the legend under the map, and the panel lists the
   entries, then the busiest pages, divided by a rule. Sessions keeps its count
