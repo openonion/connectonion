@@ -1274,20 +1274,16 @@ def test_written_pages_show_the_complete_source_action_on_phone(reader):
                 + '\\n## Sources\\n- [1] skill-record:test — saved draft and queue readback.';
               KNOWN.delete(r.path); render();
             }""", isolated_context=False)
-        if path == 'people/mara-ostrowski.md':
-            assert page.locator('details.deep-note').get_attribute('open') is None
-            page.locator('details.deep-note > summary').click()
-            page.goto(uri + '#r=people%2Fmara-ostrowski.md&h=sources')
-            page.locator('.deep-note .block-sources').wait_for(state='visible')
-            continue
-        link = page.get_by_role('link', name='View sources →')
-        assert link.count() == 1, path
-        box = link.bounding_box()
-        assert box['height'] >= 44 and box['y'] + box['height'] <= 812, path
-        assert page.get_by_role('heading', name='Full memory and sources').is_visible()
-        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        link.click()
-        page.locator('.deep-note .block-sources').wait_for(state='visible')
+        # Full memory is open on arrival and its sources are one named band at its foot (#3104), so there is no
+        # "View sources" button to keep on the first screen: &h=sources and a line's mark reach the band.
+        page.locator('.deep-sources').wait_for()
+        if page.locator('details.deep-note').count():
+            assert page.locator('details.deep-note').get_attribute('open') is not None, path
+        band = page.locator('.deep-sources')
+        assert band.locator('h2#sources').count() == 1 and band.locator('li.src-row').count() >= 1, path
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), path
+        page.goto(uri + '#r=' + path.replace('/', '%2F') + '&h=sources')
+        page.wait_for_function("() => { const b = document.querySelector('.deep-sources h2#sources').getBoundingClientRect(); return b.top >= 0 && b.top < innerHeight; }")
 
 
 def test_open_context_is_not_counted_as_waiting_on_other_people(reader):
@@ -3685,11 +3681,14 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
       r.text += '\n## Open threads\n- You owe Avery Lin a revised weekly brief. [1]\n';
       KNOWN.delete(r.path);
     }""", isolated_context=False)
-    for path in ['skills/catalog/weekly-brief.md', 'projects/harbour.md']:
-        page.goto(uri + '#r=' + path.replace('/', '%2F'))
-        assert page.locator('.leadrow .lead-open').count() == 0
-        assert page.locator('.next-exchanges').is_visible()
+    page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
+    assert page.locator('.leadrow .lead-open').count() == 0
+    assert page.locator('.next-exchanges').is_visible()
     assert page.locator('.next-exchanges .dir').count() > 0  # mixed directions retain their tags
+    # A project page is a map: its open work is a count that leads to Today, never rows to act on there.
+    page.goto(uri + '#r=projects%2Fharbour.md')
+    assert page.locator('.leadrow .lead-open, .next-exchanges .thread, #main .thread-actions').count() == 0
+    assert page.locator('.record-focus.projects .project-today a').count() == 1
     page.goto(uri + '#view=open')
     assert page.locator('.task-band .thread .dir').count() == 0
     assert page.locator('.task-band .thread .when').count() > 0
@@ -4281,29 +4280,15 @@ def test_round_nine_ledger_and_record_threads_align_ages(reader, tmp_path, width
             assert page.locator('.ov-today').count() == 0
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             continue
-        rows = page.locator('.next-exchanges .thread')
-        assert rows.count() > 0
-        dated = 0
-        for row in rows.all():
-            dated += int(bool(row.locator('.when').inner_text().strip()))
-            assert row.evaluate(r'''row => {
-              const when = row.querySelector('.when'), dated = !!when.textContent.trim();
-              const age = when.getBoundingClientRect();
-              const label = row.querySelector('.dir').getBoundingClientRect();
-              const text = row.querySelector('.what').getBoundingClientRect();
-              // Undated fixture threads deliberately hide their empty age;
-              // display:none has no box to align and must not invent a date.
-              const ageAligned = dated
-                ? Math.abs(row.getBoundingClientRect().right - age.right) <= 2 && Math.abs(label.top - age.top) <= 2
-                : getComputedStyle(when).display === 'none';
-              return ageAligned && Math.abs(row.getBoundingClientRect().left - label.left) <= 2
-                && (innerWidth > 820
-                  ? Math.abs(label.top - text.top) <= 2 && text.left >= label.right
-                    && (!dated || text.right <= age.left)
-                  : text.top >= Math.max(label.bottom, age.bottom));
-            }''')
-        assert 0 < dated < rows.count()
-        assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
+        # A project page is a map too (owner: person, org and project pages are maps, never calls to act):
+        # no open rows, no Mark done; one line counts the open work and leads to Today, where it is done.
+        assert page.locator('.next-exchanges .thread, #main .thread-actions').count() == 0
+        assert 'Mark done' not in page.locator('#main').inner_text()
+        line = page.locator('.record-focus.projects .project-today a').first
+        assert re.search(r'\d', line.inner_text()), line.inner_text()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        line.click()
+        page.wait_for_function("() => !location.hash.includes('r=') && document.querySelector('.qage')")  # Today, where the work is done
 
 
 @pytest.mark.parametrize('width', [390, 1440])
@@ -4574,7 +4559,6 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
         updated: '2026-10-20', relations: [], text: '# Northgate University\n\n## Open threads\n\n## People here\nNone identified.\n'});
       KNOWN.clear(); FACTS.clear();
     }''', isolated_context=False)
-    styles = []
     for record, heading in [('projects/quiet-pilot.md', 'Open threads'), ('people/mia-chen.md', 'Still open between you'),
                             ('orgs/northgate-university.md', 'Open threads')]:
         page.goto(uri + '#r=' + record.replace('/', '%2F'))
@@ -4592,23 +4576,12 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
             assert not page.get_by_role('heading', name='Open threads', exact=True).is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             continue
-        assert page.get_by_role('heading', name=heading, exact=True).is_visible()
-        assert page.locator('.empty-line').count() == 1
-        assert page.locator('.focus-section h2, #open-threads h2').all_inner_texts() == [heading]
-        styles.append(page.locator('.empty-line').evaluate(r'''node => {
-          const s = getComputedStyle(node);
-          return [s.fontFamily, s.fontSize, s.color, s.borderTopWidth, s.marginTop];
-        }'''))
-        assert page.locator('.empty-line').inner_text() == 'Nothing open.'
-        if record.startswith('projects/'):
-            assert page.locator('.focus-head .deep-note-limit, .focus-limit').count() == 0
-            assert page.locator('.deep-note-limit').count() == 1
-            page.locator('.deep-note > summary').click()
-            assert page.locator('.deep-note-limit').is_visible()
-            assert page.locator('.deep-note-limit').evaluate(r'node => getComputedStyle(node).fontSize') == '11px'
+        # A project page is a map as person and org pages are (#3096): with nothing owed there is no Open threads
+        # heading, no "Nothing open." line and no Today line; nothing on it reads under 13px.
+        assert not page.get_by_role('heading', name='Open threads', exact=True).is_visible()
+        assert page.locator('.empty-line, .project-today, #main .thread-actions').count() == 0
+        assert page.locator('.record-focus.projects .project-what').first.is_visible()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    # The compact quiet line remains readable without adding a card border.
-    assert styles[0][1:] == ['15px', styles[0][2], '0px', '8px']
     page.goto(uri + '#r=people%2Fmia-chen.md')
     page.evaluate(r'''() => {
       const r = byPath('people/mia-chen.md');
