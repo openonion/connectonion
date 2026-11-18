@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc21**: when `co send` cannot reach the receiver directly, a file of up to 10 MB waits on the
+Release candidate **1.9.6rc22**: when `co browser keyboard_type` cannot paste, as in headless Chrome on Windows over
+SSH, the whole text goes in through CDP in one call, and the result says how it went in. See
+[1.9.6rc22 notes](releases/1.9.6rc22.md).
+Before it, release candidate **1.9.6rc21**: when `co send` cannot reach the receiver directly, a file of up to 10 MB waits on the
 server for 7 days, encrypted to the receiver, and `co receive` there takes it; `co browser keyboard_type` pastes text
 in one event instead of typing it key by key. See [1.9.6rc21 notes](releases/1.9.6rc21.md).
 Before it, release candidate **1.9.6rc20**: REM's night workers run at the configured reasoning effort, `co rem catchup` and the
@@ -105,7 +108,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc21'
+python -m pip install --upgrade 'connectonion==1.9.6rc22'
 ```
 
 ## Previous stable
