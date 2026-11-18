@@ -1877,7 +1877,19 @@ pinned to that edge: it comes into view with the draft.
   **Open topics** (**还没结的话题**), what is still open with them, because it
   is what you open a person for: the top three, and **All N entries**
   (**全部 N 条**) opens the rest in place. On a phone the face stays in the
-  header beside the name and the contact buttons take the row below. The name is the page's one large mark;
+  header beside the name. Directly under the name is the **profile card**
+  (owner, 2026-11-18: "the card should be the first thing shown"): every known
+  fact as a label over its value, with nothing to expand, in four groups —
+  **Contact** (email, phone, handles with their platform named — GitHub,
+  Discord, LinkedIn —, links), **Work** (signing entity, project, a unit with no
+  page of its own), **Relationship** (how you know them, first and last
+  contact, mail) and **Identity** (also known as, language, location, time
+  zone). Role, organisation (a link to its page) and units are the line under
+  the name, and are not repeated in the card: each fact has one place. A
+  click on an email, phone or handle copies it and says so. Unknown facts are
+  one quiet line, **N facts not found**, never rows of "not found"; citations
+  are small numbers after the value; a labelled ([personal]/[sensitive])
+  value hides with the labelled passages. The name is the page's one large mark;
   it carries its script as `lang` and hyphenates (where the browser has no
   hyphenation dictionary and a word would overflow, the reader adds soft
   hyphens at likely syllable joins; copying the name drops them). Under it

@@ -212,3 +212,40 @@ def test_open_topics_count_only_shown_rows_when_labelled_passages_are_hidden(rea
         assert topics.inner_text().startswith(expected + "\n")
         assert "全部" not in topics.inner_text() and "[personal]" not in topics.inner_text()
     assert "5" not in page.locator(".r4-person .r4-topics h2, .r4-person .r4-topics .end").all_inner_texts().__str__()
+
+
+# 7. The profile card is the first thing on the person page (owner, 2026-11-18): every known fact as a label over
+# its value under the name, nothing to expand, unknown facts one quiet line, each fact in one place.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(reader, width):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Phone:[^\\n]*/m, '- Phone: +64 21 555 0199 (mobile) [2]')
+        .replace(/^- Signing entity:[^\\n]*/m, '- Signing entity: Fernhill Labs Ltd [2]')
+        .replace(/^- Handles:[^\\n]*/m, '- Handles: mara@fernhill.example; github.com/mara-o (GitHub) [2]; mara#2041 (Discord) [3]');
+      // rem.test is not a secure origin, so the page has no clipboard of its own here.
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: text => { window.copied = text; return Promise.resolve(); } } });
+      delete r.original; delete r.translations; KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    assert card.is_visible() and page.locator("details.deep-note[open]").count() == 0
+    name, box = _box(page.locator(".person-head h1")), _box(card)
+    assert name["y"] + name["height"] <= box["y"] < 844, "the card is under the name, on the first screen"
+    labels = card.locator(".pc-k").all_inner_texts()
+    for label in ["Email", "Phone", "GitHub", "Discord", "Signing entity", "How we know them", "First contact", "Last contact",
+                  "Also known as", "Language", "Location"]:
+        assert label in labels, label
+    text = card.inner_text()
+    assert "+64 21 555 0199" in text and "Fernhill Labs Ltd" in text and "M. Ostrowski" in text
+    assert "not found" not in text.replace("1 fact not found", "")  # no rows of "not found"; at most one quiet line
+    assert "1 fact not found" in text and "Time zone" not in labels  # the one unknown left is a count, not a row
+    # One place per fact: role and organisation are the line under the name, not chips, rows or round buttons.
+    assert "Head of Partnerships" in page.locator(".r4-sub").inner_text() and "Head of Partnerships" not in text
+    assert page.locator(".person-head .round, .r4-sub .chip").count() == 0
+    assert labels.count("Email") == 1 and text.count("mara@fernhill.example") == 1  # the handle that is an email is not repeated
+    phone = card.locator(".pc-row", has=page.locator(".pc-k", has_text="Phone")).locator("button")
+    phone.click()
+    assert "Copied" in phone.inner_text() and page.evaluate("window.copied", isolated_context=False) == "+64 21 555 0199"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
