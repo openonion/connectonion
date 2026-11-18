@@ -259,7 +259,7 @@ async def test_async_cjk_falls_back_to_awaited_cdp_ime(monkeypatch):
     monkeypatch.setattr(humanize.rules, "_clipboard_set_argv", lambda _text: None)
     monkeypatch.setattr(humanize.asyncio, "sleep", _no_sleep)
 
-    await humanize.type_text(page, "你", asyncio.Lock())
+    await humanize.type_text(page, "你", asyncio.Lock(), human=True)
 
     assert [event[1] for event in page.log if event[0] == "cdp"] == [
         "Input.imeSetComposition",
@@ -296,10 +296,11 @@ class EditorPage:
     the text. Read as a refusal, that retyped the same words (#1877).
     """
 
-    def __init__(self, content, clipboard, accepts_paste=True):
+    def __init__(self, content, clipboard, accepts_paste=True, accepts_insert=True):
         self.content = content
         self.clipboard = clipboard
         self.accepts_paste = accepts_paste
+        self.accepts_insert = accepts_insert
         self.log = []
         self.keyboard = self
         self.context = self
@@ -321,7 +322,7 @@ class EditorPage:
 
     async def send(self, method, payload):
         self.log.append(("cdp", method, payload))
-        if method == "Input.insertText":
+        if method == "Input.insertText" and self.accepts_insert:
             self._insert(payload["text"])
 
     async def evaluate(self, script):
@@ -364,7 +365,7 @@ async def test_async_keyboard_type_enters_text_once_in_a_rich_editor(os_clipboar
 async def test_async_refused_paste_still_falls_back_to_the_ime(os_clipboard):
     page = EditorPage("", os_clipboard, accepts_paste=False)
 
-    await humanize.type_text(page, "你好", asyncio.Lock())
+    assert await humanize.type_text(page, "你好", asyncio.Lock(), human=True) == "typed"
 
     assert page.content == "你好"
     assert [event[1] for event in page.log if event[0] == "cdp"].count("Input.insertText") == 2
@@ -376,7 +377,7 @@ async def test_long_latin_text_is_one_paste_not_a_keystroke_per_character(os_cli
     page = EditorPage("", os_clipboard)
     text = "Kim's hook, typed into a share box. " * 39
 
-    await humanize.type_text(page, text, asyncio.Lock())
+    assert await humanize.type_text(page, text, asyncio.Lock()) == "pasted"
 
     assert page.content == text
     assert [event for event in page.log if event[0] == "type"] == []
@@ -385,10 +386,22 @@ async def test_long_latin_text_is_one_paste_not_a_keystroke_per_character(os_cli
 
 
 @pytest.mark.asyncio
-async def test_a_field_that_refuses_paste_is_typed_key_by_key(os_clipboard):
+async def test_when_the_paste_does_not_land_the_whole_text_is_inserted_through_cdp(os_clipboard):
+    """Headless Chrome on Windows over SSH: no paste, and 920 of 1,402 characters typed per key in 120 s."""
     page = EditorPage("", os_clipboard, accepts_paste=False)
+    text = "Kim's hook, typed into a share box. " * 39
 
-    await humanize.type_text(page, "hi", asyncio.Lock())
+    assert await humanize.type_text(page, text, asyncio.Lock()) == "inserted"
 
-    assert page.content == "hi"
+    assert page.content == text
+    assert [event for event in page.log if event[0] == "type"] == []
+    assert [event[2]["text"] for event in page.log if event[0] == "cdp"] == [text]
+
+
+@pytest.mark.asyncio
+async def test_a_field_that_takes_neither_is_typed_key_by_key(os_clipboard):
+    page = EditorPage("", os_clipboard, accepts_paste=False, accepts_insert=False)
+
+    assert await humanize.type_text(page, "hi", asyncio.Lock()) == "typed"
+
     assert [event[1] for event in page.log if event[0] == "type"] == ["h", "i"]
