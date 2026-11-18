@@ -1,0 +1,94 @@
+Icons in the REM reader (connectonion/rem/reader.html, the ICONS map)
+
+Every picture in ICONS is copied from one of two published sets; none is drawn by hand.
+The path data is the published file's, with two mechanical changes: Lucide's <rect> elements
+are written as the same rectangle in path form (the reader's style sheet owns every radius
+attribute), and the reader's own style sheet sets the stroke (1.7 wide, round caps and joins).
+Service marks keep their published shape, are painted in the page's text colour and are
+drawn at 20/24 of the box so they match the outline icons optically.
+
+1. Lucide 0.468.0 (ISC) https://lucide.dev
+   Source: https://unpkg.com/lucide-static@0.468.0/icons/<name>.svg
+
+   ICONS key -> Lucide name
+   sun -> sun
+   message-square-reply -> message-square-reply
+   users -> users
+   building-2 -> building-2
+   folder -> folder
+   zap -> zap
+   archive -> archive
+   ellipsis -> ellipsis
+   settings -> settings
+   project -> folder
+   layers -> layers
+   more -> ellipsis
+   search -> search
+   check -> check
+   skip -> chevrons-right
+   agent -> sparkles
+   terminal -> terminal
+   chat -> message-circle
+   mail -> mail
+   phone -> phone
+   at -> at-sign
+   moon -> moon
+   clock -> clock
+   quote -> quote
+   pin -> map-pin
+   right -> chevron-right
+   down -> chevron-down
+   activity -> activity
+   calendar -> calendar
+   scale -> scale
+   book -> book
+   doc -> file-text
+   undo -> undo-2
+   x -> x
+   ext -> external-link
+   globe -> globe
+
+2. Simple Icons 16.34.0 (CC0 1.0 Universal) https://simpleicons.org
+   Source: https://unpkg.com/simple-icons@16.34.0/icons/<slug>.svg
+
+   ICONS key -> Simple Icons slug
+   brand-github -> github
+   brand-x -> x
+   brand-wechat -> wechat
+   brand-whatsapp -> whatsapp
+   brand-telegram -> telegram
+   brand-discord -> discord
+
+   The marks are trademarks of their owners; CC0 covers the drawing, not the trademark.
+   Simple Icons 16.34.0 publishes no mark for LinkedIn, Slack, Microsoft or Outlook. The
+   reader draws none of them: it shows a neutral @ and says the service's name in words.
+
+Not from either set: the REM mark in the header, the moon phases, the pencil and the
+organisation page's ORG_ICONS are the reader's own drawings.
+
+--------------------------------------------------------------------------------
+Lucide
+
+ISC License
+
+Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+--------------------------------------------------------------------------------
+Simple Icons
+
+Released under CC0 1.0 Universal (public domain dedication):
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+Simple Icons' disclaimer on trademarks and per-brand terms:
+https://github.com/simple-icons/simple-icons/blob/16.34.0/DISCLAIMER.md

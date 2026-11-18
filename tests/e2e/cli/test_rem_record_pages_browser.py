@@ -41,7 +41,11 @@ def _notebook(root, now):
     text = book.read(MARA)
     head, _, rest = text.partition("## Open threads\n")
     topics, _, tail = rest.partition("\n## ")
-    book.write(MARA, head + "## Open threads\n" + topics.rstrip("\n") + MORE_TOPICS + "\n## " + tail)
+    # A phone number and a GitHub handle, so her header carries all three contact buttons (owner, 2026-11-17).
+    text = (head + "## Open threads\n" + topics.rstrip("\n") + MORE_TOPICS + "\n## " + tail).replace(
+        "- Phone: Unknown", "- Phone: +64 21 555 0142 (mobile) [1]").replace("- Handles: mara@fernhill.example", "- Handles: mara-o (GitHub)")
+    assert "mara-o (GitHub)" in text and "+64 21 555 0142" in text
+    book.write(MARA, text)
     # The owner's own page links to everyone, as it does on a real notebook: he is every page's hub.
     owner = book.read("people/avery-lin.md").replace("## Sources", "## People\n- [Mara Ostrowski](mara-ostrowski.md)\n"
                                                     "- [Tomás Reyes](tomas-reyes.md)\n- [Inès Halvorsen](ines-halvorsen.md)\n"
@@ -175,6 +179,30 @@ def test_phone_person_face_sits_with_the_name_not_the_actions(reader):
     assert face["y"] < name["y"] + name["height"] and face["y"] + face["height"] > name["y"]  # same row as the name
     assert face["y"] + face["height"] <= acts["y"]  # above the contact row, not inside it
     assert face["x"] + face["width"] <= name["x"]
+
+
+# 5b. The owner called the contact pictures "not very accurate": a phone number was a smartphone and a GitHub
+# handle a speech bubble. Each is now the published picture, the same size as its neighbours, centred in its
+# button, and its kind is said in words beside the value on hover and in its name.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_contact_buttons_are_published_pictures_with_their_kind_in_words(reader, width):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
+    buttons = page.locator(".person-head .hero-acts .round").evaluate_all("""nodes => nodes.map(n => { const b = n.getBoundingClientRect(),
+      svg = n.querySelector('svg'), s = svg.getBoundingClientRect(), ink = svg.querySelector('path').getBoundingClientRect(), paint = getComputedStyle(svg);
+      return {name: n.getAttribute('aria-label'), tip: n.querySelector('.tip').textContent, hidden: n.querySelector('.icw').getAttribute('aria-hidden'),
+        dx: Math.abs((s.left + s.right) / 2 - (b.left + b.right) / 2), dy: Math.abs((s.top + s.bottom) / 2 - (b.top + b.bottom) / 2),
+        box: s.width, ink: Math.max(ink.width, ink.height), filled: paint.fill !== 'none', stroked: paint.stroke !== 'none',
+        same: paint.fill === getComputedStyle(n).color || paint.stroke === getComputedStyle(n).color}; })""")
+    assert [b["name"] for b in buttons] == ["Email · mara@fernhill.example", "Phone · +64 21 555 0142", "GitHub · mara-o"]
+    assert [b["tip"].split(" · ")[0] for b in buttons] == ["Email", "Phone", "GitHub"]  # the word, not the picture alone
+    assert all(b["hidden"] == "true" for b in buttons)
+    assert all(b["dx"] <= 0.5 and b["dy"] <= 0.5 for b in buttons), buttons  # each picture in the middle of its button
+    assert len({b["box"] for b in buttons}) == 1
+    assert [(b["filled"], b["stroked"]) for b in buttons] == [(False, True), (False, True), (True, False)]  # a mark is solid, in ink
+    assert all(b["same"] for b in buttons)
+    inks = [b["ink"] for b in buttons]
+    assert max(inks) - min(inks) <= buttons[0]["box"] * 0.12, inks  # the mark is drawn as large as the outlines, no larger
 
 
 # 6. Organisation records never project Today's queue, even when obligations change.
