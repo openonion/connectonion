@@ -288,7 +288,7 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     print_tip(f"Next: co {name} check")
 
 
-def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
+def handle_listen(name: str, raw: bool = False, restart: bool = False, phone: str = "") -> None:
     """Hold the connection and write every message to the inbox."""
     p = _configured(name)
     inbox = Inbox(name)
@@ -338,7 +338,7 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
     main = threading.current_thread() is threading.main_thread()
     previous = signal.signal(signal.SIGTERM, terminated) if main else None
     try:
-        p.run(inbox, raw=raw)
+        p.run(inbox, raw=raw, **({"phone": phone} if phone else {}))
     except KeyboardInterrupt:
         inbox.log("stopped by Ctrl-C")
     except ListenerStopped as exc:
