@@ -46,19 +46,35 @@
     --on-green: #05301b;
     --red: #c02a17; /* overdue only: fuse rings, N 天 labels */
     --scrim: rgba(255, 255, 255, .6); /* behind sheets */
+    /* How much happened, in five steps of ink and never of hue (an activity strip, #3096): nothing, then a
+       fifth, two fifths, two thirds and all of the ink. Mixed from ink and paper, so dark follows by itself. */
+    --heat-0: var(--well);
+    --heat-1: color-mix(in srgb, var(--ink) 18%, var(--paper));
+    --heat-2: color-mix(in srgb, var(--ink) 40%, var(--paper));
+    --heat-3: color-mix(in srgb, var(--ink) 66%, var(--paper));
+    --heat-4: var(--ink);
 
-    /* type: five sizes, two weights, one family (CJK + Latin); fonts are local on purpose */
+
+    /* type: seven sizes, two weights, one family (CJK + Latin); fonts are local on purpose */
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", Inter, sans-serif;
+    /* The scale is seven steps (docs/cli/rem-visual-system.md, #3096). 15 is the smallest size for a sentence
+       or a table cell, 13 the smallest for a label; 11 is a caption for axis ticks and badges only. */
     --s-display: 44px; /* the single display element per screen: a count or a name */
     --s-head: 24px; /* a card's subject, a widget's big number */
-    --s-body: 15px; /* sentences, letters, quotes */
-    --s-ui: 13px; /* rows, chips, buttons in menus; the smallest size for running Chinese */
-    --s-meta: 11px; /* dates, labels, badges: short labels only */
+    --s-title: 20px; /* a page's name, a section that leads a page */
+    --s-lead: 17px; /* the one sentence a page opens with */
+    --s-body: 15px; /* sentences, letters, quotes, table cells */
+    --s-ui: 13px; /* labels, chips, dates beside a row; the smallest size for running Chinese */
+    --s-meta: 11px; /* captions: axis ticks and badges, never a sentence or a table cell */
     --mono: ui-monospace, "SF Mono", Menlo, monospace; /* code and paths only */
     --w-regular: 400;
     --w-bold: 600;
-    --lh-tight: 1.05;
-    --lh-body: 1.55;
+    /* leading: five steps. Chinese has no descenders to borrow room from, so a paragraph reads at 1.7. */
+    --lh-tight: 1.05; /* display */
+    --lh-head: 1.25; /* titles and heads */
+    --lh-ui: 1.4; /* a label or a row of one line */
+    --lh-body: 1.55; /* sentences */
+    --lh-read: 1.7; /* a paragraph, and any running Chinese */
     --track-display: -0.035em;
 
     /* grid */
@@ -334,7 +350,7 @@
   .memory-card h3 { font: var(--w-regular) var(--s-body)/1.25 var(--font); margin: 9px 0 10px; }
   .memory-card h3 a, .memory-card .open { color: var(--grey); }
   .memory-card p { margin: 0 0 12px; color: var(--grey); font: var(--s-body)/1.5 var(--font); }
-  .memory-card .project-purpose { color: var(--grey); font-size: var(--s-meta); }
+  .memory-card .project-purpose { color: var(--grey); font-size: var(--s-ui); }
   .memory-card .open { display: inline-flex; min-height: 44px; align-items: center; font: var(--s-meta) var(--font); text-decoration: underline; text-underline-offset: 4px; }
   .memory-empty { margin: 22px 0 0; color: var(--grey); font: var(--s-body)/1.5 var(--font); }
   .memory-connection { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--rule); padding-top: 17px; margin-top: 8px; font-size: var(--s-meta); }
@@ -770,10 +786,10 @@
   .lead-open .more { font-size: var(--s-meta); color: var(--grey); white-space: nowrap; }
   .lead-calm { font: var(--w-bold) var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); background: var(--rule); padding: 5px 9px; border-radius: var(--radius); }
   .lead-meta { font-size: var(--s-meta); color: var(--grey); display: inline-flex; align-items: center; gap: 8px; }
-  .lead-meta.project-purpose-preview { display: block; width: 100%; font: var(--w-regular) var(--s-body)/1.4 var(--font); color: var(--ink); }
+  .lead-meta.project-purpose-preview { display: block; width: 100%; font: var(--w-regular) var(--s-body)/var(--lh-ui) var(--font); color: var(--ink); }
   .lead-meta.project-purpose-preview.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .leadrow .focus-more { flex-basis: 100%; margin: 0; text-align: left; }
-  .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: var(--s-meta) var(--font); color: var(--grey); }
+  .project-purpose-cites, .skill-finding-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font: var(--s-ui) var(--font); color: var(--grey); }
   /* Standalone source controls need a full touch target. */
   .skill-finding-cites a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .focus-head :is(.project-purpose-cites, .skill-finding-cites) { position: relative; z-index: 1; margin-top: 8px; color: var(--grey); }
@@ -846,23 +862,32 @@
   .focus-more[hidden] { display: none; }
   .focus-section.next-exchanges { grid-column: 1 / -1; }
   /* A project page's lead (#2993): state, then steps as one line each, then the newest sessions. */
-  .project-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 6px 0 4px; font: var(--s-meta)/20px var(--font); color: var(--grey); }
-  .project-state-word { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font: var(--w-bold) var(--s-body)/20px var(--font); }
-  .record-focus.projects .project-step .what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .record-focus.projects .project-step .dir.you { color: var(--ink); font-weight: var(--w-bold); }
-  .record-focus.projects .project-step > .dir { white-space: normal; overflow-wrap: anywhere; }
-  .record-focus.projects .next-exchanges .threads { border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 14px; }
-  .record-focus.projects .next-exchanges .project-step { margin: 0; border-radius: 0; }
-  .record-focus.projects .project-step .thread-actions > :is(a, button) { display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; }
-  .project-more-steps { margin-top: 6px; }
-  .project-recent { grid-column: 1 / -1; }
-  .project-recent ul { margin: 0; padding: 0; list-style: none; }
-  .project-recent li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 5px 0; font: var(--s-body)/1.45 var(--font); }
+  /* A project's record (#3096): the sentence it opens with, then parts under plain heads, at body size. */
+  .project-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 8px 0 4px; font: var(--s-ui)/var(--lh-ui) var(--font); color: var(--grey); }
+  .project-state-word { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-bold) var(--s-body)/var(--lh-ui) var(--font); }
+  .record-focus.projects { --cell: 18px; --cgap: 4px; display: block; max-width: var(--measure); }
+  .record-focus.projects p { margin: 0 0 8px; font: var(--s-body)/var(--lh-read) var(--font); }
+  .record-focus.projects p.project-what { margin: 8px 0 0; font: var(--s-lead)/var(--lh-read) var(--font); color: var(--ink); }
+  .project-part { margin-top: 32px; }
+  .project-part h2 { margin: 0 0 8px; font: var(--w-bold) var(--s-body)/var(--lh-ui) var(--font); color: var(--ink); }
+  .record-focus.projects .project-activity p { color: var(--grey); }
+  /* The newest weeks stay in view: a narrow screen drops the oldest, never the scale. */
+  .project-weeks { display: flex; justify-content: flex-end; overflow: hidden; max-width: max-content; }
+  .project-weeks-in { flex: none; }
+  .project-weeks .pa-months { position: relative; height: 24px; }
+  .project-weeks .pa-month { bottom: 4px; }
+  .project-links, .project-recent ul { margin: 0; padding: 0; list-style: none; }
+  .project-links li, .project-recent li { padding: 8px 0; border-bottom: 1px solid var(--rule); font: var(--s-body)/var(--lh-body) var(--font); }
+  .project-recent li { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 16px; }
   .project-recent li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .project-recent time { color: var(--grey); font-size: var(--s-meta); }
+  .project-recent time { color: var(--grey); }
+  .project-more { display: inline-block; margin-top: 8px; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
+  .record-focus.projects .project-today { margin: 32px 0 0; padding-top: 16px; border-top: 1px solid var(--ink); }
+  .project-today-link { text-decoration: underline; text-decoration-color: var(--pencil); text-underline-offset: 3px; }
+  .record-focus.projects .focus-source { display: inline-block; margin-top: 24px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
+  .record-focus.projects .translation-line { margin: 24px 0 0; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
   .project-sessions { grid-column: 1 / -1; }
-  .project-sessions li { margin: 7px 0; overflow-wrap: anywhere; }
-  .project-recent .open-note { display: inline-block; margin-top: 6px; font: var(--s-meta) var(--font); }
+  .project-sessions li { margin: 8px 0; overflow-wrap: anywhere; }
   .session-quote { white-space: pre-wrap; overflow-wrap: anywhere; }
   .focus-section { min-width: 0; border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
   .focus-section h2 { margin: 0 0 14px; font: var(--w-bold) var(--s-body)/1.3 var(--font); }
@@ -1337,7 +1362,7 @@
   /* Keep the last-pass band equally inset in every view and at every width. */
   main:has(> .night) { max-width: none; }
   .night { margin: 0 0 24px; border-radius: var(--radius); }
-  .project-purpose-cites a.cite, .project-purpose-cites .unsure { font: var(--w-regular) var(--s-meta)/16px var(--font); padding: 3px 6px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--rule); color: var(--grey); }
+  .project-purpose-cites a.cite, .project-purpose-cites .unsure { font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); padding: 3px 6px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--rule); color: var(--grey); }
   .record-focus.projects .focus-head, .record-focus.projects .focus-facts, .record-focus.projects .thread:last-child { border-bottom: 0; }
 
   /* Inline evidence stays with the claim; dated rows retain a compact full label. */
@@ -1353,7 +1378,7 @@
   :is(.timeline, .activity-list) .cite { top: 0; max-width: 100%; margin-left: 0; white-space: normal; overflow-wrap: anywhere; padding: 2px 5px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--rule); font: var(--w-regular) var(--s-meta)/15px var(--font); }
   :is(.timeline, .activity-list) .cite-full { display: inline; }
   :is(.timeline, .activity-list) .cite-short { display: none; }
-  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { border: 0; border-radius: var(--radius); padding: 0 2px; background: transparent; color: var(--grey); font: var(--w-regular) var(--s-meta)/1 var(--font); }
+  .focus-head :is(.project-purpose-cites, .skill-finding-cites) a.cite { border: 0; border-radius: var(--radius); padding: 0 2px; background: transparent; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); }
   .task-band .thread.grouped { grid-template-columns: minmax(0, 1fr) auto; }
   .task-band .thread.grouped .when { order: 0; }
   /* On a phone the date column squeezed the body to ~230px: the date goes under the title instead, and
@@ -1733,217 +1758,177 @@
     .r4 .row .when { width: auto; }
   }
   @media (prefers-reduced-motion: reduce) { .r4 * { transition: none !important; } }
+  /* ---- Projects (#3096): three views of one design. A row is a name in bold and one sentence in grey, both
+     at body size; how much happened is a square a week in five steps of ink; nothing is under 13px. ---- */
   main:has(> .pd) { max-width: none; padding: 28px 40px 80px; }
-  .pd {
-    /* One typeface across the reader (owner review 2026-11-08): REM's sentence is set large, not in Songti. */
-    --name: 210px; --note: 270px;
-    color: var(--ink); font: var(--s-body)/1.55 var(--font); font-variant-numeric: tabular-nums; max-width: 1480px;
-  }
+  .pd { --name: 340px; --cell: 20px; --cgap: 4px; --row: 68px; color: var(--ink); font: var(--s-body)/var(--lh-body) var(--font); font-variant-numeric: tabular-nums; max-width: 1480px; }
   .pd a { color: inherit; }
   .pd a, .pd p a { text-decoration: none; }
   .pd a:hover { text-decoration: underline; text-underline-offset: 3px; }
   .pd .red { color: var(--red); }
   .pd .mut { color: var(--grey); }
-  .pd small { font-size: var(--s-meta); color: var(--grey); display: block; line-height: 1.5; }
-  .pd .pd-c { font: var(--s-meta)/1 var(--font); color: var(--grey); vertical-align: super; margin-left: 1px; }
   .pd .pd-inf { border-bottom: 1px dashed var(--pencil); }
-  .pd .tag { display: inline-block; font: var(--s-meta)/1.5 var(--font); color: var(--grey); border: 1px dashed var(--pencil); border-radius: var(--radius); padding: 0 5px; margin-left: 6px; white-space: nowrap; }
-  .pd-head { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
-  .pd-title { margin: 0; font: var(--w-bold) var(--s-head)/1.2 var(--font); letter-spacing: -.01em; }
-  .pd-count { margin-left: 8px; color: var(--grey); font-weight: var(--w-regular); font-size: var(--s-body); }
-  .pd-views { display: flex; gap: 18px; }
-  .pd-views a { padding: 4px 0; color: var(--grey); font-size: var(--s-body); border-bottom: 2px solid transparent; }
+  .pd .tag { display: inline-block; font: var(--s-ui)/var(--lh-ui) var(--font); color: var(--grey); border: 1px dashed var(--pencil); border-radius: var(--radius); padding: 0 6px; margin-left: 6px; white-space: nowrap; }
+  /* Pencil is never a text colour (2.6:1); an inferred word is grey with the pencil's dashed line. */
+  .pd-pencil-word { color: var(--grey); text-decoration: underline dashed var(--pencil); text-underline-offset: 3px; }
+  .pd-head { display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+  .pd-title { margin: 0; font: var(--w-bold) var(--s-head)/var(--lh-head) var(--font); letter-spacing: -.01em; }
+  .pd-count { margin-left: 8px; color: var(--grey); font: var(--w-regular) var(--s-body)/var(--lh-head) var(--font); letter-spacing: 0; }
+  .pd-views { display: flex; gap: 20px; }
+  .pd-views a { padding: 4px 0; color: var(--grey); font: var(--s-body)/var(--lh-ui) var(--font); border-bottom: 2px solid transparent; }
   .pd-views a.on { color: var(--ink); font-weight: var(--w-bold); border-bottom-color: var(--ink); }
   .pd-views a:hover { text-decoration: none; color: var(--ink); }
-  .pd-head-end { margin-left: auto; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
-  .pd-cov { color: var(--grey); font-size: var(--s-meta); }
-  .pd-cov b { color: var(--ink); font-weight: var(--w-bold); }
-  .pd-seg { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--radius); padding: 2px; gap: 2px; flex-wrap: wrap; }
-  .pd-seg a { font-size: var(--s-meta); color: var(--grey); padding: 3px 11px; border-radius: var(--radius); line-height: 1.5; }
+  .pd-head-end { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; min-width: 0; max-width: 100%; }
+  .pd-seg { display: inline-flex; flex-wrap: nowrap; gap: 2px; max-width: 100%; overflow-x: auto; padding: 2px; border: 1px solid var(--rule); border-radius: var(--radius); }
+  .pd-seg a { flex: none; white-space: nowrap; padding: 4px 12px; border-radius: var(--radius); color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
   .pd-seg a:hover { text-decoration: none; color: var(--ink); }
-  .pd-seg a.on { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); outline: var(--hair) solid var(--rule); }
-  .pd-rem { margin: 16px 0 0; max-width: 900px; }
-  .pd-lede { margin: 0; font: var(--w-regular) var(--s-body)/1.65 var(--font); letter-spacing: .005em; color: var(--ink); }
-  .pd-lede .pd-asked { color: var(--grey); }  /* a promise gone stale is asked about, never shouted in red */
-  .pd-basis { margin: 10px 0 0; color: var(--grey); font-size: var(--s-meta); }
-  .pd-rule { border: 0; border-top: 1px solid var(--ink); margin: 30px 0 0; }
-  .pd-legend { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 12px 0; color: var(--grey); font-size: var(--s-meta); }
-  .pd-keys { display: flex; gap: 16px; flex-wrap: wrap; color: var(--grey); }
-  .pd-keys > span { display: inline-flex; align-items: center; gap: 6px; }
-  .pd-keys .k-tick { width: 1px; height: 10px; background: var(--ink); }
-  .pd-keys .k-pencil { width: 22px; border-top: 1px dashed var(--pencil); }
-  .pd-keys .k-late { width: 22px; height: 2px; background: var(--red); }
-  .pd-dot { display: inline-block; width: 7px; height: 7px; border-radius: var(--round); flex: none; background: var(--ink); }
+  .pd-seg a.on { background: var(--well); color: var(--ink); font-weight: var(--w-bold); }
+  .pd-dot { display: inline-block; width: 8px; height: 8px; border-radius: var(--round); flex: none; background: var(--ink); }
   .pd-dot.off_track { background: var(--red); }
   .pd-dot.at_risk { background: transparent; outline: var(--hair) solid var(--red); outline-offset: calc(-1 * var(--hair)); }
   .pd-dot.quiet, .pd-dot.done { background: transparent; outline: var(--hair) solid var(--grey); outline-offset: calc(-1 * var(--hair)); }
 
-  /* the strip: every view draws the same marks */
-  .pd-track { position: relative; min-height: 32px; }
-  .pd-track.mini { min-height: 18px; height: 18px; }
-  .pd-future { position: absolute; top: 0; bottom: 0; right: 0; background: var(--paper); }
-  .pd-now { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink); }
-  .pd-span { position: absolute; top: 50%; height: 1px; background: var(--rule); }
-  .pd-tick { position: absolute; top: 50%; width: 1px; height: 10px; margin-top: -5px; background: var(--ink); }
-  .pd-track.mini .pd-tick { height: 8px; margin-top: -4px; }
-  .pd-late { position: absolute; top: 50%; height: 2px; margin-top: -1px; background: var(--red); }
-  .pd-pencil { position: absolute; top: 50%; border-top: 1px dashed var(--pencil); }
-  .pd-pencil-end { position: absolute; top: 50%; width: 7px; height: 7px; margin: -4px 0 0 -4px; border: 1px dashed var(--pencil); border-radius: var(--round); background: var(--paper); }
-  .pd-ring { position: absolute; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border: 1px solid var(--grey); border-radius: var(--round); background: var(--paper); }
-  .pd-track.has-lbl { min-height: 46px; }
-  .pd-track.has-lbl > :is(.pd-span, .pd-tick, .pd-late, .pd-pencil, .pd-pencil-end, .pd-late-n) { top: calc(50% + 7px); }
-  .pd-lbl { position: absolute; top: 2px; font-size: var(--s-meta); line-height: 1.3; color: var(--grey); white-space: nowrap; }
-  .pd-lbl.red { color: var(--red); }
-  .pd-late-n.left { transform: translate(-100%, -50%); padding: 0 7px 0 0; background: var(--paper); }
-  .pd-late-n { position: absolute; top: 50%; transform: translateY(-50%); padding-left: 7px; color: var(--red); font-size: var(--s-meta); font-weight: var(--w-bold); white-space: nowrap; }
+  /* the row, the same in every view */
+  .pa-title { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font: var(--w-bold) var(--s-body)/var(--lh-ui) var(--font); }
+  .pa-say { display: block; min-width: 0; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--grey); font: var(--s-body)/var(--lh-ui) var(--font); }
+  .pa-key { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 40px; margin: 0 0 16px; }
+  .pa-words { min-width: 0; }
+  .pa-order, .pa-counted { margin: 0; max-width: 900px; color: var(--grey); font: var(--s-ui)/var(--lh-body) var(--font); }
+  .pa-order { color: var(--ink); }
+  .pa-tools { display: flex; flex: none; align-items: center; gap: 24px; }
+  .pa-today { flex: none; padding: 6px 16px; border: 0; border-radius: var(--r-pill); background: var(--paper); box-shadow: var(--e-ring); color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .pa-today:hover { box-shadow: var(--e-ink); }
+  .pa-scale { display: flex; flex: none; align-items: center; gap: var(--cgap); color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
+  .pa-scale span:first-child { margin-right: 4px; }
+  .pa-scale span:last-child { margin-left: 4px; }
 
-  /* 时间线 */
-  .pd-gantt { border-top: 1px solid var(--rule); overflow-x: clip; }
-  .pd-row { display: grid; grid-template-columns: var(--name) minmax(0, 1fr) var(--note); border-bottom: 1px solid var(--rule); }
-  .pd-name { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 5px 12px 5px 0; font-size: var(--s-meta); }
-  .pd-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .pd-name-line a { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pd-name-line a.red { color: var(--red); }
-  .pd-row.kid .pd-name-line, .pd-lrow.kid .pd-name-line { padding-left: 16px; }
-  .pd-read { margin-left: 15px; color: var(--grey); font-size: var(--s-meta); }
-  .pd-name > b { font-size: var(--s-meta); }
-  .pd-note-cell { border-left: 1px solid var(--rule); padding: 7px 0 7px 14px; min-width: 0; }
-  .pd-note { margin: 0; font: var(--s-meta)/1.55 var(--font); color: var(--ink); }
-  .pd-kicker { font: var(--w-bold) var(--s-meta)/1 var(--font); color: var(--ink); margin-right: 4px; }
-  .pd-kicker.red { color: var(--red); }
-  .pd-note-pencil .pd-kicker { color: var(--grey); font-weight: var(--w-regular); }
-  .pd-group { display: flex; align-items: baseline; gap: 8px; padding: 18px 0 6px; border-bottom: 1px solid var(--rule); font-size: var(--s-meta); }
-  .pd-group-name { font-weight: var(--w-bold); }
-  .pd-group-n, .pd-group-rule { color: var(--grey); font-size: var(--s-meta); }
-  .pd-group-rule { margin-left: 6px; }
-  .pd-scale-row { border-bottom: 1px solid var(--rule); }
-  .pd-scale-name { justify-content: flex-end; color: var(--grey); font-size: var(--s-meta); padding-bottom: 8px; }
-  .pd-scale { position: relative; min-height: 84px; }
-  .pd-col { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--rule); padding: 8px 8px 8px 7px; overflow: hidden; }
-  .pd-col-label { display: inline-block; font-size: var(--s-meta); color: var(--grey); white-space: nowrap; }
-  .pd-col-line { display: block; margin-top: 4px; font: var(--s-meta)/1.5 var(--font); color: var(--grey); overflow-wrap: anywhere; }
-  .pd-col-line small { display: block; color: var(--grey); font-size: var(--s-meta); }
-  .pd-now-label { position: absolute; top: 6px; transform: translateX(calc(-100% - 6px)); font-size: var(--s-meta); font-weight: var(--w-bold); background: var(--paper); padding: 0 2px; }
-  .pd:not([data-zoom="quarter"]) .pd-pencil-label { display: none; }
-  .pd-pencil-label { position: absolute; top: 6px; padding-left: 8px; font-size: var(--s-meta); color: var(--grey); text-decoration: underline dashed var(--pencil); text-underline-offset: 3px; white-space: nowrap; }
-  .pd-note-head { color: var(--grey); font-size: var(--s-meta); display: flex; align-items: flex-end; padding-bottom: 8px; }
-  .pd-rem-row .pd-name small { display: inline; margin-left: 8px; }
-  .pd-rem-row .pd-name { flex-direction: row; align-items: center; justify-content: flex-start; }
-  .pd-fold .pd-name-line { color: var(--grey); }
-  .pd .pd-fold-names { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 0 15px; }
-  .pd-fold-btn { margin-left: auto; border: 0; background: none; padding: 2px 4px; font: var(--s-meta) var(--font); color: var(--grey); cursor: pointer; border-bottom: 1px solid var(--rule); }
-  .pd-fold-btn:hover { color: var(--ink); }
-  .pd-fold-end { padding: 10px 0; text-align: right; }
+  /* a square is a week: nothing, then four steps of ink on one scale for every project */
+  .pa-c { display: block; width: var(--cell); height: var(--cell); border-radius: var(--r-cell); background: var(--heat-0); }
+  .pa-c.l1 { background: var(--heat-1); }
+  .pa-c.l2 { background: var(--heat-2); }
+  .pa-c.l3 { background: var(--heat-3); }
+  .pa-c.l4 { background: var(--heat-4); }
+  .pa-c.before { background: transparent; }
+  .pa-c.ahead { background: transparent; box-shadow: var(--e-ring); }
+  .pa-c.now { outline: var(--hair) solid var(--ink); outline-offset: 2px; }
+  .pa-c.now.l0 { outline-color: var(--pencil); }  /* this week with nothing in it: the column is marked, not shouted */
+  .pa-strip { display: grid; grid-auto-flow: column; grid-auto-columns: var(--cell); gap: var(--cgap); align-items: center; }
+  .pa-mini { width: max-content; }
+  .pa-mini .pa-c.before { background: var(--heat-0); }  /* twelve squares stay twelve: a short strip is read by its width */
+  .pa-tip { position: fixed; z-index: 30; pointer-events: none; padding: 6px 12px; border-radius: var(--radius); background: var(--ink); color: var(--paper); box-shadow: var(--e3); font: var(--s-ui)/var(--lh-ui) var(--font); white-space: nowrap; }
 
-  /* 列表 */
-  .pd-list { border-top: 1px solid var(--rule); }
-  .pd-lrow { display: grid; grid-template-columns: minmax(0, 1fr) 80px 92px minmax(150px, 190px) 170px 140px 70px; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--rule); align-items: start; font-size: var(--s-meta); }
-  .pd-lhead { padding: 10px 0 8px; color: var(--grey); font-size: var(--s-meta); border-bottom: 1px solid var(--ink); align-items: end; }
-  .pd-lname { min-width: 0; }
-  .pd-lname .pd-name-line { font-size: var(--s-body); }
-  .pd-lname .pd-note { margin: 6px 0 0 15px; font-size: var(--s-meta); color: var(--grey); }
-  .pd-lrow .pd-when { font-weight: var(--w-regular); }
-  .pd-lstrip .pd-track { margin-top: 1px; }
-  .pd-lhead .pd-lstrip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pd-partial { border-bottom: 1px dashed var(--pencil); }
-  /* Pencil is never a text colour (2.6:1); an inferred word is grey with the pencil's dashed line. */
-  .pd-pencil-word { color: var(--grey); text-decoration: underline dashed var(--pencil); text-underline-offset: 3px; }
-  .pd-lknown span { color: var(--grey); }
+  /* the timeline: names stay, time scrolls under one axis */
+  .pa-grid { display: grid; grid-template-columns: var(--name) minmax(0, 1fr); border-top: 1px solid var(--ink); }
+  .pa-names > *, .pa-canvas > * { box-sizing: border-box; border-bottom: 1px solid var(--rule); }
+  .pa-name { display: flex; flex-direction: column; justify-content: center; min-width: 0; height: var(--row); padding-right: 24px; }
+  .pa-corner, .pa-months { position: relative; height: 40px; }
+  .pa-corner { display: flex; align-items: flex-end; padding-bottom: 10px; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
+  .pa-month { position: absolute; bottom: 10px; left: calc(var(--i) * (var(--cell) + var(--cgap))); color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); white-space: nowrap; }
+  .pa-month.now { color: var(--ink); font-weight: var(--w-bold); }
+  .pa-divider { display: flex; align-items: flex-end; height: 64px; padding-bottom: 12px; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); white-space: nowrap; }
+  .pa-names > .pa-divider, .pa-canvas > .pa-divider, .pl > .pa-divider { border-bottom-color: var(--ink); }
+  .pa-time { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; }
+  .pa-canvas { width: max-content; min-width: 100%; }
+  .pa-canvas > .pa-strip { height: var(--row); }
 
-  /* 看板 */
-  .pd-asks { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; padding: 2px; font-size: var(--s-meta); }
-  .pd-asks a { flex: 0 0 auto; white-space: nowrap; }
-  .pd-head-end:has(.pd-asks) { min-width: 0; max-width: 100%; }
-  .pd-board { margin-top: 24px; }
+  /* the list: the same rows as a table */
+  .pl { --cell: 14px; --cgap: 3px; border-top: 1px solid var(--ink); }
+  .pl-row { box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) 128px 112px calc(12 * var(--cell) + 11 * var(--cgap)) 128px; gap: 8px 32px; align-items: center; min-height: var(--row); padding: 8px 0; border-bottom: 1px solid var(--rule); font: var(--s-body)/var(--lh-ui) var(--font); }
+  .pl-head { min-height: 0; padding: 12px 0 8px; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
+  .pl-head > :last-child, .pl-open { text-align: right; white-space: nowrap; }
+  .pl-name { min-width: 0; }
+  .pl-state > span { display: block; }
+  .pl-open a, .pd .project-today-link { text-decoration: underline; text-decoration-color: var(--pencil); text-underline-offset: 3px; }
+
+  /* the board */
+  .pd-board .pd-answer { margin: 0 0 24px; max-width: 780px; font: var(--s-lead)/var(--lh-read) var(--font); }
+  .pd-cols { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 24px; align-items: start; }
+  .pd-board[data-ask="drop"] .pd-cols { --cols: 3; }
   @media (min-width: 1241px) {
     /* Empty states keep their header width; populated states share the remaining space. */
     .pd-board[data-ask="state"] .pd-cols { display: flex; }
     .pd-state-col { flex: 1; min-width: 0; }
     .pd-state-col.is-empty { flex: 0 0 100px; }
   }
-  .pd-answer { margin: 14px 0 22px; max-width: 900px; font: var(--w-regular) var(--s-body)/1.7 var(--font); }
-  .pd-cols { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 20px; align-items: start; }
-  .pd-board[data-ask="drop"] .pd-cols { --cols: 3; }
-  .pd-colm h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--ink); font: var(--w-bold) var(--s-body)/1.4 var(--font); }
-  .pd-colm h2 small { display: inline; font-weight: var(--w-regular); text-align: right; }
-  .pd-colm.red h2 { color: var(--red); border-bottom-color: var(--red); }
-  .pd-card { border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; background: var(--paper); }
-  .pd-card.weak { border-style: dashed; border-color: var(--rule); }
-  .pd-card.late { border-color: var(--red); }
-  .pd-card-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: var(--s-body); }
-  .pd-card-head .pd-when { flex: none; color: var(--grey); font-size: var(--s-meta); }
-  .pd-card .pd-note { margin: 6px 0 0; font-size: var(--s-meta); color: var(--grey); }
-  .pd-card-extra { margin: 6px 0 0; color: var(--grey); font-size: var(--s-meta); }
-  /* The board by state (#2993): the dot is the state, so a column needs no caption. Ink solid moves with the
-     owner, an ink ring waits on someone else, a pencil ring is quiet, pencil solid is done. */
-  .pd-state-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: var(--round); box-sizing: border-box; }
+  .pd-colm h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--ink); font: var(--w-bold) var(--s-body)/var(--lh-ui) var(--font); }
+  .pd-colm h2 small { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-align: right; }
+  .pd-card { --cell: 14px; --cgap: 3px; margin-bottom: 12px; padding: 16px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); }
+  .pd-card .pa-title { white-space: normal; overflow-wrap: anywhere; }
+  .pd-card-say { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin-top: 4px; white-space: normal; line-height: var(--lh-body); }
+  .pd-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
+  .pd-card-when { display: flex; gap: 8px; white-space: nowrap; }
+  .pd-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .pd-card-head .pd-when { flex: none; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); }
+  .pd-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: var(--w-bold); }
+  .pd-name-line a { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+  .pd-name-line a.red { color: var(--red); }
+  .pd-note, .pd-card-extra { margin: 8px 0 0; color: var(--grey); font: var(--s-body)/var(--lh-body) var(--font); }
+  .pd-kicker { margin-right: 4px; color: var(--ink); font-weight: var(--w-bold); }
+  .pd-kicker.red { color: var(--red); }
+  .pd-note-pencil .pd-kicker { color: var(--grey); font-weight: var(--w-regular); }
+  /* The dot repeats the column's word, it never replaces it. Ink solid moves with the owner, an ink ring
+     waits on someone else, a pencil ring is quiet, pencil solid is done. */
+  .pd-state-dot { display: inline-block; flex: none; box-sizing: border-box; width: 10px; height: 10px; border-radius: var(--round); }
   .pd-state-dot.active { background: var(--ink); }
   .pd-state-dot.waiting { border: 2px solid var(--ink); }
   .pd-state-dot.quiet { border: 2px solid var(--pencil); }
   .pd-state-dot.done { background: var(--pencil); }
-  .pd-state-col h2 { justify-content: flex-start; align-items: center; }
+  .pd-state-col h2 { justify-content: flex-start; align-items: center; gap: 8px; }
   .pd-state-col h2 small { margin-left: auto; }
-  .pd-state-card .pd-card-name { font-weight: var(--w-bold); overflow-wrap: anywhere; }
-  .pd-step { margin: 6px 0 0; font: var(--s-body)/1.45 var(--font); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-  .pd-step-who { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 0; font-size: var(--s-meta); color: var(--grey); }
-  .pd-owner.you { color: var(--ink); font-weight: var(--w-bold); }
+  .pd-fold-btn { border: 0; border-bottom: 1px solid var(--rule); padding: 4px; background: none; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .pd-fold-btn:hover { color: var(--ink); }
   .pd-col-more { display: block; margin: 0 0 0 auto; }
-  .pd-card-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 10px; font-size: var(--s-meta); color: var(--grey); }
-  .pd-pair .pd-inf { display: inline; margin: 0; font-size: var(--s-meta); }
-  .pd-compact { list-style: none; margin: 0; padding: 0; font-size: var(--s-meta); }
-  .pd-compact li { display: flex; gap: 10px; padding: 3px 0; }
-  .pd-compact li .mut { flex: none; min-width: 66px; font-size: var(--s-meta); }
-  .pd-pair-names { font-size: var(--s-body); }
-  .pd-pencil-box { border: 1px dashed var(--pencil); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
-  .pd-pencil-head { margin: 0 0 6px; font-size: var(--s-meta); color: var(--grey); }
-  .pd-sub { margin: 4px 0 6px; color: var(--grey); font-size: var(--s-meta); }
-  .pd-empty { color: var(--grey); font-size: var(--s-meta); margin: 0; }
+  .pd-pair-names { font-weight: var(--w-bold); }
+  .pd-compact { list-style: none; margin: 0; padding: 0; }
+  .pd-compact li { display: flex; gap: 12px; padding: 4px 0; }
+  .pd-compact li .mut { flex: none; min-width: 72px; }
+  .pd-empty { margin: 0; color: var(--grey); }
 
   @media (max-width: 1240px) {
-    .pd-row { grid-template-columns: var(--name) minmax(0, 1fr); }
-    .pd-note-cell { grid-column: 1 / -1; border-left: 0; padding: 0 0 8px 15px; }
-    .pd-note-cell:empty, .pd-note-head { display: none; }
-    .pd-lrow { grid-template-columns: minmax(0, 1fr) 70px 86px minmax(120px, 160px) 130px 110px 56px; gap: 12px; }
+    .pd { --name: 260px; }
+    .pl-row { grid-template-columns: minmax(0, 1fr) 104px 96px calc(12 * var(--cell) + 11 * var(--cgap)) 112px; gap: 8px 20px; }
     .pd-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pd-board[data-ask="drop"] .pd-cols { --cols: 2; }
   }
+  /* A phone: the name and its sentence sit above the squares, which scroll under them; fewer weeks, the same scale. */
   @media (max-width: 719px) {
-    main:has(> .pd) { padding: 18px 16px 60px; }
-    .pd-head { gap: 14px; }
+    main:has(> .pd) { padding: 16px 16px 112px; }
+    .pd { --cell: 14px; --cgap: 3px; --row: 92px; }
+    .pd-head { gap: 8px 20px; margin-bottom: 16px; }
+    .pd-title { font-size: var(--s-title); }
     .pd-head-end { margin-left: 0; justify-content: flex-start; width: 100%; }
-    .pd-rem { margin-top: 22px; }
-    .pd-lede { font-size: var(--s-body); line-height: 1.65; }
-    .pd-legend .pd-legend-what { width: 100%; }
-    .pd-row { grid-template-columns: minmax(0, 1fr); padding: 6px 0; }
-    .pd-name { padding: 2px 0; }
-    .pd-track { min-height: 24px; }
-    .pd-scale { min-height: 30px; }
-    .pd-scale-name, .pd-col-line, .pd-pencil-label, .pd-lbl:not(.red) { display: none; }
-    .pd-col { padding: 6px 4px; }
-    .pd-col-label { font-size: var(--s-meta); }
-    .pd-note-cell { padding: 0 0 4px; }
-    .pd-lhead { display: none; }
-    .pd-lrow { grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "name name name" "strip strip strip" "health last last" "open open open" "known known read"; gap: 6px 14px; }
-    .pd-lname { grid-area: name; } .pd-lstrip { grid-area: strip; } .pd-lhealth { grid-area: health; } .pd-llast { grid-area: last; }
-    .pd-lopen { grid-area: open; } .pd-lknown { grid-area: known; } .pd-lread { grid-area: read; text-align: right; }
-    .pd-lhealth small, .pd-llast small { display: inline; margin-left: 6px; }
-    .pd-lopen:empty, .pd-fold .pd-lknown, .pd-fold .pd-lread { display: none; }
+    .pa-key { flex-direction: column; align-items: stretch; gap: 12px; }
+    .pa-tools { justify-content: space-between; }
+    .pa-corner { visibility: hidden; }
+    .pa-grid { position: relative; display: block; }
+    .pa-names { position: absolute; z-index: 1; top: 0; left: 0; right: 0; pointer-events: none; }
+    .pa-names a { pointer-events: auto; }
+    .pa-names > * { border-bottom-color: transparent; }
+    .pa-name { justify-content: flex-start; padding: 12px 0 0; }
+    .pa-names > .pa-divider { border-bottom-color: transparent; }
+    .pa-canvas > .pa-strip { align-items: end; padding-bottom: 16px; }
+    .pl-head { display: none; }
+    .pl-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name name" "state last" "strip open"; gap: 8px 16px; padding: 16px 0; }
+    .pl-name { grid-area: name; } .pl-state { grid-area: state; } .pl-last { grid-area: last; } .pl-strip { grid-area: strip; } .pl-open { grid-area: open; }
+    .pl-state { display: flex; gap: 12px; }
+    .pl-last { text-align: right; color: var(--grey); }
+    .pl-last::before { content: attr(data-label) " "; }
+    .pl .pa-say { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; line-height: var(--lh-body); }
     .pd-cols, .pd-board[data-ask="drop"] .pd-cols { grid-template-columns: minmax(0, 1fr); }
-    .pd-answer { font-size: var(--s-body); }
+    .pd-board .pd-answer { font-size: var(--s-body); }
   }
   @media (prefers-reduced-motion: reduce) { .pd * { transition: none !important; animation: none !important; } }
   /* ---- Projects board and Sessions list (art direction r4): tokens scoped to these two views ---- */
-  .projects-view, .sessions-view.r4 {
+  .sessions-view.r4 {
      font-family: var(--font);
     font-variant-numeric: tabular-nums; color: var(--ink);
   }
-  .projects-view { max-width: 1040px; margin: 0 auto; }
-  .projects-view .page-kicker, .sessions-view.r4 .page-kicker { margin: 8px 0 6px; font: var(--s-meta)/18px var(--font); color: var(--grey); }
-  .projects-view h1.page-state, .sessions-view.r4 h1.page-state { margin: 0 0 28px; font: var(--w-bold) var(--s-head)/36px var(--font); letter-spacing: -.022em; color: var(--ink); }
+  .sessions-view.r4 .page-kicker { margin: 8px 0 6px; font: var(--s-meta)/18px var(--font); color: var(--grey); }
+  .sessions-view.r4 h1.page-state { margin: 0 0 28px; font: var(--w-bold) var(--s-head)/36px var(--font); letter-spacing: -.022em; color: var(--ink); }
   .page-state-sub { color: var(--grey); font-weight: var(--w-regular); }
-  .projects-view .chip.lamp, .sessions-view.r4 .chip.lamp { border: 0; border-radius: var(--radius); padding: 2px 8px; background: var(--rule); color: var(--ink); font: var(--w-bold) var(--s-meta)/16px var(--font); }
-  .projects-view .btn-act, .sessions-view.r4 .btn-act { gap: 8px; min-height: 40px; padding: 0 20px; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; font-family: var(--font); transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
-  .projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover { background: var(--on-green); color: var(--green) !important; }
+  .sessions-view.r4 .chip.lamp { border: 0; border-radius: var(--radius); padding: 2px 8px; background: var(--rule); color: var(--ink); font: var(--w-bold) var(--s-meta)/16px var(--font); }
+  .sessions-view.r4 .btn-act { gap: 8px; min-height: 40px; padding: 0 20px; border-radius: var(--radius); background: var(--green); color: var(--on-green) !important; font-family: var(--font); transition: background var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
+  .sessions-view.r4 .btn-act:hover { background: var(--on-green); color: var(--green) !important; }
   .btn-act.play::before { content: ""; width: 0; height: 0; border-left: 9px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
   .sessions-view.r4 { max-width: 720px; margin: 0 auto; min-width: 0; }
   .session-stopped { margin: 0 0 36px; padding: 24px; border-radius: var(--radius); background: var(--paper); outline: var(--hair) solid var(--rule); }
@@ -2005,7 +1990,7 @@
     .session-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   }
   @media (max-width: 719px) {
-    .projects-view h1.page-state, .sessions-view.r4 h1.page-state { font-size: var(--s-head); line-height: 31px; margin-bottom: 20px; }
+    .sessions-view.r4 h1.page-state { font-size: var(--s-head); line-height: 31px; margin-bottom: 20px; }
     .page-state-sub { display: block; font-size: var(--s-body); line-height: 24px; letter-spacing: 0; }
     .page-state-sub .sep { display: none; }
   }
@@ -9561,6 +9546,18 @@ function agendaView() {
 // directory has no green: none of its record actions (accept a grouping, merge, ink a forecast)
 // can write to the notebook yet, and a button that cannot act would be a lie.
 const PD_ZH = {
+  "No activity in the week of {date}": "{date} 那一周：没有活动", "1 activity in the week of {date}": "{date} 那一周：1 次活动",
+  "{n} activities in the week of {date}": "{date} 那一周：{n} 次活动", "The week of {date} has not come yet": "{date} 那一周还没到",
+  "No dated activity on record": "没有带日期的活动记录", "Busiest in {month}": "{month}最忙", "; ": "；",
+  "active this week": "本周有活动", "active last week": "上周有活动", "quiet for {n} weeks": "已安静 {n} 周",
+  "Nothing that week": "那一周没有活动", "{a} or more in a week": "一周 {a} 次或更多", "{a} to {b} in a week": "一周 {a} 到 {b} 次", "{a} in a week": "一周 {a} 次",
+  "One square is one week; darker means more happened. Counted: {m} messages you typed to agents, {s} sessions with no kept message, {k} other dates a project page cites.":
+    "一格是一周，越深活动越多。计入：你发给智能体的 {m} 条消息、{s} 个没有留存消息的会话、项目页面引用的其他 {k} 个日期。",
+  "Less": "少", "More": "多", "Most recently active first, the same order as People; within a week, the busier project first.": "最近有活动的排在前面，和「人物」的排序一样；同一周里，更忙的在前。",
+  "Quiet for more than {d} days · {n}": "安静超过 {d} 天 · {n}", "Activity by week. Left and right arrows move a month; Home returns to this week.": "按周的活动。左右方向键移动一个月，Home 回到本周。",
+  "Not investigated yet": "还没调查", "{n} in Today": "「今天」里 {n} 项", "Project": "项目", "Status": "状态", "Last active": "最近活动", "Last 12 weeks": "最近 12 周", "Open": "未完成",
+  "1 open item is in Today": "有 1 项未完成，在「今天」里", "{n} open items are in Today": "有 {n} 项未完成，在「今天」里",
+  ".": "。", "Where it stands": "现状", "Activity": "活动", "What was decided": "定下来的事", "Who is involved": "谁参与", "Sessions by date": "会话，按日期", "All {n} decisions": "全部 {n} 项决定",
   "Projects": "项目", "Timeline": "时间线", "List": "列表", "Board": "看板", "View": "视图", "Zoom": "刻度",
   "Week": "周", "Month": "月", "Quarter": "季", "Year": "年",
   "Off track": "偏离", "At risk": "风险", "On track": "正常", "Quiet": "安静", "Done": "完成",
@@ -9632,18 +9629,13 @@ function pdT(key, values = {}) {
 
 const PD_TIERS = ["off_track", "at_risk", "on_track", "quiet"];
 const PD_HEALTH = { off_track: "Off track", at_risk: "At risk", on_track: "On track", quiet: "Quiet", done: "Done" };
-const PD_RULES = { off_track: "A dated promise has passed", at_risk: "Due within 7 days, waiting over 14 days, or blocked",
-  on_track: "Activity within 30 days", quiet: "No activity for 30 days" };
 // [label, days back, days forward]: the window around the snapshot's day.
-const PD_ZOOM = { week: ["Week", 9, 14], month: ["Month", 38, 30], quarter: ["Quarter", 99, 32], year: ["Year", 525, 53] };
 const PD_VIEWS = [["timeline", "Timeline"], ["list", "List"], ["board", "Board"]];
 const PD_ASKS = [["state", "By state"], ["waiting", "Who waits on whom"], ["drop", "What can be set down"], ["same", "What may be one project"]];
-const PD_FACTS = [["Repository", "repository"], ["Stack", "stack"], ["Status", "status"], ["People", "people"],
-  ["Organisation", "organisation"], ["Started", "start"], ["Last activity", "last activity"]];
 const PD_QUIET_DAYS = 30, PD_NOTES = 5, PD_FOLD_AT = 6;
 // The board's columns (#2993), named for who holds the next step; projectState says how each is decided.
 const PD_STATES = [["active", "Active"], ["waiting", "Waiting"], ["quiet", "Quiet"], ["done", "Done"]];
-let pdQuietOpen = false, PD_SESSIONS = null;
+let PD_SESSIONS = null;
 const pdStateOpen = new Set();
 
 // ---- data: ported from the sprint-10 project views (their UI was rejected, their rules were not) ----
@@ -9800,12 +9792,6 @@ function projectSessionIndex() {
 }
 function projectSessionDays(r) { return [...(projectSessionIndex().get(r.path)?.days || [])].sort(); }
 function projectSessionPaths(r) { return projectSessionIndex().get(r.path)?.paths || new Set(); }
-// Ticks: every session day, plus the last dated activity when no session carries it.
-function projectTicks(r) {
-  const days = new Set(projectSessionDays(r)), last = projectLast(r) && calendarDay(projectLast(r));
-  if (last) days.add(last);
-  return [...days].sort();
-}
 // Pencil: an on-track project turns quiet on day 31 without activity (health() in project_priority.py).
 function projectQuietOn(r) {
   const last = projectLast(r) && calendarDay(projectLast(r));
@@ -9814,13 +9800,6 @@ function projectQuietOn(r) {
 function projectCoverage(r) {
   const c = r.project_coverage;
   return c && c.inputs_available ? { read: c.inputs_read || 0, of: c.inputs_available, days: c.days || 30 } : null;
-}
-function projectKnown(r) {
-  return r.facts && typeof r.facts === "object" ? PD_FACTS.map(([key, label]) => [label, (r.facts[key] || []).length > 0]) : null;
-}
-function projectCite(r, key) {
-  const cite = r.date_sources?.[key]?.cite;
-  return cite ? el("a", { class: "pd-c", href: href(r) + "&h=src-" + String(cite).toLowerCase(), title: t("source {n}", { n: cite }), text: String(cite) }) : null;
 }
 
 // ---- inferences: possible duplicates. Shared sessions and page suggestions, then distinctive words. ----
@@ -9876,307 +9855,250 @@ function projectNoteNode(note, inline = false) {
     el("span", { class: note.kind === "fact" ? "" : "pd-inf", text: note.text })]);
 }
 
-// ---- the window, the sentence and the shared marks ----
-function projectWindow(zoom) {
-  const today = projectAsOfDay(REM.as_of), [, back, forward] = PD_ZOOM[zoom];
-  let a = pdAddDays(today, -back);
-  if (zoom === "quarter" || zoom === "year") a = a.slice(0, 8) + "01";
-  return { a, b: pdAddDays(today, forward), today, zoom };
+// ---- activity by week (#3096): counted in project_activity.py, drawn here ----
+// The window is in weeks (Mondays). It opens a year back and two months ahead and grows at whichever
+// edge he scrolls to, so time has no end stop in either direction.
+const PA_BACK = 52, PA_AHEAD = 8, PA_GROW = 26, PA_MINI = 12, PA_RECORD = 26;
+const paWin = { from: "", to: "" };
+function paActivity(r) { return r.activity || { weeks: {}, kinds: {}, first: "", last: "", recent: 0, rank: Infinity, quiet: true }; }
+function paWeekOf(day) { return pdAddDays(day, -((new Date(day + "T00:00:00Z").getUTCDay() + 6) % 7)); }
+function paMeta() {
+  return REM.project_activity || { scale: [1, 2, 3, 4], kinds: {}, first: "", this_week: paWeekOf(projectAsOfDay(REM.as_of)), quiet_days: PD_QUIET_DAYS, recent_weeks: PA_MINI };
 }
-function pdAt(win, day) { return Math.max(0, Math.min(100, pdBetween(win.a, day) / pdBetween(win.a, win.b) * 100)); }
-function pdIn(win, day, to = win.b) { return day >= win.a && day <= to; }
-function projectActive(all, win, days = projectTicks) {
-  return all.map(r => [r, days(r).filter(day => pdIn(win, day, win.today)).length]).filter(([, n]) => n)
-    .sort((a, b) => b[1] - a[1] || projectRank(a[0], b[0])).map(([r]) => r);
+// One scale for every row: the same count is the same step of ink on every project.
+function paLevel(n) { return paMeta().scale.filter(bound => n >= bound).length; }
+// The order is decided once, where the counting is (project_activity.order): People's rule, for projects.
+function paOrder(all) { return [...all].sort((a, b) => paActivity(a).rank - paActivity(b).rank || projectRank(a, b)); }
+function paWeeks(from, to) {
+  const out = [];
+  for (let week = from; week <= to; week = pdAddDays(week, 7)) out.push(week);
+  return out;
 }
-function projectTierCounts(all) {
-  const count = tier => all.filter(r => projectTier(r) === tier).length;
-  return { off: count("off_track"), risk: count("at_risk"), ok: count("on_track"), quiet: count("quiet") + count("done") };
+function paCellWords(week, n) {
+  const date = pdDay(week, true);
+  if (week > paMeta().this_week) return pdT("The week of {date} has not come yet", { date });
+  return pdT(!n ? "No activity in the week of {date}" : n === 1 ? "1 activity in the week of {date}" : "{n} activities in the week of {date}", { n, date });
 }
-function projectLede(all, win) {
-  const active = win.zoom === "quarter" ? projectActive(all, win, projectSessionDays) : projectActive(all, win), counts = projectTierCounts(all), names = active.slice(0, 3).map(r => r.title);
-  let line;
-  if (win.zoom === "week") line = !active.length ? pdT("No project moved this week.")
-    : pdT(active.length === 1 ? "1 project moved this week: {names}." : "{n} projects moved this week: {names}.", { n: active.length, names: pdList(names) });
-  else if (win.zoom === "month") line = pdT("{n} projects moved in the last 30 days; {risk} at risk, {off} off track.", { n: active.length, risk: counts.risk, off: counts.off });
-  else if (win.zoom === "quarter") line = !active.length
-    ? pdT("{total} projects on record; no project had sessions this quarter. {quiet} have gone quiet.", { total: all.length, quiet: counts.quiet })
-    : pdT("{total} projects on record; {n} had sessions this quarter, most often {names}. {quiet} have gone quiet.",
-      { total: all.length, n: active.length, names: pdList(names), quiet: counts.quiet });
-  else {
-    const first = all.filter(r => /^\d{4}-\d{2}-\d{2}/.test(r.started || "")).sort((a, b) => a.started.localeCompare(b.started))[0];
-    line = first ? pdT("{total} projects on record; the earliest, {first}, started {date}. Today {ok} are on track and {quiet} are quiet.",
-      { total: all.length, first: first.title, date: pdDay(first.started.slice(0, 10), true), ok: counts.ok, quiet: counts.quiet })
-      : pdT("{total} projects on record. Today {ok} are on track and {quiet} are quiet.", { total: all.length, ok: counts.ok, quiet: counts.quiet });
-  }
-  const worst = all.map(r => [r, projectLateMarks(r, false)[0]]).filter(([, mark]) => mark).map(([r, mark]) => [r, { ...mark, days: daysSince(mark.day) }])
-    .sort((a, b) => b[1].days - a[1].days)[0];
-  const late = worst ? pdT(pdWho(worst[1].who) ? "On {project}, a promise to {who} is {n} days late." : "On {project}, a promise is {n} days late.",
-    { project: worst[0].title, who: pdWho(worst[1].who), n: worst[1].days }) : "";
-  const lates = all.reduce((n, r) => n + projectLateMarks(r, false).length, 0), stale = all.reduce((n, r) => n + projectLateMarks(r, true).length, 0);
-  const asked = stale ? pdT(stale === 1 ? "1 promise is more than {d} days past its date with no word since; it may be over." : "{n} promises are more than {d} days past their date with no word since; they may be over.", { n: stale, d: STALE_DAYS }) : "";
-  const sessionDays = all.reduce((n, r) => n + projectSessionDays(r).length, 0);
-  return el("section", { class: "pd-rem" }, [
-    el("p", { class: "pd-lede" }, [line, late ? " " : null, late ? el("span", { class: "red", text: late }) : null, asked ? " " : null, asked ? el("span", { class: "pd-asked", text: asked }) : null]),
-    el("p", { class: "pd-basis", text: pdT("REM · snapshot {when} · made by rule from {n} project pages, {m} session days and {k} overdue promises · a dashed underline is an inference · change the zoom and this sentence changes",
-      { when: fmtTime(REM.as_of), n: all.length, m: sessionDays, k: lates }) })]);
+function paCell(r, week) {
+  const a = paActivity(r), n = a.weeks[week] || 0, now = paMeta().this_week;
+  // Before its first dated week a project is not on record: nothing is drawn there, so a row begins where it does.
+  const when = week > now ? " ahead" : !a.first || week < paWeekOf(a.first) ? " before" : "";
+  return el("i", { class: "pa-c l" + paLevel(n) + (week === now ? " now" : "") + when, "data-w": week, "data-n": String(n),
+    tabindex: "-1", role: "img", "aria-label": paCellWords(week, n) });
 }
-function projectDot(r) {
-  const tier = projectTier(r), word = pdT(PD_HEALTH[tier]);
-  return el("span", { class: "pd-dot " + tier, title: word, role: "img", "aria-label": word });
+function paStrip(r, weeks) { return el("div", { class: "pa-strip", "data-path": r.path }, weeks.map(week => paCell(r, week))); }
+function paMonthName(month, year) {
+  return new Date(month + "-01T00:00:00Z").toLocaleDateString(uiLocale() || "en", { timeZone: "UTC", month: uiLanguage === "zh" ? "numeric" : "long", ...(year ? { year: "numeric" } : {}) });
 }
-// A strip of the window: ticks, the span, the late line, today, and the pencil forecast right of today.
-function projectStrip(r, win, labels = false) {
-  const now = pdAt(win, win.today), track = el("div", { class: "pd-track" + (labels ? "" : " mini") }, [
-    el("i", { class: "pd-future", style: "left:" + now + "%" })]);
-  if (labels && (projectLate(r) || ([r.started, projectTicks(r)[0]].filter(Boolean).sort()[0] || "") < win.a)) track.classList.add("has-lbl");
-  const ticks = projectTicks(r), first = [r.started && calendarDay(r.started.slice(0, 10)), ticks[0]].filter(Boolean).sort()[0];
-  const shown = ticks.filter(day => pdIn(win, day));
-  if (first && shown.length) {
-    const from = pdAt(win, first), to = pdAt(win, shown.at(-1));
-    if (to > from) track.appendChild(el("i", { class: "pd-span", style: "left:" + from + "%;width:" + (to - from) + "%" }));
-    if (labels && first < win.a && !projectLate(r)) track.appendChild(el("span", { class: "pd-lbl", style: "left:0", text: "← " + pdT("from {date}", { date: pdDay(first, true) }) }));
-  }
-  for (const day of shown) track.appendChild(el("i", { class: "pd-tick", style: "left:" + pdAt(win, day) + "%", title: pdDay(day) }));
-  const late = projectLate(r);
-  if (late) {
-    const from = pdAt(win, late.day);
-    track.appendChild(el("i", { class: "pd-late", style: "left:" + from + "%;width:" + (now - from) + "%", title: projectMarkWhat(late) + " · " + pdDay(late.day, true) }));
-    if (labels) {
-      track.appendChild(el("span", { class: "pd-lbl red", style: "left:" + Math.min(from, 70) + "%", text: (late.day < win.a ? "← " : "") + pdT("due {date}", { date: pdDay(late.day) }) }));
-      track.appendChild(el("span", { class: "pd-late-n" + (now > 80 ? " left" : ""), style: "left:" + now + "%", text: pdT("{n} days late", { n: late.days }) }));
-    }
-  }
-  const quietOn = projectQuietOn(r);
-  if (quietOn && quietOn > win.today) {
-    const end = pdAt(win, quietOn), tip = pdT("Turns quiet on {date} by the 30-day rule if no session comes", { date: pdDay(quietOn) });
-    track.appendChild(el("i", { class: "pd-pencil", style: "left:" + now + "%;width:" + (end - now) + "%", title: tip }));
-    if (quietOn <= win.b) track.appendChild(el("i", { class: "pd-pencil-end", style: "left:" + end + "%", title: tip }));
-  }
-  track.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
-  return track;
+// The row's sentence, worked out from its weeks: when it was busiest and how long it has been still.
+function paSentence(r) {
+  const a = paActivity(r), now = paMeta().this_week, months = new Map();
+  for (const [week, n] of Object.entries(a.weeks)) months.set(week.slice(0, 7), (months.get(week.slice(0, 7)) || 0) + n);
+  if (!months.size) return pdT("No dated activity on record");
+  const busiest = [...months].sort((x, y) => y[1] - x[1] || y[0].localeCompare(x[0]))[0][0];
+  const gap = Math.round(pdBetween(paWeekOf(a.last), now) / 7);
+  return pdT("Busiest in {month}", { month: paMonthName(busiest, busiest.slice(0, 4) !== now.slice(0, 4)) }) + pdT("; ")
+    + pdT(gap <= 0 ? "active this week" : gap === 1 ? "active last week" : "quiet for {n} weeks", { n: gap });
 }
-// Several folded rows read as one strip: the union of their ticks, nothing else.
-function projectFoldStrip(rows, win) {
-  const now = pdAt(win, win.today), track = el("div", { class: "pd-track mini" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
-  for (const day of [...new Set(rows.flatMap(projectTicks))].filter(d => pdIn(win, d)).sort())
-    track.appendChild(el("i", { class: "pd-tick", style: "left:" + pdAt(win, day) + "%", title: pdDay(day) }));
-  track.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
-  return track;
+// The last weeks only, for a list row, a card and a record: the same squares on the same scale.
+function paMini(r, n = PA_MINI) {
+  const now = paMeta().this_week;
+  return el("div", { class: "pa-strip pa-mini", role: "group", "aria-label": paSentence(r) }, paWeeks(pdAddDays(now, -7 * (n - 1)), now).map(week => paCell(r, week)));
+}
+// A month is named over the first week that starts in it; January carries the year.
+function paMonths(weeks) {
+  const now = paMeta().this_week;
+  return el("div", { class: "pa-months" }, weeks.map((week, i) => {
+    if (i ? weeks[i - 1].slice(0, 7) === week.slice(0, 7) : week.slice(8) > "07") return null;
+    const text = new Date(week + "T00:00:00Z").toLocaleDateString(uiLocale() || "en", { timeZone: "UTC", month: "short", ...(week.slice(5, 7) === "01" ? { year: "numeric" } : {}) });
+    return el("span", { class: "pa-month" + (week.slice(0, 7) === now.slice(0, 7) ? " now" : ""), style: "--i:" + i, "data-m": week.slice(0, 7), text });
+  }));
+}
+// What a square counts and what a shade means, in words: a strip is never left to be guessed at.
+function paScale() {
+  const s = paMeta().scale;
+  const step = i => i === 0 ? pdT("Nothing that week") : i === 4 ? pdT("{a} or more in a week", { a: s[3] })
+    : s[i] - 1 > s[i - 1] ? pdT("{a} to {b} in a week", { a: s[i - 1], b: s[i] - 1 }) : pdT("{a} in a week", { a: s[i - 1] });
+  return el("div", { class: "pa-scale" }, [el("span", { text: pdT("Less") }),
+    ...[0, 1, 2, 3, 4].map(i => el("i", { class: "pa-c l" + i, tabindex: "-1", role: "img", "aria-label": step(i) })), el("span", { text: pdT("More") })]);
+}
+// The order and what a square counts, in words, with the five steps beside them: a strip is never left to be guessed at.
+function paKey(extra) {
+  const k = paMeta().kinds || {};
+  return el("div", { class: "pa-key" }, [el("div", { class: "pa-words" }, [
+    el("p", { class: "pa-order", text: pdT("Most recently active first, the same order as People; within a week, the busier project first.") }),
+    el("p", { class: "pa-counted", text: pdT("One square is one week; darker means more happened. Counted: {m} messages you typed to agents, {s} sessions with no kept message, {k} other dates a project page cites.",
+      { m: k.messages || 0, s: k.sessions || 0, k: (k.mail || 0) + (k.page || 0) }) })]),
+    el("div", { class: "pa-tools" }, [paScale(), extra || null])]);
+}
+function paSplit(all) {
+  const rows = paOrder(all);
+  return [rows.filter(r => !paActivity(r).quiet), rows.filter(r => paActivity(r).quiet)];
+}
+function paDividerWords(n) { return pdT("Quiet for more than {d} days · {n}", { d: paMeta().quiet_days, n }); }
+function paRowName(r) {
+  return el("div", { class: "pa-name", "data-path": r.path }, [el("a", { class: "pa-title", href: href(r), text: r.title }), el("span", { class: "pa-say", text: paSentence(r) })]);
 }
 
-// ---- the head: title, views, coverage, zoom; the sentence; the legend ----
+// ---- the timeline: one row a project, one square a week ----
+function projectTimeline(all) {
+  const [live, still] = paSplit(all), now = paMeta().this_week;
+  Object.assign(paWin, { from: pdAddDays(now, -7 * PA_BACK), to: pdAddDays(now, 7 * PA_AHEAD) });
+  const weeks = paWeeks(paWin.from, paWin.to), rows = [...live, ...still];
+  const names = [el("div", { class: "pa-corner" }), ...live.map(paRowName),
+    still.length ? el("div", { class: "pa-divider", text: paDividerWords(still.length) }) : null, ...still.map(paRowName)];
+  const canvas = el("div", { class: "pa-canvas" }, [paMonths(weeks), ...live.map(r => paStrip(r, weeks)),
+    still.length ? el("div", { class: "pa-divider" }) : null, ...still.map(r => paStrip(r, weeks))]);
+  const time = el("div", { class: "pa-time", tabindex: "0", role: "region", "aria-label": pdT("Activity by week. Left and right arrows move a month; Home returns to this week.") }, [canvas]);
+  const today = el("button", { type: "button", class: "pa-today", text: pdT("Today") });
+  today.onclick = () => paToday(time);
+  time.addEventListener("scroll", () => paEdge(time, rows), { passive: true });
+  time.addEventListener("keydown", event => paKeyDown(event, time));
+  return el("section", { class: "pa" }, [paKey(today), el("div", { class: "pa-grid" }, [el("div", { class: "pa-names" }, names), time])]);
+}
+function paStep(time) {
+  const cells = time.querySelector(".pa-strip").children;
+  return cells[1].offsetLeft - cells[0].offsetLeft;
+}
+// The corner over the names says which year the weeks in view belong to; a month alone does not.
+function paYear(time) {
+  const cells = time.querySelector(".pa-strip").children, step = paStep(time);
+  const at = x => cells[Math.max(0, Math.min(cells.length - 1, Math.floor(x / step)))].dataset.w.slice(0, 4);
+  const from = at(time.scrollLeft), to = at(time.scrollLeft + time.clientWidth - 1);
+  time.parentNode.querySelector(".pa-corner").textContent = from === to ? from : from + " – " + to;
+}
+// This week sits two columns in from the right edge, so what comes next is visibly empty rather than cut off.
+function paToday(time) {
+  const upTo = paWeeks(paWin.from, paMeta().this_week).length;
+  const step = paStep(time);
+  time.scrollLeft = Math.max(0, Math.ceil(((upTo + 2) * step - time.clientWidth) / step) * step);  // whole columns: no square is cut at the left
+  paYear(time);
+}
+// Near either edge the window grows by half a year. Going back, the view is held where it was.
+function paEdge(time, rows) {
+  const step = paStep(time);
+  paYear(time);
+  if (time.scrollLeft < 8 * step) paExtend(time, rows, true);
+  else if (time.scrollLeft + time.clientWidth > time.scrollWidth - 8 * step) paExtend(time, rows, false);
+}
+function paExtend(time, rows, back) {
+  const from = back ? pdAddDays(paWin.from, -7 * PA_GROW) : pdAddDays(paWin.to, 7), to = back ? pdAddDays(paWin.from, -7) : pdAddDays(paWin.to, 7 * PA_GROW);
+  const added = paWeeks(from, to), held = time.scrollLeft, step = paStep(time);
+  time.querySelectorAll(".pa-strip").forEach((strip, i) => strip[back ? "prepend" : "append"](...added.map(week => paCell(rows[i], week))));
+  Object.assign(paWin, back ? { from } : { to });
+  time.querySelector(".pa-months").replaceWith(paMonths(paWeeks(paWin.from, paWin.to)));
+  if (back) time.scrollLeft = held + added.length * step;
+}
+// ← and → land on the column where the previous or the next month begins.
+function paKeyDown(event, time) {
+  if (event.key === "Home") { event.preventDefault(); paToday(time); return; }
+  const dir = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+  if (!dir) return;
+  event.preventDefault();
+  const step = paStep(time), weeks = paWeeks(paWin.from, paWin.to);
+  let i = Math.round(time.scrollLeft / step) + dir;
+  while (i > 0 && i < weeks.length - 1 && weeks[i].slice(0, 7) === weeks[i - 1].slice(0, 7)) i += dir;
+  time.scrollLeft = Math.max(0, i) * step;
+}
+// A square says its week and its count in words, on hover, on focus and on a tap.
+function paTipShow(event) {
+  const cell = event.target.closest?.(".pa-c[aria-label]");
+  paTipHide();
+  if (!cell) return;
+  const tip = el("div", { id: "pa-tip", class: "pa-tip", role: "tooltip", text: cell.getAttribute("aria-label") });
+  document.body.appendChild(tip);
+  const box = cell.getBoundingClientRect();
+  tip.style.left = Math.max(12, Math.min(box.left + box.width / 2 - tip.offsetWidth / 2, innerWidth - tip.offsetWidth - 12)) + "px";
+  tip.style.top = Math.max(12, box.top - tip.offsetHeight - 8) + "px";
+}
+function paTipHide() { document.getElementById("pa-tip")?.remove(); }
+
+// ---- what a row says about a project ----
+// One sentence about what the project is, in the reading language when its page has been translated.
+function projectSentence(r) {
+  const tag = uiLanguage === "zh" ? Object.keys(r.translations || {}).find(tag => /^zh(?:-|$)/i.test(tag)) : uiLanguage === "en" ? "" : uiLanguage;
+  const text = (tag && r.translations?.[tag]) || r.original || r.text;
+  for (const name of ["What it is", "Where it stands"]) {
+    const body = (text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1);
+    const line = plainLine(body.split("\n").find(l => l.trim()) || "");
+    if (line && !/^(?:Unknown\b|未知)/i.test(line)) return (/^(.*?[.。!?！？])(?:\s|$)/.exec(line)?.[1] || line).trim();
+  }
+  return "";
+}
+function projectSayNode(r, name = "pa-say") {
+  const say = projectSentence(r);
+  return el("span", { class: name + (say ? "" : " pd-pencil-word"), text: say || pdT("Not investigated yet") });
+}
+function projectStateWord(r) { return pdT(PD_STATES.find(([key]) => key === projectState(r))[1]); }
+function projectLastDay(r) { return paActivity(r).last || (projectLast(r) ? calendarDay(projectLast(r)) : ""); }
+function projectLastWords(r) {
+  const day = projectLastDay(r);
+  return day ? pdDay(day, day.slice(0, 4) !== projectAsOfDay(REM.as_of).slice(0, 4)) : "";
+}
+// What is still open lives in Today; a row and a record only count it and point there.
+// A promise past its date that still has a live thread (Today's rule, stalePromise): one that went stale is
+// asked about in Today, never shouted on a row.
+function projectLiveLate(r) {
+  const mark = projectLateMarks(r, false)[0];
+  return mark ? { ...mark, days: daysSince(mark.day) } : null;
+}
+function projectTodayCount(r) { return (REM.today_queue || []).filter(row => row.record === r.path && !row.closed && !row.quiet).length; }
+function projectTodayLink(r, words) {
+  const link = el("a", { class: "project-today-link", href: "#", text: words });
+  link.onclick = () => { todayLead = r.path; };
+  return link;
+}
+
+// ---- the head: the page's name and its three views ----
 function pdParams() {
   const p = new URLSearchParams(location.hash.slice(1));
-  return { view: PD_VIEWS.some(([k]) => k === p.get("v")) ? p.get("v") : "board", zoom: PD_ZOOM[p.get("z")] ? p.get("z") : "quarter",
-    ask: PD_ASKS.some(([k]) => k === p.get("ask")) ? p.get("ask") : "state" };
+  return { view: PD_VIEWS.some(([k]) => k === p.get("v")) ? p.get("v") : "board", ask: PD_ASKS.some(([k]) => k === p.get("ask")) ? p.get("ask") : "state" };
 }
 function pdHref(change) {
   const s = { ...pdParams(), ...change };
-  return "#c=projects&v=" + s.view + "&z=" + s.zoom + (s.view === "board" && s.ask !== "state" ? "&ask=" + s.ask : "");
-}
-function projectCoverageLine(all) {
-  const rows = all.map(projectCoverage).filter(Boolean);
-  return el("span", { class: "pd-cov" }, rows.length ? [pdT("Of the {n} projects with a coverage record, REM read {r} / {a} inputs",
-    { n: rows.length, r: "\u0000", a: "\u0001" }).split(/(\u0000|\u0001)/).map(part => part === "\u0000" ? el("b", { text: String(rows.reduce((n, c) => n + c.read, 0)) })
-    : part === "\u0001" ? el("b", { text: String(rows.reduce((n, c) => n + c.of, 0)) }) : part)].flat() : [pdT("No project has a coverage record yet")]);
+  return "#c=projects&v=" + s.view + (s.view === "board" && s.ask !== "state" ? "&ask=" + s.ask : "");
 }
 function projectHead(all, state) {
   return el("header", { class: "pd-head" }, [
     el("h1", { class: "pd-title" }, [pdT("Projects"), el("span", { class: "pd-count", text: String(all.length) })]),
     el("div", { class: "pd-views", role: "navigation", "aria-label": pdT("View") }, PD_VIEWS.map(([key, name]) =>
       el("a", { href: pdHref({ view: key }), class: key === state.view ? "on" : "", ...(key === state.view ? { "aria-current": "page" } : {}), text: pdT(name) }))),
-    el("div", { class: "pd-head-end" }, state.view === "board"
-      ? [el("div", { class: "pd-seg pd-asks", role: "group" }, PD_ASKS.map(([key, name]) =>
-        el("a", { href: pdHref({ ask: key }), class: key === state.ask ? "on" : "", "aria-pressed": String(key === state.ask), text: pdT(name) })))]
-      : [projectCoverageLine(all),
-        el("div", { class: "pd-seg", role: "group", "aria-label": pdT("Zoom") }, Object.entries(PD_ZOOM).map(([key, [name]]) =>
-          el("a", { href: pdHref({ zoom: key }), class: key === state.zoom ? "on" : "", "aria-pressed": String(key === state.zoom), text: pdT(name) })))])]);
+    state.view === "board" ? el("div", { class: "pd-head-end" }, [el("div", { class: "pd-seg pd-asks", role: "group" }, PD_ASKS.map(([key, name]) =>
+      el("a", { href: pdHref({ ask: key }), class: key === state.ask ? "on" : "", "aria-pressed": String(key === state.ask), text: pdT(name) })))]) : null]);
 }
-function projectLegend() {
-  return el("div", { class: "pd-legend" }, [
-    el("span", { class: "pd-keys" }, [
-      el("span", {}, [el("i", { class: "k-tick" }), pdT("session")]), el("span", {}, [el("i", { class: "k-pencil" }), pdT("forecast · 30-day rule")]),
-      el("span", {}, [el("i", { class: "k-late" }), pdT("overdue promise")]), el("span", {}, [el("i", { class: "pd-dot quiet" }), pdT("quiet")])])]);
+function projectDot(r) {
+  const tier = projectTier(r), word = pdT(PD_HEALTH[tier]);
+  return el("span", { class: "pd-dot " + tier, title: word, role: "img", "aria-label": word });
 }
-// Rows in health order: top-level rows by tier, each followed by its sub-projects; quiet and done fold.
-function projectGroups(top, kids) {
-  const rank = r => ({ off_track: 0, at_risk: 1, on_track: 2, quiet: 3, done: 3 })[projectTier(r)];
-  const groups = PD_TIERS.slice(0, 3).map(tier => [tier, top.filter(r => projectTier(r) === tier)]).filter(([, rows]) => rows.length);
-  const quiet = top.filter(r => rank(r) === 3);
-  const withKids = rows => rows.flatMap(r => [[r, false], ...(kids.get(r.path) || []).map(kid => [kid, r])]);
-  return { groups: groups.map(([tier, rows]) => [tier, withKids(rows)]), quiet: withKids(quiet) };
-}
-function projectGroupHead(tier, n, extra) {
-  return el("div", { class: "pd-group" }, [el("span", { class: "pd-group-name" + (tier === "off_track" ? " red" : ""), text: pdT(PD_HEALTH[tier]) }),
-    el("span", { class: "pd-group-n", text: String(n) }), el("span", { class: "pd-group-rule", text: pdT(PD_RULES[tier]) }), extra || null]);
-}
-function projectFoldButton(n) {
-  const button = el("button", { type: "button", class: "pd-fold-btn", "aria-expanded": String(pdQuietOpen), text: pdT(pdQuietOpen ? "Hide" : "Show") });
-  button.onclick = () => { pdQuietOpen = !pdQuietOpen; projectsView(); };
-  return button;
-}
-// Folded rows stay reachable: each name is a link to its page.
-function projectFoldNames(rows) {
-  return el("small", { class: "pd-fold-names" }, rows.flatMap(([r], i) => [i ? " · " : "", el("a", { href: href(r), text: r.title })]));
-}
-function projectNameNode(r, host) {
-  return el("span", { class: "pd-name-line" }, [projectDot(r),
-    el("a", { href: href(r), class: projectTier(r) === "off_track" ? "red" : "", text: r.title, ...(host ? { title: pdT("Sub-project of {name}", { name: host.title }) } : {}) })]);
+function projectNameNode(r) {
+  return el("span", { class: "pd-name-line" }, [projectDot(r), el("a", { href: href(r), class: projectTier(r) === "off_track" ? "red" : "", text: r.title })]);
 }
 
-// ---- 时间线: a Gantt of real session ticks ----
-function projectMonths(win) {
-  const cols = [], step = win.zoom === "week" || win.zoom === "month";
-  let day = step ? pdAddDays(win.a, (8 - new Date(win.a + "T00:00:00Z").getUTCDay()) % 7) : win.a.slice(0, 8) + "01";
-  if (!step && day < win.a) day = pdAddDays(day.slice(0, 7) + "-28", 4).slice(0, 8) + "01";
-  if (!step && win.a.endsWith("-01")) day = win.a;
-  while (day <= win.b) {
-    let next = step ? pdAddDays(day, 7) : pdAddDays(day.slice(0, 8) + "28", 4).slice(0, 8) + "01";
-    // A year reads in quarters: twelve narrow months would only be cut-off labels.
-    if (win.zoom === "year") while (!["01", "04", "07", "10"].includes(next.slice(5, 7))) next = pdAddDays(next.slice(0, 8) + "28", 4).slice(0, 8) + "01";
-    cols.push([day, next]);
-    day = next;
-  }
-  return cols;
+// ---- the list: the timeline's rows as a table, at body size ----
+function projectListRow(r) {
+  const late = projectLiveLate(r), open = projectTodayCount(r);
+  return el("div", { class: "pl-row", role: "row", "data-path": r.path }, [
+    el("div", { class: "pl-name", role: "cell" }, [el("a", { class: "pa-title", href: href(r), text: r.title }), projectSayNode(r)]),
+    el("div", { class: "pl-state", role: "cell" }, [el("span", { text: projectStateWord(r) }), late ? el("span", { class: "red", text: pdT("{n} days late", { n: late.days }) }) : null]),
+    el("div", { class: "pl-last", role: "cell", "data-label": pdT("Last active"), text: projectLastWords(r) || "—" }),
+    el("div", { class: "pl-strip", role: "cell" }, [paMini(r)]),
+    el("div", { class: "pl-open", role: "cell" }, [open ? projectTodayLink(r, pdT("{n} in Today", { n: open })) : el("span", { class: "mut", text: "—" })])]);
 }
-function projectMonthLabel(day, i, zoom) {
-  if (zoom === "week" || zoom === "month") return pdDay(day);
-  const d = new Date(day + "T00:00:00Z"), month = d.toLocaleDateString(uiLocale(), { timeZone: "UTC", month: "short" });
-  return i === 0 || day.slice(5, 7) === "01" ? d.getUTCFullYear() + " " + month : month;
-}
-function projectMonthLine(all, from, to) {
-  const tally = all.map(r => [r, projectSessionDays(r).filter(day => day >= from && day < to).length]).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
-  const n = tally.reduce((sum, [, k]) => sum + k, 0);
-  if (!n) return null;
-  const names = tally.length > 1 ? pdT("Mostly {a} and {b}", { a: tally[0][0].title, b: tally[1][0].title }) : pdT("Mostly {a}", { a: tally[0][0].title });
-  return el("span", { class: "pd-col-line" }, [names, el("small", { text: pdT(n === 1 ? "1 session day" : "{n} session days", { n }) })]);
-}
-function projectGanttHead(all, win, notes) {
-  const now = pdAt(win, win.today), months = win.zoom === "quarter";
-  const scale = el("div", { class: "pd-scale" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
-  let labelled = 0;
-  projectMonths(win).forEach(([day, next], i) => {
-    const left = pdAt(win, day), width = pdAt(win, next) - left, line = months && next <= win.today && width >= 11 ? projectMonthLine(all, day, next) : null;
-    if (width <= 0) return;
-    scale.appendChild(el("div", { class: "pd-col", style: "left:" + left + "%;width:" + width + "%" }, [
-      width >= 4 ? el("span", { class: "pd-col-label", text: projectMonthLabel(day, labelled++, win.zoom) }) : null, line]));
-  });
-  scale.appendChild(el("span", { class: "pd-now-label", style: "left:" + now + "%", text: pdT("Today") }));
-  scale.appendChild(el("span", { class: "pd-pencil-label", style: "left:" + now + "%", text: pdT("forecast →") }));
-  scale.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
-  return el("div", { class: "pd-row pd-scale-row" }, [el("div", { class: "pd-name pd-scale-name", text: months ? pdT("One line a month · by session days") : "" }), scale,
-    el("div", { class: "pd-note-cell pd-note-head", text: pdT("REM's notes {n} · at most 5", { n: notes.size }) })]);
-}
-// REM's own row: the days it wrote project pages. It has no read log, so reads are not drawn.
-function projectRemRow(all, win) {
-  const now = pdAt(win, win.today), track = el("div", { class: "pd-track" }, [el("i", { class: "pd-future", style: "left:" + now + "%" })]);
-  for (const day of [...new Set(all.map(r => r.updated && calendarDay(r.updated)).filter(Boolean))].filter(d => pdIn(win, d, win.today)).sort())
-    track.appendChild(el("i", { class: "pd-ring", style: "left:" + pdAt(win, day) + "%", title: pdDay(day) }));
-  track.appendChild(el("i", { class: "pd-now", style: "left:" + now + "%" }));
-  return el("div", { class: "pd-row pd-rem-row" }, [el("div", { class: "pd-name" }, [el("b", { text: "REM" }), el("small", { text: pdT("Days REM wrote pages") })]), track, el("div", { class: "pd-note-cell" })]);
-}
-function projectGanttRow(r, host, win, note) {
-  const c = projectCoverage(r);
-  return el("div", { class: "pd-row" + (host ? " kid" : ""), "data-path": r.path }, [
-    el("div", { class: "pd-name" }, [projectNameNode(r, host), c && c.read < c.of ? el("span", { class: "pd-read", text: pdT("read {r}/{a}", { r: c.read, a: c.of }) }) : null]),
-    projectStrip(r, win, true), el("div", { class: "pd-note-cell" }, [note ? projectNoteNode(note) : null])]);
-}
-function projectFoldNote(rows, notes) { return rows.map(([r]) => notes.get(r.path)).find(Boolean); }
-function projectTimeline(all, tree, win, notes) {
-  const { groups, quiet } = projectGroups(tree.top, tree.kids), body = [projectGanttHead(all, win, notes), projectRemRow(all, win)];
-  for (const [tier, rows] of groups) {
-    body.push(projectGroupHead(tier, rows.length));
-    for (const [r, host] of rows) body.push(projectGanttRow(r, host, win, notes.get(r.path)));
-  }
-  if (quiet.length) {
-    body.push(projectGroupHead("quiet", quiet.length));
-    if (pdQuietOpen) for (const [r, host] of quiet) body.push(projectGanttRow(r, host, win, notes.get(r.path)));
-    else {
-      const note = projectFoldNote(quiet, notes);
-      body.push(el("div", { class: "pd-row pd-fold" }, [
-        el("div", { class: "pd-name" }, [el("span", { class: "pd-name-line" }, [el("i", { class: "pd-dot quiet" }), el("span", { text: pdT("{n} quiet", { n: quiet.length }) }), projectFoldButton(quiet.length)]),
-          projectFoldNames(quiet)]),
-        projectFoldStrip(quiet.map(([r]) => r), win), el("div", { class: "pd-note-cell" }, [note ? projectNoteNode(note) : null])]));
-    }
-    if (pdQuietOpen) body.push(el("div", { class: "pd-fold-end" }, [projectFoldButton(quiet.length)]));
-  }
-  return el("section", { class: "pd-gantt pd-timeline" }, body);
+function projectList(all) {
+  const [live, still] = paSplit(all);
+  const head = el("div", { class: "pl-row pl-head", role: "row" }, ["Project", "Status", "Last active", "Last 12 weeks", "Open"].map(name =>
+    el("div", { role: "columnheader", text: pdT(name) })));
+  return el("section", { class: "pa pl-wrap" }, [paKey(),
+    el("div", { class: "pl", role: "table" }, [head, ...live.map(projectListRow),
+      still.length ? el("div", { class: "pa-divider", text: paDividerWords(still.length) }) : null, ...still.map(projectListRow)])]);
 }
 
-// ---- 列表: one row per project, the same strip in miniature ----
-function projectOpenCell(r) {
-  const owed = projectOwed(r).length, waiting = (r.open || []).filter(i => i.kind === "waiting").length;
-  const agents = (r.open || []).filter(i => i.kind === "agent" || i.kind === "answerable").length, late = projectLate(r);
-  const parts = [owed ? el("span", { class: late ? "red" : "", text: pdT("You owe {n}", { n: owed }) }) : null,
-    waiting ? el("span", { text: pdT("Waiting {n}", { n: waiting }) }) : null, agents ? el("span", { class: "mut", text: pdT("Handed to agents {n}", { n: agents }) }) : null].filter(Boolean);
-  return parts.length ? parts.flatMap((part, i) => i ? [el("span", { class: "mut", text: " · " }), part] : [part]) : [el("span", { class: "mut", text: "—" })];
-}
-// What REM has on file, in words: the squares P大 could not read are now the names of the gaps.
-function projectKnownCell(r) {
-  const known = projectKnown(r);
-  if (projectMapped(r)) return el("span", { class: "pd-pencil-word", text: pdT("Not investigated") });
-  if (!known) return el("span", { class: "mut", text: "—" });
-  const have = known.filter(([, ok]) => ok).map(([label]) => pdT(label)), lack = known.filter(([, ok]) => !ok).map(([label]) => pdT(label));
-  const title = pdT("On file: {known}. Not on file: {missing}.", { known: have.join(pdT(", ")) || pdT("nothing"), missing: lack.join(pdT(", ")) || pdT("nothing") });
-  if (!lack.length) return el("span", { class: "mut", title, text: pdT("All 7 on file") });
-  return lack.length <= have.length ? el("span", { title, text: pdT("Missing: {list}", { list: lack.join(pdT(", ")) }) })
-    : el("span", { title, text: pdT("Only: {list}", { list: have.join(pdT(", ")) || pdT("nothing") }) });
-}
-function projectReadCell(r) {
-  const c = projectCoverage(r);
-  return c ? el("span", { class: c.read < c.of ? "pd-partial" : "", text: c.read + "/" + c.of }) : el("span", { class: "pd-pencil-word", text: pdT("No record") });
-}
-function projectLastCell(r) {
-  const last = projectLast(r), days = projectSessionDays(r).length;
-  return [el("span", { class: "pd-when" }, [last ? pdDay(calendarDay(last)) : "—", last ? projectCite(r, "last_activity") : null]),
-    el("small", { text: days ? pdT(days === 1 ? "1 session day" : "{n} session days", { n: days }) : pdT("No sessions") })];
-}
-function projectHealthCell(r) {
-  const tier = projectTier(r), late = projectLate(r);
-  return [el("span", { class: tier === "off_track" ? "red" : "", text: pdT(PD_HEALTH[tier]) }), late ? el("small", { class: "red", text: pdT("{n} days late", { n: late.days }) }) : null];
-}
-function projectListRow(r, host, win, note) {
-  return el("div", { class: "pd-lrow" + (host ? " kid" : ""), "data-path": r.path }, [
-    el("div", { class: "pd-lname" }, [projectNameNode(r, host), note ? projectNoteNode(note, true) : null]),
-    el("div", { class: "pd-lhealth" }, projectHealthCell(r)), el("div", { class: "pd-llast" }, projectLastCell(r)),
-    el("div", { class: "pd-lstrip" }, [projectStrip(r, win)]), el("div", { class: "pd-lopen" }, projectOpenCell(r)),
-    el("div", { class: "pd-lknown" }, [projectKnownCell(r)]), el("div", { class: "pd-lread" }, [projectReadCell(r)])]);
-}
-function projectList(all, tree, win, notes) {
-  const { groups, quiet } = projectGroups(tree.top, tree.kids);
-  const head = el("div", { class: "pd-lrow pd-lhead" }, [el("div", { text: pdT("Project · REM's line") }), el("div", { text: pdT("Health") }),
-    el("div", { text: pdT("Latest") }), el("div", { class: "pd-lstrip" }, [pdDay(win.a) + " – " + pdDay(win.b) + " ", el("span", { class: "mut", text: pdT("Today") + " | " + pdT("forecast →") })]),
-    el("div", { text: pdT("Open promises") }), el("div", { text: pdT("On file (7)") }), el("div", { text: pdT("REM read") })]);
-  const body = [head];
-  for (const [tier, rows] of groups) {
-    body.push(projectGroupHead(tier, rows.length));
-    for (const [r, host] of rows) body.push(projectListRow(r, host, win, notes.get(r.path)));
-  }
-  if (quiet.length) {
-    body.push(projectGroupHead("quiet", quiet.length));
-    if (pdQuietOpen) {
-      for (const [r, host] of quiet) body.push(projectListRow(r, host, win, notes.get(r.path)));
-      body.push(el("div", { class: "pd-fold-end" }, [projectFoldButton(quiet.length)]));
-    } else {
-      const latest = quiet.map(([r]) => projectLast(r) && calendarDay(projectLast(r))).filter(Boolean).sort().at(-1), note = projectFoldNote(quiet, notes);
-      body.push(el("div", { class: "pd-lrow pd-fold" }, [
-        el("div", { class: "pd-lname" }, [el("span", { class: "pd-name-line" }, [el("i", { class: "pd-dot quiet" }), el("span", { text: pdT("{n} quiet", { n: quiet.length }) }), projectFoldButton(quiet.length)]),
-          projectFoldNames(quiet), note ? projectNoteNode(note, true) : null]),
-        el("div", { class: "pd-lhealth mut", text: pdT("Quiet") }), el("div", { class: "pd-llast mut", text: latest ? pdT("latest {date}", { date: pdDay(latest) }) : "—" }),
-        el("div", { class: "pd-lstrip" }, [projectFoldStrip(quiet.map(([r]) => r), win)]), el("div", { class: "pd-lopen" }), el("div", { class: "pd-lknown" }), el("div", { class: "pd-lread" })]));
-    }
-  }
-  return el("section", { class: "pd-list" }, body);
-}
-
-// ---- 看板: the axis is a question ----
-function projectCard(r, win, note, extra) {
-  const c = projectCoverage(r), last = projectLast(r);
-  return el("article", { class: "pd-card" + (c && c.read / c.of < 0.2 ? " weak" : "") + (projectTier(r) === "off_track" ? " late" : ""), "data-path": r.path }, [
-    el("div", { class: "pd-card-head" }, [projectNameNode(r), el("span", { class: "pd-when" }, [last ? pdDay(calendarDay(last)) : "", last ? projectCite(r, "last_activity") : null])]),
+// ---- the board: the axis is a question ----
+function projectCard(r, note, extra) {
+  return el("article", { class: "pd-card" + (projectTier(r) === "off_track" ? " late" : ""), "data-path": r.path }, [
+    el("div", { class: "pd-card-head" }, [projectNameNode(r), el("span", { class: "pd-when", text: projectLastWords(r) })]),
     note ? projectNoteNode(note, true) : null, extra ? el("p", { class: "pd-card-extra", text: extra }) : null,
-    el("div", { class: "pd-card-foot" }, [projectStrip(r, win), c ? el("span", { class: c.read < c.of ? "pd-partial" : "", text: pdT("read {r}/{a}", { r: c.read, a: c.of }) }) : null])]);
+    el("div", { class: "pd-card-foot" }, [paMini(r)])]);
 }
 function projectCompact(rows, line) {
   return el("ul", { class: "pd-compact" }, rows.map(r => el("li", {}, [line ? el("span", { class: "mut", text: line(r) }) : null, el("a", { href: href(r), text: r.title })])));
@@ -10186,16 +10108,14 @@ function projectColumn(title, caption, children, red = false) {
     el("h2", {}, [el("span", { text: title }), el("small", { text: caption })]), ...(children.length ? children : [el("p", { class: "pd-empty", text: pdT("Nothing here") })])]);
 }
 // ---- the board by state (#2993): one column per state, one card per project ----
-// A card is what the owner scans for: the name, the next step, who holds it, and when it last moved.
+// A card is the name, one sentence about the project, its last twelve weeks and when it last moved. The step
+// it waits on, quoted from a request, was not something to scan (#3096): open work is counted and lives in Today.
 function projectStateCard(r) {
-  const step = projectSteps(r)[0], late = projectLate(r), last = projectLast(r);
+  const late = projectLiveLate(r);
   return el("article", { class: "pd-card pd-state-card" + (late ? " late" : ""), "data-path": r.path }, [
-    el("div", { class: "pd-card-head" }, [el("a", { href: href(r), class: "pd-card-name" + (late ? " red" : ""), text: r.title }),
-      el("span", { class: "pd-when", text: last ? fmtDate(calendarDay(last)) : "" })]),
-    step ? el("p", { class: "pd-step" }, [privateFallback(el("span", { class: "pd-step-what", html: inline(projectStepWhat(step.thread.text), r.path) }))]) : null,
-    step || late ? el("p", { class: "pd-step-who" }, [step ? el("span", { class: "pd-owner " + step.owner, text: step.label }) : null,
-      late ? el("span", { class: "red", text: pdT("{n} days late", { n: late.days }) })
-        : step?.thread.since ? el("span", { text: threadAge(step.thread) }) : null]) : null]);
+    el("a", { href: href(r), class: "pa-title pd-card-name", text: r.title }), projectSayNode(r, "pa-say pd-card-say"),
+    el("div", { class: "pd-card-foot" }, [paMini(r), el("span", { class: "pd-card-when" }, [
+      late ? el("span", { class: "red", text: pdT("{n} days late", { n: late.days }) }) : null, el("span", { class: "pd-when", text: projectLastWords(r) })])])]);
 }
 function projectStateColumn(state, name, rows) {
   const open = pdStateOpen.has(state) || rows.length <= PD_FOLD_AT + 1, shown = open ? rows : rows.slice(0, PD_FOLD_AT);
@@ -10206,11 +10126,10 @@ function projectStateColumn(state, name, rows) {
     ...shown.map(projectStateCard), shown.length < rows.length ? more : null, rows.length ? null : el("p", { class: "pd-empty", text: "—" })]);
 }
 function projectBoardState(all) {
-  const recent = (a, b) => projectLast(b).localeCompare(projectLast(a)) || projectRank(a, b);
-  return PD_STATES.map(([state, name]) => projectStateColumn(state, name,
-    all.filter(r => projectState(r) === state).sort(["quiet", "done"].includes(state) ? recent : projectRank)));
+  const rows = paOrder(all);  // the one order of the page, in every column
+  return PD_STATES.map(([state, name]) => projectStateColumn(state, name, rows.filter(r => projectState(r) === state)));
 }
-function projectBoardWaiting(all, win, notes) {
+function projectBoardWaiting(all, notes) {
   const owedRows = all.filter(r => projectOwed(r).length), waitRows = all.filter(r => !owedRows.includes(r) && (r.open || []).some(i => i.kind === "waiting"));
   const agentRows = all.filter(r => !owedRows.includes(r) && !waitRows.includes(r) && (r.open || []).some(i => i.kind === "agent" || i.kind === "answerable"));
   const none = all.filter(r => ![owedRows, waitRows, agentRows].some(rows => rows.includes(r)));
@@ -10221,12 +10140,12 @@ function projectBoardWaiting(all, win, notes) {
   const say = pdT("You owe {n} things across {p} projects and wait on others for {w}; {a} projects hold only agent instructions.",
     { n: owedRows.reduce((n, r) => n + projectOwed(r).length, 0), p: owedRows.length, w: all.reduce((n, r) => n + (r.open || []).filter(i => i.kind === "waiting").length, 0), a: agentRows.length });
   return [say, [
-    projectColumn(pdT("You owe others"), pdT("the owner owes someone"), owedRows.sort(projectRank).map(r => projectCard(r, win, null, line(r)))),
-    projectColumn(pdT("You wait on others"), pdT("someone owes the owner"), waitRows.sort(projectRank).map(r => projectCard(r, win, null, line(r)))),
+    projectColumn(pdT("You owe others"), pdT("the owner owes someone"), owedRows.sort(projectRank).map(r => projectCard(r, null, line(r)))),
+    projectColumn(pdT("You wait on others"), pdT("someone owes the owner"), waitRows.sort(projectRank).map(r => projectCard(r, null, line(r)))),
     projectColumn(pdT("Only with agents"), pdT("instructions to agents"), agentRows.length ? [projectCompact(agentRows.sort(projectRank), agents)] : []),
     projectColumn(pdT("No open promise"), pdT("nothing open"), none.length ? [projectCompact(none.sort(projectRank))] : [])]];
 }
-function projectBoardDrop(all, win, notes) {
+function projectBoardDrop(all, notes) {
   const quiet = all.filter(r => ["quiet", "done"].includes(projectTier(r)));
   const held = r => projectOwed(r).length || (r.open || []).some(i => i.kind === "waiting");
   const drop = quiet.filter(r => !held(r)), open = quiet.filter(held), moving = all.filter(r => !quiet.includes(r));
@@ -10235,10 +10154,10 @@ function projectBoardDrop(all, win, notes) {
   const last = r => projectLast(r) ? pdDay(calendarDay(projectLast(r))) : "";
   return [say, [
     projectColumn(pdT("Can be set down"), pdT("quiet and nobody waiting"), drop.length ? [el("span", { class: "tag", text: pdT("Inference") }), projectCompact(drop.sort((a, b) => projectLast(a).localeCompare(projectLast(b))), last)] : []),
-    projectColumn(pdT("Quiet, promises still open"), pdT("quiet, someone still waits"), open.map(r => projectCard(r, win, notes.get(r.path)))),
+    projectColumn(pdT("Quiet, promises still open"), pdT("quiet, someone still waits"), open.map(r => projectCard(r, notes.get(r.path)))),
     projectColumn(pdT("Still moving"), pdT("activity within 30 days"), moving.length ? [projectCompact(moving.sort(projectRank), last)] : [])]];
 }
-function projectBoardSame(all, win, pairs) {
+function projectBoardSame(all, pairs) {
   const sessions = pairs.filter(p => p.kind === "sessions"), page = pairs.filter(p => p.kind === "page"), name = pairs.filter(p => p.kind === "name");
   const touched = new Set(pairs.flatMap(p => p.rows || [p.a, p.b]));
   const rest = all.filter(r => !touched.has(r));
@@ -10255,51 +10174,27 @@ function projectBoardSame(all, win, pairs) {
     projectColumn(pdT("No signal"), pdT("{n} projects", { n: rest.length }), rest.length ? [projectCompact(rest.sort(projectRank))] : [])]];
 }
 // By state the columns say it all; the other questions are inferences, so each keeps its one sentence.
-function projectBoard(all, win, notes, pairs, ask) {
+function projectBoard(all, notes, pairs, ask) {
   if (ask === "state") {
     const cols = projectBoardState(all);
     return el("section", { class: "pd-board", "data-ask": ask }, [el("div", { class: "pd-cols" }, cols)]);
   }
-  const [say, cols] = ask === "waiting" ? projectBoardWaiting(all, win, notes) : ask === "drop" ? projectBoardDrop(all, win, notes)
-    : projectBoardSame(all, win, pairs);
+  const [say, cols] = ask === "waiting" ? projectBoardWaiting(all, notes) : ask === "drop" ? projectBoardDrop(all, notes)
+    : projectBoardSame(all, pairs);
   return el("section", { class: "pd-board", "data-ask": ask }, [el("p", { class: "pd-answer" }, [say]), el("div", { class: "pd-cols" }, cols)]);
 }
 
 // ---- the page ----
-// Every count, column and date comes from all project pages, sub-projects included; the
-// timeline and list nest a sub-project under its project, and nothing is merged.
+// Every count and row comes from all project pages, sub-projects included; nothing is merged.
 function projectsView() {
   PD_SESSIONS = null;
-  const state = pdParams(), all = inCategory("projects").sort(projectRank), tree = projectTree(all), win = projectWindow(state.zoom);
-  const stateBoard = state.view === "board" && state.ask === "state";
-  const pairs = stateBoard ? [] : projectPairs(all), notes = stateBoard ? new Map() : projectNotes(all, pairs);
-  const body = state.view === "list" ? projectList(all, tree, win, notes) : state.view === "board" ? projectBoard(all, win, notes, pairs, state.ask) : projectTimeline(all, tree, win, notes);
-  document.getElementById("main").replaceChildren(el("div", { class: "pd", "data-view": state.view, "data-zoom": state.zoom }, [
-    projectHead(all, state), ...(state.view === "board" ? [] : [projectLede(all, win), el("hr", { class: "pd-rule" }), projectLegend()]), body]));
-  projectScaleFit();
-  projectAxisCollisions();
-}
-// A month's line wraps in a column as narrow as 127px at 1440; the header grows to show all of it
-// rather than cutting the last line. Measured, like the collisions below, and again after a resize.
-function projectScaleFit() {
-  const scale = document.querySelector(".pd-scale");
-  if (!scale) return;
-  scale.style.minHeight = "";
-  const need = Math.max(...[...scale.querySelectorAll(".pd-col")].map(col => col.scrollHeight));
-  if (need > scale.clientHeight) scale.style.minHeight = need + "px";
-}
-// As orgLabelPlan does for the map: a month label that would collide with "Today" is not drawn.
-// Widths depend on the font and the viewport, so this is measured, and again after a resize.
-function projectAxisCollisions() {
-  const today = document.querySelector(".pd-now-label");
-  if (!today) return;
-  const box = today.getBoundingClientRect();
-  for (const label of document.querySelectorAll(".pd-col-label")) {
-    label.style.visibility = "";
-    const other = label.getBoundingClientRect();
-    const column = label.parentNode.getBoundingClientRect();  // a name cut by its column's edge reads as a different month
-    if ((other.left < box.right + 4 && other.right > box.left - 4) || other.right > column.right + 1) label.style.visibility = "hidden";
-  }
+  const state = pdParams(), all = inCategory("projects").sort(projectRank);
+  const asked = state.view === "board" && state.ask !== "state";
+  const pairs = asked ? projectPairs(all) : [], notes = asked ? projectNotes(all, pairs) : new Map();
+  const body = state.view === "list" ? projectList(all) : state.view === "board" ? projectBoard(all, notes, pairs, state.ask) : projectTimeline(all);
+  document.getElementById("main").replaceChildren(el("div", { class: "pd", "data-view": state.view }, [projectHead(all, state), body]));
+  const time = document.querySelector(".pa-time");
+  if (time) paToday(time);
 }
 
 // The hero line is a glance: each part is cut at its first clause.
@@ -11463,46 +11358,70 @@ function projectSessions(r) {
     el("div", { class: "session-tags" }, [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5)
       .map(([tag, count]) => el("a", { href: sessionHash({ project: r.path, tag }), text: tag + " " + count })))]);
 }
-// Recent activity on a project page (#2993): its three newest sessions, or, without sessions, the newest of
-// its dated history. The whole list is one link away, in Sessions.
+// A project's record is knowledge (#3096, the designer's review in #3085): what it is, where it stands, how
+// active it has been, what was decided, who is involved and its sessions by date. What is still open is one
+// line that counts it and leads to Today; nothing on a record is marked done.
+function projectProse(r, name, limit) {
+  const part = section(r, name);
+  return part ? listItems(part.text).filter(item => !/^(?:Unknown\b|未知)/i.test(item)).slice(0, limit)
+    .map(item => privateFallback(el("p", { html: inline(stripCites(item), r.path) }))) : [];
+}
+function projectLinked(r, category) {
+  const seen = new Set();
+  return (r.relations || []).map(rel => byPath(rel.path))
+    .filter(page => page && page.category === category && page.path !== REM.owner && !seen.has(page.path) && seen.add(page.path));
+}
+function projectPart(name, title, children) {
+  return el("section", { class: "project-part " + name }, [el("h2", { text: pdT(title) }), ...children]);
+}
+// Half a year of weeks under their months, on the scale every project shares.
+function projectActivityPart(r) {
+  const now = paMeta().this_week, weeks = paWeeks(pdAddDays(now, -7 * (PA_RECORD - 1)), now);
+  return projectPart("project-activity", "Activity", [el("p", { text: paSentence(r) + pdT(".") }),
+    el("div", { class: "project-weeks" }, [el("div", { class: "project-weeks-in" }, [paMonths(weeks), paStrip(r, weeks)])])]);
+}
+function projectDecided(r) {
+  const pages = projectLinked(r, "decisions"), prose = pages.length ? [] : projectProse(r, "key decisions", 3);
+  if (!pages.length && !prose.length) return null;
+  return projectPart("project-decided", "What was decided", [
+    pages.length ? el("ul", { class: "project-links" }, pages.slice(0, 6).map(page => el("li", {}, [el("a", { href: href(page), text: page.title })]))) : null, ...prose,
+    pages.length > 6 ? el("a", { class: "project-more", href: "#c=decisions", text: pdT("All {n} decisions", { n: pages.length }) }) : null]);
+}
+function projectPeople(r) {
+  const people = projectLinked(r, "people");
+  return people.length ? projectPart("project-people", "Who is involved", [
+    el("p", {}, people.slice(0, 12).flatMap((page, i) => [i ? pdT(", ") : null, el("a", { href: href(page), text: page.title })]))]) : null;
+}
+// Its newest sessions by date, or, without sessions, the newest of its dated history. The rest is one link away.
 function projectRecent(r) {
   const sessions = inCategory("sessions").filter(s => s.session_project === r.path).sort(sessionOrder);
   if (!sessions.length) return activityPanel(r, true, 3);
-  return el("section", { class: "focus-section project-recent", "aria-label": t("Recently") }, [el("h2", { text: t("Recently") }),
-    el("ul", {}, sessions.slice(0, 3).map(s => el("li", {}, [el("time", { text: fmtDate(s.session_date) }),
-      el("a", { href: href(s), text: sessionPreview(s.title) })]))),
-    el("a", { class: "open-note", href: sessionHash({ project: r.path }), text: t("All {n} sessions", { n: sessions.length }) })]);
+  return projectPart("project-recent", "Sessions by date", [
+    el("ul", {}, sessions.slice(0, 6).map(s => el("li", {}, [el("time", { text: fmtDate(s.session_date) }), el("a", { href: href(s), text: sessionPreview(s.title) })]))),
+    sessions.length > 6 ? el("a", { class: "project-more", href: sessionHash({ project: r.path }), text: t("All {n} sessions", { n: sessions.length }) }) : null]);
+}
+function projectTodayLine(r) {
+  const n = projectTodayCount(r);
+  return n ? el("p", { class: "project-today" }, [projectTodayLink(r, pdT(n === 1 ? "1 open item is in Today" : "{n} open items are in Today", { n }))]) : null;
+}
+function projectLead(r) {
+  const what = projectProse(r, "what it is", 1), stands = projectProse(r, "where it stands", 2);
+  what.forEach(p => p.classList.add("project-what"));
+  return [...what, stands.length ? projectPart("project-stands", "Where it stands", stands) : null, projectActivityPart(r),
+    projectDecided(r), projectPeople(r), projectRecent(r), projectTodayLine(r)].filter(Boolean);
 }
 // The page's first line answers "what state is it in": the board's column, its last date, a late promise in red.
 function projectStateLine(r) {
-  const state = projectState(r), last = known(r).last, late = projectLate(r);
+  const state = projectState(r), late = projectLate(r), kinds = paActivity(r).kinds, mapped = known(r).last;
+  // "Last active" is said only of something counted (a message, a session, a mail); a date the map alone gave
+  // stays a mapped session, never verified activity.
+  const counted = (kinds.messages || 0) + (kinds.sessions || 0) + (kinds.mail || 0) > 0;
   return el("p", { class: "project-state", "data-state": state }, [
     el("span", { class: "project-state-word" }, [el("i", { class: "pd-state-dot " + state, "aria-hidden": "true" }), pdT(PD_STATES.find(([key]) => key === state)[1])]),
-    last ? el("span", { text: t("Last mapped session") + " " + fmtDate(last) }) : null,
+    counted ? el("span", { text: pdT("Last active") + " " + fmtDate(paActivity(r).last) })
+      : mapped ? el("span", { text: t("Last mapped session") + " " + fmtDate(mapped) }) : null,
     late ? el("span", { class: "red", text: pdT("{n} days late", { n: late.days }) }) : null]);
 }
-// A next step in one line: the thing itself, who holds it, how long it has waited. The words it was said in
-// stay one tap away on its source chip, and the full line in the memory below.
-function projectStepRow(r, thread) {
-  const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const late = thread.due && thread.due < calendarDay(REM.as_of) && !staleEntry({ r, t: thread });
-  const who = projectStepOwner(r, thread);
-  return el("li", { class: "thread project-step " + thread.dir }, [el("span", { class: "dir " + who.owner, text: who.label }),
-    el("div", {}, [privateFallback(el("div", { class: "what", html: inline(projectStepWhat(thread.text) + " " + cites, r.path) })),
-      threadActions({ r, t: thread }, true), draftNote(threadDraft({ r, t: thread }))]),
-    el("span", { class: "when" + (late ? " overdue" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") },
-      [threadAge(thread), blockerTag(thread)])]);
-}
-function projectMoreSteps(n) {
-  const button = el("button", { type: "button", class: "btn-quiet project-more-steps", text: t("+{n} more", { n }) });
-  button.onclick = () => {
-    const deep = document.querySelector("details.deep-note");
-    if (deep) deep.open = true;
-    document.querySelector(".deep-note .block-threads")?.scrollIntoView({ block: "start" });
-  };
-  return button;
-}
-
 function sessionSection(r, name) {
   return (r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1).trim();
 }
@@ -11733,11 +11652,10 @@ function sectionBody(r, s) {
         el("span", { class: "badge", text: t(m[1]) }), privateFallback(el("span", { class: "txt", html: inline(m[2], r.path) }))])))]);
     }
   }
-  if (name === "open threads" || name === "more open threads") {
-    // A person's record keeps its threads as written: what to do about them is Today's (D-30).
-    if (r.category === "people") return el("div", { class: "person-threads", html: markdown(s.text, r.path) });
-    const all = threads(r);
-    const state = name === "more open threads" ? { items: projectSteps(r).slice(3).map(step => step.thread), calm: "" } : all;
+  if (name === "open threads") {
+    // A person's and a project's record keep their threads as written: what to do about them is Today's (D-30, #3096).
+    if (r.category === "people" || r.category === "projects") return el("div", { class: "person-threads", html: markdown(s.text, r.path) });
+    const state = threads(r);
     const box = el("div", { class: "block-threads" });
     if (state.calm) box.appendChild(el("div", { class: "calm" }, [el("span", { class: "dir", text: t("Clear") }), el("span", { html: inline(state.calm, r.path) })]));
     if (state.items.length) box.appendChild(el("ul", { class: "threads" }, state.items.map(item => threadRow(r, item, false))));
@@ -12140,19 +12058,17 @@ function recordFocus(r, contextOnly = false) {
   }
   if (contextOnly) return focusHead;
   if (r.category !== "projects" || k.status === "Mapped") out.appendChild(focusHead);
-  const thread = threads(r), project = r.category === "projects";
-  const open = project ? projectSteps(r).map(step => step.thread) : thread.items;
-  if (open.length || ["people", "projects", "orgs"].includes(r.category)) out.appendChild(el("div", { class: "focus-section next-exchanges", ...(project ? { id: "open-threads" } : {}) }, [
-    el("h2", { text: t("Open threads") }), !open.length ? emptyLine(thread) : el("ul", { class: "threads", "aria-label": t("Open threads on this record") },
-      open.slice(0, 3).map(t => project ? projectStepRow(r, t) : threadRow(r, t, false))), project && open.length > 3 ? projectMoreSteps(open.length - 3) : null]));
-  // A project leads with state, next steps and recent activity (#2993); its facts, links, conversations and
-  // history fold into the full memory with everything else, where its purpose and decisions already are.
-  if (project) {
-    const recent = projectRecent(r);
-    if (recent) out.appendChild(recent);
+  // A project's record is what is known about it (#3096); its facts, links, conversations and history fold
+  // into the full memory with everything else.
+  if (r.category === "projects") {
+    out.append(...projectLead(r));
     if (sourceList(r).length) out.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
     return out;
   }
+  const thread = threads(r), open = thread.items;
+  if (open.length || ["people", "orgs"].includes(r.category)) out.appendChild(el("div", { class: "focus-section next-exchanges" }, [
+    el("h2", { text: t("Open threads") }), !open.length ? emptyLine(thread) : el("ul", { class: "threads", "aria-label": t("Open threads on this record") },
+      open.slice(0, 3).map(t => threadRow(r, t, false)))]));
   const strip = recordFacts(r);
   if (strip) out.appendChild(strip);
   out.append(...recordContext(r).childNodes);
@@ -12382,9 +12298,11 @@ function record(path, heading) {
     if (r.category === "projects") head.appendChild(projectStateLine(r));
     if (r.category !== "projects") head.appendChild(leadRow(r));
     main.appendChild(head);
-    const line = translationLine(r);
-    if (line) main.appendChild(line);
-    main.appendChild(recordFocus(r));
+    // On a project the note that no translation is ready yet closes the record instead of opening it (#3096).
+    const line = translationLine(r), focus = recordFocus(r);
+    if (line && r.category !== "projects") main.appendChild(line);
+    main.appendChild(focus);
+    if (line && r.category === "projects") focus.appendChild(line);
   }
   const decisions = threadDecisionHistory(r);
   if (decisions) main.appendChild(decisions);
@@ -12406,12 +12324,8 @@ function record(path, heading) {
     if (["key decisions", "people here", "people and ownership", "history"].includes(s.title.toLowerCase()) && listItems(s.text).every(isCalm)) continue;
     if (r.category === "projects" && s.title.toLowerCase() === "what it is" &&
       (main.querySelector(".purpose-lead") || projectContext?.querySelector(".project-purpose-preview, .purpose-lead"))) continue;
-    const extraThreads = r.category === "projects" && s.title.toLowerCase() === "open threads" && threads(r).items.length;
-    if (extraThreads && threads(r).items.length <= 3) continue;
-    // The focus already shows the first three project threads.
-    const rest = extraThreads ? { ...s, title: "More open threads" } : s;
-    note.appendChild(el("h2", { html: inline(t(rest.title), r.path) }));
-    const body = sectionBody(r, rest);
+    note.appendChild(el("h2", { html: inline(t(s.title), r.path) }));
+    const body = sectionBody(r, s);
     // Plain Markdown joins the note flat, so lists and code stay direct children.
     if (body.className === "block") note.append(...body.childNodes); else note.appendChild(body);
   }
@@ -13804,7 +13718,8 @@ document.addEventListener("copy", event => {
   event.preventDefault();
 });
 // The projects directory's month labels are re-measured against Today after a resize.
-window.addEventListener("resize", () => requestAnimationFrame(() => { projectScaleFit(); projectAxisCollisions(); }));
+for (const kind of ["pointerover", "focusin"]) document.addEventListener(kind, paTipShow);
+for (const kind of ["pointerout", "focusout", "scroll"]) document.addEventListener(kind, paTipHide, true);
 // Fixed positioning and measured bounds keep even an unbroken source id on a phone.
 function hideCitationTip() { document.getElementById("citation-tip")?.remove(); }
 function showCitationTip(event) {

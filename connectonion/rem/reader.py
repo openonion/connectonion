@@ -401,8 +401,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             row.pop('reply', None)
             row.pop('sender', None)
     organisation_obligations(records, data['today_queue'])
-    from .service import notebook_today
+    from .service import notebook_today, notebook_zone
     rollups(records, notebook_today(root))
+    if not today:
+        # What happened on each project by week, for its activity strip and the order of the rows (#3096).
+        from .project_activity import attach
+        data['project_activity'] = attach(records, lambda path: stored(root, path), contexts,
+                                          notebook_today(root), notebook_zone(read_config(root)))
     return _today_data(data) if today else data
 
 

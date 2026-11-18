@@ -81,15 +81,15 @@ def test_the_projects_headline_shouts_only_about_a_live_late_promise(today):
     page.evaluate("""() => {
       const r = REM.records.find(r => r.category === 'projects');
       r.open = [{kind: 'owed', due: '2026-04-14', since: '2026-04-10', who: 'people/tomas-reyes.md', text: 'The user owes Tomás the van agreement', promised: []}];
-      location.hash = '#c=projects&v=timeline';
+      location.hash = '#c=projects&v=list';
     }""", isolated_context=False)
-    lede = page.locator(".pd-lede")
+    # Since #3096 a late promise is said in the row's status, never in a headline; a stale one is not said at all.
+    lede = page.locator(".pl")
     lede.wait_for()
     assert lede.locator(".red").count() == 0
-    assert lede.locator(".pd-asked").inner_text() == "1 promise is more than 60 days past its date with no word since; it may be over."
     page.evaluate("() => { REM.records.find(r => r.category === 'projects').open[0] = {...REM.records.find(r => r.category === 'projects').open[0], due: '2026-09-01', since: '2026-08-30'}; render(); }",
                   isolated_context=False)
-    assert "is 30 days late" in lede.locator(".red").inner_text() and lede.locator(".pd-asked").count() == 0
+    assert lede.locator(".red").inner_text() == "30 days late"
 
 
 def test_the_side_line_the_sheet_and_the_overnight_section_tell_the_same_number(today):
@@ -281,11 +281,11 @@ def test_a_late_promise_with_a_message_last_week_stays_live_on_today_and_project
       const r = REM.records.find(r => r.category === 'projects');
       r.open = [{kind: 'owed', due: '2026-07-23', since: '2026-07-03', who: 'people/tomas-reyes.md', text: 'The user owes Tomás the van agreement',
         sources: [{source: 'gmail:fixture-van'}], promised: []}];
-      location.hash = '#c=projects&v=timeline';
+      location.hash = '#c=projects&v=list';
     }""", isolated_context=False)
-    lede = page.locator(".pd-lede")
+    lede = page.locator(".pl")
     lede.wait_for()
-    assert "is 70 days late" in lede.locator(".red").inner_text() and lede.locator(".pd-asked").count() == 0
+    assert lede.locator(".red").inner_text() == "70 days late"
 
 
 def test_a_promise_with_no_dated_message_stays_live(today):

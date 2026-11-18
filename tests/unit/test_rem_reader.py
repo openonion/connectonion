@@ -1935,7 +1935,7 @@ def test_category_heading_names_the_place_without_an_explanatory_lede():
 
 @pytest.mark.parametrize('name, sentence', [
     ('sessionsView', 'What you worked on with your coding agents'),
-    ('projectLegend', 'Sorted by health; a sub-project sits under its project'),
+    ('paKey', 'Sorted by health; a sub-project sits under its project'),
     ('projectBoard', "The board's axis is a question:"),
     ('skillsView', 'Most used'),
     ('graphPanelGuide', 'Click a point to see what it connects'),
@@ -2088,6 +2088,7 @@ def test_record_header_dates_appear_once_and_strip_dates_are_localized():
         appendChild(node) { this.children.push(node); }, append(...nodes) { this.children.push(...nodes); }});
       const known = () => ({last: '2026-10-17', status: 'Written'}), threads = () => ({items: [], calm: false});
       const projectState = () => 'active', projectLate = () => null, PD_STATES = [['active', 'Active']], pdT = s => s;
+      const paActivity = () => ({kinds: {}, last: ''});
       const section = () => null, categoryHref = () => '', categoryName = () => '', updatedMarker = () => null;
       const statusPill = () => null, originalMark = () => null, translationMark = () => null, mappedContact = () => false;
       const knownValue = Boolean, changedValue = node => node, inline = text => text, plainLine = text => text;
@@ -3432,26 +3433,6 @@ def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language
     assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
     # D-60 (#2910): the night run files knowledge (daily.py backfill_topics); no command, no copy button.
     assert 'co rem' not in text and '"code"' not in text and '"复制"' not in text and '"Copy"' not in text
-
-
-def test_project_lede_has_no_empty_most_often_clause_when_no_project_had_sessions():
-    """'0 had sessions this quarter, most often .' is a broken sentence."""
-    page = TEMPLATE.read_text()
-    names = ['projectLede', 'projectActive', 'projectTierCounts']
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
-    result = _run_reader_js(functions + r'''
-      const pdT = (s, v = {}) => s.replace(/\{(\w+)\}/g, (_, k) => v[k]);
-      const pdList = names => names.join(', '), pdIn = () => true, projectTicks = () => [], projectSessionDays = () => [];
-      const projectRank = () => 0, projectTier = () => 'quiet', projectLate = () => null, projectMarks = () => [], projectLateMarks = () => [];
-      const fmtTime = () => '', calendarDay = d => d, pdAt = () => 0, projectDot = () => null, projectStrip = () => null, REM = {as_of: '2026-11-09'};
-      const pdWho = () => '', pdDay = d => d, el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      const all = [{title: 'Harbour'}, {title: 'Lantern'}];
-      let out;
-      try { out = projectLede(all, {zoom: 'quarter', today: '2026-11-09'}); } catch (error) { out = String(error); }
-      console.log(JSON.stringify(typeof out === 'string' ? out : JSON.stringify(out)));
-    ''')
-    assert 'most often .' not in result and 'most often ,' not in result
-    assert 'no project had sessions this quarter' in result
 
 
 def _reader_function(name):
