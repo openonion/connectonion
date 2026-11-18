@@ -2190,14 +2190,39 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         return None if writes else (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
                                     "names the API endpoint that would do it, and sends nothing. Read-only.")
 
-    @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
-    def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
-                restart: bool = typer.Option(False, "--restart",
-                                             help="Stop the running listener and start a new one in the background, "
-                                                  "on the installed code")):
-        """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/."""
-        from .commands.listen_commands import handle_listen
-        handle_listen(name, raw=raw, restart=restart)
+    if name == "whatsapp":
+        @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --phone +61412345678  |  {co} listen --raw")
+        def _listen(raw: bool = typer.Option(False, "--raw", help="Also save each message's full raw WhatsApp data in inbox.jsonl"),
+                    restart: bool = typer.Option(False, "--restart",
+                                                 help="Stop the running listener and start a new one in the background, "
+                                                      "using the co installed now"),
+                    phone: str = typer.Option("", "--phone",
+                                              help="Link by code instead of QR: the bot's number with its country code. "
+                                                   "Prints an 8-character code to type on that phone under Linked devices "
+                                                   "> Link with phone number instead; it lasts minutes and can be sent as text")):
+            """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/. Links this device by QR, or by code with --phone."""
+            from .commands.listen_commands import errors, handle_listen
+            digits = ""
+            if phone:
+                from ..inbox.whatsapp_contacts import phone_digits
+                if restart:
+                    errors.print("--phone shows its code in the foreground; run it without --restart", style="red")
+                    raise typer.Exit(2)
+                try:
+                    digits = phone_digits(phone)
+                except ValueError as exc:
+                    errors.print(str(exc), style="red")
+                    raise typer.Exit(2)
+            handle_listen(name, raw=raw, restart=restart, phone=digits)
+    else:
+        @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
+        def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
+                    restart: bool = typer.Option(False, "--restart",
+                                                 help="Stop the running listener and start a new one in the background, "
+                                                      "on the installed code")):
+            """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/."""
+            from .commands.listen_commands import handle_listen
+            handle_listen(name, raw=raw, restart=restart)
 
     @group.command("receive", epilog=f"Example:  {co} receive -t 60  |  {co} receive -t 0 --no-start  |  {co} receive --context 5")
     def _receive(
