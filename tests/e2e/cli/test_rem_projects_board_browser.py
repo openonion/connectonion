@@ -93,10 +93,10 @@ def test_a_project_page_leads_with_state_what_it_is_its_weeks_and_sessions_and_f
     tops = [box["y"] for box in (state.bounding_box(), what.bounding_box(), weeks.bounding_box(), recent.locator("li").first.bounding_box())]
     assert tops == sorted(tops), tops
     assert page.locator(".next-exchanges, .project-step").count() == 0
-    # Everything else is one fold away, never beside the lead.
+    # Everything else is in Full memory under the lead, never beside it; Full memory is open on arrival (#3104).
     for selector in (".focus-facts", ".related-records", ".project-context", ".project-sessions"):
-        assert all(not node.is_visible() for node in page.locator(selector).all()), selector
-    page.locator("details.deep-note > summary").click()
+        assert all(node.evaluate("n => !!n.closest('.deep-note')") for node in page.locator(selector).all()), selector
+    assert page.locator("details.deep-note").get_attribute("open") is not None
     assert page.locator(".deep-note .related-records").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -128,8 +128,7 @@ def test_full_size_board_renders_in_one_second_and_opens_project_and_citation(re
     page.locator('.pd-state-card .pd-card-name').first.click()
     expect(page.locator('.project-state')).to_contain_text('Active')
     expect(page.locator('.project-what')).to_have_text('A paid pilot of the weekly brief for Fernhill Labs.')
-    # The steps are in the full memory as written, and a citation there still opens its evidence.
-    page.locator('details.deep-note > summary').click()
+    # The steps are in the full memory as written (open on arrival, #3104), and a citation there still opens its evidence.
     page.locator('.deep-note .person-threads a.cite').first.click()
     expect(page.locator('#evidence-panel')).to_be_visible()
     expect(page.locator('#evidence-panel')).to_contain_text('Project notes: You owe Mara the weekly chart report.')
