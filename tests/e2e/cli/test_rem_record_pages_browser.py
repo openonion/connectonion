@@ -188,24 +188,21 @@ def test_phone_person_face_sits_with_the_name_not_the_actions(reader):
 # handle a speech bubble. Each is now the published picture, the same size as its neighbours, centred in its
 # button, and its kind is said in words beside the value on hover and in its name.
 @pytest.mark.parametrize("width", [1440, 390])
-def test_contact_buttons_are_published_pictures_with_their_kind_in_words(reader, width):
+def test_contact_rows_are_published_pictures_with_their_kind_in_words(reader, width):
+    """The round contact buttons became the profile card's Contact rows (2026-11-18); the pictures stay the published
+    sets in the page's ink, and each row says its kind in words beside its picture."""
     open_page, _ = reader
     page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
-    buttons = page.locator(".person-head .hero-acts .round").evaluate_all("""nodes => nodes.map(n => { const b = n.getBoundingClientRect(),
-      svg = n.querySelector('svg'), s = svg.getBoundingClientRect(), ink = svg.querySelector('path').getBoundingClientRect(), paint = getComputedStyle(svg);
-      return {name: n.getAttribute('aria-label'), tip: n.querySelector('.tip').textContent, hidden: n.querySelector('.icw').getAttribute('aria-hidden'),
-        dx: Math.abs((s.left + s.right) / 2 - (b.left + b.right) / 2), dy: Math.abs((s.top + s.bottom) / 2 - (b.top + b.bottom) / 2),
-        box: s.width, ink: Math.max(ink.width, ink.height), filled: paint.fill !== 'none', stroked: paint.stroke !== 'none',
-        same: paint.fill === getComputedStyle(n).color || paint.stroke === getComputedStyle(n).color}; })""")
-    assert [b["name"] for b in buttons] == ["Email · mara@fernhill.example", "Phone · +64 21 555 0142", "GitHub · mara-o"]
-    assert [b["tip"].split(" · ")[0] for b in buttons] == ["Email", "Phone", "GitHub"]  # the word, not the picture alone
-    assert all(b["hidden"] == "true" for b in buttons)
-    assert all(b["dx"] <= 0.5 and b["dy"] <= 0.5 for b in buttons), buttons  # each picture in the middle of its button
-    assert len({b["box"] for b in buttons}) == 1
-    assert [(b["filled"], b["stroked"]) for b in buttons] == [(False, True), (False, True), (True, False)]  # a mark is solid, in ink
-    assert all(b["same"] for b in buttons)
-    inks = [b["ink"] for b in buttons]
-    assert max(inks) - min(inks) <= buttons[0]["box"] * 0.12, inks  # the mark is drawn as large as the outlines, no larger
+    rows = page.locator(".person-head .pcard .pc-row").evaluate_all("""rows => rows.filter(r => r.querySelector('.pc-k svg')).map(r => {
+      const svg = r.querySelector('.pc-k svg'), paint = getComputedStyle(svg), word = r.querySelector('.pc-k span:last-child');
+      return {word: word.textContent, hidden: r.querySelector('.pc-k .icw').getAttribute('aria-hidden'), copy: !!r.querySelector('.pc-copy'),
+        filled: paint.fill !== 'none', stroked: paint.stroke !== 'none',
+        same: paint.fill === getComputedStyle(svg.closest('.pc-k')).color || paint.stroke === getComputedStyle(svg.closest('.pc-k')).color}; })""")
+    assert [r["word"] for r in rows][:3] == ["Email", "Phone", "GitHub"]  # the word, not the picture alone
+    assert all(r["hidden"] == "true" and r["copy"] for r in rows[:3])
+    assert [(r["filled"], r["stroked"]) for r in rows[:3]] == [(False, True), (False, True), (True, False)]  # a mark is solid, in ink
+    assert all(r["same"] for r in rows[:3])
+    assert page.locator(".person-head .round").count() == 0
 
 
 # 6. Organisation records never project Today's queue, even when obligations change.
@@ -243,3 +240,40 @@ def test_open_topics_count_only_shown_rows_when_labelled_passages_are_hidden(rea
         assert topics.inner_text().startswith(expected + "\n")
         assert "全部" not in topics.inner_text() and "[personal]" not in topics.inner_text()
     assert "5" not in page.locator(".r4-person .r4-topics h2, .r4-person .r4-topics .end").all_inner_texts().__str__()
+
+
+# 7. The profile card is the first thing on the person page (owner, 2026-11-18): every known fact as a label over
+# its value under the name, nothing to expand, unknown facts one quiet line, each fact in one place.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(reader, width):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Phone:[^\\n]*/m, '- Phone: +64 21 555 0199 (mobile) [2]')
+        .replace(/^- Signing entity:[^\\n]*/m, '- Signing entity: Fernhill Labs Ltd [2]')
+        .replace(/^- Handles:[^\\n]*/m, '- Handles: mara@fernhill.example; github.com/mara-o (GitHub) [2]; mara#2041 (Discord) [3]');
+      // rem.test is not a secure origin, so the page has no clipboard of its own here.
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: text => { window.copied = text; return Promise.resolve(); } } });
+      delete r.original; delete r.translations; KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    assert card.is_visible() and page.locator("details.deep-note[open]").count() == 0
+    name, box = _box(page.locator(".person-head h1")), _box(card)
+    assert name["y"] + name["height"] <= box["y"] < 844, "the card is under the name, on the first screen"
+    labels = card.locator(".pc-k").all_inner_texts()
+    for label in ["Email", "Phone", "GitHub", "Discord", "Signing entity", "How we know them", "First contact", "Last contact",
+                  "Also known as", "Language", "Location"]:
+        assert label in labels, label
+    text = card.inner_text()
+    assert "+64 21 555 0199" in text and "Fernhill Labs Ltd" in text and "M. Ostrowski" in text
+    assert "not found" not in text.replace("1 fact not found", "")  # no rows of "not found"; at most one quiet line
+    assert "1 fact not found" in text and "Time zone" not in labels  # the one unknown left is a count, not a row
+    # One place per fact: role and organisation are the line under the name, not chips, rows or round buttons.
+    assert "Head of Partnerships" in page.locator(".r4-sub").inner_text() and "Head of Partnerships" not in text
+    assert page.locator(".person-head .round, .r4-sub .chip").count() == 0
+    assert labels.count("Email") == 1 and text.count("mara@fernhill.example") == 1  # the handle that is an email is not repeated
+    phone = card.locator(".pc-row", has=page.locator(".pc-k", has_text="Phone")).locator("button")
+    phone.click()
+    assert "Copied" in phone.inner_text() and page.evaluate("window.copied", isolated_context=False) == "+64 21 555 0199"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

@@ -5009,8 +5009,9 @@ def test_person_page_leads_with_the_record_one_today_link_timeline_and_rail(read
     assert page.locator(".r4-stats > div").count() >= 1  # mails, reply time, last word, as known (the first exchange is under the rhythm)
     assert page.locator(".r4-person #open-threads, .owe").count() == 0
     assert page.locator(".tl .tl-e .w i").count() >= 3
-    # N3: how to reach her is the hero's round buttons; what REM is unsure of and the sources are cards that open more.
-    assert page.locator(".hero-acts .round").count() >= 1
+    # How to reach her is the profile card's contact rows, copied on a click (owner, 2026-11-18: no round buttons to
+    # hover); what REM is unsure of and the sources are cards that open more.
+    assert page.locator(".person-head .pcard .pc-copy").count() >= 1 and page.locator(".hero-acts .round").count() == 0
     assert "REM 还不确定" in page.locator(".unsure-open").inner_text()
     assert page.locator(".r4-src").inner_text().split() == ["6", "来源"]
     hero, rhythm = page.locator(".hero").bounding_box(), page.locator(".r4-fuse").bounding_box()
@@ -5054,9 +5055,10 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
     dates = page.evaluate("historyItems(section(byPath('people/mara-ostrowski.md'), 'history').text).filter(i => i.day.length === 10)"
                           ".map(i => i.day).sort().map(fmtDate)", isolated_context=False)
     assert days == dates and len(days) == 5 and fuse.locator(".rhythm i.today").count() == 1
-    # Name and fuse lead the page, on the first screen of a phone too.
-    box = fuse.bounding_box()
-    assert box["y"] + box["height"] <= 844
+    # The profile card now leads under the name (owner, 2026-11-18); the fuse follows it and the open topics, so it
+    # starts on a desktop's first screen and is the first widget below the header on a phone.
+    box, hero = fuse.bounding_box(), page.locator(".person-head").bounding_box()
+    assert box["y"] >= hero["y"] + hero["height"] and (box["y"] < 844 or width <= 640)
     assert page.locator(".r4-stats .late").count() == 0 and page.evaluate(RED_MARKS, list(RED), isolated_context=False) == []
     assert page.evaluate(GREEN, isolated_context=False) == 0
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

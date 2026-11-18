@@ -59,6 +59,7 @@ def _referenced():
     names |= set(re.findall(r'\btab\("[\w-]+", "([\w-]+)"', page))                     # the phone tab bar
     names |= set(re.findall(r':\s*"([\w-]+)"', re.search(r'const CATEGORY_ICON = \{(.*?)\};', page, re.S)[1]))
     names |= set(re.findall(r'CATEGORY_ICON\[c\] \|\| "([\w-]+)"', page))
+    names |= set(re.findall(r'\badd\("\w+", "[^"]+", "([\w-]+)"', page))            # the profile card's rows
     names |= set(_js(_function('HANDLE_MARKS') + '\nconsole.log(JSON.stringify(HANDLE_MARKS.map(m => m[1]).concat("at")));'))
     return names
 
@@ -179,17 +180,17 @@ def test_a_handle_carries_its_services_mark_or_an_at_with_the_services_name(valu
     assert mark == [picture, word]
 
 
-def test_a_contact_button_says_its_kind_in_words_beside_the_value():
-    """Owner: state is said in words, never by a mark alone. The hover and focus tip names the kind too."""
-    buttons = _js(_drawn() + """
-      const t = words => words, hasPrivacy = () => false, navigator = {};
-      """ + _function('copyRound') + """
-      console.log(JSON.stringify([copyRound("mail", "Email", "a@fernhill.example", "a@fernhill.example · b@mailbox.example"),
-        copyRound("phone", "Phone", "+64 21 555 0142"), copyRound("brand-github", "GitHub", "mara-o")]));""")
-    assert [button['aria-label'] for button in buttons] == ['Email · a@fernhill.example', 'Phone · +64 21 555 0142', 'GitHub · mara-o']
-    tips = [next(child for child in button['children'] if child.get('class') == 'tip')['text'] for button in buttons]
-    assert tips == ['Email · a@fernhill.example · b@mailbox.example', 'Phone · +64 21 555 0142', 'GitHub · mara-o']
-    assert all(button['children'][0]['aria-hidden'] == 'true' for button in buttons)
+def test_a_contact_row_says_its_kind_in_words_beside_its_picture():
+    """Owner: state is said in words, never by a mark alone. The person page's round buttons became the profile
+    card (2026-11-18): every row puts its kind in words beside its picture, and a value copies with a worded reply."""
+    card = _function('profileCard')
+    assert 'el("dt", { class: "pc-k" }, [row.pic ? icon(row.pic) : null, el("span", { text: t(row.label) })])' in card
+    assert 'add("Contact", "Email", "mail"' in card and 'add("Contact", "Phone", "phone"' in card
+    copy = _function('profileValue')
+    assert 'say("Copied")' in copy and 'say("Copy failed")' in copy
+    assert _js(_function('HANDLE_MARKS') + '\n' + _function('handleMark') + '\n' + _function('contactPlace')
+               + '\nconsole.log(JSON.stringify([contactPlace({value: "mara-o", qualifier: "GitHub"}, ["Handle", "at"]),'
+               + ' contactPlace({value: "mara", qualifier: ""}, ["Handle", "at"])]));') == [['GitHub', 'brand-github'], ['Handle', 'at']]
 
 
 def test_the_notice_names_every_picture_and_both_licences():

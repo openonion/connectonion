@@ -1966,6 +1966,26 @@ def test_role_lede_keeps_when_a_role_ended_or_started():
                       'Events Coordinator (Entrepreneurship)', 'Lead']
 
 
+def test_role_lede_sends_provenance_in_any_language_to_the_tooltip():
+    """The owner's copy read "Events Coordinator (Entrepreneurship; 截至 2026-10-29 的 email 签名) +1" under the name:
+    a translated note on where the role came from, which the English-only pattern let through (owner, 2026-11-18)."""
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['topLevelParts', 'roleLede', 'plainLine'])
+    result = _run_reader_js(functions + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
+      const inline = text => text, youify = text => text, roleSummary = () => null;
+      const lede = (value, qualifier) => roleLede([{value, qualifier}], value + ' (' + qualifier + ')', '');
+      const out = [['Events Coordinator', 'Entrepreneurship; 截至 2026-10-29 的 email 签名'], ['Events Coordinator', 'Entrepreneurship; as of 2026-10-29 signature'],
+        ['Lead', 'per email, 2026-09'], ['Tutor', '根据邮件推断'], ['Owner', '见她的 2026-10-29 签名'], ['Coordinator', 'MCIC; 公开名录'],
+        ['Product Owner', 'until 2025-06'], ['Mentor', '2019–2021']].map(([v, q]) => { const n = lede(v, q); return [n.children[0].html, n.title]; });
+      console.log(JSON.stringify(out));
+    ''')
+    assert [html for html, _ in result] == ['Events Coordinator (Entrepreneurship)', 'Events Coordinator (Entrepreneurship)', 'Lead', 'Tutor',
+                                            'Owner', 'Coordinator (MCIC)', 'Product Owner (until 2025-06)', 'Mentor (2019–2021)']
+    assert '截至 2026-10-29 的 email 签名' in result[0][1]  # the note is not lost: it is in the tooltip
+
+
 def test_chinese_interface_never_assumes_a_single_persons_gender():
     """"他说过的话" headed a woman's quotes. A single person is 对方 (or their name), never 他/她;
     the words that only look gendered (其他, 他人, 他们 for a plural) are allowed."""
