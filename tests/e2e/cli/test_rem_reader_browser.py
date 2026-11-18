@@ -31,8 +31,7 @@ def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, mon
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 1280, 'height': 900})
         page.goto(path.as_uri() + '#r=people%2Felara-finch.md')
-        assert page.locator('details.deep-note').get_attribute('open') is None
-        page.locator('details.deep-note > summary').click()
+        assert page.locator('details.deep-note').get_attribute('open') is not None
         cite = page.locator('a.cite[href$="h=src-1"]').first
         assert cite.count() > 0
         assert source in cite.get_attribute('title')
@@ -74,10 +73,11 @@ def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 375, 'height': 812})
         page.goto(path.as_uri() + '#r=people%2Fmentor.md')
-        assert page.locator('details.deep-note').get_attribute('open') is None
-        page.locator('details.deep-note > summary').click()
+        assert page.locator('details.deep-note').get_attribute('open') is not None
         assert page.locator('.block-sources .source-open').evaluate('e => e.getBoundingClientRect().height >= 44')
-        assert page.locator('.block-sources .id').inner_text() == source
+        # #3104: the row names the file; the raw id is the row's tooltip.
+        assert page.locator('.deep-sources .src-title').inner_text().startswith('Returned client agreement.pdf')
+        assert page.locator('.deep-sources li#src-15').get_attribute('title') == source
         cite = page.locator('a.cite[href$="h=src-15"]').first
         cite.click()
         dialog = page.locator('#evidence-panel')
@@ -111,7 +111,6 @@ def test_absolute_skill_artifact_links_open_as_local_files(tmp_path, monkeypatch
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page()
         page.goto(page_path.as_uri() + '#r=skills%2Fcatalog%2Fwriter.md')
-        page.locator('details.deep-note > summary').click()
         link = page.get_by_role('link', name='Read the draft')
         assert link.get_attribute('href') == artifact.as_uri()
         assert not page.locator('.dead-link').count()
@@ -149,13 +148,14 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator('#nav a[href="#c=projects"]').click()
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
-            assert page.locator(".next-exchanges .thread").count() == 0
-            assert page.locator(".next-exchanges .empty-line").inner_text().startswith("No confirmed pending work")
+            # A project page is a map: no open-work rows and no Mark done; open work lives in Today (#3096).
+            page.locator(".record-focus.projects").first.wait_for()
+            assert page.locator(".next-exchanges .thread, #main .thread-actions").count() == 0
+            assert "Mark done" not in page.locator("#main").inner_text()
             page.goto(page_path.as_uri() + "#view=open")
             assert "nothing open" in page.locator("#main").inner_text().lower()
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
-            assert page.locator('details.deep-note').get_attribute('open') is None
-            page.locator('details.deep-note > summary').click()
+            assert page.locator('details.deep-note').get_attribute('open') is not None
             # Related trailers sit beside .note inside Full memory, folded by default.
             page.locator("details.deep-note .aside .related").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
@@ -165,8 +165,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.locator("#main").get_by_role("link", name="Storage", exact=True).wait_for()
             page.set_viewport_size({"width": 375, "height": 812})
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
-            assert page.locator(".next-exchanges .thread").count() == 0
-            assert page.locator(".next-exchanges .empty-line").is_visible()
+            page.locator(".record-focus.projects").first.wait_for()
+            assert page.locator(".next-exchanges .thread, #main .thread-actions").count() == 0
             page.screenshot(path=str(shots / "rem-mobile.png"), full_page=True)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             assert not errors, errors
@@ -280,9 +280,8 @@ def test_reader_preserves_code_and_nested_lists(reader_page):
 def test_private_sentences_can_be_hidden_and_restored(reader_page):
     page, _, _ = reader_page
     private = page.locator(".note .private")
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    assert private.count() == 1 and not private.is_visible()
-    page.locator('details.deep-note > summary').click()
+    # #3104: the full memory is open on arrival, so the labelled passage shows until hidden.
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
     page.locator(".settings-open").click()
@@ -296,8 +295,7 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
 def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_path, width, height):
     page, _, _ = reader_page
     page.set_viewport_size({"width": width, "height": height})
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     assert page.locator('pre').last.is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
@@ -355,8 +353,7 @@ def test_reader_heading_links_and_search_state(reader_page):
     from patchright.sync_api import expect
 
     page, _, _ = reader_page
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     page.get_by_role("link", name="Jump within").click()
     page.wait_for_function("location.hash.includes('h=next-steps') && scrollY > 0")
     assert page.locator('details.deep-note').get_attribute('open') is not None
@@ -383,8 +380,7 @@ def test_reader_nested_fences_keep_literal_metadata(reader_page):
     page, _, _ = reader_page
     page.goto(page.url.split("#")[0] + "#r=projects%2Fnested.md")
     page.get_by_role("heading", name="Nested example", exact=True).wait_for()
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     assert page.locator("pre").text_content() == "Sources: nested literal\n\n\nRelated: nested literal"
     assert "nested literal" not in page.locator(".aside").inner_text()
     assert "codex:actual" in page.locator(".aside").inner_text()
@@ -605,4 +601,61 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
             assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'
         assert not errors, errors
+        browser.close()
+
+
+def test_full_memory_opens_with_a_short_named_source_band(tmp_path, monkeypatch):
+    """#3104: memory open on arrival; sources named, top 10 shown, filterable, linked both ways with their lines."""
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    sources = [f'- [{n}] file:/notes/plan-{n}.md — 2026-10-{n:02d}' for n in range(1, 25)]
+    sources.append('- [25] codex:01a1a594-aaaa-bbbb-cccc-dddddddddddd:200924-7da282f4')
+    text = ('# Wren Hale\n\n## Facts\n- Email: wren.hale.long.address@example-mail.test [1]\n- Phone: Unknown\n- Location: Unknown\n\n'
+            '## Who they are\nWren plans the venue [3]. Wren confirmed it [3]. Wren moved the date [5][6].\n\n'
+            '## Sources\n' + '\n'.join(sources) + '\n')
+    Notebook(root).write('people/wren-hale.md', text)
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 1440, 'height': 900})
+        page.goto(path.as_uri() + '#r=people%2Fwren-hale.md')
+        page.locator('.deep-sources').wait_for()
+        assert page.locator('details.deep-note').get_attribute('open') is not None
+        band = page.locator('.deep-sources')
+        assert band.locator('h2#sources').count() == 1
+        rows = band.locator('li.src-row:visible')
+        assert rows.count() == 10
+        # The most cited row leads, and says how often.
+        assert rows.first.get_attribute('id') == 'src-3'
+        assert rows.first.locator('.src-cited').inner_text() == 'Cited 2×'
+        assert rows.first.locator('.src-title').inner_text() == 'plan-3.md'
+        assert 'file:/notes/plan-3.md' == rows.first.get_attribute('title')
+        assert rows.first.locator('.src-meta').inner_text().startswith('File · ')  # kind, then the date once
+        assert band.locator('.src-filter').count() == 1
+        band.locator('.src-more').click()
+        assert rows.count() == 25
+        band.locator('.src-kinds button[data-kind="session"]').click()
+        assert rows.count() == 1 and rows.first.get_attribute('id') == 'src-25'
+        band.locator('.src-kinds button[data-kind="all"]').click()
+        band.locator('.src-filter').fill('plan-12')
+        assert rows.count() == 1 and rows.first.get_attribute('id') == 'src-12'
+        # From a line's mark to its row, and from the row back to the line.
+        page.locator('.note a.cite[data-sources="5 6"]').first.click()
+        page.get_by_role('button', name='Show in sources').click()
+        assert page.locator('#src-5').is_visible() and page.locator('#src-6').is_visible()
+        assert 'flash' in page.locator('#src-5').get_attribute('class')
+        page.locator('#src-3 .src-cited').click()
+        page.wait_for_function("document.querySelector('.note a.cite[data-sources=\"3\"]').getBoundingClientRect().top < innerHeight")
+        # Facts: empty fields fold into one line; an address breaks only after '@'.
+        facts = page.locator('.factlist')
+        assert 'not found' not in facts.inner_text()
+        missing = page.locator('.fact-missing').inner_text()
+        assert missing.startswith('13 not found: Phone · Company') and 'Location' in missing
+        assert facts.locator('a[href^="mailto:"] wbr').count() <= 1
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.set_viewport_size({'width': 390, 'height': 844})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         browser.close()

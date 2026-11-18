@@ -2327,7 +2327,7 @@ pinned to that edge: it comes into view with the draft.
   owner-held steps first), and recent sessions or dated history. **+N more**
   opens the remaining steps in **Full memory and sources**. Purpose, findings,
   facts, people, decisions, detailed sessions, tags, local graph and history stay
-  in that collapsed disclosure. Source markers beside steps still open their evidence.
+  in that disclosure, which opens by itself (#3104). Source markers beside steps still open their evidence.
   Open steps share one frame and align each item's action buttons. **Agent request**
   (给智能体的请求), **Owner unconfirmed** (待确认负责人) and **Answer available**
   (已有回答) distinguish a request from an unassigned step and a retained answer;
@@ -2340,7 +2340,7 @@ pinned to that edge: it comes into view with the draft.
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
   Insight, History and Sources stay under the always-visible **Full memory and
-  sources** disclosure; decision pages also start with it collapsed. A claim
+  sources** disclosure, open by default and foldable (#3104). A claim
   number `[n]` opens its source description and, when locally archived, an
   original excerpt. Prose uses quiet raised date markers, kept beside the
   preceding word; hover or focus reveals the full source label. Adjacent
@@ -2367,6 +2367,29 @@ pinned to that edge: it comes into view with the draft.
   name their remaining gaps. Private projects retain an explicit investigation
   command. Empty Agent sessions shows queued status when background updates
   are enabled, or pending status when they are off, without import controls.
+- **Full memory and sources opens by itself** (owner, 2026-11-18, #3104). On
+  every record page the disclosure starts open and can still be folded. Its
+  **Sources** (来源) leave the prose column for a full-width band under it,
+  two rows a line on a wide screen and one on a phone. A row is one line:
+  the source's number, what it is in words, then its kind, who and its date
+  once. Mail shows its subject (and an attachment's file name), a coding
+  session its title, a file its name, a web page its host and path, an
+  investigation **REM investigation** (REM 调查); a mail missing from the
+  snapshot says so in grey. The raw id is only in the row's tooltip. Rows are ordered by how many lines cite them, then newest;
+  the first 10 show and **Show all N** (显示全部 N 项) opens the rest. Kind
+  chips (**All · Mail · Sessions · Files · Other**, each with its count) filter
+  them, and above 20 sources a filter box matches title, who and id. Each row
+  says **Cited N×** (被引 N 处); pressing it jumps to the next line that cites
+  it. A citation chip still opens the source panel, which now offers **Show in
+  sources** (在来源中查看): it reveals and lights the cited row(s). The heading's
+  anchor is always `sources`, in every language. On a Facts card an address
+  wraps only after `@`, and empty fields fold into one quiet **N not found**
+  (N 项未找到) line that names them. The standard section titles
+  (Insight, Who they are, Why they are here, Our relationship, How they
+  communicate, How you write to them, Cadence, Uncertainties and their
+  siblings) read in 中文 in the zh reader, while their anchors keep the
+  written English title (`&h=uncertainties` works in both). Quotes in the prose are no longer
+  underlined, and a citation chip underlines only on hover.
 - **Open threads** shows all supported obligations with direct record links.
   Within each direction section, rows keep their date without repeating the
   direction tag. **Memory changes** keeps cited field changes separate from

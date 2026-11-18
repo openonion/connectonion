@@ -258,7 +258,8 @@ def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(re
       delete r.original; delete r.translations; KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
     card = page.locator(".person-head .pcard")
-    assert card.is_visible() and page.locator("details.deep-note[open]").count() == 0
+    # The card is in the header, outside Full memory: it shows whether or not Full memory is open (#3104 opens it).
+    assert card.is_visible() and card.evaluate("n => !n.closest('details')")
     name, box = _box(page.locator(".person-head h1")), _box(card)
     assert name["y"] + name["height"] <= box["y"] < 844, "the card is under the name, on the first screen"
     labels = card.locator(".pc-k").all_inner_texts()
