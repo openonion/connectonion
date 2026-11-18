@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc20**: REM's night workers run at the configured reasoning effort, `co rem catchup` and the
+Release candidate **1.9.6rc21**: when `co send` cannot reach the receiver directly, a file of up to 10 MB waits on the
+server for 7 days, encrypted to the receiver, and `co receive` there takes it; `co browser keyboard_type` pastes text
+in one event instead of typing it key by key. See [1.9.6rc21 notes](releases/1.9.6rc21.md).
+Before it, release candidate **1.9.6rc20**: REM's night workers run at the configured reasoning effort, `co rem catchup` and the
 scheduled turn can no longer work one notebook at the same time, and a worker turn that times out parks its page
 instead of ending the night. See [1.9.6rc20 notes](releases/1.9.6rc20.md).
 Before it, release candidate **1.9.6rc19**: `co send` sends files to another agent byte for byte, verified by sha256, and
@@ -102,7 +105,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc20'
+python -m pip install --upgrade 'connectonion==1.9.6rc21'
 ```
 
 ## Previous stable
