@@ -126,7 +126,7 @@ async def test_async_click_keeps_button_count_box_and_cursor_contract(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_async_latin_typing_is_per_character_and_non_blocking(monkeypatch):
+async def test_async_human_typing_is_per_character_and_non_blocking(monkeypatch):
     page = FakePage()
     yielded = []
 
@@ -134,7 +134,7 @@ async def test_async_latin_typing_is_per_character_and_non_blocking(monkeypatch)
         yielded.append(delay)
 
     monkeypatch.setattr(humanize.asyncio, "sleep", record_sleep)
-    await humanize.type_text(page, "hi there", asyncio.Lock())
+    await humanize.type_text(page, "hi there", asyncio.Lock(), human=True)
 
     assert [event[1] for event in page.log if event[0] == "type"] == list("hi there")
     assert len(yielded) >= len("hi there")
@@ -368,3 +368,27 @@ async def test_async_refused_paste_still_falls_back_to_the_ime(os_clipboard):
 
     assert page.content == "你好"
     assert [event[1] for event in page.log if event[0] == "cdp"].count("Input.insertText") == 2
+
+
+@pytest.mark.asyncio
+async def test_long_latin_text_is_one_paste_not_a_keystroke_per_character(os_clipboard):
+    """#2901: 1,402 characters key by key outran the CLI's 120 s timeout at 610."""
+    page = EditorPage("", os_clipboard)
+    text = "Kim's hook, typed into a share box. " * 39
+
+    await humanize.type_text(page, text, asyncio.Lock())
+
+    assert page.content == text
+    assert [event for event in page.log if event[0] == "type"] == []
+    assert page.log.count(("press", "Meta+v")) == 1
+    assert os_clipboard["value"] == "saved"
+
+
+@pytest.mark.asyncio
+async def test_a_field_that_refuses_paste_is_typed_key_by_key(os_clipboard):
+    page = EditorPage("", os_clipboard, accepts_paste=False)
+
+    await humanize.type_text(page, "hi", asyncio.Lock())
+
+    assert page.content == "hi"
+    assert [event[1] for event in page.log if event[0] == "type"] == ["h", "i"]

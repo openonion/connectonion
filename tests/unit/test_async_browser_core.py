@@ -898,13 +898,13 @@ async def test_keyboard_type_uses_runtime_clipboard_lock_and_exact_result(monkey
     browser._pages[None] = FakePage()
     calls = []
 
-    async def type_text(page, text, lock):
-        calls.append((page, text, lock))
+    async def type_text(page, text, lock, human):
+        calls.append((page, text, lock, human))
 
     monkeypatch.setattr(async_mod.humanize, "type_text", type_text)
     result = await browser.keyboard_type("hello 世界")
 
-    assert calls == [(browser.page, "hello 世界", browser._clipboard_lock)]
+    assert calls == [(browser.page, "hello 世界", browser._clipboard_lock, False)]
     assert (
         result
         == """Typed: 'hello 世界'
@@ -1430,8 +1430,8 @@ async def test_humanized_type_mouse_and_near_anchor_are_fully_awaited(monkeypatc
     async def click(_page, x, y, **_kwargs):
         events.append(("click", x, y))
 
-    async def type_text(_page, text, lock):
-        assert lock is browser._clipboard_lock
+    async def type_text(_page, text, lock, human):
+        assert lock is browser._clipboard_lock and human is False
         events.append(("type", text))
 
     async def sleep(delay):
