@@ -1638,6 +1638,9 @@
   .approval-row summary { cursor: pointer; min-height: 32px; }
   .approval-row textarea { box-sizing: border-box; width: 100%; min-height: 140px; padding: 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: var(--radius); font: inherit; resize: vertical; }
   .approval-undo { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box; width: max-content; max-width: calc(100vw - 24px); display: flex; align-items: center; gap: 16px; padding: 12px 18px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); z-index: 30; }
+  /* The phone's drop-from-the-top rule (max-width 600px, above) came before this one, so this bottom won and the bar
+     ran from 12px to 16px off the foot: a white sheet over the whole of Today after every held Send (sprint 22). */
+  @media (max-width: 600px) { .approval-undo { bottom: auto; } }
   @media (max-width: 600px) { #approval-sheet { padding: 16px; } #approval-sheet footer { bottom: -16px; } .approval-content .kind-badge { display: block; margin: 6px 0; } }
   /* People and a person (round 4): one sans family, rows not tables, one green primary. */
   .r4 {
@@ -2114,7 +2117,7 @@
   }
   .qcard .qfull { display: none; }
   .qcard.focal.open .qfull { display: inline-flex; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
-  .btn-act:disabled, .btn-act:disabled:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
+  .btn-act:disabled, .btn-act:disabled:hover, .btn-act[aria-disabled="true"], .btn-act[aria-disabled="true"]:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
   .snapshot-line, .lead-why, .close-why { margin: 0 0 var(--u1); font-size: var(--s-meta); color: var(--grey); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
@@ -2199,6 +2202,8 @@
     /* Buttons keep their words whole ("Skip", not "Ski / p"); a hint waiting on REM's question takes its own
        line above them instead of squeezing them. */
     .qcard.open .mail-actions > button { flex-shrink: 0; white-space: nowrap; }
+    /* Full screen is a thumb's height like Send beside it, so the row's buttons share one top. */
+    .qcard.open .mail-actions > .mail-write { min-height: 44px; }
     .qcard.open .mail-actions > .choose-hint { order: -1; flex-basis: 100%; }
     .qcard.open .mail-actions .mail-note, .qcard.open .mail-actions .edit-provider { display: none; }
     .handoff .btn-quiet, .stale .stale-acts .btn-quiet { min-height: 44px; }
@@ -3174,7 +3179,8 @@
     font: var(--w-bold) var(--s-body)/1 var(--font); transition: transform var(--t-press) var(--spring); }
   .btn-act:hover { background: var(--green); color: var(--on-green) !important; transform: translateY(-1px); }
   /* Green means the action is available: a disabled primary (a snapshot, an unanswered question) is a well. */
-  .btn-act:disabled, .btn-act:disabled:hover { background: var(--well); color: var(--grey) !important; box-shadow: none; transform: none; }
+  /* aria-disabled: a Send waiting for a filled part looks unready but still answers a click with what is missing. */
+  .btn-act:disabled, .btn-act:disabled:hover, .btn-act[aria-disabled="true"], .btn-act[aria-disabled="true"]:hover { background: var(--well); color: var(--grey) !important; box-shadow: none; transform: none; }
   .btn-quiet { min-height: 32px; padding: 0 10px; border-radius: var(--radius); color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); }
   .btn-quiet:hover { color: var(--ink); background: var(--well); }
   @media (max-width: 820px), (pointer: coarse) { .btn-act, .card-acts .btn-act { min-height: 44px; } }
@@ -3300,7 +3306,8 @@
   .qdraft .mail-actions { border: 0; background: none; padding: 12px 18px 14px; }
   .qdraft .mail-choices { border: 0; }
   .mail-actions .btn-act { margin-left: auto; }
-  .mail-actions .mail-note { opacity: 0; transition: opacity var(--t-press) var(--ease-out); color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  /* The note gives way, never Send: with Write full screen in the row it shrinks to an ellipsis instead of wrapping Send. */
+  .mail-actions .mail-note { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; transition: opacity var(--t-press) var(--ease-out); color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .mail-actions:hover .mail-note, .mail-actions:focus-within .mail-note { opacity: 1; }
   .more-menu { position: relative; }
   .more-menu > summary { list-style: none; width: 38px; height: 38px; border-radius: var(--radius); display: grid; place-items: center; color: var(--grey); cursor: pointer; }
@@ -3344,6 +3351,64 @@
   .stale .stale-acts { display: flex; gap: 2px; }
   .stale .stale-acts .btn-quiet { min-height: 32px; padding: 0 8px; }
   .stale .stale-more { display: inline-block; color: var(--grey); font-size: var(--s-meta); }
+  /* ---- Today: work in hand, what was closed, the item's second level (#3072) ---- */
+  .work-strip { max-width: 760px; margin: 14px 0; padding: 0 16px; border-radius: var(--r-inner); background: var(--well); }
+  .work-strip > summary { display: list-item; padding: 10px 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-body) var(--font); cursor: pointer; }
+  .work-rows, .closed-rows { list-style: none; margin: 0; padding: 0 0 8px; }
+  .work-row, .closed-row { padding: 10px 0; border-top: 1px solid var(--rule); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .work-row > a, .closed-row > a { color: var(--ink); font-weight: var(--w-bold); }
+  .work-what, .closed-what { margin: 2px 0; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .work-state { margin: 4px 0 0; color: var(--grey); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  #today-closed { max-width: 760px; margin: 20px 0 0; }
+  .closed-fold > summary { display: list-item; padding: 12px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); cursor: pointer; }
+  .closed-fold > summary:hover { color: var(--ink); }
+  .closed-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; }
+  .closed-row > a, .closed-row .closed-what { grid-column: 1; }
+  .closed-row .closed-when { grid-column: 1; color: var(--grey); }
+  .closed-row .bring-back { grid-column: 2; grid-row: 1 / span 3; min-height: 44px; color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+  .done-notice .closed-link { text-decoration: underline; text-underline-offset: 3px; }
+  .put-off-note, .hand-failed { margin: 6px 0 0; padding: 8px 12px; border-radius: var(--r-inner); background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .hand-failed { color: var(--red); }
+  .handoff:has(> .hand-failed, > .put-off-note) { display: flex; flex-direction: column; }
+  .handoff > .hand-failed, .handoff > .put-off-note { order: -1; margin: 0 0 8px; }
+  .later-ask { color: var(--grey); margin-right: 4px; }
+  .open-chips { display: flex; gap: 8px; margin: 4px 0 16px; padding: 4px 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .open-chips .chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: var(--r-pill); box-shadow: var(--e-ring);
+    color: var(--ink); background: var(--raised); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-decoration: none; }
+  .open-chips .chip.on { background: var(--ink); color: var(--paper); }
+  .open-chips .chip-n { color: var(--grey); }
+  .open-chips .chip.on .chip-n { color: inherit; }
+  .bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 18px; }
+  .bulk-bar .bulk-done { min-height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill); box-shadow: var(--e-ring); background: var(--raised); color: var(--ink);
+    font: var(--w-bold) var(--s-ui)/var(--lh-body) var(--font); cursor: pointer; }
+  .bulk-bar .btn-quiet { min-height: 44px; }
+  .context-sheet .talk-menu > summary { display: none; }
+  /* The sheet's Talk it over is one row of two buttons a thumb high, in ink and flush with the sheet's text; the
+     menu's column (flex-direction from .talk-choices) left them grey words indented under the heading (sprint 22). */
+  .context-sheet .talk-menu .talk-choices { position: static; display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--u2); min-width: 0; padding: 0; border: 0; box-shadow: none; background: none; }
+  .context-sheet .talk-choices [data-talk] { min-height: 44px; padding: 0 var(--u3); border-radius: var(--r-pill); box-shadow: var(--e-ring); background: var(--raised); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .context-sheet .talk-choices [data-talk]:hover { background: var(--well); }
+  .handoff-line .later-choice { color: var(--ink); font-weight: var(--w-bold); }
+  .deck-rest { max-width: 760px; margin: 44px 0 0; text-align: left; }
+  .deck-rest a { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+  dialog.context-sheet { inset: 0 0 0 auto; width: min(460px, 100vw); height: 100vh; max-height: 100vh; margin: 0; border-radius: var(--r-card); border-top-right-radius: 0; border-bottom-right-radius: 0; overflow-y: auto; }
+  .context-part { margin-top: 20px; }
+  .context-part h3 { margin: 0 0 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .context-words { margin: 0; color: var(--ink); font: var(--w-regular) var(--s-body)/var(--lh-body) var(--font); }
+  .context-fact, .context-from { margin: 4px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .context-messages { list-style: none; margin: 0; padding: 0; }
+  .context-message { padding: 8px 0; border-top: 1px solid var(--rule); }
+  .context-message:first-child { border-top: 0; padding-top: 0; }
+  .context-excerpt { margin: 6px 0 0; padding: 10px 12px; border-radius: var(--r-inner); background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .context-links { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .context-links a { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+  @media (max-width: 640px) {
+    dialog.context-sheet { inset: auto 0 0 0; width: 100%; height: auto; max-height: 85vh; border-radius: var(--r-card); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    .work-row .btn-quiet, .closed-fold > summary, .work-strip > summary, .later-choice, .later-cancel { min-height: 44px; }
+    /* A card with a reply ready keeps Send on the first screen: its rows stay short until More of this card, and the
+       item's second level waits behind that same word instead of taking a third line of the strip. */
+    .qcard:has(.qdraft):not(.full) .handoff-line > .strip-more, .qcard:has(.qdraft):not(.full) .handoff-line > .sep:has(+ .strip-more) { display: none; }
+  }
   #today-stale { max-width: 760px; margin: 28px 0 0; }
   #today-stale > summary { display: list-item; padding: 12px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/20px var(--font); cursor: pointer; }
   #today-stale > summary:hover { color: var(--ink); }
@@ -3386,7 +3451,7 @@
     :is(.qcard, .stale, .quiet-list) .handoff-line :is(.btn-quiet, .talk-menu > summary, .handed) { padding: 0 8px; white-space: nowrap; }
     /* The closes and the hand-offs are full touch targets on a phone, disabled in a snapshot or not (#2990); .qkind
        outranks the card's compact 28px strip above. */
-    :is(.qcard .qkind, .stale, .quiet-list, .threads) .handoff-line :is(.strip-done, .strip-later, .strip-ignore, [data-agent]) { min-height: 44px; }
+    :is(.qcard .qkind, .stale, .quiet-list, .threads) .handoff-line :is(.strip-done, .strip-later, .strip-ignore, .strip-more, .later-choice, .later-cancel, [data-agent]) { min-height: 44px; }
     .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
     .card-acts .btn-act { min-height: 44px; }
     .qdraft .qcard.focal.open .mail-actions, .qcard.focal.open .qdraft .mail-actions { padding: 6px 10px; }
@@ -3772,7 +3837,9 @@ const UI = {
     "1 choice left: ": "还有 1 处要选：", "{n} choices left: ": "还有 {n} 处要选：",
     "1 more person": "还有 1 人", "{n} more people": "还有 {n} 人",
     "Sent to {name}.": "已发给 {name}。",
-    "Held until {time}; you can still undo it.": "{time} 前还可以撤回。",
+    "Sending to {name} at {time}.": "{time} 发给 {name}。",
+    "Working…": "正在处理…",
+    "You can still undo it.": "还可以撤回。",
     "It went out now and cannot be undone.": "已直接发出，无法撤回。",
     "Hand to {agent}": "交给 {agent}", "Take back from {agent}": "从 {agent} 撤回交办",
     "Updates waiting": "有更新",
@@ -4000,6 +4067,33 @@ const UI = {
     "Not confirmed by the sources": "来源未确认",
     "not confirmed by sources": "来源未确认",
     "Your day": "今天的安排",
+    // Today's actions (#3072): where a closed item went, when a put-off comes back, work in hand, the second level
+    "Finished today: {n}": "今天已完成：{n}", "Put off: {n}": "已推后：{n}", "Finished and put off": "已完成和已推后",
+    "This list is today's and empties at midnight. Earlier ones stay at the foot of Waiting on you.": "这里只列今天的，过了零点清空。更早的在「等你处理」页面底部。",
+    "Each comes back to Today at the time it says, or sooner if new mail arrives.": "每一条到了写明的时间会回到今天；有新邮件会更早回来。",
+    "Bring back": "放回去", "Bring back now": "现在放回去", "back when new mail arrives": "有新邮件时回来",
+    "Put off · {back}": "已推后 · {back}", "back tonight at {time}": "今晚 {time} 回来", "back on {date}": "{date} 回来",
+    "Bring it back:": "什么时候再看：", "Tonight": "今晚", "Tomorrow": "明天", "Cancel": "取消", "In 3 days": "3 天后", "Next week": "下周",
+    "You put this off on {date}; new mail brought it back.": "你在 {date} 推后了这件事；来了新邮件，所以回来了。",
+    "You put this off on {date}; it is back as you asked.": "你在 {date} 推后了这件事；到了你定的时间，所以回来了。",
+    "This card is the most pressing 1 of the {n} waiting on you.": "等你处理的有 {n} 件，这张卡片是最要紧的 1 件。",
+    "These cards are the most pressing {k} of the {n} waiting on you.": "等你处理的有 {n} 件，这些卡片是最要紧的 {k} 件。", "See all {n} →": "看全部 {n} 件 →",
+    "Handing 1 thing to {agent}…": "正在把 1 件事交给 {agent}…", "Handing {n} things to {agent}…": "正在把 {n} 件事交给 {agent}…",
+    "{agent} is working on 1 thing": "{agent} 正在做 1 件事", "{agent} is working on {n} things": "{agent} 正在做 {n} 件事",
+    "{agent} finished 1 thing": "{agent} 做完了 1 件事", "{agent} finished {n} things": "{agent} 做完了 {n} 件事",
+    "{agent} stopped before finishing 1 thing": "{agent} 有 1 件事没做完就停了", "{agent} stopped before finishing {n} things": "{agent} 有 {n} 件事没做完就停了",
+    "started just now": "刚刚开始", "started {n} min ago": "{n} 分钟前开始", "started {time}": "{time} 开始", "Show its card": "看这张卡片",
+    "{agent} did not take this: {why}": "{agent} 没有接下这件事：{why}",
+    "This page can no longer reach REM, so nothing was handed over. Open REM again and act from the page it opens.": "这个页面已经连不上 REM，所以没有交出去。重新打开 REM，在它打开的页面里操作。",
+    "Filter the open items": "筛选未完成事项", "Clear this filter": "取消这个筛选",
+    "I replied, waiting on them": "我回了，等对方", "I still owe a reply or an action": "还等我回复或处理",
+    "Put all {n} off until…": "全部 {n} 件推后到…",
+    "{n} put off · {back}": "已推后 {n} 件 · {back}", "{n} marked done": "已完成 {n} 件",
+    "Nothing open under this filter": "这个筛选下没有未完成的事", "Show everything open →": "看全部未完成的事 →",
+    "Show more": "更多背景", "Why it is here": "为什么在这里", "The message": "原始消息", "Related": "相关页面",
+    "{name} has waited since {date}": "{name} 从 {date} 等到现在", "Open since {date}": "从 {date} 起未结",
+    "Your later mail looks like it settled this.": "你后来的邮件看起来已经解决了这件事。", "This item cites no message the page carries.": "这一条没有引用页面带着的消息。",
+    "Microsoft To Do has no open to-dos.": "Microsoft To Do 里没有未完成的待办。", "The last read, on {when}, found none open.": "上次在 {when} 读取时没有未完成的待办。",
     "To-dos": "待办", "To-do": "待办", "List: {list}": "清单：{list}", "No open to-dos.": "没有未完成的待办。",
     "overdue since {date}": "{date}起已过期", "due today": "今天到期", "due {date}": "{date}到期", "no due date": "没有期限",
     "{n} more to-dos in Microsoft To Do.": "Microsoft To Do 里还有 {n} 项待办。",
@@ -5484,7 +5578,13 @@ function threads(r) {
   const original = rawSection({ ...r, text: sourceText }, "Open threads");
   if (!original) return { items: [], calm: "" };
   const all = listItems(original);
-  const displayed = listItems(rawSection(r, "Open threads"));
+  // The lines as the reader's language has them (#3072): a cached translation keeps the page's headings and its
+  // list, so line n of its Open threads is line n of the original. Today never switches a page's shown version, so
+  // without this its rows stayed English on a 中文 reader whose pages were already translated. A translation whose
+  // list is not the same length is not trusted line by line: the originals show, marked 原文, never a guess.
+  const language = uiLanguage === "en" || r.shown ? "" : Object.keys(r.translations || {}).find(tag => tag === uiLanguage || tag.split("-")[0] === uiLanguage);
+  const translated = language ? listItems(rawSection({ ...r, text: r.translations[language] }, "Open threads")) : [];
+  const displayed = translated.length === all.length ? translated : listItems(rawSection(r, "Open threads"));
   const calmAt = all.findIndex(isCalm);
   const calm = calmAt < 0 ? "" : displayed[calmAt] || all[calmAt];
   const today = calendarDay(REM.as_of);
@@ -5613,8 +5713,16 @@ function threadStorageKey() {
   return "co-rem-threads:" + shortHash(REM.root || "");
 }
 function isDone(entry) {
-  const value = threadStates[doneKey(entry)];
-  return ["done", "skipped", "ignored"].includes(value?.state) && !value.returned_at;
+  return closedMark(threadStates[doneKey(entry)]);
+}
+// The reader's clock, in one place: a put-off's choices, when it is over, and what "today" a finished item belongs to.
+function clockNow() { return Date.now(); }
+function localDay(at) { return new Date(at).toLocaleDateString("en-CA"); }
+// Not now carries the moment the owner chose (#3072: «暂不处理，我不知道下次怎么给我»). Once it has passed the mark no
+// longer closes the item, on a page left open as much as in the next night's list (threads.listing says the same).
+function putOffOver(value) { return value?.state === "skipped" && !!value.until && Date.parse(value.until) <= clockNow(); }
+function closedMark(value) {
+  return ["done", "skipped", "ignored"].includes(value?.state) && !value.returned_at && !putOffOver(value);
 }
 // What the owner did, in his words: 忽略 is its own state (ignored), so an ignored ad never reads 已完成.
 function stateWord(state) {
@@ -5674,7 +5782,7 @@ function notebookTook(key, value, { keys = [key], ...decision }) {
 async function sendThreadState(key, value) {
   if (pendingThreads[key] !== value) return true;
   const response = await fetch("/rem/thread", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key, state: value.state, versions: value.versions, keys: value.keys, device: navigator.platform || "browser" }) }).catch(() => null);
+    body: JSON.stringify({ key, state: value.state, versions: value.versions, keys: value.keys, until: value.until, device: navigator.platform || "browser" }) }).catch(() => null);
   if (!response || response.status === 409 || response.status >= 500) return false;
   const keys = response.ok ? notebookTook(key, value, await response.json()) : value.keys || [key];
   if (pendingThreads[key] !== value) return true;
@@ -5695,8 +5803,9 @@ async function saveThreadState(key, value) {
   return threadWrite;
 }
 // The mark one click makes: every key of the thread, the mail it cites as this page showed it, and what its drafts were.
-function threadMark(key, members, done, state) {
-  const value = { state: done ? state : "open", at: new Date().toISOString(), device: navigator.platform || "browser" };
+function threadMark(key, members, done, state, until = null) {
+  const value = { state: done ? state : "open", at: new Date(clockNow()).toISOString(), device: navigator.platform || "browser" };
+  if (done && state === "skipped" && until) value.until = until;
   value.keys = [...new Set([...members.map(doneKey), ...(threadStates[key]?.keys || [])])];
   value.versions = citedVersions(members, REM.mail_versions || {});
   value.draft_statuses = Object.assign({}, ...value.keys.map(item => threadStates[item]?.draft_statuses || {}));
@@ -5717,10 +5826,10 @@ function markDrafts(related, value, done, state) {
 // set aside their statuses back when the notebook refuses it.
 // A snapshot keeps no mark: a file:// page's storage is not the live reader's and nothing carries a mark from one
 // to the other, so a "saved on this device" there was a promise nobody kept (#2990 review). null: nothing marked.
-function markThread(entry, done, state = "done", entries = [entry]) {
+function markThread(entry, done, state = "done", entries = [entry], until = null) {
   if (!liveHere()) return null;
   const key = doneKey(entry), members = entries.flatMap(item => item.members || [item]);
-  const value = threadMark(key, members, done, state);
+  const value = threadMark(key, members, done, state, until);
   const related = (REM.drafts || []).filter(d => d.thread && members.some(item => obligationEvidence(item).ids.has("thread:" + d.provider + ":" + d.thread)));
   const statuses = related.map(draft => draft.status);
   markDrafts(related, value, done, state);
@@ -5731,21 +5840,28 @@ function markThread(entry, done, state = "done", entries = [entry]) {
   }
   return { saved, restore: () => related.forEach((draft, i) => { draft.status = statuses[i]; }) };
 }
-function setDone(entry, done, state = "done", entries = [entry], extra = null) {
-  const mark = markThread(entry, done, state, entries);
+// until: when a Not now comes back (laterChoices); a mark without one waits for new mail, as before.
+function setDone(entry, done, state = "done", entries = [entry], extra = null, until = null) {
+  const mark = markThread(entry, done, state, entries, until);
   if (!mark) return Promise.resolve(false);
   const { saved, restore } = mark;
   const scroll = window.scrollY;
   render();
   window.scrollTo(0, scroll);
   document.getElementById("done-notice")?.remove();
-  const notice = done ? doneNotice(entry, state, entries, extra) : null;
+  const notice = done ? doneNotice(entry, state, entries, extra, until) : null;
   return saved.then(synced => {
     if (synced === "refused") {
       restore();
-      notSavedNotice(() => setDone(entry, done, state, entries, extra), notice);
+      notSavedNotice(() => setDone(entry, done, state, entries, extra, until), notice);
     }
-    if (synced) render();
+    // The save's own redraw keeps the page where it was: it used to draw from the top, so on a phone the answer to
+    // Mark done was the page jumping back to its first screen (#3072).
+    if (synced) {
+      const at = window.scrollY;
+      render();
+      window.scrollTo(0, at);
+    }
     // A refusal has its own words, and the "Saved" still showing belongs to a later mark.
     const status = synced !== "refused" && document.getElementById("thread-save-status");
     if (status) status.textContent = t(synced ? "Saved in notebook" : "Saved on this device — sync pending");
@@ -5773,11 +5889,17 @@ function focusRaisedCard() {
 // The notice holds the focus while it shows: Enter undoes, E closes the next card. When Undo is used or the
 // notice goes, the focus returns to the raised card, so the keys go on working.
 // extra: one more worded choice after Undo (忽略's "stop showing this sender"); it gets time to be read and tapped.
-function doneNotice(entry, state, entries, extra) {
+// The notice says what happened and where the item went (#3072: «我想把它标成没完成怎么办»): its last words name the
+// list on Today that now holds it, Finished today or Put off, with that list's count, and open it.
+function doneNotice(entry, state, entries, extra, until = null) {
   const undo = el("button", { type: "button", text: t("Undo") });
-  undo.onclick = () => { setDone(entry, false, "done", entries); focusRaisedCard(); };
+  // What comes back goes in front again, so Undo shows the card it was pressed for.
+  undo.onclick = () => { todayLead = (entry.who || entry.r).path; setDone(entry, false, "done", entries); focusRaisedCard(); };
   const status = el("span", { id: "thread-save-status", text: t("Saving…") });
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t(state === "skipped" ? "Not now · returns with new mail" : state === "ignored" ? "Ignored · this one will not come back" : "Marked done"), " · ", undo, ...(extra ? [" · ", extra()] : []), " · ", status]);
+  const words = state === "skipped" ? (until ? t("Put off · {back}", { back: backWords(until) }) : t("Not now · returns with new mail"))
+    : t(state === "ignored" ? "Ignored · this one will not come back" : "Marked done");
+  const where = closedLink(state === "skipped" ? "put-off" : "finished-today");
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [words, " · ", undo, ...(extra ? [" · ", extra()] : []), " · ", status, ...(where ? [" · ", where] : [])]);
   document.body.appendChild(notice);
   undo.focus({ preventScroll: true });
   noticeLeaves(notice, extra ? 12000 : 5000);
@@ -5920,7 +6042,10 @@ function openWriter(draft, who, onSend) {
         draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
         el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]),
       body,
-      el("div", { class: "writer-actions" }, [send, close, notice, el("span", { class: "mail-note", text: t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" }) })])]),
+      el("div", { class: "writer-actions" }, [send, close, notice, el("span", { class: "mail-note", text: (draft.channel || "mail") === "mail"
+        ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" })
+        // A Lark or WhatsApp reply leaves through that chat, as the card says, never through the mailbox it answers.
+        : t("Sends as you via {tool}", { tool: draft.channel === "lark" ? "lark-cli" : "co whatsapp" }) })])]),
     el("aside", { class: "writer-side" }, [
       who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
       who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
@@ -6038,7 +6163,9 @@ function replyDraftCard(draft, onSent) {
   const syncChoices = () => {
     for (const [i, marker] of Object.entries(markers)) marker.textContent = fills[i] || slotWhat(parts[i]);
     status.textContent = "";
-    if (REM.live) send.disabled = filled() === null;
+    // An open part leaves Send clickable and only looking unready (aria-disabled): a disabled button swallowed the
+    // owner's click without a word (2026-11-18, a Lark reply to the Jane card); the click now says what is missing.
+    if (REM.live) send.ariaDisabled = filled() === null ? "true" : null;
     hint.hidden = filled() !== null;
     const open = parts.map((part, i) => i).filter(i => isSlot(parts[i]) && !fills[i]);
     if (open.length) chooseHint(hint, open.map(i => [slotName(parts, i), rowAt[i]]));
@@ -6051,17 +6178,18 @@ function replyDraftCard(draft, onSent) {
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const edit = el("button", { type: "button", class: "btn-quiet edit-provider", text: t("Edit in {provider}", { provider }) });
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
-  const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen"), "data-key": "r" });
+  const write = el("button", { type: "button", class: "btn-quiet mail-write", text: t("Write full screen"), "data-key": "r" });
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
   const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, ["mail", "lark", "whatsapp"].map(name => {
     const pill = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), text: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]) });
     if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
     return pill;
   }));
-  // Send is the one green action; writing full screen, editing in the mail app and Skip wait behind 更多 (D-120).
+  // Send is the one green action. Writing full screen stays in sight beside it: behind 更多 the owner could not find
+  // it (sprint 22); editing in the mail app and Skip wait behind 更多 (D-120).
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
-    el("div", { class: "menu" }, [write, ...(channel === "mail" ? [edit] : []), skip])]);
-  const actions = el("div", { class: "mail-actions" }, [more, hint,
+    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), skip])]);
+  const actions = el("div", { class: "mail-actions" }, [more, write, hint,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), send]);
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
@@ -6125,12 +6253,20 @@ function replyDraftCard(draft, onSent) {
     REM.approval_outcomes = (REM.approval_outcomes || []).filter(other => other.id !== item.id);
     REM.approval_pending = [...(REM.approval_pending || []).filter(other => other.id !== item.id), { ...item, ...value }];
     REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: value.status } : d);
-    card.replaceChildren(el("p", { class: "mail-done", text: t("Sent to {name}", { name: who?.title || to.name }) }));
+    const release = value.release_at || reply.release_at;
+    card.replaceChildren(el("p", { class: "mail-done", role: "status", text: value.status === "held" && release
+      ? t("Sending to {name} at {time}.", { name: who?.title || to.name, time: fmtTime(release) }) : t("Sent to {name}", { name: who?.title || to.name }) }));
     onSent?.(value.status === "held" ? { ids: [item.id], release_at: value.release_at || reply.release_at } : null);
   };
   send.onclick = () => {
     const body = filled();
-    if (body === null) {status.textContent = t("Fill the marked part first"); return;}
+    if (body === null) {
+      status.textContent = t("Fill the marked part first");
+      const first = choiceRows.find(row => row.querySelector("input") ? !row.querySelector("input").value.trim() : !row.querySelector('[aria-pressed="true"]'));
+      first?.scrollIntoView({ block: "center", behavior: motionStilled() ? "auto" : "smooth" });
+      first?.querySelector("input, button")?.focus({ preventScroll: true });
+      return;
+    }
     deliver(body === draft.body ? undefined : body);
   };
   write.onclick = () => {
@@ -7440,10 +7576,20 @@ function motionStilled() {
 }
 // A handled card slides right and fades, then the page re-renders with an Undo.
 // A snapshot keeps no mark (stripDone says why), so E and the palette's Mark done do nothing there either.
-function closeEntries(node, entries, state = "done", extra = null) {
+function closeEntries(node, entries, state = "done", extra = null, until = null) {
   if (!entries.length || !liveHere()) return;
   node?.classList.add("leaving");
-  setTimeout(() => setDone(entries[0], true, state, entries, extra), motionStilled() ? 0 : 240);
+  leadAfter(node?.closest(".qcard"), entries.length);
+  setTimeout(() => setDone(entries[0], true, state, entries, extra, until), motionStilled() ? 0 : 240);
+}
+// What is in front once `gone` rows of this card have left (#3072: «它又回到那个东西»). A card that empties gives its
+// place to the card after it; the deck used to deal its first card again, the one he had just skipped past. A card
+// with rows left stays where it is, its next row moving up.
+function leadAfter(card, gone) {
+  if (!card) return;
+  const cards = [...document.querySelectorAll("#main .today-brief .qcard")], at = cards.indexOf(card);
+  const empties = card.querySelectorAll(".qitem").length <= gone;
+  todayLead = empties && cards.length > 1 ? cards[(at + 1) % cards.length].dataset.path : card.dataset.path;
 }
 // The card's head: the name (→ their page), their organisation as a chip, and the fuse: days overdue in red,
 // or how long it has waited. Skip to the next card appears on hover (S), and on a card of several rows so
@@ -7485,7 +7631,7 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false, l
   // one, by sliding it out.
   // E closes the whole card, so a row that is one of several does not claim the key.
   // Mark done, Not now and Ignore all leave this way (state), so the three closes look alike.
-  const close = (event, state = "done", extra = null) => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry], state, extra);
+  const close = (event, state = "done", extra = null, until = null) => closeEntries(event.currentTarget.closest(many ? ".qitem" : ".qcard"), [entry], state, extra, until);
   // Its actions, context and source show on hover or focus (D-120); a tap opens them on a phone.
   const item = el("li", { class: "qitem" + (overdueDays(entry.t) ? " late" : "") + (handled ? " handled" : "") }, [
     own ? el("p", { class: "words own", text: own, title: words })
@@ -7501,8 +7647,13 @@ function cardDraft(draft, group) {
   const sent = held => {
     // Sent at once: one reply answers every item on the card. Held: Undo must bring them all back.
     if (!held && n > 1) setDone(group.entries[0], true, "done", group.entries);
-    todaySent = { name: threadWho(group.r), ...(held || {}) };
-    document.querySelector('.qcard[data-path="' + CSS.escape(group.r.path) + '"]')?.classList.add("leaving");
+    todaySent = { name: threadWho(group.r), path: group.r.path, ...(held || {}) };
+    const card = document.querySelector('.qcard[data-path="' + CSS.escape(group.r.path) + '"]');
+    card?.classList.add("leaving");
+    // The card after it comes forward, as after every action; when another reply is ready to send, that one does
+    // (deckOrder puts it on top), so a run of Sends goes on without a card in between.
+    leadAfter(card, n);
+    if ([...document.querySelectorAll('#main .today-brief .qcard[data-step="send"]')].some(other => other !== card)) todayLead = null;
     setTimeout(render, motionStilled() ? 0 : 320);
   };
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
@@ -7533,6 +7684,7 @@ function sentNote() {
       if (item.draft_id) REM.drafts = (REM.drafts || []).map(d => d.id === item.draft_id ? { ...d, status: "prepared" } : d);
     }
     REM.approval_pending = (REM.approval_pending || []).filter(item => !cancelled.includes(item.id));
+    todayLead = todaySent.path;  // the reply he took back is in front again
     todaySent = null;
     render();
   };
@@ -7540,8 +7692,9 @@ function sentNote() {
     clearTimeout(sentNote.timer);
     sentNote.timer = setTimeout(() => document.querySelector(".qsent")?.replaceWith(sentNote() || ""), Date.parse(todaySent.release_at) - Date.now() + 50);
   }
-  return el("li", { class: "qsent" }, [el("p", { class: "lede", text: t("Sent to {name}.", { name: todaySent.name }) }),
-    el("p", { class: "meta" }, held ? [t("Held until {time}; you can still undo it.", { time: fmtTime(todaySent.release_at) }), " ", undo, " ", status]
+  return el("li", { class: "qsent" }, [el("p", { class: "lede", text: held ? t("Sending to {name} at {time}.", { name: todaySent.name, time: fmtTime(todaySent.release_at) })
+    : t("Sent to {name}.", { name: todaySent.name }) }),
+    el("p", { class: "meta" }, held ? [t("You can still undo it."), " ", undo, " ", status]
       : [t(todaySent.ids ? "Hold ended. Delivery continues from the Host." : "It went out now and cannot be undone.")])]);
 }
 // 交给 Codex / 交给 Claude (D-100) on every unfinished row: REM starts the work now, with that agent
@@ -7576,7 +7729,8 @@ function handOff(entry, mark, lead) {
   const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark, lead);
   const show = () => line.replaceChildren(...parts());
   const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
-  return el("div", { class: "handoff" }, [line, panel]);
+  // What the row has to say about itself before anything is pressed: a hand-off the Host refused, a put-off that is back.
+  return el("div", { class: "handoff" }, [line, panel, handFailedNote(entry), putOffNote(entry)]);
 }
 // 标为完成 sits in the strip on every row, before and after a hand-off (owner, 2026-11-11: «为什么不能标记
 // 已完成呢？标记完成不在那个里面啊»). It is the row's own setDone, so a failure or an offline save reads the
@@ -7596,16 +7750,46 @@ function handOff(entry, mark, lead) {
 function stripDone(entry, mark, lead = false) {
   if (entry.ask || !entry.r || !entry.t) return [];
   // mark: the page's way of closing (Today slides the row out); all three use it, so they leave alike.
-  const close = (state, extra = null) => event => mark ? mark(event, state, extra) : setDone(entry, true, state, [entry], extra);
+  const close = (state, extra = null, until = null) => event => mark ? mark(event, state, extra, until) : setDone(entry, true, state, [entry], extra, until);
   const why = snapshotWhy("This is an offline snapshot; open REM to mark it.");
   const done = el("button", { type: "button", class: "btn-quiet strip-done" + (lead ? " strip-lead" : ""), text: t("Mark done"), ...why });
   done.onclick = close("done");
-  const later = el("button", { type: "button", class: "btn-quiet strip-later", text: t("Not now"), ...why });
-  later.onclick = close("skipped");
+  const later = el("button", { type: "button", class: "btn-quiet strip-later", "aria-haspopup": "true", text: t("Not now"), ...why });
+  later.onclick = event => laterChooser(event.currentTarget.closest(".handoff-line"), until => close("skipped", null, until));
   const ignore = el("button", { type: "button", class: "btn-quiet strip-ignore", text: t("Ignore"), ...why });
   const sender = todayRow(entry)?.sender;
   ignore.onclick = close("ignored", sender ? () => stopSenderButton(entry, sender) : null);
   return [done, later, ignore];
+}
+// Not now asks when (#3072: «暂不处理应该是比如过几天再看，或者今晚再看»). Before this it had no date: the item came
+// back only when new mail arrived on its thread, and nothing on the page said so after the notice left. The four
+// choices are moments on the reader's clock; new mail still brings the item back sooner. Tonight is 18:00 and is
+// not offered after it; next week is the coming Monday.
+function laterChoices() {
+  const now = new Date(clockNow()), at = (days, hour = 0) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, hour).toISOString();
+  return [now.getHours() < 18 ? ["Tonight", at(0, 18)] : null, ["Tomorrow", at(1)], ["In 3 days", at(3)],
+    ["Next week", at((8 - now.getDay()) % 7 || 7)]].filter(Boolean);
+}
+// "back tonight at 18:00", "back on Mon 5 Oct": the same words in the notice, the Put off list and the returned card.
+function backWords(until) {
+  const at = new Date(until), day = { weekday: "short", day: "numeric", month: "short" };
+  return localDay(at) === localDay(clockNow()) ? t("back tonight at {time}", { time: at.toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit" }) })
+    : t("back on {date}", { date: at.toLocaleDateString(uiLocale(), day) });
+}
+// The choices take the strip's place, in words, and Cancel or Escape puts the strip back with the focus on Not now.
+function laterChooser(line, choose) {
+  const kept = [...line.childNodes];
+  const back = () => { line.replaceChildren(...kept); line.onkeydown = null; line.querySelector(".strip-later")?.focus(); };
+  const choices = laterChoices().map(([label, until]) => {
+    const button = el("button", { type: "button", class: "btn-quiet later-choice", text: t(label) });
+    button.onclick = choose(until);
+    return button;
+  });
+  const cancel = el("button", { type: "button", class: "btn-quiet later-cancel", text: t("Cancel") });
+  cancel.onclick = back;
+  line.replaceChildren(el("span", { class: "later-ask", text: t("Bring it back:") }), ...dotted([...choices, cancel]));
+  line.onkeydown = event => { if (event.key === "Escape") { event.stopPropagation(); back(); } };
+  choices[0].focus();
 }
 // Why a snapshot's button does nothing, said on the button (its title, and for a screen reader aria-describedby,
 // pointing at the page's hidden sentence for that reason, whyNotes) and, for the closes, once in words on the card,
@@ -7676,26 +7860,122 @@ function handButtons(entry, show, panel, mark, lead) {
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
     const button = el("button", { type: "button", class: "btn-quiet" + (lead === "task" && agent === "codex" ? " strip-lead" : ""), "data-agent": agent,
       text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }), ...snapshotWhy("Handing work to an agent happens in the live reader.") });
-    button.onclick = async () => {
-      buttons.forEach(other => { other.disabled = true; });
-      status.textContent = t("Handing to {agent}…", { agent: name });
-      const reply = await hostPost("/rem/task", { action: "run", key: obligationKey(entry), agent });
-      if (!reply.ok) {
-        buttons.forEach(other => { other.disabled = false; });
-        status.textContent = t(reply.code === 400 ? "REM did not recognise this item. Reload the page and try again."
-          : reply.code === 401 ? "Your session expired. Reload the page."
-          : reply.code === 409 ? "This item has changed. Reload and try again."
-          : "REM is not answering right now. Try again in a moment.");
-        return;
-      }
-      const { ok, code, ...task } = reply;
-      keepTask(entry, { ...task, agent: task.agent || agent });
-      show();
-    };
+    button.onclick = event => handOver(entry, agent, show, event?.currentTarget?.closest(".qcard"), status);
     return button;
   });
   const talk = entry.ask ? null : talkMenu(entry, panel), closes = stripDone(entry, mark, lead === "done");
-  return [...dotted(todayStrip(buttons, talk, closes)), status];
+  return [...dotted(todayStrip(buttons, talk, closes, entry)), status];
+}
+// The click is the hand-off (#3072: «点了交给 Codex 就显示正在交给 Codex，也不跳到下一张»). The row is the agent's from
+// that moment: on a Today card it leaves the deck and the next card comes forward, and the work shows in the one
+// strip above the deck (workStrip); in a list the row says so in place. It used to wait for the Host's answer to
+// POST /rem/task with the buttons greyed, and that answer comes only after the agent's process has started. A
+// hand-off the Host refuses takes the row back: the card returns in front and says why (handFailedNote). A page
+// that cannot reach its Host at all says to open REM again, in words and never as a command to copy (D-60).
+const HAND_FAILED = new Map();
+function handRefusal(code) {
+  return code === 400 ? "REM did not recognise this item. Reload the page and try again."
+    : code === 401 ? "Your session expired. Reload the page."
+    : code === 409 ? "This item has changed. Reload and try again."
+    : code === 0 ? "This page can no longer reach REM, so nothing was handed over. Open REM again and act from the page it opens."
+    : "REM is not answering right now. Try again in a moment.";
+}
+function handOver(entry, agent, show, card, status) {
+  const key = obligationKey(entry), onDeck = card && railActive() === "today";
+  const redraw = () => onDeck && railActive() === "today" ? redrawKeepingScroll() : show();
+  HAND_FAILED.delete(key);
+  if (!todayRow(entry)) status.textContent = t("Handing to {agent}…", { agent: AGENT_NAMES[agent] });  // a row the queue does not hold keeps its words in place
+  keepTask(entry, { result: "starting", agent, queued_at: new Date(clockNow()).toISOString(), sending: true });
+  if (onDeck) leadAfter(card, card.querySelectorAll(".qitem").length);
+  redraw();
+  return hostPost("/rem/task", { action: "run", key, agent }).then(({ ok, code, ...task }) => {
+    keepTask(entry, ok ? { ...task, agent: task.agent || agent } : null);
+    if (!ok) HAND_FAILED.set(key, { agent, why: handRefusal(code) });
+    if (!ok && onDeck) todayLead = card.dataset.path;
+    if (!ok && !todayRow(entry)) status.textContent = t(handRefusal(code));
+    redraw();
+  });
+}
+function handFailedNote(entry) {
+  const failed = HAND_FAILED.get(obligationKey(entry));
+  return failed ? el("p", { class: "hand-failed", role: "alert", text: t("{agent} did not take this: {why}", { agent: AGENT_NAMES[failed.agent], why: t(failed.why) }) }) : null;
+}
+// An agent holds the row: handed over and not finished. Such a row is out of the deck and in the work strip.
+function agentBusy(entry) { return ACTIVE_TASK.includes(rowTask(entry)?.result); }
+function sinceWords(at) {
+  const minutes = Math.floor((clockNow() - Date.parse(at)) / 60000);
+  return isNaN(minutes) ? "" : minutes < 1 ? t("started just now") : minutes < 60 ? t("started {n} min ago", { n: minutes }) : t("started {time}", { time: fmtTime(at) });
+}
+// Work that goes on after a click, in one place off the cards: every row an agent holds, and every row an agent
+// finished or dropped today, read from the rows' own receipts (reader.py puts each task's receipt on its row; no
+// second store). One line of words; it opens to the rows, each with its item, what the agent is doing and since
+// when, Stop and Take back while it runs, then See result. A finished row's card is back in the deck by then.
+let workOpen = false;
+function workRows() {
+  return threadEntries().filter(entry => !isDone(entry)).map(entry => ({ entry, task: rowTask(entry) }))
+    .filter(({ task }) => handed(task) && (ACTIVE_TASK.includes(task.result) || task.finished_at && localDay(task.finished_at) === localDay(clockNow())));
+}
+function workSummary(rows) {
+  const count = (agent, test) => rows.filter(({ task }) => (task.agent || "codex") === agent && test(task)).length;
+  const say = (n, one, many, agent, more = "") => n ? t(n === 1 ? one : many, { n, agent: AGENT_NAMES[agent] }) + more : null;
+  return Object.keys(AGENT_NAMES).flatMap(agent => {
+    const first = rows.filter(({ task }) => (task.agent || "codex") === agent && ACTIVE_TASK.includes(task.result) && !task.sending)
+      .map(({ task }) => task.started_at || task.queued_at).filter(Boolean).sort()[0];
+    return [say(count(agent, task => task.sending), "Handing 1 thing to {agent}…", "Handing {n} things to {agent}…", agent),
+      say(count(agent, task => ACTIVE_TASK.includes(task.result) && !task.sending), "{agent} is working on 1 thing", "{agent} is working on {n} things", agent, first ? " · " + sinceWords(first) : ""),
+      say(count(agent, task => task.result === "completed"), "{agent} finished 1 thing", "{agent} finished {n} things", agent),
+      say(count(agent, task => !ACTIVE_TASK.includes(task.result) && task.result !== "completed"), "{agent} stopped before finishing 1 thing", "{agent} stopped before finishing {n} things", agent)];
+  }).filter(Boolean).join(" · ");
+}
+function workRow({ entry, task }) {
+  const agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result), who = entry.who || entry.r;
+  const at = task.finished_at ? " · " + fmtTime(task.finished_at) : "";
+  const words = task.sending ? t("Handing to {agent}…", { agent }) : active ? t("{agent} is working", { agent }) + " · " + sinceWords(task.started_at || task.queued_at)
+    : t(task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing", { agent }) + at + (task.result !== "completed" && task.reason ? " · " + task.reason : "");
+  const act = (action, label) => {
+    const button = el("button", { type: "button", class: "btn-quiet", text: label });
+    button.onclick = async () => {
+      button.disabled = true;
+      const { ok, code, ...reply } = await hostPost("/rem/task", { id: task.id, action });
+      if (!ok) { button.disabled = false; button.textContent = t("Could not do that. Try again."); return; }
+      keepTask(entry, action === "undo" ? null : { ...task, ...reply });
+      if (action === "undo") todayLead = who.path;
+      redrawKeepingScroll();
+    };
+    return button;
+  };
+  const show = el("button", { type: "button", class: "btn-quiet", text: t("Show its card") });
+  show.onclick = () => { todayLead = who.path; redrawKeepingScroll(); focusRaisedCard(); };
+  const [see, output] = active ? [null, null] : seeResult(task);
+  return el("li", { class: "work-row" }, [el("a", { href: href(who), text: threadWho(who) }),
+    wordsLine("work-what", morningWords(entry.t.text, entry.r, entry.t).words, entry.r, []),
+    el("p", { class: "work-state" }, dotted([el("span", { role: "status", text: words }),
+      ...(task.sending ? [] : active ? [act("stop", t("Stop")), act("undo", t("Take back from {agent}", { agent }))] : [see, show, act("undo", t("Take back from {agent}", { agent }))])])), output]);
+}
+function workStrip() {
+  const rows = liveHere() ? workRows() : [];
+  if (!rows.length) return null;
+  const strip = el("details", { id: "work-strip", class: "work-strip" }, [el("summary", { text: workSummary(rows) }), el("ul", { class: "work-rows" }, rows.map(workRow))]);
+  strip.open = workOpen;
+  strip.addEventListener("toggle", () => { workOpen = strip.open; });
+  followWork();
+  return strip;
+}
+// The strip follows the runs by itself, one timer for all of them; a run that ends redraws only the strip, so
+// words being typed into a card are never drawn over. The next redraw of the page puts the finished row's card back.
+function followWork() {
+  clearTimeout(followWork.timer);
+  followWork.timer = setTimeout(async () => {
+    if (!document.getElementById("work-strip")) return;
+    let changed = false;
+    for (const { entry, task } of workRows().filter(({ task }) => ACTIVE_TASK.includes(task.result) && !task.sending)) {
+      const { ok, code, ...latest } = await hostPost("/rem/task", { id: task.id });
+      if (ok && latest.result && rowTask(entry)?.id === task.id) { changed ||= latest.result !== task.result; keepTask(entry, { ...task, ...latest }); }
+    }
+    const strip = document.getElementById("work-strip");
+    if (strip) strip.replaceWith(workStrip() || "");
+    if (changed && !document.activeElement?.closest("#main :is(textarea, input)")) redrawKeepingScroll();
+  }, 4000);
 }
 // A Today row had eight equal links (sprint 14 #5). Now its three ways to close come first, as words (principle
 // 10), then 交给 Codex · 交给 Claude, which stay visible quiet words on every unfinished row (D-100, the owner's
@@ -7703,22 +7983,67 @@ function handButtons(entry, show, panel, mark, lead) {
 // folds' included: 标为完成 · 暂不处理 · 忽略 · 交给 Codex · 交给 Claude · 更多 (#2990 review). One of them is the row's lead, in bold, chosen by
 // what the item is (lead, set where the buttons are made): 交给 Codex for a debt REM prepared as a task
 // (principle 8), else 标为完成; lead null: the card's green step or the draft's Send is the primary.
-function todayStrip(agents, talk, closes) {
-  const more = talk ? el("details", { class: "talk-menu strip-more" }, [el("summary", {}, [t("More"), " ", el("span", { class: "caret", "aria-hidden": "true", text: "▾" })]),
-    el("div", { class: "talk-choices" }, [talk])]) : null;
-  if (more) more.onkeydown = event => {
-    if (event.key !== "Escape" || !more.open) return;
-    event.stopPropagation();
-    more.open = false;
-    more.querySelector("summary").focus();
-  };
-  return [...closes, ...agents, more];
+// Since #3072 the last control is Show more, one door to the item's second level: why it is here, who waits and
+// since when, the message itself, the pages it touches, and Talk it over, which used to be the only thing under
+// 更多. The row passes its entry so the sheet is built from what the row already carries.
+function todayStrip(agents, talk, closes, entry = null) {
+  return [...closes, ...agents, moreButton(entry, talk)];
+}
+// Only a row of the notebook has a second level: an ask (让 Codex 查) has no item behind it.
+function moreButton(entry, talk) {
+  if (!talk || !entry?.r || !entry.t) return null;
+  const more = el("button", { type: "button", class: "btn-quiet strip-more", "aria-haspopup": "dialog", text: t("Show more") });
+  more.onclick = () => openContext(entry, talk);
+  return more;
+}
+// The second level of an item (#3072: context as a second level): a panel at the side of a wide page, a sheet
+// from the foot of a phone. It is a dialog over the page, so the card under it is not redrawn, and closing it
+// gives the focus back to the button that opened it. Nothing here asks a model: the words are the row's own line,
+// its dates, the mail its citations name (the excerpts the page already carries) and the pages it sits on.
+function contextWhy(entry) {
+  const thread = entry.t, who = firstName(entry.who || entry.r), late = overdueDays(thread);
+  return [thread.due ? (late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) + " · " : "") + t("due {date}", { date: threadDate(thread.due) }) : null,
+    thread.since ? t(thread.dir === "mine" ? "{name} has waited since {date}" : "Open since {date}", { name: who, date: threadDate(thread.since) }) : null,
+    looksDone(entry) ? t("Your later mail looks like it settled this.") : null].filter(Boolean);
+}
+function contextMessages(entry) {
+  const ids = [...new Set([...entry.t.text.matchAll(/\[(W?\d{1,3})\]/g)].map(m => citationId(entry.r, m[1])))];
+  return ids.map(id => [id, REM.source_context?.[id]]).filter(([, c]) => c && (c.excerpt || c.subject)).map(([id, c]) => {
+    const from = mailbox(Array.isArray(c.participants?.from) ? c.participants.from[0] : c.participants?.from || c.sender || "");
+    const head = [from.name, c.time ? fmtTime(c.time) : "", c.subject].filter(Boolean).join(" · ");
+    const body = c.excerpt && !hasPrivacy(c.excerpt) ? c.excerpt.slice(0, 700) + (c.excerpt.length > 700 || c.truncated ? "…" : "") : "";
+    return el("li", { class: "context-message" }, [el("p", { class: "context-from", text: head }), body ? el("p", { class: "context-excerpt", text: body }) : null]);
+  });
+}
+function contextLinks(entry) {
+  const who = entry.who || entry.r, org = who.organisations?.length ? byPath(who.organisations[0]) : null;
+  const pages = [...new Map([who, entry.r, org, ...(entry.also || [])].filter(Boolean).map(r => [r.path, r])).values()];
+  return [...pages.map(r => el("a", { href: href(r), text: threadWho(r) + " · " + singular(r.category) })), mailboxLink(entry)].filter(Boolean);
+}
+function openContext(entry, talk) {
+  const part = (title, nodes) => nodes.length ? el("section", { class: "context-part" }, [el("h3", { text: t(title) }), ...nodes]) : null;
+  const close = el("button", { type: "button", class: "ibtn", "aria-label": t("Close") }, [icon("x")]);
+  const messages = contextMessages(entry);
+  const dialog = el("dialog", { id: "item-context", class: "n3-sheet context-sheet", "aria-labelledby": "context-title" }, [
+    el("div", { class: "sheet-head" }, [el("h2", { id: "context-title", text: threadWho(entry.who || entry.r) }), close]),
+    part("Why it is here", [wordsLine("context-words", morningWords(entry.t.text, entry.r, entry.t).words, entry.r, []), putOffNote(entry),
+      ...contextWhy(entry).map(text => el("p", { class: "context-fact", text }))].filter(Boolean)),
+    part("The message", messages.length ? [el("ul", { class: "context-messages" }, messages)] : [el("p", { class: "quiet-line", text: t("This item cites no message the page carries.") })]),
+    part("Related", [el("p", { class: "context-links" }, dotted(contextLinks(entry)))]),
+    part("Talk it over", [talk])]);
+  close.onclick = () => dialog.close();
+  // A link or a talk leaves the sheet: the page it opens, or the conversation in the card, is what he asked for.
+  dialog.addEventListener("click", event => { if (event.target.closest("a[href^='#'], [data-talk]") || event.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.appendChild(dialog);
+  talk.open = true;
+  dialog.showModal();
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
 // The three closes stay first, as before the hand-off (D-100's order).
 function handState(entry, show, panel, mark) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
-  const words = active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
+  const words = task.sending ? "Handing to {agent}…" : active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
   const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) });
   const act = (action, label) => {
     const button = el("button", { type: "button", class: "btn-quiet", text: label });
@@ -7732,12 +8057,12 @@ function handState(entry, show, panel, mark) {
     return button;
   };
   const reason = !active && task.result !== "completed" && task.reason ? el("span", { class: "handoff-status", text: task.reason }) : null;
-  if (liveHere() && active) followTask(entry, task, status, show);
+  if (liveHere() && active && !task.sending) followTask(entry, task, status, show);
   const by = task.by === "rem" ? el("span", { class: "handoff-status", text: t("REM started this") }) : null;
   const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
   // Taking the task back is not undoing the item: its own words, so it never reads like the done Undo.
-  const actions = liveHere() ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [];
-  const work = [status, reason, by, ...actions, entry.ask ? null : talkMenu(entry, panel)], closes = stripDone(entry, mark);
+  const actions = liveHere() && !task.sending ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [];
+  const work = [status, reason, by, ...actions, entry.ask ? null : moreButton(entry, talkMenu(entry, panel))], closes = stripDone(entry, mark);
   return [...dotted([...closes, ...work]), output].filter(Boolean);
 }
 // 让 Codex 查 (#2909): automatic investigations skip a private project, so the owner asks here. The same
@@ -7780,7 +8105,6 @@ function talkMenu(entry, panel) {
     button.disabled = !liveHere();
     button.onclick = () => {
       menu.open = false;
-      menu.closest(".strip-more")?.removeAttribute("open");  // on Today the talk sits inside 更多: both fold
       const talk = talkPanel({ action: "begin", agent, key: obligationKey(entry) });
       OPEN_TALKS.set(obligationKey(entry), talk);
       panel.replaceChildren(talk);
@@ -7940,26 +8264,69 @@ function taskView(kind) {
   const snapshot = snapshotLine();
   if (snapshot) main.appendChild(snapshot);
   main.append(...whyNotes());
-  const all = threadEntries(), entries = all.filter(entry => !isDone(entry)), counts = threadCounts();
-  if (!entries.length) {
+  const all = threadEntries(), open = all.filter(entry => !isDone(entry)), tag = route().tag;
+  if (!open.length) {
     main.appendChild(emptyState("Nothing open"));
     const done = markedDone(all);
     if (done) main.appendChild(done);
     return;
   }
-  const summary = [[counts.mine, "waiting on you"], [counts.theirs, "on someone else"], [counts.other, "other open context"]]
-    .filter(([count]) => count).map(([count, text]) => t("{n} " + text, { n: count })).join(uiLanguage === "zh" ? "，" : ", ");
+  // The rows are filtered first and every count below is of the rows it stands over, so a filter never leaves a
+  // heading saying one number above a list of another.
+  const entries = tag ? open.filter(entry => openTagged(entry, tag)) : open;
+  const band = dir => entries.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
+  const bands = [["Waiting on you", "mine", "waiting on you"], ["Waiting on others", "theirs", "on someone else"], ["Other open context", "plain", "other open context"]]
+    .map(([title, dir, words]) => ({ title, words, items: band(dir) })).filter(({ items }) => items.length);
+  main.appendChild(openChips(open, tag));
+  const summary = bands.map(({ items, words }) => t("{n} " + words, { n: items.length })).join(uiLanguage === "zh" ? "，" : ", ");
   if (summary) main.appendChild(el("p", { class: "lede", text: summary + t(". Newest and due first.") }));
-  for (const [title, dir, count] of [["Waiting on you", "mine", counts.mine], ["Waiting on others", "theirs", counts.theirs], ["Other open context", "plain", counts.other]]) {
-    if (!count) continue;
-    const items = entries.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
-    main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(count)), snapshotCloseLine(),
+  if (tag) main.appendChild(bulkBar(bands.flatMap(({ items }) => items)));
+  for (const { title, items } of bands)
+    main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(items.length)), snapshotCloseLine(),
       el("ul", { class: "threads" }, items.map(entry => stripRow(entry, true)))]));
-  }
   const quiet = quietThreads(entries);
   if (quiet) main.appendChild(quiet);
   const done = markedDone(all);
   if (done) main.appendChild(done);
+}
+// Filters over the open list (#3072: «你也没用上标签…学生的事我想一键全选标完成»). A chip is a tag in words with its
+// count; one tap filters, a second clears. Pages carry no tags of their own yet, so the chips are built from what
+// each row already knows: whether the last word was his (the night's reply state on the row, today.py), and
+// where its page sits: the person's organisation, the organisation's own page, the project. The filter rides
+// the address (tag=), so a reload or the back button keeps it.
+function openTags(entry) {
+  const r = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
+  const name = r.category === "people" ? company(r) : r.category === "orgs" || r.category === "projects" ? r.title : "";
+  const place = name ? [{ id: (r.category === "projects" ? "project:" : "org:") + name, label: name }] : [];
+  if (!waitingOnYou(entry)) return place;
+  const replied = queuedReply(entry)?.state === "replied";
+  return [{ id: replied ? "state:replied" : "state:owe", label: t(replied ? "I replied, waiting on them" : "I still owe a reply or an action") }, ...place];
+}
+function openTagged(entry, tag) { return openTags(entry).some(({ id }) => id === tag); }
+function openChips(entries, active) {
+  const found = new Map();
+  for (const entry of entries.filter(row => !row.t.quiet && !staleEntry(row)))
+    for (const { id, label } of openTags(entry)) found.set(id, { id, label, n: (found.get(id)?.n || 0) + 1 });
+  // The two states first, then places by how many rows they hold; a place with one row filters nothing worth a chip.
+  const chips = [...found.values()].filter(chip => chip.id.startsWith("state:") || chip.n > 1 || chip.id === active)
+    .sort((a, b) => Number(b.id.startsWith("state:")) - Number(a.id.startsWith("state:")) || b.n - a.n).slice(0, 12);
+  const all = el("a", { class: "chip" + (active ? "" : " on"), href: "#view=open", "aria-current": active ? null : "true", text: t("All") });
+  return el("nav", { class: "open-chips", "aria-label": t("Filter the open items") }, [all, ...chips.map(({ id, label, n }) =>
+    el("a", { class: "chip" + (id === active ? " on" : ""), href: "#view=open" + (id === active ? "" : "&tag=" + encodeURIComponent(id)),
+      "aria-current": id === active ? "true" : null, title: id === active ? t("Clear this filter") : null }, [label, " ", el("span", { class: "chip-n", text: String(n) })]))]);
+}
+// With a filter on, one action for every row it shows, in words with the number: it asks nothing more, each row is
+// its own mark in the notebook, and the page's one notice carries one Undo for all of them (closeAll).
+function bulkBar(entries) {
+  if (!entries.length) return emptyState("Nothing open under this filter", "Show everything open →", "#view=open");
+  if (!liveHere()) return snapshotCloseLine();
+  const n = entries.length, bar = el("div", { class: "bulk-bar handoff-line" });
+  const done = el("button", { type: "button", class: "btn-line bulk-done", text: t("Mark all {n} done", { n }) });
+  done.onclick = () => closeAll(entries);
+  const later = el("button", { type: "button", class: "btn-quiet strip-later bulk-later", text: t("Put all {n} off until…", { n }) });
+  later.onclick = () => laterChooser(bar, until => () => closeAll(entries, "skipped", until));
+  bar.append(done, later);
+  return bar;
 }
 function connectionReview() {
   const candidate = (REM.reviews || []).find(row => row.status === "pending" && row.kind === "link");
@@ -8336,12 +8703,19 @@ function planWords(item) {
 // sentence in its title, and one short link to its page. The sentence is not a link: a whole underlined
 // paragraph read as an error, and five of them filled a phone.
 function proposalItem(item) {
-  const page = byPath(item.record), reason = planReason(item);
+  const page = byPath(item.record), reason = planReason(item), text = proposalWords(item);
   return el("li", {class: "day-plan-item day-plan-proposal"}, [
     el("p", {class: "day-plan-when", text: [planWhen(item), t("Proposed")].filter(Boolean).join(" — ")}),
-    el("p", {class: "day-plan-text", title: item.text, text: item.text}),
+    el("p", {class: "day-plan-text", title: text, text}),
     el("p", {class: "day-plan-why"}, [reason ? reason + " — " : null,
       el("a", {href: "#r=" + encodeURIComponent(item.record), text: page?.title || item.title})])]);
+}
+// The plan saved the line as the night read it; the card above shows the same item in the reader's language and
+// in the second person, so the proposal says it the card's way whenever the item is still on the page.
+function proposalWords(item) {
+  const keys = item.keys || [item.key];
+  const entry = typeof threadEntries === "function" ? threadEntries().find(entry => keys.includes(doneKey(entry)) || entry.members?.some(member => keys.includes(doneKey(member)))) : null;
+  return entry ? morningWords(entry.t.text, entry.r, entry.t).words : item.text;
 }
 function dayPlanItem(item) {
   if (item.kind === "proposal") return proposalItem(item);
@@ -8355,7 +8729,7 @@ function dayPlanItem(item) {
 function dayPlanVisible(item) {
   if (item.kind !== "proposal") return true;
   const keys = item.keys || [item.key], states = typeof threadStates === "undefined" ? REM.threads || {} : threadStates;
-  if (keys.every(key => ["done", "skipped", "ignored"].includes(states[key]?.state) && !states[key]?.returned_at)) return false;
+  if (keys.every(key => closedMark(states[key]))) return false;
   const current = REM.today_queue?.find(row => keys.includes(row.key) || row.keys?.some(key => keys.includes(key)));
   if (current && (current.closed || current.quiet || current.reply?.state === "replied")) return false;
   if (typeof threadEntries === "function") {
@@ -8390,9 +8764,9 @@ function todoDue(task, today) {
   return task.due === today ? t("due today") : t(task.due < today ? "overdue since {date}" : "due {date}", {date: calendarDate(task.due)});
 }
 function todoNotes(todos) {
+  const last = !todos.read_at ? "" : " " + t(todos.tasks.length ? "These to-dos are from {when}." : "The last read, on {when}, found none open.", {when: fmtTime(todos.read_at)});
   const failed = todos.error && t("Microsoft To Do could not be read on {when} ({reason}).", {when: fmtTime(todos.error.at),
-    reason: t(todos.error.reason) + (todos.error.error ? " · " + todos.error.error : "")})
-    + (todos.read_at ? " " + t("These to-dos are from {when}.", {when: fmtTime(todos.read_at)}) : "");
+    reason: t(todos.error.reason) + (todos.error.error ? " · " + todos.error.error : "")}) + last;
   const google = todos.google === "reconnect" ? t("Google Tasks are not read: Google must be reconnected with access to tasks.")
     : todos.google === "not_read" ? t("Google Tasks are not read yet.") : null;
   return [failed, google].filter(Boolean);
@@ -8410,28 +8784,99 @@ function todoSection() {
   // Overdue first, then by due day; the ones with no date last.
   const tasks = [...todos.tasks].sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
   if (!tasks.length && !notes.length && !todos.read_at) return null;
+  // One statement when nothing is listed (#3085: "no open to-dos" stood over "a task list was not read", a false
+  // empty). "No open to-dos" is said only when every connected list was read and none holds one; with a list
+  // unread the section says which, and why, and of the one that was read only that it has none open.
+  const empty = tasks.length ? null : !notes.length ? t("No open to-dos.")
+    : [todos.read_at && !todos.error ? t("Microsoft To Do has no open to-dos.") : null, ...notes].filter(Boolean).join(" ");
   return el("section", {class: "day-plan todos", "aria-label": t("To-dos")}, [el("h2", {text: t("To-dos")}),
-    tasks.length ? el("ul", {class: "day-plan-list"}, tasks.slice(0, limit).map(task => todoRow(task, today)))
-      : todos.read_at ? el("p", {text: t("No open to-dos.")}) : null,
+    tasks.length ? el("ul", {class: "day-plan-list"}, tasks.slice(0, limit).map(task => todoRow(task, today))) : el("p", {class: "todo-empty", text: empty}),
     tasks.length > limit ? el("p", {text: t("{n} more to-dos in Microsoft To Do.", {n: tasks.length - limit})}) : null,
-    ...notes.map(text => el("p", {class: "todo-note", text}))]);
+    ...(tasks.length ? notes.map(text => el("p", {class: "todo-note", text})) : [])]);
 }
 
+// Where a closed item went (#3072: «我想把它标成没完成怎么办»). Two folds under the deck, each named by its count:
+// Finished today holds what was marked done or ignored on this calendar day, each with Bring back; Put off holds
+// every Not now that has not come back yet, whenever it was put off, each saying when it returns, with Bring back
+// now. Finished today empties at midnight; what was finished earlier stays in Waiting on you's closed list and on
+// its own page's history, where Undo still works. A snapshot keeps no marks, so it has neither fold.
+const CLOSED_OPEN = new Set();
+function closedLists() {
+  const closed = threadEntries().filter(isDone).map(entry => ({ entry, value: threadStates[doneKey(entry)] }));
+  return { finished: closed.filter(({ value }) => value.state !== "skipped" && localDay(value.at || 0) === localDay(clockNow())),
+    put: closed.filter(({ value }) => value.state === "skipped") };
+}
+function closedRow({ entry, value }) {
+  const who = entry.who || (entry.r.path === REM.owner ? ownerCounterpart(entry) : null) || entry.r;
+  const back = el("button", { type: "button", class: "btn-quiet bring-back", text: t(value.state === "skipped" ? "Bring back now" : "Bring back") });
+  back.onclick = () => { todayLead = who.path; setDone(entry, false, "done", [entry]); };
+  const when = value.state === "skipped" ? capFirst(value.until ? backWords(value.until) : t("back when new mail arrives"))
+    : stateWord(value.state) + " · " + new Date(value.at).toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit" });
+  return el("li", { class: "closed-row", "data-path": who.path }, [el("a", { href: href(who), text: threadWho(who) }),
+    wordsLine("closed-what", morningWords(entry.t.text, entry.r, entry.t).words, entry.r, []), el("span", { class: "closed-when", text: when }), back]);
+}
+function closedFold(id, title, rows, note) {
+  if (!rows.length) return null;
+  const fold = el("details", { id, class: "closed-fold fold" }, [el("summary", { text: t(title, { n: rows.length }) }),
+    el("p", { class: "quiet-line", text: t(note) }), el("ul", { class: "closed-rows" }, rows.map(closedRow))]);
+  fold.open = CLOSED_OPEN.has(id);
+  fold.addEventListener("toggle", () => CLOSED_OPEN[fold.open ? "add" : "delete"](id));
+  return fold;
+}
+function closedToday() {
+  if (!liveHere()) return null;
+  const { finished, put } = closedLists();
+  const folds = [closedFold("finished-today", "Finished today: {n}", finished, "This list is today's and empties at midnight. Earlier ones stay at the foot of Waiting on you."),
+    closedFold("put-off", "Put off: {n}", put, "Each comes back to Today at the time it says, or sooner if new mail arrives.")].filter(Boolean);
+  return folds.length ? el("section", { id: "today-closed", "aria-label": t("Finished and put off") }, folds) : null;
+}
+// The notice's last words: the list that now holds the item, with that list's own count, opening it in place.
+function closedLink(id) {
+  if (railActive() !== "today") return null;
+  const lists = closedLists(), n = (id === "put-off" ? lists.put : lists.finished).length;
+  if (!n) return null;
+  const link = el("button", { type: "button", class: "closed-link", text: t(id === "put-off" ? "Put off: {n}" : "Finished today: {n}", { n }) });
+  link.onclick = () => {
+    const fold = document.getElementById(id);
+    if (!fold) return;
+    fold.open = true;
+    fold.scrollIntoView({ block: "center" });
+    fold.querySelector("summary").focus({ preventScroll: true });
+  };
+  return link;
+}
+// A put-off item that is back says so on its card: when it was put off, and what brought it back.
+function putOffNote(entry) {
+  const value = entry.r && REM.threads?.[doneKey(entry)];
+  if (value?.state !== "skipped" || !(value.returned_at || putOffOver(value))) return null;
+  const mail = value.returned_at && !(value.until && value.returned_at >= value.until);
+  return el("p", { class: "put-off-note", text: t(mail ? "You put this off on {date}; new mail brought it back." : "You put this off on {date}; it is back as you asked.",
+    { date: new Date(value.at).toLocaleDateString(uiLocale(), { day: "numeric", month: "short" }) }) });
+}
+// The deck deals the most pressing few; the header counts every item that waits on you. When they differ the deck
+// says so in words and links the whole list (#3071, #3085: four different numbers on one page, none named).
+function deckRest(groups, counts) {
+  const shown = groups.reduce((n, group) => n + group.entries.length, 0);
+  const held = threadEntries().filter(entry => !isDone(entry) && waitingOnYou(entry) && agentBusy(entry)).length;
+  if (!shown || shown + held >= counts.mine) return null;
+  return el("p", { class: "deck-rest quiet-line" }, [t(shown === 1 ? "This card is the most pressing 1 of the {n} waiting on you." : "These cards are the most pressing {k} of the {n} waiting on you.", { k: shown, n: counts.mine }), " ",
+    el("a", { href: "#view=open", text: t("See all {n} →", { n: counts.mine }) })]);
+}
+
+// Today's order (#3072: the schedule opened the page, «全是信息，没有 call to action»): first what can be acted on,
+// the count and the deck with the work in hand above it; then what was asked about and what was closed; then the
+// lists that are only read, to-dos and the day's calendar; then the folds.
 function overview() {
   const main = document.getElementById("main"), inDeck = !!document.activeElement?.closest("#main .qcard");
   main.textContent = "";
-  const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries);
+  const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries.filter(entry => !agentBusy(entry)));
   approvalUndoBar();
   const cards = deckOrder(groups);
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
-  const dayPlan = yourDay();
-  if (dayPlan) main.appendChild(dayPlan);
-  const todoList = todoSection();
-  if (todoList) main.appendChild(todoList);
-  main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked),
-    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards)]), todaySide(counts)]),
-    staleWidget(todayEntries(entries).filter(staleEntry)), todayFolds(entries, counts)].filter(Boolean));
+  main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
+    staleWidget(todayEntries(entries).filter(staleEntry)), closedToday(), todoSection(), yourDay(), todayFolds(entries, counts)].filter(Boolean));
   if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
 }
 function scheduleFailure() {
@@ -8654,13 +9099,16 @@ function staleWidget(entries) {
 // Each promise is its own mark: one setDone over all of them would link unrelated rows as one thread in the
 // notebook, so a later Undo of any one would reopen every one. The page is drawn once and says it once: one notice,
 // one Undo that reopens only the marks the notebook kept, and for any it refused one Try again for just those.
-async function closeAllStale(entries) {
+function closeAllStale(entries) { return closeAll(entries); }
+// state and until as setDone takes them: a filtered list is marked done, or put off to one moment, in one go.
+async function closeAll(entries, state = "done", until = null) {
   if (!liveHere()) return;  // a snapshot keeps no mark (markThread)
-  const marks = entries.map(entry => ({ entry, ...markThread(entry, true) }));
+  const marks = entries.map(entry => ({ entry, ...markThread(entry, true, state, [entry], until) }));
   redrawKeepingScroll();
   document.getElementById("done-notice")?.remove();
   const undo = el("button", { type: "button", text: t("Undo") }), status = el("span", { text: t("Saving…") });
-  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [t("Marked done"), " · ", undo, " · ", status]);
+  const words = state === "skipped" ? t("{n} put off · {back}", { n: marks.length, back: backWords(until) }) : marks.length > 1 ? t("{n} marked done", { n: marks.length }) : t("Marked done");
+  const notice = el("div", { id: "done-notice", class: "done-notice", role: "status" }, [words, " · ", undo, " · ", status]);
   let undone = false;
   const reopen = list => () => { undone = true; list.forEach(mark => markThread(mark.entry, false)); redrawKeepingScroll(); notice.remove(); focusRaisedCard(); };
   undo.onclick = reopen(marks);
@@ -8675,7 +9123,7 @@ async function closeAllStale(entries) {
   status.textContent = t(results.every(result => result === true) ? "Saved in notebook" : failed.length ? "Not saved" : "Saved on this device — sync pending");
   // The refusal is added to this notice (own: null), so the Undo for the marks that were saved stays; once Undo ran
   // there is nothing to try again.
-  if (failed.length && !undone) notSavedNotice(() => closeAllStale(failed.map(mark => mark.entry)), null);
+  if (failed.length && !undone) notSavedNotice(() => closeAll(failed.map(mark => mark.entry), state, until), null);
   redrawKeepingScroll();
 }
 function redrawKeepingScroll() {

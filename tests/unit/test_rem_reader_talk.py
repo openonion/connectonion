@@ -37,7 +37,7 @@ def test_row_talk_survives_reload_redraw_and_next_turn(reload_at):
         closest() { return null; }
         dispatchEvent() {}
       }
-      const body = new Node('body'), editedFields = new WeakSet(), OPEN_TALKS = new Map();
+      const body = new Node('body'), editedFields = new WeakSet(), OPEN_TALKS = new Map(), HAND_FAILED = new Map();
       const document = {createElement: tag => new Node(tag), createTextNode: text => Object.assign(new Node('#text'), {textContent: text}),
         querySelectorAll: selector => body.querySelectorAll(selector), activeElement: null};
       const AGENT_NAMES = {codex: 'Codex', claude: 'Claude'}, ACTIVE_TASK = ['queued', 'starting', 'running'];
@@ -68,7 +68,8 @@ def test_row_talk_survives_reload_redraw_and_next_turn(reload_at):
       let pendingRestore = null;
       (async () => {
         let row = handOff(entry); body.append(row);
-        find(row, node => node['data-talk'] === 'claude').onclick();
+        // The talk's choices sit in the item's second level (Show more, #3072); they open the talk in the row's own slot.
+        find(talkMenu(entry, find(row, node => node.class === 'talk-slot')), node => node['data-talk'] === 'claude').onclick();
         if (reloadAt !== 'opening') await flush();
         if (reloadAt === 'idle') await poll();
         const draft = 'Draft the follow-up, short.';

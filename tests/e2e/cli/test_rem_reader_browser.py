@@ -566,7 +566,8 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             assert ('今晚' if language == 'zh' else 'tonight') in note and 'co rem' not in note  # D-60: no command
         open_card(letter)
         if live:
-            # Build 3b re-review: an unanswered question keeps Send disabled, with a plain hint, so nothing is sent.
+            # Build 3b re-review: an unanswered question keeps Send unready (aria-disabled since sprint 22, so a click
+            # still says what is missing), with a plain hint, so nothing is sent.
             assert letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).is_disabled()
             # Sprint 13: the hint names what is left to choose, in the reader's language.
             assert ('处要选：' if language == 'zh' else ' left: ') in letter.locator('.choose-hint').inner_text()
@@ -583,7 +584,7 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         evidence.mkdir(exist_ok=True)
         page.screenshot(path=str(evidence / f'today-{language}-{width}-{"live" if live else "snapshot"}.png'), full_page=True)
         if live:
-            letter.locator('.more-menu > summary').click()  # behind the letter's 更多 (D-120)
+            # In sight beside Send, not behind the letter's 更多 (sprint 22).
             letter.get_by_role('button', name='全屏写' if language == 'zh' else 'Write full screen').click()
             dialog = page.locator('dialog.writer')
             dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()

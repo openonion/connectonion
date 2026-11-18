@@ -73,7 +73,7 @@ def test_both_night_paths_honour_persisted_state(notebook, monkeypatch, state):
 
 def test_reader_reconciles_only_pending_offline_changes_and_undo():
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'citedVersions', 'keyEntry', 'reconcileThreads', 'showNotebookThreads',
+    names = ['doneKey', 'doneStorageKey', 'threadStorageKey', 'isDone', 'closedMark', 'putOffOver', 'clockNow', 'citedVersions', 'keyEntry', 'reconcileThreads', 'showNotebookThreads',
              'notebookTook', 'sendThreadState', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
     # These tests are about what a mark holds and how it waits; a snapshot's refusal of any mark is browser-tested (#2990).
@@ -208,7 +208,7 @@ def test_no_reply_restored_after_thread_undo(notebook, state):
 @pytest.mark.parametrize('state', ['done', 'skipped'])
 def test_reader_no_reply_undo_survives_offline_reload(state):
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone']
+    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'clockNow', 'saveThreadState', 'threadMark', 'markDrafts', 'markThread', 'setDone']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
     # These tests are about what a mark holds and how it waits; a snapshot's refusal of any mark is browser-tested (#2990).
     functions += '\nconst liveHere = () => true;'
@@ -279,7 +279,7 @@ def test_skip_unobserved_thread_stays_blocked_and_skips_saved_draft(notebook, ve
 @pytest.mark.parametrize('new_mail', [False, True])
 def test_reader_skip_reconcile_and_fresh_snapshot_undo_uses_saved_status(new_mail):
     page = reader.TEMPLATE.read_text()
-    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'showNotebookThreads', 'notebookTook', 'sendThreadState', 'saveThreadState',
+    names = ['doneKey', 'threadStorageKey', 'citedVersions', 'clockNow', 'closedMark', 'putOffOver', 'showNotebookThreads', 'notebookTook', 'sendThreadState', 'saveThreadState',
              'threadMark', 'markDrafts', 'markThread', 'setDone', 'reconcileThreads', 'threadActions', 'threadDraft', 'draftNote']
     functions = '\n'.join(re.search(r'(?:async )?function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in names)
     # These tests are about what a mark holds and how it waits; a snapshot's refusal of any mark is browser-tested (#2990).
@@ -349,7 +349,7 @@ def mark_script(setup, steps):
     return _run_reader_js('\n'.join(helpers) + '\n' + marks + setup + r'''
       let stored, answer = 'saved', release;
       const shown = [], requests = [], readerStorage = (key, value) => { stored = value; };
-      const navigator = {platform: 'test'}, window = {scrollY: 0, scrollTo() {}}, render = () => {}, setTimeout = () => {};
+      const navigator = {platform: 'test'}, window = {scrollY: 0, scrollTo() {}}, render = () => {}, setTimeout = () => {}, closedLink = () => null;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, focus() {}, contains: () => false,
         appendChild(child) { this.children.push(child); }, remove() { shown.splice(shown.indexOf(this), 1); }});
       const inside = (node, id) => node.id === id ? node : (node.children || []).map(child => inside(child, id)).find(Boolean);
@@ -551,3 +551,38 @@ def test_waiting_skip_keeps_the_versions_it_stored_when_the_page_cannot_place_it
     assert host_answers(notebook, tmp_path_factory, sent) == 200
     assert threads.listing(notebook)[thread_key(notebook)].get('returned_at') == '2026-11-07T02:00:00+00:00'
     assert not threads.blocked(notebook, thread_key(notebook))
+
+
+def test_a_put_off_item_comes_back_on_its_day_and_keeps_the_day_it_was_put_off(notebook, monkeypatch):
+    """#3072: Not now had no date, so nothing said when the item would be shown again. With `until` it is closed
+    until that moment and open after it, in the reader's list and in the night's queue alike."""
+    from datetime import datetime, timezone
+    from connectonion.rem import threads, today
+    mail_thread(notebook)
+    key = thread_key(notebook)
+    clock = [datetime(2026, 11, 17, 9, tzinfo=timezone.utc)]
+    monkeypatch.setattr(threads, 'now', lambda: clock[0])
+    saved = threads.set_state(notebook, key, 'skipped', until='2026-11-20T00:00:00.000Z')
+    assert saved['until'] == '2026-11-20T00:00:00+00:00' and saved['at'].startswith('2026-11-17')
+    assert threads.blocked(notebook, key) and 'returned_at' not in threads.listing(notebook)[key]
+    clock[0] = datetime(2026, 11, 20, 0, 1, tzinfo=timezone.utc)
+    back = threads.listing(notebook)[key]
+    assert back['returned_at'] == back['until'] and back['at'].startswith('2026-11-17'), 'the card can say when it was put off'
+    assert not threads.blocked(notebook, key)
+    row = next(row for row in today.queue(notebook, as_of=clock[0].date()) if row['key'] == key)
+    assert not row['closed'] and row['since'] == '2026-11-20'
+    # A date belongs to Not now only, and Undo removes the mark whole.
+    assert 'until' not in threads.set_state(notebook, key, 'done', until='2026-11-25T00:00:00Z')
+    threads.set_state(notebook, key, 'open')
+    assert key not in read_json(state_path(notebook, 'threads.json'), {})
+
+
+def test_new_mail_still_brings_a_put_off_item_back_before_its_day(notebook, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import threads
+    mail_thread(notebook)
+    key = thread_key(notebook)
+    monkeypatch.setattr(threads, 'now', lambda: datetime(2026, 11, 7, 1, tzinfo=timezone.utc))
+    threads.set_state(notebook, key, 'skipped', until='2026-12-01T00:00:00Z')
+    mail_thread(notebook, latest='two')
+    assert threads.listing(notebook)[key]['returned_at'] == '2026-11-07T02:00:00+00:00'

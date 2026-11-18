@@ -70,7 +70,25 @@ def listing(root):
                        if thread in value.get('versions', {}) and row['id'] != value['versions'][thread]]
             if changed:
                 value['returned_at'] = max(changed)
+            elif put_off_over(value):
+                value['returned_at'] = value['until']
     return found
+
+
+def put_off_over(value) -> bool:
+    """A Not now with a date is over once that moment has passed (#3072); new mail still returns it sooner.
+
+    The mark stays in threads.json as it was written: `at` is when it was put off and `until` when
+    it comes back, so the card that returns can say both. Before this a skipped item had no date and
+    came back only with new mail on its thread."""
+    until = value.get('until')
+    return bool(until) and _moment(until) <= now()
+
+
+def _moment(text):
+    from datetime import datetime, timezone
+    moment = datetime.fromisoformat(text.replace('Z', '+00:00'))
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
 def blocked(root, key, *, states=None):
@@ -83,8 +101,10 @@ class UnknownThread(RemError):
     400; its 409 is kept for a notebook that is only busy, which the reader waits out."""
 
 
-def set_state(root, key, state, *, device=None, versions=None, keys=None):
-    """Open removes the decision and restores its preserved draft, at any time."""
+def set_state(root, key, state, *, device=None, versions=None, keys=None, until=None):
+    """Open removes the decision and restores its preserved draft, at any time.
+
+    until: for skipped only, the ISO moment the item returns to Today (put_off_over)."""
     requested = list(dict.fromkeys([key, *(keys or [])]))
     # ignored closes like done; it is its own word so the owner's history says 已忽略, not 已完成.
     if (state not in ('done', 'skipped', 'ignored', 'open') or any(
@@ -95,7 +115,7 @@ def set_state(root, key, state, *, device=None, versions=None, keys=None):
         keys = list(dict.fromkeys(item for requested_key in requested for item in _matching_keys(root, requested_key)))
         stamp = now().isoformat()
         for item in keys:
-            value = _set_state(root, item, state, device=device, versions=versions, at=stamp, keys=keys)
+            value = _set_state(root, item, state, device=device, versions=versions, at=stamp, keys=keys, until=until)
         return {**listing(root).get(key, value), 'keys': keys}
 
 
@@ -115,7 +135,7 @@ def _matching_keys(root, key):
     return linked
 
 
-def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=None):
+def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=None, until=None):
     from . import drafts
     found = read_json(state_path(root, 'threads.json'), {})
     found.pop(key, None)
@@ -123,6 +143,8 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
     if state != 'open':
         if keys and len(keys) > 1:
             value['keys'] = keys
+        if state == 'skipped' and until:
+            value['until'] = _moment(until).isoformat()
         # The page names the mail it showed; a cited thread it could not place is held at the notebook's latest.
         value['versions'] = {**{thread: row['id'] for thread, row in _mail_versions(root, key).items()}, **(versions or {})}
         found[key] = value

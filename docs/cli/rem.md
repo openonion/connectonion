@@ -1448,6 +1448,130 @@ pinned to that edge: it comes into view with the draft.
   everything). **Worth remembering** and **Gone quiet** sit beside the brief on
   desktop. **Pages rewritten this week** stays collapsed. The owner's page is
   pinned as **You**.
+- **Today's order, and what every action does** (since sprint 22, #3072, #3085;
+  this replaces the order described under **Your day** and **To-dos** below).
+  Today opens on what can be acted on and ends on what is only read:
+  1. the count of things waiting on you and the faces of who waits;
+  2. **work in hand**, one line, only while there is some (see below);
+  3. the deck of cards, one in front, with **Waiting on others** at its side;
+  4. **N have gone quiet for a long time · Look**;
+  5. **Finished today: N** and **Put off: N**;
+  6. **To-dos** (your Microsoft To Do tasks, which have no buttons here);
+  7. **Your day** (calendar events and the proposed half hours);
+  8. the folds (overnight changes, pages rewritten, how the last pass ran).
+
+  **Every action on a card moves on.** Mark done, Not now, Ignore, Send and
+  Hand to Codex / Claude all take the item off the deck at the click, and the
+  card that followed it comes forward. When the card still has other rows for
+  the same person it stays in front with the next row moved up; it is never
+  the first card dealt again (before sprint 22 the deck went back to its first
+  card after any close, which is what "it goes back to that thing" was). The
+  page keeps its scroll position through the click and through the save that
+  follows it. The item leaves every list at the same moment: its card, its
+  proposed half hour under **Your day**, and its row in **Waiting on you**.
+
+  **One number.** The header's count, the rail badge and the phone tab's badge
+  are the same number: the items in **Waiting on you**'s first band (you owe
+  them, not quiet, not asked about as long-silent, not answered by a reply held
+  or sent). It changes with the click. Every other number on the page says in
+  words what it counts: *See the N waiting on others*, *N have gone quiet for a
+  long time*, *Finished today: N*, *Put off: N*, *Codex is working on N things*.
+  The deck deals the most pressing few; when it holds fewer items than the
+  count, a line under it says so (*These cards are the most pressing 5 of the
+  59 waiting on you. See all 59 →*).
+
+  **Done, and undoing it.** After a close the notice says what happened, in
+  words, with **Undo** and then the list that now holds the item: *Marked done ·
+  Undo · Saved in notebook · Finished today: 3*. The notice leaves after five
+  seconds; the list stays. **Finished today: N** (今天已完成：N) is a fold under
+  the deck holding what you marked done or ignored on this calendar day (the
+  reader's local day), each row with **Bring back** (放回去), which reopens it
+  and puts its card in front. The fold empties at midnight. Nothing is deleted
+  then: an item finished earlier stays in the closed list at the foot of
+  **Waiting on you** (*Marked done · Ignored (N)*) for as long as its line is on
+  its page, and in its own page's history, and **Undo** works in both.
+
+  **Not now asks when** (暂不处理). It used to have no date: the item left
+  Today and came back only when new mail arrived on its thread, and after the
+  notice left nothing on the page said so. Now the strip turns into *Bring it
+  back: Tonight · Tomorrow · In 3 days · Next week · Cancel* (什么时候再看：今晚 ·
+  明天 · 3 天后 · 下周). Tonight is 18:00 and is not offered after it; Tomorrow and
+  In 3 days are the start of that day; Next week is the coming Monday. The
+  notice then says *Put off · back on Thu, Nov 19 · Undo* (*back tonight at
+  18:00* for Tonight). **Put off: N** (已推后：N), beside Finished today, lists
+  every item put off and not yet back, whenever it was put off, each saying
+  when it returns and each with **Bring back now** (现在放回去). New mail on the
+  thread still brings an item back sooner. When its time comes the card is back
+  in Today by itself, on a page left open and in the next night's list alike,
+  and says *You put this off on Nov 17; it is back as you asked.* (or *…new
+  mail brought it back.*). The mark is `/rem/thread` with state `skipped` and
+  `until`, an ISO moment, kept in `.state/threads.json` beside `at`, the moment
+  it was put off; `threads.listing` reports it returned once `until` has
+  passed. A draft's **Skip** and a mark without `until` behave as before
+  (*Not now · returns with new mail*). A draft set aside by a put-off is not
+  restored when the date arrives; the card returns without it.
+
+  **Work in hand** is one line above the deck, shown only while an agent holds
+  something or finished something today: *Codex is working on 1 thing · started
+  2 min ago*, *Handing 1 thing to Claude…*, *Codex finished 2 things*, *Codex
+  stopped before finishing 1 thing*. It opens to the rows: the item, what the
+  agent is doing and since when, **Stop** and **Take back from Codex** while it
+  runs, then **See result**, **Show its card** and **Take back**. It is read
+  from the same receipts the rows carry (`.state/tasks/do-<id>/receipt.json`);
+  there is no second store. The card of a row an agent is working on is out of
+  the deck until the run ends; the count still includes it, and this line says
+  so. **Hand to Codex** no longer waits for the Host before moving on: the row
+  is the agent's from the click, and if the Host refuses, the card comes back in
+  front and says why in red (*Codex did not take this: REM is not answering
+  right now. Try again in a moment.*). A page that can no longer reach REM at
+  all says *nothing was handed over. Open REM again and act from the page it
+  opens.* In a snapshot the buttons are disabled, as before, and the card says
+  *This is an offline snapshot; open REM to mark it.* with **Open the live
+  reader** when this computer has one. The page never prints a command to copy
+  (D-60), so it says *open REM* and not `co rem open`. In **Waiting on you**
+  and the folds a hand-off is still said on the row, in place. A reply inside
+  its ten-minute hold keeps its own line at the top of the deck (*Sent to … ·
+  Held until … · Undo*), not in this strip.
+
+  **Show more** (更多背景) is the last control of every row's strip, where
+  **More ▾** was: *Mark done · Not now · Ignore · Hand to Codex · Hand to
+  Claude · Show more*, the row's lead still in bold. It opens the item's second
+  level without leaving the card: a panel at the right of a wide page, a sheet
+  from the foot of a phone. It holds **Why it is here** (the whole line, its
+  due date and since when the person has waited, and the put-off note),
+  **The message** (who wrote it, when, its subject and the excerpt the page
+  already carries; a passage labelled personal or sensitive is not shown),
+  **Related** (the person, their organisation, the project, any other page
+  the item is also on, and the mail thread) and **Talk it over** (With Codex,
+  With Claude), which used to be the only thing under More. No model is
+  called. Closing it (the cross, Escape, or a tap outside) returns the focus to
+  **Show more** on the same card; a link or a talk choice closes it too.
+
+  **In Chinese.** Every label, button and sentence the reader writes on Today
+  follows the chosen language. An item's own words come from the **Open
+  threads** line of its page, written at night in English; when the page has a
+  current translation in the reader's language, the card, its proposed half
+  hour and its rows in Finished today, Put off and work in hand show that
+  line's translation. Until sprint 22 they did not: only a page opened with its
+  own language switch showed translated lines, so Today stayed English on
+  translated pages. A page with no translation yet shows its original line,
+  marked **原文**; nothing is translated in the browser. The night already
+  translates the pages behind Today's rows first (`translate.shown_today`,
+  eight a night).
+
+  **Waiting on you has filters** (#3072). A row of chips sits above the list,
+  each a tag in words with its count; one tap filters, a second tap (or **All**)
+  clears, and the filter rides the address (`#view=open&tag=…`). Pages carry no
+  tags of their own yet, so the chips come from what each row already knows:
+  two states, **I still owe a reply or an action** and **I replied, waiting on
+  them** (the night's reply state for the row: your mail is the thread's last
+  word and it reads as an answer), then places with more than one row: the
+  person's organisation, an organisation's own page, a project. With a filter
+  on, each band's heading counts the rows under it, and one line offers
+  **Mark all N done** and **Put all N off until…** for every row shown. Neither
+  asks anything more. Each row is its own mark in the notebook, and the one
+  notice (*14 marked done · Undo · Saved in notebook*) carries one **Undo** for
+  the whole batch. On a phone the chips are one row that scrolls sideways.
 - **Today is one queue**: everything that needs you, newest and due first, one card
   each, with one primary action per card and a quiet **Mark done** saved in the
   notebook. Its cards lead with what you owe; their overdue chips and the faces'
@@ -1578,7 +1702,9 @@ pinned to that edge: it comes into view with the draft.
   to `/rem/task`; a row the night did not prepare gets its task reserved on the
   spot from the row itself (its page, its text, its source), with the same
   receipt, prompt shape, Stop, Take back and status as a prepared one. The row then
-  says where the work is, in place, and follows it by itself: **Codex is
+  says where the work is, in place (on a Today card the row instead leaves the
+  deck at the click and shows under **work in hand**, see **Today's order**
+  above), and follows it by itself: **Codex is
   working · Stop · Take back from Codex**, then **Codex finished · See result ·
   Take back from Codex**; **See result** opens what the agent wrote (its
   deliverable, else its last message, `{"action": "result", "id"}`) under the
@@ -1586,13 +1712,14 @@ pinned to that edge: it comes into view with the draft.
   brings the two buttons back; it never reads **Undo**, which undoes the item.
   The strip carries the row's three ways to close it, as words on screen, never an icon, before and after a
   hand-off, in one order everywhere (Today, its folds, Waiting on you): **Mark done** · **Not now** · **Ignore** ·
-  **Hand to Codex** · **Hand to Claude** · **More**. In a saved snapshot (no Host, or a `file://` page) the
+  **Hand to Codex** · **Hand to Claude** · **Show more** (**More** until sprint 22). In a saved snapshot (no Host, or a `file://` page) the
   closes and hand-offs are still shown but disabled, since nothing would carry a snapshot's mark to the notebook:
   each button says why when pointed at, and each card, band and fold says once, in words, *This is an offline
   snapshot; open REM to mark it.* (这是离线快照，打开 REM 后才能标记), with **Open the live reader** when this
   computer has one; E does nothing there either, nor do Still open, Not done yet, a record page's Mark done and Undo, or a draft's Skip, all drawn in the second ink with the same reason. A snapshot never writes a mark to the device. **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
-  (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
-  *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
+  (暂不处理: state `skipped`; since sprint 22 it asks when the row should come back and the notice says *Put off ·
+  back on …*, see **Not now asks when** above; a mark without a date still returns only when new mail arrives on its
+  thread and reads *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
   closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come
   back*), its history line and the closed list's summary, which names the states it holds, e.g. *Marked done ·
   Ignored (3)*). On Today all three leave the same way, the row (or a one-row card) sliding out unless motion is
@@ -1628,9 +1755,9 @@ pinned to that edge: it comes into view with the draft.
   item is: a ready reply's **Send**, else the card's green step (**Draft now**, **Approve**, a mark of several
   handled rows), else one row's control in bold: **Hand to Codex** for a debt the night prepared as a task, or
   **Mark done**. **Open** *name* is no longer a step (the name already opens the page). On Today the row strip is
-  *Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · More ▾*, the lead among them in bold: the closes
-  and the two hand-offs stay visible words (D-100), and only **Talk it over** folds under the worded **More**
-  (更多). On a phone the three closes are the first line and the hand-offs and More the second. The card
+  *Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · Show more*, the lead among them in bold: the closes
+  and the two hand-offs stay visible words (D-100), and **Talk it over** sits in the item's second level, behind
+  **Show more** (更多背景; it folded under a worded **More** from sprint 14 to sprint 22). On a phone the three closes are the first line and the hand-offs and More the second. The card
   head's **S** button is **Next card** (下一张), shown with its word beside the glyph (the multi-row tick reads
   **Mark all done**): it only deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
@@ -1641,7 +1768,8 @@ pinned to that edge: it comes into view with the draft.
   the page's one snapshot line says why, with a link to the live reader on this
   computer when it has one. Nothing in the reader says a task is recorded but not run.
 - **Talk it over ▾** (聊一聊 ▾) ends the same line, *Hand to Codex · Hand to Claude ·
-  Talk it over ▾* (on Today it sits inside **More ▾**, since sprint 14), and opens the agent choice (**With Codex**, **With Claude**;
+  Talk it over ▾* (since sprint 22 its two choices are in the **Show more** panel of the row, on Today and in
+  Waiting on you alike), and opens the agent choice (**With Codex**, **With Claude**;
   和 Codex 聊这件事). A choice opens a conversation under the row: REM gives the
   agent the item (page, text, project folder, a work folder of its own), its
   first answer shows in the page, and the box under it sends the next message as
@@ -1784,7 +1912,8 @@ pinned to that edge: it comes into view with the draft.
   size and drops the sentences describing its sort order and board axes. The
   [category heading audit](rem-heading-audit.md) records each keep/drop decision
   and inventories the former All records paths.
-- **Your day** (今天的安排) opens Today above its existing rows (#3058).
+- **Your day** (今天的安排) sits on Today below the cards and the to-dos (it
+  opened the page until sprint 22; see **Today's order** above) (#3058).
   The night saves `.state/day-plan.json` immediately after `.state/calendar.json`
   in the same background function, for today and tomorrow in `schedule.timezone`.
   This is deterministic: it uses saved events and Today's existing ranked items,
@@ -1839,7 +1968,7 @@ pinned to that edge: it comes into view with the draft.
   moving other proposed times. A question from you is not labelled a promise.
   Dated promises silent and overdue for over 60 days are set aside as Today
   does; the remaining proposals keep their existing order.
-- **To-dos** (待办) sit on Today in their own short section under **Your day**,
+- **To-dos** (待办) sit on Today in their own short section above **Your day**,
   apart from events (#3087). The same background step that saves
   `.state/calendar.json` reads your open Microsoft To Do tasks (every list of
   `/me/todo/lists`, tasks whose status is not `completed`; the Microsoft login
@@ -1850,7 +1979,11 @@ pinned to that edge: it comes into view with the draft.
   section says how many more there are. Nothing here is a button: a to-do is
   ticked off in Microsoft To Do, and the next read drops it. A read that fails
   keeps the tasks saved before and the section says when it failed and why,
-  like a calendar; no failure stops the night. **Google Tasks are not read
+  like a calendar; no failure stops the night. With nothing to list the
+  section says one thing (#3085): **No open to-dos.** only when every connected
+  list was read and none holds one; when a list was not read it names that list
+  and why, and of the one that was read says only *Microsoft To Do has no open
+  to-dos.* **Google Tasks are not read
   yet.** The Google login has only the calendar scope, so the section says
   *Google Tasks are not read: Google must be reconnected with access to tasks*;
   REM never adds a scope or starts a login by itself. Only the owner's own

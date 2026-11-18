@@ -102,7 +102,7 @@ def test_every_card_has_one_primary_and_the_three_closes_are_words_without_a_hov
         # The hand-offs stay visible words (D-100); only the talk folds under a worded More, never a bare glyph.
         for word in ("Hand to Codex", "Hand to Claude"):
             assert line.get_by_role("button", name=word, exact=True).is_visible(), (i, word)
-        assert line.locator(":scope > .strip-more > summary").inner_text().startswith("More")
+        assert line.locator(":scope > .strip-more").inner_text() == "Show more"
 
 
 def test_the_reply_card_leads_with_send(today):
@@ -161,7 +161,7 @@ def test_long_quiet_promises_are_one_folded_line_below_the_desk_with_close_all_a
     assert stale.bounding_box()["y"] >= desk["y"] + desk["height"]           # under the desk and its rail
     stale.locator(":scope > summary").click()
     for row in stale.locator("li").all():
-        assert row.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]  # the Today strip (#2990)
+        assert row.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # the Today strip (#2990)
     assert stale.get_attribute("aria-label") is None                         # its words are on screen
     stale.get_by_role("button", name="Mark all 2 done", exact=True).click()
     assert page.locator("#today-stale").count() == 0
@@ -205,19 +205,20 @@ def test_a_refused_mark_in_close_all_keeps_undo_for_the_saved_ones_and_never_say
     assert "Saved in notebook" not in notice.inner_text()
 
 
-def test_more_closes_on_escape_and_when_a_talk_is_chosen(today):
+def test_show_more_closes_on_escape_and_when_a_talk_is_chosen(today):
+    """Since #3072 the worded More is Show more: the item's second level, with the talk's two choices in it."""
     page, _, answers = today
     answers["/rem/talk"] = [(200, {"id": "a" * 32, "agent": "codex", "state": "idle", "about": {"key": "x"}, "turns": []})] * 3
     page.evaluate(LIVE, isolated_context=False)
-    more = page.locator(".today-brief .qcard.focal .qitem").first.locator(".strip-more")
-    more.locator(":scope > summary").click()
-    assert more.get_attribute("open") is not None
+    row = page.locator(".today-brief .qcard.focal .qitem").first
+    row.locator(".strip-more").click()
+    assert page.locator("#item-context").evaluate("node => node.open")
     page.keyboard.press("Escape")
-    assert more.get_attribute("open") is None
-    more.locator(":scope > summary").click()
-    more.locator(".talk-menu > summary").click()
-    more.locator('[data-talk="codex"]').click()
-    assert more.get_attribute("open") is None
+    assert page.locator("#item-context").count() == 0
+    row.locator(".strip-more").click()
+    page.locator('#item-context [data-talk="codex"]').click()
+    assert page.locator("#item-context").count() == 0
+    row.locator(".talk").wait_for()
 
 
 def test_with_nothing_waiting_on_you_the_header_never_names_people(today):

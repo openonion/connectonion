@@ -522,6 +522,18 @@ def test_rebuilds_wait_out_the_interval_unless_the_owner_acted_in_the_reader(hos
 
 
 
+@pytest.mark.parametrize("until, status", [("2026-11-20T00:00:00.000Z", 200), (None, 200), ("next week", 400), (20261120, 400), ("2026-11-20" + "0" * 40, 400)])
+def test_a_put_off_carries_one_moment_or_none(host, until, status):
+    """#3072: Not now says when it comes back; the Host takes an ISO moment for it and nothing else."""
+    from connectonion.rem.files import Notebook
+    Notebook(host.root).write("people/alice-chen.md", "# Alice Chen\n\n## Open threads\n- A promise\n")
+    payload = {"key": "people/alice-chen.md\nA promise", "state": "skipped", "until": until}
+    code, _, text = call(host.routes, "POST", "/rem/thread", cookie=f"co_rem={host.token}", body=json.dumps(payload).encode())
+    assert code == status, text
+    if until and status == 200:
+        assert json.loads(text)["until"] == "2026-11-20T00:00:00+00:00"
+
+
 def _review(root, kind="link"):
     from connectonion.rem import reviews
     (root / "people" / "noor-alvi.md").write_text("# Noor Alvi\n")
@@ -668,7 +680,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in HAND)
-    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n' + functions + r'''
+    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
       const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {}, requests = [];
