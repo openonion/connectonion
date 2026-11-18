@@ -1780,7 +1780,11 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
                            "then principles supported by at least three decisions. "
                            "Knowledge uses the same body quote and original citation rule as decisions. "
                            "Create knowledge pages or append clearly headed sections only; preserve every byte of existing knowledge, "
-                           "including Investigate topic pages. An appended section uses ### Drawn from and ### Sources with fresh citation numbers. ")
+                           "including Investigate topic pages. A knowledge page ends with one ## Sources and nothing follows it: "
+                           "when the page already ends with ## Sources, put the new section with its ### Drawn from above it and add "
+                           "its definitions at the end of that one list, continuing its numbers. Only when the page has text after its "
+                           "## Sources, append the section after everything with ### Drawn from and its own ### Sources, using citation "
+                           "numbers the page has not used. ")
                 from .decision_progress import retry_details
                 reasons = retry_details(notebook, items)[1]
                 if reasons:

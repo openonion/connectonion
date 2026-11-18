@@ -1484,19 +1484,70 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     return errors
 
 
+def _ends_with_sources(page: str) -> bool:
+    """Is the page's one `## Sources` its last section, with no stamp or heading after it?"""
+    _, marker, tail = page.partition('\n## Sources\n')
+    return bool(marker) and not re.search(r'(?m)^#{1,6} |^Investigation:', tail)
+
+
+def _fold_appendix(original: str, text: str) -> str:
+    """A section written after the page's closing Sources, moved above it; its definitions join that one list.
+
+    The night's writer used to append `## Section … ### Sources` after everything, so a page read text,
+    sources, text, sources (#3097). The same turn written the old way is not refused, it is put in order.
+    """
+    added = text[len(original):]
+    block = re.search(r'(?ms)^### Sources[ \t]*\n(.*?)(?=^#{2,3} |\Z)', added)
+    section = added[:block.start()] + added[block.end():] if block else added
+    head, marker, sources = original.partition('\n## Sources\n')
+    return (head.rstrip('\n') + '\n\n' + section.strip('\n') + '\n' + marker + sources.rstrip('\n') + '\n'
+            + (block[1].strip('\n') + '\n' if block else ''))
+
+
+def _added_knowledge(text: str, original: str):
+    """(the added section as a page of its own, how to put the reviewed section back, errors).
+
+    A page that ends with its one `## Sources` takes a new section above it and new definitions at the end of
+    that list (#3097). Any other existing page (an Investigate topic with its stamp, or one written before
+    that rule) keeps the older shape: the section after everything, with its own `### Sources`.
+    """
+    nest = lambda part: re.sub(r'^## (Drawn from|Sources|Uncertainties)$', r'### \1', part, flags=re.M)
+    if not original:
+        return text, lambda reviewed: reviewed, []
+    if _ends_with_sources(original):
+        if text.startswith(original):
+            text = _fold_appendix(original, text)
+        head, marker, sources = original.partition('\n## Sources\n')
+        new_head, _, new_sources = text.partition('\n## Sources\n')
+        kept = sources.rstrip('\n')
+        if not (new_head.startswith(head) and new_sources.startswith(kept) and _ends_with_sources(text)):
+            return text, None, ['Abstract knowledge is append-only; preserve all existing text: put the new section '
+                                'above ## Sources and add its definitions at the end of that list']
+        added = new_head[len(head):]
+        candidate = '# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M) + marker + new_sources[len(kept):].lstrip('\n')
+
+        def rebuild(reviewed):
+            section, _, definitions = reviewed.split('\n', 1)[1].partition('\n## Sources\n')
+            return (head.rstrip('\n') + '\n\n' + nest(section).strip('\n') + '\n' + marker + kept + '\n'
+                    + definitions.strip('\n') + '\n')
+        return candidate, rebuild, [] if re.match(r'\s*## [^\n]+\n', added) else ['Abstract knowledge must append a clearly headed section']
+    if not text.startswith(original):
+        return text, None, ['Abstract knowledge is append-only; preserve all existing text']
+    added = text[len(original):]
+    # Review an appendix on its own: its nested headings become normal sections.
+    candidate = '# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M)
+    errors = [] if re.match(r'\s*## [^\n]+\n', added) else ['Abstract knowledge must append a clearly headed section']
+    return candidate, lambda reviewed: original + nest(reviewed.split('\n', 1)[1]), errors
+
+
 def review_abstract_knowledge(notebook, record, text, original, accepted):
     """Review learning in the batch's usual page review, preserving topic text exactly."""
     from .captured_decisions import quote_errors
     from .decision_authorship import review as review_authorship
     from .reader_model import REFERENCE, SOURCE, _destination
-    if original and not text.startswith(original):
-        return text, ['Abstract knowledge is append-only; preserve all existing text']
-    added = text[len(original):] if original else text
-    if original and not re.match(r'\s*## [^\n]+\n', added):
-        return text, ['Abstract knowledge must append a clearly headed section']
-    # Review an appendix on its own: its nested headings become normal sections.
-    candidate = ('# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M)
-                 if original else text)
+    candidate, rebuild, errors = _added_knowledge(text, original)
+    if errors:
+        return text, errors
     drawn = re.search(r'(?ms)^## Drawn from\n(.*?)(?=^## |\Z)', prose(candidate))
     records = {_destination(record, raw) for _, raw in REFERENCE.findall(drawn[1])} if drawn else set()
     allowed = set(notebook.list()) | set(accepted)
@@ -1518,11 +1569,7 @@ def review_abstract_knowledge(notebook, record, text, original, accepted):
     errors += validate(record, candidate, '', items, pages=allowed, root=notebook.root, abstract=True)
     errors += size_errors(text, original)
     errors += unquoted_decisions(candidate, decision_page=True) + quote_errors(candidate, items) + authorship_errors
-    if original:
-        appendix = candidate.split('\n', 1)[1]
-        appendix = re.sub(r'^## (Drawn from|Sources|Uncertainties)$', r'### \1', appendix, flags=re.M)
-        return original + appendix, errors
-    return candidate, errors
+    return rebuild(candidate), errors
 
 
 def fact_errors(record: str, candidate: str, original: str) -> list[str]:

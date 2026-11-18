@@ -3729,7 +3729,8 @@ def test_audited_lists_keep_chrome_concise_and_prose_as_written(reader, width, l
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
-def test_decision_memory_starts_collapsed_and_sources_use_readable_ids(reader, language):
+def test_a_decision_is_one_reading_and_its_source_is_said_in_words(reader, language):
+    # #3097: a decision is printed once with its notes last; no collapsed Full memory, no identifier in the row.
     page, uri = reader
     page.set_viewport_size({'width': 390, 'height': 844})
     page.goto(uri + '#r=decisions%2Fnotebook-format.md')
@@ -3740,14 +3741,15 @@ def test_decision_memory_starts_collapsed_and_sources_use_readable_ids(reader, l
       REM.source_context[source] = {source: 'claude-code', time: '2026-09-03T12:00:00Z'};
       KNOWN.delete(r.path); setInterfaceLanguage(language);
     }''', {'language': language, 'source': source}, isolated_context=False)
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
-    chip = page.locator('.block-sources .id')
-    assert chip.inner_text() == ('Claude Code 会话 · 9月3日' if language == 'zh' else 'Claude Code session · Sep 3')
-    assert chip.get_attribute('title') == source
+    assert page.locator('.deep-note').count() == 0
+    assert page.locator('#main').inner_text().count('Keep Markdown.') == 1
+    row = page.locator('.entry-sources ol > li')
+    assert row.locator('.entry-what').inner_text().replace('↩', '').strip() == ('编码会话，9月3日' if language == 'zh' else 'Coding session, Sep 3')
+    assert source in row.get_attribute('title') and '12345678' not in row.inner_text()
     page.evaluate(r'''source => { delete REM.source_context[source]; render(); }''', source, isolated_context=False)
-    page.locator('details.deep-note > summary').click()
-    assert page.locator('.block-sources .id').inner_text() == 'claude-code:12345678…:295937556'
+    row = page.locator('.entry-sources ol > li')
+    assert row.locator('.entry-what').inner_text().replace('↩', '').strip() == ('编码会话' if language == 'zh' else 'Coding session')
+    assert '12345678' not in row.inner_text()
     assert page.evaluate(r'document.documentElement.scrollWidth <= innerWidth')
 
 

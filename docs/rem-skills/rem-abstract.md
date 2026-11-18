@@ -79,8 +79,15 @@ Investigate describes a subject from raw sources. Abstract learns from settled
 notebook experience. Abstract may create a knowledge page or append a clearly
 headed section to an existing one; it cannot rewrite, replace or delete any
 existing knowledge text, including Investigate's topic pages. Existing titles,
-sections and source definitions stay exactly as written. An appended section
-uses `### Sources` and fresh citation numbers for its new evidence.
+sections and source definitions stay exactly as written.
+
+A knowledge page ends with one `## Sources`, so the file reads in the same order
+outside the reader (#3097). When the page already ends with `## Sources`, put
+the new section above it, with its own `### Drawn from`, and add its source
+definitions to the end of that one list, continuing its numbers. Only when the
+page has text after its `## Sources` (an Investigate topic page, or an older
+page) append the section at the end with its own `### Sources` and fresh
+citation numbers.
 
 The decision quote rule also applies here: copy the owner's verbatim words into
 the body immediately followed by `[n]`, define each original source ID under

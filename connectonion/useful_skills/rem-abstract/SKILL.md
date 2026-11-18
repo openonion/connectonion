@@ -132,16 +132,40 @@ Read their settled experience, then write knowledge before lifting recurring
 reasons into principles. Principles still need three decisions minimum.
 
 This is not an Investigate topic page describing a subject from raw sources.
-Create a new knowledge page, or append a clearly headed section to an existing
+Create a new knowledge page, or add a clearly headed section to an existing
 one. Never rewrite, replace or delete existing knowledge text, including a page
 written by Investigate. Keep that page's title, sections and source definitions
-exactly; put new evidence and its source definitions in the appended section.
+exactly.
 
 Use the same quote and citation rule as decisions: copy the owner's verbatim
 words into the body, immediately followed by `[n]`, and define the original
 source ID under `## Sources`, keeping the originating page path as context.
-For an appended section, use its own `### Sources` and fresh citation numbers.
 Do not turn a paraphrase into a quote or reopen raw sources.
+
+**A knowledge page ends with one `## Sources`**; nothing follows it. To add to a
+page that already ends so, put your `## <heading>` section, with its own
+`### Drawn from`, above `## Sources`, and add your definitions at the end of
+that one list, continuing its numbers:
+
+```markdown
+…existing text, [1] and [2] cited…
+
+## Reading the receipt before retrying
+“Read the receipt before a retry.” [3]
+
+### Drawn from
+- [Retry choice](../decisions/retry-choice.md)
+- [Scheduler trial](../projects/scheduler-trial.md)
+
+## Sources
+- [1] codex:schedule:12 — originating page: `decisions/scheduling-trigger.md`.
+- [2] codex:trial:31 — originating page: `projects/scheduler-trial.md`.
+- [3] codex:retry:4 — originating page: `decisions/retry-choice.md`.
+```
+
+Only when the page has text after its `## Sources` (an Investigate topic page
+with its `Investigation:` line, or an older page) append the section after
+everything, with its own `### Sources` and citation numbers the page has not used.
 
 For example, after reading a scheduling decision and a project trial:
 

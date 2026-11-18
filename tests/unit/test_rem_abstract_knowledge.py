@@ -1,6 +1,7 @@
 """Abstract learns across notebook pages without replacing Investigate's work."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -91,6 +92,71 @@ def test_abstract_appends_experience_without_changing_one_original_byte(book, na
     assert saved.startswith(original)
     assert '## Settled experience: recovery' in saved[len(original):]
     assert '### Sources\n- [1] ' + SOURCE in saved[len(original):]
+
+
+SECTION = f'''
+## Settled experience: recovery
+Recovery reads the plain page first.
+“Keep pages inspectable.” [3]
+“{WORDS}” [4]
+
+### Drawn from
+- [Storage choice](../sessions/fixture.md)
+- [Storage trial](../projects/fixture.md)
+'''
+DEFINITIONS = f'- [3] codex:fixture:8 — originating page: `projects/fixture.md`.\n- [4] {SOURCE} — originating page: `sessions/fixture.md`.\n'
+
+
+def one_sources_last(saved, original):
+    """The page #3097 asks the night for: every earlier line kept, the new section above one closing Sources."""
+    head, _, sources = original.partition('\n## Sources\n')
+    assert saved.startswith(head) and len(re.findall(r'(?m)^#{2,3} Sources$', saved)) == 1
+    after_head, _, after_sources = saved.partition('\n## Sources\n')
+    assert '## Settled experience: recovery' in after_head[len(head):] and '### Drawn from' in after_head[len(head):]
+    assert after_sources == sources + DEFINITIONS
+    assert not re.search(r'(?m)^#', after_sources)
+
+
+@pytest.mark.parametrize('native', [True, False])
+def test_a_section_added_to_a_page_that_ends_with_sources_goes_above_them(book, native):
+    book.write('knowledge/storage.md', KNOWLEDGE)
+    prepared = task(book, native=native)
+    head, marker, sources = KNOWLEDGE.partition('\n## Sources\n')
+    Notebook(Path(prepared['task_root'])).write('knowledge/storage.md', head + '\n' + SECTION + marker + sources + DEFINITIONS)
+    assert runner.check(prepared, {}, native=native) == []
+    one_sources_last(book.read('knowledge/storage.md'), KNOWLEDGE)
+
+
+def test_an_appendix_written_after_the_closing_sources_is_folded_into_the_one_list(book):
+    book.write('knowledge/storage.md', KNOWLEDGE)
+    prepared = task(book)
+    Notebook(Path(prepared['task_root'])).write('knowledge/storage.md', KNOWLEDGE + SECTION + '\n### Sources\n' + DEFINITIONS)
+    assert runner.check(prepared, {}, native=True) == []
+    one_sources_last(book.read('knowledge/storage.md'), KNOWLEDGE)
+
+
+@pytest.mark.parametrize('change,reason', [
+    (lambda text: text.replace('Plain pages made', 'Plain pages once made'), 'preserve'),
+    (lambda text: text.replace(f'- [1] {SOURCE}', '- [1] codex:fixture:8'), 'preserve'),
+    (lambda text: text.replace('[3]', '[1]').replace('[4]', '[2]'), 'fresh citation numbers'),
+])
+def test_a_section_added_above_sources_may_not_change_what_was_there(book, change, reason):
+    book.write('knowledge/storage.md', KNOWLEDGE)
+    prepared = task(book)
+    head, marker, sources = KNOWLEDGE.partition('\n## Sources\n')
+    Notebook(Path(prepared['task_root'])).write('knowledge/storage.md', change(head + '\n' + SECTION + marker + sources + DEFINITIONS))
+    with pytest.raises(runner.RunFailed, match=reason):
+        runner.check(prepared, {}, native=True)
+    assert book.read('knowledge/storage.md') == KNOWLEDGE
+
+
+def test_the_skill_says_a_knowledge_page_ends_with_one_sources_and_shows_it():
+    skill = (runner.useful_skills_dir() / 'rem-abstract/SKILL.md').read_text(encoding='utf-8')
+    lift = skill.split('## Knowledge lift', 1)[1]
+    assert 'ends with one `## Sources`' in lift and 'above `## Sources`' in lift
+    for example in re.findall(r'(?s)```markdown\n(.*?)```', lift):  # every example ends with its one Sources list
+        assert example.count('\n## Sources\n') == 1 and '### Sources' not in example
+        assert not re.search(r'(?m)^#', example.partition('\n## Sources\n')[2])
 
 
 @pytest.mark.parametrize('body,reason', [
@@ -207,36 +273,32 @@ def test_abstract_appended_knowledge_is_translated_with_all_sources_preserved(bo
 
 
 @pytest.mark.parametrize('kind', ['new', 'appended', 'new_with_topic_heading'])
-def test_abstract_knowledge_reader_shows_learning_and_appendix_sources(kind):
+def test_abstract_knowledge_reader_shows_learning_once_and_gathers_appendix_sources(kind):
+    """The entry page's model (#3097): the learning is text, Drawn from is links, every Sources block is one list."""
     import re
     from tests.unit.test_rem_reader import _run_reader_js
     from connectonion.rem.reader import TEMPLATE
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['abstractKnowledge', 'topicPage', 'topicHead', 'sourceList', 'rawSection', 'listItems'])
+                          for name in ['entryParse', 'entryNumbers', 'entryModel', 'sourceId'])
     text = KNOWLEDGE
     if kind == 'new_with_topic_heading':
         text = text.replace('Plain pages', '## What it is\nPlain pages', 1)
     if kind == 'appended':
-        text = '# Storage\n\n## What it is\nExisting topic.\n\n## Sources\n- [7] codex:old:3\n\nInvestigation: investigated 2026-11-01\n'
+        text = '# Storage\n\n## What it is\nExisting topic. [7]\n\n## Sources\n- [7] codex:old:3\n'
         text += '\n## Settled experience: recovery\n' + KNOWLEDGE.split('\n', 1)[1].replace('## ', '### ')
-    script = functions + '\nconst r = ' + json.dumps({'path': 'knowledge/storage.md', 'category': 'knowledge', 'text': text}) + ';\n' + r'''
-      const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/;
-      const graphModel = () => {}, graphT = x => x, graphLocal = () => null;
-      const topicAbout = () => [], topicRelated = () => [], topicUnsure = () => [];
-      const topicRows = () => [], topicKnown = () => '', plainLine = x => x;
-      const topicName = x => x, graphGlyph = () => null, topicAliases = () => [];
-      const topicProse = () => null, topicLinks = () => null, topicTimeline = () => null, topicDoubtful = () => null;
-      const markdown = text => ({markdown: text}), section = () => null;
-      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
-      console.log(JSON.stringify({page: topicPage(r), sources: sourceList(r)}));
-    '''
-    result = _run_reader_js(script)
-    rendered = json.dumps(result['page'])
-    assert 'Plain pages made diagnosis possible' in rendered
-    assert '../sessions/fixture.md' in rendered and '../projects/fixture.md' in rendered
-    assert 'REM has not written this page yet' not in rendered
-    assert any(SOURCE in source['text'] for source in result['sources'])
+    body = text.split('\n', 1)[1]
+    result = _run_reader_js(functions + '\nconsole.log(JSON.stringify(entryModel(' + json.dumps(body) + ')));')
+    read = '\n'.join(section['text'] for section in result['sections'])
+    assert read.count('Plain pages made diagnosis possible') == 1
+    assert 'Sources' not in read and 'Drawn from' not in read
+    drawn = [link for section in result['sections'] for link in section['drawn']]
+    assert drawn == ['[Storage choice](../sessions/fixture.md)', '[Storage trial](../projects/fixture.md)']
+    sources = [source['text'].split(' ')[0] for source in result['sources']]
+    assert sources == (['codex:old:3'] if kind == 'appended' else []) + [SOURCE, 'codex:fixture:8']
+    if kind == 'appended':  # one list, numbered on: the appendix's [1] is the page's second source
+        assert [source['n'] for source in result['sources']] == ['1', '2', '3']
+        assert 'Existing topic. [1]' in read and '” [2]' in read and '” [3]' in read
 
 
 def test_abstract_help_plain_contract_and_offline_audit():
