@@ -1535,8 +1535,9 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     ''')
     assert result['prepared']['class'] == 'mailcard'
     actions = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
-    # Send is the one green; writing full screen, editing in Gmail and Skip wait behind 更多 (D-120).
-    buttons = [actions[-1], *actions[0]['children'][1]['children']]
+    # Send is the one green; Write full screen stays in sight beside it (sprint 22: behind 更多 the owner could not
+    # find it); editing in Gmail and Skip wait behind 更多 (D-120).
+    buttons = [actions[-1], actions[1], *actions[0]['children'][1]['children']]
     assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'

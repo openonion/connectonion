@@ -2196,6 +2196,8 @@
     /* Buttons keep their words whole ("Skip", not "Ski / p"); a hint waiting on REM's question takes its own
        line above them instead of squeezing them. */
     .qcard.open .mail-actions > button { flex-shrink: 0; white-space: nowrap; }
+    /* Full screen is a thumb's height like Send beside it, so the row's buttons share one top. */
+    .qcard.open .mail-actions > .mail-write { min-height: 44px; }
     .qcard.open .mail-actions > .choose-hint { order: -1; flex-basis: 100%; }
     .qcard.open .mail-actions .mail-note, .qcard.open .mail-actions .edit-provider { display: none; }
     .handoff .btn-quiet, .stale .stale-acts .btn-quiet { min-height: 44px; }
@@ -3152,7 +3154,8 @@
   .qdraft .mail-actions { border: 0; background: none; padding: 12px 18px 14px; }
   .qdraft .mail-choices { border: 0; }
   .mail-actions .btn-act { margin-left: auto; }
-  .mail-actions .mail-note { opacity: 0; transition: opacity var(--t-press) var(--ease-out); color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  /* The note gives way, never Send: with Write full screen in the row it shrinks to an ellipsis instead of wrapping Send. */
+  .mail-actions .mail-note { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; transition: opacity var(--t-press) var(--ease-out); color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .mail-actions:hover .mail-note, .mail-actions:focus-within .mail-note { opacity: 1; }
   .more-menu { position: relative; }
   .more-menu > summary { list-style: none; width: 38px; height: 38px; border-radius: var(--radius); display: grid; place-items: center; color: var(--grey); cursor: pointer; }
@@ -5879,7 +5882,10 @@ function openWriter(draft, who, onSend) {
         draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
         el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]),
       body,
-      el("div", { class: "writer-actions" }, [send, close, notice, el("span", { class: "mail-note", text: t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" }) })])]),
+      el("div", { class: "writer-actions" }, [send, close, notice, el("span", { class: "mail-note", text: (draft.channel || "mail") === "mail"
+        ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" })
+        // A Lark or WhatsApp reply leaves through that chat, as the card says, never through the mailbox it answers.
+        : t("Sends as you via {tool}", { tool: draft.channel === "lark" ? "lark-cli" : "co whatsapp" }) })])]),
     el("aside", { class: "writer-side" }, [
       who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
       who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
@@ -6012,17 +6018,18 @@ function replyDraftCard(draft, onSent) {
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const edit = el("button", { type: "button", class: "btn-quiet edit-provider", text: t("Edit in {provider}", { provider }) });
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
-  const write = el("button", { type: "button", class: "btn-quiet", text: t("Write full screen"), "data-key": "r" });
+  const write = el("button", { type: "button", class: "btn-quiet mail-write", text: t("Write full screen"), "data-key": "r" });
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
   const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, ["mail", "lark", "whatsapp"].map(name => {
     const pill = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), text: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]) });
     if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
     return pill;
   }));
-  // Send is the one green action; writing full screen, editing in the mail app and Skip wait behind 更多 (D-120).
+  // Send is the one green action. Writing full screen stays in sight beside it: behind 更多 the owner could not find
+  // it (sprint 22); editing in the mail app and Skip wait behind 更多 (D-120).
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
-    el("div", { class: "menu" }, [write, ...(channel === "mail" ? [edit] : []), skip])]);
-  const actions = el("div", { class: "mail-actions" }, [more, hint,
+    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), skip])]);
+  const actions = el("div", { class: "mail-actions" }, [more, write, hint,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), send]);
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
