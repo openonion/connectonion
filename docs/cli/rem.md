@@ -1064,6 +1064,60 @@ the headings still empty are named once at the foot of the page with the
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
 
+### Write, append, enrich and rewrite (#3105)
+
+`co rem investigate PAGE` decides by the page. A people, organisation or
+project page that has never been investigated is written whole from its
+sources, as before. A page investigated before is **appended to**: the writer
+gets the page, only the material since the page's last investigation, and a
+note pointing at the saved mail archive and attachments, so it can search the
+older threads the new mail continues. Its task is additions and corrections in
+place that keep the old value ("Role: CEO (was CTO until 2026-10-01)"); it
+removes nothing. Append runs no whole-page synthesis, hedge-editing or quote
+round, because those rewrite lines the update did not touch. Your own page
+(`investigate me`) is still written whole from your recent work.
+
+The append rule is checked by the program, not trusted to the prompt. Before
+the page is saved, review compares the draft with the page it started from:
+every `“…”` quote, every cited source id and every cited line outside the lead,
+`History` and `Uncertainties` must still be on the page, word for word or
+extended, or be marked corrected (a line close to the old one that says "was",
+"until", "previously" or "corrected"). Facts lines keep their own guard. A draft
+that drops one is sent back for repair with "Dropped claim line the page had:";
+what the repair still drops is put back beside the new work, as dropped quotes
+and sources already are. The lead, `History` (folded by the program at sixteen
+lines) and `Uncertainties` (questions that get answered) are excluded on purpose.
+
+The options are steps, each with its own prompt:
+
+```bash
+co rem investigate people/avery-lin.md            # write or append, notebook material only
+co rem investigate people/avery-lin.md --enrich   # then follow its leads: links, attachments, the web
+co rem investigate people/avery-lin.md --rewrite  # a whole-page rewrite, kept as a draft
+co rem investigate people/avery-lin.md --accept-rewrite
+co rem investigate people/avery-lin.md --undo     # the page as it was before its last investigation
+```
+
+- `--enrich` runs the enrich prompt (`rem-enrich`) on the result, even when
+  there was nothing new to append. Enrich never removes a line either: the same
+  claim-line check guards its draft. `co rem enrich PAGE` now runs
+  `investigate PAGE --enrich` and says it moved.
+- `--quick` with a page is the default (write or append only); with `me` it is
+  still the bounded first pass.
+- `--rewrite` is the whole-page investigation an existing page had before
+  #3105. Its result is not saved over the page: the draft is kept in
+  `.state/rewrites/<page>.json` with the hash of the page it was made from, and
+  `--accept-rewrite` replaces the page only while the page is unchanged since;
+  `--discard-rewrite` deletes it.
+- Every investigation that changes a page keeps the page as it was in
+  `.state/previous/<page>.json`; `--undo` puts it back while nothing has changed
+  the page since.
+
+The reader's Investigate button runs `investigate PAGE --enrich` (the owner's
+own click, so the web step is included). The nightly batch runs the
+write-or-append step for pages with new material, and the weekly deepen slot
+keeps running enrich (then muse) at night within its allowance, as before.
+
 ### Deepen one page: enrich and muse
 
 `investigate` writes a page from what its gather found. Two commands go further

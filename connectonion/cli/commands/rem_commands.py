@@ -505,7 +505,7 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
 
 
 def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None,
-                      quiet=False, retry_refused=False, rounds=None, mail=()):
+                      quiet=False, retry_refused=False, rounds=None, mail=(), mode=""):
     """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
     from ...rem import investigate as rem_investigate
     from ...rem.files import RemError
@@ -528,7 +528,54 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text, root=root), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
-        stage_progress=update, retry_refused=retry_refused, rounds=rounds), quiet=quiet)
+        stage_progress=update, retry_refused=retry_refused, rounds=rounds, mode=mode), quiet=quiet)
+
+
+def _page_steps(root, record, *, enrich=False, rewrite=False, handle=(), days=None, eval_dir=(),
+                progress=None, retry_refused=False, quiet=False):
+    """`co rem investigate PAGE`: write or append, then enrich if asked (#3105).
+
+    The page before the run is kept for --undo; a rewrite is held as a draft and
+    the page put back. Enrich runs even when there was nothing new to append:
+    following a page's leads needs no new mail."""
+    from ...rem import page_versions
+    from ...rem.files import Notebook, RemError
+    from ...rem.investigate import NothingFound
+    notebook = Notebook(root)
+    if rewrite and enrich:
+        raise RemError("--rewrite makes a draft; enrich the page after you accept it: "
+                       f"co rem investigate {record} --accept-rewrite, then --enrich")
+    if rewrite and not record.startswith(("people/", "orgs/", "projects/")):
+        raise RemError("--rewrite applies to people, orgs and projects pages")
+    before = notebook.read(record)
+    try:
+        # The owner naming a page is the retry: the refusal ledger is for
+        # scheduled runs, and made them add --retry-refused to their own request.
+        result = _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
+                                   progress=progress, quiet=quiet, mode="rewrite" if rewrite else "",
+                                   retry_refused=retry_refused or not record.startswith("skills/"))
+    except NothingFound as nothing:
+        # Nothing new is a finished run, not a failure: it read every source and
+        # made no model call. It printed "Error:", exited 1 and told the user to
+        # run the same command again (#2034). Enrich has sources of its own (the
+        # saved archive, the page's links), so it runs after either.
+        from ...rem.investigate import NothingNew
+        if not enrich and isinstance(nothing, NothingNew):
+            return str(nothing)
+        if not enrich:
+            raise
+        result = {"record": record, "investigate": str(nothing), "changed": []}
+    if rewrite:
+        result["rewrite"] = page_versions.hold_rewrite(root, record, before)
+        return result
+    if enrich:
+        from ...rem import muse as muse_module
+        found = _logged(root, record, "enrich", lambda update: muse_module.enrich(root, record, stage_progress=update),
+                        quiet=quiet)
+        result["enrich"] = {"changed": "yes" if found["changed"] else "no",
+                            "page_chars": "{:,} -> {:,}".format(*found["page_chars"]), "leads": found["report"]}
+    page_versions.keep_previous(root, record, before, notebook.read(record))
+    return result
 
 
 def _deepen_page(ctx, page, stage):
@@ -1569,7 +1616,12 @@ def make_rem_app(factory):
                          list_only: bool = typer.Option(False, "--list"),
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
                          eval_dir: List[Path] = typer.Option([], "--eval-dir"),
-                         retry_refused: bool = typer.Option(False, "--retry-refused")):
+                         retry_refused: bool = typer.Option(False, "--retry-refused"),
+                         enrich: bool = typer.Option(False, "--enrich"),
+                         rewrite: bool = typer.Option(False, "--rewrite"),
+                         accept_rewrite: bool = typer.Option(False, "--accept-rewrite"),
+                         discard_rewrite: bool = typer.Option(False, "--discard-rewrite"),
+                         undo: bool = typer.Option(False, "--undo")):
         from ...rem.files import Notebook, RemError, read_json, state_path
         from ...rem import queue as rem_queue
         from ...rem.queue import CATEGORIES, order
@@ -1708,8 +1760,13 @@ def make_rem_app(factory):
         def run(root):
             config = read_config(root)
             effective_workers = workers if workers is not None else (1 if (limit or budget) else config["limits"]["workers"])
-            if quick and target != "me":
-                raise RemError("--quick is for `co rem investigate me` only")
+            steps = {"--enrich": enrich, "--rewrite": rewrite, "--accept-rewrite": accept_rewrite,
+                     "--discard-rewrite": discard_rewrite, "--undo": undo}
+            asked = [flag for flag, on in steps.items() if on]
+            if asked and (not target or target in runnable or target == "me"):
+                raise RemError(f"{asked[0]} needs one page: co rem investigate PAGE {asked[0]}")
+            if quick and (not target or target in runnable):
+                raise RemError("--quick goes with me or one page: co rem investigate me --quick")
             if retry_refused and (not target or target in runnable or target == "me"):
                 raise RemError("--retry-refused needs one page: co rem investigate PAGE --retry-refused")
             if budget and target not in runnable:
@@ -1734,29 +1791,41 @@ def make_rem_app(factory):
                 return by_category(root, target, effective_workers)
             notebook = Notebook(root)
             record = _resolve_page(notebook, target, next_args=["investigate"])
-            from ...rem.investigate import NothingNew
-            try:
-                # The owner naming a page is the retry: the refusal ledger is
-                # for scheduled runs, and made them add --retry-refused to
-                # their own request.
-                result = _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
-                                           progress=progress,
-                                           retry_refused=retry_refused or not record.startswith("skills/"))
-            except NothingNew as quiet:
-                # Nothing new is a finished run, not a failure: it read every
-                # source and made no model call. It printed "Error:", exited 1
-                # and told the user to run the same command again (#2034).
-                return str(quiet), ["show", record]
+            from ...rem import page_versions
+            if len(asked) > 1 and set(asked) - {"--enrich", "--rewrite"}:
+                raise RemError("Use one of --accept-rewrite, --discard-rewrite and --undo at a time")
+            if accept_rewrite or discard_rewrite or undo:
+                action = (page_versions.accept_rewrite if accept_rewrite else
+                          page_versions.discard_rewrite if discard_rewrite else page_versions.undo)
+                return action(root, record), ["show", record]
+            result = _page_steps(root, record, enrich=enrich, rewrite=rewrite, handle=handle, days=days,
+                                 eval_dir=eval_dir, progress=progress, retry_refused=retry_refused)
+            if isinstance(result, str):
+                return result, ["show", record]
+            if rewrite and result["rewrite"]["changed"]:
+                return result, ["investigate", record, "--accept-rewrite"]
             return result, ["show", result["report"] if record.startswith("skills/") else record]
         retry = ["investigate", *([target] if target else []),
                  *(["--days", str(days)] if days is not None else []),
                  *(["--quick"] if quick else []),
-                 *(["--retry-refused"] if retry_refused else [])]
+                 *(["--retry-refused"] if retry_refused else []),
+                 *(["--enrich"] if enrich else []), *(["--rewrite"] if rewrite else [])]
         _handle(ctx, run, ["investigate"], retry=retry, resume=retry)
 
     @rem.command("enrich", cls=V("co rem enrich"))
     def enrich_page(ctx: typer.Context, page: str = typer.Argument(..., metavar="PAGE")):
-        _deepen_page(ctx, page, "enrich")
+        from ...rem.files import Notebook
+
+        def operation(root):
+            record = _resolve_page(Notebook(root), page)
+            # #3105: enrich is a step of investigate now; say so once, then do it.
+            rem_look.line("co rem enrich moved: it runs co rem investigate PAGE --enrich "
+                          f"(co rem investigate {record} --enrich).", err=True)
+            result = _page_steps(root, record, enrich=True)
+            return (result, ["show", record])
+
+        retry = ["investigate", page, "--enrich"]
+        _handle(ctx, operation, retry, retry=retry, resume=retry)
 
     @rem.command("muse", cls=V("co rem muse"))
     def muse_page(ctx: typer.Context, page: str = typer.Argument(..., metavar="PAGE")):

@@ -89,8 +89,10 @@ Most promising first: what could change the lead, Open threads or Facts.
   draw conclusions across pages — that is `rem-muse`. The lead changes only
   when a new fact changes what is live; even then keep its quotes.
 - Never delete or swap out a quote, an owner instruction or a cited fact
-  because you found a different one; add yours beside it. Remove a sentence
-  only when a source contradicts it, and say which.
+  because you found a different one; add yours beside it. Never remove a
+  line. When a source contradicts a line, correct it in place and keep the old
+  value with when it stopped being true ("Head of Design [9] (was Senior
+  Designer until 2026-10-01 [3])"), and say which in your reply.
 - Cite with the id on the material's `Source:` line (`gmail:` or `outlook:`
   plus 12 hex characters), never a provider's raw message id or thread id.
 - The owner is `the user`, never their name, even when mail is signed with it.
@@ -117,7 +119,9 @@ other findings go in your reply as followed leads, so muse can use them.
 Before you finish, compare your page with the page you were given: every
 `“…”` quote and every `Sources` id it had must still be on the page, and every
 `[n]` in the text must be defined under `Sources`. Restore any you dropped.
-A dropped quote or source id is refused and sent back for repair.
+A dropped quote or source id is refused and sent back for repair. So is a
+dropped cited line outside the lead, History and Uncertainties: it must still
+be on the page, or be corrected in place with its old value kept.
 
 ## Final reply
 

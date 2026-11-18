@@ -1681,6 +1681,34 @@ QUOTE_NOTE = ("Quote round: an edit, not an investigation. The page has {quotes}
               "resting on two or more cited messages. Add no new claim, no new source. Delete nothing cited. Then end.")
 
 
+# #3105: the task for a page investigated before. The rewrite cost grew with the page, not
+# with what was new, and lost lines: "the rewrite dropped 4 quotes the page had".
+APPEND_NOTE = ("Update, not a rewrite: this page was last investigated {last}. The material in this turn is only "
+               "what arrived since then (and, where a new mail answers an older one, that older original for "
+               "comparison). Your task is additions and corrections, nothing else.\n"
+               "- Add what the new material establishes: new facts, asks, offers, decisions and outcomes, each "
+               "with its date and citation, quoting the speaker's exact words for an ask, offer, term, refusal "
+               "or decision. Put each where it belongs: a new History line, a new Open threads line, a new "
+               "bullet in its section, or a Facts value.\n"
+               "- Correct a line the new material contradicts in place, and keep the old value with when it "
+               "stopped being true: \"Role: Head of Design [9] (was Senior Designer until 2026-10-01 [3])\". "
+               "A thread that the new material settles keeps its line, with the outcome and its date added; "
+               "move it to History only with that outcome.\n"
+               "- Never remove a line, a quote, a citation or a source. Never reword, merge or reorder a line "
+               "the new material does not touch. Do not edit the page whole, tidy it or shorten it: the "
+               "program compares your draft with this page and puts back every cited line you drop.\n"
+               "- The lead may change only to say what is live now; keep its quotes.\n"
+               "- Older threads and attachments the new material continues are in the notebook's own archive: "
+               "mail under {archive}/mail/messages (search with rg -il for the subject line, the thread or the "
+               "sender) and attachments under {archive}/attachments. Read what the new mail points to there "
+               "before writing that a thread has no earlier ask or no reply.\n"
+               "- If nothing in the new material changes the page, answer NO CHANGE.")
+
+
+def append_note(root: Path, last) -> str:
+    return APPEND_NOTE.format(last=last.isoformat() if last else "before", archive=root / ".state")
+
+
 def _quote_counts(page: str) -> tuple[int, int]:
     """Prose quotes and Insight bullets, excluding sources and fenced examples."""
     from .page_review import QUOTE, prose
@@ -1901,7 +1929,8 @@ def prepare_round(notebook, state, page=None):
     """The next bounded turn, including leads carried by earlier processes."""
     record, number, parts = state["record"], state["number"], state["parts"]
     total = len(parts)
-    if number > total + 1 or number > total and (not state["multi"] or not state["edited"]):
+    # An append has no synthesis round: that round edits the page whole (#3105).
+    if number > total + 1 or number > total and (not state["multi"] or not state["edited"] or state.get("append")):
         return None
     part = parts[number - 1] if number <= total else []
     dates = [(i.get("local_time") or str(i.get("timestamp") or ""))[:10]
@@ -1927,7 +1956,7 @@ def check_round(state, result):
 
 
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
-               config: dict, stage_progress=None) -> dict:
+               config: dict, stage_progress=None, *, append=False) -> dict:
     """One turn per part, each on the page the last one left, then a synthesis turn.
 
     A refused round loses that round, not the page: the next part builds on
@@ -1941,7 +1970,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
     total, edited, repaired = len(rounds), False, 0
     state = {"record": record, "parts": rounds, "context": context, "page": {}, "number": 1,
-             "multi": True, "edited": False, "ledgers": ledgers, "changed": [], "leads": []}
+             "multi": True, "edited": False, "ledgers": ledgers, "changed": [], "leads": [], "append": append}
     for number, part in enumerate([*rounds, []], 1):
         state.update(number=number, edited=edited)
         items = prepare_round(notebook, state, page_item(notebook.read(record)))
@@ -1964,7 +1993,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             # First put the dropped quoted lines back beside the rewrite, as project
             # quote turns and upkeep do; only what that cannot place costs a turn.
             from .page_review import restore_dropped
-            notebook.write(record, restore_dropped(before, notebook.read(record)))
+            notebook.write(record, restore_dropped(before, notebook.read(record), claims=append))
             reason, lost = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
         if lost:
             repaired += 1
@@ -1985,7 +2014,9 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
     page = notebook.read(record)
-    before, after, edit = editing_turn(runner, notebook, record, config, stage_progress, context)
+    # An append ends with its parts: the editing and quote turns rewrite lines it did not touch (#3105).
+    before, after, edit = ([], [], None) if append else editing_turn(runner, notebook, record, config,
+                                                                      stage_progress, context)
     if edit is not None:
         reason, _ = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
         for key, value in (edit.get("usage") or {}).items():
@@ -2002,7 +2033,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             changed = sorted({*changed, *edit.get("changed", [])})
             if edit.get("report"):
                 ledgers.append(f"Editing round: {str(edit['report']).strip()}")
-    quote = quote_pass(runner, notebook, record, rounds, config, stage_progress, context)
+    quote = None if append else quote_pass(runner, notebook, record, rounds, config, stage_progress, context)
     if quote:
         for key, value in (quote.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
@@ -2342,13 +2373,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
                 quick: bool = False, retry_refused: bool = False, website=None,
                 fetch_attachments: bool = True, rounds: int | None = None, read_before: str = "",
-                prepare_only=False, lock_held=False, directory=None) -> dict:
+                prepare_only=False, lock_held=False, directory=None, mode: str = "") -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input.
 
     `rounds` caps the parts read in full (the first run's time budget), and
     `read_before` reads the parts dated before it -- a deepen pass, whose newer
     parts the first pass already read. The parts not read stay searchable in files.
+    A people, orgs or projects page investigated before is appended to (#3105);
+    `mode="rewrite"` writes it whole, as every investigation did before.
     """
+    if mode not in ("", "rewrite"):
+        raise RemError(f"Unknown investigation mode {mode!r}; expected rewrite or none")
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise RemError(f"{record} does not exist; create it with `co rem stub` first")
@@ -2405,6 +2440,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     from .service import notebook_today
     coverage.append(f"Requested investigation window: {days} days ending {notebook_today(root).isoformat()}")
     last = last_investigated(notebook.read(record))
+    # Your own page keeps its whole-page pass from your recent work; skills and topics have no append yet.
+    append = (bool(last) and mode != "rewrite" and not sent_only
+              and record.startswith(("people/", "orgs/", "projects/")))
     # Read from everything gathered, before anything is filtered, laid out in
     # files or sampled: the turn searches files for what it thinks to look for,
     # and Corin's phone sat in a signature it never opened (#2068). A mail the
@@ -2643,12 +2681,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         write_json(original_material, original_items)
     # `sent_only` is `investigate me`: the owner's own page, with its own spec (#2008).
     def page_item(text):
+        ask = (f"The page as it stands, at {record}. Append to it as the update note says; keep every line:"
+               if append else f"The page as it stands, at {record}. Fill its Unknowns, update what "
+                              "has moved, keep what is right:")
         return {"role": "page", "record": record, **({"owner": True} if sent_only else {}),
-                "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
-                        f"has moved, keep what is right:\n\n{normalize(record, text, owner=sent_only)}",
+                **({"append": True} if append else {}),
+                "text": f"{ask}\n\n{normalize(record, text, owner=sent_only)}",
                 "timestamp": now, "source": "investigation:page"}
 
     prompt_items = [page_item(notebook.read(record))] + (
+        [{"role": "round", "source": "investigation:append", "timestamp": now, "text": append_note(root, last)}]
+        if append else []) + (
         [{"role": "own-company", "source": "investigation:own-company", "timestamp": now, "text": company_note}]
         if company_note else []) + ([{"role": "project-repositories", "source": "investigation:project-repositories",
            "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]
@@ -2717,15 +2760,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if prepare_only:
         return {"record": record, "parts": parts, "context": context, "page": prompt_items[0],
                 "number": 1, "ledgers": [], "leads": [], "refused_sources": [], "refused_rounds": [],
-                "changed": [], "edited": False, "multi": in_rounds,
+                "changed": [], "edited": False, "multi": in_rounds, "append": append,
                 "searched": searched_sources(coverage), "repository_items": repository_items,
                 "session_items": original_items, "project_inputs": project_inputs, "days": days}
     try:
         if in_rounds:
-            result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
+            result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress,
+                                append=append)
         else:
             result = runner(notebook, prompt_items, config, stage="investigate")
-            quote = quote_pass(runner, notebook, record, [items], config, stage_progress, prompt_items)
+            quote = None if append else quote_pass(runner, notebook, record, [items], config, stage_progress,
+                                                   prompt_items)
             if quote:
                 from .runner import _add_usage
                 result = {**result, "usage": _add_usage(result.get("usage"), quote.get("usage")),
@@ -2781,6 +2826,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                "file": source[5:].rsplit("@", 1)[0] if source.startswith("file:") else source,
                                "timestamp": context["time"], "captured_at": context["captured_at"]})
     return {"record": record, "items": len(items), "items_available": available_items,
+            "mode": "append" if append else "write",
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,

@@ -241,10 +241,33 @@ still rejected and keep the rest. Keep a phone or email only if the mail shows
 it belongs to that person; otherwise write Unknown. Save rejected drafts with
 the reason so the work is not lost.
 
+Write or append (people, orgs and projects; #3105):
+  A page with no investigation yet is written whole from its sources. A page
+  investigated before is appended to: the writer is given the page and only the
+  material since its last investigation, with the saved archive to search for
+  the older threads and attachments that material continues. It adds what is
+  new and corrects stale lines in place, keeping the old value ("was X until
+  <date>"); it removes nothing. The program checks this: every quote, every
+  cited source and every cited line the page had (outside the lead, History and
+  Uncertainties) must still be there or be marked corrected. A draft that drops
+  one goes back for repair; what the repair still drops is put back as it was.
+  Your own page (investigate me) is still written whole from your recent work.
+
 Usage:
   co rem investigate                          Per category: completed and total pages, pages due
                                                for a refresh and the next three to write. No model.
-  co rem investigate PAGE                     Investigate one page.
+  co rem investigate PAGE                     Write or append one page from material in the notebook:
+                                               mail, sessions, files, older threads, attachments.
+  co rem investigate PAGE --enrich            Then follow its leads: links, attachments, the web (the enrich
+                                               step). The Investigate button in the reader runs this.
+  co rem investigate PAGE --quick             The same as no option: write or append only.
+  co rem investigate PAGE --rewrite           Rewrite the whole page from its material as a draft; the page
+                                               itself does not change until you accept the draft.
+  co rem investigate PAGE --accept-rewrite    Replace the page with its waiting draft (refused if the page
+                                               changed after the draft was made).
+  co rem investigate PAGE --discard-rewrite   Delete the waiting draft.
+  co rem investigate PAGE --undo              Put back the page as it was before its last investigation,
+                                               if nothing has changed it since.
   co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
   co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
                                                most useful first, using limits.workers (default 16).
@@ -284,7 +307,13 @@ found there are not the person's own.
 
 Options:
   --days N       How far back to read (default 150; 30 for me)
-  --quick        With me: sample recent evidence for one model turn; explicitly partial
+  --quick        With me: sample recent evidence for one model turn; explicitly partial.
+                 With PAGE: write or append only, no enrich (the default).
+  --enrich       PAGE only: after writing or appending, run the enrich step on the result
+                 (links, attachments, older threads, the web; never removes a line).
+  --rewrite      People, orgs or projects PAGE: a whole-page rewrite, kept as a draft
+                 for --accept-rewrite or --discard-rewrite
+  --undo         PAGE only: restore the page from before its last investigation
   --limit N      With CATEGORY: at most N pages this run (default all)
   --workers N    With CATEGORY: concurrent pages (default limits.workers, 16; 1-32;
                  1 with --limit/--budget)
@@ -339,15 +368,21 @@ Back:     co rem --help
 ```
 co rem enrich — follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
 
+Moved: `co rem enrich PAGE` runs `co rem investigate PAGE --enrich`, which first
+appends what is new and then runs this step. It says so in one line.
+
 Read one existing people, projects or orgs page, its cited originals and the
 reachable saved archive (up to ten years). Follow unread links, attachments and
 older threads; add what they establish and return followed, open and blocked
 leads. No live mailbox is searched; the agent may open links on the web.
 Automatic checks of citations, quotes and claims decide whether to save the page,
-as in co rem investigate.
+as in co rem investigate. It never removes a line: a contradicted line is
+corrected in place with its old value kept, and the program puts back any cited
+line a draft dropped.
 
 Usage:    co rem enrich PAGE
 Example:  co rem enrich people/avery-lin.md
+          (the same as co rem investigate people/avery-lin.md --enrich)
 
 Inputs:   PAGE is a path from co rem list or co rem search, or a short stem, title
           or email. Other notebook pages provide context.
@@ -413,7 +448,9 @@ Effects:  Reads selected pages and their sources. Uses the configured model for
           .state/depth.json and run logs.
 Takes:    Large-page rounds took 35–97 minutes (2026-10-20).
 Schedule: Scheduled sync runs this after a due daily round that is not partial.
-          Manual sync never deepens.
+          Manual sync never deepens. The night's investigation writes or appends
+          pages with new material; this slot is where enrich runs at night, within
+          the weekly allowance above.
 
 Next:     co rem logs
 Back:     co rem --help
