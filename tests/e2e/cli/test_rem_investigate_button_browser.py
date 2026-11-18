@@ -107,8 +107,19 @@ def test_the_button_says_why_offers_its_levels_runs_in_place_and_undoes(live):
     from connectonion.rem.files import Notebook
     page, root, commands = live
     control = page.locator(".person-head .inv")
-    expect(control.locator(".inv-go")).to_have_text("Up to date · Oct 1")
+    # One verb on the button; the reason is the line under it (owner, 2026-11-18: «更新是什么意思呢？»).
+    expect(control.locator(".inv-go")).to_have_text("Up to date")
     expect(control.locator(".inv-go")).to_be_disabled()
+    expect(control.locator(".inv-line")).to_have_text("Last investigated Oct 1")
+    for state, why in ((dict(label="investigate", last=None), "Not investigated yet"),
+                       (dict(label="update", new_mails=3, last="2026-10-01"), "3 new mails not in this page yet · last Oct 1"),
+                       (dict(label="update", new_mails=0, new_sessions=1), "1 new session not in this page yet · last Oct 1"),
+                       (dict(label="deeper", leads=5), "5 leads not followed yet (uses the web) · last Oct 1")):
+        page.evaluate("""s => { const r = byPath('people/mara.md'); r.investigation = { ...r.investigation, ...s };
+          render(); }""", state, isolated_context=False)
+        expect(control.locator(".inv-go")).to_have_text("Investigate")
+        expect(control.locator(".inv-line")).to_have_text(why)
+    page.evaluate("() => { const r = byPath('people/mara.md'); r.investigation = { ...r.investigation, label: 'current', last: '2026-10-01', new_mails: 0, new_sessions: 0, leads: 0 }; render(); }", isolated_context=False)
     control.locator(".inv-more > summary").click()
     levels = control.locator(".inv-menu [data-level]")
     expect(levels).to_have_count(3)
