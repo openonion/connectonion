@@ -3,7 +3,7 @@ Purpose: One directory per chat platform where every inbound message becomes a f
 LLM-Note:
   Dependencies: imports from [dataclasses, json, os, re, subprocess, sys, time, pathlib, environment.py, cli/browser_agent/transport.py (the singleton lock)] | imported by [inbox/feishu.py, inbox/consumer.py, cli/commands/listen_commands.py] | tested by [tests/unit/test_inbox_store.py]
   Data flow: provider → Inbox.deliver(Message) → one line appended to received.jsonl + one file in new/ | consumer → Inbox.receive() → rename new/X → cur/X → Message | reply → Inbox.record_sent() → one line in sent.jsonl, cur/X removed
-  State/Effects: creates ~/.co/inbox/<provider>/ (or $CO_INBOX_HOME/<provider>) mode 0700 with received.jsonl, sent.jsonl, done.jsonl, tmp/, new/, cur/, bad/, log, listen.lock | every write is an append or an atomic rename | received.jsonl is never rewritten or truncated
+  State/Effects: creates ~/.co/inbox/<provider>/ (or $CO_INBOX_HOME/<provider>) mode 0700 with received.jsonl, sent.jsonl, done.jsonl, tmp/, new/, cur/, bad/, log, listen.lock, listen.pid | every write is an append or an atomic rename | received.jsonl is never rewritten or truncated
   Integration: exposes Message, Inbox | the directory is the interface: `ls new/` is the unread count, `tail -f received.jsonl` is a live view, `mv new/X cur/X` is a claim | receive() starts a listener when none is running, the gpg-agent convention
   Performance: deliver() is two small writes; receive() polls new/ four times a second; lookup() and already_replied() scan a JSONL file linearly, which is fine for the sizes one bot sees
   Errors: a torn last line in received.jsonl is skipped, never raised | a rename lost to another consumer moves on to the next file | a queue file that is not a message is set aside in bad/ with a log line | the listener lock is held by the kernel, so a dead listener holds nothing
@@ -250,6 +250,7 @@ class Inbox:
         self.bad = self.root / "bad"
         self.logfile = self.root / "log"
         self.lock = self.root / "listen.lock"
+        self.pidfile = self.root / "listen.pid"
         for directory in (self.root, self.tmp, self.new, self.cur, self.bad):
             directory.mkdir(parents=True, exist_ok=True)
         # Messages are private. Whoever can read the home directory can read
@@ -657,8 +658,11 @@ class Inbox:
     # The kernel holds the lock, not the file. flock(2) (msvcrt.locking on
     # Windows) is released when the holder exits, SIGKILL and reboot
     # included, so a listener that died holds nothing and a pid the OS has
-    # since reused is not a phantom. The pid inside the file is for people
-    # (`check` prints it) and is never what decides whether a listener runs.
+    # since reused is not a phantom. The pid lives in listen.pid, for people
+    # (`check` prints it), and is never what decides whether a listener runs.
+    # It is not written inside listen.lock: on Windows the locked byte makes
+    # that file unreadable to every other process, so `check` and `consume`
+    # crashed with PermissionError while a listener ran.
     # The bare-pid scheme this replaced failed in both directions: the file
     # existed empty for an instant before the pid was written, so a second
     # starter read "" and unlinked the winner's lock (two listeners, every
@@ -731,16 +735,12 @@ class Inbox:
         return state if isinstance(state, dict) else {}
 
     def listener_pid(self) -> Optional[int]:
-        """The pid in listen.lock if a process holds the lock, else None."""
-        try:
-            text = self.lock.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            return None
-        if not _held(self.lock):
+        """The listener's pid if a process holds listen.lock, else None."""
+        if not self.lock.exists() or not _held(self.lock):
             return None
         try:
-            return int(text)
-        except ValueError:
+            return int(self.pidfile.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
             return -1  # held, but the holder has not written its pid yet
 
     def hold_lock(self) -> bool:
@@ -751,10 +751,9 @@ class Inbox:
         handle = acquire_singleton_lock(str(self.lock))
         if handle is None:
             return False
-        handle.seek(0)
-        handle.truncate()
-        handle.write(f"{os.getpid()}\n")
-        handle.flush()
+        staged = self.pidfile.with_suffix(".pid.partial")
+        staged.write_text(f"{os.getpid()}\n", encoding="utf-8")
+        staged.replace(self.pidfile)
         self._lock_handle = handle
         return True
 
