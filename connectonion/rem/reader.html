@@ -9086,11 +9086,18 @@ function invSteps(run) {
 Object.assign(UI.zh, { "gathering sources": "收集材料", "searching project documents": "查找项目文档", "preparing evidence": "整理材料",
   "writing evidence files": "整理材料", "writing investigation": "写作", "reviewing": "审核", "claim audit": "核对引用",
   "following leads": "跟进线索", "recording result": "保存", "reading the organisation's website": "读组织网站",
-  "repair round": "修补", "editing round": "编辑", "quote round": "补引语" });
+  "repair round": "修补", "editing round": "编辑", "quote round": "补引语", "insight critic": "复核洞见",
+  "processing attributed feedback": "处理反馈" });
 function invStage(stage) {
   const round = /^investigation round (\d+) of (\d+)/.exec(stage), repair = /^repair (\d+)/.exec(stage);
   if (round) return uiLanguage === "zh" ? `第 ${round[1]}/${round[2]} 轮` : `round ${round[1]} of ${round[2]}`;
   if (repair) return uiLanguage === "zh" ? `修补 ${repair[1]}` : stage;
+  const turn = /^turn (\d+) of (\d+)/.exec(stage), source = /^(gathering|searching|listing) (\S+) (mail|attachments)$/.exec(stage);
+  if (turn) return uiLanguage === "zh" ? `第 ${turn[1]}/${turn[2]} 步` : stage;
+  if (source && uiLanguage === "zh") return { gathering: "读取", searching: "搜索", listing: "列出" }[source[1]] + " " + source[2]
+    + (source[3] === "mail" ? " 邮件" : " 附件");
+  const scanned = /^gathering (.+?): [\d,]+ scanned/.exec(stage);
+  if (scanned) return uiLanguage === "zh" ? `读取 ${scanned[1]}` : `gathering ${scanned[1]}`;
   return t(stage.replace(/:\s*[\d,]+\b.*$/, ""));
 }
 // A finished run is said for half a day after it ends, then the head goes back to the page's state.

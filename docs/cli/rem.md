@@ -1276,6 +1276,26 @@ translation-only exec rounds skip the slot.
 
 ### What the reader shows
 
+**The Investigate button (#3105).** A person's, organisation's and project's head
+has one button whose words are the page's state, from `page_runs.states` (no
+model): **Investigate** (never investigated), **Update · N new mails** or **N new
+sessions** (mail exchanged with the person or the organisation's domains, or
+project sessions not yet written from, since the last investigation), **Dig
+deeper · N leads** (open leads in the last enrich report), or **Up to date ·
+<date>**, greyed. Every state runs `co rem investigate PAGE --enrich` through the
+live Host (`POST /rem/investigate`): a detached worker runs the public CLI and
+the head follows it step by step from the run records (Append or Write, then Web
+follow-up, with the run's current stage). When it ends the head says how many
+lines it added, lists them under **What changed**, and offers **Undo** while
+nothing else has changed the page. The ⋯ beside it holds the levels: **Full
+investigation** (default), **Quick update** (write or append only, no web) and
+**Rewrite the page** (a draft, then **Replace the page** or **Discard** in the
+head). A level shows "last time about N points" only when that page has a
+measured run of it; there is no estimator, so nothing is guessed. Your own page
+has no button (it is `investigate me`). In a file snapshot the button is off,
+with the snapshot line pointing at the live reader. A name in a mail card with no
+page has no "create and investigate" yet: `co rem stub` can make the page.
+
 Opening is a file read. The reader keeps its last render outside the notebook,
 in a private per-user folder in the temporary directory (`co-rem-cache-<uid>`,
 mode 700, pages 600, a planted link refused), and serves it at once. Whether it
