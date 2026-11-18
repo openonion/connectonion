@@ -1433,10 +1433,13 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 external.update(source for source in cited_texts(root, candidate, items)
                                 if not source.startswith(("investigation:", "codex:", "claude-code:")))
             numbers = _cited_sources(candidate)
+            # A line the page already had is not this run's claim: the 2026-11-18 append A/B was refused
+            # for keeping onionwright's existing Open threads when no new session had arrived (#3105).
+            carried = {_line_key(line) for line in prose(original).splitlines()}
             for heading in ('Insight', 'Open threads'):
                 section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
                 if section and not re.fullmatch(r'-?\s*Unknown', section[1].strip(), re.I):
-                    lines = [line for line in section[1].splitlines() if line.strip()]
+                    lines = [line for line in section[1].splitlines() if line.strip() and _line_key(line) not in carried]
                     if not all(any(numbers.get(n) in external for n in CITATION.findall(line)) for line in lines):
                         errors.append(f'No assigned project session inputs: keep {heading} Unknown')
         for label in ('Sessions', 'First seen', 'Last seen'):

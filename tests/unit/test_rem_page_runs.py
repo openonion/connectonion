@@ -100,7 +100,9 @@ def test_status_follows_the_run_logs_step_by_step_and_ends_with_what_changed(roo
                                                     "result": "completed", "exit_code": 0})
     done = page_runs.status(root, PAGE)
     assert done["result"] == "completed" and done["changed"] is True
-    assert done["added_lines"] == ["- Avery joined the board."]
+    assert done["added_lines"] == ["- Avery joined the board."] and done["added_count"] == 1
+    renumbered = after.replace("[1]", "[2]").replace("- [2] gmail", "- [2] gmail")
+    assert page_runs._added(INVESTIGATED, renumbered) == ["- Avery joined the board."]
     assert done["undo"] is True
     page_runs.undo(root, PAGE)
     assert Notebook(root).read(PAGE) == INVESTIGATED

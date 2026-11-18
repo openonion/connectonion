@@ -123,10 +123,14 @@ def _progress(root: Path, receipt: dict, logs: list[dict]) -> list[dict]:
 
 
 def _added(before: str, after: str) -> list[str]:
-    """The lines the run added or changed, citation numbers dropped: what the page marks."""
-    lines = [line for line in difflib.ndiff(before.splitlines(), after.splitlines())
-             if line.startswith("+ ") and line[2:].strip() and not line[2:].startswith(("Investigation:", "- ["))]
-    return [re.sub(r"\s*(?:\[W?\d+\](?!\()\s*)+", " ", line[2:]).strip() for line in lines][:40]
+    """The lines the run added or changed, compared without citation numbers: renumbering is not a change.
+
+    The first live run (2026-11-18) said "30 lines added" for 25: five lines differed only in their [n]."""
+    from .page_review import _line_key
+    old = {_line_key(line) for line in before.splitlines()}
+    lines = [line for line in after.splitlines() if line.strip() and _line_key(line) not in old
+             and not line.startswith(("Investigation:", "- [", "## "))]
+    return [re.sub(r"\s*(?:\[W?\d+\](?!\()\s*)+", " ", line).strip() for line in lines]
 
 
 def status(root, record: str, *, logs=None) -> dict:
@@ -148,9 +152,9 @@ def status(root, record: str, *, logs=None) -> dict:
         book = Notebook(root)
         after = book.read(record) if book.exists(record) else ""
         previous = page_versions.previous(root, record)
-        value.update(changed=_sha(after) != receipt["before_sha256"],
-                     added_lines=_added(previous["text"], after) if previous and _sha(after) != receipt["before_sha256"]
-                     else [], undo=page_versions.can_undo(root, record),
+        added = _added(previous["text"], after) if previous and _sha(after) != receipt["before_sha256"] else []
+        value.update(changed=_sha(after) != receipt["before_sha256"], added_lines=added[:40], added_count=len(added),
+                     undo=page_versions.can_undo(root, record),
                      rewrite=_draft(root, record))
     return value
 

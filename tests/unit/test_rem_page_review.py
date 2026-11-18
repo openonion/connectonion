@@ -215,6 +215,17 @@ def test_project_with_no_assigned_session_input_cannot_claim_current_work():
     assert 'Project input scope is not a citable original: 1' in errors
 
 
+def test_a_project_page_with_no_new_session_keeps_the_open_threads_it_already_had():
+    """#3105: the append A/B was refused for keeping onionwright's Open threads with no new session."""
+    original = ('# Atlas\n\n## Open threads\n- Merge the branch. [1]\n'
+                '\n## Sources\n- [1] codex:session:4 — 2026-10-01\n')
+    items = [{'role': 'project-input-scope', 'source': 'investigation:project-scope', 'inputs_read': 0}]
+    kept = original.replace('[1]', '[2]').replace('- [2] codex', '- [2] codex')
+    assert not any('No assigned project session inputs' in error for error in validate('projects/atlas.md', kept, original, items))
+    added = kept.replace('- Merge the branch. [2]', '- Merge the branch. [2]\n- Ship the release. [2]')
+    assert 'No assigned project session inputs: keep Open threads Unknown' in validate('projects/atlas.md', added, original, items)
+
+
 def test_skill_cannot_cite_collector_summary_or_old_page_as_original():
     candidate = ('# abstract\n\n## Sources\n- [1] skill-runs:abstract — sampled runs\n'
                  '- [2] investigation:page — old note\n')

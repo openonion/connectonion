@@ -9107,9 +9107,9 @@ function invResult(r, s, paint) {
   if (run.result === "failed") return [el("p", { class: "inv-line", role: "status" }, [el("span", { class: "inv-fail",
     text: run.reason ? t("The investigation stopped: {why}", { why: run.reason }) : t("The investigation stopped") })])];
   if (run.mode === "rewrite") return [];
-  const added = run.added_lines || [];
-  const words = !run.changed ? t("Nothing new to add") : added.length === 1 ? t("Updated · 1 line added")
-    : added.length ? t("Updated · {n} lines added", { n: added.length }) : t("Updated");
+  const added = run.added_lines || [], count = run.added_count ?? added.length;
+  const words = !run.changed ? t("Nothing new to add") : count === 1 ? t("Updated · 1 line added")
+    : count ? t("Updated · {n} lines added", { n: count }) : t("Updated");
   const line = el("p", { class: "inv-line", role: "status" }, [words]);
   const changes = added.length ? el("div", { class: "inv-changed", hidden: "" }, [el("b", { text: t("What changed") }),
     el("ul", {}, added.slice(0, 12).map(text => el("li", { html: inline(text.replace(/^[-*]\s+/, ""), r.path) })))]) : null;
