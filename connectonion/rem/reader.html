@@ -3231,7 +3231,11 @@
     font: var(--w-bold) var(--s-ui)/20px var(--font); cursor: pointer; }
   .bulk-bar .btn-quiet { min-height: 44px; }
   .context-sheet .talk-menu > summary { display: none; }
-  .context-sheet .talk-menu .talk-choices { position: static; display: flex; gap: 14px; padding: 0; border: 0; box-shadow: none; background: none; }
+  /* The sheet's Talk it over is one row of two buttons a thumb high, in ink and flush with the sheet's text; the
+     menu's column (flex-direction from .talk-choices) left them grey words indented under the heading (sprint 22). */
+  .context-sheet .talk-menu .talk-choices { position: static; display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--u2); min-width: 0; padding: 0; border: 0; box-shadow: none; background: none; }
+  .context-sheet .talk-choices [data-talk] { min-height: 44px; padding: 0 var(--u3); border-radius: var(--r-pill); box-shadow: var(--e-ring); background: var(--raised); color: var(--ink); font: var(--w-regular) var(--s-ui)/1.4 var(--font); }
+  .context-sheet .talk-choices [data-talk]:hover { background: var(--well); }
   .handoff-line .later-choice { color: var(--ink); font-weight: var(--w-bold); }
   .deck-rest { max-width: 760px; margin: 44px 0 0; text-align: left; }
   .deck-rest a { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
