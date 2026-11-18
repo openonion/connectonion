@@ -247,6 +247,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
             record.update(session_detail(record["text"], private=local))
+    if not today:
+        # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
+        from .page_runs import states
+        found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")])
+        for record in records:
+            if record["path"] in found_states:
+                record["investigation"] = found_states[record["path"]]
     owner = owner_record(root)
     organisation_members(records, owner)
     from .org_hierarchy import structure, rollups

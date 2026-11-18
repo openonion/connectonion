@@ -4812,3 +4812,21 @@ def test_day_plan_reader_hides_closed_grouped_items_and_restores_undo():
       console.log(JSON.stringify({before, closed, undo, replied, event: dayPlanVisible({kind: 'event'})}));
     ''')
     assert result == dict(before=True, closed=False, undo=True, replied=False, event=True)
+
+
+def test_each_record_page_carries_its_investigate_button_state(tmp_path):
+    """#3105: the person, organisation and project heads say Investigate, Update, Dig deeper or Up to date."""
+    from connectonion.rem.config import prepare
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write("people/alice.md", "# Alice\n\nInvestigation: mapped 2026-09-01 · not investigated yet\n")
+    notebook.write("people/bob.md", "# Bob\n\n## Who they are\n- Bob builds boats. [1]\n\n## Sources\n- [1] gmail:aaaaaaaaaaaa\n\n"
+                                    "Investigation: mapped 2026-09-01 · investigated 2026-10-01 (gmail)\n")
+    notebook.write("decisions/x.md", "# A decision\n")
+    from connectonion.rem.reader import snapshot
+    records = {r["path"]: r for r in snapshot(tmp_path, local=True)["records"]}
+    assert records["people/alice.md"]["investigation"]["label"] == "investigate"
+    assert records["people/bob.md"]["investigation"] | {"run": None} == {
+        "last": "2026-10-01", "new_mails": 0, "new_sessions": 0, "leads": 0, "label": "current",
+        "cost": {"quick": None, "full": None}, "run": None, "undo": False, "rewrite": None}
+    assert "investigation" not in records["decisions/x.md"]
