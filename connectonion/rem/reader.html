@@ -510,7 +510,8 @@
   .note li.unknown-item, .note p.unknown-item { color: var(--grey); font-style: italic; font-size: var(--s-body); }
   .note strong { font-weight: var(--w-bold); }
   .note code { background: var(--rule); padding: 1px 5px; border-radius: var(--radius); font-size: var(--s-meta); }
-  .said { font-family: var(--font); font-style: normal; color: var(--ink); background: var(--paper); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--ink) 25%, transparent); text-underline-offset: .16em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  /* A quote is marked by its quotation marks; an underline on every one read as links (#3104). */
+  .said { font-family: var(--font); font-style: normal; color: var(--ink); background: var(--paper); text-decoration: none; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
   .note blockquote, .session-quote, .session-page .session-quote { margin: 0 0 1em; padding: 10px 18px; border-left: 4px solid var(--ink); color: var(--ink); background: var(--paper); font: var(--s-body)/1.6 var(--font); }
   .note hr { border: 0; border-top: 1px solid var(--rule); margin: 1.8em 0; }
   .note table { border-collapse: collapse; font: var(--s-body)/1.45 var(--font); }
@@ -558,6 +559,38 @@
   .block-sources .n { font: var(--w-bold) var(--s-meta)/1.9 var(--font); color: var(--ink); }
   .block-sources .source-open { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; justify-self: start; vertical-align: baseline; font: var(--w-regular) var(--s-meta) var(--font); }
   .block-sources .id { font: var(--s-meta) var(--font); color: var(--ink); }
+  /* #3104: the record's sources as a band under the grid — one line a source, what it is in words. */
+  .deep-sources { margin: var(--u5) 0 0; padding-top: var(--u3); border-top: 1px solid var(--rule); }
+  .deep-sources > h2 { margin: 0 0 var(--u2); font: var(--w-bold) var(--s-body)/1.3 var(--font); }
+  .deep-sources .src-tools { display: flex; flex-wrap: wrap; gap: var(--u2); align-items: center; margin: 0 0 var(--u2); }
+  .deep-sources .src-kinds { display: flex; flex-wrap: wrap; gap: var(--u2); }
+  .deep-sources .src-kinds .chip, .deep-sources .src-more { min-height: 32px; padding: 0 12px; font: var(--w-regular) var(--s-ui)/1 var(--font); color: var(--grey); cursor: pointer; }
+  .deep-sources .src-kinds .chip[aria-pressed=true] { color: var(--ink); border-color: var(--ink); }
+  .deep-sources .src-filter { flex: 1 1 200px; max-width: 320px; min-height: 32px; padding: 0 12px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-ui) var(--font); }
+  .deep-sources ol { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--u5); margin: 0 0 var(--u2); font: var(--s-ui)/1.5 var(--font); }
+  .deep-sources li.src-row { grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "n title cited" "n meta cited"; gap: 0 var(--u2); align-items: center; padding: 6px 0; }
+  .deep-sources li.src-row[hidden] { display: none; }
+  .deep-sources .source-open { grid-area: n; min-width: 32px; min-height: 32px; justify-content: flex-start; top: 0; margin: 0; padding: 0; color: var(--grey); font: var(--s-meta) var(--mono); }
+  .deep-sources .src-title { grid-area: title; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deep-sources .src-meta { grid-area: meta; min-width: 0; color: var(--grey); font: var(--s-meta)/1.5 var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deep-sources .src-cited { grid-area: cited; min-height: 32px; padding: 0 var(--u2); border: 0; border-radius: var(--radius); background: transparent; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; cursor: pointer; }
+  .deep-sources .src-cited:hover, .deep-sources .src-cited:focus-visible { color: var(--ink); background: var(--well); }
+  .deep-sources li.flash { background: var(--well); box-shadow: inset 2px 0 0 var(--ink); }
+  .deep-sources .src-title.src-missing { color: var(--grey); }
+  .deep-sources .src-empty { color: var(--grey); font: var(--s-ui) var(--font); }
+  .deep-sources .src-more { display: inline-flex; align-items: center; }
+  .deep-sources .src-more[hidden] { display: none; }
+  @media (min-width: 1100px) { .deep-sources ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 719px), (pointer: coarse) {
+    .deep-sources li.src-row { grid-template-columns: 44px minmax(0, 1fr) auto; }
+    .deep-sources .source-open { min-width: 44px; min-height: 44px; }
+    .deep-sources .src-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .deep-sources .src-kinds .chip, .deep-sources .src-more, .deep-sources .src-cited, .deep-sources .src-filter { min-height: 44px; }
+  }
+  .cite.cite-flash, a.cite.flash { background: var(--well); }
+  .factlist .fact-tail .qual { white-space: normal; }
+  .fact-missing { margin: var(--u2) 0 0; color: var(--grey); font: var(--s-meta)/1.5 var(--font); }
+  .evidence-in-sources { margin-top: var(--u3); }
 
   /* where it stands: a status block */
   .block-standing { border-left: 2px solid var(--ink); padding: 2px 0 2px 18px; margin-bottom: 1.2em; }
@@ -1347,6 +1380,7 @@
   .cite.run { padding: 0 2px; }
   .cite::before { inset: -8px -3px; min-width: 24px; min-height: 24px; }
   .cite.missing { border: 0; opacity: 1; }
+  :is(p, li, dd, .note li, .person-lead, .lead-meta) a.cite { text-decoration: none; }
   .cite:hover, .cite:focus-visible { text-decoration: underline !important; }
   .cite-full { display: none; }
   :is(.timeline, .activity-list) .cite-tether { white-space: normal; }
@@ -3902,6 +3936,21 @@ const UI = {
     "All history →": "全部历史 →",
     "All history": "全部历史",
     "Open threads": "未完成事项",
+    // #3104: the full memory's source band, and the standard section titles a page is written under.
+    "Source kinds": "来源类型", "Web": "网页", "Mail — original not in this snapshot": "邮件（原文不在此快照中）",
+    "Filter sources…": "筛选来源…", "Filter sources": "筛选来源", "No source matches.": "没有匹配的来源。",
+    "Cited {n}×": "被引 {n} 处", "Jump to the lines that cite it": "跳到引用它的句子",
+    "Show in sources": "在来源中查看", "REM investigation": "REM 调查", "{n} not found": "{n} 项未找到",
+    "Insight": "洞察", "Who they are": "他们是谁", "Why they are here": "为什么在这里", "Our relationship": "我们的关系",
+    "History": "往来经过", "How they communicate": "沟通方式", "How the user writes to them": "你怎么给他们写信",
+    "How you write to them": "你怎么给他们写信", "Cadence": "往来节奏", "Uncertainties": "不确定之处",
+    "Why it exists": "为什么存在", "Key decisions": "关键决定", "People here": "这里的人",
+    "People and ownership": "人与负责人", "Current status": "当前状态", "Domains": "域名", "Paths": "路径", "Terms": "条款",
+    "Overview": "概览", "How it is built": "怎么搭起来的", "Latest issues": "最近的问题", "More open threads": "更多未完成事项",
+    "When to use": "什么时候用", "What it does": "它做什么", "How to use": "怎么用", "Inputs and outputs": "输入与输出",
+    "Limitations": "局限", "Usage history": "使用记录", "Performance": "表现", "Example result": "示例结果",
+    "Run evidence": "运行证据", "What it cost": "花费", "Why": "为什么", "Try it": "试一试", "Getting started": "上手",
+    "Architecture map": "架构图", "Unit": "部门", "Role in unit": "部门职务",
     "Recorded direction": "已记录的方向",
     "Cited conversations": "引用的对话",
     "Cited message": "引用的消息",
@@ -6070,6 +6119,147 @@ function sourceList(r) {
 }
 function sourceId(text, plain = false) {
   return plain ? "" : /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
+}
+// #3104: a source row says what the thing is — a mail's subject, a session's title, a file's name — never
+// its hash. The raw id stays in the row's tooltip. {n, id, kind, title, who, channel, day}
+const SOURCE_KINDS = ["mail", "session", "file", "other"];
+function sourceKind(id, context) {
+  const scheme = (context?.source || id.split(":")[0] || "").toLowerCase();
+  if (/^(gmail|outlook|imap|mail|attachment|email)$/.test(scheme)) return "mail";
+  if (/^(codex|claude|claude-code)$/.test(scheme)) return "session";
+  if (/^(file|project-source)$/.test(scheme)) return "file";
+  return "other";
+}
+function sessionForSource(id) {
+  const key = /^(?:codex|claude-code|claude):([^\s:]+)/.exec(id)?.[1];
+  return key ? (REM.records || []).find(r => r.category === "sessions" && r.session_id && (r.session_id === key || key.endsWith(r.session_id))) : null;
+}
+function sourceSummary(r, src) {
+  // An attachment's id is its mail's id plus the file name; the mail carries the subject and sender.
+  const id = sourceId(src.text, src.plain), all = REM.source_context || {};
+  const context = id ? all[id] || (/^(gmail|outlook|imap):[^:]+:./.test(id) ? all[id.split(":").slice(0, 2).join(":")] : null) : null;
+  const rest = (id ? src.text.slice(src.text.indexOf(id) + id.length) : src.text).replace(/^\s*[—–-]\s*/, "");
+  const written = /\b(\d{4}-\d{2}-\d{2})\b/.exec(rest)?.[1] || "";
+  const note = rest.replace(/\b\d{4}-\d{2}-\d{2}\b/g, "").replace(/^[\s;·,—–-]+|[\s;·,—–-]+$/g, "");
+  const kind = id ? sourceKind(id, context) : "other", parts = id.split(":"), scheme = parts[0].toLowerCase();
+  let title = "", who = context ? sourceIdentity(context) : "", day = context?.time ? calendarDay(context.time) : written;
+  // A file's name, without its content hash ("CLAUDE.md@be1c3a…") or the folders above it.
+  const fileName = path => path.replace(/@[0-9a-f]{12,}$/i, "").split(/[\\/]/).filter(Boolean).at(-1) || path;
+  const bare = !id && /^(\/[^\s]+)(?:\s+[—–-]\s+(.*))?$/.exec(src.text);
+  if (bare) return { n: src.n, id: bare[1], kind: "file", title: fileName(bare[1]), who: "", channel: t("File"),
+    day: written };
+  if (!id) title = note || src.text;
+  else if (kind === "mail") {
+    const file = parts.length > 2 ? parts.slice(2).join(":") : "", subject = context?.subject || REM.conversations?.[context?.thread]?.subject || "";
+    // No subject: the first words of the mail itself, not the word "Mail".
+    const opening = (context?.excerpt || "").split("\n").map(line => line.trim()).find(line => line && !/^(hi|hello|dear|hey)\b[^.!?]{0,30}[,，]?$/i.test(line) && !/^>/.test(line)) || "";
+    title = [file, subject].filter(Boolean).join(" — ") || note || (opening.length > 80 ? opening.slice(0, 79) + "…" : opening)
+      || t(context ? "Mail" : "Mail — original not in this snapshot");
+  } else if (kind === "session") {
+    const session = sessionForSource(id);
+    title = session?.session_title || session?.title || note || t(scheme === "codex" ? "Codex session" : "Claude Code session");
+    day = day || session?.session_date || "";
+  } else if (scheme === "file" || scheme === "project-source") title = fileName(id.slice(scheme.length + 1));
+  else if (/^https?$/.test(scheme)) title = id.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+  else if (scheme === "investigation") title = t("REM investigation") + (note ? " — " + note : "");
+  else title = note || sourceLabel(id);
+  const channel = !id ? "" : kind === "mail" ? sourceChannel(context?.source && context.source !== "attachment" ? context.source : scheme)
+    : kind === "session" ? (scheme === "codex" ? "Codex" : "Claude Code") : kind === "file" ? t("File") : /^https?$/.test(scheme) ? t("Web") : "";
+  return { n: src.n, id, kind, title, who, channel, day, ...(id && !context && kind === "mail" ? { missing: true } : {}) };
+}
+// Most cited first, then newest, then the page's own number.
+function sortSources(rows, counts) {
+  return rows.slice().sort((a, b) => (counts[b.n] || 0) - (counts[a.n] || 0) || String(b.day).localeCompare(String(a.day))
+    || String(a.n).localeCompare(String(b.n), undefined, { numeric: true }));
+}
+const SOURCE_FIRST = 10, SOURCE_FILTER_AT = 20;
+function sourceRow(r, s) {
+  const chip = el("span", { html: citeChip(s.n, r.path) }).firstChild;
+  chip.classList.add("n", "source-open");
+  chip.textContent = s.n;
+  const meta = [s.channel, s.who, s.day ? fmtDate(s.day) : ""].filter(Boolean).join(" · ");
+  const cited = el("button", { type: "button", class: "src-cited", hidden: "" });
+  const li = el("li", { id: "src-" + s.n.toLowerCase(), class: "src-row", "data-kind": s.kind, title: s.id || "" }, [chip,
+    el("span", { class: "src-title" + (s.missing ? " src-missing" : ""), text: s.title }), el("span", { class: "src-meta", text: meta }), cited]);
+  li.search = [s.title, s.who, s.channel, s.id, meta].join(" ").toLowerCase();
+  return li;
+}
+// The page's sources as a full-width band: kind chips, a filter above 20, the first 10 and "Show all N".
+function sourcesBlock(r) {
+  const summaries = sourceList(r).map(src => sourceSummary(r, src));
+  if (!summaries.length) return null;
+  const state = { kind: "all", query: "", all: false };
+  const rows = new Map(summaries.map(s => [s.n, sourceRow(r, s)]));
+  const list = el("ol", {}, [...rows.values()]);
+  const counts = Object.fromEntries(SOURCE_KINDS.map(kind => [kind, summaries.filter(s => s.kind === kind).length]));
+  const kinds = SOURCE_KINDS.filter(kind => counts[kind]);
+  const chips = kinds.length > 1 ? el("div", { class: "src-kinds", role: "group", "aria-label": t("Source kinds") },
+    ["all", ...kinds].map(kind => {
+      const b = el("button", { type: "button", class: "chip ghost", "aria-pressed": String(kind === "all"), "data-kind": kind }, [
+        el("span", { text: t({ all: "All", mail: "Mail", session: "Sessions", file: "Files", other: "Other" }[kind]) }),
+        el("span", { class: "mono", text: " " + (kind === "all" ? summaries.length : counts[kind]) })]);
+      b.onclick = () => { state.kind = kind; apply(); };
+      return b;
+    })) : null;
+  const filter = summaries.length > SOURCE_FILTER_AT ? el("input", { type: "search", class: "src-filter", placeholder: t("Filter sources…"), "aria-label": t("Filter sources") }) : null;
+  if (filter) filter.oninput = () => { state.query = filter.value.trim().toLowerCase(); apply(); };
+  const more = el("button", { type: "button", class: "chip ghost src-more" });
+  more.onclick = () => { state.all = true; apply(); };
+  const empty = el("p", { class: "src-empty", text: t("No source matches."), hidden: "" });
+  const box = el("section", { class: "deep-sources block-sources", "aria-labelledby": "sources" }, [
+    el("h2", { id: "sources", text: t("Sources") }), chips || filter ? el("div", { class: "src-tools" }, [chips, filter]) : null, list, empty, more]);
+  function apply() {
+    const matching = [...list.children].filter(li => (state.kind === "all" || li.dataset.kind === state.kind) && (!state.query || li.search.includes(state.query)));
+    const cap = state.all || state.query ? Infinity : SOURCE_FIRST;
+    const shown = new Set(matching.slice(0, cap));
+    for (const li of list.children) li.hidden = !shown.has(li);
+    chips?.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.kind === state.kind)));
+    more.hidden = matching.length <= cap;
+    more.textContent = t("Show all {n}", { n: matching.length });
+    empty.hidden = matching.length > 0;
+  }
+  // Counted once the page is built: how many marks on it cite each row, then rows ordered by that.
+  box.finish = page => {
+    const marks = [...page.querySelectorAll("a.cite[data-sources]")].filter(a => !a.closest(".deep-sources"));
+    const citing = n => marks.filter(a => a.dataset.sources.split(" ").includes(n));
+    const tally = Object.fromEntries(summaries.map(s => [s.n, citing(s.n).length]));
+    for (const s of sortSources(summaries, tally)) {
+      const li = rows.get(s.n), button = li.querySelector(".src-cited");
+      list.appendChild(li);
+      if (!tally[s.n]) continue;
+      button.hidden = false;
+      button.textContent = t("Cited {n}×", { n: tally[s.n] });
+      button.title = t("Jump to the lines that cite it");
+      let next = 0;
+      button.onclick = () => {
+        const all = citing(s.n).filter(a => a.getClientRects().length);
+        const mark = all[next++ % Math.max(1, all.length)];
+        if (!mark) return;
+        for (let p = mark.parentElement; p; p = p.parentElement) if (p.tagName === "DETAILS") p.open = true;
+        mark.scrollIntoView({ block: "center" });
+        flashNode(mark.closest("li, p, dd") || mark);
+      };
+    }
+    apply();
+  };
+  // A citation asks for its rows: they show whatever the filter was, lit, the first scrolled to.
+  box.reveal = (numbers, scroll = true) => {
+    state.kind = "all"; state.query = ""; state.all = true;
+    if (filter) filter.value = "";
+    apply();
+    const targets = numbers.map(n => rows.get(String(n)) || rows.get(String(n).toUpperCase())).filter(Boolean);
+    targets.forEach(flashNode);
+    if (scroll && targets[0]) targets[0].scrollIntoView({ block: "center" });
+    return targets;
+  };
+  apply();
+  return box;
+}
+function flashNode(node) {
+  node.classList.remove("flash");
+  void node.offsetWidth;
+  node.classList.add("flash");
+  setTimeout(() => node.classList.remove("flash"), 2400);
 }
 const CONTACT_FIELDS = ["Email", "Phone", "Company", "Role", "Signing entity", "Handles", "Language", "Also known as"];
 // A page's fact lines (#2068): `## Facts`, or `## Contact` on a page written before it.
@@ -9024,7 +9214,8 @@ function railSources(r) {
   const button = el("button", { type: "button", class: "widget row2 r4-src" }, [el("b", { class: "big", text: String(n) }), el("span", { text: t(n === 1 ? "source" : "sources") }), icon("right")]);
   button.onclick = () => {
     const deep = document.querySelector(".deep-note");
-    if (deep) { deep.open = true; deep.scrollIntoView({ block: "start" }); }
+    // Straight to the source band (#3104), not the top of a long memory.
+    if (deep) { deep.open = true; (document.getElementById("sources") || deep).scrollIntoView({ block: "start" }); }
   };
   return button;
 }
@@ -11716,13 +11907,15 @@ function factValue(item, from) {
   value.appendChild(el("span", { class: "fact-tail" }, [range.extractContents(), cites]));
   return value;
 }
-// A long address or path wraps after '@' or before '.' and '/', never mid-word.
+// A long path wraps before '.' and after '/', never mid-word; an email address only after '@' (#3104:
+// "openonionai@gmail" over ".com" read as two things).
 function softBreaks(node) {
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), texts = [];
   while (walker.nextNode()) texts.push(walker.currentNode);
   for (const text of texts.filter(t => /[^\s]{16,}/.test(t.data))) {
+    const mail = !!text.parentElement?.closest('a[href^="mailto:"]');
     const parts = text.data.split(/(\s+)/).flatMap(token => token.length < 16 ? [token]
-      : token.split(/(?<=@)|(?=\.\w)|(?<=\/)/).flatMap((part, i) => i ? [document.createElement("wbr"), part] : [part]));
+      : token.split(mail || /^[^\s/]+@[^\s/]+$/.test(token) ? /(?<=@)/ : /(?<=@)|(?=\.\w)|(?<=\/)/).flatMap((part, i) => i ? [document.createElement("wbr"), part] : [part]));
     text.replaceWith(...parts);
   }
   return node;
@@ -11735,11 +11928,14 @@ function factList(r) {
   const order = [...labels, ...[...parsed.keys()].filter(l => !labels.includes(l))];
   const dl = el("dl", { class: "factlist" });
   let filled = 0;
+  const notFound = [];
   for (const label of order) {
     const items = (parsed.has(label) ? parsed.get(label) : legacyFact(r, label)).filter(item => knownValue(item.value));
     if (items.length) filled++;
     const missing = label === "Last contact" && mappedContact(r) && known(r).last
       ? "— map date shown above" : "— not found";
+    // Empty fields are one quiet line under the card, not a row each (#3104).
+    if (!items.length && missing === "— not found") { notFound.push(t(label)); continue; }
     const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => changedValue(factValue(i, r.path), r, label)) : [el("span", { text: t(missing) })]);
     if (items.length && COPYABLE.has(label)) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": t("Copy {name}", { name: uiLanguage === "zh" ? t(label) : label.toLowerCase() }), text: t("Copy") });
@@ -11752,7 +11948,8 @@ function factList(r) {
     dl.append(el("dt", { text: t("Mail") }), el("dd", {}, [el("span", { class: "val mono", text: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }) })]));
   }
   if (!filled && !(r.category === "people" && r.mail)) return null;
-  return panel("Facts", [el("p", { class: "fill mono", text: t("{n} of {m} known", { n: filled, m: order.length }) }), dl]);
+  const none = notFound.length ? el("p", { class: "fact-missing", title: notFound.join(" · "), text: t("{n} not found", { n: notFound.length }) + ": " + notFound.join(" · ") }) : null;
+  return panel("Facts", [el("p", { class: "fill mono", text: t("{n} of {m} known", { n: filled, m: order.length }) }), dl, none]);
 }
 function daysSince(day) {
   const today = calendarDay(REM.as_of || new Date().toISOString());
@@ -12303,6 +12500,8 @@ function record(path, heading) {
   if (intro) note.insertAdjacentHTML("beforeend", markdown(intro, r.path));
   for (const s of ordered(r, k.kept)) {
     if (FACT_LABELS[r.category] && CARD_SECTIONS.has(s.title.toLowerCase())) continue;
+    // The sources get a band of their own under the grid (#3104).
+    if (s.title.toLowerCase() === "sources" && sourceList(r).length) continue;
     if (["people", "projects", "orgs"].includes(r.category) && s.title.toLowerCase() === "open threads" && listItems(s.text).every(isCalm)) continue;
     if (["key decisions", "people here", "people and ownership", "history"].includes(s.title.toLowerCase()) && listItems(s.text).every(isCalm)) continue;
     if (r.category === "projects" && s.title.toLowerCase() === "what it is" &&
@@ -12311,7 +12510,8 @@ function record(path, heading) {
     if (extraThreads && threads(r).items.length <= 3) continue;
     // The focus already shows the first three project threads.
     const rest = extraThreads ? { ...s, title: "More open threads" } : s;
-    note.appendChild(el("h2", { html: inline(t(rest.title), r.path) }));
+    // The anchor keeps the written (English) title, so "&h=uncertainties" works in 中文 too (#3104).
+    note.appendChild(el("h2", { html: inline(t(rest.title), r.path), "data-anchor": rest.title }));
     const body = sectionBody(r, rest);
     // Plain Markdown joins the note flat, so lists and code stay direct children.
     if (body.className === "block") note.append(...body.childNodes); else note.appendChild(body);
@@ -12326,7 +12526,7 @@ function record(path, heading) {
   const headings = [...note.querySelectorAll("h2, h3, h4, h5, h6")];
   const ids = new Set(), toc = [];
   for (const h of headings) {
-    const base = h.textContent.trim().toLowerCase().replace(/[^\p{L}\p{N}_\s-]/gu, "").replace(/\s+/g, "-") || "section";
+    const base = (h.dataset.anchor || h.textContent).trim().toLowerCase().replace(/[^\p{L}\p{N}_\s-]/gu, "").replace(/\s+/g, "-") || "section";
     let id = base, n = 1;
     while (ids.has(id)) id = base + "-" + n++;
     ids.add(id); h.id = id;
@@ -12338,6 +12538,8 @@ function record(path, heading) {
     btn.onclick = () => copyToClipboard(block.querySelector("code").textContent, btn, t("Copied"));
   }
 
+  const sourceBand = sourcesBlock(r);
+  if (sourceBand) toc.push({ title: t("Sources"), id: "sources" });
   const panels = sidePanels(r, k);
   if (toc.length >= 4) panels.push(tocPanel([el("ul", { class: "toc" }, toc.map(t =>
     el("li", {}, [el("a", { href: "#r=" + encodeURIComponent(r.path) + "&h=" + encodeURIComponent(t.id), text: t.title })])))]));
@@ -12350,11 +12552,13 @@ function record(path, heading) {
   const limit = projectLimit(r);
   const hasMemory = !!limit || note.childElementCount > 0 || !!grid.querySelector(".factlist, .deep-context h2, .side .panel:not(.toc-panel) a")
     || !!parts.related || !!parts.sources || sources > 0;
-  const deep = el(disclosed ? "details" : "section", { class: "deep-note", "aria-labelledby": "full-memory-heading" }, [
+  // Opens by itself (owner, #3104): the page lands with its memory showing; the summary still folds it.
+  const deep = el(disclosed ? "details" : "section", { class: "deep-note", "aria-labelledby": "full-memory-heading", ...(disclosed ? { open: "" } : {}) }, [
     el(disclosed ? "summary" : "div", { class: "deep-head" }, [el("span", { class: "deep-label" }, [el("h2", { id: "full-memory-heading", text: t("Full memory and sources") }),
       el("span", { class: "deep-hint", text: memoryHint(r, disclosed, sections, sources) })]),
-      disclosed ? el("span", { class: "deep-toggle", "aria-hidden": "true" }) : null]), limit, grid]);
+      disclosed ? el("span", { class: "deep-toggle", "aria-hidden": "true" }) : null]), limit, grid, sourceBand]);
   if (hasMemory) main.appendChild(deep);
+  if (sourceBand) sourceBand.finish(main);
   const column = grid.firstChild;
   if (projectContext) {
     const cites = projectContext.querySelector(".project-purpose-cites"), unsure = projectContext.querySelector(".unsure");
@@ -12402,7 +12606,7 @@ function record(path, heading) {
   const languages = languageBar(r);
   if (languages) foot.appendChild(languages);
   if (!hasMemory || !["projects", "orgs"].includes(r.category)) foot.append(el("span", { class: "when", text: t("File updated") + " " + fmtDate(r.updated) }));
-  (deep.parentNode ? column : main).appendChild(foot);
+  (deep.parentNode ? (sourceBand ? deep : column) : main).appendChild(foot);
 
   if (heading) {
     const target = document.getElementById(heading) || document.getElementById(heading.toLowerCase()) || headings.find(h => h.id === heading.toLowerCase());
@@ -12410,6 +12614,7 @@ function record(path, heading) {
     for (let parent = target?.parentElement; parent; parent = parent.parentElement) {
       if (parent.tagName === "DETAILS") parent.open = true;
     }
+    if (target?.closest(".deep-sources")) target.closest(".deep-sources").reveal([target.id.replace(/^src-/, "")], false);
     if (target && target.tagName === "LI") {
       // A citation's source: centred and briefly lit, so the eye finds the line (#2054).
       target.scrollIntoView({ block: "center" });
@@ -13644,6 +13849,13 @@ function openEvidence(r, number, trigger) {
       ? [sourceIdentity(context), sourceChannel(context.source), context.time && fmtTime(context.time)].filter(Boolean).join(" · ")
       : chipLabel(r, source.n) }),
     context && !/^(gmail|outlook)$/.test(context.source) ? el("p", { class: "evidence-subject", text: context.subject || REM.conversations?.[context.thread]?.subject || "" }) : null]));
+  // From a line to its row in the page's source list, and back with the row's "Cited N×" (#3104).
+  const band = trigger?.closest?.(".deep-sources") ? null : document.getElementById?.("sources")?.closest?.(".deep-sources");
+  if (band?.reveal && r.path === CITES.from && numbers.some(n => document.getElementById("src-" + String(n).toLowerCase()))) {
+    const show = el("button", { type: "button", class: "btn-action evidence-in-sources", text: t("Show in sources") });
+    show.onclick = () => { closeEvidence(); band.closest("details")?.setAttribute("open", ""); band.reveal(numbers); };
+    panel.appendChild(show);
+  }
   const sessionSource = sourceId(source.text, source.plain);
   const session = (REM.records || []).find(record => record.category === "sessions" && record.session_messages?.some(message => message.source === sessionSource));
   if (session) {
