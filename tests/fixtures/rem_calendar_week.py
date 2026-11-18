@@ -2,7 +2,7 @@
 
 Thursday 1 October 2026 is "today". The week is honest about what a calendar has to draw: an early event
 (05:30), a late one (21:30), two back to back, two that overlap, a 90-minute one, a quarter-hour one, a
-single all-day event and one that runs three days, from two providers, and one event outside the week.
+single all-day event and one that runs three days, a timed event over three days, from two providers, and one event outside the week.
 """
 
 from datetime import datetime, timezone
@@ -34,6 +34,9 @@ GOOGLE = [
     {"id": "g8", "summary": "Kiln firing day", "htmlLink": "https://calendar.example/g8",
      "start": {"date": "2026-10-03"}, "end": {"date": "2026-10-04"}},
     _google("g9", "Lunch with Mara", "01T12:30", "01T13:30", attendees=[{"email": "mara@fernhill.example"}]),
+    # Timed, not all-day, and over three days: a calendar draws it as one bar in the all-day strip.
+    {"id": "g10", "summary": "Coast walk", "htmlLink": "https://calendar.example/g10",
+     "start": {"dateTime": "2026-10-05T14:00:00Z"}, "end": {"dateTime": "2026-10-07T11:00:00Z"}},
 ]
 OUTLOOK = [
     _outlook("o1", "Quarterly receipts with Ines", "01T08:00", "01T08:30"),

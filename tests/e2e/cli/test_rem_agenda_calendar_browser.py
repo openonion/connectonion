@@ -213,6 +213,24 @@ def test_a_three_day_all_day_event_is_one_bar_across_its_days(agenda):
     assert kiln["width"] <= _column(page, 3).bounding_box()["width"]
 
 
+def test_a_timed_event_over_several_days_is_one_bar_in_the_strip_not_a_block_from_midnight(agenda):
+    """Seen on the owner's notebook: an event from one afternoon to a morning two days on filled each of its days
+    as a block from midnight, its title scrolled out of sight. A calendar puts it in the all-day strip."""
+    page = agenda
+    _open(page, 1440)
+    bars = page.locator(".cal-allday .cal-bar", has_text="Coast walk")
+    assert bars.count() == 1
+    first, last = page.locator('.cal-day[data-day="2026-10-05"]').bounding_box(), page.locator('.cal-day[data-day="2026-10-07"]').bounding_box()
+    bar = bars.bounding_box()
+    assert first["x"] <= bar["x"] <= first["x"] + 8 and last["x"] + last["width"] - 8 <= bar["x"] + bar["width"] <= last["x"] + last["width"]
+    assert page.locator(".cal-day .cal-ev", has_text="Coast walk").count() == 0, "not a block in the hours"
+    said = bars.get_attribute("title")
+    assert "All day" not in said and "5 Oct" in said and "14:00" in said and "7 Oct" in said and "11:00" in said, said
+    page.get_by_role("button", name="Month", exact=True).click()
+    assert page.locator(".cal-month .cal-bar", has_text="Coast walk").count() >= 1
+    assert page.locator(".cal-month .cal-line", has_text="Coast walk").count() == 0
+
+
 def test_the_now_line_is_on_today_only_and_the_axis_says_the_time(agenda):
     page = agenda
     _open(page, 1440)

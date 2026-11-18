@@ -10398,9 +10398,12 @@ function agendaEntries() {
   }
   return entries;
 }
+// What goes in the all-day strip as a bar: an all-day event, and a timed one whose days are more than one, as a
+// calendar draws it; a block from midnight would hide its title above the first screen. It keeps its times in words.
+function agOnStrip(e) { return e.allDay || (e.kind === "event" && e.first !== e.last); }
 // A timed event's part of one day, in minutes of that day: its start on the first, midnight to its end on the last.
 function agSegments(entries, day) {
-  return entries.filter(e => !e.allDay && e.first <= day && e.last >= day).map(entry => ({ entry, day,
+  return entries.filter(e => !agOnStrip(e) && e.first <= day && e.last >= day).map(entry => ({ entry, day,
     start: entry.first === day ? agMinutes(agTime(entry.start)) : 0, end: entry.last === day ? agMinutes(agTime(entry.end)) || 1440 : 1440 }))
     .sort((a, b) => a.start - b.start || a.entry.title.localeCompare(b.entry.title));
 }
@@ -10474,7 +10477,7 @@ function agBar(bar, column) {
   return node;
 }
 function agAllDay(entries, days, today) {
-  const bars = agBars(entries.filter(e => e.allDay), days[0], days.length), lines = Math.max(1, ...bars.map(bar => bar.line + 1));
+  const bars = agBars(entries.filter(agOnStrip), days[0], days.length), lines = Math.max(1, ...bars.map(bar => bar.line + 1));
   return el("div", { class: "cal-allday" }, [el("span", { class: "cal-axis-word", text: bars.length ? agT("All day") : "" }),
     ...days.map((day, i) => el("span", { class: "cal-allday-col" + agDayClass(day, today), style: `grid-column:${i + 2};grid-row:1 / span ${lines}` })),
     ...bars.map(bar => agBar(bar, 2))]);
@@ -10535,7 +10538,7 @@ function agCount(n) { return n === 1 ? agT("1 item") : agT("{n} items", { n }); 
 // One week of the month: seven cells, the all-day bars running across them, then each day's timed events in the
 // lines the bars leave, three lines in all; what does not fit is counted in words, and that count opens the day.
 function agMonthWeek(entries, start, month, today) {
-  const days = Array.from({ length: 7 }, (_, i) => agDay(start, i)), bars = agBars(entries.filter(e => e.allDay), start, 7), parts = [];
+  const days = Array.from({ length: 7 }, (_, i) => agDay(start, i)), bars = agBars(entries.filter(agOnStrip), start, 7), parts = [];
   for (const bar of bars.filter(bar => bar.line < 3)) { const node = agBar(bar, 1); node.style.gridRow = String(bar.line + 2); parts.push(node); }
   days.forEach((day, i) => {
     const taken = new Set(bars.filter(bar => bar.from <= i && bar.to >= i).map(bar => bar.line)), timed = agSegments(entries, day);
@@ -10570,11 +10573,11 @@ function agendaMonth(entries, first) {
 // One day as a short list in time order, its all-day bars first. A bar that covers several days is listed once,
 // on the first of them shown, with its whole range in words.
 function agRow(e, when) {
-  return agPress(e, "cal-row" + (e.allDay ? " cal-row-bar" : ""), [el("span", { class: "cal-row-time", text: when }), el("span", { class: "cal-row-title", text: e.title }),
+  return agPress(e, "cal-row" + (agOnStrip(e) ? " cal-row-bar" : ""), [el("span", { class: "cal-row-time", text: when }), el("span", { class: "cal-row-title", text: e.title }),
     e.where ? el("span", { class: "cal-row-where", text: e.where }) : null]);
 }
 function agDayRows(entries, day, from) {
-  const bars = entries.filter(e => e.allDay && e.first <= day && e.last >= day && (e.first === day || day === from));
+  const bars = entries.filter(e => agOnStrip(e) && e.first <= day && e.last >= day && (e.first === day || day === from));
   const short = e => e.kind !== "event" ? agWhen(e) : e.first === e.last ? agT("All day") : agWhen(e);
   return [...bars.map(e => agRow(e, short(e))), ...agSegments(entries, day).map(seg => agRow(seg.entry, agHours(seg)))];
 }
