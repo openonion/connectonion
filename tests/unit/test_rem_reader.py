@@ -4792,3 +4792,50 @@ def test_day_plan_reader_hides_closed_grouped_items_and_restores_undo():
       console.log(JSON.stringify({before, closed, undo, replied, event: dayPlanVisible({kind: 'event'})}));
     ''')
     assert result == dict(before=True, closed=False, undo=True, replied=False, event=True)
+
+
+def _source_band_js(script):
+    names = ['sourceId', 'sourceKind', 'sessionForSource', 'sourceSummary', 'sortSources', 'sourceChannel', 'sourceLabel']
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in names)
+    return _run_reader_js(functions + '\n' + script)
+
+
+def test_source_rows_name_what_each_source_is_never_its_hash():
+    """#3104: a row says the mail's subject and sender, the session's title, the file's name; the id is only a tooltip."""
+    result = _source_band_js(r'''
+      const REM = {source_context: {
+          'outlook:16b1177e05ce': {source: 'outlook', subject: 'Re: term sheet', time: '2026-08-26T03:00:00+00:00', sender: 'ody@example.test'},
+          'gmail:be63d1b297be': {source: 'gmail', subject: 'Company deck', time: '2026-11-02T01:00:00+00:00'}},
+        records: [{category: 'sessions', session_id: '01a1a594-aaaa-bbbb-cccc-dddddddddddd', session_title: 'Fix the reader', session_date: '2026-09-24'}]};
+      const sourceIdentity = context => context.sender ? 'Ody' : '', calendarDay = v => v.slice(0, 10);
+      const rows = [
+        {n: '23', text: 'outlook:16b1177e05ce — 2026-08-26'},
+        {n: '122', text: 'gmail:be63d1b297be:OpenOnion-deck-v2.pptx — 2026-11-02'},
+        {n: '7', text: 'codex:01a1a594-aaaa-bbbb-cccc-dddddddddddd:200924-7da282f4'},
+        {n: '9', text: 'file:/Users/someone/notes/plan.md — 2026-10-01'},
+        {n: '10', text: 'investigation:facts — signature block'},
+        {n: '11', text: 'https://www.example.com/team/'},
+        {n: '1', text: 'Business card handed over at the meetup — 2026-11-01', plain: true},
+        {n: '2', text: 'file:/repo/CLAUDE.md@be1c3af9dab7a917674720f055f828989896d59d — 2026-09-04'},
+        {n: '42', text: '/repo/README.md — observed 2026-09-28; high confidence'}].map(s => sourceSummary({}, s));
+      console.log(JSON.stringify(rows.map(({n, kind, title, who, channel, day}) => [n, kind, title, who, channel, day])));
+    ''')
+    assert result == [
+        ['23', 'mail', 'Re: term sheet', 'Ody', 'Outlook', '2026-08-26'],
+        ['122', 'mail', 'OpenOnion-deck-v2.pptx — Company deck', '', 'Gmail', '2026-11-02'],
+        ['7', 'session', 'Fix the reader', '', 'Codex', '2026-09-24'],
+        ['9', 'file', 'plan.md', '', 'File', '2026-10-01'],
+        ['10', 'other', 'REM investigation — signature block', '', '', ''],
+        ['11', 'other', 'example.com/team', '', 'Web', ''],
+        ['1', 'other', 'Business card handed over at the meetup', '', '', '2026-11-01'],
+        ['2', 'file', 'CLAUDE.md', '', 'File', '2026-09-04'],
+        ['42', 'file', 'README.md', '', 'File', '2026-09-28']]
+    assert not any(re.search(r'[0-9a-f]{12}', row[2]) for row in result)
+
+
+def test_source_rows_put_the_most_cited_first_then_the_newest():
+    result = _source_band_js(r'''
+      const rows = [{n: '1', day: '2026-01-01'}, {n: '2', day: '2026-03-01'}, {n: '3', day: '2026-02-01'}, {n: '10', day: ''}, {n: '4', day: ''}];
+      console.log(JSON.stringify(sortSources(rows, {'1': 5, '3': 5, '2': 1}).map(row => row.n)));
+    ''')
+    assert result == ['3', '1', '2', '4', '10']
