@@ -8790,7 +8790,8 @@ function personProject(r) {
 function roleLede(items, full, from) {
   if (hasPrivacy(full)) return roleSummary(full, from);
   // Only notes on where the value came from leave the lede; when a role started or ended ("until 2025-06", "former") stays.
-  const provenance = /\b(?:signature|observed|according to|unverified|per\s|from (?:email|mail|domain))\b|\bemail\b.*\bthrough\b/i;
+  // In any language the page is read in (owner, 2026-11-18: "截至 2026-10-29 的 email 签名" sat under the name).
+  const provenance = /\b(?:signature|observed|according to|unverified|inferred|as of|per\s|e-?mail|from (?:mail|domain|metadata))\b|签名|截至|据|来自|^见|观察|推断|未核实|元数据|名录|邮件/i;
   const first = items[0], kept = topLevelParts(first.qualifier || "").filter(part => !provenance.test(part));
   const title = first.value + (kept.length ? " (" + kept.join("; ") + ")" : "");
   return el("span", { title: plainLine(full) }, [el("span", { html: inline(title, from) }),
