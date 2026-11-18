@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc21
+## Current Version: 1.9.6rc22
+Release candidate 1.9.6rc22 for 1.9.6: when `co browser keyboard_type` or `type_text_by_selector`
+cannot paste, the whole text goes in through one CDP `Input.insertText` call, which needs no OS
+clipboard (measured on rc21: headless Chrome on Windows over SSH never took the paste and typed 920
+of 1,402 characters key by key before the 120 s timeout). The result says whether the text was
+pasted, inserted or typed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc22.md).
+
+- 1.9.6rc22 (co browser: CDP insert when the paste does not land; the result says how text went in).
+
+### Previous candidate: 1.9.6rc21
+
 Release candidate 1.9.6rc21 for 1.9.6: when `co send` cannot reach the receiver directly, because
 its Host is behind a router or not running, a file of up to 10 MB waits on the server for 7 days,
 boxed to the receiver so the server never sees its name or bytes, and `co receive` there takes it
