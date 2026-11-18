@@ -1549,3 +1549,14 @@ def test_a_number_whatsapp_will_not_pair_stops_the_listener_with_its_reason(sdk,
     assert "phone number is not registered" in str(stopped.value)
     assert "without --phone" in str(stopped.value)
     assert socket.disconnected
+
+
+def test_a_millisecond_timestamp_is_the_real_time_not_now():
+    # neonize's live MessageInfo.Timestamp is milliseconds. As seconds it is
+    # out of range: ValueError on POSIX (silently "now"), OSError 22 on
+    # Windows, where every incoming message was skipped.
+    from connectonion.inbox.whatsapp import _iso
+
+    assert _iso(1756808267000) == "2025-09-02T10:17:47Z"
+    assert _iso(1756808267) == "2025-09-02T10:17:47Z"
+    assert _iso(SimpleNamespace(seconds=1756808267)) == "2025-09-02T10:17:47Z"

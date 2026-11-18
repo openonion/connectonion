@@ -935,6 +935,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
             CO_SENDER=message.sender,
             CO_MSG_ID=message.id,
             CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
+            PYTHONIOENCODING="utf-8",
         )
         os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
         # Before the command, not before the send. Here the command *is* the
@@ -944,7 +945,10 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # lands, which is the same as not marking at all.
         _mark_answering(p, inbox, message)
         run = subprocess.run(command, input=_with_context(inbox, message, context) + "\n",
-                             capture_output=True, text=True, env=env)
+                             capture_output=True, text=True, env=env,
+                             # UTF-8 both ways, not the locale: on Windows that is
+                             # cp1252, and Chinese replies arrived as "â€¢".
+                             encoding="utf-8", errors="replace")
         # Returning finishes the message; raising leaves it in cur/ for the
         # sweep to offer again in an hour. So a command that failed, or a
         # reply the platform refused, raises: completing it here turned every

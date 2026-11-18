@@ -1656,11 +1656,16 @@ class WhatsApp:
 
 
 def _iso(timestamp) -> str:
-    """WhatsApp timestamps arrive as protobuf Timestamps or as seconds."""
+    """WhatsApp timestamps arrive as protobuf Timestamps, seconds, or
+    milliseconds: neonize's live MessageInfo.Timestamp is milliseconds. Read
+    as seconds that is the year 57000, which POSIX refuses with ValueError
+    and Windows with OSError 22; on Windows every incoming message was
+    skipped."""
     seconds = getattr(timestamp, "seconds", None)
     if seconds is None:
         seconds = timestamp
     try:
-        return iso_utc(int(seconds))
-    except (TypeError, ValueError):
+        seconds = int(seconds)
+        return iso_utc(seconds // 1000 if seconds > 10**11 else seconds)
+    except (TypeError, ValueError, OSError):
         return iso_utc()
