@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc23
+## Current Version: 1.9.6rc24
+Release candidate 1.9.6rc24 for 1.9.6: three Windows fixes from the first live `co whatsapp` run on
+Windows 11. `check` and `consume` no longer crash with PermissionError while a listener runs (the pid
+moved out of the locked file into listen.pid); incoming WhatsApp messages are no longer dropped
+(timestamps arrive in milliseconds); `consume` talks UTF-8 with its command instead of cp1252.
+Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc24.md).
+
+- 1.9.6rc24 (Windows: listen.pid, millisecond WhatsApp timestamps, UTF-8 consume).
+
+### Previous candidate: 1.9.6rc23
+
 Release candidate 1.9.6rc23 for 1.9.6: `co whatsapp listen --phone <number>` prints an 8-character
 pairing code to type on the phone under Linked devices, instead of a QR that changes every ~20 s and
 has to be seen. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc23.md).
