@@ -1592,6 +1592,9 @@
   .approval-row summary { cursor: pointer; min-height: 32px; }
   .approval-row textarea { box-sizing: border-box; width: 100%; min-height: 140px; padding: 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: var(--radius); font: inherit; resize: vertical; }
   .approval-undo { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); box-sizing: border-box; width: max-content; max-width: calc(100vw - 24px); display: flex; align-items: center; gap: 16px; padding: 12px 18px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); z-index: 30; }
+  /* The phone's drop-from-the-top rule (max-width 600px, above) came before this one, so this bottom won and the bar
+     ran from 12px to 16px off the foot: a white sheet over the whole of Today after every held Send (sprint 22). */
+  @media (max-width: 600px) { .approval-undo { bottom: auto; } }
   @media (max-width: 600px) { #approval-sheet { padding: 16px; } #approval-sheet footer { bottom: -16px; } .approval-content .kind-badge { display: block; margin: 6px 0; } }
   /* People and a person (round 4): one sans family, rows not tables, one green primary. */
   .r4 {
@@ -2108,7 +2111,7 @@
   }
   .qcard .qfull { display: none; }
   .qcard.focal.open .qfull { display: inline-flex; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
-  .btn-act:disabled, .btn-act:disabled:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
+  .btn-act:disabled, .btn-act:disabled:hover, .btn-act[aria-disabled="true"], .btn-act[aria-disabled="true"]:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
   .snapshot-line, .lead-why, .close-why { margin: 0 0 var(--u1); font-size: var(--s-meta); color: var(--grey); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
@@ -3022,7 +3025,8 @@
     font: var(--w-bold) var(--s-body)/1 var(--font); transition: transform var(--t-press) var(--spring); }
   .btn-act:hover { background: var(--green); color: var(--on-green) !important; transform: translateY(-1px); }
   /* Green means the action is available: a disabled primary (a snapshot, an unanswered question) is a well. */
-  .btn-act:disabled, .btn-act:disabled:hover { background: var(--well); color: var(--grey) !important; box-shadow: none; transform: none; }
+  /* aria-disabled: a Send waiting for a filled part looks unready but still answers a click with what is missing. */
+  .btn-act:disabled, .btn-act:disabled:hover, .btn-act[aria-disabled="true"], .btn-act[aria-disabled="true"]:hover { background: var(--well); color: var(--grey) !important; box-shadow: none; transform: none; }
   .btn-quiet { min-height: 32px; padding: 0 10px; border-radius: var(--radius); color: var(--grey); font: var(--w-regular) var(--s-ui)/1.3 var(--font); }
   .btn-quiet:hover { color: var(--ink); background: var(--well); }
   @media (max-width: 820px), (pointer: coarse) { .btn-act, .card-acts .btn-act { min-height: 44px; } }
@@ -3674,7 +3678,9 @@ const UI = {
     "1 choice left: ": "还有 1 处要选：", "{n} choices left: ": "还有 {n} 处要选：",
     "1 more person": "还有 1 人", "{n} more people": "还有 {n} 人",
     "Sent to {name}.": "已发给 {name}。",
-    "Held until {time}; you can still undo it.": "{time} 前还可以撤回。",
+    "Sending to {name} at {time}.": "{time} 发给 {name}。",
+    "Working…": "正在处理…",
+    "You can still undo it.": "还可以撤回。",
     "It went out now and cannot be undone.": "已直接发出，无法撤回。",
     "Hand to {agent}": "交给 {agent}", "Take back from {agent}": "从 {agent} 撤回交办",
     "Updates waiting": "有更新",
@@ -5991,7 +5997,9 @@ function replyDraftCard(draft, onSent) {
   const syncChoices = () => {
     for (const [i, marker] of Object.entries(markers)) marker.textContent = fills[i] || slotWhat(parts[i]);
     status.textContent = "";
-    if (REM.live) send.disabled = filled() === null;
+    // An open part leaves Send clickable and only looking unready (aria-disabled): a disabled button swallowed the
+    // owner's click without a word (2026-11-18, a Lark reply to the Jane card); the click now says what is missing.
+    if (REM.live) send.ariaDisabled = filled() === null ? "true" : null;
     hint.hidden = filled() !== null;
     const open = parts.map((part, i) => i).filter(i => isSlot(parts[i]) && !fills[i]);
     if (open.length) chooseHint(hint, open.map(i => [slotName(parts, i), rowAt[i]]));
@@ -6078,12 +6086,20 @@ function replyDraftCard(draft, onSent) {
     REM.approval_outcomes = (REM.approval_outcomes || []).filter(other => other.id !== item.id);
     REM.approval_pending = [...(REM.approval_pending || []).filter(other => other.id !== item.id), { ...item, ...value }];
     REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: value.status } : d);
-    card.replaceChildren(el("p", { class: "mail-done", text: t("Sent to {name}", { name: who?.title || to.name }) }));
+    const release = value.release_at || reply.release_at;
+    card.replaceChildren(el("p", { class: "mail-done", role: "status", text: value.status === "held" && release
+      ? t("Sending to {name} at {time}.", { name: who?.title || to.name, time: fmtTime(release) }) : t("Sent to {name}", { name: who?.title || to.name }) }));
     onSent?.(value.status === "held" ? { ids: [item.id], release_at: value.release_at || reply.release_at } : null);
   };
   send.onclick = () => {
     const body = filled();
-    if (body === null) {status.textContent = t("Fill the marked part first"); return;}
+    if (body === null) {
+      status.textContent = t("Fill the marked part first");
+      const first = choiceRows.find(row => row.querySelector("input") ? !row.querySelector("input").value.trim() : !row.querySelector('[aria-pressed="true"]'));
+      first?.scrollIntoView({ block: "center", behavior: motionStilled() ? "auto" : "smooth" });
+      first?.querySelector("input, button")?.focus({ preventScroll: true });
+      return;
+    }
     deliver(body === draft.body ? undefined : body);
   };
   write.onclick = () => {
@@ -7460,8 +7476,9 @@ function sentNote() {
     clearTimeout(sentNote.timer);
     sentNote.timer = setTimeout(() => document.querySelector(".qsent")?.replaceWith(sentNote() || ""), Date.parse(todaySent.release_at) - Date.now() + 50);
   }
-  return el("li", { class: "qsent" }, [el("p", { class: "lede", text: t("Sent to {name}.", { name: todaySent.name }) }),
-    el("p", { class: "meta" }, held ? [t("Held until {time}; you can still undo it.", { time: fmtTime(todaySent.release_at) }), " ", undo, " ", status]
+  return el("li", { class: "qsent" }, [el("p", { class: "lede", text: held ? t("Sending to {name} at {time}.", { name: todaySent.name, time: fmtTime(todaySent.release_at) })
+    : t("Sent to {name}.", { name: todaySent.name }) }),
+    el("p", { class: "meta" }, held ? [t("You can still undo it."), " ", undo, " ", status]
       : [t(todaySent.ids ? "Hold ended. Delivery continues from the Host." : "It went out now and cannot be undone.")])]);
 }
 // 交给 Codex / 交给 Claude (D-100) on every unfinished row: REM starts the work now, with that agent

@@ -512,7 +512,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     assert page.locator('.deal[data-path="people/ines-halvorsen.md"]').count() == 0
     assert page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
     note = page.locator(".qsent")
-    assert "Sent to Inès Halvorsen." in note.inner_text() and "undo" in note.inner_text()
+    assert "Sending to Inès Halvorsen at " in note.inner_text() and "undo" in note.inner_text()
     assert page.locator("#approval-undo").count() == 0  # one undo, beside the row it belongs to
     note.get_by_role("button", name="Undo", exact=True).click()
     page.locator('.qcard[data-path="people/ines-halvorsen.md"]').wait_for()
