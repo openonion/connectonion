@@ -259,13 +259,17 @@ def test_same_person_checks_wait_with_investigation(notebook, monkeypatch):
 def test_status_says_investigation_waits_for_its_weekly_budget(notebook, monkeypatch):
     serve(monkeypatch)
     stages_served(notebook, cursor_of(notebook, [person('ivy'), person('wren')], investigation_held=HELD))
-    row = next(row for row in stages.status(notebook, read_config(notebook), []) if row['name'] == 'Investigate')
+    # Status counts the week's points itself; the round's saved sentence is not repeated (2026-11-17).
+    week = {'quota': {'used_percent': 40, 'resets_at': HELD['until'], 'window_minutes': 10080},
+            'investigation_quota': {'spent_points': 35}}
+    monkeypatch.setattr(quota, 'investigation_hold', lambda meter, spent, limits: HELD if spent >= 35 else None)
+    row = next(row for row in stages.status(notebook, read_config(notebook), [], budget=week) if row['name'] == 'Investigate')
     assert row['text'].endswith('; ' + HELD['reason'] + '; 2 pages wait')
     assert "of the last night's" not in row['text'] and row['budget_hold'] == HELD['reason'] + '; 2 pages wait'
     # Once the week has reset the hold is over, whether or not a round has run since.
     saved = read_json(state_path(notebook, WAITING), {})
-    write_json(state_path(notebook, WAITING), {**saved, 'held': {**HELD, 'until': 1}})
-    row = next(row for row in stages.status(notebook, read_config(notebook), []) if row['name'] == 'Investigate')
+    monkeypatch.setattr(quota, 'investigation_hold', lambda meter, spent, limits: {**HELD, 'until': 1})
+    row = next(row for row in stages.status(notebook, read_config(notebook), [], budget=week) if row['name'] == 'Investigate')
     assert 'weekly budget' not in row['text'] and 'budget_hold' not in row
 
 

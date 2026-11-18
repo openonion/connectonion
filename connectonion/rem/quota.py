@@ -85,28 +85,50 @@ def meter(root, config: dict, request=None) -> dict:
     return {**last, "last_recorded": live["unknown"]} if last else live
 
 
-# Seven Codex pro batches (gpt-6-luna, 2026-10-08..11) measured 11.6M–13.6M
-# fresh tokens per point at standard speed. Fast bills twice as much;
-# fresh tokens are input minus cached input, plus output.
-TOKENS_PER_POINT = {"standard": 12_000_000, "fast": 6_000_000}
+# Fresh tokens (input minus cached input, plus output) per point of the Codex week, on the
+# standard tier, by reasoning effort. Fast (priority) bills twice: FAST_COST.
+# Measured (#3083 audits, #3099):
+# - medium: the rc20 night, 2026-11-17, every turn at medium on the fast tier: 7.45M fresh
+#   tokens (6.28M REM, 1.17M other Codex in the window) moved the meter 9 points, 0.83M a
+#   point at fast, so 1.66M at standard.
+# - max: the night before, one deepen group with nothing else running, Astra at max on the
+#   fast tier: 1.40M fresh for 20 points, 70K a point at fast, so 140K at standard.
+# - high and xhigh are not measured: geometric steps between medium and max.
+# - low and minimal are not measured: medium's figure, so they are never charged less than medium.
+# - LEGACY: runs recorded before their effort was (2026-11-17): seven Codex pro batches
+#   (gpt-6-luna, 2026-10-08..11) measured 11.6M-13.6M fresh tokens a point at standard.
+TOKENS_PER_POINT = {"minimal": 1_660_000, "low": 1_660_000, "medium": 1_660_000, "high": 730_000,
+                    "xhigh": 320_000, "max": 140_000}
+LEGACY_TOKENS_PER_POINT = 12_000_000
+FAST_COST = 2
 
 
-def _token_points(usage, speed) -> float:
+def _token_points(usage, speed, effort="") -> float:
     usage = usage if isinstance(usage, dict) else {}
 
     def number(key):
         value = usage.get(key)
         return value if isinstance(value, (int, float)) else 0
     fresh = max(0, number("input_tokens") - number("cached_input_tokens")) + number("output_tokens")
-    return fresh / TOKENS_PER_POINT[speed]
+    per_point = TOKENS_PER_POINT.get(effort or "", LEGACY_TOKENS_PER_POINT)
+    return fresh * (FAST_COST if speed == "fast" else 1) / per_point
+
+
+def _tokens_known(run: dict) -> bool:
+    usage = run.get("usage")
+    return isinstance(usage, dict) and any(isinstance(value, (int, float)) and value > 0 for value in usage.values())
 
 
 def group_points(runs: list[dict]) -> float:
-    """Overlapping runs see the same spend: count their meter movement only once.
+    """What overlapping runs cost: their own tokens when known, the meter's movement as the cap.
 
-    Flat or missing readings, or a weekly reset, leave tokens as the measure.
-    Reset timestamps jitter, so readings within an hour belong to one week.
+    The meter is one week for all of Codex: charged whole, a group paid for the owner's own
+    coding beside it ("Deepening has used 37 of 30" for well under a point by tokens, #3083).
+    Runs with no tokens are counted from the meter alone. Flat or missing readings, or a
+    weekly reset, leave tokens as the measure. Reset timestamps jitter, so readings within
+    an hour belong to one week.
     """
+    tokens = sum(_token_points(run.get("usage"), run.get("speed") or "standard", run.get("effort")) for run in runs)
     quotas = [run.get("quota") or {} for run in runs]
     before = [quota["before"] for quota in quotas if "used_percent" in (quota.get("before") or {})]
     after = [quota["after"] for quota in quotas if "used_percent" in (quota.get("after") or {})]
@@ -114,8 +136,8 @@ def group_points(runs: list[dict]) -> float:
     if before and after and None not in resets and max(resets) - min(resets) <= 3600:
         moved = max(reading["used_percent"] for reading in after) - min(reading["used_percent"] for reading in before)
         if moved > 0:
-            return moved
-    return sum(_token_points(run.get("usage"), run.get("speed") or "standard") for run in runs)
+            return min(moved, tokens) if any(_tokens_known(run) for run in runs) else moved
+    return tokens
 
 
 def _measured(run: dict) -> bool:
@@ -181,7 +203,9 @@ def run_spent(start: dict, now: dict, logs: list[dict], began: str) -> float:
     runs = [run for run in logs if run.get("phase") in INVESTIGATION_PHASES
             and datetime.fromisoformat(run["started_at"]) >= datetime.fromisoformat(began)]
     counted = sum(group_points(group) for group in _groups(runs))
-    spent = round(max(moved, counted), 1)
+    # Tokens are the run's own spend (#3099); the meter, which the owner's coding also moves,
+    # stands in only while none of its runs has reported tokens.
+    spent = round(counted if any(_tokens_known(run) for run in runs) else max(moved, counted), 1)
     return int(spent) if spent == int(spent) else spent
 
 

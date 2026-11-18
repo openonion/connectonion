@@ -3597,6 +3597,62 @@ def test_empty_agenda_explains_never_read_or_last_read_with_no_events(language, 
         assert ('还没有读过日历' if language == 'zh' else 'No calendar read yet') in result['text']
 
 
+def test_agenda_counts_the_calendars_it_read_and_left_out_in_a_sentence():
+    """#3087: only the owner's own calendars are read; the page says how many, and how many were left out and why."""
+    page = TEMPLATE.read_text()
+    translations = re.search(r'const AG_ZH = \{.*?\n\};', page, re.S)[0]
+    event = {'id': 'e1'}
+    read = [{'name': 'Google Calendar', 'at': '2026-11-15T02:30:00Z', 'calendars': 2, 'left_out': {'freeBusyReader': 1, 'unticked': 1}},
+            {'name': 'Outlook', 'at': '2026-11-15T02:30:00Z', 'calendars': 0, 'left_out': {'reader': 1}},
+            {'name': 'Saved before #3087', 'at': '2026-11-15T02:30:00Z'}]
+    result = _run_reader_js(translations + _reader_function('agT') + _reader_function('agendaCalendars') + _reader_function('agendaRead')
+        + '\nuiLanguage = "en"; const REM = {calendar: ' + json.dumps({'read': read, 'errors': [], 'events': [event]}) + '};'
+        + r'''const el = (tag, attrs) => ({tag, ...attrs});
+        console.log(JSON.stringify(agendaRead()));''')
+    assert result['text'] == ('Google Calendar: 2 own calendars read; 2 left out (1 shared as free/busy, 1 not ticked in Google Calendar). '
+                              'Outlook: 0 own calendars read; 1 left out (1 shared read-only).')
+
+
+def _todo_section(todos, shared=False):
+    return _run_reader_js(_reader_function('todoDue') + _reader_function('todoNotes') + _reader_function('todoRow') + _reader_function('todoSection')
+        + '\nconst REM = ' + json.dumps({'todos': todos, 'as_of': '2026-11-17T09:00:00Z', 'shared': shared}) + ';'
+        + r'''const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
+        const calendarDay = at => at.slice(0, 10), calendarDate = day => day, fmtTime = at => at.slice(0, 10);
+        const words = node => node == null ? [] : typeof node === 'string' ? [node] : [node.text, ...(node.children || []).flatMap(words)].filter(Boolean);
+        const section = todoSection();
+        console.log(JSON.stringify(section && {label: section['aria-label'], words: words(section)}));''')
+
+
+def test_today_lists_to_dos_in_words_overdue_first_apart_from_events():
+    """#3087: each row says it is a to-do, its list, and its due date; an overdue one says so in words."""
+    tasks = [{'id': 'a', 'title': 'Order lantern glass', 'list': 'Workshop', 'due': ''},
+             {'id': 'b', 'title': 'Renew the harbour permit', 'list': 'Tasks', 'due': '2026-11-20'},
+             {'id': 'c', 'title': 'Post the old invoice', 'list': 'Tasks', 'due': '2026-11-12'},
+             {'id': 'd', 'title': 'Call the glazier', 'list': 'Workshop', 'due': '2026-11-17'}]
+    section = _todo_section({'tasks': tasks, 'read_at': '2026-11-17T02:30:00Z', 'google': 'reconnect', 'error': None})
+    assert section['label'] == 'To-dos'
+    assert section['words'] == [
+        'To-dos',
+        'To-do — overdue since 2026-11-12', 'Post the old invoice', 'List: Tasks',
+        'To-do — due today', 'Call the glazier', 'List: Workshop',
+        'To-do — due 2026-11-20', 'Renew the harbour permit', 'List: Tasks',
+        'To-do — no due date', 'Order lantern glass', 'List: Workshop',
+        'Google Tasks are not read: Google must be reconnected with access to tasks.']
+
+
+def test_the_to_do_section_stays_short_and_says_what_it_could_not_read():
+    tasks = [{'id': str(n), 'title': f'Task {n}', 'list': 'Tasks', 'due': f'2026-11-{n + 10}'} for n in range(11)]
+    failed = {'at': '2026-11-17T02:30:00Z', 'reason': 'authorization expired', 'error': ''}
+    words = _todo_section({'tasks': tasks, 'read_at': '2026-11-16T02:30:00Z', 'google': 'not_read', 'error': failed})['words']
+    assert sum(word.startswith('To-do — ') for word in words) == 8 and '3 more to-dos in Microsoft To Do.' in words
+    assert 'Microsoft To Do could not be read on 2026-11-17 (authorization expired). These to-dos are from 2026-11-16.' in words
+    assert 'Google Tasks are not read yet.' in words
+    # Read, and nothing open: said, not left blank. Never read, nothing to say, or a shared page: no section.
+    assert _todo_section({'tasks': [], 'read_at': '2026-11-17T02:30:00Z', 'google': None, 'error': None})['words'] == ['To-dos', 'No open to-dos.']
+    assert _todo_section({'tasks': [], 'read_at': '', 'google': None, 'error': None}) is None
+    assert _todo_section(None) is None and _todo_section({'tasks': tasks, 'read_at': 'x', 'google': None, 'error': None}, shared=True) is None
+
+
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_the_phone_tab_bar_uses_the_rail_pictures_and_keeps_its_words(language):
     assert _rail(language)['tabs'] == list(map(list, zip(['sun', 'message-square-reply', 'users', 'search', 'ellipsis'], RAIL[language]['tabs'])))
@@ -3630,7 +3686,9 @@ def test_knowledge_switch_uses_bookmarkable_paths_without_storage(mode):
     ''')
     title, nav = result['children']
     assert title['text'] == 'Knowledge'
-    assert [link['href'] for link in nav['children']] == ['#c=knowledge', '#view=graph']
+    # #3085: the graph is first; the entries have an address of their own, since the rail's opens the graph.
+    assert [(link['text'], link['href']) for link in nav['children']] == [
+        ('Graph', '#view=graph'), ('Entries', '#c=knowledge&view=entries')]
     assert [link['text'] for link in nav['children'] if link.get('aria-current') == 'page'] == [
         'Entries' if mode == 'entries' else 'Graph']
 

@@ -126,7 +126,7 @@ def test_a_night_with_nothing_new_calls_no_model_and_leaves_no_run(rem):
     calls = []
     runner = lambda notebook, items, config, kind="": calls.append(items) or {"usage": {"input_tokens": 10}}
     worked = run_sync(root, runner=runner)
-    assert worked["speed"] == "fast"
+    assert worked["speed"] == "standard"
     assert worked["harness"] == read_config(root)["runner"]
     quiet = run_sync(root, runner=runner)
     assert quiet["outcome"] == "no_change" and len(calls) == 1

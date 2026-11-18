@@ -152,14 +152,14 @@ def test_a_snapshot_has_one_plain_line_and_no_buttons(reader, language, line):
 
 
 @pytest.mark.parametrize("live", [True, False])
-@pytest.mark.parametrize("view", ["view=graph", "c=knowledge"])
+@pytest.mark.parametrize("view", ["view=graph", "c=knowledge&view=entries"])
 def test_the_graph_files_knowledge_on_the_night_run_without_a_command(reader, live, view):
     page, _, _ = reader
     page.evaluate("""([live, view]) => { REM.live = live; REM.records = REM.records.filter(r => r.category !== 'knowledge');
       setInterfaceLanguage('zh'); location.hash = view; render(); }""", [live, view], isolated_context=False)
     page.wait_for_timeout(300)
     _no_command(page)
-    if view == "c=knowledge":
+    if view == "c=knowledge&view=entries":
         assert "REM 会在夜里那一轮从已有记录里整理知识。" in page.locator("#main").inner_text()
 
 

@@ -494,6 +494,16 @@ def test_native_repair_instruction_resubmits_in_the_same_turn(tmp_path):
     assert 'save' in instruction.lower() and 'submit command again in this turn' in instruction
 
 
+def test_a_repair_of_an_inline_task_is_sent_to_the_material_it_already_has(tmp_path):
+    """#3099: 15 of the 27 material.md reads in inline investigation turns one night were
+    repairs, told to read the cited originals in material.md while they were in the prompt."""
+    args = ('people/avery-lin.md', ['Unresolved citation'], tmp_path, tmp_path)
+    inline = runner.repair_instruction(*args, native=True, inline=True)
+    assert 'material.md' not in inline.replace('do not read material.md', '')
+    assert 'in the <material> block' in inline and 'do not read material.md' in inline
+    assert f"{tmp_path / 'material.md'}" in runner.repair_instruction(*args, native=True)
+
+
 @pytest.fixture
 def refused_investigation(trial):
     from uuid import uuid4
@@ -1932,8 +1942,10 @@ def _translation_task(root):
 @pytest.fixture
 def translation_round(trial, monkeypatch):
     from datetime import timezone
-    from connectonion.rem import native_round
+    from connectonion.rem import native_round, translate
     from connectonion.rem.config import set_config
+    # These follow one page through its task; batches of pages have their own tests (#3099).
+    monkeypatch.setattr(translate, 'BATCH', 1)
     set_config(trial, ['languages', 'zh', 'schedule.timezone', 'UTC', 'schedule.times', '03:00,04:00'])
     moment = datetime(2026, 11, 5, 3, tzinfo=timezone.utc)
     monkeypatch.setattr(service, 'now', lambda: moment)
@@ -2104,7 +2116,9 @@ def _extraction_task(root):
 
 
 @pytest.mark.parametrize('handler', ['extract', 'translate', 'sessions'])
-def test_unrelated_lookup_edits_do_not_invalidate_non_page_tasks(trial, handler):
+def test_unrelated_lookup_edits_do_not_invalidate_non_page_tasks(trial, handler, monkeypatch):
+    from connectonion.rem import translate
+    monkeypatch.setattr(translate, 'BATCH', 1)  # the stubs below would join a batch as its pages
     book = Notebook(trial)
     book.stub_person('people/morgan.md', 'Morgan Vale', [], email='morgan@example.test')
     book.stub_org('orgs/cedar.md', 'Cedar Labs', [])
@@ -2658,8 +2672,11 @@ def test_rc59_semantic_config_hash_preserves_pending_page_task(trial, change, ac
                 'timeout_seconds', 'workers', 'investigation_quota_points', 'quota_floor_percent',
                 'depth_quota_points', 'depth_workers', 'depth_pages_per_slot', 'depth_slot_minutes',
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                'investigations_per_night', 'skill_pages_per_night', 'abstract_rounds_per_night'}
-    material = {key: value for key, value in previous.items() if key not in ('schedule', 'effort')}
+                'investigations_per_night', 'skill_pages_per_night', 'abstract_rounds_per_night',
+                # Nor a round's two stated ends for the cheap stages (2026-11-17).
+                'summaries_per_round', 'translations_per_round', 'tags_per_round'}
+    # Nor per-level efforts (#3099), which are run controls like effort.
+    material = {key: value for key, value in previous.items() if key not in ('schedule', 'effort', 'efforts')}
     material['limits'] = {key: value for key, value in previous['limits'].items() if key not in controls}
     saved['inputs'][str(trial / 'config.yaml')] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
     write_json(Path(task['material']) / 'task.json', saved)
@@ -2730,13 +2747,16 @@ def test_pre_model_split_digest_accepts_model_controls(trial, languages, change)
     previous = saved["task"]["config"]
     previous["model"] = "gpt-6-luna"
     previous.pop("models", None)
+    previous.pop("efforts", None)  # Before #3099 one effort ran every level.
     # Digests written before rc62 never held limits.tasks_per_night; leave it out as they did.
     controls = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night",
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
-    ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
+                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
+                "summaries_per_round", "translations_per_round", "tags_per_round"}
+    ignored = (("schedule", "effort", "efforts") if languages
+               else ("schedule", "effort", "efforts", "language", "languages"))
     material = {k: v for k, v in previous.items() if k not in ignored}
     material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}
     saved["inputs"][str(trial / "config.yaml")] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
@@ -2762,8 +2782,10 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
                 "timeout_seconds", "workers", "investigation_quota_points", "quota_floor_percent",
                 "depth_quota_points", "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
                 # Nor the nightly shares (2026-11-16): they bound future work, like the others here.
-                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
-    ignored = ("schedule", "effort") if languages else ("schedule", "effort", "language", "languages")
+                "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
+                "summaries_per_round", "translations_per_round", "tags_per_round"}
+    ignored = (("schedule", "effort", "efforts") if languages
+               else ("schedule", "effort", "efforts", "language", "languages"))
     material = {k: v for k, v in previous.items() if k not in ignored}
     material["limits"] = {k: v for k, v in previous["limits"].items() if k not in controls}
     saved["inputs"][str(trial / "config.yaml")] = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
@@ -2779,6 +2801,36 @@ def test_old_semantic_digest_without_snapshot_survives_default_migration(trial, 
 
 def test_missing_config_refuses_saved_digest_without_reading_missing_file(tmp_path):
     assert native._input_matches(tmp_path, {"task": {}}, tmp_path / "config.yaml", "old-digest") is False
+
+
+def test_a_catchup_night_reads_each_slots_mail_like_a_scheduled_turn(trial, monkeypatch, translation_round):
+    """#3083 rc20 night: catchup runs exec with scheduled=False, so a slot's mail was never read;
+    the night read the coding sessions and 0 mail, and Gmail and Outlook stayed a day old."""
+    from connectonion.rem import catchup, native_round
+    cursor = translation_round
+    cursor.update(phase='daily-update', jobs=[{'record': 'notes/pilot.md', 'kind': 'project'}], job_index=0,
+                  current=None, investigation_left=3, catchup_night=1)
+    cursor['batch']['done'] = True
+    write_json(state_path(trial, 'round.json'), cursor)
+    reads = []
+    def fetch(root, selected, progress, config, *args, **kwargs):
+        reads.append(service.now())
+        return {'done': True, 'items': [], 'updated': progress, 'record': {'extracted': False}, 'kind': 'gmail',
+                'leads': [], 'digested': None}
+    monkeypatch.setattr(service, 'prepare_sync', fetch)
+    monkeypatch.setattr(native_round, '_prepare_job', lambda root, state, config, directory: {'stop': 'fixture'})
+    later = [service.now() + timedelta(hours=hours) for hours in (1, 2)]
+    with catchup.scope(trial, 1):
+        native.next_task(trial, scheduled=False)
+        assert reads == [], 'the slot that started the round already read mail'
+        monkeypatch.setattr(service, 'now', lambda: later[0])
+        native.next_task(trial, scheduled=False)
+        assert reads == [later[0]], 'a new slot reads new mail into the catchup night'
+        native.next_task(trial, scheduled=False)
+    assert reads == [later[0]], 'the same slot does not read again'
+    monkeypatch.setattr(service, 'now', lambda: later[1])
+    native.next_task(trial, scheduled=False)
+    assert reads == [later[0]], 'a manual call outside a night reads no slot'
 
 
 def test_each_new_scheduled_slot_reads_new_mail_into_a_long_round(trial, monkeypatch, translation_round):
@@ -2818,6 +2870,16 @@ def test_a_native_task_says_what_is_inline_and_that_task_json_is_not_for_reading
     assert '<material>' in prompt and source in prompt
     assert 'task.json is the runner\'s own record of this task, not material: do not read it.' in prompt
     assert prompt == (Path(task['material']) / 'instructions.md').read_text()
+
+
+def test_a_native_task_says_it_holds_everything_and_co_need_not_be_explored(trial):
+    """#3099: the global co rule sent night workers to `co commands` and `--help` 198 times
+    in one night (74 and 124), each output carried in every later request of the turn."""
+    _feedback(trial)
+    prompt = native.next_task(trial)['instructions']
+    assert 'This task packet contains everything the task needs' in prompt
+    assert 'do not run `co commands` or any `--help`' in prompt
+    assert prompt.index('do not run `co commands`') < prompt.index('<material>')
 
 
 OLD_SOURCE = 'codex:fixture:7'
@@ -2881,3 +2943,50 @@ def test_a_restored_page_is_not_parked_for_a_source_no_sentence_of_the_old_page_
     assert result['outcome'] == 'accepted', result
     page = book.read(record)
     assert 'Avery Lin runs the pilot.' in page and OLD_SOURCE in page.partition('## Sources')[2]
+
+
+def _three_waiting(trial, texts):
+    from connectonion.rem import native_round
+    from connectonion.rem.config import set_config
+    set_config(trial, ['languages', 'zh'])
+    records = list(texts)
+    for record, text in texts.items():
+        Notebook(trial).write(record, text)
+    with maintenance_lock(trial):
+        cursor = native_round.prepare(trial, read_config(trial), scheduled=False)
+        cursor.update(changed=records, jobs=[], summaries=[], same_left=0)
+        write_json(state_path(trial, 'round.json'), cursor)
+    return records
+
+
+def test_one_translation_turn_translates_several_pages_and_accepts_each_on_its_own(trial):
+    """#3099: the rc20 night ran 87 one-page translation turns, each paying the harness and its
+    instructions again. A turn now takes up to translate.BATCH pages; a page whose translation
+    fails its checks is left for a later round, and the others are kept."""
+    from connectonion.rem import translate
+    texts = {f'notes/{name}.md': f'# {name.title()}\n\n## Notes\n\nRead the {name} notes.\n'
+             for name in ('launch', 'pilot', 'review')}
+    records = _three_waiting(trial, texts)
+    task = native.next_task(trial)
+    pages = task_pages = read_json(Path(task['material']) / 'task.json', {})['task']['pages']
+    assert task['stage'] == 'translate' and sorted(page['record'] for page in pages) == sorted(records)
+    assert all(f"pages/{page['id']}/page.md -> translations/{page['id']}.md" in task['instructions'] for page in pages)
+    good, bad = task_pages[:2], task_pages[2]
+    for page in good:
+        Path(page['candidate']).write_text(page['prose'].replace('Read the', '阅读'))
+    Path(bad['candidate']).write_text(bad['prose'].replace('## Notes\n', ''))   # a heading dropped
+    assert native.submit(trial, task['id'])['outcome'] == 'accepted'
+    assert [translate.cached(trial, page['record'], 'zh') is not None for page in task_pages] == [True, True, False]
+    cursor = read_json(state_path(trial, 'round.json'), {})
+    assert cursor['translated'] == 2 and sorted(record for _, record in cursor['translation_attempts']) == sorted(records)
+    following = native.next_task(trial)
+    assert following.get('stage') != 'translate', 'the refused page waits for the next round'
+
+
+def test_a_translation_batch_with_no_page_that_passes_is_refused_for_repair(trial):
+    texts = {f'notes/{name}.md': f'# {name.title()}\n\n## Notes\n\nRead the {name} notes.\n' for name in ('launch', 'pilot')}
+    _three_waiting(trial, texts)
+    task = native.next_task(trial)
+    result = native.submit(trial, task['id'])
+    assert result['outcome'] == 'refused', result
+    assert 'No page of the batch passed: p1: no translation was written' in result['reason']

@@ -778,8 +778,10 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
                                       for record in model_runs)
     from .stages import calendar_status, status as stage_status
     from .day_plan import status as day_plan_status
+    # Counted once: the Budget line and the Investigate line's hold say the same number.
+    budget = _quota_status(config, logs) if include_quota else None
     return {"state": state, "tonight": night_summary(root),
-            "stages": stage_status(root, config, logs),
+            "stages": stage_status(root, config, logs, budget=budget),
             "calendar": calendar_status(root, config),
             "day_plan": day_plan_status(root, str(today)),
             "tasks": {"auto": config["tasks"]["auto"]},
@@ -806,7 +808,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
                 "translation_coverage": translation_coverage(root, next_run=slot)} if include_coverage else {}),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
-            **(_quota_status(config, logs) if include_quota else {})}
+            **(budget or {})}
 
 
 def _status_worker(worker: dict) -> dict:
@@ -901,7 +903,7 @@ def daily_cap(root: Path) -> dict:
 def _quota_status(config: dict, logs: list[dict]) -> dict:
     from . import quota
     meter = next((reading for run in logs for key in ("after", "before")
-                  if "used_percent" in (reading := (run.get("quota") or {}).get(key, {}))
+                  if "used_percent" in (reading := (run.get("quota") or {}).get(key) or {})
                   and reading.get("resets_at", 0) > now().timestamp()),
                  {"unknown": "No saved quota reading for the current window"})
     if config.get("runner") != "codex":

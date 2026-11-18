@@ -243,17 +243,20 @@ def test_abstract_cap_releases_later_night_jobs(book, abstract_config, monkeypat
     assert following['stage'] == tail
 
 
-def test_the_closing_translation_pass_takes_one_share_and_lets_the_round_finish(book, abstract_config, monkeypatch):
+def test_the_closing_translation_pass_goes_past_one_share_and_lets_the_round_finish(book, abstract_config, monkeypatch):
     # With 361 pages waiting the closing pass ran until the backlog was empty, the round
-    # never completed, and Deepen, which starts after a completed round, never ran.
+    # never completed, and Deepen, which starts after a completed round, never ran. It then
+    # took one share, and four nights translated 9, 8, 9 and 0 pages (2026-11-17). It goes on
+    # until no page waits again; Deepen starts once it has begun (`closing`).
     monkeypatch.setattr(native_round, 'translation_share', lambda root: 2)
-    monkeypatch.setattr(native_round, 'prepare_translation', lambda *a: {'stage': 'translate'})
+    left = [{'stage': 'translate'}] * 3
+    monkeypatch.setattr(native_round, 'prepare_translation', lambda *a: left.pop() if left else None)
     finished = []
     monkeypatch.setattr(native_round, 'finish', lambda root, state: finished.append(True))
     state = cursor()
-    served = [native_round.prepare_task(book.root, state, abstract_config, book.root / f't-{n}') for n in range(3)]
-    assert [task and task['stage'] for task in served] == ['translate', 'translate', None]
-    assert finished == [True]
+    served = [native_round.prepare_task(book.root, state, abstract_config, book.root / f't-{n}') for n in range(4)]
+    assert [task and task['stage'] for task in served] == ['translate', 'translate', 'translate', None]
+    assert finished == [True] and state['closing']
 
 
 def test_replayed_success_does_not_open_another_reserved_slice(book, abstract_config):

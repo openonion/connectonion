@@ -537,9 +537,28 @@ The stage order above describes the day. The current native round preserves
 its trialled order: collect, new same-person checks and reply drafts, then
 investigation in portions of 2 turns. Between two portions the other stages
 take their turn: one session summary, one Abstract round, then translation's
-share (`translation_share`). After the queue come the remaining session
-summaries and Abstract rounds, the same-person checks and the closing
-translation.
+share (`translation_share`: a tenth of the pages waiting, at least 10). After
+the queue come the remaining session summaries and Abstract rounds, the
+same-person checks and the closing translation, which goes on until no page
+waits.
+
+Cheap stages are finished, not rationed (owner, 2026-11-17: "translation and
+summaries cost little; there is so little content, it should all be done").
+Measured on a real notebook: a translation turn takes 11 to 83 seconds and 9 of
+9 were accepted first try; a session summary takes 24 to 57 seconds; one
+deepen turn takes 9 to 35 minutes. The closing translation used to take one
+share (a fiftieth of the backlog) and the round took five session summaries,
+so four nights translated 9, 8, 9 and 0 of some 350 waiting pages. Now a round
+summarises up to `limits.summaries_per_round` sessions (40) and translates
+until nothing waits. What still ends it: every page is tried once a round, a
+failing translation parks only its page, two faults in a row stop the round,
+the Codex usage floor stops every model call, and a round translates at most
+`limits.translations_per_round` pages (400), so a night always ends; at the
+measured times 400 turns are about 1 to 9 hours, typically 4. When that bound
+leaves pages waiting the night's line says how many. A round with nothing to
+investigate (or with investigation held by its weekly budget) starts its
+deepen slot once the closing translation has begun and the night has produced
+something, and does not wait for the last page.
 
 Every stage produces early in a night, not only at its end (owner,
 2026-11-16). One investigation turn measured 20 to 60 minutes on a real
@@ -587,7 +606,8 @@ catchup runs). A night is the schedule's night (noon to noon) or one
 | Investigate, skill pages | 3 pages, counted on their own and served after the others | `limits.skill_pages_per_night` |
 | Abstract | 6 rounds of up to 20 decision lines: one between every two portions of investigation, the rest after the queue | `limits.abstract_rounds_per_night` |
 | Deepen | 3 pages in the round's one slot, after the first portion of investigation | `limits.depth_pages_per_slot` |
-| Translate | a share between every two portions of investigation, then the closing pass | none (D-104) |
+| Session summaries | 40 a round: one between every two portions of investigation, the rest after the queue | `limits.summaries_per_round` |
+| Translate | a tenth of the backlog (at least 10) between every two portions of investigation; after the queue, every page that waits, up to 400 a round | `limits.translations_per_round` |
 
 Only a page that was handed to the model uses the share: one that is parked,
 set aside for a stopped mailbox or found to have nothing new does not. A page
@@ -602,8 +622,12 @@ person whose new mail predates the last round) leads, so the backlog cannot
 push it back for weeks.
 The night's line and status say it in words, as work that waits and not as a
 failure: `12 of tonight's 12 investigations done; 319 wait for later nights`.
-These two shares are the only count caps on a night since D-104 retired the
-others; the weekly budgets and the Codex usage floor still apply on top.
+The two investigation shares ration expensive work. `limits.summaries_per_round`
+and `limits.translations_per_round` are not rations: their defaults are above
+what a notebook has waiting, and they exist so that a round has a stated end.
+`limits.translations_per_day`, which D-104 retired, capped a day at a few
+pages; `limits.translations_per_round` replaces it as that upper bound. The
+weekly budgets and the Codex usage floor still apply on top.
 
 A weekly budget holds its own stage and no other (owner, 2026-11-16: a catchup
 night ended at "investigation has used 35 of its 35-point weekly budget" with
@@ -626,8 +650,10 @@ by hand or scheduled. Abstract rounds are not counted against it (they were,
 while they ran inside the round, and never when run by `co rem abstract`);
 batch extract and maintain, session summaries, reply drafts and Translate
 never were. Those are bounded by the daily call cap
-(`limits.runner_calls_per_day`), `limits.abstract_rounds_per_night`, the
-round's five summaries, translation's share, and the floor.
+(`limits.runner_calls_per_day`), `limits.abstract_rounds_per_night`,
+`limits.summaries_per_round`, `limits.translations_per_round`, and the floor.
+`co rem status` and that budget hold use one number: the points counted from
+the run logs when status is asked, not the sentence a past round saved.
 
 `co rem status` keeps its existing dashboard and adds five stage lines in the
 order above. Each says what is waiting (a count) and when that stage last ran
@@ -664,7 +690,7 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. A spent weekly investigation budget holds only investigation: the night still reads the batch, summarises sessions, abstracts, translates and deepens, and its line says investigation is waiting and when the week resets. At the Codex usage floor before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, each cause with its count (three at most) and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. One run at a time holds a notebook: catchup, `co rem exec` and the scheduled background turn take the same lock (`.state/exec-turn.lock`) for their whole run, and the kernel releases it when the process ends, a deadline's exit 75 included. Started while another holds it, catchup prints `Another REM run holds this notebook (the scheduled background turn, co rem exec or co rem catchup), so this run started nothing. Run it again when that one has finished; co rem status shows the turn in progress. No night was counted.` and exits 1; `co rem exec` prints the same sentence and exits 0; a scheduled fire writes it to the scheduler log, exits 0 and tries again at the next fire. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round, or when another run holds the notebook. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. Session summaries (up to `limits.summaries_per_round`, 40) and translation (every waiting page, up to `limits.translations_per_round`, 400) are finished in the night, not rationed; the line counts both and says how many translations wait when the bound was reached. A spent weekly investigation budget holds only investigation: the night still reads the batch, summarises sessions, abstracts, translates and deepens, and its line says investigation is waiting and when the week resets. At the Codex usage floor before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, each cause with its count (three at most) and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. One run at a time holds a notebook: catchup, `co rem exec` and the scheduled background turn take the same lock (`.state/exec-turn.lock`) for their whole run, and the kernel releases it when the process ends, a deadline's exit 75 included. Started while another holds it, catchup prints `Another REM run holds this notebook (the scheduled background turn, co rem exec or co rem catchup), so this run started nothing. Run it again when that one has finished; co rem status shows the turn in progress. No night was counted.` and exits 1; `co rem exec` prints the same sentence and exits 0; a scheduled fire writes it to the scheduler log, exits 0 and tries again at the next fire. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round, or when another run holds the notebook. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -675,7 +701,7 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
-| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. When the last night used its share of investigations, the Investigate line says so and how many pages wait for later nights. |
+| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. When the last night used its share of investigations, the Investigate line says so and how many pages wait for later nights. While pages wait for translation, the Translate line says how many a round translates at most (`limits.translations_per_round`). |
 | `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
@@ -1624,15 +1650,19 @@ pinned to that edge: it comes into view with the draft.
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
 - **Knowledge** (#2996) is the notebook's wiki and its one place for how
-  records link: there is no **All records** any more. **Entries** lists one row
-  per topic, the most linked first, each row showing the people, organisations
-  and projects it ties together as links; **Graph** is the two-way map of every
-  linked record that All records used to draw (`#view=graph`; the old `#c=all`
-  address opens it too). Every record the All records list held is still in its
-  own category (a rail place or **More**) and in search; **Graph** is also in
-  the ⌘K palette. A list with one or two entries also offers **Explore linked
-  records →** when the graph has links. With nothing linked yet, **Graph** shows
-  the entries instead.
+  records link: there is no **All records** any more. It **opens on the graph**
+  (#3085): the rail's Knowledge (`#c=knowledge`) draws the two-way map of every
+  linked record that All records used to draw, and its switch reads **Graph**,
+  selected, then **Entries**. `#view=graph` and the old `#c=all` address open
+  the same graph. **Entries** (`#c=knowledge&view=entries`) lists one row per
+  topic, the most linked first, each row showing the people, organisations and
+  projects it ties together as links; an address that names the entries always
+  opens the entries. The phone follows the same default. Every record the All
+  records list held is still in its own category (a rail place or **More**) and
+  in search; **Graph** is also in the ⌘K palette. A list with one or two entries
+  also offers **Explore linked records →** when the graph has links. With
+  nothing linked yet the graph has nothing to draw, so Knowledge shows the
+  entries instead, with **Entries** selected.
 - **Headings name a page, they do not explain it** (#2994): a category page
   shows its name and its count, not a sentence about its order. Skills opens
   with its name and its finder (*Find among N skills…*) on one line, the most
@@ -1700,6 +1730,22 @@ pinned to that edge: it comes into view with the draft.
   moving other proposed times. A question from you is not labelled a promise.
   Dated promises silent and overdue for over 60 days are set aside as Today
   does; the remaining proposals keep their existing order.
+- **To-dos** (待办) sit on Today in their own short section under **Your day**,
+  apart from events (#3087). The same background step that saves
+  `.state/calendar.json` reads your open Microsoft To Do tasks (every list of
+  `/me/todo/lists`, tasks whose status is not `completed`; the Microsoft login
+  from `co auth microsoft` already carries `Tasks.ReadWrite`) into
+  `.state/todos.json` beside it. Each row says in words that it is a **To-do**,
+  the list it is on, and its due date: *due 20 Nov*, *overdue since 12 Nov*, or
+  *no due date*; overdue ones come first, then by due date, and past eight the
+  section says how many more there are. Nothing here is a button: a to-do is
+  ticked off in Microsoft To Do, and the next read drops it. A read that fails
+  keeps the tasks saved before and the section says when it failed and why,
+  like a calendar; no failure stops the night. **Google Tasks are not read
+  yet.** The Google login has only the calendar scope, so the section says
+  *Google Tasks are not read: Google must be reconnected with access to tasks*;
+  REM never adds a scope or starts a login by itself. Only the owner's own
+  reader carries to-dos; a shared page has none.
 - **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
   **Today** returns) and a Monday-first **Month**, with no heading above them. It
   shows your calendar events beside the notebook's own dates: promises with a
@@ -1717,10 +1763,20 @@ pinned to that edge: it comes into view with the draft.
   `.state/calendar.json`, which each background round writes once (scheduled
   sync, exec and native rounds, including `codex_exec`), outside the writer
   lock, from every account co can already read (Google after `co auth google`
-  with a calendar scope: the calendars ticked in Google Calendar; Outlook after
-  `co auth microsoft` with `Calendars.*`: all its calendars, times asked in the
-  notebook's zone): three weeks from yesterday in the notebook's zone, every
-  page followed, cancelled events left out. The reader never calls a calendar.
+  with a calendar scope; Outlook after `co auth microsoft` with `Calendars.*`,
+  times asked in the notebook's zone): three weeks from yesterday in the
+  notebook's zone, every page followed, cancelled events left out. **Only your
+  own calendars are read** (#3087): in Google, a calendar ticked in Google
+  Calendar whose access is `owner` or `writer`; in Outlook, a calendar you can
+  write to (Graph's `canEdit`: true for one you created and for one shared with
+  write access). A calendar shared as free/busy or read-only is never read, so
+  another person's *Busy* entries are not in Agenda or Today, and events saved
+  from such a calendar earlier are gone after the next read. `calendar.json`
+  records, per account, how many calendars were read and how many were left
+  out by access kind (`calendars`: `read`, and `left_out` counting
+  `freeBusyReader`, `reader` and `unticked`), and Agenda says it in a sentence
+  under the calendar: *Google Calendar: 1 own calendar read; 3 left out
+  (2 shared as free/busy, 1 shared read-only).* The reader never calls a calendar.
   No calendar failure stops the night: a calendar that fails keeps the events it
   saved before, and the page says when it failed, why, and when its events are
   from; anything that is not the provider's failure is a fault in REM, named

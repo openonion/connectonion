@@ -97,10 +97,11 @@ def test_native_offers_jobs_before_summaries(notebook, monkeypatch):
     assert native_round.prepare_task(notebook, cursor, read_config(notebook), notebook)["stage"] == "investigate"
 
 
-def test_native_queues_at_most_five_summaries(notebook, monkeypatch):
+def test_native_queues_at_most_its_configured_summaries(notebook, monkeypatch):
+    # Five until 2026-11-17: a summary is under a minute, so a round takes limits.summaries_per_round (40).
     monkeypatch.setattr(native_round.sessions, "_summary_candidates", lambda root, limit: list(range(limit)))
     cursor = native_round.prepare(notebook, read_config(notebook), scheduled=False)
-    assert len(cursor["summaries"]) == 5
+    assert len(cursor["summaries"]) == 40
 
 
 @pytest.mark.parametrize("own_page", [False, True])
@@ -201,6 +202,8 @@ def test_native_project_coverage_moves_only_for_changed_accepted_candidate(noteb
         {"role": "page", "record": record, "source": "investigation:page", "text": before}, item], new))
     monkeypatch.setattr(project_pages, "pending", lambda *a: ([item], "update"))
     save_round(notebook, [{"record": record, "kind": "project"}])
+    # This is about the project's coverage: the round's tagging of the written page is not.
+    monkeypatch.setattr("connectonion.rem.tag_stage.candidates", lambda root: [])
     task = native.next_task(notebook)
     if changed:
         Path(task["candidate"]).write_text(before.replace("## What it is\n", "## What it is\n- A pilot review was requested. [2]\n")
@@ -324,3 +327,28 @@ def test_native_abstract_submit_promotes_a_batch_and_leaves_other_pages_alone(no
     assert result['outcome'] == 'accepted', result
     assert result['changed'] == ['decisions/existing.md', 'decisions/new.md']
     assert native.next_task(notebook)['outcome'] == 'done'
+
+
+def test_a_session_still_being_written_is_not_summarised_this_round(notebook, monkeypatch):
+    """#3083 rc20 night: a live Claude Code session file changed under its summary task in 21 s
+    and the task was parked "Task input changed". A file written since the round imported it waits."""
+    from connectonion.rem import sessions
+    live, still = notebook / "live.jsonl", notebook / "still.jsonl"
+    live.write_text("{}\n")
+    still.write_text("{}\n")
+    imported = {path: {"size": path.stat().st_size, "mtime_ns": path.stat().st_mtime_ns} for path in (live, still)}
+    write_json(state_path(notebook, "sessions.json"), {"files": {
+        str(live): {**imported[live], "session": "claude:live", "record": "sessions/live.md"},
+        str(still): {**imported[still], "session": "claude:still", "record": "sessions/still.md"}}, "sessions": {}})
+    live.write_text("{}\n{\"more\": 1}\n")  # the session goes on after the import
+    for name in ("live", "still"):
+        page = Notebook(notebook).path(f"sessions/{name}.md")
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(f"# {name}\n")
+    monkeypatch.setattr(sessions, "prepare", lambda root, rows, config, **kw: {"rows": rows})
+    cursor = {"phase": "daily-update", "summaries": [{"key": "claude:live", "record": "sessions/live.md"},
+                                                     {"key": "claude:still", "record": "sessions/still.md"}]}
+    task = native_round._summary_turn(notebook, cursor, read_config(notebook), notebook)
+    assert task["record"] == "sessions/still.md" and task["task"]["input_paths"] == [str(still)]
+    assert [row["key"] for row in cursor["summaries"]] == ["claude:still"]
+    assert not sessions.being_written(notebook, "claude:still")

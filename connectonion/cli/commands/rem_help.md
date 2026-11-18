@@ -24,6 +24,8 @@ Abstract — learn from pages
   decisions     Count decision and principle pages and decisions waiting. No model.
 Translate — put pages in your language
   translate     Translate every page not yet in your language, or one page.
+Tag — organise pages by tag
+  tag           Tag the people, organisation and project pages that wait, from one vocabulary.
 Run a whole day now
   catchup       Do a whole night's work now, all five stages; several nights with --nights.
 Read
@@ -80,7 +82,7 @@ Compatibility: sync — Collect, then investigate what is unfinished; use co rem
 Do the night's work, including its one deepen slot.
 Usage:    co rem catchup [--nights N]
 Example:  co rem catchup  |  co rem catchup --nights 5
-Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round and Translate's share; the night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
+Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round, one Tag turn and Translate's share. After the queue the round finishes the cheap stages: up to limits.summaries_per_round session summaries, default 40, every page waiting for translation up to limits.translations_per_round, default 400, eight pages a turn with each page checked and kept on its own, then every page waiting for tags up to limits.tags_per_round, default 400. The night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
 A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then finishes the other stages. The pages that did not fit wait for later nights; none are dropped.
 A night with deepen can take an hour or more.
 Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
@@ -399,6 +401,10 @@ Options:
 Budget:   Deepening has its own weekly allowance: 30 points of your Codex week
           by default (limits.depth_quota_points). Investigation has a separate
           35-point target. Both stop starting new pages at 90% weekly usage.
+          A run is charged its own fresh tokens at the effort it ran at (about 1.66M a
+          point at medium, 140K at max, half that on the fast tier; measured on the
+          owner's nights of 16-17 Nov); the week's meter, which your own coding also
+          moves, only caps the charge, and counts a run alone when it reported no tokens.
           If weekly usage cannot be measured, count the last seven days of runs.
           Stop starting new pages after 60 minutes by default
           (limits.depth_slot_minutes). This also applies to named pages.
@@ -513,6 +519,32 @@ Effects:  Writes .state/translations/LANGUAGE/PAGE, marked with the hash of
           source ids, privacy labels and names stay as they are; quotes keep
           their language.
 Next:     co rem open
+Back:     co rem --help
+```
+
+## co rem tag
+
+```
+Tag the people, organisation and project pages that wait, from one vocabulary.
+A page waits when it was never tagged or its text changed since (an investigation
+or deepen rewrote it). Reads pages, never mail or sessions.
+
+Usage:    co rem tag [--pages N]
+Example:  co rem tag
+          co rem tag --pages 40
+Options:  --pages N   Tag at most N waiting pages (default 200).
+Cost:     One level-1 model turn per 20 pages on the notebook's runner.
+Output:   One line per turn, then: Tagged N of M pages (K changed); R tags refused;
+          F pages failed; W still waiting. --json returns the run record, with each
+          refused tag and its reason (no evidence, not named, not in vocabulary,
+          bad new tag, too many).
+Effects:  Writes only each page's "- Tags:" line, the last line of its Facts, with
+          the citation of the line that supports each tag; adds new tags to
+          .state/tags.json (label, kind, aliases) and marks the pages tagged in
+          .state/tag-pages.json. A tag the page does not support is dropped, never
+          written. A failed turn leaves its pages waiting. Every co rem catchup
+          round tags too, up to limits.tags_per_round pages.
+Next:     co rem status
 Back:     co rem --help
 ```
 
@@ -649,7 +681,7 @@ Usage:    co rem status [--verbose]
 Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; Collect, Investigate, Deepen,
-          Abstract and Translate, each with a waiting count and last-run date
+          Abstract, Translate and Tag, each with a waiting count and last-run date
           (or never), and on Investigate how many pages wait for later nights
           when the last night used its share; --json includes the same data under stages;
           the notebook (people, projects,
@@ -824,17 +856,27 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     models.level1                  gpt-6-luna (Codex default): sessions-summary, topic
-          models.level2                  gpt-6.1-terra: translate, extract, same-person, plan
-          models.level3                  gpt-6.1-sol: maintain, investigate, render, projects,
-                                         reply-draft, native (the scheduled session), init, abstract
-          models.level4                  gpt-6-astra: enrich, muse, claim-audit, insight-critic,
+Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag (twenty pages a turn, every tag
+                                         checked by code; the owner, 2026-11-17: "even Terra is enough")
+          models.level2 efforts.level2   gpt-6.1-sol at low: sessions-summary, topic, translate,
+                                         extract, same-person, plan
+          models.level3 efforts.level3   gpt-6.1-sol at low: maintain, projects, reply-draft,
+                                         native (the scheduled session), init, abstract
+          models.level4 efforts.level4   gpt-6.1-sol at low: enrich, muse, claim-audit, insight-critic,
                                          synthesize, task (owed work)
-                                         co rem status lists the stages on each level. A notebook on
-                                         another runner keeps its one model on every level;
-                                         the old names model (level3) and models.summary (level1) still work
+          models.investigate efforts.investigate
+                                         gpt-6.1-sol at medium: investigate and render (the turn
+                                         that writes the investigated page), set on their own
+                                         Every stage but tag and investigation runs Sol at low (the
+                                         owner, #3099: no Astra; "Sol light" read as low). Efforts:
+                                         minimal | low | medium | high | xhigh | max; effort VALUE
+                                         sets every level at once. co rem status lists the stages on
+                                         each level. A notebook on another runner keeps its one model on
+                                         every level; the old names model (level3 and investigate) and
+                                         models.summary (level1) still work
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
-          speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
+          speed                          standard (default) | fast: Codex's Fast (priority) tier, faster
+                                         and dearer; unattended nights default to standard (#3099)
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
                                          headings, labels and quotes stay as they are
           languages                      zh,en: the languages you read, first in the reader's
@@ -852,11 +894,15 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
           limits.abstract_rounds_per_night 6: successive abstract slices after summaries
           limits.investigations_per_night 12: pages investigated a night; the rest wait for later nights
           limits.skill_pages_per_night   3: skill pages investigated a night, counted on their own
+          limits.summaries_per_round     40: session summaries a round writes
+          limits.translations_per_round  400: the most pages a round translates; it goes on until none wait
+          limits.tags_per_round          400: the most pages a round tags; it goes on until none wait
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  pins one stage above to a model ("default" clears it);
                                          a route on plan, extract, synthesize or render also
                                          turns on three-call planned investigation
 Example:  co rem config set models.level2 gpt-6.1-sol route.translate gpt-6.1-terra
+Example:  co rem config set efforts.level2 medium efforts.investigate high
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
           Measured when level3's model or the runner changes, never read off the name. Unchecked runs
@@ -1318,7 +1364,7 @@ Arguments:
 Options:
   --agent       codex or claude: who runs a task that has not started.
 
-Codex uses models.level4 and the configured effort. Claude Code keeps its own
+Codex uses models.level4 at efforts.level4. Claude Code keeps its own
 model and loads your own Claude setup (user CLAUDE.md, skills, settings).
 Both run with full access. Work happens in
 a git worktree of the project page's repository on branch rem/task-ID when there

@@ -86,5 +86,6 @@ def test_the_translation_share_grows_with_the_backlog(notebook, monkeypatch):
     from connectonion.rem import translate
     monkeypatch.setattr(translate, 'languages', lambda root: ['zh', 'en'])
     monkeypatch.setattr(translate, 'backlog', lambda root, language, changed=(): [f'people/p{i}.md' for i in range(1000)])
-    # About 1,000 pages waiting: 20 translation turns between two portions of investigation.
-    assert native_round.translation_share(notebook) == 20
+    # About 1,000 pages waiting: 100 translation turns between two portions of investigation
+    # (a tenth; it was a fiftieth until the owner asked for more of them per batch, 2026-11-17).
+    assert native_round.translation_share(notebook) == 100

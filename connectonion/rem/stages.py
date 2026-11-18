@@ -1,4 +1,4 @@
-"""Read-only counts and last-run dates for the five stages of a REM day."""
+"""Read-only counts and last-run dates for the stages of a REM day: the five, then Tag (#3093)."""
 
 from datetime import datetime, timezone
 
@@ -11,6 +11,7 @@ STAGES = (
     ('Deepen', 'page', ('enrich', 'muse')),
     ('Abstract', 'captured decision', ('abstract',)),
     ('Translate', 'page translation', ('daily-translation', 'translate')),
+    ('Tag', 'untagged page', ('tag',)),
 )
 
 
@@ -73,11 +74,12 @@ def _investigate(root):
 
 
 def _counts(root):
-    from . import captured_decisions, depth, translate
+    from . import captured_decisions, depth, tag_stage, translate
     return (collection_backlog(root)['waiting'], _investigate(root), len(depth.candidates(root)),
             captured_decisions.pending_count(Notebook(root)),
             sum(len(translate.backlog(root, language)) for language in translate.languages(root)
-                if language.split('-')[0].lower() != 'en'))
+                if language.split('-')[0].lower() != 'en'),
+            len(tag_stage.candidates(root)))
 
 
 def _last_run(logs, phases, zone):
@@ -96,7 +98,22 @@ def _last_run(logs, phases, zone):
     return max(stamps).date().isoformat() if stamps else None
 
 
-def status(root, config, logs):
+def _budget_hold(root, config, logs, budget):
+    """The investigation hold in words, from the same count of the week's points the Budget line shows.
+
+    Asked only when a round saved a hold: status is read on every sync, and most have none."""
+    from . import quota
+    from .native_round import hold_in_words
+    from .service import _quota_status
+    if not hold_in_words(root):
+        return ''
+    budget = budget or _quota_status(config, logs)
+    held = quota.investigation_hold(budget['quota'], budget['investigation_quota']['spent_points'], config['limits'])
+    return hold_in_words(root, held=held)
+
+
+def status(root, config, logs, *, budget=None):
+    """`budget`: `service._quota_status`'s result when the caller has counted it already."""
     from .service import notebook_zone
     zone, rows = notebook_zone(config), []
     for (name, unit, phases), count in zip(STAGES, _counts(root)):
@@ -109,16 +126,23 @@ def status(root, config, logs):
             if rows[-1]['held']:
                 rows[-1]['text'] += f"; {rows[-1]['held']} held (source disabled or unapproved)"
         if name == 'Investigate':
-            from .native_round import hold_in_words, shares_in_words, waiting_shares
+            from .native_round import shares_in_words, waiting_shares
             # A used share is not a failure: the line says what was done and what waits.
             rows[-1]['shares'] = waiting_shares(root)
             rows[-1]['text'] += ''.join('; ' + words for words in
                                         shares_in_words(rows[-1]['shares'], "the last night's"))
             # Nor is a spent weekly budget: only this stage waits, and the line says until when.
-            hold = hold_in_words(root)
+            hold = _budget_hold(root, config, logs, budget)
             if hold:
                 rows[-1]['budget_hold'] = hold
                 rows[-1]['text'] += '; ' + hold
+        if name == 'Translate' and count:
+            # Translation is finished in a round, not rationed; this is the round's stated end.
+            rows[-1]['round_limit'] = config['limits']['translations_per_round']
+            rows[-1]['text'] += f"; a round translates up to {rows[-1]['round_limit']}"
+        if name == 'Tag' and count:
+            rows[-1]['round_limit'] = config['limits']['tags_per_round']
+            rows[-1]['text'] += f"; a round tags up to {rows[-1]['round_limit']}"
         if name == 'Abstract':
             book = Notebook(root)
             counts = {category: len(book.list(category)) for category in ('decisions', 'knowledge', 'principles')}

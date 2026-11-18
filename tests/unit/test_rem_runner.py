@@ -490,8 +490,18 @@ def test_run_task_drops_null_bytes_from_prompt(tmp_path, delegate):
     result = runner.run_task(tmp_path, "Continue\0 investigating\0.", default_config(), "investigate")
     argv = delegate[0][0]
     assert all("\0" not in argument for argument in argv)
-    assert argv[-1] == "Continue investigating."
+    assert argv[-1] == "Continue investigating.\n\n" + runner.NO_DISCOVERY_NOTE
     assert result["outcome"] == "natural"
+
+
+def test_every_runner_turn_is_told_not_to_explore_co(tmp_path, delegate):
+    """#3099 A/B trial: manual investigations, which run here and not as native task packets,
+    ran 63 `co commands` and 24 help calls on the global co rule; the note follows any /skill."""
+    runner.run_task(tmp_path, "/rem-tag Tag the pages.", default_config(), "tag")
+    prompt = delegate[0][0][-1]
+    assert prompt.startswith("/rem-tag") and prompt.endswith(runner.NO_DISCOVERY_NOTE)
+    runner.run_task(tmp_path, prompt, default_config(), "tag")
+    assert delegate[1][0][-1].count("do not run `co commands`") == 1
 
 
 def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebook, monkeypatch):
@@ -613,7 +623,7 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     else:
         assert "--permission-mode" not in argv
     if harness == "codex":
-        assert argv[argv.index("--speed") + 1] == "fast"
+        assert argv[argv.index("--speed") + 1] == "standard"
         assert argv[argv.index("--sandbox") + 1] == (
             "danger-full-access" if investigating else "workspace-write")
     else:
@@ -622,7 +632,7 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["material"] == [item]
     assert not list((notebook.root / ".state/tasks").glob("*/material.json")), "no private copy is left"
     metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
-    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "fast")
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "standard")
     assert result["usage"] == {"input_tokens": 13}
     assert result["changed"] == []
 
@@ -638,12 +648,12 @@ def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
 
 def test_a_codex_worker_is_started_at_the_notebooks_effort_and_its_record_says_so(notebook, delegate):
     """2026-11-17: no effort was passed, so all 81 worker turns of a night ran at the owner's
-    own ~/.codex setting (max) while config.yaml said medium."""
+    own ~/.codex setting (max) while config.yaml said medium. Maintain is level 3: low (#3099)."""
     run_stage(notebook, [], default_config())
     argv = delegate[0][0]
-    assert argv[argv.index("--effort") + 1] == "medium"
+    assert argv[argv.index("--effort") + 1] == "low"
     metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
-    assert metrics["effort"] == "medium"
+    assert metrics["effort"] == "low"
     high = runner.harness_flags({**default_config(), "effort": "high"}, "maintain")
     assert high[high.index("--effort") + 1] == "high"
     # Claude Code and co's own loop take no effort from us: nothing is passed or claimed.

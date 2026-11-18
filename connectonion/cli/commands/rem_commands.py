@@ -274,12 +274,16 @@ def _logged(root, record, phase, call, quiet=False):
     from ...rem import quota
     from ...rem.investigate import NothingFound, NothingNew
     from ...rem.service import abandon_stale_runs, running_marker
-    config = read_config(root)
+    from ...rem.inquiry import stage_config
+    from ...rem.runner import worker_effort
+    # The model and effort its turns run at: investigation's level (#3099), which the
+    # weekly budget charges by. It said the notebook's level-3 model and no effort.
+    config = stage_config(root, read_config(root), "investigate")
     abandon_stale_runs(root)
     # Manual investigation counts toward the weekly budget like the round (#1842).
     run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
            "record": record, "harness": config["runner"], "model": config["model"],
-           "speed": config["speed"], "outcome": "running",
+           "speed": config["speed"], "effort": worker_effort(config), "outcome": "running",
            "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0,
            "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
@@ -1863,6 +1867,17 @@ def make_rem_app(factory):
             summary += f"\nStopped at {result['current']} of {total}: {result['halted']}."
         return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
 
+    @rem.command("tag", cls=V("co rem tag"))
+    def tag_pages(ctx: typer.Context, pages: int = typer.Option(200, "--pages", min=1,
+                                                                 help="Tag at most N waiting pages")):
+        from ...rem.tag_stage import summary, tag_pages as run_tagging
+
+        def operation(root):
+            say = None if ctx.obj["json"] else typer.echo
+            report = run_tagging(root, limit=pages, say=say)
+            return (report if ctx.obj["json"] else summary(report)), ["open"], bool(report["failed"])
+        _handle(ctx, operation, ["status"])
+
     @rem.command("list", cls=V("co rem list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
                      aliases: bool = typer.Option(False, "--aliases"),
@@ -2221,13 +2236,23 @@ def make_rem_app(factory):
             return ''.join(' · ' + words for words in [*shares_in_words(row.get('shares', {})),
                                                        *filter(None, [row.get('investigation_hold')])])
 
+        def left_text(row):
+            left = row.get('translations_waiting')
+            return f" ({left} wait for the next round: limits.translations_per_round)" if left else ''
+
+        def tags_left(row):
+            left = row.get('tags_waiting')
+            return f" ({left} wait for the next round: limits.tags_per_round)" if left else ''
+
         def progress(number, row):
             _WRITTEN.extend(row['changed'])
             planned = parked_text(row['parked']) + plan_text(row)
             if not ctx.obj['json']:
                 typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
                            f"{written_text(row)} · "
-                           f"{row['translated']} pages translated · {row['drafts']} drafts prepared · "
+                           f"{row['translated']} pages translated{left_text(row)} · "
+                           f"{row.get('tagged', 0)} pages tagged{tags_left(row)} · "
+                           f"{row['drafts']} drafts prepared · {row.get('summarised', 0)} sessions summarised · "
                            + deepen_text(row) + shares_text(row) + calendar_text(row) + planned)
 
         def summary(value):
@@ -2777,7 +2802,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init collect investigate deepen enrich muse abstract decisions translate catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
+    order = ("init collect investigate deepen enrich muse abstract decisions translate tag catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
              "advanced scan backfill map-skills stub merge reflect reflections propose review capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

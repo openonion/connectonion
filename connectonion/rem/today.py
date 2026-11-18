@@ -284,6 +284,10 @@ def queue(root, *, records=None, contexts=None, states=None, as_of=None):
             if len(morning) == 3:
                 break
     ordered = due[:5] + morning + due[5:] + [row for row in rows if row not in due and row not in morning]
+    # An item carries its record's tags and its people's, so Waiting can filter and close by tag (#3093).
+    from .tags import item_tags
+    texts = {record['path']: record['text'] for record in records}
     return [{key: value for key, value in row.items() if key != 'sources'} | {
-        'rank': rank, 'section': 'today' if row in due else 'morning' if row in morning else ''}
+        'rank': rank, 'section': 'today' if row in due else 'morning' if row in morning else '',
+        'tags': item_tags(texts, row['record'], row['text'])}
         for rank, row in enumerate(ordered)]

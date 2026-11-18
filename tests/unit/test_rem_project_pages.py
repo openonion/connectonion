@@ -357,7 +357,7 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
     metrics = json.loads(next((world.root / ".state/tasks").glob("projects-*/result.json")).read_text())
-    assert (metrics["harness"], metrics["model"], metrics["speed"]) == ("codex", "default", "fast")
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == ("codex", "default", "standard")
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
     assert page_state(world.root, "projects/tide.md")["last_page_coverage"] == {
         "inputs_read": 1, "inputs_available": 1, "scope": "queued"}

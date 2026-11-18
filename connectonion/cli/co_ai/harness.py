@@ -63,7 +63,9 @@ def validate_speed(harness: str, speed: str | None) -> str | None:
     return None
 
 
-EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+# Codex's own names (`codex debug models`, 0.162): max is every model's deepest.
+# "ultra" is not offered: it hands the turn to further agents.
+EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 
 
 def validate_effort(harness: str, effort: str | None) -> str | None:
@@ -73,7 +75,7 @@ def validate_effort(harness: str, effort: str | None) -> str | None:
     if harness != "codex":
         return "--effort applies only to --harness codex. Drop --effort."
     if effort not in EFFORTS:
-        return f"Unknown effort {effort!r}. Use minimal, low, medium, high or xhigh."
+        return f"Unknown effort {effort!r}. Use minimal, low, medium, high, xhigh or max."
     return None
 
 

@@ -314,10 +314,22 @@ RESTORE_DROPS = contextvars.ContextVar("rem_restore_drops", default=False)
 ADAPTER_CLEANUP_S = 30
 
 
+# #3099: the rule `co init` writes into ~/.codex/AGENTS.md ("run `co commands` and read
+# --help first") reaches every worker as its first user message: 74 `co commands` and
+# 124 help calls in one night's investigation turns, each output resent with every later
+# request. The Skill names each command a task may run, with its arguments. Native task
+# packets carry it (native.py); every turn run here gets it at the end of its prompt, after
+# a leading /skill: the A/B trial of manual investigations ran 63 `co commands` without it.
+NO_DISCOVERY_NOTE = ("This task packet contains everything the task needs, including every command it may run "
+                     "and how: do not run `co commands` or any `--help`.\n")
+
+
 def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: str = "") -> dict:
     """Run every co rem model turn from its stable task workspace."""
     # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
     prompt = prompt.replace("\0", "")
+    if NO_DISCOVERY_NOTE not in prompt:
+        prompt = prompt.rstrip("\n") + "\n\n" + NO_DISCOVERY_NOTE
     timeout = config["limits"]["timeout_seconds"]
     # Let the shared native adapter time out and close its subprocesses first.
     # Killing the co parent before its own deadline bypasses that cleanup: the Codex
@@ -697,6 +709,19 @@ SALVAGEABLE = (*CITATION_ONLY, "Quote is not in its cited source:", "Cited-claim
                "Key decision without the owner's words:",
                "Open thread rests only on coding sessions:",
                "Finding has unresolved citations", "Dropped quote the page had:", "Dropped source id the page had:")
+MISQUOTE = "Quote is not in its cited source:"
+
+
+def restorable(errors: list[str]) -> bool:
+    """Lost quotes and sources, with at most misquotes beside them: what a native last resort settles.
+
+    It puts the lost lines back and drops each misquoted line with its claim. #3083, rc20
+    night: 4 dropped quotes plus 4 misquotes parked a page because the restore asked that
+    every error be a drop."""
+    return (bool(errors) and all(error.startswith(("Dropped ", MISQUOTE)) for error in errors)
+            and any(error.startswith("Dropped ") for error in errors))
+
+
 MAX_REPAIRS = 2
 # 2026-10-20 notebook trial: review, claim audit and repairs took 580–990 s of
 # 40–55 min enrich/muse stages. Last resort restores drops and removes refuted
@@ -778,13 +803,20 @@ REPAIR_SUBMITS = "Save the same candidate file and run the printed submit comman
 REPAIR_DRIVEN = "Save the same candidate file and end your turn: the run that started this task submits it."
 
 
-def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path, *, native=False) -> str:
-    """What the review refused, and where the writer reads the originals to fix it."""
+def repair_instruction(record: str, errors: list[str], directory: Path, workdir: Path, *, native=False,
+                       inline=False) -> str:
+    """What the review refused, and where the writer reads the originals to fix it.
+
+    `inline`: the originals are in the prompt's <material> block. 2026-11-17 (#3099): 15 of
+    the 27 material.md reads in one night's inline investigation turns were repairs sent
+    to the file for what their prompt already held."""
     if native:
         write_json(directory / "repair-findings.json", errors, readable=True)
     findings = f"read {directory / 'repair-findings.json'}" if native else '; '.join(errors)
-    text = (f"Review refused the page: {findings}. Read the cited originals in "
-            f"{directory / 'material.md'} and its evidence index. Fix each named problem in the "
+    originals = ("The cited originals are in the <material> block of the render instructions below, with "
+                 "their evidence index; do not read material.md. " if inline else
+                 f"Read the cited originals in {directory / 'material.md'} and its evidence index. ")
+    text = (f"Review refused the page: {findings}. {originals}Fix each named problem in the "
             "existing candidate: for an unresolved citation, copy the exact source ids of the originals "
             "that support the claim; a quote must be copied character for character from the message its "
             "line cites, in its original language, or the line rewritten without quotation marks; a "
@@ -875,8 +907,8 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
             result["result"] = str(result.get("result") or "") + '\n' + str(repair.get("result") or "")
     # A native page has its repair turns between submits, so its last resort is submit's to
     # ask for (RESTORE_DROPS), and only for what restoring settles: lost quotes and sources.
-    salvageable = "Dropped " if native else SALVAGEABLE
-    if (native and not RESTORE_DROPS.get()) or not errors or not all(error.startswith(salvageable) for error in errors):
+    salvage = restorable(errors) if native else bool(errors) and all(error.startswith(SALVAGEABLE) for error in errors)
+    if (native and not RESTORE_DROPS.get()) or not salvage:
         raise refused
     _promote_candidate(notebook, record, candidate, original, items, directory, result.get("usage"),
                        lock_held=lock_held, investigation=investigation, last_resort=True, carried=carried,
