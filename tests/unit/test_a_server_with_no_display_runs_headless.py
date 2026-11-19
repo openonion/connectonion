@@ -70,16 +70,42 @@ class TestHeadlessIsForcedWhenThereIsNoDisplay:
         assert browser_module.headless_without_a_display(True) is True
 
 
-class TestADesktopIsNeverForcedHeadless:
-    """macOS and Windows always have a display; DISPLAY is a thing they lack."""
+def _windows_session(monkeypatch, number):
+    import ctypes
+    import types
 
-    @pytest.mark.parametrize("system", ["Darwin", "Windows"])
-    def test_the_choice_is_left_alone(self, monkeypatch, system):
-        monkeypatch.setattr(browser_module.platform, "system", lambda: system)
+    def session_id(pid, out):
+        out._obj.value = number
+        return 1
+
+    kernel32 = types.SimpleNamespace(ProcessIdToSessionId=session_id)
+    monkeypatch.setattr(ctypes, "windll", types.SimpleNamespace(kernel32=kernel32), raising=False)
+    monkeypatch.setattr(browser_module.platform, "system", lambda: "Windows")
+
+
+class TestADesktopIsNeverForcedHeadless:
+    """macOS always has a display, and so does a Windows desktop session;
+    DISPLAY is a thing they lack."""
+
+    def test_macos_is_left_alone(self, monkeypatch):
+        monkeypatch.setattr(browser_module.platform, "system", lambda: "Darwin")
         monkeypatch.delenv("DISPLAY", raising=False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
 
         assert browser_module.headless_without_a_display(False) is False
+
+    def test_a_windows_desktop_session_is_left_alone(self, monkeypatch):
+        _windows_session(monkeypatch, 1)
+
+        assert browser_module.headless_without_a_display(False) is False
+
+
+def test_windows_session_zero_runs_headless(monkeypatch):
+    # Services, OpenSSH logins and scheduled tasks run in session 0, where no
+    # window can ever show: a headed go_to waited 120 s on a 1Cyber PC (#3168).
+    _windows_session(monkeypatch, 0)
+
+    assert browser_module.headless_without_a_display(False) is True
 
 
 class TestTheBrowserItselfHonoursIt:

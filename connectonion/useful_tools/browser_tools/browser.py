@@ -57,7 +57,7 @@ from . import element_finder, humanize
 # `co browser wait` and a direct library call cannot disagree about the unit.
 from ._async_browser import MAX_WAIT_SECONDS, wait_argument_error
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
-from .chrome_finder import find_system_chrome
+from .chrome_finder import find_system_chrome, has_a_display
 
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
@@ -303,13 +303,12 @@ def headless_without_a_display(headless: bool) -> bool:
     route, and a decision made in only some of the places that reach it is the
     mistake this release keeps repeating.
 
-    Only Linux has a display that can be absent — macOS and Windows always have
-    one, and neither sets DISPLAY, so checking it there would force headless on
-    every desktop.
+    Linux has no display without DISPLAY/WAYLAND_DISPLAY. Windows has none in
+    session 0, where services, OpenSSH logins and scheduled tasks run: a headed
+    Chrome there never shows a window and go_to waited 120 s for a page that
+    could not load (#3168). macOS always has one.
     """
-    if headless or platform.system() != "Linux":
-        return headless
-    return not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return headless or not has_a_display()
 
 
 def _pid_alive(pid: int) -> bool:
