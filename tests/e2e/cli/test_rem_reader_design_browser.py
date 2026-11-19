@@ -3339,7 +3339,7 @@ def test_full_memory_keeps_unheaded_content_and_counts_it(reader, body):
       KNOWN.clear(); FACTS.clear(); render();
     }''', body, isolated_context=False)
     # The body alone: a person's facts are the profile card (#3131), and zero sources go unsaid (#3165).
-    assert page.locator('.deep-hint').inner_text() == '1 sections'
+    assert page.locator('.deep-hint').inner_text() == '1 section'
     memory_open(page)
     assert page.locator('.deep-note .note').inner_text().strip()
     assert page.locator('.person-head .pcard').count() == 1 and page.locator('.deep-note .factlist').count() == 0
