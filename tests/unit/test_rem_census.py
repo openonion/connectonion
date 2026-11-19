@@ -293,14 +293,18 @@ import pytest as _pytest
 
 @_pytest.mark.parametrize("emails", [["orders@fine-wines.example"], ["notifications@app.example"],
                                       ["0xab12cd34ef@mail.openonion.ai"], ["bookings@harbour-hotel.example"],
-                                      ["enquiries@council.example", "alerts@council.example"]])
+                                      ["enquiries@council.example", "alerts@council.example"],
+                                      # rc35 hunt: a desk word after one prefix is still a desk.
+                                      ["kiln.orders@mail.fernhill.example"], ["team-notifications@app.example"]])
 def test_a_page_whose_every_address_is_a_desk_a_bot_or_an_agent_is_not_a_person(emails):
     from connectonion.rem.census import non_person
     text = "# Somebody\n\n## Facts\n- Email: " + "; ".join(emails) + "\n"
     assert non_person("Somebody", text, emails, None, set())
 
 
-@_pytest.mark.parametrize("emails", [["ines.halvorsen@fernhill.example"], ["ody@gmail.com", "0xab12cd34ef@mail.openonion.ai"]])
+@_pytest.mark.parametrize("emails", [["ines.halvorsen@fernhill.example"], ["ody@gmail.com", "0xab12cd34ef@mail.openonion.ai"],
+                                      # Only one prefix, and only before a whole desk word: a person stays a person.
+                                      ["mara.ostrowski@fernhill.example"], ["theo.salesky@fernhill.example"]])
 def test_a_person_with_their_own_address_stays_a_person(emails):
     from connectonion.rem.census import non_person
     assert not non_person("Ines Halvorsen", "# Ines Halvorsen\n", emails, None, set())

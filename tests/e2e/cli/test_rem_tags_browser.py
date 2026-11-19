@@ -105,8 +105,9 @@ def test_a_tag_has_its_page_and_search_finds_it_by_slug_label_or_alias(reader, w
 def test_a_persons_tags_are_words_that_open_their_tag_page(reader, width):
     open_page, _ = reader
     page = open_page("r=people%2Fmara-ostrowski.md", width)
-    row = page.locator(".person-head .pcard .pc-row", has=page.locator(".pc-k", has_text="标签"))
-    assert row.count() == 1
+    # The head's tag row, as on every record (rc35 hunt, #3131); the profile card no longer repeats it.
+    row = page.locator(".person-head .page-tags")
+    assert row.count() == 1 and page.locator(".person-head .pcard .pc-k", has_text="标签").count() == 0
     link = row.locator("a.tag-link")
     assert link.all_inner_texts() == ["Fernhill pilot", "client"]  # labels, in page order; client is a starter role
     link.first.click()
@@ -141,11 +142,12 @@ def test_the_knowledge_graph_draws_only_pages_and_a_tag_links_to_its_page(reader
     assert "tags" not in kinds
     assert page.locator(".gx-tabs [data-tab=tags], [data-tab=tags]").count() == 0
     _shot(page, "graph", 1440)
-    # A tag named for a page opens that page: link 'pilot' to the organisation page and follow a chip.
+    # A tag named for a page opens that page: link 'pilot' to the project page and follow a chip. (Not her own
+    # organisation: the head already links that, so its tag is not repeated, rc35 hunt / #3131.)
     page = open_page("r=people%2Fmara-ostrowski.md", 1440)
-    page.evaluate("() => { REM.tags.pilot.page = 'orgs/fernhill-labs.md'; render(); }", isolated_context=False)
+    page.evaluate("() => { REM.tags.pilot.page = 'projects/harbour.md'; render(); }", isolated_context=False)
     chip = page.locator(".person-head a", has_text="Fernhill pilot").first
-    assert chip.get_attribute("href") == "#r=orgs%2Ffernhill-labs.md"
+    assert chip.get_attribute("href") == "#r=projects%2Fharbour.md"
 
 
 def test_the_open_items_filter_by_a_page_tag_and_close_all_of_them(reader):

@@ -64,7 +64,8 @@ def _counted(record: str) -> bool:
 # rule kept it a person; it led People titled with its own domain (#3004).
 # #3157 adds the desks and bots that read as people on the owner's notebook: a shop's ordering inbox, a
 # notifications sender, a booking desk, and an agent's own mailbox (software writing, not a person).
-DESK = re.compile(r"^(?:support|help|helpdesk|service|customer-?service|customer-?care|care|billing|"
+# A desk word may follow one prefix ("acme.orders@", "team-notifications@": rc35 hunt, an order-intake mailbox was 未知姓名).
+DESK = re.compile(r"^(?:[a-z0-9]+[._-])?(?:support|help|helpdesk|service|customer-?service|customer-?care|care|billing|"
                   r"tickets?|no-?reply|do-?not-?reply|orders?|sales|accounts?|bookings?|enquir(?:y|ies)|inquir(?:y|ies)|"
                   r"reservations?|notifications?|notify|alerts?|updates?|0x[0-9a-f]{6,})(?:\+[^@]*)?@", re.I)
 BARE_DOMAIN = re.compile(r"^(?:[a-z0-9-]+\.)+[a-z]{2,}$", re.I)
@@ -82,6 +83,43 @@ MAILBOX_ROLE = re.compile(r"^- Role:\s*(?:[^\n(]*\()?(?:(?:automated|shared|team
 COMPANY_NAME = re.compile(r"(?:^|\s)(?:Ventures|Capital|Holdings|Pty\.? Ltd\.?|Pty|Ltd\.?|Limited|Inc\.?|LLC|GmbH|Corp\.?)\s*$")
 
 
+# An organisation whose page says it provides an assistant, agent, bot or automated service (rc35 check: a company's
+# assistant mailed from the company's domain and led People). Only the names its page gives that assistant are
+# machines; a human at the same company stays a person unless the page names them as the assistant.
+ASSISTANT_ORG = re.compile(r"\b(?:AI (?:assistant|agent)s?|virtual assistants?|chat ?bots?|bots?|automated (?:service|assistant|agent)s?|"
+                           r"assistant service)\b", re.I)
+_NAME = r"[“\"']?([A-Z][\w-]{1,30})[”\"']?"
+ASSISTANT_NAMED = (re.compile(r"\b(?:automated|AI|bot)\s+" + _NAME + r"\s+(?:assistant|agent|bot)\b"),
+                   re.compile(r"[“\"']([A-Z][\w-]{1,30})[”\"'],?\s+(?:an?|the|its|their)\s+(?:AI\s+|automated\s+)?(?:assistant|agent|bot)\b"),
+                   re.compile(r"\b(?:assistant|agent|bot)\s+(?:service\s+)?(?:called|named)\s+(?:an?\s+)?" + _NAME))
+
+
+def assistant_orgs(records: list[dict]) -> list[tuple[set, set]]:
+    """[(the org's domains, the casefolded names its page gives its assistant)] for orgs that describe one."""
+    found = []
+    for page in records:
+        text = page.get('text') or ''
+        if not page['path'].startswith('orgs/'):
+            continue
+        does = re.search(r'^- What they do:\s*(.+)$', text, re.M)
+        intro = re.search(r'^## Who they are\s*\n(.+)', text, re.M)
+        if not ASSISTANT_ORG.search(' '.join(part[1] for part in (does, intro) if part)):
+            continue
+        domains = re.search(r'^## Domains\s*\n((?:- .*\n?)+)', text, re.M)
+        hosts = {match.casefold() for match in re.findall(r'^- ((?:[\w-]+\.)+[a-z]{2,})', domains[1] if domains else '', re.M | re.I)}
+        names = {name.casefold() for pattern in ASSISTANT_NAMED for name in pattern.findall(text)}
+        if hosts and names:
+            found.append((hosts, names))
+    return found
+
+
+def assistant_contact(name: str, address: str, orgs: list[tuple[set, set]]) -> bool:
+    """An address from such an org's domain whose name (or mailbox) is the assistant its page names."""
+    local, _, host = address.casefold().partition('@')
+    return any((host in hosts or any(host.endswith('.' + h) for h in hosts)) and (name.strip().casefold() in names or local in names)
+               for hosts, names in orgs)
+
+
 def non_person(title: str, text: str, emails: list[str], row: dict | None, automated: set) -> bool:
     """Explicit entity/desk identity or the existing service rules, even after writing."""
     from .map import service_page
@@ -91,6 +129,16 @@ def non_person(title: str, text: str, emails: list[str], row: dict | None, autom
                 or BARE_DOMAIN.match(title) or (emails and all(DESK.match(address) for address in emails))
                 or institutional_name(title) or service_page(title, emails, row, automated)
                 or NOT_PERSON_ROLE.search(text) or MAILBOX_ROLE.search(text) or COMPANY_NAME.search(title))
+
+
+def is_machine(title, text, emails, row, automated, marks, orgs) -> bool:
+    """The owner's 是人 / 不是人 first (any address marked a person keeps the page a person); then the rules."""
+    said = {marks.get(address) for address in emails} - {None}
+    if 'person' in said:
+        return False
+    if emails and said == {'not-person'} and all(address in marks for address in emails):
+        return True
+    return non_person(title, text, emails, row, automated) or any(assistant_contact(title, address, orgs) for address in emails)
 
 
 def pages(root: Path, *, records: list[dict] | None = None) -> dict:
@@ -106,7 +154,9 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
     from .files import EMAIL, EMAIL_LABELS
     if records is None:
         records = [{"path": path, "text": notebook.read(path)} for path in notebook.list()]
+    from .threads import person_marks
     held, titles, found = needs_review(root), set(), {}
+    marks, orgs = person_marks(root), assistant_orgs(records)
     for page in records:
         record, text = page['path'], page['text']
         if not _counted(record):
@@ -124,8 +174,10 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
             "category": category, "written": category == "sessions" or written(text),
             "last": (session_day[1] if session_day else "") if category == "sessions" else last_activity(text),
             "held": record in held, "duplicate": duplicate,
-            "service": category == 'people' and record != owner
-            and non_person(title, text, emails, rows.get(record), automated)}
+            "service": category == 'people' and record != owner and is_machine(title, text, emails, rows.get(record), automated, marks, orgs)}
+        # An assistant or one the owner called 不是人: the reader lists it under agents and services, with 是人.
+        found[record]["agent"] = found[record]["service"] and (
+            any(marks.get(address) == 'not-person' for address in emails) or any(assistant_contact(title, address, orgs) for address in emails))
     return found
 
 

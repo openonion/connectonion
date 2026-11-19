@@ -427,9 +427,9 @@ def translate_pages(root: Path, language: str, records, say=None, workers=1, *, 
 
 
 def quota_floor(root: Path, config: dict):
-    """The night's own guard for a one-click job: the week's floor kept for the owner's own work."""
+    """The guard for a one-click job: translation stops at the cheap stages' ceiling, past the floor (#3195)."""
     from . import quota
-    return lambda: quota.floor_block(quota.meter(root, config), config["limits"])
+    return lambda: quota.ceiling_block(quota.meter(root, config), config["limits"])
 
 
 # Held while a translate-every-page job runs (the CLI or the Host's), so a second one and the night's

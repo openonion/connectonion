@@ -39,8 +39,8 @@ PLACES = (('projects', r'\.pd\b|\.pd-|\.pa\b|\.pa-|\.project-|\.projects-view|\.
           ('record', r'\.focus-|\.deep-|\.note\b|\.factlist|\.fact-|\.relation|\.evidence|\.memory-|\.cite\b'))
 # What is left to burn down, by place. Projects is done (#3096) and stays at zero. Lower a number in the
 # change that fixes its place; never raise one.
-CAPTION_ALLOWED = {'projects': 0, 'people': 18, 'organisations': 58, 'knowledge': 28, 'agenda': 10, 'sessions': 37,
-                   'today': 25, 'record': 42, 'shared': 203}
+CAPTION_ALLOWED = {'projects': 0, 'people': 10, 'organisations': 50, 'knowledge': 25, 'agenda': 10, 'sessions': 37,
+                   'today': 23, 'record': 27, 'shared': 179}
 LEADING_ALLOWED = {'projects': 0, 'people': 10, 'organisations': 37, 'knowledge': 25, 'agenda': 8, 'sessions': 39,
                    'today': 43, 'record': 34, 'shared': 151}
 

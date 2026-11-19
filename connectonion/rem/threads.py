@@ -362,6 +362,40 @@ def ignored_senders(root):
     return found
 
 
+# 不是人 / 是人 (rc35 check: an assistant that writes from its company's domain led People). The owner's word on
+# whether an address is a person outranks every rule, in the reader and at night (census.pages). One dated line per
+# address beside ignored-senders.txt, readable and deletable by hand.
+PERSON_MARKS = 'people-marks.txt'
+PERSON_MARKS_HEAD = ("# Who is and is not a person in REM People: the owner's word, which every rule follows.\n"
+                     '# One per line: "2026-11-20 not-person assistant@example.com" or "2026-11-20 person ana@example.com". Delete a line to undo.')
+
+
+def person_marks(root):
+    """{address: 'person' or 'not-person'}, addresses casefolded; the last line for an address wins."""
+    from .files import EMAIL
+    file = state_path(root, PERSON_MARKS)
+    found = {}
+    for line in file.read_text(encoding='utf-8').splitlines() if file.is_file() else []:
+        mark = re.match(r'\s*(?:\d{4}-\d{2}-\d{2}\s+)?(not-person|person)\s+(\S+)', line)
+        if mark and not line.lstrip().startswith('#') and EMAIL.fullmatch(mark[2]):
+            found[mark[2].casefold()] = mark[1]
+    return found
+
+
+def mark_person(root, address, *, person):
+    """person True (是人), False (不是人), or None (undo: the rules decide again); the whole map comes back."""
+    from .files import atomic_write
+    from .service import notebook_today
+    with maintenance_lock(root):
+        file = state_path(root, PERSON_MARKS)
+        kept = [line for line in (file.read_text(encoding='utf-8').splitlines() if file.is_file() else [])
+                if not line.lstrip().startswith('#') and address.casefold() not in line.casefold().split()]
+        if person is not None:
+            kept.append(f"{notebook_today(root).isoformat()} {'person' if person else 'not-person'} {address.casefold()}")
+        atomic_write(file, '\n'.join([PERSON_MARKS_HEAD, *kept]) + '\n')
+    return person_marks(root)
+
+
 def ignore_sender(root, address, *, ignored=True):
     """Add the sender with today's date, or remove it; the whole list comes back for the reader."""
     from .files import atomic_write

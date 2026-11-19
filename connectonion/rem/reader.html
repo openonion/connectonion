@@ -204,7 +204,7 @@
   /* ---- main ---- */
   main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 32px 40px 80px; max-width: 1180px; }
   main:focus { outline: none; }
-  .eyebrow { letter-spacing: 0; text-transform: none; color: var(--grey); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: var(--s-meta)/1.4 var(--font); margin-bottom: 8px; }
+  .eyebrow { letter-spacing: 0; text-transform: none; color: var(--grey); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: var(--s-ui)/1.4 var(--font); margin-bottom: 8px; }
   .eyebrow a { color: var(--ink); }
   .eyebrow .sep { color: var(--rule); }
   .eyebrow .when { text-transform: none; letter-spacing: 0; }
@@ -524,7 +524,7 @@
   .page-grid > .side { margin: 26px 0 0; max-width: 66ch; }
   .panel { font-size: var(--s-meta); border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
   .panel + .panel { margin-top: 12px; }
-  .panel h3 { font: var(--w-bold) var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); margin: 0 0 10px; }
+  .panel h3 { font: var(--w-bold) var(--s-ui) var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); margin: 0 0 10px; }
   .panel dl { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px 10px; margin: 0; }
   .panel dt { color: var(--grey); font-size: var(--s-meta); }
   .panel dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
@@ -544,7 +544,7 @@
   .note > h2:first-child { margin-top: 0; }
   .note h3 { font: var(--w-bold) var(--s-body)/1.3 var(--font); margin: 1.5em 0 0.4em; position: relative; }
   .note h4, .note h5, .note h6 { font: var(--w-bold) var(--s-body)/1.3 var(--font); margin: 1.3em 0 0.4em; }
-  .heading-anchor { opacity: 0; font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); text-decoration: none !important; }
+  .heading-anchor { opacity: 0; font: var(--w-regular) var(--s-ui) var(--font); color: var(--grey); text-decoration: none !important; }
   .note :is(h2,h3,h4):hover .heading-anchor, .heading-anchor:focus-visible { opacity: 1; }
   .heading-anchor:hover { color: var(--ink); }
   .note ul, .note ol { padding-left: 1.25em; margin: 0 0 1em; }
@@ -571,7 +571,7 @@
   /* A raw source id in page text, drawn as its kind and date (#3165): quiet, opens the source in the side card. */
   .src-id { display: inline; padding: 0 4px; border: 0; text-decoration: none; border-radius: var(--radius); background: var(--well); color: var(--ink); font: inherit; cursor: pointer; }
   .src-id:hover, .src-id:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
-  .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--rule); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: var(--w-regular) var(--s-meta)/16px var(--font); color: var(--grey); background: var(--rule); border-color: var(--rule); border-radius: var(--radius); }
+  .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--rule); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: var(--w-regular) var(--s-ui)/16px var(--font); color: var(--grey); background: var(--rule); border-color: var(--rule); border-radius: var(--radius); }
   /* Grow the tap target without opening a gap in the prose. */
   .cite::before { content: ""; position: absolute; inset: -2px; min-width: 24px; min-height: 24px; }
   .citation-tip { position: fixed; z-index: 30; width: max-content; max-width: calc(100vw - 24px); overflow-wrap: anywhere; padding: 8px 12px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--grey); outline: var(--hair) solid var(--rule); font: var(--s-meta)/1.5 var(--font); pointer-events: none; }
@@ -688,9 +688,9 @@
   .chip { font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .chip .d { color: var(--grey); margin-left: 6px; }
   .page-foot { max-width: 66ch; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .page-foot .when { color: var(--grey); font: var(--s-meta)/1.5 var(--font); }
-  .btn-action, .eyebrow-path { font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; }
-  .eyebrow-path { font: var(--s-meta) var(--font); }
+  .page-foot .when { color: var(--grey); font: var(--s-ui)/1.5 var(--font); }
+  .btn-action, .eyebrow-path { font: var(--s-ui) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; }
+  .eyebrow-path { font: var(--s-ui) var(--font); }
   .btn-action:hover, .eyebrow-path:hover { color: var(--ink); border-color: var(--rule); }
   .btn-action.done { color: var(--ink); border-color: var(--rule); background: var(--rule); }
   details.copies { margin: 0 0 20px; font-size: var(--s-body); }
@@ -822,6 +822,9 @@
     .contact-directory td button { min-height: 44px; }
     .contact-directory .directory-action { display: block; margin: -9px 0 9px; }
     .contact-directory .directory-action td { display: block; border: 1px solid var(--rule); border-radius: var(--radius); }
+    /* The agents and services group has three cells: who, the address, 是人 on the right. */
+    .machine-directory tbody > tr:not(.directory-action) > td:nth-child(3) { grid-column: 1 / -1; text-align: right; color: inherit; }
+    .machine-directory tbody > tr:not(.directory-action) > td:nth-child(3)::before { content: none; }
   }
 
   /* People at 1440: every column fits (main 1136px); narrower, the sheet scrolls inside itself. */
@@ -891,16 +894,16 @@
   .insight .ins-pattern .badge { background: transparent; color: var(--grey); }
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
-  .panel .fill { margin: -6px 0 10px; font-size: var(--s-meta); color: var(--grey); }
+  .panel .fill { margin: -6px 0 10px; font-size: var(--s-ui); color: var(--grey); }
   .factlist { display: grid; grid-template-columns: minmax(80px, min-content) minmax(0, 1fr); gap: 0; margin: 0; }
-  .factlist dt { font: var(--w-bold) var(--s-meta)/1.5 var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); overflow-wrap: normal; }
-  .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--rule); font-size: var(--s-meta); min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
+  .factlist dt { font: var(--w-bold) var(--s-ui)/1.5 var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); overflow-wrap: normal; }
+  .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--rule); font-size: var(--s-ui); min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
-  .factlist dd.none { color: var(--grey); font-size: var(--s-meta); }
-  .factlist .val.mono > .fact-tail, .factlist .val.mono > span:first-child { font: var(--s-meta) var(--font); }
+  .factlist dd.none { color: var(--grey); font-size: var(--s-ui); }
+  .factlist .val.mono > .fact-tail, .factlist .val.mono > span:first-child { font: var(--s-ui) var(--font); }
   .factlist .val.derived { color: var(--grey); }
-  .factlist .qual { margin-left: 6px; font: var(--s-meta) var(--font); color: var(--grey); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 4px; }
-  .factlist .copy { position: absolute; right: 0; top: 5px; font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 6px; cursor: pointer; opacity: 0; }
+  .factlist .qual { margin-left: 6px; font: var(--s-ui) var(--font); color: var(--grey); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 4px; }
+  .factlist .copy { position: absolute; right: 0; top: 5px; font: var(--s-ui) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 6px; cursor: pointer; opacity: 0; }
   .factlist dd:hover .copy, .factlist .copy:focus-visible { opacity: 1; }
   .factlist dd:has(.copy) .val { padding-right: 44px; }
   .cite.run { padding: 3px 6px; }
@@ -919,11 +922,11 @@
   .record-focus { max-width: 1120px; margin: 8px 0 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 0; }
 
-  .focus-kicker { display: block; letter-spacing: 0; text-transform: none; font: var(--w-regular) var(--s-meta)/1.4 var(--font); color: var(--grey); }
+  .focus-kicker { display: block; letter-spacing: 0; text-transform: none; font: var(--w-regular) var(--s-ui)/1.4 var(--font); color: var(--grey); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: var(--s-body)/1.5 var(--font); margin: 8px 0 0; }
-  .deep-note-limit { max-width: 64ch; margin: 16px 0; font: var(--s-meta)/1.5 var(--font); color: var(--grey); }
+  .deep-note-limit { max-width: 64ch; margin: 16px 0; font: var(--s-ui)/1.5 var(--font); color: var(--grey); }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-  .focus-source { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--rule); color: var(--ink); background: var(--paper); border-radius: var(--radius); font: var(--w-regular) var(--s-meta) var(--font); }
+  .focus-source { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--rule); color: var(--ink); background: var(--paper); border-radius: var(--radius); font: var(--w-regular) var(--s-ui) var(--font); }
   .focus-source:hover { background: var(--rule); text-decoration: none; }
   .focus-source:focus-visible { outline-color: var(--ink); }
   .focus-command { cursor: pointer; margin-right: 8px; }
@@ -984,17 +987,17 @@
   .contact-strip dd { display: block; }
   .contact-strip .contact-what { display: block; margin-top: 3px; font-size: var(--s-meta); color: var(--grey); }
   .contact-strip .copy { margin-left: 8px; font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 1px 6px; cursor: pointer; vertical-align: 1px; }
-  .relation-description { font: var(--s-meta)/1.5 var(--font); color: var(--grey); margin: 0 0 10px; }
+  .relation-description { font: var(--s-ui)/1.5 var(--font); color: var(--grey); margin: 0 0 10px; }
   .relation-entry { min-width: 0; display: flex; flex-direction: column; }
-  .relation-provenance { font: var(--s-meta)/1.5 var(--font); color: var(--grey); padding: 7px 0; overflow-wrap: anywhere; margin-top: auto; }
+  .relation-provenance { font: var(--s-ui)/1.5 var(--font); color: var(--grey); padding: 7px 0; overflow-wrap: anywhere; margin-top: auto; }
   .relation-provenance .cite { margin-left: 4px; }
   .relation-provenance > span:first-child .cite:first-child { margin-left: 0; }
   .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; align-items: start; }
   .relation-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; text-decoration: none !important; transition: border-color var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
   .relation-card:hover, .relation-card:focus-visible { border-color: var(--ink); transform: none; }
   .relation-card strong { font: var(--w-bold) var(--s-body) var(--font); color: var(--ink); }
-  .relation-kind { font: var(--s-meta) var(--font); text-transform: none; letter-spacing: 0; color: var(--grey); }
-  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: var(--s-meta)/1.5 var(--font); color: var(--grey); }
+  .relation-kind { font: var(--s-ui) var(--font); text-transform: none; letter-spacing: 0; color: var(--grey); }
+  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: var(--s-ui)/1.5 var(--font); color: var(--grey); }
   /* Only cards with snippets share desktop row height to align source dates.
      Snippet-free cards keep their natural height; phone cards stay compact. */
   @media (min-width: 821px) {
@@ -1035,7 +1038,7 @@
   .deep-head { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0 0; }
   .deep-head h2 { margin: 0; font: var(--w-bold) var(--s-body)/1.3 var(--font); color: var(--ink); }
   .deep-label { display: flex; flex: 1; min-width: 0; justify-content: space-between; gap: 15px; align-items: baseline; }
-  .deep-hint { font: var(--s-meta) var(--font); color: var(--grey); }
+  .deep-hint { font: var(--s-ui) var(--font); color: var(--grey); }
   .deep-note .page-grid { padding-top: 22px; }
   /* A person's first screen is a ledger; the full note waits below it. */
   .person-head { max-width: 1120px; margin-bottom: 24px; }
@@ -1051,7 +1054,7 @@
   .set-row .translate-all { margin-left: 0; justify-content: flex-end; }
   @media (max-width: 820px), (pointer: coarse) { .translate-all .ta-go, .translate-all .ta-stop { min-height: 44px; } }
   .n3-person > .translation-line { margin: 12px 4px 0; }
-  .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; }
+  .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-ui) var(--font); white-space: nowrap; }
   .lang-status.lead { margin: 0 6px 0 0; }
   .role-more { color: var(--grey); white-space: nowrap; }
   .contact-line .lead-meta { display: block; font: var(--s-meta)/1.5 var(--font); overflow-wrap: anywhere; }
@@ -1338,7 +1341,7 @@
     /* Leave room for the complete source action, even with a long purpose. */
     main { padding-top: 8px; }
     .night { margin-top: -16px; }
-    .eyebrow { margin-bottom: 4px; font-size: var(--s-meta); }
+    .eyebrow { margin-bottom: 4px; font-size: var(--s-ui); }
     main:has(.page-head) > .eyebrow .when { display: none; }
     h1 { margin-bottom: 4px; line-height: 1.15; }
     .mobile-back { margin-bottom: 0; }
@@ -1440,7 +1443,7 @@
   /* Inline evidence stays with the claim; dated rows retain a compact full label. */
   .cite-tether { display: inline-block; max-width: 100%; white-space: nowrap; }
   .cite-word { white-space: normal; overflow-wrap: anywhere; }
-  .cite { border: 0; border-radius: var(--radius); background: transparent; padding: 0 2px; margin: 0 0 0 2px; font: var(--w-regular) var(--s-meta)/1 var(--font); font-variant-caps: normal; color: var(--grey); position: relative; top: -.35em; vertical-align: baseline; white-space: nowrap; overflow-wrap: normal; }
+  .cite { border: 0; border-radius: var(--radius); background: transparent; padding: 0 2px; margin: 0 0 0 2px; font: var(--w-regular) var(--s-ui)/1 var(--font); font-variant-caps: normal; color: var(--grey); position: relative; top: -.35em; vertical-align: baseline; white-space: nowrap; overflow-wrap: normal; }
   .cite.run { padding: 0 2px; }
   .cite::before { inset: -8px -3px; min-width: 24px; min-height: 24px; }
   .cite.missing { border: 0; opacity: 1; }
@@ -1714,7 +1717,7 @@
   .r4 h1 .soft::before { content: " · "; }
   .r4 h2 { font: var(--w-bold) var(--s-meta)/18px var(--font); color: var(--grey); display: flex; align-items: center; gap: 8px; margin: 40px 0 12px; letter-spacing: 0; text-transform: none; border: 0; padding: 0; }
   .r4 h2 .more { margin-left: auto; font-weight: var(--w-regular); color: var(--grey); font-size: var(--s-meta); }
-  .r4 .eyebrow { font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); letter-spacing: .01em; text-transform: none; margin: 0; }
+  .r4 .eyebrow { font: var(--w-regular) var(--s-ui) var(--font); color: var(--grey); letter-spacing: .01em; text-transform: none; margin: 0; }
   .r4 .q { color: var(--grey); }
   .r4 .q::before { content: "“"; } .r4 .q::after { content: "”"; }
   .r4 sup.c { white-space: nowrap; font-size: var(--s-meta); color: var(--grey); margin-left: 3px; font-weight: var(--w-regular); }
@@ -1767,8 +1770,10 @@
   .tl.all .tl-m.later { display: block; }
   .tl-m { font: var(--w-bold) var(--s-meta) var(--font); color: var(--grey); padding: 16px 0 6px 92px; }
   .tl-m:first-child { padding-top: 4px; }
-  .tl-e { display: grid; grid-template-columns: 64px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: var(--s-body); line-height: 21px; }
+  .tl-e { display: grid; grid-template-columns: 72px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: var(--s-body); line-height: 21px; }
   .tl-e .d { font-size: var(--s-meta); color: var(--grey); text-align: right; padding-right: 4px; }
+  /* A date is one word: "10月29日" broke across lines in the narrow column (rc36 hunt). */
+  .tl-e .d, .tnext-time, .gx-row-meta, time[datetime] { white-space: nowrap; }
   .tl-e .d .y { display: block; }
   .tl-e .w { display: grid; place-items: center; }
   .tl-e .w i { width: 7px; height: 7px; border-radius: var(--round); outline: var(--hair) solid var(--pencil); outline-offset: calc(-1 * var(--hair)); }
@@ -1831,7 +1836,7 @@
     .r4-said li, .r4-topics li { grid-template-columns: minmax(0, 1fr); gap: var(--u1); }
     .said-src { flex-direction: row; gap: var(--u2); }
     .tl-m { padding-left: 0; }
-    .tl-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
+    .tl-e { grid-template-columns: 58px 16px minmax(0, 1fr); }
     .tl-more { margin-left: 0; }
     .r4-bar { flex-wrap: wrap; margin-top: 28px; }
     .r4-find { flex-basis: 100%; }
@@ -2112,7 +2117,7 @@
   .qcard:not(.open) .qitem .words { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .qcard:not(.open) .qitem .words sup, .qcard:not(.open) .qitem .words .cite { display: none; }
   .today-threads > .qcard:first-child.open .qitem:first-child .words { font-size: var(--s-body); line-height: 27px; }
-  .qitem .words .cite { font-size: var(--s-meta); }
+  .qitem .words .cite { font-size: var(--s-ui); }
   .qmore { grid-column: 1; display: none; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
   .qcard.open .qmore { display: block; }
   .qmore > * { margin: 4px 0 0; font: inherit; color: inherit; }
@@ -2601,9 +2606,9 @@
   .ov-unsure { font-size: var(--s-meta); color: var(--grey); line-height: 20px; margin: 0; padding: 0; }
   .ov-unsure li { list-style: none; padding-left: 14px; position: relative; margin-bottom: 6px; }
   .ov-unsure li::before { content: "?"; position: absolute; left: 0; color: var(--grey); font-weight: var(--w-bold); }
-  .ov-src { font-size: var(--s-meta); color: var(--grey) !important; margin-top: 24px; display: flex; gap: 6px; align-items: center; }
+  .ov-src { font-size: var(--s-ui); color: var(--grey) !important; margin-top: 24px; display: flex; gap: 6px; align-items: center; }
   .ov-src .ov-i { width: 13px; height: 13px; }
-  .ov-head .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; font-size: var(--s-meta); color: var(--grey); }
+  .ov-head .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; font-size: var(--s-ui); color: var(--grey); }
   .ov-curtain { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 16px; }
   main:has(> .ov) > .deep-note { max-width: 1000px; margin-left: auto; margin-right: auto; }
   @media (max-width: 1180px) { .ov-teams { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -2650,7 +2655,7 @@
   .ov-r6 sup { font-size: var(--s-meta); color: var(--grey); vertical-align: 5px; line-height: 0; margin-left: 2px; font-weight: var(--w-regular); cursor: help; }
   /* The record sizes to its content; the timeline follows the summary and tree. */
   .ov-stage { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; grid-template-rows: auto auto auto; align-items: start; }
-  .ov-over { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px 16px; min-width: 0; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .ov-over { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px 16px; min-width: 0; font-size: var(--s-ui); line-height: 18px; color: var(--grey); }
   .ov-r6 .ov-crumb { font-size: var(--s-meta); font-weight: var(--w-regular); color: var(--grey); display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; margin: 0; padding: 0; }
   .ov-r6 .ov-crumb a { display: inline; padding: 0; color: var(--grey); }
   .ov-over .ov-source-action { margin-left: auto; color: var(--grey); white-space: nowrap; }
@@ -2686,7 +2691,7 @@
   .ov-tl1 > a:hover { text-decoration: underline; text-underline-offset: 3px; }
   [aria-level="1"] > .ov-trow .ov-tl1 > b, .ov-trow:has(.ov-mk.unit) .ov-tl1 > a { font-weight: var(--w-bold); }
   .ov-trow:has(.ov-mk.loose) .ov-tl1 > b { font-weight: var(--w-regular); color: var(--grey); }
-  .ov-tk { font-size: var(--s-meta); color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 0; }
+  .ov-tk { font-size: var(--s-ui); color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 0; }
   .ov-tbar { grid-column: 4; height: 4px; background: var(--rule); border-radius: var(--radius); overflow: hidden; }
   .ov-tbar i { display: block; height: 100%; background: var(--ink); }
   .ov-trow:has(.ov-mk.loose) .ov-tbar i { background: var(--pencil); }
@@ -2744,7 +2749,7 @@
   .ov-about { margin: 0; font-size: var(--s-body); line-height: 22px; }
   .ov-about a { border-bottom: 1px solid var(--rule); }
   .ov-r6 .ov-foot { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 20px; align-items: baseline; }
-  .ov-r6 .ov-src { margin: 0; font-size: var(--s-meta); display: inline; }
+  .ov-r6 .ov-src { margin: 0; font-size: var(--s-ui); display: inline; }
   .ov-unsure-d summary { cursor: pointer; border-bottom: 1px solid var(--rule); display: inline; }
   .ov-unsure-d .ov-unsure { margin-top: 8px; font-size: var(--s-body); }
   .ov-r6 > .ov-curtain { margin-top: 40px; }
@@ -2836,7 +2841,7 @@
   .ov-page .ov-milestones p, .ov-page .ov-connections p, .ov-page .ov-about { line-height: 1.7; margin: 12px 0; }
   .ov-page .ov-milestones time { color: var(--grey); }
   .ov-page .ov-about > div { margin: 12px 0; }
-  .ov-page .ov-about dt { color: var(--grey); font-size: var(--s-meta); }
+  .ov-page .ov-about dt { color: var(--grey); font-size: var(--s-ui); }
   .ov-page .ov-about dd { margin: 0; overflow-wrap: anywhere; }
   main:has(> .ov-page) .page-grid { display: block; }
   main:has(> .ov-page) .page-grid > .side { margin-top: 24px; }
@@ -3067,7 +3072,7 @@
     .entry .gx-grid, .entry .gx-grid.no-rail { grid-template-columns: minmax(0, 1fr); margin-top: var(--u4); }
   }
   .gx-rail { display: flex; flex-direction: column; gap: 0; }
-  .gx-rail h4, .gx-attach h4 { font-size: var(--s-meta); line-height: 18px; font-weight: var(--w-bold); color: var(--grey); margin: 28px 0 8px; }
+  .gx-rail h4, .gx-attach h4 { font-size: var(--s-ui); line-height: 18px; font-weight: var(--w-bold); color: var(--grey); margin: 28px 0 8px; }
   .gx-rail > :first-child h4, .gx-attach > :first-child h4 { margin-top: 0; }
   .gx-rail-list li { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--rule); }
   .gx-rail-list a { display: flex; align-items: center; gap: 8px; }
@@ -3087,7 +3092,7 @@
   .gx-local-svg text { font: var(--w-regular) var(--s-meta) var(--font); fill: var(--grey); paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
   .gx-local-svg text.centre { font-weight: var(--w-bold); fill: var(--ink); font-size: var(--s-meta); }
   .gx-local-svg a:hover > :not(title) { opacity: .6; }
-  .gx-local-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .gx-local-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-ui); line-height: 18px; color: var(--grey); }
   .gx-local-foot a { color: var(--grey) !important; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .gx-topic-line { margin-top: 10px !important; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
   .gx-topic-line a { color: var(--ink) !important; font-weight: var(--w-bold); text-decoration: none !important; }
@@ -3162,12 +3167,11 @@
   /* The actions' fixed slot: top right of the head, the same on an organisation and a project as on a person. */
   main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-items: start; }
   main.reading .ov.ov-r6 .ov-say > *, main.reading > .page-head > * { grid-column: 1; }
-  main.reading .ov.ov-r6 .ov-say > .inv, main.reading > .page-head > .inv { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; align-items: flex-end; }
-  main.reading .ov.ov-r6 .ov-say > .inv :is(.inv-line, .inv-steps), main.reading > .page-head > .inv :is(.inv-line, .inv-steps) { text-align: right; justify-content: flex-end; }
+  main.reading .ov.ov-r6 .ov-say > .rec-acts, main.reading > .page-head > .rec-acts { grid-column: 2; grid-row: 1 / span 3; margin-top: 0; }
   main.reading .ov.ov-r6 .ov-say :is(.inv-menu, .inv-changed), main.reading > .page-head :is(.inv-menu, .inv-changed) { left: auto; right: 0; }
   @media (max-width: 640px) {
     main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { grid-template-columns: minmax(0, 1fr); }
-    main.reading .ov.ov-r6 .ov-say > .inv, main.reading > .page-head > .inv { grid-column: 1; grid-row: auto; align-items: flex-start; }
+    main.reading .ov.ov-r6 .ov-say > .rec-acts, main.reading > .page-head > .rec-acts { grid-column: 1; grid-row: auto; margin-top: 12px; }
     main.reading .bento { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
@@ -3336,6 +3340,19 @@
   .set-ignored li > :first-child { flex: 1 1 12em; color: var(--ink); }
   /* An address has no spaces: on a phone the notice breaks it rather than run past the edge. */
   .done-notice .sender-ignore { overflow-wrap: anywhere; text-align: left; }
+  /* 不是人 / 是人 (rc35 check): a quiet worded button, 44px to touch; in People's rows it shows on hover or focus. */
+  .not-person, .is-person { min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent;
+    color: var(--grey); font: inherit; font-size: var(--s-ui); cursor: pointer; white-space: nowrap; }
+  .not-person:hover, .is-person:hover, .not-person:focus-visible, .is-person:focus-visible { color: var(--ink); background: var(--well); }
+  .hero-acts .not-person { display: block; margin: 4px 0 0 auto; }
+  .contact-directory td .is-person { min-height: 44px; }
+  /* Over the name cell's right end, so a row's names keep their width; shown on hover or focus. The sticky name
+     column (.sheet .name) already anchors it; relative only where the cell isn't sticky, or the name would scroll away. */
+  .people-table td.c-name:not(.name) { position: relative; }
+  .people-table .not-person.compact { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 30px; padding: 0 10px;
+    background: var(--well); visibility: hidden; }
+  .people-table tr:hover .not-person.compact, .people-table .not-person.compact:focus-visible { visibility: visible; }
+  @media (hover: none) { .people-table .not-person.compact { position: static; transform: none; visibility: visible; min-height: 44px; background: transparent; } }
   .set-note, .notebook-languages, .memory-legend, .foot-line { font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
   .notebook-languages, .set-rem, .memory-legend, .foot-line { padding: 12px 0; border-top: var(--hair) solid var(--rule); }
   .set-rem { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
@@ -3808,6 +3825,21 @@
   .n3-person .hero-meta .r4-today::before, .n3-person .hero-meta .r4-today.late::before { content: "·"; display: inline-block; width: 16px; height: auto;
     margin-left: -16px; border-radius: 0; background: none; color: var(--grey); text-align: center; }
   .hero-acts:empty { display: none; }
+  /* The head's one action slot (rc35 hunt, #3131): 调查 and then 查看来源, right-aligned in the head's right column
+     on every record, at the left edge under the name on a phone. */
+  .rec-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
+  .rec-acts > .inv { align-items: flex-end; margin-top: 0; }
+  .rec-acts > .inv :is(.inv-line, .inv-steps) { text-align: right; justify-content: flex-end; }
+  .rec-acts :is(.inv-menu, .inv-changed) { left: auto; right: 0; }
+  .rec-sources { display: inline-flex; align-items: center; min-height: 44px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); white-space: nowrap; }
+  .rec-sources:hover { color: var(--ink); }
+  /* A person's head styles its own links in ink; the slot's quiet link stays grey on every record. */
+  #main .rec-acts > .rec-sources { color: var(--grey); text-decoration: none; }
+  #main .rec-acts > .rec-sources:hover { color: var(--ink); }
+  @media (max-width: 640px) {
+    .rec-acts, .rec-acts > .inv { align-items: flex-start; width: 100%; }
+    .rec-acts > .inv :is(.inv-line, .inv-steps) { text-align: left; justify-content: flex-start; }
+    .rec-acts :is(.inv-menu, .inv-changed) { right: auto; left: 0; } }
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
   .inv { position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
@@ -3822,7 +3854,6 @@
     cursor: pointer; transition: box-shadow var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); white-space: nowrap; }
   .inv-go:hover:not(:disabled) { transform: translateY(-1px); }
   .inv-go .n { font-weight: var(--w-regular); }
-  .inv[data-label="deeper"] .inv-go { background: var(--raised); color: var(--ink); box-shadow: var(--e-ink); }
   .inv-go:disabled { background: var(--well); color: var(--grey); box-shadow: none; cursor: default; transform: none; }
   .inv-more { position: relative; }
   .inv-more > summary { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--round); box-shadow: var(--e-ring);
@@ -3989,7 +4020,7 @@
   .n3-person .r4-said ol.all li { display: grid; }
   .n3-person .said-q { order: -1; color: var(--ink); quotes: none; font: var(--w-regular) var(--s-ui)/1.6 var(--font); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
   .n3-person .said-src { display: flex; gap: 6px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
-  .n3-person .tl .tl-e { display: grid; grid-template-columns: 44px 12px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; border: 0; }
+  .n3-person .tl .tl-e { display: grid; grid-template-columns: 60px 12px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; border: 0; }
   .n3-person .tl .tl-e .d { text-align: right; color: var(--grey); font: var(--w-regular) var(--s-meta)/20px var(--font); }
   .n3-person .tl .tl-e .w i { display: block; width: 9px; height: 9px; margin-top: 6px; border-radius: var(--round); border: 1.6px solid var(--ink); background: none; }
   .n3-person .tl .tl-e .w i.me { background: var(--ink); }
@@ -4009,7 +4040,7 @@
   .person-sessions .wt a { color: var(--grey); }
   .rel-slot .gx-local { margin: 0; padding: 0; border: 0; }
   .rel-slot .gx-local-svg { width: 100%; height: auto; overflow: visible; }
-  .rel-slot .gx-local h4 { margin: 0 0 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .rel-slot .gx-local h4 { margin: 0 0 8px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.4 var(--font); }
   .stack2 { display: grid; gap: 16px; align-content: start; }
   .row2 { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 18px; border: 0; cursor: pointer; text-align: left; color: var(--ink);
     font: var(--w-regular) var(--s-ui)/1.4 var(--font); text-decoration: none !important; transition: transform var(--t-state) var(--spring), box-shadow var(--t-state) var(--ease-out); }
@@ -4201,7 +4232,7 @@ const UI = {
     "Task dispatch is in progress.": "正在派发任务。",
     "Delivery not confirmed. Check the provider before sending again.": "尚未确认发送结果，请先在服务商处核实再重发。",
 
-    "Approve all {n}": "一键批准这 {n} 件",
+    "Approve all {n}": "一键批准这 {n} 件", "Approve the {n} REM prepared": "一键批准 REM 备好的 {n} 件",
     "Reply": "回信",
     "Already handled": "已处理",
     "Confirm": "确认",
@@ -5301,7 +5332,7 @@ const UI = {
     "wrote 1 page": "写了 1 页", "wrote {n} pages": "写了 {n} 页", "drafted 1 reply": "起草了 1 封回复", "drafted {n} replies": "起草了 {n} 封回复",
     "prepared 1 task": "准备了 1 件事", "prepared {n} tasks": "准备了 {n} 件事", "nothing new to do": "没有新的事要做",
     "thing waiting on you": "件在等你", "things waiting on you": "件在等你",
-    "See the {n} waiting on others →": "看 {n} 件在等谁 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
+    "See the {n} waiting on others →": "看 {n} 件在等谁 →", "See the {n} you are waiting on others for →": "看你在等对方的 {n} 件 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
     "1 has gone quiet for a long time · Look": "1 件很久没动静 · 看看", "Mark all done": "都标为完成", "Mark all {n} done": "都标为完成（{n}）",
     "Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages": "隆起 = REM 备好的回信和任务 · 下沉 = 读信、整理和翻译页面",
     "Read mail and sessions": "读邮件和会话", "Rewrote pages": "整理页面", "Translated pages": "翻译页面",
@@ -5592,7 +5623,7 @@ function applyPrivacy(root) {
     const quiet = node.closest(".privacy-only") || node.classList.contains("private-entry");
     const place = node.parentElement?.closest("section, .widget, .pcard, .qcard, .deep-note, dialog, aside, li, td, #main");
     if (place && !quiet) lost.set(place, (lost.get(place) || 0) + 1);
-    if (node === root) { node.replaceChildren(); node.hidden = true; } else node.remove();
+    if (node === root) { node.replaceChildren(); node.hidden = true; } else mendAfterRemoving(node);
     privacyRemoved = true;
   }
   for (const [place, n] of lost) {
@@ -5601,6 +5632,19 @@ function applyPrivacy(root) {
     const total = Number(line.dataset.n || 0) + n;
     line.dataset.n = total;
     line.textContent = t(total === 1 ? "1 passage hidden" : "{n} passages hidden", { n: total });
+  }
+}
+// A passage taken out of a sentence leaves the text either side to read on: the space before the punctuation that
+// followed it goes, and an English sentence it opened starts with a capital ("classes. it will close", rc36).
+function mendAfterRemoving(node) {
+  const before = node.previousSibling, after = node.nextSibling;
+  node.remove();
+  if (after?.nodeType !== Node.TEXT_NODE) return;
+  const opened = !before || (before.nodeType === Node.TEXT_NODE && /(^|[.!?]["”’')]?)\s*$/.test(before.nodeValue));
+  if (opened) after.nodeValue = after.nodeValue.replace(/^(\s*)([a-z])/, (m, gap, letter) => gap + letter.toUpperCase());
+  if (before?.nodeType === Node.TEXT_NODE && /^\s*[.,;:!?。，；：！？]/.test(after.nodeValue)) {
+    before.nodeValue = before.nodeValue.trimEnd();
+    after.nodeValue = after.nodeValue.trimStart();
   }
 }
 function liftCurtain(node) {
@@ -5685,16 +5729,19 @@ function tagHref(slug) {
 }
 function tagged(records, slug) { return slug ? records.filter(r => (r.tags || []).includes(slug)) : records; }
 // A page's tags as quiet links, each to its tag page; nothing when it has none.
-function tagLinks(r) {
+function tagLinks(r, said = []) {
   // A page is never its own tag (rc34 hunt: an organisation's row listed the organisation): the tag that names this
-  // page is what the page is, so the row shows only the other nodes it links to.
-  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug] && REM.tags[slug].page !== r.path);
+  // page is what the page is, so the row shows only the other nodes it links to. Nor is a tag the head already says
+  // (rc35 hunt: a person's organisation was her dek's link and again her first tag): `said` is those pages and words.
+  const already = new Set(said.filter(Boolean).map(word => tagNorm(String(word))));
+  const repeats = slug => already.has(tagNorm(REM.tags[slug].page || "")) || already.has(tagNorm(tagLabel(slug)));
+  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug] && REM.tags[slug].page !== r.path && !repeats(slug));
   return slugs.length ? el("span", { class: "tag-links" }, slugs.map(slug => el("a", { class: "tag-link", href: tagHref(slug), text: tagLabel(slug) }))) : null;
 }
 // One row of a page's tags under its title, on every kind (owner, 2026-11-19): the same links the person card shows,
 // each opening the page the tag names or the tag's own page. Nothing when the page has no tag.
-function pageTagRow(r) {
-  const links = tagLinks(r);
+function pageTagRow(r, said = []) {
+  const links = tagLinks(r, [r.title, ...said]);
   return links ? el("p", { class: "page-tags" }, [el("span", { class: "page-tags-label", text: t("Tags") }), links]) : null;
 }
 // The tag page: every page carrying it, grouped by kind, each group with its count (#3093 point 2).
@@ -5978,8 +6025,17 @@ function privatePassages(text, replace) {
     (passage, sentence, level) => replace(restore(passage), level.toLowerCase()));
   return restore(value);
 }
+// The text with its labelled passages taken out, mended where they stood: no space left before the punctuation that
+// followed, and an English sentence the cut left starting lowercase starts with a capital again ("…classes. it will
+// close" from "…classes. Funding ends in May [sensitive], it will close"; rc36 privacy fixer).
 function unlabelled(text) {
-  return privatePassages(text, () => "");
+  return mendCuts(privatePassages(text, () => "\u0006"));
+}
+function mendCuts(text) {
+  return String(text)
+    .replace(/(^|[.!?]["”’')]?)([ \t]*)\u0006+[ \t]*([a-z])/gm, (m, end, gap, letter) => end + (end ? " " : gap) + letter.toUpperCase())
+    .replace(/[ \t]*\u0006+[ \t]*(?=[.,;:!?。，；：！？]|$)/gm, "")
+    .replace(/([ \t]?)\u0006+[ \t]*/g, "$1");
 }
 function hasPrivacy(text) {
   return /[\[［](?:personal|sensitive)[\]］]/i.test(text);
@@ -9567,11 +9623,19 @@ function taskView(kind) {
 // the address (tag=), so a reload or the back button keeps it.
 function openTags(entry) {
   const r = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
-  const name = r.category === "people" ? company(r) : r.category === "orgs" || r.category === "projects" ? r.title : "";
+  // A person's place is the organisation People names (personOrg): never a raw domain, a code or a second spelling.
+  const name = r.category === "people" ? personOrg(r)?.name || "" : r.category === "orgs" ? orgName(r) : r.category === "projects" ? r.title : "";
   const place = name ? [{ id: (r.category === "projects" ? "project:" : "org:") + name, label: name }] : [];
   // The item's own tags (#3093): its queue row's, else its page's; each a chip, so "close all 9900" is one filter away.
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
-  const pageTags = (row?.tags || r.tags || []).filter(slug => REM.tags?.[slug]).map(slug => ({ id: "tag:" + slug, label: tagLabel(slug) }));
+  // A tag naming an organisation is that organisation's place chip, so "Harbour Uni" the place and "Harbour Uni" the tag are one
+  // chip, not two (rc35 hunt).
+  const tagChip = slug => {
+    const page = byPath(REM.tags[slug].page || "");
+    return page?.category === "orgs" ? { id: "org:" + orgName(page), label: orgName(page) } : { id: "tag:" + slug, label: tagLabel(slug) };
+  };
+  const pageTags = (row?.tags || r.tags || []).filter(slug => REM.tags?.[slug]).map(tagChip)
+    .filter((chip, i, all) => !place.some(p => p.id === chip.id) && all.findIndex(c => c.id === chip.id) === i);
   if (!waitingOnYou(entry)) return [...place, ...pageTags];
   const replied = queuedReply(entry)?.state === "replied";
   return [{ id: replied ? "state:replied" : "state:owe", label: t(replied ? "I replied, waiting on them" : "I still owe a reply or an action") }, ...place, ...pageTags];
@@ -9650,7 +9714,7 @@ function approvalHeader() {
   // an item waiting for the owner to fill a gap is not approved by it. With none that can go there is no button,
   // never a greyed one or a "0" (TOP10 #9); an Undo that brings items back draws the widget again, button and all.
   const ready = readyCount(items);
-  const button = ready ? el("button", {id: "approve-all", class: "btn-line approve-all", type: "button", text: t("Approve all {n}", {n: ready})}) : null;
+  const button = ready ? el("button", {id: "approve-all", class: "btn-line approve-all", type: "button", text: t("Approve the {n} REM prepared", {n: ready})}) : null;
   if (button) {
     button.disabled = !REM.live;
     button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
@@ -9671,7 +9735,7 @@ function openApprovalSheet(items) {
   const notice = el("p", {class: "quiet-line", role: "status"});
   const list = el("div", {class: "approval-list"});
   const dialog = el("dialog", {id: "approval-sheet", "aria-labelledby": "approval-title"}, [
-    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve all {n}", {n: readyCount(items)})}), close]),
+    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve the {n} REM prepared", {n: readyCount(items)})}), close]),
     el("p", {class: "quiet-line", text: t("Replies wait 10 minutes. Undo cancels held replies. Handled items are marked done; tasks are queued now.")}),
     list, el("footer", {}, [confirm, notice])]);
   const sync = () => {confirm.disabled = busy || !rows.some(row => row.check.checked && !row.check.disabled);};
@@ -9805,6 +9869,11 @@ function turnTrouble(failure) {
       { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: zone }) : "";
     // `empty`: turns that exited cleanly with no task served and nothing submitted (1.9.6rc18).
     const empty = failure.empty || 0, all = empty === failure.failures;
+    // The same code error again and again is a bug a retry cannot fix: say so, and never "nothing to do"
+    // (rc36 hunt: six turns on one AttributeError under "REM 会自动重试，不需要你做什么").
+    if (failure.code_error) return uiLanguage === "zh"
+      ? `后台：夜里的程序出错了（同一个错误 ${failure.code_error} 次），升级到新版本后会继续。自 ${since} 起。`
+      : `Background: The night runner hit a code error ${failure.code_error} ${failure.code_error === 1 ? "time" : "times"}; it resumes after an update. Since ${since}.`;
     if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} 起。REM 会自动重试，不需要你做什么。`;
     const said = all ? (failure.failures === 1 ? "turn ran but produced nothing" : "turns ran but produced nothing")
       : (failure.failures === 1 ? "turn failed" : "turns failed") + (empty ? ` (${empty} ran but produced nothing)` : "");
@@ -10329,23 +10398,40 @@ function todaySide(counts) {
 }
 // What is next, on the first screen beside the cards (rc34 hunt: the calendar sat ~989px down). The cards stay
 // first; this is the calendar's head, not a second calendar: it reuses agendaEntries and agDetail.
+// What starts next, in order from now. An event already under way is not "next": it went first in the list under its
+// past start ("周日 09:00" ahead of 10:00 today, rc36 hunt) and is said apart, by nowEvents.
 function nextEvents(limit = 3) {
   if (REM.shared) return [];
   const now = Date.parse(REM.as_of || "") || clockNow();
+  return timedEvents(now).filter(e => Date.parse(e.start) > now).slice(0, limit);
+}
+function nowEvents() {
+  if (REM.shared) return [];
+  const now = Date.parse(REM.as_of || "") || clockNow();
+  return timedEvents(now).filter(e => Date.parse(e.start) <= now);
+}
+function timedEvents(now) {
   return agendaEntries().filter(e => e.kind === "event" && !e.allDay && e.end && Date.parse(e.end) > now)
-    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start)).slice(0, limit);
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
 }
 function nextWhen(e) { return (e.first === agToday() ? "" : agFormat(e.first, { weekday: "short" }) + " ") + agTime(e.start); }
+// Until when, in the fewest words: a time today, a weekday this week, a date further off.
+function nowWhen(e) {
+  const today = agToday(), until = e.last === today ? agTime(e.end)
+    : agSpan(today, e.last) < 7 ? agFormat(e.last, { weekday: "short" }) : agFormat(e.last, { month: "short", day: "numeric" });
+  return agT("Now · until {when}", { when: until });
+}
+function nextRow(e, when) {
+  const open = el("button", { type: "button", class: "tnext-ev" }, [el("span", { class: "tnext-time", text: when }), el("span", { class: "tnext-title", text: e.title })]);
+  open.onclick = () => agDetail(e, open);
+  const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
+  return el("li", {}, [open, join]);
+}
 function todayNext() {
   const events = nextEvents();
   if (REM.shared) return null;
-  const today = agToday(), entries = agendaEntries();
-  const rows = events.map(e => {
-    const open = el("button", { type: "button", class: "tnext-ev" }, [el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title })]);
-    open.onclick = () => agDetail(e, open);
-    const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
-    return el("li", {}, [open, join]);
-  });
+  const today = agToday(), entries = agendaEntries(), under = nowEvents();
+  const rows = events.map(e => nextRow(e, nextWhen(e)));
   const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": agT("This week") }, Array.from({ length: 7 }, (_, i) => {
     const day = agDay(today, i), n = agOnDay(entries, day).length;
     const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), ...(day === today ? { "aria-current": "date" } : {}),
@@ -10358,6 +10444,7 @@ function todayNext() {
   const all = el("a", { class: "tnext-all", href: "#today-calendar", text: agT("Full schedule ↓") });
   all.onclick = event => { event.preventDefault(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
   return el("section", { class: "widget tnext", "aria-label": agT("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: agT("Next") }), el("span", { class: "end" }, [all])]),
+    under.length ? el("ul", { class: "tnext-list tnext-now" }, under.map(e => nextRow(e, nowWhen(e)))) : null,
     rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: agT("Nothing else today") }), strip]);
 }
 // On a phone: one line above the cards, the next event, a tap to the calendar.
@@ -10442,7 +10529,9 @@ function staleMore(n) {
   }), { once: true });
   return link;
 }
-// What others owe and what can be approved at once. With nothing open either way and nothing to approve, one
+// What others owe and what can be approved at once. The three numbers on Today read as one set (rc36 hunt: «14 件在等你 /
+// 55 件在等谁 / 批准 11 件» said nothing of how they relate): the big one is what waits on you, this link is the other
+// direction (what you wait on others for), and the batch is what REM prepared, which it names as REM's. With nothing open either way and nothing to approve, one
 // sentence says so, in a snapshot and live alike; with only your own items open, the link is to everything open.
 // Either shape carries the same id: an Undo that brings approvals back draws it again in place.
 function othersWidget(counts) {
@@ -10450,7 +10539,7 @@ function othersWidget(counts) {
   if (!counts.theirs && !counts.mine && !outcomes && !problems)
     return el("p", { id: "today-others", class: "quiet-line nothing-open", text: t("Nothing is open between you and anyone right now.") });
   // What others owe is a list to read, so it is a worded link to that list, not a big number to stare at.
-  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open", text: t("See the {n} waiting on others →", { n: counts.theirs }) })
+  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open", text: t("See the {n} you are waiting on others for →", { n: counts.theirs }) })
     : counts.mine ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("span", { text: t("Everything open") + " →" })]) : null;
   // A batch that can go names itself; a heading of "Waiting on others" over it read as if the batch were theirs.
   const ready = outcomes && (REM.approval_outcomes || []).some(item => !item.blocked);
@@ -10599,8 +10688,87 @@ function activityView() {
 }
 
 function shellArg(value) { return "'" + String(value).replace(/'/g, "'\\''") + "'"; }
+// ---------- 不是人 / 是人 (rc35 check): the owner's word on who is a person ----------
+// An assistant that mails from its company's domain led People. The night already moves one out when its company's
+// page names it as the assistant (census.assistant_contact); the owner's one click settles the rest. The mark is
+// one dated line per address in the notebook's state (threads.mark_person), which the night reads too, and Undo
+// or 是人 in the agents and services group takes it back.
+Object.assign(UI.zh, { "Not a person": "不是人", "A person": "是人", "Moved out of People · {name}": "已移出人物 · {name}",
+  "Back in People · {name}": "已回到人物 · {name}", "{n} agents and services found in mail": "邮件里的 {n} 个助理和服务",
+  "Assistants, bots and services: their company's page says so, or you said so. They stay out of People.": "助理、机器人和服务：公司页面这么写，或者你这么说过。它们不进人物。",
+  "Not a person: an assistant, a bot or a service": "不是人：是助理、机器人或服务" });
+function recordEmails(r) {
+  return [...new Set((String(facts(r).email || "").match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []).map(address => address.toLowerCase()))];
+}
+async function savePersonMark(addresses, person) {
+  for (const address of addresses) {
+    const reply = await hostPost("/rem/person", { address, person });
+    if (!reply.ok) return false;
+    REM.person_marks = reply.marks || {};
+  }
+  return true;
+}
+function personMarkNotice(words, undo) {
+  document.getElementById("done-notice")?.remove();
+  const button = el("button", { type: "button", text: t("Undo") });
+  button.onclick = undo;
+  document.body.appendChild(el("div", { id: "done-notice", class: "done-notice", role: "status" }, [words, " · ", button, " · ", t("Saved in notebook")]));
+  button.focus({ preventScroll: true });
+}
+function notPersonButton(r, compact = false) {
+  const addresses = recordEmails(r);
+  if (!liveHere() || !addresses.length || r.path === REM.owner) return null;
+  const button = el("button", { type: "button", class: "not-person" + (compact ? " compact" : ""), title: t("Not a person: an assistant, a bot or a service"), text: t("Not a person") });
+  const out = async () => {
+    button.disabled = true;
+    if (!await savePersonMark(addresses, false)) { button.disabled = false; return notSavedNotice(retryReplacing(out), null); }
+    r.service_rule ??= !!r.service;
+    r.service = true;
+    render();
+    personMarkNotice(t("Moved out of People · {name}", { name: r.title }), async () => {
+      if (!await savePersonMark(addresses, null)) return notSavedNotice(() => {}, null);
+      r.service = r.service_rule;
+      document.getElementById("done-notice")?.remove();
+      render();
+    });
+  };
+  button.onclick = event => { event.stopPropagation(); out(); };
+  return button;
+}
+// Where an assistant or service waits: a folded group under People, each with 是人 to bring it back.
+function machineDirectory() {
+  const marks = REM.person_marks || {};
+  const pages = REM.records.filter(r => r.category === "people" && r.service && (r.agent || recordEmails(r).some(address => marks[address] === "not-person")));
+  const contacts = (REM.contact_candidates || []).filter(row => row.machine);
+  if (!pages.length && !contacts.length) return null;
+  const back = (row, addresses, done, undone) => {
+    if (!liveHere()) return el("span");
+    const button = el("button", { type: "button", class: "is-person", text: t("A person") });
+    button.onclick = async () => {
+      button.disabled = true;
+      if (!await savePersonMark(addresses, true)) { button.disabled = false; return notSavedNotice(() => button.click(), null); }
+      done();
+      render();
+      personMarkNotice(t("Back in People · {name}", { name: row }), async () => {
+        if (!await savePersonMark(addresses, null)) return notSavedNotice(() => {}, null);
+        undone();
+        document.getElementById("done-notice")?.remove();
+        render();
+      });
+    };
+    return button;
+  };
+  const rows = [...pages.map(r => el("tr", {}, [el("td", {}, [el("a", { href: href(r), text: r.title })]), el("td", { text: recordEmails(r).join(", ") }),
+      el("td", {}, [back(r.title, recordEmails(r), () => { r.service = false; }, () => { r.service = true; })])])),
+    ...contacts.map(row => el("tr", {}, [el("td", { text: row.name || row.email }), el("td", { text: row.email }),
+      el("td", {}, [back(row.name || row.email, [row.email.toLowerCase()], () => { row.machine = false; }, () => { row.machine = true; })])]))];
+  return el("details", { class: "contact-directory machine-directory" }, [
+    el("summary", { text: t("{n} agents and services found in mail", { n: rows.length }) }),
+    el("div", { class: "directory-body" }, [el("p", { class: "directory-note", text: t("Assistants, bots and services: their company's page says so, or you said so. They stay out of People.") }),
+      el("div", { class: "directory-scroll" }, [el("table", {}, [el("tbody", {}, rows)])])])]);
+}
 function contactDirectory() {
-  const candidates = REM.contact_candidates || [];
+  const candidates = (REM.contact_candidates || []).filter(row => !row.machine);
   const coverage = REM.contact_coverage || {};
   if (!candidates.length && !coverage.incomplete) return null;
   const details = el("details", { class: "contact-directory" });
@@ -10737,7 +10905,42 @@ function personOrg(r) {
   const full = link ? plainLine(link[1]) : wiki ? plainLine(wiki[2] || org?.title || wiki[1])
     : plainLine(company).replace(/\s*\(from email domain\)$/i, "") || org?.title || "";
   const acronym = /^(.+?)\s*\(([\p{Lu}&]{2,8})\)$/u.exec(full);
-  return knownValue(full) ? { org, name: acronym ? acronym[2] : full, full: acronym ? acronym[1] : "" } : null;
+  return knownValue(full) ? orgNamed(r, org, acronym ? acronym[2] : full, acronym ? acronym[1] : "") : null;
+}
+// What People's organisation column and the open list's place chips call a person's organisation (rc35 hunt,
+// #3157: a course-group code, two university domains, and one company as both a short and a full name).
+function orgNamed(r, org, label, full) {
+  const domain = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i, title = org?.title.trim() || "";
+  const name = label.replace(/\s*[（(][^()（）]*[)）]\s*$/, "") || label;
+  // An internal code (digits, capitals and dashes, no space: a course group, a ticket) is never an organisation.
+  if (/^(?=\S*\d)[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(name.trim())) return null;
+  // A page linked under a longer label ("Harbour Uni Founders" → Harbour Uni) or under its domain goes by its own name.
+  if (org && !domain.test(title) && (domain.test(name) || startsWords(name, title)))
+    return { org, name: orgName(org), full: label === orgName(org) ? full : label };
+  if (!org) {
+    const matches = inCategory("orgs").filter(page => sameCompany(r, page, name));
+    if (matches.length === 1) return { org: matches[0], name: orgName(matches[0]), full: label };
+  }
+  return domain.test(name) ? { org, name: domainName(name), full: label } : { org, name: label, full };
+}
+// A domain reads as a name, the domain itself kept for the tooltip: "harbour.edu.au" → Harbour, "fernhill.example" → Fernhill.
+function domainName(domain) {
+  const parts = domain.toLowerCase().split("."), label = parts[0] === "www" ? parts[1] : parts[0];
+  return parts.some(part => part === "edu" || part === "ac") && label.length <= 5 ? label.toUpperCase() : label[0].toUpperCase() + label.slice(1);
+}
+function startsWords(long, short) {
+  return long.toLowerCase().startsWith(short.toLowerCase() + " ");
+}
+function personDomain(r) {
+  return (String(facts(r).email).match(/@([\w.-]+\.[a-z]{2,})/i) || [])[1]?.toLowerCase() || "";
+}
+// One company, one name: a short name and a full one ("Acme" / "Acme Fine Foods") are one organisation when one begins
+// the other and the page's domain (or its name run together) is the person's mail domain.
+function sameCompany(r, org, name) {
+  const title = org.title.trim();
+  if (/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(title) || !(startsWords(title, name) || startsWords(name, title))) return false;
+  const domain = personDomain(r), domains = (rawSection(org, "Domains") || "").toLowerCase();
+  return !!domain && (domains.includes(domain) || domain.split(".")[0] === title.toLowerCase().replace(/[^a-z0-9]/g, ""));
 }
 function personProject(r) {
   const link = /\]\((?:\.\.\/)?(projects\/[^)]+\.md)\)/.exec(known(r).intro + "\n" + r.text);
@@ -10804,10 +11007,18 @@ function personHead(r) {
     el("div", { class: "hero-top" }, [fusedFace(r, late, "xl"),
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
-        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late)]),
-      el("div", { class: "hero-acts" }, [investigateControl(r)])]),
+        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late),
+        pageTagRow(r, personSaid(r))]),
+      el("div", { class: "hero-acts" }, [recordActs(r), notPersonButton(r)])]),
     profileCard(r)]);
 }
+// What the person head already names (organisation, its full name, their units): the tag row and the card skip these.
+function personSaid(r) {
+  const org = personOrg(r);
+  return [org?.name, org?.full, org?.org?.path, org?.org?.title, ...(r.units || []).flatMap(edge => [edge.path, byPath(edge.path)?.title])].filter(Boolean);
+}
+// A link said once: the same profile as a handle and as a link, with or without https://www. and a trailing slash.
+function urlKey(text) { return plainLine(text).toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[?#].*$/, "").replace(/\/+$/, ""); }
 // The third header line: where they are, how recent, how much mail, and Today when something waits there.
 // These facts are said here, so the card below does not repeat them.
 function personMeta(r, late) {
@@ -10886,20 +11097,23 @@ function profileCard(r) {
   add("Contact", "Email", "mail", have("Email").filter(notOwners).map(item => ({ item, copy: true })));
   add("Contact", "Their agent", "", agents.map(item => ({ item, copy: true })));
   add("Contact", "Phone", "phone", have("Phone").map(item => ({ item, copy: true })));
-  const places = new Map();
-  for (const item of handles) {
+  const places = new Map(), linked = new Set();
+  const once = item => { const key = urlKey(item.value); if (!/[./]/.test(key) || !linked.has(key)) { linked.add(key); return true; } return false; };
+  for (const item of handles.filter(once)) {
     const [label, pic] = contactPlace(item, ["Handle", "at"]);
     places.set(label, { pic, values: [...(places.get(label)?.values || []), { item: label === item.qualifier ? { ...item, qualifier: "" } : item, copy: true }] });
   }
-  for (const item of have("Links")) {
+  for (const item of have("Links").filter(once)) {
     // A link names its platform only when it is their profile there, not a pull request or a post on it.
     const profile = /^(?:https?:\/\/)?(?:www\.)?(?:linkedin\.com\/in|github\.com|x\.com|twitter\.com)\/[^/\s]+\/?$/i.test(plainLine(item.value));
     const [label, pic] = profile ? contactPlace(item, ["Links", "globe"]) : ["Links", "globe"];
     places.set(label, { pic, values: [...(places.get(label)?.values || []), { item }] });
   }
   for (const [label, { pic, values }] of places) add("Contact", label, pic, values);
-  add("Work", "Signing entity", "", have("Signing entity").map(item => ({ item })));
-  if (!units.length) for (const label of ["Unit", "Role in unit"]) add("Work", label, "", have(label).map(item => ({ item })));
+  const said = new Set(personSaid(r).map(word => plainLine(word).toLowerCase()));
+  const fresh = item => !said.has(plainLine(item.value).toLowerCase());
+  add("Work", "Signing entity", "", have("Signing entity").filter(fresh).map(item => ({ item })));
+  if (!units.length) for (const label of ["Unit", "Role in unit"]) add("Work", label, "", have(label).filter(fresh).map(item => ({ item })));
   const project = personProject(r);
   if (project) add("Work", "Project", "", [{ node: el("a", { href: href(project), text: project.title }) }]);
   for (const label of ["How we know them", "First contact"]) add("Relationship", label, "", have(label).map(item => ({ item })));
@@ -10907,8 +11121,6 @@ function profileCard(r) {
   const mapped = !have("Last contact").length && mappedContact(r) && known(r).last;
   const aliases = have("Also known as").filter(item => !seen.includes(plainLine(item.value).toLowerCase()));
   if (aliases.length) add("Identity", "Also known as", "", [{ node: el("span", { class: "pc-inline" }, aliases.map(item => profileValue(item, r, "Also known as"))) }]);
-  const tagRow = tagLinks(r);
-  if (tagRow) add("Identity", "Tags", "", [{ node: tagRow }]);
   const languages = have("Language");
   if (languages.length) add("Identity", "Language", "", [{ node: el("span", { class: "pc-inline" }, languages.map(item => profileValue(item, r, "Language"))) }]);
   if (!have("Location").length) add("Identity", "Time zone", "", have("Time zone").map(item => ({ item })));
@@ -10968,7 +11180,7 @@ function personTodayLink(r, late = 0) {
 // click runs `co rem investigate PAGE --enrich` through the Host (POST /rem/investigate); the ⋯ beside it holds
 // the levels for whoever wants them. The run's steps show under the button while it works, then what changed,
 // with Undo; a rewrite waits as a draft to replace or discard. In a snapshot the button is off and says why.
-Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "Not investigated yet": "还没调查过这页", "last {date}": "上次 {date}",
+Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "Nothing new to read": "没有新材料可读", "Not investigated yet": "还没调查过这页", "last {date}": "上次 {date}",
   "1 new mail not in this page yet": "有 1 封新邮件还没写进这页", "{n} new mails not in this page yet": "有 {n} 封新邮件还没写进这页",
   "1 new session not in this page yet": "有 1 个新会话还没写进这页", "{n} new sessions not in this page yet": "有 {n} 个新会话还没写进这页",
   "1 lead not followed yet (uses the web)": "还有 1 条线索没查（会联网）", "{n} leads not followed yet (uses the web)": "还有 {n} 条线索没查（会联网）",
@@ -10997,6 +11209,14 @@ Object.assign(UI.zh, { "the page is too long to add to; the draft is kept and th
 const INV_LEVELS = [["full", "Full investigation", "Adds the web follow-up"],
   ["quick", "Quick update", "Reads only the new material, no web"], ["rewrite", "Rewrite the page", "Writes a new draft; replaces the page only when you accept it"]];
 const INV_RUNS = new Map();  // what this tab has seen of a page's run since the page data was built
+// The head's one action slot (rc35 hunt, #3131): the same component in the same place on a person, an organisation
+// and a project, 调查 then 查看来源; nothing else in a record's head is an action.
+function recordActs(r) {
+  const sources = !orgHidden(r) && sourceList(r).length
+    ? el("a", { class: "rec-sources", href: href(r) + "&h=sources", text: t("View sources →") }) : null;
+  const parts = [investigateControl(r), sources].filter(Boolean);
+  return parts.length ? el("div", { class: "rec-acts" }, parts) : null;
+}
 function investigateControl(r) {
   if (!r.investigation) return null;
   const box = el("div", { class: "inv" });
@@ -11011,7 +11231,9 @@ function investigateControl(r) {
 function invCount(one, many, n) { return t(n === 1 ? one : many, { n }); }
 // One verb on the button, always (owner, 2026-11-18: «更新是什么意思呢？»); the reason is the line under it,
 // in words that say what the click will do.
-function invLabel(s) { return [t(s.label === "current" ? "Up to date" : "Investigate")]; }
+// One look too (rc35 hunt, #3131): "nothing new" is the same button switched off with its reason as the tooltip,
+// not a grey "已是最新" on one page and an outlined one on another.
+function invLabel(s) { return [t("Investigate")]; }
 function invWhy(s) {
   const last = s.last ? " · " + t("last {date}", { date: fmtDate(s.last) }) : "";
   if (s.label === "investigate") return t("Not investigated yet");
@@ -11026,13 +11248,15 @@ function invParts(r, s, paint) {
   const go = el("button", { type: "button", class: "inv-go", ...(live ? {} : { disabled: "disabled", title: t("This is a snapshot: investigate from the live reader.") }) },
     running ? [t("Investigating…")] : invLabel(s));
   if (running || s.label === "current") go.disabled = true;
+  if (!running && s.label === "current") go.title = t("Nothing new to read") + (s.last ? " · " + t("Last investigated {date}", { date: fmtDate(s.last) }) : "");
   go.onclick = () => invRun(r, "full", paint);
   const parts = [el("div", { class: "inv-row" }, [go, invMenu(r, s, paint, running || !live)])];
   if (running) parts.push(invSteps(run));
   else if (s.notice) parts.push(el("p", { class: "inv-line", role: "status", text: s.notice }));
   else if (run && invRecent(run)) parts.push(...invResult(r, s, paint));
   if (!running && s.rewrite) parts.push(invDraft(r, s, paint));
-  if (!running && !(run && invRecent(run)) && !s.notice) parts.push(el("p", { class: "inv-line", text: invWhy(s) }));
+  // When there is nothing new the reason is the button's tooltip; the head already says how fresh the page is.
+  if (!running && !(run && invRecent(run)) && !s.notice && s.label !== "current") parts.push(el("p", { class: "inv-line", text: invWhy(s) }));
   if (!live) parts.push(liveReaderLine("This is a snapshot: investigate from the live reader."));
   if (running && live) invFollow(r, paint);
   return parts;
@@ -11444,7 +11668,7 @@ function personNameCell(d) {
   const name = addressTitle(d.r)
     ? el("a", { href: href(d.r), class: "nm-unknown", title: d.r.title }, [el("span", { text: t("Name unknown") }), el("span", { class: "nm-address", text: d.r.title })])
     : el("a", { href: href(d.r), title: d.r.title, text: d.r.title });
-  return el("span", { class: "nm" }, [name, updatedMarker(d.r)]);
+  return el("span", { class: "nm" }, [name, updatedMarker(d.r), notPersonButton(d.r, true)]);
 }
 // The organisation's name only; where it came from ("(their signature)") is its tooltip (#3157).
 function personOrgCell(org) {
@@ -11525,7 +11749,7 @@ function peopleFoot() {
   const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
     held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
     service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
-  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory()]);
+  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory(), machineDirectory()]);
 }
 function peopleView(items, config = {}) {
   const columns = config.columns || PEOPLE_COLUMNS, state = config.state || PEOPLE_SORT;
@@ -11744,7 +11968,7 @@ const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Next": "接下来", "Full schedule ↓": "完整日程 ↓", "Nothing else today": "今天没有别的安排了", "This week": "这一周", "Organised by {name}": "组织者：{name}",
+  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Next": "接下来", "Full schedule ↓": "完整日程 ↓", "Nothing else today": "今天没有别的安排了", "Now · until {when}": "进行中 · 至 {when}", "This week": "这一周", "Organised by {name}": "组织者：{name}",
   "{n} items": "{n} 项", "1 item": "1 项",
   "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
   "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
@@ -13411,14 +13635,13 @@ function orgCrumb(r) {
   return el("div", { class: "ov-crumb", role: "navigation", "aria-label": orgT("Where this sits") }, links.flatMap((node, i) => i ? [" › ", node] : [node]));
 }
 function orgOver(r) {
-  return el("header", { class: "ov-over" }, [orgCrumb(r),
-    !orgHidden(r) && sourceList(r).length ? el("a", { class: "ov-source-action", href: href(r) + "&h=sources", text: t("View sources →") }) : null]);
+  return el("header", { class: "ov-over" }, [orgCrumb(r)]);
 }
 function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }),
-      pageTagRow(r), orgOpening(v), investigateControl(r)]), orgTree(v)]);
+      pageTagRow(r), orgOpening(v), recordActs(r)]), orgTree(v)]);
 }
 function orgOpening(v) {
   const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
@@ -14667,7 +14890,7 @@ function translatedRelationBasis(origin, target) {
   const line = text.split(/^## Sources\b/im)[0].split("\n").find(line =>
     [...line.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)].some(match => resolve(origin.path, match[2]) === target));
   if (!line) return "";
-  const basis = line.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\[W?\d{1,3}\]/g, "").replace(/^[- ]+/, "").trim();
+  const basis = closeStripped(line.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\[W?\d{1,3}\]/g, "")).replace(/^[- ]+/, "").trim();
   return basis.length <= 220 ? basis : basis.slice(0, 220).replace(/\s+\S*$/, "").replace(/[ ,;:]+$/, "") + "…";
 }
 function localizedRelation(link, currentPath) {
@@ -14680,8 +14903,11 @@ function localizedRelation(link, currentPath) {
     : translatedRelationBasis(origin, origin?.path === link.path ? currentPath : link.path);
   return { ...link, basis: translated || link.basis, original: !translated };
 }
+// A citation or a label taken out of a line leaves no space before the punctuation that followed it
+// ("Wren runs the venue at Fernhill ." on a related-page card, rc36 dates fixer).
+function closeStripped(text) { return String(text).replace(/[ \t]+(?=[.,;:!?。，；：！？])/g, "").replace(/[ \t]{2,}/g, " "); }
 function relationCard(link, currentPath = "") {
-  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis;
+  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis && closeStripped(link.basis);
   const labelled = link.private || hasPrivacy(basis || "");
   const labels = { linked: "Linked from this page", "linked from": "Links here",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
@@ -14855,7 +15081,6 @@ function recordFocus(r, contextOnly = false) {
   // into the full memory with everything else.
   if (r.category === "projects") {
     out.append(...projectLead(r));
-    if (sourceList(r).length) out.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
     return out;
   }
   const thread = threads(r), open = thread.items;
@@ -15099,7 +15324,7 @@ function record(path, heading) {
   } else {
     main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
     main.appendChild(recordEyebrow(r, person));
-    if (r.category === "projects") head.append(projectStateLine(r), investigateControl(r) || "");
+    if (r.category === "projects") head.append(projectStateLine(r), recordActs(r) || "");
     if (r.category !== "projects") head.appendChild(leadRow(r));
     head.append(pageTagRow(r) || "");
     main.appendChild(head);
@@ -15256,19 +15481,42 @@ const SHORT_HEX = /\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,23}\b/gi;
 // line and the sources' titles are links and buttons; rc35 hunt). What was written to be copied stays as written.
 const TIDY_SKIP = "pre, code, textarea, input, select, script, style, .local-path, .src-id, .cite, .evidence-meta, [contenteditable]";
 // Inside a link or a button a raw id cannot become a chip of its own (a control inside a control); it is named in place.
+// Only an id standing alone is (standaloneId): a link whose text is a URL or a page slug keeps it whole.
 const NO_CHIP = "a, button";
 function readerDate(day, locale = uiLocale()) {
   return calendarDate(day, locale);
 }
-// One language per line (as datesInProse): a date in page text takes its sentence's language, so the page's words
-// read the same whichever interface language is on.
-function blockLocale(node) {
+// One language per sentence: a date in page text takes its own sentence's language, so the page's words read the same
+// whichever interface language is on. Per sentence, not per block: an org summary's English sentence beside a Chinese
+// one kept getting a Chinese date ("hosted the pilot (8月10日)", rc36 dates fixer).
+// The reader's own chips inside a sentence (citations, source ids, privacy labels) speak the interface's language
+// and say nothing about the sentence's.
+const LOCALE_CHIPS = ".cite, .src-id, .privacy-tag, .uncertain-marker, .sr-only";
+const HAN_WORDS = text => /\p{Script=Han}/u.test(text.replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, ""));
+const LATIN_WORDS = text => /\p{Script=Latin}{2,}/u.test(text);
+// The block's text with chips blanked out, and where this node starts in it.
+function blockText(node) {
   const block = node.parentElement.closest("p, li, td, th, dd, dt, h1, h2, h3, h4, blockquote, .tl-e, .row") || node.parentElement;
-  // The reader's own chips inside a sentence (citations, source ids, privacy labels) speak the interface's language.
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(); n; n = walker.nextNode())
-    if (/\p{Script=Han}/u.test(n.nodeValue.replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, "")) && !n.parentElement.closest(".cite, .src-id, .privacy-tag, .uncertain-marker, .sr-only")) return "zh-CN";
-  return "en-US";
+  let text = "", at = 0;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n === node) at = text.length;
+    text += n !== node && n.parentElement.closest(LOCALE_CHIPS) ? " ".repeat(n.nodeValue.length) : n.nodeValue;
+  }
+  return { text, at };
+}
+// The locale for a date at [index, index + length) of this node: its sentence's script; a sentence with no words of
+// its own (a bare date in a list item) takes the block's.
+function sentenceLocale(node) {
+  const { text, at } = blockText(node), block = HAN_WORDS(text) ? "zh-CN" : "en-US";
+  // An English full stop ends a sentence before a space; Chinese ones end it where they stand.
+  const ends = [...text.matchAll(/[.!?;](?=\s)|[。！？；\n]/g)].map(m => m.index + 1);
+  return (index, length) => {
+    const from = at + index, to = from + length;
+    const start = Math.max(0, ...ends.filter(end => end <= from)), stop = Math.min(text.length, ...ends.filter(end => end > to));
+    const words = text.slice(start, from) + " " + text.slice(to, stop);
+    return HAN_WORDS(words) ? "zh-CN" : LATIN_WORDS(words) ? "en-US" : block;
+  };
 }
 // "2026-07-05–17" → "7月5日–17日"; "2026-07-29–08-04" → "7月29日–8月4日"; "2026-08-26–2026-08-28" likewise.
 function readerRange(start, end, locale) {
@@ -15279,10 +15527,12 @@ function readerRange(start, end, locale) {
     return readerDate(start, locale) + "–" + (locale.startsWith("zh") ? Number(full.slice(8)) + "日" : String(Number(full.slice(8))));
   return readerDate(start, locale) + "–" + readerDate(full, locale);
 }
+// locale: one locale, or a function of where the date stands (sentenceLocale) giving each date its own.
 function localiseDates(text, locale = uiLocale()) {
   ISO_RANGE.lastIndex = 0;
+  const at = typeof locale === "function" ? locale : () => locale;
   // "8 月 10 日", "2026 年 8 月 10 日": the spaced form a model sometimes writes reads as the reader's own "8月10日".
-  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale))
+  return text.replace(ISO_RANGE, (m, start, end, index) => readerRange(start, end, at(index, m.length)))
     .replace(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日/g, (m, y, month, day) => (y ? y + "年" : "") + month + "月" + day + "日");
 }
 // "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once. Prose only: a fact's value is made single by
@@ -15339,13 +15589,24 @@ function rowDateLabel(node) {
   const label = row && [...row.querySelectorAll(".d, .when, .date, .day, time")].find(n => !n.contains(node));
   return label ? label.textContent.replace(/\s+/g, " ").trim() : "";
 }
-// Every raw id in a text: a long or prefixed id (RAW_ID) or a short hash (SHORT_HEX), in order, never overlapping.
+// An id is a word of its own: "Fixed in e5f48af0." or "(gmail:…)". A hex run inside a longer token is part of that
+// token: a URL's last segment, a page slug's hash suffix, a file name, an email's local part (rc36 hunt: a profile
+// link followed by a stray 提交 on 18 of 21 pages). The token is the run of non-space text around the match, less the
+// punctuation that ends a sentence or wraps a word.
+function standaloneId(text, m) {
+  let start = m.index, end = m.index + m[0].length;
+  while (start > 0 && !/[\s（(\[「『"'“‘<，。；：、]/.test(text[start - 1])) start--;
+  while (end < text.length && !/[\s）)\]」』"'”’>，。；：、]/.test(text[end])) end++;
+  return text.slice(start, end).replace(/[.,;:!?…]+$/, "") === m[0];
+}
+// Every raw id in a text: a long or prefixed id (RAW_ID) or a short hash (SHORT_HEX), in order, never overlapping,
+// each standing alone.
 function rawIds(text) {
   RAW_ID.lastIndex = 0; SHORT_HEX.lastIndex = 0;
   const found = [...text.matchAll(RAW_ID)];
   for (const m of text.matchAll(SHORT_HEX))
     if (!found.some(f => m.index < f.index + f[0].length && f.index < m.index + m[0].length)) found.push(m);
-  return found.sort((a, b) => a.index - b.index);
+  return found.filter(m => standaloneId(text, m)).sort((a, b) => a.index - b.index);
 }
 // The text right before a citation chip, even when the chip is tethered to the word before it.
 function textBefore(node) {
@@ -15373,7 +15634,7 @@ function tidyText(root) {
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
-    let text = onceDates(localiseDates(node.nodeValue, blockLocale(node)));
+    let text = onceDates(localiseDates(node.nodeValue, sentenceLocale(node)));
     const label = rowDateLabel(node);
     if (label && text.trimStart().startsWith(label)) text = text.trimStart().slice(label.length).replace(/^\s*[—–:：-]\s*/, "");
     const ids = rawIds(text);

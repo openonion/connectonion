@@ -400,11 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc37
+## Current Version: 1.9.6rc38
+Release candidate 1.9.6rc38 for 1.9.6: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc38.md).
+
+- 1.9.6rc38 (REM rc36 bug-hunt fixes, #3203 #3204 #3206 #3208 #3209 #3210 #3211).
+
+### Previous candidate: 1.9.6rc37
 Release candidate 1.9.6rc37 for 1.9.6: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. Stable remains 1.9.5. See
 [candidate notes](docs/releases/1.9.6rc37.md).
-
-- 1.9.6rc37 (REM hotfix: the night's tag-node turn no longer crashes, #3205).
 
 ### Previous candidate: 1.9.6rc36
 Release candidate 1.9.6rc36 for 1.9.6: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said once in the reader's own form. Stable remains 1.9.5. See

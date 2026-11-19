@@ -45,16 +45,16 @@ def test_the_rails_numbers_are_worded_controls(today, size):
     page.evaluate(OUTCOMES, False, isolated_context=False)
     others = page.locator("#today-others")
     batch = others.locator("#approve-all")
-    assert batch.inner_text() == "Approve all 2"          # the two that can go; the one with a gap waits
+    assert batch.inner_text() == "Approve the 2 REM prepared"          # the two that can go; the one with a gap waits
     assert batch.evaluate("node => node.tagName") == "BUTTON"
     batch.click()
     assert page.locator("#approval-sheet").is_visible()
-    assert page.locator("#approval-title").inner_text() == "Approve all 2"   # the sheet says the button's number
+    assert page.locator("#approval-title").inner_text() == "Approve the 2 REM prepared"   # the sheet says the button's number
     page.keyboard.press("Escape")
     waiting = others.locator("a.waiting-more")
     assert waiting.get_attribute("href") == "#view=open"
     theirs = page.evaluate("threadCounts().theirs", isolated_context=False)
-    assert waiting.inner_text() == f"See the {theirs} waiting on others →"
+    assert waiting.inner_text() == f"See the {theirs} you are waiting on others for →"
     # Nothing that can go at once: no button at all, not a greyed one and not a zero.
     page.evaluate(OUTCOMES, True, isolated_context=False)
     assert page.locator("#approve-all").count() == 0
@@ -214,10 +214,11 @@ def test_show_more_closes_on_escape_and_when_a_talk_is_chosen(today):
     row.locator(".strip-more").click()
     assert page.locator("#item-context").evaluate("node => node.open")
     page.keyboard.press("Escape")
-    assert page.locator("#item-context").count() == 0
+    page.wait_for_function("() => !document.getElementById('item-context')")
     row.locator(".strip-more").click()
     page.locator('#item-context [data-talk="codex"]').click()
-    assert page.locator("#item-context").count() == 0
+    # The dialog's close event (which removes it) is queued, so wait for it rather than reading the count at once.
+    page.wait_for_function("() => !document.getElementById('item-context')")
     row.locator(".talk").wait_for()
 
 

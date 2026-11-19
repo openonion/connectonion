@@ -587,7 +587,9 @@ def language_rules() -> str:
     Shared by page writing and by translation (`translate.py`)."""
     return (" Keep exactly as given: headings, Facts labels, source ids, `Unknown`, `None as of`, "
             "`Nothing open as of` and the `Now:`/`Changed:`/`At stake:`/`Pattern:` prefixes. Names stay "
-            "as written; a quote stays in its original language. ")
+            "as written; a quote stays in its original language. Never call a person, organisation or project "
+            "an entity in prose (Chinese: never 实体): use its name, or the company, the university, the "
+            "organisation (这家公司、这所大学、该组织) as fits; a `Legal entity` or `Signing entity` label stays as given. ")
 
 
 def today_note(root: Path) -> str:

@@ -349,6 +349,7 @@ def test_exec_records_preparation_error_even_when_codex_exits_zero(tmp_path, mon
     assert read_json(state_path(tmp_path, f"turns/{receipt['turn_id']}.json"), {}) == receipt
     if not recovery:
         assert '/outside/protected/.git' in receipt['reason']
+        assert receipt['error_class'] == 'PermissionError'   # status tells a code error from the weather by it
     events = [json.loads(line) for line in Path(receipt['log']).read_text().splitlines()]
     failure = next(event for event in events if event.get('type') == 'rem.preparation_failed')
     assert 'Traceback (most recent call last)' in failure['traceback']

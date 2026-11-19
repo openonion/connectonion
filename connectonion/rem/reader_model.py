@@ -149,7 +149,8 @@ def _clip(text: str, limit: int = 220) -> str:
 
 def _relation(origin: str, target: str, line: str, kind: str) -> dict:
     basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-    basis = _clip(CITATION.sub("", basis).lstrip("- ").strip())
+    # The citation goes with the space before it: "at Fernhill [1]." reads "at Fernhill.", never "at Fernhill ." (rc36).
+    basis = _clip(re.sub(r"[ \t]*" + CITATION.pattern, "", basis).lstrip("- ").strip())
     return {"path": target, "kind": kind, "basis": basis,
             "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
 

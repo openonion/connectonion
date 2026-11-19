@@ -117,10 +117,12 @@ def test_the_button_says_why_offers_its_levels_runs_in_place_and_undoes(live):
     from connectonion.rem.files import Notebook
     page, root, commands = live
     control = page.locator(".person-head .inv")
-    # One verb on the button; the reason is the line under it (owner, 2026-11-18: «更新是什么意思呢？»).
-    expect(control.locator(".inv-go")).to_have_text("Up to date")
+    # One verb on the button; the reason is the line under it (owner, 2026-11-18: «更新是什么意思呢？»). Nothing new is
+    # the same button switched off, its reason the tooltip (rc35 hunt, #3131: not a grey "Up to date" control).
+    expect(control.locator(".inv-go")).to_have_text("Investigate")
     expect(control.locator(".inv-go")).to_be_disabled()
-    expect(control.locator(".inv-line")).to_have_text("Last investigated Oct 1")
+    expect(control.locator(".inv-go")).to_have_attribute("title", "Nothing new to read · Last investigated Oct 1")
+    expect(control.locator(".inv-line")).to_have_count(0)
     for state, why in ((dict(label="investigate", last=None), "Not investigated yet"),
                        (dict(label="update", new_mails=3, last="2026-10-01"), "3 new mails not in this page yet · last Oct 1"),
                        (dict(label="update", new_mails=0, new_sessions=1), "1 new session not in this page yet · last Oct 1"),

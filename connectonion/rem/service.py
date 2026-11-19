@@ -757,7 +757,30 @@ def schedule_failure(root: Path) -> dict | None:
     return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence,
             # `empty`: how many of them exited 0 with no task served and nothing submitted.
             **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
-                'empty': sum(bool(turn.get('produced_nothing')) for turn in failures)} if failures else {})}
+                'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
+                'code_error': _code_error_streak(failures)} if failures else {})}
+
+
+# A bug in REM's own code, not the weather: retrying the same turn meets the same line again (rc35–rc36: six turns
+# died on one AttributeError while Today said "REM retries by itself; nothing is needed from you"). Older receipts
+# carry only the message, so the messages Python itself writes for these classes are recognised too.
+CODE_ERRORS = {'AttributeError', 'TypeError', 'NameError', 'KeyError', 'IndexError', 'UnboundLocalError',
+               'AssertionError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'RecursionError'}
+CODE_ERROR_WORDS = re.compile(r"object has no attribute|is not subscriptable|object is not iterable|is not callable"
+                              r"|unexpected keyword argument|required positional argument|unsupported operand"
+                              r"|index out of range|can only concatenate|referenced before assignment|is not defined")
+
+
+def _code_error(turn: dict) -> bool:
+    return turn.get('error_class') in CODE_ERRORS or bool(CODE_ERROR_WORDS.search(turn.get('reason') or ''))
+
+
+def _code_error_streak(failures: list[dict]) -> int:
+    """How many of the newest failures died on one and the same code error (newest first)."""
+    if not failures or not _code_error(failures[0]):
+        return 0
+    same = failures[0].get('reason')
+    return next((index for index, turn in enumerate(failures) if turn.get('reason') != same or not _code_error(turn)), len(failures))
 
 
 def _unmatched_marks(root: Path) -> int:

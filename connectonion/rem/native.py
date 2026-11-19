@@ -105,7 +105,7 @@ def _hash(path):
 # Scheduling, concurrency and budgets govern future work, so a prepared task's digest
 # leaves them out; the retired count caps stay listed for tasks saved while they existed.
 RUN_LIMITS = {"tag_nodes_per_round", "topic_min_pages", "runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
-              "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
+              "investigation_quota_points", "quota_floor_percent", "cheap_ceiling_percent", "depth_quota_points",
               "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
               "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
               "summaries_per_round", "translations_per_round", "tags_per_round"}
@@ -267,8 +267,10 @@ def _stop(root, config, *, phase=None):
     The weekly investigation budget is not asked here: it holds investigation alone
     (`_hold_investigation`), and the round goes on to its other stages."""
     meter = quota.meter(root, config)
-    reason = quota.floor_block(meter, config["limits"])
-    if not reason and phase != "daily-translation" and service.daily_cap(root)["remaining"] <= 0:
+    # The cheap stages (translate, tag, tag pages) stop at the ceiling, not the floor (#3195).
+    cheap = phase == "daily-translation"
+    reason = (quota.ceiling_block if cheap else quota.floor_block)(meter, config["limits"])
+    if not reason and not cheap and service.daily_cap(root)["remaining"] <= 0:
         reason = "daily cap reached"
     return reason or None, meter
 
@@ -648,8 +650,7 @@ def _next_round(root, cursor, *, scheduled, notices, driven=False):
         translation_reason, meter = _stop(root, config, phase="daily-translation")
         if translation_reason:
             return {"outcome": "done", "reason": translation_reason, "notices": notices}
-        from . import translate
-        if not any(translate.backlog(root, tag) for tag in translate.languages(root) if tag.split("-")[0].lower() != "en"):
+        if not native_round.cheap_waiting(root):
             if cursor and not cursor.get("done") and cursor.get("phase") == "daily-translation":
                 native_round.finish(root, cursor)
                 return {"outcome": "done", "reason": "round done", "notices": notices}
@@ -740,7 +741,7 @@ def _new_task(root, cursor, config, meter, notices, *, translation_only=False, m
     directory.mkdir(parents=True, mode=0o700)
     _hold_investigation(root, cursor, config, meter)
     prepared = (native_round.prepare_batch(root, cursor, config, directory) if mail_only
-                else native_round.prepare_translation(root, cursor, config, directory) if translation_only
+                else native_round.prepare_cheap(root, cursor, config, directory) if translation_only
                 else native_round.prepare_task(root, cursor, config, directory))
     # Pages set aside on a mailbox failure are said once, in this call's output.
     notices = notices + cursor.pop("set_aside", [])

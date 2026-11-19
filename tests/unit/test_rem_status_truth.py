@@ -222,3 +222,56 @@ def test_a_capped_turn_that_accepted_nothing_still_counts_as_failed(tmp_path, re
         write_json(state_path(tmp_path, f"turns/{index:03}.json"), turn)
     write_json(state_path(tmp_path, "last-turn.json"), turn)
     assert service.schedule_failure(tmp_path)["failures"] == 2
+
+
+def _failed_turns(root, reasons, **extra):
+    for index, reason in enumerate(reasons):
+        turn = {"turn_id": str(index), "started_at": f"2026-09-0{index + 1}T00:00:00Z", "result": "failed",
+                "exit_code": 0, "reason": reason, "accepted": 0, **extra}
+        write_json(state_path(root, f"turns/{index:03}.json"), turn)
+    write_json(state_path(root, "last-turn.json"), turn)
+
+
+@pytest.mark.parametrize("extra", [{}, {"error_class": "AttributeError"}])
+def test_a_repeated_code_error_is_named_as_one_not_a_retryable_failure(tmp_path, rem_clock, extra):
+    """rc35–rc36 on a real notebook: every scheduled turn died on the same AttributeError in `co rem next`, and Today
+    said "REM retries by itself; nothing is needed from you". A retry cannot fix a code error. `extra`: older receipts
+    carry only the message; newer ones also carry the exception's class."""
+    _failed_turns(tmp_path, ["'str' object has no attribute 'values'"] * 6, **extra)
+    warning = service.schedule_failure(tmp_path)
+    assert warning["failures"] == 6 and warning["code_error"] == 6
+
+
+@pytest.mark.parametrize("reasons", [
+    ["Turn exceeded 3 hours; the next fire continues the round"] * 3,
+    ["The turn produced nothing: co rem next passed its deadline 3 times"] * 3,
+    ["Permission denied: /outside/.git"] * 3])
+def test_timeouts_and_empty_turns_are_not_code_errors(tmp_path, rem_clock, reasons):
+    _failed_turns(tmp_path, reasons)
+    warning = service.schedule_failure(tmp_path)
+    assert warning["failures"] == 3 and not warning.get("code_error")
+
+
+def test_only_the_newest_run_of_one_code_error_is_counted(tmp_path, rem_clock):
+    _failed_turns(tmp_path, ["Permission denied: /outside/.git", "'NoneType' object is not subscriptable",
+                             "'str' object has no attribute 'values'", "'str' object has no attribute 'values'"])
+    assert service.schedule_failure(tmp_path)["code_error"] == 2
+
+
+@pytest.mark.parametrize("language,said,calm", [
+    ("zh", "夜里的程序出错了（同一个错误 6 次），升级到新版本后会继续", "不需要你做什么"),
+    ("en", "The night runner hit a code error 6 times; it resumes after an update", "nothing is needed from you")],
+    ids=["zh", "en"])
+def test_today_says_a_code_error_honestly(language, said, calm):
+    import json
+    import re
+    from connectonion.rem.reader import TEMPLATE
+    from tests.unit.test_rem_reader import _run_reader_js
+    function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
+    script = f'uiLanguage = {json.dumps(language)}; const REM = {{status: {{timezone: "UTC"}}}};\n' + function
+    script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
+        "code": "blocked", "failures": 6, "code_error": 6, "since": "2026-11-19T18:15:05+00:00",
+        "evidence": "'str' object has no attribute 'values'"}) + ')));'
+    output = _run_reader_js(script)
+    assert said in output and calm not in output
+    assert "has no attribute" not in output     # the raw message stays for whoever debugs it, not on Today

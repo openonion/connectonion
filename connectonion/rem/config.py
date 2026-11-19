@@ -175,6 +175,10 @@ def default_config() -> dict:
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
                        "investigation_quota_points": 35, "quota_floor_percent": 90,
+                       # Past the floor the cheap stages (translate, tag, tag pages) go on up to here
+                       # (owner, 2026-11-19: "一次翻译消耗额度不到 1%…为什么没有搞定呢"); at 90% from
+                       # Friday the floor held 142 translations and 226 untagged pages until Tuesday.
+                       "cheap_ceiling_percent": 97,
                        # Deepening's share of the Codex week, separate from investigation's
                        # 35; the owner agreed 30% on #2533.
                        "depth_quota_points": 30,
@@ -258,8 +262,10 @@ def validate(config: dict) -> dict:
         raise RemError("Limits must be positive integers")
     if limits["workers"] > 32:
         raise RemError("workers must be 1 to 32")
-    if any(limits[key] > 100 for key in ("quota_floor_percent", "investigation_quota_points", "depth_quota_points")):
-        raise RemError("quota_floor_percent, investigation_quota_points and depth_quota_points are percents: 1 to 100")
+    if any(limits[key] > 100 for key in ("quota_floor_percent", "cheap_ceiling_percent", "investigation_quota_points",
+                                         "depth_quota_points")):
+        raise RemError("quota_floor_percent, cheap_ceiling_percent, investigation_quota_points and depth_quota_points "
+                       "are percents: 1 to 100")
     return config
 
 

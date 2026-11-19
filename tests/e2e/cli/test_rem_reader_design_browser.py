@@ -1210,7 +1210,7 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
     purpose_source = page.locator('.project-purpose-cites a.cite').first
     assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2')
     assert purpose_source.get_attribute('data-tip') is None
-    sources = page.locator('.focus-source').bounding_box()
+    sources = page.locator('.page-head .rec-sources').bounding_box()
     assert sources['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -1233,7 +1233,7 @@ def test_long_project_purpose_and_source_expand_inside_full_memory_on_phone(read
     assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
     assert statement.evaluate('(node) => getComputedStyle(node).webkitLineClamp') == '4'
     chip = page.locator('.project-purpose-cites a.cite').first
-    source = page.locator('.focus-source')
+    source = page.locator('.page-head .rec-sources')
     chip.scroll_into_view_if_needed()
     assert chip.bounding_box()['y'] + chip.bounding_box()['height'] <= 812
     assert source.is_visible()
@@ -1356,7 +1356,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
     assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
     if theirs:
-        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} waiting on others →'
+        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} you are waiting on others for →'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if theirs or mine:
         page.locator('.others .waiting-more').click()
@@ -1614,6 +1614,46 @@ def test_an_exchange_from_another_year_says_its_year(reader, language, days):
     assert page.locator('.tl-e .d').all_inner_texts() == days
     assert page.locator('.tl-e .d').evaluate_all('cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth)')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+# rc36 hunt: on a person page the Exchanges column broke "10月29日" across two lines ("10月29 / 日").
+@pytest.mark.parametrize('width', [1440, 375])
+@pytest.mark.parametrize('language', ['zh', 'en'])
+def test_an_exchange_date_never_breaks_across_lines(reader, width, language):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""language => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = ['2026-10-29', '2026-12-24', '2026-11-30', '2025-10-28'].map(day => '- ' + day + ': Confirmed the venue plan. [1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); setInterfaceLanguage(language);
+    }""", language, isolated_context=False)
+    page.locator('.tl-e .d').first.wait_for()
+    lines = page.locator('.tl-e .d').evaluate_all("""cells => cells.map(cell => { const range = document.createRange();
+      range.selectNodeContents(cell.firstChild); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; })""")
+    assert lines and all(n == 1 for n in lines), lines
+    assert page.locator('.tl-e .d').evaluate_all('cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth + 1)')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.skipif(not os.environ.get('REM_PR_SHOTS'), reason='screenshots for a PR only')
+@pytest.mark.parametrize('width', [1440, 390])
+def test_pr_shots_exchange_dates(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = ['2026-12-24', '2026-11-30', '2026-10-29', '2025-10-28'].map(day => '- ' + day + ': Confirmed the venue plan. [1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); setInterfaceLanguage('zh');
+    }""", isolated_context=False)
+    page.locator('#history-timeline').scroll_into_view_if_needed()
+    page.locator('#history-timeline').screenshot(path=os.path.join(os.environ['REM_PR_SHOTS'], f'exchange-dates-zh-{width}.png'))
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
 
 
 def test_reviewed_role_and_unknown_company_override_older_index(reader):
@@ -3893,7 +3933,8 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
     page.evaluate(r'''() => { peopleColumns = [...peopleColumnKeys(null), 'role']; render(); }''', isolated_context=False)
     row = page.locator('.people-table tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
-    assert 'Fernhill Labs 科研团队' in row.locator('.c-org').inner_text()
+    # #3157: a page linked under a longer label goes by the organisation's own name in the People table.
+    assert row.locator('.c-org').inner_text().strip() == 'Fernhill Labs'
     assert row.locator('.c-org').is_visible()
     assert '理学院教授' in row.locator('.c-role').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
@@ -3903,7 +3944,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert '研究气候数据' in page.locator('.ov-about').inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert '理学院教授' in page.locator('.r4-sub').inner_text()
-    assert 'Fernhill Labs 科研团队' in page.locator('.r4-sub').inner_text()
+    assert page.locator('.r4-sub').inner_text().strip().endswith('Fernhill Labs')  # #3157: the organisation's own name
     assert page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md'), first = parseFacts(r);
       if (parseFacts(r) !== first) return false;

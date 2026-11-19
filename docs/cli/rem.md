@@ -656,7 +656,8 @@ Abstract, Translate and Deepen not run, while the Codex week was at 37%):
 |---|---|---|
 | `limits.investigation_quota_points` (35) | New investigation pages and the same-person checks. A page already open is finished. | Collect and reading the batch into pages, reply drafts, session summaries, Abstract, Translate, Deepen |
 | `limits.depth_quota_points` (30) | Deepen | Everything else |
-| `limits.quota_floor_percent` (the Codex week at 90%) | Every step that calls the model | Collect without the model, the calendar and the day plan |
+| `limits.quota_floor_percent` (the Codex week at 90%) | Every step that calls the model, except the cheap ones in the next row | Collect without the model, the calendar, the day plan, Translate, Tag and tag pages |
+| `limits.cheap_ceiling_percent` (the Codex week at 97%) | Translate, Tag and tag pages too | Collect without the model, the calendar and the day plan |
 
 A spent investigation budget works like a used share: the pages wait in
 `.state/investigation-waiting.json`, the round goes on to its other stages and
@@ -3085,6 +3086,14 @@ as before.
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
   The dashboard says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
+- **Past the floor, translation and tagging go on to a ceiling.** A translate or
+  tag turn is a minute of a small model; the floor held them with investigation, so
+  a week at 90% on a Friday left 142 translations, 226 untagged pages and 56 tag
+  pages waiting until Tuesday. Above `limits.quota_floor_percent` a held night
+  still serves Translate, Tag and tag pages, until `limits.cheap_ceiling_percent`
+  (default **97%**; never below the floor). The morning note and status say which
+  stopped: `Codex week at 90%: investigation paused until Tue; translation and
+  tagging continue.` / `额度到 90%：调查暂停到 周二；翻译和标签照常。`
 - **A round the floor stops is a pause, and REM says so.** A notebook at the
   floor did nothing for two nights (71 scheduled turns, each ending with no
   task) while status, the night stats and the morning note all read as a
@@ -3094,8 +3103,8 @@ as before.
   it:
 
   ```
-  Codex week      Paused since Mon 09 Nov 17:00
-                  This week's Codex allowance is 90% used, at the 90% floor kept for your own work.
+  Codex week      Codex week at 90%: investigation paused until Wed; translation and tagging continue.
+                  Paused since Mon 09 Nov 17:00, at the 90% floor kept for your own work; translation and tagging stop at 97%.
                   No investigation runs until the week resets Wed 11 Nov 17:46; mail is still read.
                   → To let REM work before then, raise the floor: co rem config set limits.quota_floor_percent PERCENT
   ```
