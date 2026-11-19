@@ -92,6 +92,8 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/version":
         from ...rem.reader import latest
         await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
+    elif scope["method"] == "GET" and scope["path"] == "/rem/task-file":
+        await _task_file(scope, send, root)
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
@@ -101,6 +103,28 @@ async def handle_rem_http(scope, receive, send, routes):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
+
+
+async def _task_file(scope, send, root):
+    from ...rem import tasks
+    from ...rem.files import RemError
+    query = parse_qs(scope.get('query_string', b'').decode('utf-8'))
+    try:
+        path = tasks.task_file(root, query.get('id', [''])[0], query.get('path', [''])[0])
+        content = await asyncio.to_thread(path.read_bytes)
+    except (RemError, FileNotFoundError, PermissionError):
+        await _reply(send, 404, 'not found')
+        return
+    # HTML/SVG and other active content are downloads, never scripts on the owner's Host origin.
+    import mimetypes
+    kind = mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
+    safe = kind.startswith('text/') and kind != 'text/html'
+    kind = 'text/plain; charset=utf-8' if safe else 'application/octet-stream'
+    await send({'type': 'http.response.start', 'status': 200,
+                'headers': [[b'content-type', kind.encode()], *SECURITY_HEADERS,
+                            [b'content-security-policy', b"sandbox; default-src 'none'"],
+                            *([] if safe else [[b'content-disposition', b'attachment']])]})
+    await send({'type': 'http.response.body', 'body': content})
 
 
 def _moment_or_none(value) -> bool:
@@ -137,7 +161,11 @@ async def _action(scope, receive, send, root, headers):
                 await _reply(send, 400, json.dumps({"error": "Expected the item key and agent codex or claude"}), "application/json")
                 return
             operation = lambda: tasks.dispatch(root, body["key"], agent=body.get("agent", "codex"))
-        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo", "result", "watch", "resume"):
+        elif action == "status" and isinstance(body.get("key"), str):
+            operation = lambda: tasks.status(root, tasks.identity(body["key"]))
+        elif action == "clear_failed":
+            operation = lambda: tasks.clear_failed(root)
+        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo", "result", "watch", "resume", "retry", "prepare_reply"):
             await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop, undo, result, watch or resume"}), "application/json")
             return
         else:

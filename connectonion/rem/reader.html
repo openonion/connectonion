@@ -2169,7 +2169,7 @@
   .handoff .btn-quiet { min-height: 32px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-body) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
   .handoff .btn-quiet:hover:not(:disabled) { color: var(--ink); text-decoration-color: var(--ink); }
   .handoff .btn-quiet:disabled { cursor: default; text-decoration: none; }
-  .handoff-status, .handed { font-size: var(--s-meta); color: var(--grey); }
+  .handoff-status, .handed { font-size: var(--s-ui); color: var(--grey); }
   .handed { margin: var(--u2) 0 0; color: var(--ink); font-weight: var(--w-bold); }
   .handoff-status:empty { display: none; }
   .handoff { flex-direction: column; align-items: stretch; gap: var(--u1); }
@@ -2190,9 +2190,9 @@
   .agent-text p, .agent-text ul, .agent-text ol, .agent-text blockquote { margin: 0 0 var(--u2); }
   .agent-text ul, .agent-text ol { padding-left: var(--u4); }
   .agent-text h2, .agent-text h3, .agent-text h4, .agent-text h5, .agent-text h6 { margin: var(--u3) 0 var(--u2); font-size: var(--s-body); font-weight: var(--w-bold); }
-  .agent-text code { font: var(--s-meta) var(--mono); }
+  .agent-text code { font: var(--s-ui) var(--mono); }
   .agent-text .code-block { margin: 0 0 var(--u2); }
-  .agent-text pre { margin: 0; padding: var(--u3); overflow-x: auto; border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); font: var(--s-meta)/1.55 var(--mono); }
+  .agent-text pre { margin: 0; padding: var(--u3); overflow-x: auto; border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); font: var(--s-ui)/var(--lh-body) var(--mono); }
   .agent-text pre code { white-space: pre; overflow-wrap: normal; }
   .agent-text a { text-decoration: underline; text-underline-offset: 3px; }
   .task-output[hidden] { display: none; }
@@ -3406,6 +3406,9 @@
   .stale .stale-acts .btn-quiet { min-height: 32px; padding: 0 8px; }
   .stale .stale-more { display: inline-block; color: var(--grey); font-size: var(--s-meta); }
   /* ---- Today: work in hand, what was closed, the item's second level (#3072) ---- */
+  .task-file { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--s-ui)/var(--lh-read) var(--mono); }
+  .task-source { max-width: 100%; overflow-wrap: anywhere; font-size: var(--s-ui); }
+  .handoff .strip-lead, .work-state .strip-lead { color: var(--ink); font-weight: var(--w-bold); }
   .work-strip { max-width: 760px; margin: 14px 0; padding: 0 16px; border-radius: var(--r-inner); background: var(--well); }
   .work-strip > summary { display: list-item; padding: 10px 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-body) var(--font); cursor: pointer; }
   .work-rows, .closed-rows { list-style: none; margin: 0; padding: 0 0 8px; }
@@ -4066,6 +4069,8 @@ const UI = {
     "{agent} finished": "{agent} 做完了",
     "{agent} stopped before finishing": "{agent} 没做完就停了",
     "See result": "看结果",
+    "Draft with this reply": "用这个回复起草", "Retry": "重试", "Clear failed runs": "清除失败记录",
+    "Reply draft prepared": "回复草稿已准备好", "Open reply draft": "查看回复草稿",
     "{agent} wrote nothing.": "{agent} 没有写下结果。",
     "Talk with {agent} about this": "和 {agent} 聊这件事",
     "Talk it over": "聊一聊",
@@ -5227,6 +5232,7 @@ function resolve(from, path) {
 }
 function safeHref(from, raw) {
   const target = raw.trim();
+  if (target.startsWith("/rem/task-file?")) return { href: target, external: false };
   if (/^(https?:|file:|mailto:)/i.test(target)) return { href: target, external: true };
   if (target.startsWith("/") && !target.startsWith("//"))
     return { href: "file://" + target.split("/").map(encodeURIComponent).join("/"), external: true };
@@ -7873,19 +7879,11 @@ function taskResult(entry) {
   const task = rowTask(entry);
   if (!task || (!task.result && !REM.live)) return null;
   // A run shows on the row itself (handOff): here only a task that waits, and a finished one's reply to send.
-  if (handed(task) && !(task.result === "completed" && task.prepared_reply)) return null;
+  if (handed(task)) return null;
   const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", completed: "Completed"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
     task.reason ? el("p", {text: task.reason}) : null]);
-  if (task.result === "completed") {
-    result.appendChild(el("p", {}, [el("span", {text: t("Deliverable") + ": "}), el("code", {text: task.deliverable})]));
-    const reply = el("textarea", {readonly: "", "aria-label": t("Prepared reply")});
-    reply.value = task.prepared_reply;
-    const copy = el("button", {type: "button", class: "btn-quiet", text: t("Copy prepared reply")});
-    copy.onclick = () => copyToClipboard(task.prepared_reply);
-    result.append(reply, copy);
-  }
   return result;
 }
 
@@ -8123,9 +8121,16 @@ function todayRow(entry) {
 }
 function obligationKey(entry) { return todayRow(entry)?.keys?.[0] || doneKey(entry); }
 // The night's prepared task, or the run the owner started from any list (reader.py puts it on the row).
-function rowTask(entry) { const row = todayRow(entry); return row?.outcome?.kind === "task" ? row.outcome.task : row?.task || null; }
+function rowTask(entry) {
+  const key = obligationKey(entry);
+  if (PENDING_HANDOFFS.has(key)) return PENDING_HANDOFFS.get(key);
+  const row = todayRow(entry);
+  return row?.outcome?.kind === "task" ? row.outcome.task : row?.task || null;
+}
 function keepTask(entry, task) {
   const row = todayRow(entry);
+  if (task?.sending || task === null || !row) PENDING_HANDOFFS.set(obligationKey(entry), task);
+  else PENDING_HANDOFFS.delete(obligationKey(entry));
   if (!row) return;
   if (row.outcome?.kind === "task") row.outcome = { ...row.outcome, task: task || { id: row.outcome.task.id, prompt: row.outcome.task.prompt, result: "ready" } };
   else row.task = task;
@@ -8157,6 +8162,7 @@ function handOff(entry, mark, lead) {
   const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark, lead);
   const show = () => line.replaceChildren(...parts());
   const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
+  line.handoffKey = obligationKey(entry); line.handoffRefresh = show;
   // What the row has to say about itself before anything is pressed: a hand-off the Host refused, a put-off that is back.
   return el("div", { class: "handoff" }, [line, panel, handFailedNote(entry), putOffNote(entry)]);
 }
@@ -8300,7 +8306,7 @@ function handButtons(entry, show, panel, mark, lead) {
 // POST /rem/task with the buttons greyed, and that answer comes only after the agent's process has started. A
 // hand-off the Host refuses takes the row back: the card returns in front and says why (handFailedNote). A page
 // that cannot reach its Host at all says to open REM again, in words and never as a command to copy (D-60).
-const HAND_FAILED = new Map();
+const HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();
 function handRefusal(code) {
   return code === 400 ? "REM did not recognise this item. Reload the page and try again."
     : code === 401 ? "Your session expired. Reload the page."
@@ -8310,20 +8316,66 @@ function handRefusal(code) {
 }
 function handOver(entry, agent, show, card, status) {
   const key = obligationKey(entry), onDeck = card && railActive() === "today";
-  const redraw = () => onDeck && railActive() === "today" ? redrawKeepingScroll() : show();
+  const redraw = () => onDeck && railActive() === "today" ? redrawKeepingScroll() : refreshHandoff(entry, show);
   HAND_FAILED.delete(key);
-  if (!todayRow(entry)) status.textContent = t("Handing to {agent}…", { agent: AGENT_NAMES[agent] });  // a row the queue does not hold keeps its words in place
+  if (!todayRow(entry)) status.textContent = taskStatus({ result: "starting", agent });  // a row the queue does not hold keeps its words in place
   keepTask(entry, { result: "starting", agent, queued_at: new Date(clockNow()).toISOString(), sending: true });
-  if (onDeck) leadAfter(card, card.querySelectorAll(".qitem").length);
+  if (onDeck) { workOpen = true; leadAfter(card, card.querySelectorAll(".qitem").length); }
   redraw();
   return hostPost("/rem/task", { action: "run", key, agent }).then(({ ok, code, ...task }) => {
-    keepTask(entry, ok ? { ...task, agent: task.agent || agent } : null);
-    if (!ok) HAND_FAILED.set(key, { agent, why: handRefusal(code) });
-    if (!ok && onDeck) todayLead = card.dataset.path;
-    if (!ok && !todayRow(entry)) status.textContent = t(handRefusal(code));
+    // The row turned at the click; any answer but a run takes it back and says why (a Host that never answered,
+    // code 0, included), so a card never sits on "working" for a hand-off that did not happen.
+    // A gateway's 502-504 may come after the Host started the run (Codex's app-server is slow to answer, #3147):
+    // the row stays turned and asks the Host, three times; anything else takes it back at once.
+    const refuse = why => { keepTask(entry, null); HAND_FAILED.set(key, { agent, why }); if (onDeck) todayLead = card.dataset.path;
+      if (!todayRow(entry)) status.textContent = t(why); redraw(); };
+    if (ok) keepTask(entry, { ...rowTask(entry), ...task, sending: false, agent: task.agent || agent });
+    else if ([502, 503, 504].includes(code)) return confirmHandoff(entry, redraw, () => refuse(handRefusal(code)));
+    else return refuse(handRefusal(code));
     redraw();
   });
 }
+function confirmHandoff(entry, redraw, giveUp, tries = 3) {
+  setTimeout(async () => {
+    const pending = rowTask(entry);
+    if (!pending?.sending) return;
+    const { ok, ...task } = await hostPost('/rem/task', { action: 'status', key: obligationKey(entry) });
+    if (ok && task.id && handed(task)) { keepTask(entry, { ...pending, ...task, sending: false }); redraw(); }
+    else if (tries > 1) confirmHandoff(entry, redraw, giveUp, tries - 1);
+    else giveUp();
+  }, 2000);
+}
+function taskElapsed(at) {
+  const seconds = Math.max(0, Math.floor((clockNow() - Date.parse(at)) / 1000) || 0);
+  return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+}
+function taskFailure(task) {
+  if (task.failure) return task.failure;
+  const agent = AGENT_NAMES[task.agent || 'codex'];
+  if (task.reason?.includes('Operation not permitted') && agent === 'Codex') return 'Codex 当时无法启动（已修复），可以重试';
+  return task.result === 'timed-out' ? `${agent} 超时了，可以重试` : task.result === 'stopped' ? `${agent} 已停止，可以重试` : `${agent} 这次未能完成，可以重试`;
+}
+function taskStatus(task) {
+  const agent = AGENT_NAMES[task.agent || 'codex'];
+  if (ACTIVE_TASK.includes(task.result)) return t('{agent} is working', { agent }) + ' · ' + taskElapsed(task.started_at || task.queued_at) + (taskStep(task) ? ' · ' + taskStep(task) : '');
+  // State in words first (owner: words for state), then what it found in one line.
+  return task.result === 'completed' ? t('{agent} finished', { agent }) + (task.summary ? ' · ' + task.summary : '') : taskFailure(task);
+}
+function taskStatusNode(task) {
+  return el('span', { class: 'handed', role: 'status', text: taskStatus(task),
+    ...(ACTIVE_TASK.includes(task.result) ? { 'data-task-start': task.started_at || task.queued_at || new Date(clockNow()).toISOString(),
+      'data-task-agent': task.agent || 'codex', 'data-task-step': taskStep(task) } : {}) });
+}
+setInterval(() => document.querySelectorAll('[data-task-start]').forEach(node => {
+  node.textContent = t('{agent} is working', { agent: AGENT_NAMES[node.dataset.taskAgent] }) + ' · ' + taskElapsed(node.dataset.taskStart) + (node.dataset.taskStep ? ' · ' + node.dataset.taskStep : '');
+}), 1000);
+
+function refreshHandoff(entry, fallback) {
+  const lines = typeof document === 'undefined' ? [] : [...document.querySelectorAll('.handoff-line')].filter(line => line.handoffKey === obligationKey(entry));
+  if (lines.length) lines.forEach(line => line.handoffRefresh());
+  else fallback();
+}
+
 function handFailedNote(entry) {
   const failed = HAND_FAILED.get(obligationKey(entry));
   return failed ? el("p", { class: "hand-failed", role: "alert", text: t("{agent} did not take this: {why}", { agent: AGENT_NAMES[failed.agent], why: t(failed.why) }) }) : null;
@@ -8341,16 +8393,15 @@ function sinceWords(at) {
 let workOpen = false;
 function workRows() {
   return threadEntries().filter(entry => !isDone(entry)).map(entry => ({ entry, task: rowTask(entry) }))
-    .filter(({ task }) => handed(task) && (ACTIVE_TASK.includes(task.result) || task.finished_at && localDay(task.finished_at) === localDay(clockNow())));
+    .filter(({ task }) => handed(task) && (ACTIVE_TASK.includes(task.result) || task.result !== "completed" || task.finished_at && localDay(task.finished_at) === localDay(clockNow())));
 }
 function workSummary(rows) {
   const count = (agent, test) => rows.filter(({ task }) => (task.agent || "codex") === agent && test(task)).length;
   const say = (n, one, many, agent, more = "") => n ? t(n === 1 ? one : many, { n, agent: AGENT_NAMES[agent] }) + more : null;
   return Object.keys(AGENT_NAMES).flatMap(agent => {
-    const first = rows.filter(({ task }) => (task.agent || "codex") === agent && ACTIVE_TASK.includes(task.result) && !task.sending)
+    const first = rows.filter(({ task }) => (task.agent || "codex") === agent && ACTIVE_TASK.includes(task.result))
       .map(({ task }) => task.started_at || task.queued_at).filter(Boolean).sort()[0];
-    return [say(count(agent, task => task.sending), "Handing 1 thing to {agent}…", "Handing {n} things to {agent}…", agent),
-      say(count(agent, task => ACTIVE_TASK.includes(task.result) && !task.sending), "{agent} is working on 1 thing", "{agent} is working on {n} things", agent, first ? " · " + sinceWords(first) : ""),
+    return [say(count(agent, task => ACTIVE_TASK.includes(task.result)), "{agent} is working on 1 thing", "{agent} is working on {n} things", agent, first ? " · " + taskElapsed(first) : ""),
       say(count(agent, task => task.result === "completed"), "{agent} finished 1 thing", "{agent} finished {n} things", agent),
       say(count(agent, task => !ACTIVE_TASK.includes(task.result) && task.result !== "completed"), "{agent} stopped before finishing 1 thing", "{agent} stopped before finishing {n} things", agent)];
   }).filter(Boolean).join(" · ");
@@ -8377,9 +8428,6 @@ function terminalButtons(entry, task, active) {
 }
 function workRow({ entry, task }) {
   const agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result), who = entry.who || entry.r;
-  const at = task.finished_at ? " · " + fmtTime(task.finished_at) : "";
-  const words = task.sending ? t("Handing to {agent}…", { agent }) : active ? t("{agent} is working", { agent }) + " · " + sinceWords(task.started_at || task.queued_at) + (taskStep(task) ? " · " + taskStep(task) : "")
-    : t(task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing", { agent }) + at + (task.result !== "completed" && task.reason ? " · " + task.reason : "");
   const act = (action, label) => {
     const button = el("button", { type: "button", class: "btn-quiet", text: label });
     button.onclick = async () => {
@@ -8394,17 +8442,28 @@ function workRow({ entry, task }) {
   };
   const show = el("button", { type: "button", class: "btn-quiet", text: t("Show its card") });
   show.onclick = () => { todayLead = who.path; redrawKeepingScroll(); focusRaisedCard(); };
-  const [see, output] = active ? [null, null] : seeResult(task);
+  const [see] = active ? [null] : seeResult(task);
   return el("li", { class: "work-row" }, [el("a", { href: href(who), text: threadWho(who) }),
     wordsLine("work-what", morningWords(entry.t.text, entry.r, entry.t).words, entry.r, []),
-    el("p", { class: "work-state" }, dotted([el("span", { role: "status", text: words }),
+    el("p", { class: "work-state" }, dotted([taskStatusNode(task),
       ...(task.sending ? [] : active ? [...terminalButtons(entry, task, true), act("stop", t("Stop")), act("undo", t("Take back from {agent}", { agent }))]
-        : [see, ...terminalButtons(entry, task, false), show, act("undo", t("Take back from {agent}", { agent }))])])), output]);
+        : [taskPrimary(entry, task, redrawKeepingScroll), see, ...terminalButtons(entry, task, false), show, act("undo", t("Take back from {agent}", { agent }))])]))]);
 }
 function workStrip() {
   const rows = liveHere() ? workRows() : [];
   if (!rows.length) return null;
   const strip = el("details", { id: "work-strip", class: "work-strip" }, [el("summary", { text: workSummary(rows) }), el("ul", { class: "work-rows" }, rows.map(workRow))]);
+  const failed = rows.filter(({ task }) => !ACTIVE_TASK.includes(task.result) && task.result !== 'completed');
+  if (failed.length) {
+    const clear = el('button', { type: 'button', class: 'btn-quiet clear-failed', text: t('Clear failed runs') });
+    clear.onclick = async () => {
+      const reply = await hostPost('/rem/task', { action: 'clear_failed' });
+      if (!reply.ok) { clear.textContent = t('Could not do that. Try again.'); return; }
+      for (const { entry, task } of failed) if (reply.cleared.includes(task.id)) keepTask(entry, null);
+      redrawKeepingScroll();
+    };
+    strip.appendChild(clear);
+  }
   strip.open = workOpen;
   strip.addEventListener("toggle", () => { workOpen = strip.open; });
   followWork();
@@ -8492,8 +8551,7 @@ function openContext(entry, talk) {
 // The three closes stay first, as before the hand-off (D-100's order).
 function handState(entry, show, panel, mark) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
-  const words = task.sending ? "Handing to {agent}…" : active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
-  const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) + (active && taskStep(task) ? " · " + taskStep(task) : "") });
+  const status = taskStatusNode(task);
   const act = (action, label) => {
     const button = el("button", { type: "button", class: "btn-quiet", text: label });
     button.onclick = async () => {
@@ -8505,14 +8563,16 @@ function handState(entry, show, panel, mark) {
     };
     return button;
   };
-  const reason = !active && task.result !== "completed" && task.reason ? el("span", { class: "handoff-status", text: task.reason }) : null;
   if (liveHere() && active && !task.sending) followTask(entry, task, status, show);
   const by = task.by === "rem" ? el("span", { class: "handoff-status", text: t("REM started this") }) : null;
-  const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
+  const [see] = active || !liveHere() ? [null] : seeResult(task);
   // Taking the task back is not undoing the item: its own words, so it never reads like the done Undo.
   const actions = task.sending ? [] : [...terminalButtons(entry, task, active), ...(liveHere() ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [])];
-  const work = [status, reason, by, ...actions, entry.ask ? null : moreButton(entry, talkMenu(entry, panel))], closes = stripDone(entry, mark);
-  return [...dotted([...closes, ...work]), output].filter(Boolean);
+  const primary = !active && liveHere() && (!entry.ask || task.result !== 'completed') ? taskPrimary(entry, task, show) : null;
+  const work = [status, by, primary, ...actions, entry.ask ? null : moreButton(entry, talkMenu(entry, panel))];
+  // The closes stay on every row, before and after the run (owner, 2026-11-11/12: mark done, not now, ignore in words).
+  const closes = stripDone(entry, mark);
+  return dotted([...closes, ...work]);
 }
 // 让 Codex 查 (#2909): automatic investigations skip a private project, so the owner asks here. The same
 // /rem/task run as 交给 Codex, keyed by the project's own page; its progress and result show in place.
@@ -8531,26 +8591,112 @@ function followTask(entry, task, status, show) {
     if (ok && latest.step?.at !== task.step?.at) {
       task = { ...task, ...latest };
       keepTask(entry, task);
-      status.textContent = t("{agent} is working", { agent: AGENT_NAMES[task.agent || "codex"] || task.agent }) + (taskStep(task) ? " · " + taskStep(task) : "");
+      status.textContent = taskStatus(task);
+      status.dataset.taskStep = taskStep(task);
     }
     followTask(entry, task, status, show);
   }, 4000);
 }
-// See result: what the agent wrote, read from its deliverable through the Host, shown under the row.
-function seeResult(task) {
-  const output = el("div", { class: "task-output", hidden: "" });
-  const button = el("button", { type: "button", class: "btn-quiet", "aria-expanded": "false", text: t("See result") });
+// One next step: prepare the proposed reply locally, close the item, or retry a failed run.
+function taskPrimary(entry, task, show) {
+  const completed = task.result === 'completed', reply = completed && !!task.reply;
+  // A finished run with no reply to draft has the strip's own Mark done as its next step; no second one.
+  if (completed && !reply) return null;
+  const button = el('button', { type: 'button', class: 'btn-quiet strip-lead', text: t(completed ? reply ? task.draft_id ? 'Open reply draft' : 'Draft with this reply' : 'Mark done' : 'Retry') });
   button.onclick = async () => {
-    if (!output.childNodes.length) {
-      const reply = await hostPost("/rem/task", { id: task.id, action: "result" });
-      output.append(reply.ok && reply.text ? agentText(reply.text, task.record)
-        : el("p", { text: reply.ok ? reply.reason || t("{agent} wrote nothing.", { agent: AGENT_NAMES[task.agent || "codex"] || task.agent })
-          : reply.error || t("REM is not answering right now. Try again in a moment.") }));
+    if (completed && !reply) { setDone(entry, true); return; }
+    if (!completed) keepTask(entry, { ...task, result: 'starting', started_at: null, queued_at: new Date(clockNow()).toISOString(), sending: true });
+    button.disabled = true;
+    if (!completed) show();
+    const result = await hostPost('/rem/task', { id: task.id, action: reply ? 'prepare_reply' : 'retry' });
+    if (!result.ok) {
+      if (!completed && ![400, 401, 409].includes(result.code)) { confirmHandoff(entry, show); return; }
+      if (!completed) keepTask(entry, task);
+      button.disabled = false; button.textContent = result.error || t('Could not do that. Try again.');
+      if (!completed) show();
+      return;
     }
-    output.hidden = !output.hidden;
-    button.setAttribute("aria-expanded", String(!output.hidden));
+    if (reply) {
+      REM.drafts = [...(REM.drafts || []).filter(d => d.id !== result.id), result];
+      keepTask(entry, { ...task, draft_id: result.id });
+      redrawKeepingScroll();
+      openTaskPanel(t('Reply draft prepared'), replyDraftCard(result, () => redrawKeepingScroll(), entry.who || entry.r), button);
+    } else { keepTask(entry, { ...result, sending: false }); show(); }
   };
-  return [button, output];
+  return button;
+}
+function seeResult(task) {
+  if (task.has_output === false || (task.result !== 'completed' && !task.has_output)) return [null, null];
+  const button = el('button', { type: 'button', class: 'btn-quiet', text: t('See result') });
+  button.onclick = async () => {
+    const reply = await hostPost('/rem/task', { id: task.id, action: 'result' });
+    openTaskPanel(task.title || t('Task result'), reply.ok ? taskReport(reply.text || reply.reason || '', task) : el('p', { text: reply.error || t('Could not do that. Try again.') }), button);
+  };
+  return [button, null];
+}
+function openTaskPanel(title, content, trigger) {
+  const panel = evidencePanel(), close = el('button', { type: 'button', class: 'evidence-close', text: t('Close ×'), 'aria-label': t('Close source context') });
+  close.onclick = closeEvidence;
+  panel.replaceChildren(el('div', { class: 'evidence-handle', 'aria-hidden': 'true' }),
+    el('div', { class: 'evidence-top' }, [el('span', { text: title }), close]), content);
+  evidenceTrigger = trigger;
+  panel.parentElement.hidden = false;
+  document.body.classList.add('evidence-open');
+  evidenceLayout(); panel.scrollTop = 0; close.focus({ preventScroll: true });
+}
+function taskSource(id, trigger) {
+  const context = REM.source_context?.[id];
+  const quote = el('blockquote', { text: context?.excerpt || t("The original isn't in this snapshot.") });
+  const content = context ? el('div', {}, [evidenceOriginal(context, quote)]) : quote;
+  if (context) {
+    const reveal = el('button', { type: 'button', class: 'btn-action', text: t('Show labelled passages') });
+    reveal.onclick = () => togglePrivate();
+    content.prepend(el('div', { class: 'private-hidden-notice' }, [reveal]));
+  }
+  openTaskPanel(context?.subject || sourceLabel(id), content, trigger);
+}
+function taskReport(text, task) {
+  const box = agentText(taskReportLinks(text, task.id), task.record);
+  wireTaskFiles(box);
+  wireTaskSources(box);
+  return box;
+}
+function taskReportLinks(text, id) {
+  return text.split(/(```[\s\S]*?```)/g).map((part, i) => i % 2 ? part : part.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, (all, label, path) =>
+    /^(?:[a-z][a-z0-9+.-]*:|#|\/)/i.test(path) ? all : '[' + label + '](/rem/task-file?' + new URLSearchParams({ id, path: taskLinkPath(path) }) + ')')).join('');
+}
+function taskLinkPath(path) {
+  // URLSearchParams tolerates malformed percent escapes in an agent's Markdown.
+  return new URLSearchParams('path=' + path.split(/[?#]/)[0].replaceAll('+', '%2B')).get('path');
+}
+
+function wireTaskFiles(box) {
+  for (const link of box.querySelectorAll('a[href]')) {
+    const path = link.getAttribute('href');
+    if (!path?.startsWith('/rem/task-file?')) continue;
+    const url = path;
+    link.onclick = async event => {
+      event.preventDefault();
+      const response = await fetch(url);
+      if (!response.ok) { openTaskPanel(link.textContent, el('p', { text: t('Could not do that. Try again.') }), link); return; }
+      if (!(response.headers.get('content-type') || '').startsWith('text/')) { window.open(url, '_blank', 'noopener'); return; }
+      openTaskPanel(link.textContent, el('pre', { class: 'task-file', text: await response.text() }), link);
+    };
+  }
+}
+function wireTaskSources(box) {
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT), nodes = [];
+  while (walker.nextNode()) if (!walker.currentNode.parentElement.closest('a, button, pre')) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const parts = node.textContent.split(/((?:outlook|gmail|codex|claude-code):[^\s<>`，。；、（）()\[\]]+)/g);
+    if (parts.length < 2) continue;
+    node.replaceWith(...parts.map((part, i) => {
+      if (i % 2 === 0) return document.createTextNode(part);
+      const chip = el('button', { type: 'button', class: 'chip task-source', text: sourceChannel(part.split(':')[0]) + (REM.source_context?.[part]?.subject ? ' · ' + REM.source_context[part].subject : ''), title: part });
+      chip.onclick = () => taskSource(part, chip);
+      return chip;
+    }));
+  }
 }
 // 和 Codex 聊这件事: a real conversation with the agent about this row, under it, in this page.
 function talkMenu(entry, panel) {
