@@ -30,7 +30,7 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
+from .files import (WRITE_WAIT_SECONDS, KEY_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
                     write_json)
 from .investigate import project_paths
 from .scan import is_repository, nameable, project_exclusion
@@ -146,7 +146,7 @@ def _file_material(data: bytes, path, kind, parse, read_meta, since) -> dict:
             messages.append((at, {"source": session_source(kind, session, at, item["text"]), "tool": kind,
                 "timestamp": timestamp(item["timestamp"]).isoformat(),
                 "cwd": item.get("cwd") or meta.get("cwd") or "",
-                "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
+                "text": KEY_SHAPES.sub(REDACTED, item["text"]),
                 **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}))
     # Attribution used a second disk read: 256 s for filing alone (2026-10-21).
     # Keep raw paths until map has created the project pages that own them.
@@ -409,7 +409,7 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, rep
                 or not parse_session_source(source)
                 or not isinstance(body, str)):
             continue
-        text = SECRET_SHAPES.sub(REDACTED, body)
+        text = KEY_SHAPES.sub(REDACTED, body)
         path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
         previous = read_json(path, {})
         if previous and not replace and (previous.get("source") != source or previous.get("text") != text):
@@ -426,7 +426,7 @@ def retained_session(root: Path, source: str) -> dict | None:
     path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
     saved = read_json(path, {})
     body = saved.get("text")
-    if saved.get("source") != source or not isinstance(body, str) or SECRET_SHAPES.search(body):
+    if saved.get("source") != source or not isinstance(body, str) or KEY_SHAPES.search(body):
         return None
     return saved
 

@@ -540,7 +540,7 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
     Labelled ([personal]/[sensitive]) mail is left out; secret shapes are removed.
     """
     from contextlib import closing
-    from .files import SECRET_SHAPES
+    from .files import KEY_SHAPES
     file = state_path(root, "rem.db")
     if not file.is_file() or file.is_symlink():
         return []
@@ -560,7 +560,7 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
         raw = saved.get("body")
         if not isinstance(raw, str) or PRIVATE.search(raw):
             continue
-        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]",
+        text = KEY_SHAPES.sub("[secret-shaped text removed by co rem]",
                                  raw.partition("--- Email Body ---")[2] or raw).strip()[:min(chars, budget)]
         if not text:
             continue

@@ -15,7 +15,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import config, runner, service, source
-from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
+from .files import (KEY_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
 from .scan import WORKTREE_FOLDER, is_repository, main_checkout, nameable, project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
@@ -91,7 +91,7 @@ def _project(session: dict, folders: dict) -> str | None:
 
 
 def _redact(text: str) -> str:
-    return SECRET_SHAPES.sub(REDACTED, text)
+    return KEY_SHAPES.sub(REDACTED, text)
 
 
 def _tool_text(value, limit: int = 20_000) -> str:

@@ -2,7 +2,7 @@
 
 A ``keys/<slug>.md`` page says what a secret is; ``vault`` keeps its value. Adding a key writes both, reading
 one goes through the vault's prompt, and importing a password manager's CSV export files every row the same
-way. Nothing here ever writes a secret into a page, a log or a reply; ``secret_errors`` refuses a keys page
+way. Nothing here ever writes a secret into a page, a log or a reply; ``key_shape_errors`` refuses a keys page
 that carries one, so even a model's draft cannot put it there.
 """
 
@@ -17,7 +17,7 @@ from datetime import date
 from pathlib import Path
 
 from . import vault
-from .files import SECRET_SHAPES, Notebook, RemError
+from .files import KEY_SHAPES, Notebook, RemError
 
 FIELDS = ("Service", "Account", "Purpose", "Who else has it", "Used in", "Created", "Rotated", "Expires", "Link", "Vault")
 # Column names the common exports use, lower-cased: 1Password, LastPass, Bitwarden, Chrome/Safari.
@@ -107,11 +107,11 @@ def _entropy(token: str) -> float:
     return -sum(n / len(token) * math.log2(n / len(token)) for n in counts.values())
 
 
-def secret_errors(record: str, candidate: str) -> list[str]:
+def key_shape_errors(record: str, candidate: str) -> list[str]:
     """A page may not carry a secret: known key shapes anywhere; on a keys page, any long random-looking token
     outside its Sources, since a password copied into Facts or Notes reads like one. Says where, never what."""
     errors = []
-    if SECRET_SHAPES.search(candidate):
+    if KEY_SHAPES.search(candidate):
         errors.append("The page carries something shaped like a key or token; keep secrets in the vault, never in a page")
     if record.startswith("keys/"):
         body = re.split(r"\n## Sources\b", candidate, maxsplit=1)[0]

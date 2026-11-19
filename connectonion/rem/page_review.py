@@ -1474,8 +1474,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     from .org_links import org_errors
     errors += org_errors(record, candidate, original)  # a person's organisations are pages (#3141)
     # A secret never enters a page, a keys page least of all (#3137): its value lives in the OS vault.
-    from .keys import secret_errors
-    errors += secret_errors(record, candidate)
+    from .keys import key_shape_errors
+    errors += key_shape_errors(record, candidate)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
     if record.startswith('knowledge/') and not abstract:
