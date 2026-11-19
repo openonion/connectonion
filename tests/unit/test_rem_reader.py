@@ -3432,6 +3432,8 @@ def _hand_js(body):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in HAND)
     return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
+                          # A request that never reached the Host shows the lost-Host bar (#3139); the bar is tested in the browser.
+                          + 'const HOST_LOST_WORDS = "This page lost touch with REM (it was just restarted).", hostLost = () => {}, hostFound = () => {};\n'
                           + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -4521,6 +4523,7 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in INVESTIGATE)
     result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
+                            + 'const HOST_LOST_WORDS = "This page lost touch with REM (it was just restarted).", hostLost = () => {}, hostFound = () => {};\n'
                             + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -4637,6 +4640,8 @@ def _lang_toggle_js(body):
     return _run_reader_js(re.search(r'^let redrawSkipped = .*;$', page, re.M)[0] + '\n' + functions + r'''
       const stored = [], posted = [], order = [], marks = [], restored = [];
       const REM = {live: true, records: [{readLanguage: 'en'}]}, location = {protocol: 'http:', hash: '#today'};
+      // Choosing 中 starts the Chinese pages in the live reader (#3143); the job itself is tested in the browser.
+      const asked = [], translateAllSend = action => asked.push(action), untranslatedPages = () => [];
       globalThis.fetch = (url, options) => { posted.push([url, JSON.parse(options.body)]); };
       const readerStorage = (key, value) => stored.push([key, value]), closeEvidence = () => {};
       const button = {setAttribute(name, value) { this[name] = value; }, getAttribute(name) { return this[name]; }};

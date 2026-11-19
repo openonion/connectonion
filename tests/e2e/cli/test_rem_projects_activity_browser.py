@@ -272,17 +272,12 @@ def test_a_project_record_is_knowledge_and_sends_open_work_to_today(reader, widt
     expect(page.locator(".today-brief, .today, #main .n3-today").first).to_be_visible()
 
 
-def test_the_note_that_no_translation_is_ready_closes_a_project_record_and_never_opens_it(reader):
-    from patchright.sync_api import expect
-
+def test_a_project_record_carries_no_translation_note_of_its_own(reader):
+    """#3096 put the note at the record's end; #3143 moves it to the top bar's one language control."""
     page = _open(reader, "#r=projects%2Fatlas.md")
     page.evaluate("""() => { REM.status.worker = {...(REM.status.worker || {}), enabled: true};
       REM.status.translation_coverage = {zh: {requested: true}}; setInterfaceLanguage('zh'); }""", isolated_context=False)
-    note = page.locator("#main .translation-line")
-    expect(note).to_have_count(1)
-    place = note.evaluate("""n => { const focus = n.closest('.record-focus.projects');
-      return [!!focus, focus && focus.lastElementChild === n, n.getBoundingClientRect().top > focus.querySelector('.project-activity').getBoundingClientRect().bottom]; }""")
-    assert place == [True, True, True]
+    assert page.locator("#main .translation-line, #main .translate-all").count() == 0
 
 
 @pytest.mark.parametrize("view", ["timeline", "list", "board"])

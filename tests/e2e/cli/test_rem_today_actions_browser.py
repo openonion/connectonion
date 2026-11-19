@@ -401,13 +401,14 @@ def test_the_numbers_on_today_are_one_number_or_say_what_they_count(today):
 
 
 def test_a_page_that_has_lost_its_host_says_how_to_act(desk):
-    """The click cannot start anything: the card comes back and names the command, it never sits at «handing»."""
+    """The click cannot start anything: the card comes back and says the Host is gone, never «handing» or «busy» (#3139)."""
     page, _, _ = desk
     page.evaluate("() => { window.fetch = () => Promise.reject(new TypeError('Failed to fetch')); }", isolated_context=False)
     page.locator(".qcard.focal [data-agent=codex]").first.click()
     page.wait_for_function("() => document.querySelector('.qcard.focal .hand-failed')")
     words = page.locator(".qcard.focal .hand-failed").first.inner_text()
-    assert "nothing was handed over" in words and "Open REM again" in words
+    assert "nothing was handed over" in words and "lost touch with REM" in words
+    assert page.locator("#host-lost").get_by_role("button", name="Reconnect").is_visible()
 
 
 def test_a_snapshot_says_in_words_that_it_cannot_act_and_never_appears_to_start(desk):

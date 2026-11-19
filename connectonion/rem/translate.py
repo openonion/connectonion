@@ -95,13 +95,23 @@ def cached_languages(root: Path, record: str) -> dict[str, str]:
     return found
 
 
-def prompt(language: str, quotes=(), terms=(), names=()) -> str:
+# A decision, knowledge entry or principle is titled by what it says, not by a name: its title is prose and is
+# translated (#3142, owner 2026-11-19: «decision 的标题为什么是英文的呢？»). People, organisations and projects
+# are titled by their names, which stay as written.
+STATEMENT_KINDS = ("decisions/", "knowledge/", "principles/")
+
+
+def statement_title(record) -> bool:
+    return str(record or "").startswith(STATEMENT_KINDS)
+
+
+def prompt(language: str, quotes=(), terms=(), names=(), statement=False) -> str:
     return ("Translate page.md, a Markdown notebook page, into the language tagged "
             f"`{language}` and write the result to translation.md in this folder. Do not edit "
-            "page.md and do not read anything else. " + _rules(language, quotes, terms, names))
+            "page.md and do not read anything else. " + _rules(language, quotes, terms, names, statement))
 
 
-def _rules(language: str, quotes=(), terms=(), names=()) -> str:
+def _rules(language: str, quotes=(), terms=(), names=(), statement=False) -> str:
     """What every translation keeps, for one page (`prompt`) or a batch (`prepare_batch`)."""
     from .runner import language_rules
     # Named one by one: told only the rule, the model still translated “zero-risk things”.
@@ -112,8 +122,11 @@ def _rules(language: str, quotes=(), terms=(), names=()) -> str:
             "where it is. Keep every amount, number and currency symbol exactly as written "
             "(`$50,000`, `A$1,200`, `¥300`); never convert or name a currency the original doesn't name. "
             "Keep names of people, organisations, projects, products, repositories and tools exactly as written, "
-            "including lowercase project names. The page's own title and every link text name a thing "
-            "and stay as written. Keep email addresses, URLs, file paths, issue/PR numbers (#2345), "
+            "including lowercase project names. "
+            + ("Every link text names a thing and stays as written; the page's own title is a statement, so translate its title "
+               "(the `# ` line) like the prose. " if statement else
+               "The page's own title and every link text name a thing and stay as written. ")
+            + "Keep email addresses, URLs, file paths, issue/PR numbers (#2345), "
             "version numbers and code spans unchanged; a line that only lists source ids, such as "
             "`Sources: codex:…`, stays exactly as written, label included. "
             "Keep every privacy label such as [personal] and [sensitive] on the same line, "
@@ -131,9 +144,9 @@ def _rules(language: str, quotes=(), terms=(), names=()) -> str:
             + " Then reply DONE.")
 
 
-def page_names(text: str) -> list[str]:
-    """The title and link labels are explicit names, including lowercase repositories."""
-    title = re.search(r"^# ([^\n]+)", text, re.M)
+def page_names(text: str, record=None) -> list[str]:
+    """The title and link labels are explicit names, including lowercase repositories; a statement's title is not."""
+    title = None if statement_title(record) else re.search(r"^# ([^\n]+)", text, re.M)
     links = re.findall(r"\[([^\]\n]+)\](?:\([^\n]*?\)|\[[^\]\n]*\])", text)
     return list(dict.fromkeys(([title.group(1)] if title else []) + links))[:40]
 
@@ -162,12 +175,13 @@ def _check_citations(original: str, translation: str) -> None:
                        "exactly as many times as in page.md; nothing was cached. Translate again")
 
 
-def checked(original: str, translation: str) -> str:
-    """Keep headings, sources, privacy labels and reader markers intact."""
+def checked(original: str, translation: str, title_free=False) -> str:
+    """Keep headings, sources, privacy labels and reader markers intact; a statement's title (`title_free`) may change."""
     # A Markdown heading has a space after its hashes; "#1037 was fixed" is prose.
     heading = re.compile(r"#{1,6}\s")
-    headings = [line for line in original.splitlines() if heading.match(line)]
-    translated_headings = [line for line in translation.splitlines() if heading.match(line)]
+    title = re.compile(r"# ") if title_free else None
+    headings = [line for line in original.splitlines() if heading.match(line) and not (title and title.match(line))]
+    translated_headings = [line for line in translation.splitlines() if heading.match(line) and not (title and title.match(line))]
     if translated_headings != headings:
         detail = _count_changes(Counter(headings), Counter(translated_headings)) or "headings are out of order"
         raise RemError(f"The translation changed the page's headings: {detail}; "
@@ -231,7 +245,7 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
         on_run(run["id"])
     started = monotonic()
     try:
-        translation = _translate_prose(workspace, prose, task["prompt"], config, run)
+        translation = _translate_prose(workspace, prose, task["prompt"], config, run, title_free=statement_title(record))
         translation = check(task, {"result": translation})
         run["outcome"] = "completed"
         return translation
@@ -256,7 +270,9 @@ def prepare_batch(root, records, language, *, directory):
         pages.append({**page, "id": f"p{number}", "candidate": str(directory / "translations" / f"p{number}.md")})
     listed = "\n".join(f"- {page['id']}: pages/{page['id']}/page.md -> translations/{page['id']}.md"
                        + (" (keep every <!-- co rem preserve N --> marker exactly once in its place)"
-                          if page["protected_sections"] else "") for page in pages)
+                          if page["protected_sections"] else "")
+                       + (" (its title is a statement: translate the `# ` line too)" if statement_title(page["record"]) else "")
+                       for page in pages)
     instruction = (f"Translate {len(pages)} pages into the language tagged `{language}`, each on its own. "
                    "For each, read its page.md and the "
                    "translation-constraints.json beside it (exact quotes, terms and names to preserve), and "
@@ -294,12 +310,14 @@ def prepare(root, record, language, *, directory, text=None, native=False):
     prose, sources, stamp, protected = _page_parts(text)
     (directory / "page.md").write_text(prose, encoding="utf-8")
     terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
-    instruction = prompt(language, quoted_passages(prose), terms, page_names(prose))
+    statement = statement_title(record)
+    instruction = prompt(language, quoted_passages(prose), terms, page_names(prose, record), statement)
     if native:
         from .files import write_json
-        constraints = {"quotes": list(quoted_passages(prose)), "terms": terms, "names": page_names(prose)}
+        constraints = {"quotes": list(quoted_passages(prose)), "terms": terms, "names": page_names(prose, record),
+                       "translate_title": statement}
         write_json(directory / "translation-constraints.json", constraints, readable=True)
-        instruction = prompt(language).replace("and do not read anything else.", "and read only the supplied constraints file as well.") + f"\nRead {directory / 'translation-constraints.json'} for exact quotes, terms and names to preserve."
+        instruction = prompt(language, statement=statement).replace("and do not read anything else.", "and read only the supplied constraints file as well.") + f"\nRead {directory / 'translation-constraints.json'} for exact quotes, terms and names to preserve."
     if protected:
         instruction += '\nKeep every <!-- co rem preserve N --> marker exactly once in its original position.'
     return {"root": str(root), "record": record, "language": language, "directory": str(directory),
@@ -311,7 +329,7 @@ def prepare(root, record, language, *, directory, text=None, native=False):
 
 def check(task, output):
     original = task["before"][task["record"]]
-    translation = checked(task["prose"], output["result"])
+    translation = checked(task["prose"], output["result"], title_free=statement_title(task.get("record")))
     for marker, section in task.get('protected_sections', {}).items():
         translation = translation.replace(marker, section)
     translation += ("\n" + task["sources"] if task["sources"] else "")
@@ -345,7 +363,7 @@ def _page_parts(text):
     return prose.rstrip() + "\n", tail, stamp, {}
 
 
-def _translate_prose(workspace, prose, task_prompt, config, run):
+def _translate_prose(workspace, prose, task_prompt, config, run, title_free=False):
     from .runner import _add_usage, run_task
     repair = ""
     for attempt in range(2):
@@ -355,7 +373,7 @@ def _translate_prose(workspace, prose, task_prompt, config, run):
         answer = _read_translation(workspace)
         # Only a completed translation's structural errors get one repair turn.
         try:
-            return checked(prose, answer)
+            return checked(prose, answer, title_free)
         except RemError as error:
             if attempt:
                 raise
