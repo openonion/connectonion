@@ -16,6 +16,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_rem_reader_design_browser import PROJECT_SET, reader  # noqa: E402,F401
 
+
+# #3104: the full memory opens by itself, so "folded until clicked" became "inside the full memory, below its
+# summary line": never on the first screen beside the lead, but one scroll away rather than one click.
+IN_FULL_MEMORY = """nodes => nodes.every(n => {
+  const d = n.closest('details.deep-note');
+  return !!d && d.open && n.getBoundingClientRect().top >= d.querySelector(':scope > summary').getBoundingClientRect().bottom - 1;
+})"""
+
 pytestmark = pytest.mark.skipif(
     os.environ.get("CO_REM_BROWSER_TEST") != "1",
     reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome",
@@ -99,8 +107,8 @@ def test_a_project_page_leads_with_state_next_steps_and_recent_sessions_and_fold
     assert tops == sorted(tops) and tops[-1] < height, tops
     # Everything else is one fold away, never beside the lead.
     for selector in (".focus-facts", ".related-records", ".project-context", ".project-sessions"):
-        assert all(not node.is_visible() for node in page.locator(selector).all()), selector
-    page.locator("details.deep-note > summary").click()
+        assert page.locator(selector).evaluate_all(IN_FULL_MEMORY), selector
+    page.locator('details.deep-note').evaluate('d => d.open = true')
     assert page.locator(".deep-note .related-records").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
