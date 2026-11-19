@@ -88,7 +88,7 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
 def test_person_quotes_skip_mail_that_only_a_private_passage_cites():
     """The person ledger whose source marks this guarded is gone (D-30); its quotes inherit the rule:
     a mail cited only by a [personal] passage is never quoted, and greetings and reactions are not their words."""
-    result = run_js(['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'hasPrivacy', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled'], r'''
+    result = run_js(['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'hasPrivacy', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'mendCuts'], r'''
       const icon = () => null;
       const r = {title: 'Mara Ostrowski', path: 'people/mara.md',
         text: 'Public ask [2]. Private ask [3][personal]. Reacted [4].\n\n## Sources\n- [2] gmail:a\n- [3] gmail:b\n- [4] gmail:c\n'};
@@ -133,7 +133,7 @@ QUOTE_HARNESS = r'''
   const sourceList = () => [{n: '3', text: 'gmail:b'}];
   const ownerAddresses = () => OWNER, icon = () => null;
 '''
-QUOTE_NAMES = ['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'hasPrivacy']
+QUOTE_NAMES = ['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'mendCuts', 'hasPrivacy']
 
 
 def _quotes(text, excerpt, participants="to", owner="['avery@lin.example']"):

@@ -596,3 +596,12 @@ def test_a_cited_mail_whose_body_was_not_kept_still_says_who_when_and_what(tmp_p
     assert card['time'] == '2026-09-20T09:00:00Z' and card['body_empty'] is True and card['excerpt'] == ''
     assert 'gmail:never-indexed' not in found
     assert 'gmail:kept-header-only' not in cited_context(tmp_path, records, private=False)
+
+
+def test_a_relation_cards_basis_drops_its_citation_with_the_space_before_it():
+    """«at Fernhill [1].» reads «at Fernhill.» on a related-page card, never «at Fernhill .» (rc36 dates fixer)."""
+    from connectonion.rem.reader_model import _relation
+
+    card = _relation("people/wren.md", "orgs/fernhill.md", "- Wren runs the venue at [Fernhill](../orgs/fernhill.md) [1] [2].", "linked")
+    assert card["basis"] == "Wren runs the venue at Fernhill."
+    assert card["sources"] == ["1", "2"]
