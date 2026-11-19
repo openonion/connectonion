@@ -320,19 +320,22 @@ def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict 
 
 
 def tag_layer(nodes: list[dict], paths: dict, vocabulary: dict) -> dict:
-    """Tag nodes and record→tag edges, beside the record graph (docs/cli/rem-tags.md).
+    """The knowledge graph has one kind of point, the page (#3140): a tag adds an edge from each page carrying
+    it to the page the tag links to (a person, organisation, project or tag page), never a point of its own.
 
-    Only drawn nodes: a folded session or a private record adds no edge, and a tag no
-    drawn node carries has no node."""
-    from collections import Counter
+    Only drawn pages: a folded session or a private record adds no edge, and a tag whose page is not drawn
+    adds none."""
     from .tags import page_tags
-    edges = [{'source': node['id'], 'target': 'tag:' + slug, 'kind': 'tagged'}
-             for node in nodes if not node['private'] for slug in page_tags(paths[node['id']]['text'])]
-    counted = Counter(edge['target'] for edge in edges)
-    tag_nodes = [{'id': target, 'kind': 'tag', 'label': vocabulary.get(target[4:], {}).get('label', target[4:]),
-                  'tag_kind': vocabulary.get(target[4:], {}).get('kind', 'topic'), 'count': count}
-                 for target, count in sorted(counted.items())]
-    return {'nodes': tag_nodes, 'edges': edges}
+    drawn = {node['id'] for node in nodes}
+    edges = {}
+    for node in nodes:
+        if node['private']:
+            continue
+        for slug in page_tags(paths[node['id']]['text']):
+            target = vocabulary.get(slug, {}).get('page', '')
+            if target in drawn and target != node['id']:
+                edges.setdefault(tuple(sorted((node['id'], target))), {'source': node['id'], 'target': target, 'kind': 'tagged', 'tag': slug})
+    return {'nodes': [], 'edges': list(edges.values())}
 
 
 def _source_ids(records: list[dict]) -> set[str]:

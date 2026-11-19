@@ -3523,11 +3523,12 @@ def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language
       console.log(JSON.stringify(view));
     ''')
     text = json.dumps(result, ensure_ascii=False)
-    # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Topics" category.
+    # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Tag pages" category.
     assert result['children'][0]['children'][0]['text'] == ('知识' if language == 'zh' else 'Knowledge')
     assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') not in text
     assert ('REM 会在夜里那一轮从已有记录里整理知识。' if language == 'zh' else 'REM files knowledge from your records on its night run.') in text
-    assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
+    # 标签页 / Tag pages is the knowledge view's own tab now (#3140): no empty-topic lines.
+    assert 'No topics' not in text and 'Topics are' not in text
     # D-60 (#2910): the night run files knowledge (daily.py backfill_topics); no command, no copy button.
     assert 'co rem' not in text and '"code"' not in text and '"复制"' not in text and '"Copy"' not in text
 
@@ -3821,9 +3822,9 @@ def test_knowledge_switch_uses_bookmarkable_paths_without_storage(mode):
     assert title['text'] == 'Knowledge'
     # #3085: the graph is first; the entries have an address of their own, since the rail's opens the graph.
     assert [(link['text'], link['href']) for link in nav['children']] == [
-        ('Graph', '#view=graph'), ('Entries', '#c=knowledge&view=entries')]
+        ('Knowledge graph', '#view=graph'), ('Tag pages', '#c=knowledge&view=entries')]
     assert [link['text'] for link in nav['children'] if link.get('aria-current') == 'page'] == [
-        'Entries' if mode == 'entries' else 'Graph']
+        'Tag pages' if mode == 'entries' else 'Knowledge graph']
 
 
 # ---------- opening is instant: the last page from disk, rebuilt behind it (owner, 2026-11-09) ----------

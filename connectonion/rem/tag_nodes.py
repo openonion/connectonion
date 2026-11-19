@@ -1,4 +1,12 @@
-"""`co rem tag`'s second step (#3140): each tag's page, written by the cheap model from the pages carrying it.
+"""Tag pages (#3140): every tag links to a page; a tag no page is named for gets a tag page, by investigate.
+
+The knowledge graph has one kind of point, the page (docs/cli/rem-naming.md). A tag
+names a person, organisation or project page when one is named for it (by title,
+alias or file name): then the tag is a link to that page and nothing is written.
+A tag no page is named for (a role, a theme) and shared by two or more pages gets
+a tag page (标签页), `knowledge/<tag>.md`: `co rem investigate tag "AI Agent"` (or
+`co rem investigate tags` for every tag page that is due) has the cheap model read
+the pages carrying it and write the page when missing, append when it exists.
 
 A tag is a knowledge page. Every page carrying `kiln-pilot` is read (its head and
 the lines that name the tag), and the model writes `knowledge/kiln-pilot.md`:
@@ -21,17 +29,75 @@ from pathlib import Path
 from . import tags
 from .files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 
-MIN_MEMBERS = 2          # one page's tag is that page; a node starts at two
+MIN_MEMBERS = 2          # default for limits.topic_min_pages: a tag on one page stays a plain link
+
+
+def min_pages(root: Path) -> int:
+    """How many pages must share an unresolved tag before it gets a tag page (limits.topic_min_pages)."""
+    from .config import read_config
+    return int(read_config(root)["limits"].get("topic_min_pages", MIN_MEMBERS))
 MAX_MEMBERS = 40         # the most-cited members are read; the rest are listed
 HEAD = 1200              # characters of each member page's head
 TAG_LINES = 6            # plus up to this many of its lines naming the tag
 LEDGER = "tag-nodes.json"
+TURN_BASE = 70_000
 SOURCE_DEF = re.compile(r"(?m)^- \[(W?\d+)\][ \t]+(.+)$")
 
 
 def _title(text: str, record: str) -> str:
     first = text.partition("\n")[0]
     return first[2:].strip() if first.startswith("# ") else Path(record).stem
+
+
+PAGE_KINDS = ("orgs", "projects", "people")   # the order a name shared by two kinds resolves in
+
+
+def _names_of(text: str, record: str) -> set[str]:
+    stem = Path(record).stem
+    names = {_title(text, record), stem, re.sub(r"-[0-9a-f]{10}$", "", stem)}
+    for line in re.findall(r"(?m)^- Also known as:[ \t]*(.+)$", text):
+        names.update(part for part in re.split(r"[,;，；]", re.sub(r"\[(W?\d+)\]", "", line)))
+    return {tags.normalise(name) for name in names if tags.normalise(name)}
+
+
+def pages_for_tags(root: Path) -> dict[str, str]:
+    """{tag: the person, organisation or project page named for it}, by title, alias or file name."""
+    book, index = Notebook(root), {}
+    for category in PAGE_KINDS:
+        for record in book.list(category):
+            for name in _names_of(book.read(record), record):
+                index.setdefault(name, record)
+    found = {}
+    for slug, entry in tags.vocabulary(root).items():
+        for name in (slug, entry.get("label", ""), *entry.get("aliases", [])):
+            record = index.get(tags.normalise(name)) if name else None
+            if record:
+                found[slug] = record
+                break
+    return found
+
+
+def topic_slug(root: Path, target: str) -> str:
+    """The tag `co rem investigate TARGET` means when TARGET is a topic: a tag name or alias no person,
+    organisation or project page is named for, `topics/<slug>`, or the tag page's path. '' otherwise."""
+    from .files import Notebook as _Notebook
+    value = target.strip()
+    if value.startswith("topics/"):
+        value = value[len("topics/"):]
+    if value.startswith("knowledge/") and value.endswith(".md"):
+        value = Path(value).stem
+    vocabulary, found = tags.vocabulary(root), members(root)
+    slug = tags.resolve(vocabulary, value) or (tags.normalise(value) if tags.normalise(value) in found else None)
+    if not slug or slug in pages_for_tags(root):
+        return ""
+    if target.startswith("knowledge/") and node_record(root, slug) != target:
+        return ""
+    return slug if slug in found or _Notebook(root).exists(node_record(root, slug)) else ""
+
+
+def due(root: Path) -> list[str]:
+    """Topics due for investigation: shared by enough pages, unwritten or with new or changed pages."""
+    return candidates(root)
 
 
 def node_record(root: Path, slug: str) -> str:
@@ -70,10 +136,11 @@ def _digest(root: Path, records: list[str]) -> str:
 
 
 def candidates(root: Path) -> list[str]:
-    """Tags of two or more pages whose node is missing or older than its members, the largest first."""
-    ledger, found = read_json(state_path(root, LEDGER), {}), members(root)
+    """Tags no page is named for, carried by two or more pages, whose tag page is missing or older
+    than its members, the largest first."""
+    ledger, found, named = read_json(state_path(root, LEDGER), {}), members(root), pages_for_tags(root)
     waiting = [(-len(records), slug) for slug, records in found.items()
-               if len(records) >= MIN_MEMBERS and ledger.get(slug) != _digest(root, records)]
+               if slug not in named and len(records) >= min_pages(root) and ledger.get(slug) != _digest(root, records)]
     return [slug for _, slug in sorted(waiting)]
 
 
@@ -183,8 +250,8 @@ def _keep_lines(before: str, after: str) -> str:
 
 
 def _prose(text: str) -> str:
-    """The page without what code owns: the Tags line, the member list and the Sources."""
-    text = tags.without_tags(text)
+    """The page without what code owns: the Tags line, the member list, the stamp and the Sources."""
+    text = re.sub(r"(?m)^Investigation:[^\n]*\n?", "", tags.without_tags(text))
     return re.split(r"(?m)^## (?:Pages|Sources)[ \t]*$", text)[0].rstrip() + "\n"
 
 
@@ -208,9 +275,12 @@ def _page(root: Path, task: dict, prose: str) -> str:
     book = Notebook(root)
     page = tags.with_tags(prose, [{"tag": task["slug"], "citation": ""}])
     links = [f"- [{_title(book.read(r), r)}](../{r})" for r in task["records"]]
+    from .service import now
+    stamp = f"Investigation: investigated {now().date().isoformat()} (tag page, from {len(task['records'])} pages)"
     used = sorted({n for n in re.findall(r"\[(W?\d+)\](?!\()", prose)}, key=lambda n: int(n.lstrip("W")))
     sources = [f"- [{n}] {task['sources'][n]}" for n in used if n in task["sources"]]
-    return page.rstrip("\n") + "\n\n## Pages\n" + "\n".join(links) + "\n\n## Sources\n" + "\n".join(sources) + "\n"
+    return (page.rstrip("\n") + "\n\n## Pages\n" + "\n".join(links) + "\n\n" + stamp + "\n\n## Sources\n"
+            + "\n".join(sources) + "\n")
 
 
 def commit(root: Path, task: dict, prose: str) -> list[str]:
@@ -222,7 +292,9 @@ def commit(root: Path, task: dict, prose: str) -> list[str]:
     page = _page(root, task, prose)
     if len(page) > PAGE_REFUSED:
         raise RemError(f"The tag page is {len(page):,} characters, over the {PAGE_REFUSED:,} limit; keep it shorter")
+    from . import page_versions
     changed = [task["record"]] if book.write(task["record"], page) is not False else []
+    page_versions.keep_previous(root, task["record"], task["before"], page)  # Undo, as for any investigated page
     ledger[task["slug"]] = task["digest"]
     write_json(state_path(root, LEDGER), ledger)
     return changed
@@ -233,29 +305,38 @@ def estimate(root: Path, slug: str) -> int:
     with tempfile.TemporaryDirectory() as temporary:
         task = prepare(root, slug, directory=Path(temporary))
         read = sum(len((Path(temporary) / name).read_text()) for name in ("members.md", "sources.md", "node-before.md"))
-    return (read + len(task["prompt"]) + 6000) // 4
+    # A Codex turn reads about 70,000 tokens of its own before the task's files (measured 2026-11-19: three
+    # tag pages on Luna read 79–81k each).
+    return TURN_BASE + (read + len(task["prompt"]) + 6000) // 4
 
 
 def dry_run(root: Path) -> dict:
-    found, waiting = members(root), candidates(root)
+    found, waiting, named = members(root), candidates(root), pages_for_tags(root)
+    used, least = [slug for slug in found if slug in named], min_pages(root)
     return {"tags": len(found), "members": {slug: len(records) for slug, records in found.items()},
-            "nodes_possible": sum(1 for records in found.values() if len(records) >= MIN_MEMBERS),
+            "tags_linked_to_pages": len(used),
+            "tag_pages_possible": sum(1 for slug, records in found.items() if slug not in named and len(records) >= least),
+            "single_page_tags": sum(1 for slug, records in found.items() if slug not in named and len(records) < least),
             "waiting": len(waiting), "orphans": len(orphans(root)),
             "estimated_input_tokens": sum(estimate(root, slug) for slug in waiting)}
 
 
 def write_nodes(root: Path, *, limit: int = 50, only: str = "", run=None, ready=None, say=None) -> dict:
-    """Write up to `limit` waiting nodes (or only one tag's), one cheap-model turn each."""
+    """Write up to `limit` waiting tag pages (or only one tag's), one cheap-model turn each."""
     from . import config as rem_config, runner, service
     from .inquiry import stage_config
     settings = stage_config(root, rem_config.read_config(root), "tag-node")
     problem, fix = (ready or runner.ready)(settings)
     if problem:
         raise RemError(f"{problem}; run `{fix}` and try again")
+    named = pages_for_tags(root)
     slugs = [tags.normalise(only)] if only else candidates(root)[:limit]
-    record = {"id": "run_" + uuid.uuid4().hex, "phase": "tag", "started_at": service.now().isoformat(),
-              "outcome": "running", "items": len(slugs), "written": [], "failed": 0, "errors": [], "usage": {},
-              "model": settings["model"]}
+    # A tag a page is named for is a link to that page: there is nothing to write (#3140).
+    linked = {slug: named[slug] for slug in slugs if slug in named}
+    slugs = [slug for slug in slugs if slug not in linked]
+    record = {"id": "run_" + uuid.uuid4().hex, "phase": "investigate", "stage": "tag-page", "started_at": service.now().isoformat(),
+              "outcome": "running", "items": len(slugs), "written": [], "linked": linked, "failed": 0, "errors": [],
+              "usage": {}, "model": settings["model"], **({"record": node_record(root, slugs[0])} if len(slugs) == 1 else {})}
     started, path = time.monotonic(), state_path(root, f"runs/{record['id']}.json")
     tasks_dir = state_path(root, "tasks")
     tasks_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -291,5 +372,22 @@ def _add(total: dict, usage) -> dict:
 
 
 def summary(report: dict) -> str:
-    return (f"Wrote {len(report['written'])} of {report['items']} tag pages; {report['failed']} failed; "
+    return (f"Investigated {len(report['written'])} of {report['items']} tag pages; {report['failed']} failed; "
             f"{report['waiting']} still waiting")
+
+
+def states(root: Path, records: list[str]) -> dict[str, dict]:
+    """What the Investigate button says on each tag page (page_runs.states' shape for topics)."""
+    from .investigate import last_investigated
+    book, waiting, found = Notebook(root), set(candidates(root)), members(root)
+    result = {}
+    for record in records:
+        slug = topic_slug(root, record)
+        if not slug or not book.exists(record):
+            continue
+        last = last_investigated(book.read(record))
+        result[record] = {"last": last.isoformat() if last else None, "new_mails": 0, "new_sessions": 0,
+                          "new_pages": len(found.get(slug, [])) if slug in waiting else 0, "leads": 0,
+                          "label": "investigate" if not last else "update" if slug in waiting else "current",
+                          "cost": {"quick": None, "full": None}}
+    return result

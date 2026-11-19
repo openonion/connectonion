@@ -184,7 +184,7 @@ def test_knowledge_holds_its_entries_and_the_graph_that_all_records_drew(browser
 def test_what_only_all_records_reached_is_reachable_from_knowledge_or_search(browser, built):
     page = open_page(browser, built)
     labels = page.evaluate("paletteItems().map(item => item.label)", isolated_context=False)
-    assert "Open Graph" in labels and "Open Knowledge" in labels and "Open All records" not in labels
+    assert "Open Knowledge graph" in labels and "Open Knowledge" in labels and "Open All records" not in labels
     # The All records list was every listed record; each one still sits in a rail place (or under 更多 in a low window).
     unplaced = page.evaluate("""() => {
       const places = new Set([...document.querySelectorAll('#nav a[href^="#c="], #rail-more a[href^="#c="]')].map(a => a.getAttribute('href').slice(3)));

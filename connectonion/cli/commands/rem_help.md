@@ -25,7 +25,7 @@ Abstract — learn from pages
 Translate — put pages in your language
   translate     Translate every page not yet in your language, or one page.
 Tag — organise pages by tag
-  tag           Tag every page, then write each tag's page from the pages that carry it.
+  tag           Tag every page that has no tag yet; a tag that names a person, organisation or project links to its page.
 Run a whole day now
   catchup       Do a whole night's work now, all five stages; several nights with --nights.
 Read
@@ -233,7 +233,17 @@ Back:     co rem --help
 ## co rem investigate
 
 ```
+Words:
+  page             One thing REM knows: a person, organisation, project, tag, skill or decision.
+  tag (= topic)    A word that links pages. "co rem tag" puts tags on pages; "investigate tag X"
+                   reads every page carrying X and writes X's tag page.
+  knowledge graph  Every page and the links between them. Each tag page is a page in it;
+                   tags are how pages connect.
+  entity           Not used in REM. It means any page in the knowledge graph.
+
 co rem investigate — use a model to fill notebook pages from mail, sessions and files.
+
+Name the kind, then the page: co rem investigate person "Jalaj Jain". A plural kind (people, tags) means every page of that kind that is due.
 
 Use only the supplied sources. Before replacing a page, check that citations
 point to those sources and quotes match them word for word. For people,
@@ -255,40 +265,55 @@ Write or append (people, orgs and projects; #3105):
   one goes back for repair; what the repair still drops is put back as it was.
   Your own page (investigate me) is still written whole from your recent work.
 
+Tag pages (#3140):
+  A tag no person, organisation or project page is named for, shared by two or
+  more pages (limits.topic_min_pages), gets a tag page. Its material is the
+  pages that carry the tag: investigate tag NAME writes knowledge/<tag>.md when
+  missing and appends when it exists, every line cited to those pages' sources,
+  on the cheap model. A tag on one page stays a plain link. topic and topics are
+  the same words as tag and tags.
+
 Usage:
-  co rem investigate                          Per category: completed and total pages, pages due
-                                               for a refresh and the next three to write. No model.
-  co rem investigate PAGE                     Write or append one page from material in the notebook:
+  co rem investigate                          Per kind: completed and total pages, pages due for a
+                                               refresh and the next three to write. No model.
+  co rem investigate KIND NAME                Write or append one page from material in the notebook:
                                                mail, sessions, files, older threads, attachments.
-  co rem investigate PAGE --enrich            Then follow its leads: links, attachments, the web (the enrich
+  co rem investigate KIND NAME --enrich       Then follow its leads: links, attachments, the web (the enrich
                                                step). The Investigate button in the reader runs this.
-  co rem investigate PAGE --quick             The same as no option: write or append only.
-  co rem investigate PAGE --rewrite           Rewrite the whole page from its material as a draft; the page
+  co rem investigate KIND NAME --quick        The same as no option: write or append only.
+  co rem investigate KIND NAME --rewrite      Rewrite the whole page from its material as a draft; the page
                                                itself does not change until you accept the draft.
-  co rem investigate PAGE --accept-rewrite    Replace the page with its waiting draft (refused if the page
+  co rem investigate KIND NAME --accept-rewrite
+                                              Replace the page with its waiting draft (refused if the page
                                                changed after the draft was made).
-  co rem investigate PAGE --discard-rewrite   Delete the waiting draft.
-  co rem investigate PAGE --undo              Put back the page as it was before its last investigation,
+  co rem investigate KIND NAME --discard-rewrite
+                                              Delete the waiting draft.
+  co rem investigate KIND NAME --undo         Put back the page as it was before its last investigation,
                                                if nothing has changed it since.
-  co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
-  co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
-                                               most useful first, using limits.workers (default 16).
+  co rem investigate KIND NAME --retry-refused
+                                              Retry a refused page on the same sources.
+  co rem investigate KINDS [--limit N]        Every due page of one kind, most useful first, using
+                                               limits.workers (default 16). --list shows the order.
   co rem investigate me                       Investigate your own page from your recent work.
   co rem investigate me --quick               Bounded first pass; says what it did not cover.
                                                init runs this for you in a terminal.
   co rem investigate all --budget 10          The whole queue, highest first, until 10 points
                                                of your Codex week are spent.
 
-  PAGE is a path from co rem list or co rem search, or a short page stem,
-  title or email. CATEGORY is people, projects, orgs, skills, or all.
-  all combines the four categories in priority order.
+  KIND is one of person, org, project, tag, skill, decision, principle. NAME is
+  the page's title or an alias, ignoring case and spaces; when two pages share
+  it, the command lists them with their full names and does nothing. KINDS is
+  people, orgs, projects, skills or tags; all is every kind in priority order.
 
 Examples:
   co rem investigate
-  co rem investigate corin-marsh-c6a901ffd8
+  co rem investigate person "Jalaj Jain"
+  co rem investigate org UNSW --enrich
+  co rem investigate project connectonion
+  co rem investigate tag "AI Agent"
   co rem investigate people --limit 3
   co rem investigate people --recent-days 7 --list
-  co rem investigate projects --list          (show the order, run nothing)
+  co rem investigate tags --list              (the tag pages that are due, run nothing)
   co rem investigate all --list               (the whole queue's order, run nothing)
 
 What each kind reads:
@@ -370,7 +395,7 @@ Back:     co rem --help
 ```
 co rem enrich — follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
 
-Moved: `co rem enrich PAGE` runs `co rem investigate PAGE --enrich`, which first
+Moved: `co rem enrich PAGE` runs `co rem investigate KIND NAME --enrich`, which first
 appends what is new and then runs this step. It says so in one line.
 
 Read one existing people, projects or orgs page, its cited originals and the
@@ -384,7 +409,7 @@ line a draft dropped.
 
 Usage:    co rem enrich PAGE
 Example:  co rem enrich people/avery-lin.md
-          (the same as co rem investigate people/avery-lin.md --enrich)
+          (the same as co rem investigate person "Avery Lin" --enrich)
 
 Inputs:   PAGE is a path from co rem list or co rem search, or a short stem, title
           or email. Other notebook pages provide context.
@@ -562,33 +587,44 @@ Back:     co rem --help
 ## co rem tag
 
 ```
-Tag every page, then write each tag's page from the pages that carry it.
-A tag page (knowledge/<tag>.md) says what the tag is, how its pages connect and
-when things happened, every line cited to those pages' sources. Reads pages,
-never mail or sessions. Only tags whose pages changed are written again. Together,
-the tags make the knowledge graph.
+Words:
+  page             One thing REM knows: a person, organisation, project, tag, skill or decision.
+  tag (= topic)    A word that links pages. "co rem tag" puts tags on pages; "investigate tag X"
+                   reads every page carrying X and writes X's tag page.
+  knowledge graph  Every page and the links between them. Each tag page is a page in it;
+                   tags are how pages connect.
+  entity           Not used in REM. It means any page in the knowledge graph.
 
-Usage:    co rem tag [NAME] [--pages N] [--dry-run]
-Example:  co rem tag --dry-run
-          co rem tag
-          co rem tag 3900
-Options:  NAME        Write (or refresh) the page for this one tag only.
+Tag every page that has no tag yet; a tag that names a person, organisation or project links to its page.
+Name the kind, then the page, to tag one: co rem tag person "Jalaj Jain". A page
+waits when it was never tagged or its text changed since. A tag that names a
+page (by its title, an alias or its file name) is a link to that page. A tag no
+page is named for, shared by two or more pages, gets a tag page: co rem
+investigate tag NAME writes it. Reads pages, never mail or sessions.
+
+Usage:    co rem tag [KIND NAME] [--pages N] [--dry-run]
+Example:  co rem tag
+          co rem tag person "Jalaj Jain"
+          co rem tag --dry-run
+Options:  KIND NAME   Tag this one page, waiting or not. KIND is person, org, project,
+                      skill, decision or principle; NAME is its title or an alias.
           --pages N   Tag at most N pages that have no tag (default 200).
-          --dry-run   Count only: pages without a tag, tag pages to write and the
-                      rough input tokens. No model, no writes.
-Cost:     One level-1 model turn per 20 pages tagged, and one per tag page written
-          (the cheap model; see co rem config).
-Output:   Tagged N pages · M tag pages written · K pages still untagged
-          --json: tagged, tag_pages_written, untagged, next (and the run ids).
-Effects:  Writes each page's "- Tags:" line with the citation that supports each
-          tag, and adds new tags to .state/tags.json. Writes knowledge/<tag>.md (or
-          the knowledge page already named for the tag) for every tag two or more
-          pages carry, and records its pages in .state/tag-nodes.json. A tag page
-          keeps every cited line it had; a reply without citations, or citing a
-          source it was not given, is refused and the tag waits. Every co rem
-          catchup round does both, up to limits.tags_per_round pages and
-          limits.tag_nodes_per_round tag pages.
-Next:     co rem open
+          --dry-run   Count, with no model: pages waiting for tags, tags that link to a
+                      page, tags that get a tag page (and how many are due), and tags
+                      on one page that stay links.
+Cost:     One level-1 model turn per 20 pages on the notebook's runner.
+Output:   Tagged N of M pages (K changed); R tags refused; F pages failed; W still
+          waiting. Then: L tags link to a person, organisation or project page; T
+          tag pages are due. --json returns the run record with linked and
+          tag_pages_due.
+Effects:  Writes only each page's "- Tags:" line, with the citation of the line
+          that supports each tag; adds new tags to .state/tags.json (label, kind,
+          aliases) and marks the pages tagged in .state/tag-pages.json. A tag the
+          page does not support is dropped, never written. A failed turn leaves its
+          pages waiting. Every co rem catchup round tags too, up to
+          limits.tags_per_round pages.
+Next:     co rem investigate tags   (when tag pages are due)
+          co rem open
 Back:     co rem --help
 ```
 
@@ -621,7 +657,7 @@ Inputs:   PAGE comes from list, search, or the Next line of investigate.
           people, projects, orgs and skills, and project folder names, ignoring case.
           Person aliases and email addresses still work.
           A NAME matching several pages lists their paths and shows none.
-Next:     co rem investigate PAGE   (if it still says Unknown)
+Next:     co rem investigate KIND NAME   (if it still says Unknown)
 Back:     co rem --help
 ```
 
@@ -1171,7 +1207,7 @@ Example:  co rem stub person "Mei Lin" --email mei@harbourlabs.example
           --domain  org: a mail domain it owns (repeatable)
           --person  org: a person page that belongs to it (repeatable)
           --path    project: a folder it lives in (repeatable)
-Next:     co rem investigate PAGE
+Next:     co rem investigate KIND NAME
 Back:     co rem advanced --help
 ```
 
@@ -1212,7 +1248,7 @@ Example:  co rem reflect people/mei-lin.md "Mei now leads partnerships" \
           --source      a source id that supports it (repeatable)
           --supersedes  an earlier record of this page that it replaces (repeatable)
 Effects:  Writes one record under .state/reflections/. The page itself is unchanged.
-Next:     co rem investigate PAGE
+Next:     co rem investigate KIND NAME
 Back:     co rem advanced --help
 ```
 

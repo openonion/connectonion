@@ -153,7 +153,7 @@ def default_config() -> dict:
                        "summaries_per_round": 40, "translations_per_round": 400,
                        # Tagging is the cheapest stage: 20 pages a level-1 turn, checked
                        # by code (#3093). A round's stated end, like translation's.
-                       "tags_per_round": 400, "tag_nodes_per_round": 6,
+                       "tags_per_round": 400, "tag_nodes_per_round": 6, "topic_min_pages": 2,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no

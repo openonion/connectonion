@@ -250,7 +250,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     if not today:
         # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
         from .page_runs import states
-        found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")])
+        found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")
+                                     or (r["category"] == "knowledge" and "- Tags:" in r["text"])])
         for record in records:
             if record["path"] in found_states:
                 record["investigation"] = found_states[record["path"]]
@@ -293,7 +294,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                                'doubtful': [d for d in candidate.get('doubtful', []) if d['record'] in record_paths],
                                'mentions': topic_mentions(candidate, record_paths, owner)}
     from .tags import page_tags, vocabulary as tag_vocabulary
+    from .tag_nodes import node_record, pages_for_tags
     tag_entries = tag_vocabulary(root, records)
+    # A tag is a link to a page (#3140): the person, organisation or project named for it, else its tag page.
+    named, present = pages_for_tags(root), {r['path'] for r in records}
+    for slug, entry in tag_entries.items():
+        topic = node_record(root, slug) if slug not in named else ''
+        entry['page'] = named.get(slug) or (topic if topic in present else '')
     for record in records:
         record['tags'] = page_tags(record['text'])
     graph = {} if today else graph_snapshot([r for r in records if r['path'] not in unnamed], links,

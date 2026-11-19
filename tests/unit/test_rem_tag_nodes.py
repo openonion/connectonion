@@ -157,11 +157,12 @@ def test_write_nodes_runs_one_turn_per_waiting_tag_and_records_the_run(book):
     finally:
         tag_nodes.prepare = real
     assert report["written"] == ["knowledge/kiln-pilot.md"] and report["failed"] == 0
-    assert read_json(state_path(book.root, f"runs/{report['id']}.json"), {})["phase"] == "tag"
+    assert read_json(state_path(book.root, f"runs/{report['id']}.json"), {})["phase"] == "investigate"  # a tag page is investigated (#3140)
 
 
-def test_co_rem_tag_dry_run_counts_without_a_model_and_one_tag_writes_only_its_page(book, monkeypatch):
-    """#3140's CLI (owner, 2026-11-19): one verb. `co rem tag` tags, then writes tag pages; NAME writes one; --dry-run counts."""
+def test_tag_dry_run_counts_and_investigate_tag_writes_only_that_tags_page(book, monkeypatch):
+    """#3140's final CLI (owner, 2026-11-19): `co rem tag --dry-run` counts with no model; `co rem investigate tag
+    NAME` (or its alias topic) writes that tag's page only, with no tagging turn."""
     import json
     from typer.testing import CliRunner
     from connectonion.cli.main import app
@@ -169,22 +170,69 @@ def test_co_rem_tag_dry_run_counts_without_a_model_and_one_tag_writes_only_its_p
     monkeypatch.setattr(runner, "run_task", lambda *a, **k: (_ for _ in ()).throw(AssertionError("dry run called a model")))
     cli = CliRunner()
     plan = json.loads(cli.invoke(app, ["rem", "--root", str(book.root), "--json", "tag", "--dry-run"]).output)["data"]
-    assert plan["waiting"] == 1 and plan["untagged_waiting"] == len(tag_stage.candidates(book.root))
+    assert plan["waiting"] == 1 and plan["tags_linked_to_pages"] == 0 and plan["untagged_waiting"] == len(tag_stage.candidates(book.root))
     calls = []
 
     def run(directory, prompt, settings, stage):
         calls.append(stage)
-        task = run.task
-        Path(task["candidate"]).write_text(reply(task, NODE)["result"])
+        Path(run.task["candidate"]).write_text(reply(run.task, NODE)["result"])
         return {"result": "", "usage": {}}
     real = tag_nodes.prepare
     monkeypatch.setattr(tag_nodes, "prepare", lambda *a, **k: setattr(run, "task", real(*a, **k)) or run.task)
     monkeypatch.setattr(runner, "run_task", run)
     monkeypatch.setattr(runner, "ready", lambda settings: ("", ""))
-    result = cli.invoke(app, ["rem", "--root", str(book.root), "--json", "tag", "kiln-pilot"])
-    data = json.loads(result.output)["data"]
-    assert calls == ["tag-node"]  # NAME writes that tag's page only: no tagging turn
-    assert {"tagged", "tag_pages_written", "untagged", "next"} <= set(data)
-    assert data["tag_pages_written"] == 1 and data["untagged"] == 1 and data["next"] == "co rem open"
-    text = cli.invoke(app, ["rem", "--root", str(book.root), "tag", "kiln-pilot"]).output
-    assert "pages · " in text and "tag pages written" in text and "node" not in text and "graph" not in text
+    data = json.loads(cli.invoke(app, ["rem", "--root", str(book.root), "--json", "investigate", "topic", "Kiln pilot"]).output)["data"]
+    assert calls == ["tag-node"] and data["page"] == "knowledge/kiln-pilot.md" and data["written"] == ["knowledge/kiln-pilot.md"]
+    assert book.read("knowledge/kiln-pilot.md").startswith("# Kiln pilot")
+    text = cli.invoke(app, ["rem", "--root", str(book.root), "tag", "--dry-run"]).output
+    assert "tags get a tag page" in text and "node" not in text and "graph" not in text
+
+
+def test_a_tag_named_for_a_page_links_to_it_and_needs_no_topic_page(book):
+    """#3140: one kind of point, the page. A tag that names an organisation (by title, alias or file name) is a link
+    to that page; only a tag no page is named for gets a topic page."""
+    write_json(state_path(book.root, "tags.json"), {"tags": {
+        "kiln-pilot": {"label": "Kiln pilot", "kind": "project", "aliases": []},
+        "harbour": {"label": "Harbour Labs", "kind": "organisation", "aliases": []}}})
+    book.write("people/lena-brandt.md", PILOT.replace("- Tags: kiln-pilot [1]", "- Tags: kiln-pilot [1], harbour [1]"))
+    book.write("people/theo-park.md", LONE.replace("harbour-rowing", "harbour"))
+    assert tag_nodes.pages_for_tags(book.root)["harbour"] == "orgs/harbour-labs.md"   # by the page's title
+    assert "harbour" not in tag_nodes.candidates(book.root)
+    plan = tag_nodes.dry_run(book.root)
+    assert plan["tags_linked_to_pages"] >= 1 and plan["tag_pages_possible"] == 1
+    report = tag_nodes.write_nodes(book.root, only="harbour", ready=lambda settings: ("", ""))
+    assert report["linked"] == {"harbour": "orgs/harbour-labs.md"} and report["written"] == []
+
+
+def test_the_owners_example_three_tags_link_to_their_pages_and_one_gets_a_topic_page(tmp_path):
+    """Owner, 2026-11-19: a person tagged UNSW, OpenOnion, ConnectOnion and "AI Agent" links the first three to their
+    existing organisation and project pages; "AI Agent", which no page is named for, gets one topic page written
+    from every page carrying it. A tag on a single page stays a plain link."""
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.write("orgs/unsw-1a2b3c4d5e.md", "# UNSW\n\n## Facts\n- Kind: university\n\n## Sources\n- [1] gmail:fx:1\n")
+    book.write("orgs/openonion.md", "# OpenOnion\n\n## Facts\n- Kind: company\n\n## Sources\n- [1] gmail:fx:2\n")
+    book.write("projects/connectonion.md", "# ConnectOnion\n\n## What it is\nThe agent framework [1].\n\n## Sources\n- [1] codex:fx:3\n")
+    tagged = "- Tags: unsw [1], openonion [1], connectonion [1], ai-agent [1]"
+    book.write("people/rin-sato.md", f"# Rin Sato\n\n## Facts\n- Role: Student [1]\n{tagged}\n\n## Who they are\nRin builds agents [1].\n\n## Sources\n- [1] gmail:fx:4\n")
+    book.write("people/kai-moss.md", "# Kai Moss\n\n## Facts\n- Tags: ai-agent [1], kiln [1]\n\n## Who they are\nKai studies agent memory [1].\n\n## Sources\n- [1] gmail:fx:5\n")
+    write_json(state_path(tmp_path, "tags.json"), {"tags": {
+        "unsw": {"label": "UNSW", "kind": "organisation", "aliases": []},
+        "openonion": {"label": "OpenOnion", "kind": "organisation", "aliases": []},
+        "connectonion": {"label": "ConnectOnion", "kind": "project", "aliases": []},
+        "ai-agent": {"label": "AI Agent", "kind": "topic", "aliases": []},
+        "kiln": {"label": "Kiln", "kind": "topic", "aliases": []}}})
+    named = tag_nodes.pages_for_tags(tmp_path)
+    assert named["unsw"] == "orgs/unsw-1a2b3c4d5e.md"           # by title, through a hashed file name
+    assert named["openonion"] == "orgs/openonion.md" and named["connectonion"] == "projects/connectonion.md"
+    assert "ai-agent" not in named and tag_nodes.candidates(tmp_path) == ["ai-agent"]
+    plan = tag_nodes.dry_run(tmp_path)
+    assert plan["tags_linked_to_pages"] == 3 and plan["tag_pages_possible"] == 1 and plan["single_page_tags"] == 1
+    task = tag_nodes.prepare(tmp_path, "ai-agent", directory=tmp_path / "work")
+    handed = (tmp_path / "work" / "members.md").read_text()
+    assert "Rin builds agents" in handed and "Kai studies agent memory" in handed
+    n = task["numbers"][0]
+    Path(task["candidate"]).write_text(f"# AI Agent\n\nAgent work that Rin and Kai share [{n}].\n")
+    assert tag_nodes.commit(tmp_path, task, tag_nodes.check(tmp_path, task, {})) == ["knowledge/ai-agent.md"]
+    assert "[Kai Moss](../people/kai-moss.md)" in book.read("knowledge/ai-agent.md")
+    assert not book.exists("knowledge/unsw.md") and not book.exists("knowledge/kiln.md")

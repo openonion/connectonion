@@ -27,3 +27,11 @@ def test_the_renamed_strings_are_the_knowledge_graph_words():
     assert found["Knowledge graph"] == "知识图谱"
     assert found["In the knowledge graph"] == "知识图谱（相关部分）"
     assert found["Open in the knowledge graph →"] == "在知识图谱中打开 →"
+
+
+def test_no_ui_string_names_the_data_structure():
+    """One kind of point, the page, and a tag is a link (#3140): never 节点/实体 or node/entity in what a person reads."""
+    # A legal or signing entity is a contract word, not the graph's.
+    bad = [(en, zh) for en, zh in _pairs() if re.search(r"节点|(?<!法律)实体", zh)
+           or re.search(r"\b(?:node|tag node)\b|(?<!legal )(?<!signing )\bentity\b", en, re.I)]
+    assert not bad, bad

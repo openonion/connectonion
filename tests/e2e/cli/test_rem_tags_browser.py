@@ -20,7 +20,8 @@ SHOTS = Path(os.environ.get("REM_PR_SHOTS", "/tmp/rem-tags-shots"))
 TAGGED = {"people/mara-ostrowski.md": [("pilot", "1"), ("client", "")],
           "people/tomas-reyes.md": [("pilot", "")],
           "orgs/fernhill-labs.md": [("pilot", "")],
-          "projects/harbour.md": [("pilot", "")]}
+          "projects/harbour.md": [("pilot", "")],
+          "skills/catalog/weekly-brief.md": [("pilot", ""), ("harbour", "")]}
 DECISION = "# Keep one vocabulary for every kind\n\nTags come from one list [1].\n\n## Sources\n- [1] codex:fixture:1 — 2026-09-03\n"
 
 
@@ -33,7 +34,8 @@ def _notebook(root, now):
     for path, rows in TAGGED.items():
         book.write(path, tags.with_tags(book.read(path), [{"tag": slug, "citation": cite} for slug, cite in rows]))
     book.write("decisions/one-vocabulary.md", tags.with_tags(DECISION, [{"tag": "pilot", "citation": "1"}]))
-    write_json(state_path(root, "tags.json"), {"tags": {"pilot": {"label": "Fernhill pilot", "kind": "project", "aliases": ["fernhill-pilot"]}}})
+    write_json(state_path(root, "tags.json"), {"tags": {"pilot": {"label": "Fernhill pilot", "kind": "project", "aliases": ["fernhill-pilot"]},
+                                                        "harbour": {"label": "Harbour", "kind": "project", "aliases": []}}})
     return root
 
 
@@ -86,9 +88,9 @@ def test_a_tag_has_its_page_and_search_finds_it_by_slug_label_or_alias(reader, w
     open_page, _ = reader
     page = open_page("q=" + "tag%3Afernhill-pilot", width)  # an alias resolves to its tag
     assert page.locator("#main h1").inner_text() == "Fernhill pilot"
-    assert "5 页带这个标签" in page.locator("#main .lede").inner_text()
+    assert "6 页带这个标签" in page.locator("#main .lede").inner_text()
     groups = page.locator("#main .tag-group")
-    assert groups.count() == 4  # people, organisations, projects, decisions
+    assert groups.count() == 5  # people, organisations, projects, skills, decisions
     assert "Keep one vocabulary for every kind" in page.locator("#main").inner_text()
     _shot(page, "page", width)
     # A plain word that is a tag offers its page above the text matches.
@@ -131,15 +133,19 @@ def test_a_list_filters_by_tag_and_a_second_tap_clears_it(reader, width):
     page.wait_for_function("() => !location.hash.includes('tag=')")
 
 
-def test_each_tag_is_a_node_in_the_graph_linked_to_its_pages(reader):
+def test_the_knowledge_graph_draws_only_pages_and_a_tag_links_to_its_page(reader):
+    """#3140: one kind of point, the page. No tag points, no hexagons, no Tags tab; a tag chip opens its page."""
     open_page, _ = reader
     page = open_page("view=graph", 1440, "en")
-    model = page.evaluate("""() => { const m = graphModel(); const tag = m.byId.get('tag:pilot');
-      return tag && { kind: tag.k, label: graphTitle(tag), links: [...m.adj.get('tag:pilot')].sort() }; }""", isolated_context=False)
-    assert model and model["kind"] == "tags" and model["label"] == "Fernhill pilot"
-    assert "people/mara-ostrowski.md" in model["links"] and "orgs/fernhill-labs.md" in model["links"]
-    page.locator(".gx-tabs [data-tab=tags], [data-tab=tags]").first.click()
+    kinds = page.evaluate("() => [...new Set(graphModel().nodes.map(n => n.k))]", isolated_context=False)
+    assert "tags" not in kinds
+    assert page.locator(".gx-tabs [data-tab=tags], [data-tab=tags]").count() == 0
     _shot(page, "graph", 1440)
+    # A tag named for a page opens that page: link 'pilot' to the organisation page and follow a chip.
+    page = open_page("r=people%2Fmara-ostrowski.md", 1440)
+    page.evaluate("() => { REM.tags.pilot.page = 'orgs/fernhill-labs.md'; render(); }", isolated_context=False)
+    chip = page.locator(".person-head a", has_text="Fernhill pilot").first
+    assert chip.get_attribute("href") == "#r=orgs%2Ffernhill-labs.md"
 
 
 def test_the_open_items_filter_by_a_page_tag_and_close_all_of_them(reader):
@@ -189,3 +195,54 @@ def test_the_whole_network_is_called_the_knowledge_graph(reader):
     assert "知识图谱" in page.locator(".knowledge-switch").inner_text()
     page = open_page("view=graph", language="en")
     assert "Knowledge graph" in page.locator(".knowledge-switch").inner_text()
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_tag_page_has_the_investigate_button_with_why_it_is_due(reader, width):
+    """#3140: a tag page is investigated like any page. Its head carries the same control (#3105); the line under it
+    says how many pages carrying the tag are new or changed, and a click asks the host to investigate that page."""
+    open_page, calls = reader
+    page = open_page("q=tag%3Apilot", width)
+    page.evaluate("""() => {
+      REM.live = true;
+      REM.records.push({ path: 'knowledge/pilot.md', title: 'Fernhill pilot', category: 'knowledge', written: true, tags: ['pilot'],
+        text: '# Fernhill pilot\\n- Tags: pilot\\n\\nThe pilot is Fernhill\\'s three-seat trial of the notebook [1].\\n\\n## Pages\\n- [Mara](../people/mara-ostrowski.md)\\n\\nInvestigation: investigated 2026-09-01 (tag page, from 4 pages)\\n\\n## Sources\\n- [1] gmail:fixture:1\\n',
+        investigation: { label: 'update', last: '2026-09-01', new_pages: 2, new_mails: 0, new_sessions: 0, leads: 0, cost: { quick: null, full: null } } });
+      KNOWN.clear(); location.hash = '#r=knowledge%2Fpilot.md'; render();
+    }""", isolated_context=False)
+    control = page.locator("#main .gx-topic-head .inv")
+    control.wait_for()
+    assert "有 2 个带这个标签的页面是新的或改过" in control.inner_text()
+    assert control.locator(".inv-go").inner_text() == "调查"
+    _shot(page, "investigate-button", width)
+    assert page.evaluate("liveHere()", isolated_context=False)
+    control.locator(".inv-go").click()
+    for _ in range(50):
+        if any(path == "/rem/investigate" for path, _ in calls):
+            break
+        page.wait_for_timeout(100)
+    assert ("/rem/investigate", {"action": "run", "page": "knowledge/pilot.md", "mode": "full"}) in calls
+
+
+@pytest.mark.parametrize("path", ["decisions/one-vocabulary.md", "orgs/fernhill-labs.md", "projects/harbour.md",
+                                  "skills/catalog/weekly-brief.md"])
+def test_every_page_kind_shows_its_tags_under_its_title_and_a_chip_opens_the_right_page(reader, path):
+    """Owner, 2026-11-19: every page kind shows its own tags in its header, one shared row. A chip opens the page the
+    tag names (the skill's "Harbour" opens the Harbour project) or, for a tag no page is named for, the tag's page."""
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"))
+    row = page.locator("#main .page-tags").first
+    row.wait_for()
+    assert row.locator(".page-tags-label").inner_text() == "标签"
+    pilot = row.get_by_role("link", name="Fernhill pilot")
+    assert pilot.get_attribute("href") == "#q=tag%3Apilot"
+    title = page.locator("#main h1").first.bounding_box()
+    assert row.bounding_box()["y"] > title["y"]  # under the title
+    _shot(page, "header-" + path.split("/")[0], 1440)
+    if path.startswith("skills/"):
+        row.get_by_role("link", name="Harbour").click()
+        page.wait_for_function("() => location.hash === '#r=projects%2Fharbour.md'")
+        assert page.locator("#main h1").first.inner_text() == "Harbour"
+    else:
+        pilot.click()
+        page.wait_for_function("() => location.hash.startsWith('#q=tag')")

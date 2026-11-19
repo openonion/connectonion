@@ -64,7 +64,7 @@ def test_knowledge_opens_the_graph_and_search_focuses_a_knowledge_entry(page):
     page, uri = page
     page.locator('#nav a[href="#c=knowledge"]').click()  # #3085: the rail's Knowledge is the graph
     page.locator(".gx-map canvas").wait_for()
-    assert "1 knowledge entry" in page.locator(".gx-says").inner_text()  # the counts are the sentence's, each beside its shape (#3085)
+    assert "1 tag page" in page.locator(".gx-says").inner_text()  # the counts are the sentence's, each beside its shape (#3085)
     assert page.locator(".gx-panel .gx-open").count() == 0  # the whole map has no green action
     page.locator(".gx-search").fill("thermal")
     page.locator(".gx-results li").first.click()
@@ -168,7 +168,7 @@ def test_the_rail_has_no_graph_entry_and_knowledge_follows_projects(page):
     """Owner, 2026-11-09: "我之前不是说了那个 graph，为什么要又有一个新的 graph 呢？" """
     page, uri = page
     labels = [text.split("\n")[0] for text in page.locator("#nav a").all_inner_texts()]
-    assert "Knowledge graph" not in labels and "Topics" not in labels and "All" not in labels
+    assert "Knowledge graph" not in labels and "Tag pages" not in labels and "All" not in labels
     # #2996 made Knowledge the one place that holds the graph. #3091 put every place in one ordered rail:
     # what the notebook concluded starts with Knowledge, right after Projects, and Memory changes ends it.
     hrefs = page.locator("#nav > a").evaluate_all("links => links.map(a => a.getAttribute('href'))")
@@ -209,7 +209,7 @@ def test_a_knowledge_entry_keeps_the_knowledge_name_in_its_crumb_and_title(page)
     assert page.locator(".gx-crumb").inner_text() == "Knowledge"
     page.goto(uri + "#c=knowledge&view=entries")
     assert page.locator(".gx-topics h1").inner_text() == "Knowledge"
-    assert page.locator(".gx-rows li").count() == 1  # the list counts itself; no "1 knowledge entry" heading
+    assert page.locator(".gx-rows li").count() == 1  # the list counts itself; no "1 tag page" heading
     assert page.title() == "Knowledge · co rem"
 
 
