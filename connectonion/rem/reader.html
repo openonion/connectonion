@@ -3107,8 +3107,11 @@
   .sync.off::after { background: var(--pencil); }
   .lang-toggle { min-width: 36px; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); cursor: pointer; }
   .lang-toggle:hover { background: var(--well); color: var(--ink); }
-  .lang-progress { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lang-progress { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .lang-progress[hidden] { display: none; }
+  .host-lost { position: fixed; z-index: 60; left: 50%; top: 72px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
+    padding: 10px 16px; border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .host-lost .lang-act { flex: none; padding: 0; border: 0; background: none; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
   .lang-progress .lang-act { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
   @media (max-width: 640px) { .lang-progress > span:first-child { max-width: 9em; overflow: hidden; text-overflow: ellipsis; } }
   main { max-width: 1160px; margin: 0 auto; padding: 4px 40px 64px; }
@@ -8085,9 +8088,23 @@ function keepTask(entry, task) {
 function handed(task) { return !!task?.result && !["ready", "waiting"].includes(task.result); }
 function hostPost(url, body) {
   return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-    .then(async response => ({ ...await response.json().catch(() => ({})), ok: response.ok, code: response.status }))
-    .catch(() => ({ ok: false, code: 0 }));
+    .then(async response => { hostFound(); return { ...await response.json().catch(() => ({})), ok: response.ok, code: response.status }; })
+    .catch(() => { hostLost(); return { ok: false, code: 0 }; });
 }
+// A request that never reached the Host (status 0) means the Host this page came from is gone: restarted for an
+// upgrade, or the Mac slept. The page says that once, in a quiet bar over the page with one Reconnect, and the
+// click that found out says the same, never "REM is busy" (#3139, owner 2026-11-19: «有的时候我点那调查的时候说
+// REM 暂时没有回应 过会儿再试 这是什么原因»). The bar leaves when the Host answers again.
+Object.assign(UI.zh, { "This page lost touch with REM (it was just restarted).": "这页连不上 REM 了（REM 刚重启过）。", "Reconnect": "重新连接",
+  "This page lost touch with REM (it was just restarted), so nothing was handed over. Reconnect and try again.": "这页连不上 REM 了（REM 刚重启过），所以没有交出去。重新连接后再试。" });
+const HOST_LOST_WORDS = "This page lost touch with REM (it was just restarted).";
+function hostLost() {
+  if (!liveHere() || document.getElementById("host-lost")) return;
+  const again = el("button", { type: "button", class: "lang-act", text: t("Reconnect") });
+  again.onclick = () => reloadOnto();  // the one reload door: it keeps his place
+  document.body.appendChild(el("div", { id: "host-lost", class: "host-lost", role: "status" }, [el("span", { text: t(HOST_LOST_WORDS) }), again]));
+}
+function hostFound() { document.getElementById("host-lost")?.remove(); }
 function liveHere() { return REM.live && location.protocol !== "file:"; }
 // mark: how this row's Mark done closes it, when the page has its own way (Today slides the row out).
 // lead: on a Today card, which of the row's controls is its one primary ("task", "done" or null); see todayStrip.
@@ -8243,7 +8260,7 @@ function handRefusal(code) {
   return code === 400 ? "REM did not recognise this item. Reload the page and try again."
     : code === 401 ? "Your session expired. Reload the page."
     : code === 409 ? "This item has changed. Reload and try again."
-    : code === 0 ? "This page can no longer reach REM, so nothing was handed over. Open REM again and act from the page it opens."
+    : code === 0 ? "This page lost touch with REM (it was just restarted), so nothing was handed over. Reconnect and try again."
     : "REM is not answering right now. Try again in a moment.";
 }
 function handOver(entry, agent, show, card, status) {
@@ -10213,7 +10230,7 @@ async function invRun(r, mode, paint) {
   paint();
 }
 function invRefusal(code, error) {
-  return code === 401 ? t("Your session expired. Reload the page.") : code === 0 ? t("REM is not answering right now. Try again in a moment.")
+  return code === 401 ? t("Your session expired. Reload the page.") : code === 0 ? t(HOST_LOST_WORDS)
     : t("Could not do that: {why}", { why: error || code });
 }
 async function invAct(r, action, paint, done) {
@@ -16117,7 +16134,7 @@ function offerReload() {
   document.getElementById("main").prepend(el("p", { class: "quiet-line", role: "status" }, [link]));
 }
 function readVersion() {
-  return fetch("/rem/version").then(response => response.ok ? response.json() : null, () => null);
+  return fetch("/rem/version").then(response => { hostFound(); return response.ok ? response.json() : null; }, () => { hostLost(); return null; });
 }
 function showRebuildState(latest) {
   const line = document.getElementById("rendered-at");

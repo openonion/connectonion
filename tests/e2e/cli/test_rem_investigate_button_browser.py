@@ -139,3 +139,28 @@ def test_the_button_says_why_offers_its_levels_runs_in_place_and_undoes(live):
     line.get_by_role("button", name="Undo").click()
     expect(control.locator(".inv-line[role=status]")).to_have_text("Undone · the page is back as it was")
     assert Notebook(root).read(PAGE) == TEXT
+
+
+def test_a_page_that_lost_its_host_says_so_and_reconnects(live):
+    """#3139 (owner, 2026-11-19: «有的时候我点那调查的时候说 REM 暂时没有回应 过会儿再试 这是什么原因»): the Host the page
+    came from was restarted. The page says that in words, with one Reconnect, instead of blaming a busy REM."""
+    from patchright.sync_api import expect
+    page, root, commands = live
+    page.evaluate("() => { const r = byPath('people/mara.md'); r.investigation = { ...r.investigation, label: 'investigate' }; render(); }",
+                  isolated_context=False)
+    page.route("**/rem/**", lambda route: route.abort())          # the Host is gone
+    page.locator(".person-head .inv-go").click()
+    line = page.locator(".person-head .inv-line")
+    expect(line).to_contain_text("This page lost touch with REM (it was just restarted)")
+    bar = page.locator("#host-lost")
+    expect(bar).to_be_visible()
+    assert page.evaluate("""() => { const n = document.getElementById('host-lost'), b = n.getBoundingClientRect();
+      return [[0.25, 0.5], [0.5, 0.5], [0.75, 0.5]].every(([fx, fy]) => n.contains(document.elementFromPoint(b.left + b.width * fx, b.top + b.height * fy))); }""",
+                         isolated_context=False)                     # over the page, not under a card
+    if SHOTS:
+        page.screenshot(path=str(Path(SHOTS) / "host-lost.png"))
+    assert not commands                                            # nothing ran
+    page.unroute("**/rem/**")                                       # the Host is back
+    bar.get_by_role("button", name="Reconnect").click()
+    page.locator(".inv-go").wait_for()
+    expect(page.locator("#host-lost")).to_have_count(0)
