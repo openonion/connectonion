@@ -385,7 +385,7 @@ def prepare_task(root, cursor, config, directory):
     if task:
         return task
     if cursor["phase"] == "daily-translation":
-        task = prepare_translation(root, cursor, config, directory)
+        task = prepare_cheap(root, cursor, config, directory)
         if not task:
             finish(root, cursor)
         return task
@@ -620,6 +620,22 @@ def prepare_translation(root, cursor, config, directory):
             task = translate.prepare_batch(root, records, language, directory=directory)
             return _task("translate", task, cursor, stage="translate", record=records[0] if len(records) == 1 else "")
     return None
+
+
+def prepare_cheap(root, cursor, config, directory):
+    """While the floor or the daily cap holds investigation: translation, then tags, then tag pages.
+
+    It was translation alone, and the floor held that too: from Friday at 90% the night
+    served nothing until Tuesday, with 142 translations, 226 untagged pages and 56 tag
+    pages waiting (Mac session, 2026-11-20). Each is a turn of a minute or so."""
+    return (prepare_translation(root, cursor, config, directory) or prepare_tagging(root, cursor, config, directory)
+            or prepare_tag_node(root, cursor, config, directory))
+
+
+def cheap_waiting(root):
+    """Whether translation, tagging or a tag page waits: what a held night can still do."""
+    from . import tag_nodes, tag_stage
+    return bool(translations_waiting(root) or tag_stage.candidates(root) or next(iter(tag_nodes.candidates(root)), None))
 
 
 def _closing_tags(root, cursor, config, directory):
