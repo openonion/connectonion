@@ -685,7 +685,8 @@ def test_adjacent_citation_chips_show_only_the_supporting_sentence(reader, width
     for index, expected, other in ((0, first, second), (1, second, first)):
         chips.nth(index).click()
         claim = page.locator(".evidence-claim > div").inner_text()
-        assert claim == expected  # the full memory keeps the prose date the person page used to trim
+        # The full memory keeps the prose date the person page used to trim, in the reader's form (#3165).
+        assert claim == expected.replace("(2026-10-14)", "(Oct 14)")
         assert other not in claim
         page.get_by_role("button", name="Close source context").click()
 

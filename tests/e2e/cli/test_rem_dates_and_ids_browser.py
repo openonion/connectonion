@@ -26,7 +26,7 @@ PAGE = (
     "## Who they are\n2026-11-07 — Wren runs the venue [1]. Last seen 2026-10-29 (10月29日) at the pilot [2].\n"
     "The plan came from " + SESSION + " and the contract from " + MAIL + ".\n\n"
     "## Our relationship\n- 2026-07-05–17: pilot weeks [1].\n- 2026-07-29–08-04: second round [2].\n"
-    "- 2026-08-26–2026-08-28: offsite [2].\n\n"
+    "- 2026-08-26–2026-08-28: offsite [2].\n- 2026-09-01–05：在悉尼试点 [2]。\n\n"
     "| When | What |\n|---|---|\n| 2026-09-03 | Signed [1] |\n\n"
     "## History\n- 2026-10-01: asked about the renewal [1].\n- 2026-10-02: sent the plan [2].\n\n"
     "## Sources\n- [1] " + MAIL + "\n- [2] " + SESSION + "\n"
@@ -61,14 +61,15 @@ def test_dates_show_in_the_readers_form_once_and_ids_as_named_chips(tmp_path, mo
         page.goto(path.as_uri() + "#r=people%2Fwren-hale.md")
         page.evaluate("language => setInterfaceLanguage(language)", language, isolated_context=False)
         page.locator("#main h1").first.wait_for()
+        page.evaluate("document.querySelectorAll('#main details').forEach(d => d.open = true)", isolated_context=False)
         text = _visible(page)
         assert not ISO.findall(text), ISO.findall(text)[:5]
         assert not RAW.findall(text), RAW.findall(text)[:5]
-        if language == "zh":
-            assert "10月29日 (10月29日)" not in text and "10月29日（10月29日）" not in text
-            assert "7月5日–17日" in text and "7月29日–8月4日" in text
-        else:
-            assert re.search(r"Oct 29\s*\(Oct 29\)", text) is None
+        # One language per line: an English sentence keeps an English date whichever interface is on; a Chinese
+        # one a Chinese date. The page's words read the same in both interfaces.
+        for expected in ("Jul 5–17", "Jul 29–Aug 4", "Aug 26–28", "9月1日–5日", "Oct 29"):
+            assert expected in text, (expected, text)
+        assert "10月29日" not in text, "the same day printed twice"
         chip = page.locator("#main .src-id").first
         assert chip.count() and chip.get_attribute("title") in (SESSION, MAIL)
         chip.click()

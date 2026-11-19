@@ -569,7 +569,7 @@
 
   /* citations name the original before the reader opens it */
   /* A raw source id in page text, drawn as its kind and date (#3165): quiet, opens the source in the side card. */
-  .src-id { display: inline; padding: 0 4px; border: 0; border-radius: var(--radius); background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .src-id { display: inline; padding: 0 4px; border: 0; text-decoration: none; border-radius: var(--radius); background: var(--well); color: var(--ink); font: inherit; cursor: pointer; }
   .src-id:hover, .src-id:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
   .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--rule); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: var(--w-regular) var(--s-meta)/16px var(--font); color: var(--grey); background: var(--rule); border-color: var(--rule); border-radius: var(--radius); }
   /* Grow the tap target without opening a gap in the prose. */
@@ -14966,27 +14966,47 @@ Object.assign(UI.zh, { "Record": "记录", "Its original isn't in this snapshot.
 const ISO_RANGE = /\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?:\s*(?:–|—|-|to|至|到)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?![\d-]))?\b/g;
 const RAW_ID = /\b(?:(?:codex|claude-code|gmail|outlook|github|mail|session):[A-Za-z0-9][\w.:@/+=-]{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,})\b/gi;
 const TIDY_SKIP = "a, pre, code, textarea, input, select, button, script, style, .local-path, .src-id, .cite, [contenteditable]";
-function readerDate(day) {
-  return calendarDate(day);
+function readerDate(day, locale = uiLocale()) {
+  return calendarDate(day, locale);
+}
+// One language per line (as datesInProse): a date in page text takes its sentence's language, so the page's words
+// read the same whichever interface language is on.
+function blockLocale(node) {
+  const block = node.parentElement.closest("p, li, td, th, dd, dt, h1, h2, h3, h4, blockquote, .tl-e, .row") || node.parentElement;
+  // The reader's own chips inside a sentence (citations, source ids, privacy labels) speak the interface's language.
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode())
+    if (/\p{Script=Han}/u.test(n.nodeValue.replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, "")) && !n.parentElement.closest(".cite, .src-id, .privacy-tag, .uncertain-marker, .sr-only")) return "zh-CN";
+  return "en-US";
 }
 // "2026-07-05–17" → "7月5日–17日"; "2026-07-29–08-04" → "7月29日–8月4日"; "2026-08-26–2026-08-28" likewise.
-function readerRange(start, end) {
-  if (!end) return readerDate(start);
+function readerRange(start, end, locale) {
+  if (!end) return readerDate(start, locale);
   const full = end.length === 10 ? end : end.length === 5 ? start.slice(0, 5) + end : start.slice(0, 8) + end;
-  if (isNaN(new Date(full + "T00:00:00Z"))) return readerDate(start) + "–" + end;
+  if (isNaN(new Date(full + "T00:00:00Z"))) return readerDate(start, locale) + "–" + end;
   if (full.slice(0, 7) === start.slice(0, 7))
-    return readerDate(start) + "–" + (uiLanguage === "zh" ? Number(full.slice(8)) + "日" : String(Number(full.slice(8))));
-  return readerDate(start) + "–" + readerDate(full);
+    return readerDate(start, locale) + "–" + (locale.startsWith("zh") ? Number(full.slice(8)) + "日" : String(Number(full.slice(8))));
+  return readerDate(start, locale) + "–" + readerDate(full, locale);
 }
-function localiseDates(text) {
+function localiseDates(text, locale = uiLocale()) {
   ISO_RANGE.lastIndex = 0;
-  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end));
+  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale));
 }
 // "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once.
 function onceDates(text) {
-  const date = uiLanguage === "zh" ? "(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日" : "(?:[A-Z][a-z]{2,8} \\d{1,2}(?:, \\d{4})?|\\d{1,2} [A-Z][a-z]{2,8}(?: \\d{4})?)";
-  return text.replace(new RegExp("(" + date + ")\\s*[（(]\\s*\\1\\s*[)）]", "g"), "$1")
+  const date = "(?:(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日|[A-Z][a-z]{2,8} \\d{1,2}(?:, \\d{4})?|\\d{1,2} [A-Z][a-z]{2,8}(?: \\d{4})?)";
+  return text.replace(new RegExp("(" + date + ")\\s*[（(]\\s*(" + date + ")\\s*[)）]", "g"), (m, one, two) => sameDay(one, two) ? one : m)
     .replace(new RegExp("(" + date + ")(\\s+\\1)+(?![\\d日])", "g"), "$1");
+}
+// "10月29日" and "Oct 29" name the same day: month and day compared, whatever the language.
+function monthDay(text) {
+  const zh = /(\d{1,2})月(\d{1,2})日/.exec(text);
+  if (zh) return Number(zh[1]) + "-" + Number(zh[2]);
+  const d = new Date(text.replace(/,? \d{4}$/, "") + " 2000");
+  return isNaN(d) ? text : d.getMonth() + 1 + "-" + d.getDate();
+}
+function sameDay(one, two) {
+  return monthDay(one) === monthDay(two);
 }
 function rawIdLabel(id) {
   const kind = /^(codex|claude-code|session):/i.test(id) ? "Session" : /^(gmail|outlook|mail):/i.test(id) ? "Mail" : /^github:/i.test(id) ? "GitHub" : "Record";
@@ -14994,8 +15014,9 @@ function rawIdLabel(id) {
   return t(kind) + (when ? " · " + readerDate(calendarDay(when)) : "");
 }
 function rawIdChip(id) {
-  const chip = el("button", { type: "button", class: "src-id", title: id, text: rawIdLabel(id) });
-  chip.onclick = () => openRawId(id, chip);
+  // An inline link like a citation chip, not a <button>: the phone's 44px touch box would break the line it sits in.
+  const chip = el("a", { href: "#", role: "button", class: "src-id", title: id, text: rawIdLabel(id) });
+  chip.onclick = event => { event.preventDefault(); openRawId(id, chip); };
   return chip;
 }
 // The page's own numbered source when it lists this id; else the archived excerpt; else a card saying so.
@@ -15030,7 +15051,7 @@ function tidyText(root) {
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
-    let text = onceDates(localiseDates(node.nodeValue));
+    let text = onceDates(localiseDates(node.nodeValue, blockLocale(node)));
     const label = rowDateLabel(node);
     if (label && text.trimStart().startsWith(label)) text = text.trimStart().slice(label.length).replace(/^\s*[—–:：-]\s*/, "");
     RAW_ID.lastIndex = 0;
