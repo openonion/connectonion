@@ -651,3 +651,33 @@ def test_selected_attachment_reader_context_has_a_display_type(tmp_path):
     assert context['source'] == 'attachment'
     assert context['filename'] == 'Pilot agreement.pdf'
     assert context['excerpt'] == 'Lantern pilot fee is $200.'
+
+
+def test_a_retained_web_capture_names_its_page_site_and_day(tmp_path):
+    """rc35 hunt: a web source's card opened with its header only, because the capture's context carried no kind,
+    title or date. The context now says it is a web page, which page, and when REM read it."""
+    source = capture(tmp_path, 'https://example.org/team?q=atlas%20lead',
+                     'URL: https://example.org/team?q=atlas%20lead\nTitle: Atlas team — Example\n\nMira Vale leads the Atlas project.')
+    page = f'# Atlas\n\nMira leads it [1]\n\n## Sources\n- [1] {source} — 2026-11-06\n'
+    evidence.retain_research(tmp_path, page, evidence.research_items(tmp_path))
+    context = cited_context(tmp_path, [{'text': page}])[source]
+    assert context['source'] == 'web' and context['url'] == source
+    assert context['title'] == 'Atlas team — Example' and context['captured_at'] == '2026-11-06'
+    assert 'Mira Vale leads the Atlas project.' in context['excerpt']
+
+
+def test_a_web_capture_title_comes_from_its_heading_or_its_sources_entry(tmp_path):
+    web = tmp_path / 'web'
+    web.mkdir()
+    (web / 'a.md').write_text('# Harbour release notes\n\nHarbour 1.0 shipped.')
+    (web / 'b.md').write_text('Plain text with no heading.')
+    (web / 'sources.json').write_text(json.dumps([
+        {'url': 'https://example.org/a', 'file': 'a.md', 'date': '2026-11-06'},
+        {'url': 'https://example.org/b', 'file': 'b.md', 'date': '2026-11-06', 'title': 'Harbour pricing'}]))
+    items = evidence.research_items(tmp_path)
+    assert [item.get('title') for item in items] == [None, 'Harbour pricing']
+    page = '# H\n\nx [1] y [2]\n\n## Sources\n- [1] https://example.org/a — 2026-11-06\n- [2] https://example.org/b — 2026-11-06\n'
+    evidence.retain_research(tmp_path, page, items)
+    contexts = cited_context(tmp_path, [{'text': page}])
+    assert contexts['https://example.org/a']['title'] == 'Harbour release notes'
+    assert contexts['https://example.org/b']['title'] == 'Harbour pricing'

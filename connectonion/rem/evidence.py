@@ -157,8 +157,17 @@ def research_items(directory: Path) -> list[dict]:
         if body not in item["texts"]:
             item["texts"].append(body)
         item["timestamp"] = max(item["timestamp"], row["date"])
+        if isinstance(row.get("title"), str) and row["title"].strip():
+            item["title"] = row["title"].strip()
     return [{"role": "research", "source": source, "text": "\n\n".join(item["texts"]),
-             "timestamp": item["timestamp"]} for source, item in items.items()]
+             "timestamp": item["timestamp"], **({"title": item["title"]} if "title" in item else {})}
+            for source, item in items.items()]
+
+
+def _web_title(text: str) -> str:
+    """`co fetch` opens with `URL:` and `Title:` lines; a hand-saved page with its first heading."""
+    match = re.search(r"^Title:[ \t]*(\S.*)$", text[:2000], re.M) or re.search(r"^#[ \t]+(\S.*)$", text, re.M)
+    return match[1].strip()[:200] if match else ""
 
 
 def _capture_text(web: Path, name: str) -> str:
@@ -242,6 +251,11 @@ def research_contexts(root: Path, records: list[dict], *, private: bool = False)
         if captures:
             contexts[source] = {"excerpt": "\n\n".join(dict.fromkeys(item["text"] for item in captures)),
                                 "truncated": False}
+            if source.startswith(("http://", "https://")):
+                # rc35 hunt: a web card opened with its header only; it now says which page and when REM read it.
+                title = next((item["title"] for item in captures if item.get("title")), "") or _web_title(contexts[source]["excerpt"])
+                contexts[source].update(source="web", url=source, title=title,
+                                        captured_at=max(item.get("timestamp", "") for item in captures))
             attachment = re.fullmatch(r"(?:gmail|outlook):[0-9a-f]{12}:([^/\\\r\n]+)", source)
             if attachment:
                 contexts[source].update(source="attachment", filename=attachment[1], subject=attachment[1])
