@@ -3045,6 +3045,14 @@
      line, and the actions in a fixed slot on the right; flat: no card behind the header, hairlines and space
      between sections, no card inside a card. Lists, the calendar and Today keep the wide sheet. */
   main.reading { max-width: calc(720px + 80px); }
+  /* On a phone the Investigate menu hangs from the whole Investigate block, so it stays on the screen. */
+  @media (max-width: 640px) { main.reading :is(.hero-acts, .ov-say, .page-head) { position: relative; }
+    main.reading :is(.inv, .inv-more) { position: static; }
+    main.reading .inv :is(.inv-menu, .inv-changed) { left: 0; right: auto; width: min(300px, 100%); max-width: 100%; } }
+  /* A knowledge entry's side column goes under its text on a reading page, so the text keeps the measure. */
+  .inv-more:not([open]) > .inv-menu { display: none; }  /* a closed menu takes no room, wherever it is anchored */
+  main.reading .gx-grid { grid-template-columns: minmax(0, 1fr); }
+  main.reading .entry .entry-text { max-width: 34em; }  /* about 34 Chinese characters a line, on the page's left edge */
   /* On a phone the top bar already names the place, at the same left edge. */
   @media (max-width: 640px) { main.reading { max-width: none; } main.reading .person-head > .page-crumb { display: none; } }
   main.reading > .eyebrow { display: flex; align-items: center; gap: 8px; }
@@ -3059,6 +3067,8 @@
   main.reading .n3-person .hero { padding: 0 0 8px; border-radius: 0; background: none; box-shadow: none; animation: none; }
   main.reading .n3-person .hero .face.xl { width: 48px; height: 48px; font: var(--w-bold) var(--s-body)/1 var(--font); }
   main.reading .n3-person .hero-top { gap: 16px; }
+  /* With no card padding around it, the dek's own overflow (a long unbroken role, a tethered mark) stays inside it. */
+  main.reading .n3-person .r4-sub.dek { overflow: hidden; }
   /* Sections under it are flat too: a hairline above, space around, no raised card in a column of cards. */
   main.reading .n3-person :is(.widget, .bento > *) { padding: 16px 0; border-radius: 0; background: none; box-shadow: none; animation: none; border-top: var(--hair) solid var(--rule); }
   main.reading .n3-person .row2.dashed { border: 0; border-top: var(--hair) dashed var(--pencil); }

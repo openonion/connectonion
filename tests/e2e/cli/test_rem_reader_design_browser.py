@@ -5041,7 +5041,8 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
     assert "标为完成" not in main.inner_text()
     assert page.locator("#main a").filter(has_text=re.compile("今天里有")).count() == 1
     name = page.locator(".r4-person h1")
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")  # N3's one display size
+    # #3131: the page title is the head size on a reading page (it was the 44/36 display size, N3).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
     fuse = page.locator(".r4-fuse")
     dated = page.evaluate("historyItems(section(byPath('people/mara-ostrowski.md'), 'history').text).filter(i => i.day.length === 10).length",
                           isolated_context=False)
@@ -5739,8 +5740,8 @@ def test_org_first_screen_is_a_record_with_one_tree(org_reader, width, theme):
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
     assert _name(name) == "Fernhill University"
-    # The organisation's name is what the page is about: --s-display (N3: 44, 36 on a phone).
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
+    # The organisation's name is the page title: the head size on every reading page (#3131; it was 44/36, N3).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
     facts = page.locator(".ov-opening").inner_text()
     assert f"你认识这里的 {_people_known(page)} 个人" in facts and "起有往来" in facts and "最近往来" in facts
     assert page.locator(".ov-today, .ov-key, .ov-people").count() == 0
