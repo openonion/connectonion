@@ -503,3 +503,26 @@ def test_a_page_is_never_listed_in_its_own_tag_row(reader):
     row.wait_for()
     assert row.get_by_role("link", name="Fernhill Labs").count() == 0, row.inner_text()
     assert row.get_by_role("link", name="Fernhill pilot").count() == 1
+
+
+def test_a_citation_to_mail_rem_indexed_but_never_kept_opens_its_header(reader):
+    """rc34 hunt: person and organisation citations opened an empty card for mail REM knew the sender, subject and
+    time of. The card shows those and says, in words, that the body was not kept."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), language="en")
+    chip = page.locator("#main a.cite[href*='src-'] >> visible=true").first
+    number = chip.get_attribute("data-sources") or chip.get_attribute("href").split("h=src-")[-1]
+    page.evaluate("""n => { const r = byPath('people/mara-ostrowski.md'), src = sourceList(r).find(s => s.n === n.split(' ')[0]);
+      REM.source_context[sourceId(src.text)] = {excerpt: '', truncated: false, body_empty: true, header_only: true,
+        time: '2026-08-22T09:00:00Z', sender: 'Mara Ostrowski <mara@fernhill.example>', subject: 'Pilot kickoff notes',
+        thread: '', source: 'outlook', participants: {from: 'Mara Ostrowski <mara@fernhill.example>', to: [], cc: []}}; }""",
+                  number, isolated_context=False)
+    chip.click()
+    page.locator("#evidence-panel").wait_for(state="visible")
+    page.locator("#evidence-panel").get_by_role("button", name="Show labelled passages").click()
+    text = page.locator("#evidence-panel").inner_text()
+    assert "Pilot kickoff notes" in text and "Mara" in text
+    assert "REM kept who wrote this and when, not the message itself." in text
+    assert "did not keep a copy" not in text and "isn't in this snapshot" not in text
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "today-header-only-citation-1440.png"))

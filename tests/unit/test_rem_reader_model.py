@@ -571,3 +571,28 @@ def test_short_mail_citations_resolve_fast_on_a_real_sized_store(tmp_path):
     assert [row["id"] for row in found] == ids[:1500]  # the same rows the scan found
     assert _cited_row(db, "gmail:ffffffffffff") is None and _cited_row(db, ids[7])["id"] == ids[7]
     assert elapsed < 1.0, f"{elapsed:.2f}s for 1,500 short citations"
+
+
+def test_a_cited_mail_whose_body_was_not_kept_still_says_who_when_and_what(tmp_path):
+    """rc34 hunt: person and organisation citations opened 'REM did not keep a copy' for mail REM had indexed, with
+    sender, subject and time, but whose body it never archived. The owner's reader gets that header; a model's
+    audit (private=False) and a page with no row still get nothing."""
+    import sqlite3
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import state_path
+    from connectonion.rem.reader_model import cited_context
+    from connectonion.rem.store import refresh
+
+    prepare(tmp_path)
+    refresh(tmp_path)
+    with sqlite3.connect(state_path(tmp_path, 'rem.db')) as db:
+        db.execute('insert into messages (id, source, thread, sender, recipients, time, subject, body_path) values (?, ?, ?, ?, ?, ?, ?, ?)',
+                   ('gmail:kept-header-only', 'gmail', 'gmail:t1', 'Mara <mara@fernhill.example>', 'you@example.com',
+                    '2026-09-20T09:00:00Z', 'Pilot usage export', None))
+    records = [{'text': '## Sources\n- [1] gmail:kept-header-only — usage export\n- [2] gmail:never-indexed — gone\n'}]
+    found = cited_context(tmp_path, records, private=True)
+    card = found['gmail:kept-header-only']
+    assert card['subject'] == 'Pilot usage export' and card['sender'].startswith('Mara')
+    assert card['time'] == '2026-09-20T09:00:00Z' and card['body_empty'] is True and card['excerpt'] == ''
+    assert 'gmail:never-indexed' not in found
+    assert 'gmail:kept-header-only' not in cited_context(tmp_path, records, private=False)

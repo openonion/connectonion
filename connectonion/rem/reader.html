@@ -4735,7 +4735,7 @@ const UI = {
     "Next match": "下一个匹配",
     "Sent date unknown": "发送日期未知",
     "Instruction excerpt": "指令摘录",
-    "The retained message has no body text. Its headers are available.": "留存的消息没有正文，可查看邮件头。",
+    "The retained message has no body text. Its headers are available.": "留存的消息没有正文，可查看邮件头。", "REM kept who wrote this and when, not the message itself.": "REM 只记下了谁在何时写的这封信，没有留下正文。",
     "Source-backed changes from the latest pass. Page rewrites are listed separately.": "上次更新中有来源支持的变化。页面改写单独列出。",
     "No verified claim change in this pass": "这次更新中没有已核实的陈述变化",
     "No page content changed last night": "昨夜没有页面内容改变",
@@ -16610,7 +16610,8 @@ function mailMessage(context, quote) {
     ...(subject ? [el("p", { class: "msg-subject evidence-subject", text: subject })] : [])]),
     ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
       el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: t(label) }), ...people.map(personChip)])))] : []),
-    context.body_empty ? el("p", { class: "evidence-empty-body", text: t("The retained message has no body text. Its headers are available.") })
+    context.body_empty ? el("p", { class: "evidence-empty-body", text: t(context.header_only ? "REM kept who wrote this and when, not the message itself."
+      : "The retained message has no body text. Its headers are available.") })
       : el("div", { class: "msg-body" }, [quote])]);
 }
 // Match original words only; offsets keep whitespace and punctuation intact.
