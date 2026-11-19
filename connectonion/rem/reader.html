@@ -568,6 +568,9 @@
   .note :is(h2,h3,h4,h5,h6), .note [id^="src-"] { scroll-margin-top: 24px; }
 
   /* citations name the original before the reader opens it */
+  /* A raw source id in page text, drawn as its kind and date (#3165): quiet, opens the source in the side card. */
+  .src-id { display: inline; padding: 0 4px; border: 0; border-radius: var(--radius); background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .src-id:hover, .src-id:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
   .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--rule); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: var(--w-regular) var(--s-meta)/16px var(--font); color: var(--grey); background: var(--rule); border-color: var(--rule); border-radius: var(--radius); }
   /* Grow the tap target without opening a gap in the prose. */
   .cite::before { content: ""; position: absolute; inset: -2px; min-width: 24px; min-height: 24px; }
@@ -15097,6 +15100,96 @@ function record(path, heading) {
   if (r.category !== "orgs") graphRailAttach(main, r);
   shortenPaths(main);
 }
+// ---- One text pass over what the reader shows (#3165, rc34 hunt): every ISO date in the reader's own form, a date
+// never printed twice in a row, and a raw source id as a short named chip that opens it. The page text and the
+// Markdown keep what was written; only what is drawn changes.
+Object.assign(UI.zh, { "Record": "记录", "Its original isn't in this snapshot.": "这条来源的原文不在这份快照里。" });
+const ISO_RANGE = /\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?:\s*(?:–|—|-|to|至|到)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?![\d-]))?\b/g;
+const RAW_ID = /\b(?:(?:codex|claude-code|gmail|outlook|github|mail|session):[A-Za-z0-9][\w.:@/+=-]{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,})\b/gi;
+const TIDY_SKIP = "a, pre, code, textarea, input, select, button, script, style, .local-path, .src-id, .cite, [contenteditable]";
+function readerDate(day) {
+  return calendarDate(day);
+}
+// "2026-07-05–17" → "7月5日–17日"; "2026-07-29–08-04" → "7月29日–8月4日"; "2026-08-26–2026-08-28" likewise.
+function readerRange(start, end) {
+  if (!end) return readerDate(start);
+  const full = end.length === 10 ? end : end.length === 5 ? start.slice(0, 5) + end : start.slice(0, 8) + end;
+  if (isNaN(new Date(full + "T00:00:00Z"))) return readerDate(start) + "–" + end;
+  if (full.slice(0, 7) === start.slice(0, 7))
+    return readerDate(start) + "–" + (uiLanguage === "zh" ? Number(full.slice(8)) + "日" : String(Number(full.slice(8))));
+  return readerDate(start) + "–" + readerDate(full);
+}
+function localiseDates(text) {
+  ISO_RANGE.lastIndex = 0;
+  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end));
+}
+// "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once.
+function onceDates(text) {
+  const date = uiLanguage === "zh" ? "(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日" : "(?:[A-Z][a-z]{2,8} \\d{1,2}(?:, \\d{4})?|\\d{1,2} [A-Z][a-z]{2,8}(?: \\d{4})?)";
+  return text.replace(new RegExp("(" + date + ")\\s*[（(]\\s*\\1\\s*[)）]", "g"), "$1")
+    .replace(new RegExp("(" + date + ")(\\s+\\1)+(?![\\d日])", "g"), "$1");
+}
+function rawIdLabel(id) {
+  const kind = /^(codex|claude-code|session):/i.test(id) ? "Session" : /^(gmail|outlook|mail):/i.test(id) ? "Mail" : /^github:/i.test(id) ? "GitHub" : "Record";
+  const when = REM.source_context?.[id]?.time;
+  return t(kind) + (when ? " · " + readerDate(calendarDay(when)) : "");
+}
+function rawIdChip(id) {
+  const chip = el("button", { type: "button", class: "src-id", title: id, text: rawIdLabel(id) });
+  chip.onclick = () => openRawId(id, chip);
+  return chip;
+}
+// The page's own numbered source when it lists this id; else the archived excerpt; else a card saying so.
+function openRawId(id, trigger) {
+  const path = new URLSearchParams(location.hash.slice(1)).get("r"), r = path && byPath(path);
+  const listed = r && sourceList(r).find(source => sourceId(source.text, source.plain) === id);
+  if (listed) return openEvidence(r, listed.n, trigger, { fromList: true });
+  const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close source context") });
+  close.onclick = closeEvidence;
+  const context = REM.source_context?.[id];
+  panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
+    el("div", { class: "evidence-top" }, [el("span", { text: rawIdLabel(id) }), close]),
+    context?.excerpt ? el("blockquote", { text: context.excerpt }) : el("p", { class: "evidence-unavailable", text: t("Its original isn't in this snapshot.") }),
+    el("p", { class: "evidence-meta", text: id }));
+  evidenceTrigger = trigger;
+  panel.parentElement.hidden = false;
+  document.body.classList.add("evidence-open");
+  evidenceLayout();
+  close.focus({ preventScroll: true });
+  return true;
+}
+// A row's own date label (timeline, activity) already says the day: the text after it does not repeat it.
+function rowDateLabel(node) {
+  const row = node.parentElement.closest("li, tr, .tl-e, .row");
+  const label = row && [...row.querySelectorAll(".d, .when, .date, .day, time")].find(n => !n.contains(node));
+  return label ? label.textContent.replace(/\s+/g, " ").trim() : "";
+}
+function tidyText(root) {
+  if (!root || typeof document === "undefined" || !document.createTreeWalker) return root;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: node =>
+    /\d{4}-\d{2}|\d|[0-9a-f]{8}/i.test(node.nodeValue) && !node.parentElement.closest(TIDY_SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    let text = onceDates(localiseDates(node.nodeValue));
+    const label = rowDateLabel(node);
+    if (label && text.trimStart().startsWith(label)) text = text.trimStart().slice(label.length).replace(/^\s*[—–:：-]\s*/, "");
+    RAW_ID.lastIndex = 0;
+    if (!RAW_ID.test(text)) { if (text !== node.nodeValue) node.nodeValue = text; continue; }
+    const parts = [];
+    let last = 0;
+    RAW_ID.lastIndex = 0;
+    for (const m of text.matchAll(RAW_ID)) {
+      parts.push(document.createTextNode(text.slice(last, m.index)), rawIdChip(m[0]));
+      last = m.index + m[0].length;
+    }
+    parts.push(document.createTextNode(text.slice(last)));
+    node.replaceWith(...parts);
+  }
+  shortenPaths(root);
+  return root;
+}
+
 // A local path in page text reads as its file name; the whole path is one hover away (auto-scan, #3165).
 const LOCAL_PATH = /(?:\/Users|\/home|\/private|\/var\/folders|~)\/[^\s<>"'`，。、；）)\]]+/g;
 function shortenPaths(root) {
@@ -16532,6 +16625,7 @@ function render() {
   else if (c) { category(c); tagBarInto(c); }
   else overview();
   quietLaterPrimaries(document.getElementById("main"));
+  tidyText(document.getElementById("main"));
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? label("knowledge") : c ? label(c) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
