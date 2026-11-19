@@ -29,7 +29,7 @@ def version_on_disk() -> str:
 
 def _ps(*args):
     try:
-        return subprocess.run(["ps", *args], capture_output=True, text=True, timeout=2)
+        return subprocess.run(["ps", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=2)
     except subprocess.TimeoutExpired as error:
         raise OSError("could not verify the existing Host process; retry `co ai`") from error
 
@@ -536,9 +536,9 @@ def reader_token(directory: Path) -> str:
     path = directory / "rem-reader-token"
     if not path.exists():
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w") as output:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
             output.write(secrets.token_urlsafe(32))
-    return path.read_text().strip()
+    return path.read_text(encoding="utf-8").strip()
 
 
 def live_link() -> str:

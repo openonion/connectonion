@@ -30,7 +30,7 @@ def load_summary(path: Path) -> dict:
     """One co eval summary, or ValueError when it is not one."""
     if path.stat().st_size > MAX_BYTES:
         raise ValueError('oversized')
-    data = yaml.safe_load(path.read_text())
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get('turns'), list):
         raise ValueError('unsupported shape')
     return data
@@ -459,7 +459,7 @@ def _record_index(directory: Path, records: list[dict], samples: dict, stamp: st
                     f"Large records are split losslessly into numbered parts; inspect all relevant parts. "
                     f"Session sample: {len(samples['items'])} of {samples['matched_invocations']} indexed invocations, "
                     f"latest first, limit {samples['sample_limit']}; missing: {samples['missing']}. "
-                    "Reported outcomes do not independently verify artifacts.\n\n" + laid_out['index'].read_text()}
+                    "Reported outcomes do not independently verify artifacts.\n\n" + laid_out['index'].read_text(encoding="utf-8")}
 
 
 def _report(name: str, result: dict) -> str:

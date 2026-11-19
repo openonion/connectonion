@@ -177,7 +177,7 @@ class Launchd:
         return plistlib.dumps(job, sort_keys=False).decode()
 
     def _launchctl(self, *args) -> bool:
-        result = self.run(["launchctl", *args], capture_output=True, text=True, timeout=30)
+        result = self.run(["launchctl", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         return result.returncode == 0
 
     def install(self, root: Path, config: dict) -> dict:
@@ -283,7 +283,7 @@ class Launchd:
     def _describe(self, path: Path, label: str) -> dict:
         info = {"scheduler": "launchd", "label": label, "installed": path.is_file()}
         result = self.run(["launchctl", "print", f"gui/{self.uid}/{label}"],
-                          capture_output=True, text=True, timeout=30)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         info["loaded"] = result.returncode == 0
         for line in (result.stdout or "").splitlines():
             line = line.strip()
@@ -407,7 +407,7 @@ class Systemd:
         return {"service": service, "timer": timer}
 
     def _systemctl(self, *args):
-        return self.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=30)
+        return self.run(["systemctl", "--user", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
 
     def _check(self, *args) -> None:
         result = self._systemctl(*args)
@@ -438,7 +438,7 @@ class Systemd:
                 "times": list(config["schedule"]["times"])}
         if shutil.which("loginctl"):
             linger = self.run(["loginctl", "show-user", str(os.getuid()), "-p", "Linger"],
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
             if linger.returncode == 0 and linger.stdout.strip() != "Linger=yes":
                 info["note"] = "Run `loginctl enable-linger` to keep the systemd user timer running while logged out."
         return info

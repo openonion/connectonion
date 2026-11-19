@@ -101,7 +101,7 @@ def _person_indexes(root: Path, report: dict, messages: list[dict]) -> int:
         for record, roles in found.items():
             indexes[record].append({"provider": row["source"], "id": row["id"],
                                     "date": row.get("date", ""), "roles": sorted(roles),
-                                    "message": str(message_path(root, row["source"], row["id"]).relative_to(root))})
+                                    "message": message_path(root, row["source"], row["id"]).relative_to(root).as_posix()})
     for record, rows in indexes.items():
         _jsonl(person_index_path(root, record), sorted(rows, key=lambda item: (item["date"], item["id"])))
     return len(indexes)
@@ -289,7 +289,7 @@ def mail_metadata(root: Path) -> list[dict]:
     # the parse it saved. read_json still refuses a linked file when it is parsed.
     paths = sorted(state_path(root, "mail/observed-metadata").glob("*/*.json"))
     for folder in {path.parent for path in paths}:
-        state_path(root, str(folder.relative_to(root / ".state")))   # refuses a linked provider folder
+        state_path(root, folder.relative_to(root / ".state").as_posix())   # refuses a linked provider folder
     observed = []
     for path in paths:
         stat = path.lstat()
@@ -333,7 +333,7 @@ def _saved_ref(root: Path, row: dict, *, addresses: set | None = None) -> dict |
         raise RemError("Retained mail identity does not match its metadata")
     if addresses is not None and not addresses.intersection(participants(saved)):
         return None
-    return {"provider": provider, "id": native, "message": str(path.relative_to(root))}
+    return {"provider": provider, "id": native, "message": path.relative_to(root).as_posix()}
 
 
 def _thread_context(root: Path, refs: list[dict], rows: list[dict]) -> list[dict]:

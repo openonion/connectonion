@@ -251,7 +251,7 @@ def maintenance_busy(root: Path) -> str:
     owner = read_json(state_path(root, "maintenance-owner.json"), {})
     pid = owner.get("pid")
     command = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                             capture_output=True, text=True).stdout.strip() if pid else ""
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip() if pid else ""
     return (f"MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid {pid or 'unknown'}: "
             f"{command or owner.get('operation') or 'command unavailable'}. Report this message and end the turn without retrying.")
 

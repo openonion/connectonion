@@ -617,13 +617,13 @@ def _repo_identity(path: Path) -> dict:
         return {}
     try:
         top = subprocess.run(["git", "-C", str(path), "rev-parse", "--show-toplevel"],
-                             capture_output=True, text=True, timeout=5)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         if top.returncode:
             return {}
         origin = subprocess.run(["git", "-C", str(path), "remote", "get-url", "origin"],
-                                capture_output=True, text=True, timeout=5)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         common = subprocess.run(["git", "-C", str(path), "rev-parse", "--git-common-dir"],
-                                capture_output=True, text=True, timeout=5)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         # A linked worktree's common dir is the main checkout's .git; that is the project.
         toplevel = top.stdout.strip()
         if common.returncode == 0 and common.stdout.strip() not in (".git", f"{toplevel}/.git"):

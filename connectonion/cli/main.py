@@ -828,7 +828,7 @@ def receive(
 
 @app.command(epilog='Example:  co ai "explain what agent.py does"  |  co ai --port 8000')
 def ai(
-    prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
+    prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits); - reads it from stdin"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: Optional[str] = typer.Option(
         None, "--model", "-m", show_default=DEFAULT_MODEL,
@@ -906,6 +906,9 @@ def ai(
         raise typer.BadParameter("--listen and --no-listen contradict each other")
     channels = [] if no_listen else ([c.strip() for c in listen.split(",") if c.strip()]
                                      if listen else None)
+    if prompt == "-":
+        # A long prompt as argv passes Windows' 32K command-line limit (WinError 206).
+        prompt = sys.stdin.read()
     handle_ai(
         prompt=prompt,
         port=port,

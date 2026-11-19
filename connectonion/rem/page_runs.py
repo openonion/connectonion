@@ -89,7 +89,7 @@ def _work(root: Path, record: str, mode: str) -> None:
     path = receipt_path(root, record)
     from .runner import child_env
     done = subprocess.run(command(root, record, mode), cwd=str(root), env=child_env(), capture_output=True,
-                          text=True, stdin=subprocess.DEVNULL)
+                          text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
     receipt = read_json(path, {})
     reply = {}
     try:

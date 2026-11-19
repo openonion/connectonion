@@ -50,7 +50,7 @@ def directory(root, task_id):
 def _lock(folder, name='control.lock'):
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     import fcntl  # POSIX-only, imported here: the reader reads receipts through this module on Windows
-    with (folder / name).open('a') as held:
+    with (folder / name).open('a', encoding='utf-8') as held:
         fcntl.flock(held, fcntl.LOCK_EX)
         yield
 
@@ -102,7 +102,7 @@ def _project_dir(root, receipt):
 
 
 def _git(*args):
-    process = subprocess.run(['git', *args], capture_output=True, text=True)
+    process = subprocess.run(['git', *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if process.returncode:
         raise RemError(f"git {args[2]} failed: {process.stderr.strip()}")
     return process.stdout.strip()
@@ -114,11 +114,11 @@ def workspace(root, receipt, folder):
     project = _project_dir(root, receipt)
     if project:
         receipt['project'] = str(project)
-        top = subprocess.run(['git', '-C', str(project), 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
+        top = subprocess.run(['git', '-C', str(project), 'rev-parse', '--show-toplevel'], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if top.returncode == 0:
             branch = f"rem/task-{receipt['id']}" + (f"-{receipt['attempt']}" if receipt.get("attempt") else "")
             _git('-C', top.stdout.strip(), 'worktree', 'add', '-q', '-b', branch, str(work), 'HEAD')
-            receipt.update(repository=top.stdout.strip(), branch=branch, gitdir=(work / '.git').read_text())
+            receipt.update(repository=top.stdout.strip(), branch=branch, gitdir=(work / '.git').read_text(encoding="utf-8"))
     work.mkdir(exist_ok=True, mode=0o700)
     return work
 
@@ -198,7 +198,7 @@ def _in_tmux(root, folder, task_id, command, env):
     name = tmux_name(task_id) + (f"-{attempt}" if attempt else "")
     started = subprocess.run([tmux, 'new-session', '-d', '-s', name, '-x', '160', '-y', '48', '-c', str(root), '-P', '-F', '#{pane_pid}',
                               'env', '-i', *[f'{key}={value}' for key, value in env.items()], *command],
-                             capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, stdin=subprocess.DEVNULL)
     pid = started.stdout.strip()
     if started.returncode != 0 or not pid.isdigit():
         return None, None
@@ -244,9 +244,9 @@ def _delegate(receipt, folder, config, timeout):
                              user_setup=True, cancelled=_STOPPED.is_set, on_activity=_step_writer(folder), **FULL_ACCESS)
     if _STOPPED.is_set():
         raise InterruptedError('Task stopped by the owner')
-    Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n')
+    Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n', encoding='utf-8')
     if answer['result']:
-        Path(receipt['last_message']).write_text(answer['result'])
+        Path(receipt['last_message']).write_text(answer['result'], encoding='utf-8')
     receipt['session_id'] = answer.get('session_id')  # resumable in the agent's own app
     if answer['error']:
         receipt['reason'] = answer['error']
@@ -306,7 +306,7 @@ def _execute(root, folder, receipt, timeout):
         write_json(folder / 'receipt.json', receipt)
         code = _delegate(receipt, folder, config, timeout or config['limits']['timeout_seconds'])
         deliverable = Path(receipt['deliverable'])
-        present = deliverable.is_file() and not deliverable.is_symlink() and bool(deliverable.read_text().strip())
+        present = deliverable.is_file() and not deliverable.is_symlink() and bool(deliverable.read_text(encoding="utf-8").strip())
         result = 'completed' if code == 0 and present else 'timed-out' if code == 124 else 'failed'
         if code == 0 and not present:
             receipt['reason'] = f"{receipt.get('agent', 'codex').capitalize()} finished without a nonempty deliverable"
@@ -331,14 +331,14 @@ def _neuter(work, gitdir):
         shutil.rmtree(marker)
     elif marker.exists() or marker.is_symlink():
         marker.unlink()
-    marker.write_text(gitdir)
+    marker.write_text(gitdir, encoding='utf-8')
     (Path(gitdir.split(':', 1)[1].strip()) / 'config.worktree').unlink(missing_ok=True)
 
 
 def _report(receipt):
     for name in ('deliverable', 'last_message'):
         path = Path(receipt[name])
-        if path.is_file() and not path.is_symlink() and (text := path.read_text().strip()):
+        if path.is_file() and not path.is_symlink() and (text := path.read_text(encoding="utf-8").strip()):
             return text
     return ''
 
@@ -397,7 +397,7 @@ def _reap_codex(receipt):
     if not pid or not command:
         return
     process = subprocess.run(['ps', '-ww', '-p', str(pid), '-o', 'uid=', '-o', 'command='],
-                             capture_output=True, text=True, timeout=2)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=2)
     fields = process.stdout.strip().split(maxsplit=1)
     if len(fields) == 2 and fields[0] == str(os.getuid()) and (' ' + command + ' ') in (' ' + fields[1]):
         codex_exec._terminate_descendants(pid)
@@ -658,7 +658,7 @@ def _archive_receipt(saved, folder, archived):
             saved[field] = str(archived / Path(saved[field]).relative_to(folder))
     if saved.get('repository'):
         _git('-C', saved['repository'], 'worktree', 'repair', str(archived / 'work'))
-        saved['gitdir'] = (archived / 'work' / '.git').read_text()
+        saved['gitdir'] = (archived / 'work' / '.git').read_text(encoding="utf-8")
     write_json(archived / 'receipt.json', saved)
 
 
@@ -729,7 +729,7 @@ def host_dispatch(root, item, agent='codex'):
     command = [sys.executable, '-m', 'connectonion.cli.main', 'rem', '--root', str(root),
                '--json', 'task', 'run', item['receipt_id'], '--agent', _agent(item.get('agent', agent))]
     try:
-        result = subprocess.run(command, env=child_env(), capture_output=True, text=True, timeout=30)
+        result = subprocess.run(command, env=child_env(), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except (subprocess.TimeoutExpired, OSError) as error:
         raise RemError('Task launch not confirmed; inspect co rem task status before retrying') from error
     if result.returncode:

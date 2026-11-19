@@ -918,7 +918,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     report['tidied'] = tidy(root, lock_held=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
-    earlier = json.loads(state.read_text()).get('owner') if state.is_file() else None
+    earlier = json.loads(state.read_text(encoding="utf-8")).get('owner') if state.is_file() else None
     # An address confirmed once (--mine, or folded into the owner's page by
     # tidy) stays the owner's: without this the next map, run without --mine,
     # made it a correspondent page again (#2008).

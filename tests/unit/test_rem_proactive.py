@@ -503,7 +503,7 @@ def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool
 
     commands = []
 
-    def fake_run(command, capture_output, text):
+    def fake_run(command, capture_output, text, **kwargs):
         commands.append(command)
         payload = {'items': [{'name': 'Mia', 'open_id': 'ou_mia'}]} if command[1] == 'contact' else {'message_id': 'om_1'}
         return type('Done', (), {'returncode': 0, 'stdout': json.dumps(payload), 'stderr': ''})()

@@ -409,7 +409,7 @@ def co_ai(monkeypatch):
     """A `co` that answers at once and remembers how it was called."""
     calls = []
 
-    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None, **kwargs):
         calls.append(argv)
         import re
         from pathlib import Path
@@ -1368,7 +1368,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     from pathlib import Path
     from connectonion.rem.files import Notebook
 
-    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None, **kwargs):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         _save_web_capture(path.parent)
@@ -1433,7 +1433,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     from pathlib import Path
     from connectonion.rem.files import Notebook, state_path, write_json
 
-    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None, **kwargs):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         _save_web_capture(path.parent)

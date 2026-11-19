@@ -202,3 +202,26 @@ def test_cli_install_rejects_extra_arguments_without_daemon(monkeypatch, capsys)
 
     assert browser_commands.handle_browser(["install-onion", "--yolo"]) == 2
     assert "--break-system-packages" in capsys.readouterr().err
+
+
+def test_an_install_into_a_new_user_site_is_seen_by_this_process(tmp_path, monkeypatch):
+    # Python under C:\Program Files, run without elevation: pip falls back to the
+    # user site, a folder this process did not have on sys.path. pip succeeded
+    # and the check said "PyPI has nothing for this interpreter".
+    import subprocess
+    import sys
+    from connectonion.cli.commands import onionwright_install as installer
+
+    user_site = tmp_path / "user-site"
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(installer.site, "getusersitepackages", lambda: str(user_site))
+    monkeypatch.setattr(installer.site, "ENABLE_USER_SITE", True)
+    monkeypatch.setattr(installer, "_installed_version", lambda: None if str(user_site) not in sys.path
+                        else installer.ONIONWRIGHT_VERSION)
+
+    def pip(command, **kwargs):
+        user_site.mkdir()
+        return subprocess.CompletedProcess(command, 0, "Defaulting to user installation\n", "")
+
+    monkeypatch.setattr(installer.subprocess, "run", pip)
+    assert installer.install_onionwright().already_installed is False

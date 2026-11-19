@@ -881,11 +881,11 @@ def _save(root, cursor, task):
     stage_task = task["task"]
     prompt = _long_page_inputs(stage_task, directory).replace("\0", "")
     # Slash expansion normally loads the core Skill in co ai. Native receives it explicitly.
-    original = (directory / "instructions.md").read_text() if (directory / "instructions.md").is_file() else ""
+    original = (directory / "instructions.md").read_text(encoding="utf-8") if (directory / "instructions.md").is_file() else ""
     match = re.match(r"/rem-([\w-]+)\s+", prompt)
     skill = ""
     if match:
-        core = (runner.useful_skills_dir() / f"rem-{match[1]}" / "SKILL.md").read_text()
+        core = (runner.useful_skills_dir() / f"rem-{match[1]}" / "SKILL.md").read_text(encoding="utf-8")
         skill, prompt = re.sub(r"(?m)^Why these rules: .*\n+", "", core), prompt[match.end():]
     elif original and original not in prompt:
         skill = original
@@ -1332,9 +1332,9 @@ def _long_page_inputs(task, directory):
     prompt = task["prompt"]
     for name in ("page.md", "candidate.md"):
         path = directory / name
-        if path.is_file() and any(len(line) > 4000 for line in path.read_text().splitlines()):
+        if path.is_file() and any(len(line) > 4000 for line in path.read_text(encoding="utf-8").splitlines()):
             original = path.with_suffix(".json") if name == "page.md" else directory / "candidate-original.json"
-            write_json(original, path.read_text(), readable=True)
+            write_json(original, path.read_text(encoding="utf-8"), readable=True)
             path.unlink()
             if name == "page.md":
                 prompt = prompt.replace("page.md", "page.json")
@@ -1462,5 +1462,5 @@ def _recovered_result(root, task):
     changed = sorted(record for record, digest in pages.items()
                      if record not in before or hashlib.sha256(before[record].encode()).hexdigest() != digest)
     report = Path(task["directory"]) / "report.md"
-    return {"changed": changed, "report": report.read_text() if report.is_file() else "",
+    return {"changed": changed, "report": report.read_text(encoding="utf-8") if report.is_file() else "",
             "refused": read_json(Path(task["directory"]) / "review.json", {}).get("refused", [])}
