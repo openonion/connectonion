@@ -3162,12 +3162,11 @@
   /* The actions' fixed slot: top right of the head, the same on an organisation and a project as on a person. */
   main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-items: start; }
   main.reading .ov.ov-r6 .ov-say > *, main.reading > .page-head > * { grid-column: 1; }
-  main.reading .ov.ov-r6 .ov-say > .inv, main.reading > .page-head > .inv { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; align-items: flex-end; }
-  main.reading .ov.ov-r6 .ov-say > .inv :is(.inv-line, .inv-steps), main.reading > .page-head > .inv :is(.inv-line, .inv-steps) { text-align: right; justify-content: flex-end; }
+  main.reading .ov.ov-r6 .ov-say > .rec-acts, main.reading > .page-head > .rec-acts { grid-column: 2; grid-row: 1 / span 3; margin-top: 0; }
   main.reading .ov.ov-r6 .ov-say :is(.inv-menu, .inv-changed), main.reading > .page-head :is(.inv-menu, .inv-changed) { left: auto; right: 0; }
   @media (max-width: 640px) {
     main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { grid-template-columns: minmax(0, 1fr); }
-    main.reading .ov.ov-r6 .ov-say > .inv, main.reading > .page-head > .inv { grid-column: 1; grid-row: auto; align-items: flex-start; }
+    main.reading .ov.ov-r6 .ov-say > .rec-acts, main.reading > .page-head > .rec-acts { grid-column: 1; grid-row: auto; margin-top: 12px; }
     main.reading .bento { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
@@ -3808,6 +3807,21 @@
   .n3-person .hero-meta .r4-today::before, .n3-person .hero-meta .r4-today.late::before { content: "·"; display: inline-block; width: 16px; height: auto;
     margin-left: -16px; border-radius: 0; background: none; color: var(--grey); text-align: center; }
   .hero-acts:empty { display: none; }
+  /* The head's one action slot (rc35 hunt, #3131): 调查 and then 查看来源, right-aligned in the head's right column
+     on every record, at the left edge under the name on a phone. */
+  .rec-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
+  .rec-acts > .inv { align-items: flex-end; margin-top: 0; }
+  .rec-acts > .inv :is(.inv-line, .inv-steps) { text-align: right; justify-content: flex-end; }
+  .rec-acts :is(.inv-menu, .inv-changed) { left: auto; right: 0; }
+  .rec-sources { display: inline-flex; align-items: center; min-height: 44px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); white-space: nowrap; }
+  .rec-sources:hover { color: var(--ink); }
+  /* A person's head styles its own links in ink; the slot's quiet link stays grey on every record. */
+  #main .rec-acts > .rec-sources { color: var(--grey); text-decoration: none; }
+  #main .rec-acts > .rec-sources:hover { color: var(--ink); }
+  @media (max-width: 640px) {
+    .rec-acts, .rec-acts > .inv { align-items: flex-start; width: 100%; }
+    .rec-acts > .inv :is(.inv-line, .inv-steps) { text-align: left; justify-content: flex-start; }
+    .rec-acts :is(.inv-menu, .inv-changed) { right: auto; left: 0; } }
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
   .inv { position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
@@ -3822,7 +3836,6 @@
     cursor: pointer; transition: box-shadow var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); white-space: nowrap; }
   .inv-go:hover:not(:disabled) { transform: translateY(-1px); }
   .inv-go .n { font-weight: var(--w-regular); }
-  .inv[data-label="deeper"] .inv-go { background: var(--raised); color: var(--ink); box-shadow: var(--e-ink); }
   .inv-go:disabled { background: var(--well); color: var(--grey); box-shadow: none; cursor: default; transform: none; }
   .inv-more { position: relative; }
   .inv-more > summary { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--round); box-shadow: var(--e-ring);
@@ -5685,16 +5698,19 @@ function tagHref(slug) {
 }
 function tagged(records, slug) { return slug ? records.filter(r => (r.tags || []).includes(slug)) : records; }
 // A page's tags as quiet links, each to its tag page; nothing when it has none.
-function tagLinks(r) {
+function tagLinks(r, said = []) {
   // A page is never its own tag (rc34 hunt: an organisation's row listed the organisation): the tag that names this
-  // page is what the page is, so the row shows only the other nodes it links to.
-  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug] && REM.tags[slug].page !== r.path);
+  // page is what the page is, so the row shows only the other nodes it links to. Nor is a tag the head already says
+  // (rc35 hunt: a person's organisation was her dek's link and again her first tag): `said` is those pages and words.
+  const already = new Set(said.filter(Boolean).map(word => tagNorm(String(word))));
+  const repeats = slug => already.has(tagNorm(REM.tags[slug].page || "")) || already.has(tagNorm(tagLabel(slug)));
+  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug] && REM.tags[slug].page !== r.path && !repeats(slug));
   return slugs.length ? el("span", { class: "tag-links" }, slugs.map(slug => el("a", { class: "tag-link", href: tagHref(slug), text: tagLabel(slug) }))) : null;
 }
 // One row of a page's tags under its title, on every kind (owner, 2026-11-19): the same links the person card shows,
 // each opening the page the tag names or the tag's own page. Nothing when the page has no tag.
-function pageTagRow(r) {
-  const links = tagLinks(r);
+function pageTagRow(r, said = []) {
+  const links = tagLinks(r, [r.title, ...said]);
   return links ? el("p", { class: "page-tags" }, [el("span", { class: "page-tags-label", text: t("Tags") }), links]) : null;
 }
 // The tag page: every page carrying it, grouped by kind, each group with its count (#3093 point 2).
@@ -10804,10 +10820,18 @@ function personHead(r) {
     el("div", { class: "hero-top" }, [fusedFace(r, late, "xl"),
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
-        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late)]),
-      el("div", { class: "hero-acts" }, [investigateControl(r)])]),
+        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late),
+        pageTagRow(r, personSaid(r))]),
+      el("div", { class: "hero-acts" }, [recordActs(r)])]),
     profileCard(r)]);
 }
+// What the person head already names (organisation, its full name, their units): the tag row and the card skip these.
+function personSaid(r) {
+  const org = personOrg(r);
+  return [org?.name, org?.full, org?.org?.path, org?.org?.title, ...(r.units || []).flatMap(edge => [edge.path, byPath(edge.path)?.title])].filter(Boolean);
+}
+// A link said once: the same profile as a handle and as a link, with or without https://www. and a trailing slash.
+function urlKey(text) { return plainLine(text).toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[?#].*$/, "").replace(/\/+$/, ""); }
 // The third header line: where they are, how recent, how much mail, and Today when something waits there.
 // These facts are said here, so the card below does not repeat them.
 function personMeta(r, late) {
@@ -10886,20 +10910,23 @@ function profileCard(r) {
   add("Contact", "Email", "mail", have("Email").filter(notOwners).map(item => ({ item, copy: true })));
   add("Contact", "Their agent", "", agents.map(item => ({ item, copy: true })));
   add("Contact", "Phone", "phone", have("Phone").map(item => ({ item, copy: true })));
-  const places = new Map();
-  for (const item of handles) {
+  const places = new Map(), linked = new Set();
+  const once = item => { const key = urlKey(item.value); if (!/[./]/.test(key) || !linked.has(key)) { linked.add(key); return true; } return false; };
+  for (const item of handles.filter(once)) {
     const [label, pic] = contactPlace(item, ["Handle", "at"]);
     places.set(label, { pic, values: [...(places.get(label)?.values || []), { item: label === item.qualifier ? { ...item, qualifier: "" } : item, copy: true }] });
   }
-  for (const item of have("Links")) {
+  for (const item of have("Links").filter(once)) {
     // A link names its platform only when it is their profile there, not a pull request or a post on it.
     const profile = /^(?:https?:\/\/)?(?:www\.)?(?:linkedin\.com\/in|github\.com|x\.com|twitter\.com)\/[^/\s]+\/?$/i.test(plainLine(item.value));
     const [label, pic] = profile ? contactPlace(item, ["Links", "globe"]) : ["Links", "globe"];
     places.set(label, { pic, values: [...(places.get(label)?.values || []), { item }] });
   }
   for (const [label, { pic, values }] of places) add("Contact", label, pic, values);
-  add("Work", "Signing entity", "", have("Signing entity").map(item => ({ item })));
-  if (!units.length) for (const label of ["Unit", "Role in unit"]) add("Work", label, "", have(label).map(item => ({ item })));
+  const said = new Set(personSaid(r).map(word => plainLine(word).toLowerCase()));
+  const fresh = item => !said.has(plainLine(item.value).toLowerCase());
+  add("Work", "Signing entity", "", have("Signing entity").filter(fresh).map(item => ({ item })));
+  if (!units.length) for (const label of ["Unit", "Role in unit"]) add("Work", label, "", have(label).filter(fresh).map(item => ({ item })));
   const project = personProject(r);
   if (project) add("Work", "Project", "", [{ node: el("a", { href: href(project), text: project.title }) }]);
   for (const label of ["How we know them", "First contact"]) add("Relationship", label, "", have(label).map(item => ({ item })));
@@ -10907,8 +10934,6 @@ function profileCard(r) {
   const mapped = !have("Last contact").length && mappedContact(r) && known(r).last;
   const aliases = have("Also known as").filter(item => !seen.includes(plainLine(item.value).toLowerCase()));
   if (aliases.length) add("Identity", "Also known as", "", [{ node: el("span", { class: "pc-inline" }, aliases.map(item => profileValue(item, r, "Also known as"))) }]);
-  const tagRow = tagLinks(r);
-  if (tagRow) add("Identity", "Tags", "", [{ node: tagRow }]);
   const languages = have("Language");
   if (languages.length) add("Identity", "Language", "", [{ node: el("span", { class: "pc-inline" }, languages.map(item => profileValue(item, r, "Language"))) }]);
   if (!have("Location").length) add("Identity", "Time zone", "", have("Time zone").map(item => ({ item })));
@@ -10968,7 +10993,7 @@ function personTodayLink(r, late = 0) {
 // click runs `co rem investigate PAGE --enrich` through the Host (POST /rem/investigate); the ⋯ beside it holds
 // the levels for whoever wants them. The run's steps show under the button while it works, then what changed,
 // with Undo; a rewrite waits as a draft to replace or discard. In a snapshot the button is off and says why.
-Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "Not investigated yet": "还没调查过这页", "last {date}": "上次 {date}",
+Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "Nothing new to read": "没有新材料可读", "Not investigated yet": "还没调查过这页", "last {date}": "上次 {date}",
   "1 new mail not in this page yet": "有 1 封新邮件还没写进这页", "{n} new mails not in this page yet": "有 {n} 封新邮件还没写进这页",
   "1 new session not in this page yet": "有 1 个新会话还没写进这页", "{n} new sessions not in this page yet": "有 {n} 个新会话还没写进这页",
   "1 lead not followed yet (uses the web)": "还有 1 条线索没查（会联网）", "{n} leads not followed yet (uses the web)": "还有 {n} 条线索没查（会联网）",
@@ -10997,6 +11022,14 @@ Object.assign(UI.zh, { "the page is too long to add to; the draft is kept and th
 const INV_LEVELS = [["full", "Full investigation", "Adds the web follow-up"],
   ["quick", "Quick update", "Reads only the new material, no web"], ["rewrite", "Rewrite the page", "Writes a new draft; replaces the page only when you accept it"]];
 const INV_RUNS = new Map();  // what this tab has seen of a page's run since the page data was built
+// The head's one action slot (rc35 hunt, #3131): the same component in the same place on a person, an organisation
+// and a project, 调查 then 查看来源; nothing else in a record's head is an action.
+function recordActs(r) {
+  const sources = !orgHidden(r) && sourceList(r).length
+    ? el("a", { class: "rec-sources", href: href(r) + "&h=sources", text: t("View sources →") }) : null;
+  const parts = [investigateControl(r), sources].filter(Boolean);
+  return parts.length ? el("div", { class: "rec-acts" }, parts) : null;
+}
 function investigateControl(r) {
   if (!r.investigation) return null;
   const box = el("div", { class: "inv" });
@@ -11011,7 +11044,9 @@ function investigateControl(r) {
 function invCount(one, many, n) { return t(n === 1 ? one : many, { n }); }
 // One verb on the button, always (owner, 2026-11-18: «更新是什么意思呢？»); the reason is the line under it,
 // in words that say what the click will do.
-function invLabel(s) { return [t(s.label === "current" ? "Up to date" : "Investigate")]; }
+// One look too (rc35 hunt, #3131): "nothing new" is the same button switched off with its reason as the tooltip,
+// not a grey "已是最新" on one page and an outlined one on another.
+function invLabel(s) { return [t("Investigate")]; }
 function invWhy(s) {
   const last = s.last ? " · " + t("last {date}", { date: fmtDate(s.last) }) : "";
   if (s.label === "investigate") return t("Not investigated yet");
@@ -11026,13 +11061,15 @@ function invParts(r, s, paint) {
   const go = el("button", { type: "button", class: "inv-go", ...(live ? {} : { disabled: "disabled", title: t("This is a snapshot: investigate from the live reader.") }) },
     running ? [t("Investigating…")] : invLabel(s));
   if (running || s.label === "current") go.disabled = true;
+  if (!running && s.label === "current") go.title = t("Nothing new to read") + (s.last ? " · " + t("Last investigated {date}", { date: fmtDate(s.last) }) : "");
   go.onclick = () => invRun(r, "full", paint);
   const parts = [el("div", { class: "inv-row" }, [go, invMenu(r, s, paint, running || !live)])];
   if (running) parts.push(invSteps(run));
   else if (s.notice) parts.push(el("p", { class: "inv-line", role: "status", text: s.notice }));
   else if (run && invRecent(run)) parts.push(...invResult(r, s, paint));
   if (!running && s.rewrite) parts.push(invDraft(r, s, paint));
-  if (!running && !(run && invRecent(run)) && !s.notice) parts.push(el("p", { class: "inv-line", text: invWhy(s) }));
+  // When there is nothing new the reason is the button's tooltip; the head already says how fresh the page is.
+  if (!running && !(run && invRecent(run)) && !s.notice && s.label !== "current") parts.push(el("p", { class: "inv-line", text: invWhy(s) }));
   if (!live) parts.push(liveReaderLine("This is a snapshot: investigate from the live reader."));
   if (running && live) invFollow(r, paint);
   return parts;
@@ -13411,14 +13448,13 @@ function orgCrumb(r) {
   return el("div", { class: "ov-crumb", role: "navigation", "aria-label": orgT("Where this sits") }, links.flatMap((node, i) => i ? [" › ", node] : [node]));
 }
 function orgOver(r) {
-  return el("header", { class: "ov-over" }, [orgCrumb(r),
-    !orgHidden(r) && sourceList(r).length ? el("a", { class: "ov-source-action", href: href(r) + "&h=sources", text: t("View sources →") }) : null]);
+  return el("header", { class: "ov-over" }, [orgCrumb(r)]);
 }
 function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }),
-      pageTagRow(r), orgOpening(v), investigateControl(r)]), orgTree(v)]);
+      pageTagRow(r), orgOpening(v), recordActs(r)]), orgTree(v)]);
 }
 function orgOpening(v) {
   const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
@@ -14855,7 +14891,6 @@ function recordFocus(r, contextOnly = false) {
   // into the full memory with everything else.
   if (r.category === "projects") {
     out.append(...projectLead(r));
-    if (sourceList(r).length) out.appendChild(el("a", { class: "focus-source", href: href(r) + "&h=sources", text: t("View sources →") }));
     return out;
   }
   const thread = threads(r), open = thread.items;
@@ -15099,7 +15134,7 @@ function record(path, heading) {
   } else {
     main.appendChild(el("div", { class: "mobile-back" }, [el("a", { href: categoryHref(r.category) }, ["← " + categoryName(r.category)])]));
     main.appendChild(recordEyebrow(r, person));
-    if (r.category === "projects") head.append(projectStateLine(r), investigateControl(r) || "");
+    if (r.category === "projects") head.append(projectStateLine(r), recordActs(r) || "");
     if (r.category !== "projects") head.appendChild(leadRow(r));
     head.append(pageTagRow(r) || "");
     main.appendChild(head);

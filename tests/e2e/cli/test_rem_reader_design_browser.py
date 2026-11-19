@@ -1210,7 +1210,7 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
     purpose_source = page.locator('.project-purpose-cites a.cite').first
     assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2')
     assert purpose_source.get_attribute('data-tip') is None
-    sources = page.locator('.focus-source').bounding_box()
+    sources = page.locator('.page-head .rec-sources').bounding_box()
     assert sources['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -1233,7 +1233,7 @@ def test_long_project_purpose_and_source_expand_inside_full_memory_on_phone(read
     assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
     assert statement.evaluate('(node) => getComputedStyle(node).webkitLineClamp') == '4'
     chip = page.locator('.project-purpose-cites a.cite').first
-    source = page.locator('.focus-source')
+    source = page.locator('.page-head .rec-sources')
     chip.scroll_into_view_if_needed()
     assert chip.bounding_box()['y'] + chip.bounding_box()['height'] <= 812
     assert source.is_visible()
