@@ -412,3 +412,27 @@ def test_a_saved_reading_without_a_plan_name_still_prints_the_week(tmp_path, mon
     reading = {"used_percent": 37, "window_minutes": WEEK, "resets_at": service.now().timestamp() + 3600}
     bits = service._quota_status(config, [{"quota": {"after": reading}}])
     assert bits["codex_week"].startswith("37% used (last recorded); resets ")
+
+
+def test_inside_the_codex_sandbox_the_meter_is_the_launchers_reading_never_a_new_app_server(monkeypatch, tmp_path):
+    """#3128: `co rem next` runs inside the Codex worker's sandbox, where `codex app-server` cannot write
+    ~/.codex and exits ("failed to initialize sqlite state runtime"). Every run logged an unknown meter. The turn's
+    launcher, outside the sandbox, reads it and hands it down; inside, nothing is started."""
+    import json, time
+    from connectonion.rem import quota
+    from pathlib import Path
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    (Path.home() / ".codex").mkdir()  # the test's own home (tests/conftest.py)
+    (Path.home() / ".codex/auth.json").write_text("{}")
+    monkeypatch.setenv("CODEX_SANDBOX", "seatbelt")
+    never = lambda method, params: pytest.fail("started an app-server inside the sandbox")
+    monkeypatch.delenv(quota.HANDED_DOWN, raising=False)
+    assert "inside the Codex sandbox" in quota.read({"runner": "codex"}, request=never)["unknown"]
+    reading = {"used_percent": 79, "window_minutes": WEEK, "resets_at": int(time.time()) + 3600, "plan": "pro"}
+    monkeypatch.setenv(quota.HANDED_DOWN, json.dumps({**reading, "read_at": time.time() - 60}))
+    assert quota.read({"runner": "codex"}, request=never) == reading
+    monkeypatch.setenv(quota.HANDED_DOWN, json.dumps({**reading, "read_at": time.time() - 4 * 3600}))
+    assert "unknown" in quota.read({"runner": "codex"}, request=never)  # too old to stand for now
+    monkeypatch.delenv("CODEX_SANDBOX")
+    assert quota.handed_down({"runner": "codex"}, request=lambda method, params: {"rateLimits": {
+        "primary": {"usedPercent": 79, "windowDurationMins": WEEK, "resetsAt": reading["resets_at"]}, "planType": "pro"}}).startswith('{"used_percent": 79')

@@ -8,7 +8,9 @@ costs nothing. It reports whole percents, so every figure here is good to
 about one point.
 """
 
+import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +24,31 @@ from .files import read_json, state_path, write_json
 INVESTIGATION_PHASES = ("daily-investigation", "daily-update", "investigate", "investigate me", "projects write",
                         "same-person")
 DEPTH_PHASES = ("enrich", "muse")
+
+
+# Inside the Codex worker's sandbox `codex app-server` cannot write ~/.codex and exits ("failed to initialize
+# sqlite state runtime", #3128). The turn's launcher runs outside it, reads the meter, and hands the reading
+# down in this variable; a reading older than HANDED_DOWN_HOURS does not stand for now.
+HANDED_DOWN = "CO_REM_QUOTA_READING"
+HANDED_DOWN_HOURS = 3
+
+
+def handed_down(config: dict, request=None) -> str:
+    """The launcher's reading as the variable's value, or '' when Codex did not report one."""
+    reading = read(config, request) if request else read(config)
+    return "" if "unknown" in reading else json.dumps({**reading, "read_at": time.time()})
+
+
+def _from_launcher() -> dict:
+    try:
+        reading = json.loads(os.environ.get(HANDED_DOWN) or "{}")
+    except json.JSONDecodeError:
+        reading = {}
+    fresh = time.time() - reading.pop("read_at", 0) < HANDED_DOWN_HOURS * 3600
+    if "used_percent" in reading and fresh and reading.get("resets_at", 0) > time.time():
+        return reading
+    return {"unknown": "inside the Codex sandbox, which cannot start Codex's app-server, and the turn's launcher "
+                       "handed down no current reading"}
 
 
 def _codex_auth() -> Path:
@@ -55,6 +82,8 @@ def read(config: dict, request=None) -> dict:
     # isolated HOME) would otherwise spawn an app-server only to be refused.
     if not _codex_auth().is_file():
         return {"unknown": "Codex is not signed in"}
+    if os.environ.get("CODEX_SANDBOX"):
+        return _from_launcher()
     try:
         payload = (request or _app_server_request)("account/rateLimits/read", {})
         limits = payload["rateLimits"]
