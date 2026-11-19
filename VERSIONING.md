@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc34
+## Current Version: 1.9.6rc35
+Release candidate 1.9.6rc35 for 1.9.6: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
+bar, and night stages that drain. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc35.md).
+
+- 1.9.6rc35 (REM: rc34 bug-hunt fixes — upgrade-safe tab, Today's first screen, dates and ids, compact top bar, draining stages).
+
+### Previous candidate: 1.9.6rc34
 Release candidate 1.9.6rc34 for 1.9.6: REM gets the knowledge graph (a tag links pages; tag pages; `co rem investigate tag`), a closed item
 stays closed, three privacy levels in the reader's top bar that cover every place a passage shows, sources that never
 open empty, and the hourly bug hunt's fixes. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc34.md).

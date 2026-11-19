@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc34**: REM's knowledge graph (a tag links pages and gets its own page), a closed item
+Release candidate **1.9.6rc35**: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
+bar, and night stages that drain. See [1.9.6rc35 notes](releases/1.9.6rc35.md).
+Before it, release candidate **1.9.6rc34**: REM's knowledge graph (a tag links pages and gets its own page), a closed item
 that stays closed, three privacy levels that cover every place a passage shows, and the bug hunt's fixes. See
 [1.9.6rc34 notes](releases/1.9.6rc34.md).
 Before it, release candidate **1.9.6rc33**: `co wechat` reads your own WeChat for Mac history locally (read-only) — a
@@ -137,7 +140,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc34'
+python -m pip install --upgrade 'connectonion==1.9.6rc35'
 ```
 
 ## Previous stable
