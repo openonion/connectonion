@@ -1429,6 +1429,14 @@ then `co ai`'s default port 8000, and uses the first whose `/info` gives your
 address **and the installed version**. A `co ai` you run by hand on port 8000
 at the installed version is used as before.
 
+A new `co ai` that `co rem` starts takes the port the last one had whenever that
+port is free, so a reader tab's local address stays the same across restarts;
+only a port something else holds is traded for a random one (#3130). When the
+recorded `co ai` has exited and nothing on this computer answers as your
+address, `co rem open --live` starts one even if the relay still lists the
+address: the relay keeps a dead Host's registration for a while, and trusting
+it started nothing, so the phone reached no Host (#3112).
+
 A `co ai` keeps running the version it was started with, so after an upgrade:
 
 - **The one `co rem` started** is stopped and a new one is started on the same

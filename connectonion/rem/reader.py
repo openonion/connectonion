@@ -1172,10 +1172,11 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool, say=None)
     if not address:
         return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live view"))
-    from .live_host import Notice, ensure_online, outdated
+    from .live_host import Notice, ensure_online, outdated, recorded_gone
     try:
-        # Online is not enough when what is online is a server from before an upgrade.
-        failure = ensure_online(address) if not host_online(address) or outdated(address) else None
+        # Online is not enough when what is online is a server from before an upgrade, or a dead Host the
+        # relay still lists (#3112).
+        failure = ensure_online(address) if not host_online(address) or outdated(address) or recorded_gone(address) else None
     except (OSError, RemError) as error:
         failure = f"could not start co ai: {error}; run `co ai` to diagnose"
     if isinstance(failure, Notice):
