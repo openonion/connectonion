@@ -62,8 +62,11 @@ def _counted(record: str) -> bool:
 
 # A vendor's ticket desk answers, so its thread is two-way and the map's direction
 # rule kept it a person; it led People titled with its own domain (#3004).
+# #3157 adds the desks and bots that read as people on the owner's notebook: a shop's ordering inbox, a
+# notifications sender, a booking desk, and an agent's own mailbox (software writing, not a person).
 DESK = re.compile(r"^(?:support|help|helpdesk|service|customer-?service|customer-?care|care|billing|"
-                  r"tickets?|no-?reply|do-?not-?reply)(?:\+[^@]*)?@", re.I)
+                  r"tickets?|no-?reply|do-?not-?reply|orders?|sales|accounts?|bookings?|enquir(?:y|ies)|inquir(?:y|ies)|"
+                  r"reservations?|notifications?|notify|alerts?|updates?|0x[0-9a-f]{6,})(?:\+[^@]*)?@", re.I)
 BARE_DOMAIN = re.compile(r"^(?:[a-z0-9-]+\.)+[a-z]{2,}$", re.I)
 
 

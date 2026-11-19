@@ -298,3 +298,32 @@ def test_a_person_page_leads_with_what_happened_and_a_row_opens_its_original(rea
     page.keyboard.press("Escape")
     assert not panel.is_visible() and "on" not in (row.get_attribute("class") or "").split()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_people_never_show_an_address_as_a_name_and_cells_never_overlap(reader, width):
+    """#3157: rows named by an address, organisation cells carrying provenance prose, long names drawn over the next
+    column. An address-titled page reads as 'name unknown' with its address quiet; provenance is a tooltip."""
+    open_page, _ = reader
+    page = open_page("c=people", width=width, language="zh")
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      REM.records.push({...r, path: 'people/someone-at-example.md', title: 'someone.unknown@example.test',
+        text: '# someone.unknown@example.test\\n\\n## Facts\\n- Email: someone.unknown@example.test\\n- Company: Fernhill Labs (their signature)\\n'});
+      REM.records.push({...r, path: 'people/long-name.md', title: 'Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff',
+        text: '# Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff\\n\\n## Facts\\n- Company: Fernhill Labs\\n'});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    rows = page.locator(".people-table tbody tr")
+    text = page.locator(".people-table tbody").inner_text()
+    assert "someone.unknown@example.test" not in page.locator(".people-table td.c-name a").all_inner_texts()
+    assert "未知姓名" in text
+    assert "(their signature)" not in text  # provenance moves to the tooltip
+    if width == 1440:
+        overlap = page.evaluate("""() => [...document.querySelectorAll('.people-table tbody tr')].some(tr => {
+          const name = tr.querySelector('td.c-name'), org = tr.querySelector('td.c-org');
+          if (!name || !org) return false;
+          const inner = name.querySelector('a').getBoundingClientRect(), cell = name.getBoundingClientRect();
+          return inner.right > cell.right + 1; })""", isolated_context=False)
+        assert not overlap
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

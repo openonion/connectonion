@@ -1474,6 +1474,11 @@
   .people-table .c-name .nm a { color: var(--ink); text-decoration: none; }
   .people-table .c-name .nm a:hover { text-decoration: underline; }
   .people-table .c-org .clamp { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A long name ellipsises inside its own cell; it never draws over the Organisation column (#3157). */
+  .people-table td.c-name .nm { display: flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; }
+  .people-table td.c-name .nm > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .people-table .nm-unknown { color: var(--grey); }
+  .people-table .nm-unknown .nm-address { margin-left: 8px; color: var(--grey); font-size: var(--s-ui); }
   .people-table .depth { display: inline-flex; align-items: center; gap: 6px; color: var(--grey); }
   .people-table .depth .moon { width: 10px; height: 10px; color: var(--ink); }
   .people-table .unk { color: var(--grey); }
@@ -10169,7 +10174,7 @@ function personSub(r) {
 // above it, so it does not repeat them; unknown facts are one quiet count, never rows of "not found".
 const PROFILE_GROUPS = [["Contact", ["Email", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
   ["Relationship", ["How we know them", "First contact", "Last contact", "Mail"]], ["Identity", ["Also known as", "Language", "Location", "Time zone"]]];
-Object.assign(UI.zh, { "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
+Object.assign(UI.zh, { "Name unknown": "未知姓名", "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
   "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射",
   "Last contact {when}": "最近联系 {when}", "1 mail": "1 封邮件", "{n} mails": "{n} 封邮件", "+{n} more": "还有 {n} 个", "Show less": "收起" });
 // A handle or link says its platform in words; its picture is that service's published mark (Simple Icons) or,
@@ -10754,6 +10759,20 @@ function peopleRow(r) {
   const f = facts(r);
   return { r, f, open: openItems(r, f), org: personOrg(r), rel: relation(r), status: known(r).status };
 }
+// #3157: a page titled by an address is a person whose name REM does not know; it never reads as a name.
+function addressTitle(r) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(r.title || "").trim()); }
+function personNameCell(d) {
+  const name = addressTitle(d.r)
+    ? el("a", { href: href(d.r), class: "nm-unknown", title: d.r.title }, [el("span", { text: t("Name unknown") }), el("span", { class: "nm-address", text: d.r.title })])
+    : el("a", { href: href(d.r), title: d.r.title, text: d.r.title });
+  return el("span", { class: "nm" }, [name, updatedMarker(d.r)]);
+}
+// The organisation's name only; where it came from ("(their signature)") is its tooltip (#3157).
+function personOrgCell(org) {
+  const note = /\s*[（(]([^()（）]*)[)）]\s*$/.exec(org.name);
+  const name = note ? org.name.slice(0, note.index) : org.name;
+  return el("span", { class: "clamp", title: [org.full, note?.[1]].filter(Boolean).join(" · "), text: name });
+}
 function depthCell(status) {
   const mark = moon(status);
   mark.setAttribute("aria-hidden", "true");
@@ -10763,8 +10782,8 @@ const DEPTH_RANK = { "Investigated": 0, "Partly investigated": 1, "Mapped": 2 };
 const blank = value => value === "" || value == null ? null : value;
 // A sort key of null is a blank: it goes last whichever way the column is sorted.
 const PEOPLE_COLUMNS = [
-  { key: "name", label: "Name", sort: d => d.r.title, cell: d => el("span", { class: "nm" }, [el("a", { href: href(d.r), text: d.r.title }), updatedMarker(d.r)]) },
-  { key: "org", label: "Organisation", sort: d => blank(d.org?.name), cell: d => d.org ? el("span", { class: "clamp", title: d.org.full || "", text: d.org.name }) : textCell("") },
+  { key: "name", label: "Name", sort: d => addressTitle(d.r) ? "\uffff" + d.r.title : d.r.title, cell: d => personNameCell(d) },
+  { key: "org", label: "Organisation", sort: d => blank(d.org?.name), cell: d => d.org ? personOrgCell(d.org) : textCell("") },
   { key: "last", label: "Last contact", num: true, desc: true, sort: d => blank(d.f.last), cell: d => dateCell(d.f.last, mappedContact(d.r)) },
   { key: "m90", label: "Messages · 90 days", num: true, desc: true, sort: d => blank(d.rel?.messages_90d),
     cell: d => d.rel?.messages_90d == null ? textCell("") : el("span", { class: "mono", text: String(d.rel.messages_90d) }) },
