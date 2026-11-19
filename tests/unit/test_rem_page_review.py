@@ -2374,3 +2374,93 @@ def test_an_append_draft_that_drops_a_cited_line_is_refused_then_restored_at_the
                               carried=original, last_resort=True)
     saved = notebook.read(record)
     assert 'Atlas exports a weekly report to the board.' in saved and 'Atlas now also tracks hiring.' in saved
+
+
+# 2026-11-19: a person page already over the size limit could never be appended to: the append keeps every
+# cited line, and the size check asked for History to be folded. The program now moves the oldest History.
+def _long_person(history_lines=16, relationship_lines=12, width=640):
+    filler = 'and the thread went on with details of the plan, the dates and who was waiting on what ' * 8
+    history = '\n'.join(f'- 2026-{1 + i // 2:02d}-{10 + i % 2:02d}: Thread {i} ended with an agreed next step, '
+                        f'{filler[:width]} [{i + 1}]' for i in range(history_lines))
+    relationship = '\n'.join(f'- Avery and the user worked on part {i} of the pilot, {filler[:width]} [{i + 1}]'
+                             for i in range(relationship_lines))
+    sources = '\n'.join(f'- [{i + 1}] gmail:avery{i:04d}' for i in range(max(history_lines, relationship_lines)))
+    return ('# Avery Lin\n\nAvery runs the Lantern pilot with the user. [1]\n\n'
+            f'## Our relationship\n{relationship}\n\n## History\n{history}\n\n## Sources\n{sources}\n')
+
+
+def test_an_over_limit_page_moves_its_oldest_history_to_an_archive_word_for_word():
+    from connectonion.rem.page_review import (PAGE_LIMIT, archive_history, archive_record, dropped, with_moved,
+                                              _sources, _archived)
+    before = _long_person(relationship_lines=20)
+    assert len(before) > PAGE_LIMIT
+    page, archive, moved = archive_history('people/avery-lin.md', before)
+    assert len(moved) > 1 and len(page) <= PAGE_LIMIT
+    assert all(line not in page for line in moved)
+    # The page says where the rest went, in one linked line at the end of History.
+    history = page.partition('\n## History\n')[2].split('\n## ', 1)[0].strip().splitlines()
+    assert history[-1] == f'- Earlier history: {len(moved)} entries moved to [archive](../{archive_record("people/avery-lin.md")}).'
+    # The oldest go first, and the newest four always stay.
+    dates = sorted(line[2:12] for line in before.splitlines() if line.startswith('- 2026-'))
+    assert sorted(line[2:12] for line in moved) == dates[:len(moved)] and len(history) - 1 >= 4
+    # Word for word in the archive, each number pointing at the source the page cited.
+    page_sources, kept = _sources(before), _sources(archive)
+    for line, archived in zip(sorted(moved), sorted(_archived(archive))):
+        assert re.sub(r'\[\d+\]', '', line) == re.sub(r'\[\d+\]', '', archived)
+        assert page_sources[re.search(r'\[(\d+)\]$', line)[1]] == kept[re.search(r'\[(\d+)\]$', archived)[1]]
+    # Nothing is lost: not a source (the page keeps its Sources), not a line.
+    assert dropped(before, with_moved(page, moved), claims=True) == []
+    assert _sources(page) == page_sources
+    assert archive.startswith('# Avery Lin: earlier history\n') and '](../../../people/avery-lin.md)' in archive
+
+
+def test_a_page_under_the_limit_is_left_alone_and_a_second_move_adds_to_the_archive():
+    from connectonion.rem.page_review import archive_history, _archived, _sources
+    short = _long_person(history_lines=6, relationship_lines=2, width=40)
+    assert archive_history('people/avery-lin.md', short) == (short, '', [])
+    page, archive, moved = archive_history('people/avery-lin.md', _long_person(relationship_lines=20))
+    # The next append: the page renumbered its sources and grew again.
+    grown = page.replace('## History\n', '## History\n' + ''.join(
+        f'- 2026-12-{20 + i}: A new thread {i} ended, {"with more detail " * 40}[{i + 1}]\n' for i in range(3)))
+    grown = re.sub(r'(?m)^- \[(\d+)\] gmail:avery(\d+)$', lambda m: f'- [{m[1]}] gmail:avery{m[2]}', grown)
+    grown += '\n'.join(f'- Avery and the user worked on extra part {i}, {"more words " * 60}[1]' for i in range(8))
+    page2, archive2, moved2 = archive_history('people/avery-lin.md', grown, archive)
+    assert moved2 and len(_archived(archive2)) == len(moved) + len(moved2)
+    assert len(set(_sources(archive2).values())) == len(_sources(archive2))  # one number per source
+    assert page2.count('- Earlier history: ') == 1 and f'{len(moved) + len(moved2)} entries' in page2
+
+
+def test_an_append_to_an_over_limit_page_is_saved_with_its_oldest_history_archived(tmp_path):
+    """The live failure, reproduced: 22,670 characters appended to 32,360 was refused on every repair."""
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import PAGE_LIMIT, PAGE_REFUSED, archive_record
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
+    filler = 'with the dates, the owners and the next step written out in full for the team ' * 9
+    history = '\n'.join(f'- 2026-{1 + i // 2:02d}-{10 + i % 2:02d}: Thread {i} ended with a plan, {filler[:620]} [{i + 1}]'
+                        for i in range(16))
+    sources = '\n'.join(f'- [{i + 1}] gmail:avery{i:02d} — 2026-{1 + i // 28:02d}-{1 + i % 28:02d}' for i in range(30))
+    items = [{'source': f'gmail:avery{i:02d}', 'text': f'Thread {i} ended with a plan {filler[:620]} part {i}'}
+             for i in range(30)]
+    original = (notebook.read(record)
+                .replace('## Our relationship\n- Unknown — not investigated yet', '## Our relationship\n' + '\n'.join(
+                    f'- Avery and the user ran part {i} of the pilot, {filler[:600]} [{i + 1}]' for i in range(14)))
+                .replace('## History\n- Unknown — not investigated yet', '## History\n' + history)
+                .replace('- (none yet)', sources))
+    path = tmp_path / 'candidate.md'
+    notebook.write(record, original)  # a page already over the limit, as the live one was
+    assert PAGE_LIMIT < len(original) < PAGE_REFUSED
+    draft = original.replace('## Our relationship\n', '## Our relationship\n' + '\n'.join(
+        f'- Avery and the user also covered area {i}, {filler[:600]} [{14 + i}]' for i in range(16)) + '\n')
+    assert len(draft) > PAGE_REFUSED and len(draft) > len(original)
+    path.write_text(draft)
+    page = [{'role': 'page', 'record': record, 'append': True, 'source': 'investigation:page', 'text': original}]
+    runner._promote_candidate(notebook, record, path, original, [*page, *items], tmp_path, None, carried=original)
+    saved, archive = notebook.read(record), notebook.read(archive_record(record))
+    assert '- Earlier history: ' in saved and len(saved) < len(draft)
+    assert 'also covered area 15' in saved and 'ran part 13 of the pilot' in saved
+    for i in range(16):  # every History line is on the page or in the archive
+        assert f'Thread {i} ended' in saved or f'Thread {i} ended' in archive

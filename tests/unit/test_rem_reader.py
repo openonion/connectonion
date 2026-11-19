@@ -1585,7 +1585,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1631,7 +1631,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
-                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -3096,7 +3096,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -5054,3 +5054,37 @@ def test_each_record_page_carries_its_investigate_button_state(tmp_path):
         "last": "2026-10-01", "new_mails": 0, "new_sessions": 0, "leads": 0, "label": "current",
         "cost": {"quick": None, "full": None}, "run": None, "undo": False, "rewrite": None}
     assert "investigation" not in records["decisions/x.md"]
+
+
+def test_a_failed_rebuild_is_retried_at_once_when_the_install_changes(tmp_path, monkeypatch):
+    """2026-11-19 (#3112): a rebuild ran while `uv tool install` was rewriting the package, failed on a missing
+    reader.html, and its failure mark blocked every retry, so the reader served the old release's page. A new
+    install (release or template) is a new cause: the next request rebuilds without waiting out the backoff."""
+    import subprocess
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    started = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
+    monkeypatch.setattr(reader, "snapshot", lambda root, **options: (_ for _ in ()).throw(FileNotFoundError("reader.html")))
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    with pytest.raises(FileNotFoundError):
+        reader.main([str(root), "full"])
+    assert reader._spawn_refresh(root, ["full"]) is False                # same install: backed off
+    monkeypatch.setattr(reader, "_release", lambda: "9.9.9rc1")          # the upgrade finished
+    assert reader._spawn_refresh(root, ["full"]) is True and len(started) == 1
+
+
+def test_a_manual_build_says_when_another_build_holds_the_pages(tmp_path, monkeypatch, capsys):
+    """2026-11-19 (#3112): `python -m connectonion.rem.reader ROOT live full` printed nothing and changed nothing
+    while the Host's own build held the lock. It says so, and that the running build saves the pages."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    monkeypatch.setattr(reader, "renew_idle", lambda: None, raising=False)
+    with reader._building(root) as mine:
+        assert mine
+        reader.main([str(root), "live", "full"])
+    assert "Another build is running" in capsys.readouterr().out

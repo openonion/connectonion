@@ -928,6 +928,17 @@ next passed its deadline while <step> and could not be interrupted`, so a
 night never ends without its totals. The page is parked by the next
 `co rem next`, exec or catchup.
 
+Finishing the page an investigation just wrote is a named step too
+(`finishing <page>`), so a deadline there parks that page and the round moves
+on (#3128). Before, the stall said only "preparing the next task", nothing was
+parked, and every later call finished the same page again: on 2026-11-17 to 19
+a newly mapped skill page waited on the notebook's lock it already held, and
+eight turns of five calls each did nothing. A deadline at a step that names no
+page is counted: after five in a row, `co rem next` holds that step for six
+hours and says so (`co rem next passed its deadline 5 times in a row while
+<step>; held for 6 hours from the last one`), in `co rem status` as the
+round's reason. A served task clears the count.
+
 What stops the round is what is about the round, not one page: the runner
 cannot start or does not complete (a refused model, a spent provider limit),
 the notebook's lock is held by another process, the notebook cannot be read.
@@ -1140,6 +1151,23 @@ what the repair still drops is put back beside the new work, as dropped quotes
 and sources already are. The lead, `History` (folded by the program at sixteen
 lines) and `Uncertainties` (questions that get answered) are excluded on purpose.
 
+A page over the 20,000-character limit keeps every line too. Before the size
+check, the program moves the page's oldest dated `History` lines, word for word,
+to an archive beside it, `logs/history/<the page's path>` (for example
+`logs/history/people/avery-lin.md`). It moves them oldest first until the page
+is under the limit, and always keeps the newest four on the page. Each moved
+line keeps its words; its citation numbers become the archive's own, defined in
+the archive's `## Sources` by the same source the page cited, so a later
+renumbering of the page cannot point them elsewhere. The page keeps its own
+Sources and ends its History with one line, "Earlier history: N entries moved
+to [archive](…)", which opens the archive as a page in the reader. A later move
+adds to the same archive. The loss checks count a moved line as kept. Before
+this, a page already over the limit could never be appended to: the size check
+asked for History to be folded, and the append rule refused every fold
+(2026-11-19, a 22,670-character page appended to 32,360, refused on each repair).
+The archive is in `logs/`, which holds run records: the night never reads it
+back as material.
+
 The options are steps, each with its own prompt:
 
 ```bash
@@ -1344,7 +1372,10 @@ live Host (`POST /rem/investigate`): a detached worker runs the public CLI and
 the head follows it step by step from the run records (Append or Write, then Web
 follow-up, with the run's current stage). When it ends the head says how many
 lines it added, lists them under **What changed**, and offers **Undo** while
-nothing else has changed the page. The ⋯ beside it holds the levels: **Full
+nothing else has changed the page. A run that stops says why in one plain
+sentence in the reader's language ("调查没有完成：页面超过长度上限，候选稿已保存，页面没有改动"),
+read from the CLI's `--json` error, never a Python list or a progress line
+(1.9.6rc27 showed "['Investigation: writing investigation']"). The ⋯ beside it holds the levels: **Full
 investigation** (default), **Quick update** (write or append only, no web) and
 **Rewrite the page** (a draft, then **Replace the page** or **Discard** in the
 head). A level shows "last time about N points" only when that page has a
@@ -1410,7 +1441,11 @@ updated yet. Refresh task progress reads the status in place.
 The footer says when the page was rendered: **Updated** (更新于) and the time.
 If the newest background build failed it adds "the newest rebuild failed", with
 the log path as a detail; `co rem open` says the same. A failing build is not
-started again within 10 minutes. If the cache folder exists but is not yours
+started again within 10 minutes, unless the install changed since it failed (a
+new release or reader template): an upgrade that finished is tried at once, so a
+build that ran while the upgrade was still being written does not keep the old
+release's page up. Run by hand (`python -m connectonion.rem.reader ROOT live full`)
+while another build holds the pages, it says so instead of printing nothing. If the cache folder exists but is not yours
 alone (a shared temporary directory), the reader renders now, as before saved
 pages, and says so; a Host that `co rem open` started and that exited soon
 after is named with its log, `rem-live-host.log`, on the next open. Before this (1.9.3rc62) every open
@@ -1424,6 +1459,14 @@ started one on last time (kept in `rem-live-host.json` in the identity folder),
 then `co ai`'s default port 8000, and uses the first whose `/info` gives your
 address **and the installed version**. A `co ai` you run by hand on port 8000
 at the installed version is used as before.
+
+A new `co ai` that `co rem` starts takes the port the last one had whenever that
+port is free, so a reader tab's local address stays the same across restarts;
+only a port something else holds is traded for a random one (#3130). When the
+recorded `co ai` has exited and nothing on this computer answers as your
+address, `co rem open --live` starts one even if the relay still lists the
+address: the relay keeps a dead Host's registration for a while, and trusting
+it started nothing, so the phone reached no Host (#3112).
 
 A `co ai` keeps running the version it was started with, so after an upgrade:
 
@@ -2935,6 +2978,15 @@ weekly window's `used_percent`, its length and when it resets, as
 `codex app-server` reports them (`account/rateLimits/read`). Reading it starts
 no model turn and costs nothing. Codex reports whole percents, so every figure
 below is good to about one point.
+
+Inside the Codex worker's sandbox (`CODEX_SANDBOX` is set) the app-server
+cannot write `~/.codex` and exits ("failed to initialize sqlite state
+runtime"), so nothing is started there (#3128). `co rem exec` reads the meter
+before it starts each turn, outside the sandbox, and hands the reading down in
+`CO_REM_QUOTA_READING`. The turn's `co rem next` calls use it while it is less
+than three hours old and its window has not reset; otherwise they say the
+reading is unknown and why, and the last recorded reading in the window stands
+as before.
 
 - **Every run records the meter before and after** (`quota` in the run log,
   shown by `co rem logs`). The difference is what that run cost in points of

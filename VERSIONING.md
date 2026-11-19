@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc27
+## Current Version: 1.9.6rc28
+Release candidate 1.9.6rc28 for 1.9.6: the night runs again (a finishing step deadlocked on its own lock; a step
+that keeps stalling is held and named; the Codex quota is read outside the sandbox), Investigate can append to a
+page already over the length limit (its oldest History moves word for word to an archive), the live reader
+recovers after an upgrade (a failed rebuild retries, a dead Host is replaced, the port is kept), a person's reply
+policy is one click (以后直接发给他 / 以后先给我看; nothing auto-sent before 07:00; private facts hold), and the
+person header is polished. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc28.md).
+
+- 1.9.6rc28 (night unblocked, append to long pages, live reader recovers, one-click reply policy).
+
+### Previous candidate: 1.9.6rc27
 Release candidate 1.9.6rc27 for 1.9.6: the person page's header and profile card are redesigned (#3131's first
 slice). Three header lines (name; role · organisation; place · last contact · mail · Today), one action column
 (调查, then the translation state), and facts as single-line rows in two balanced columns, with sources one hover

@@ -93,15 +93,52 @@ def _work(root: Path, record: str, mode: str) -> None:
     receipt = read_json(path, {})
     reply = {}
     try:
-        reply = json.loads(done.stdout or "{}")
+        reply = json.loads((done.stdout or "{}").strip().splitlines()[-1] if (done.stdout or "").strip() else "{}")
     except ValueError:
         pass
-    error = (reply.get("error") or {}).get("message") if isinstance(reply.get("error"), dict) else reply.get("error")
     receipt.update(result="completed" if done.returncode == 0 else "failed", exit_code=done.returncode,
-                   finished_at=now().isoformat(),
-                   **({"reason": str(error or done.stderr.strip().splitlines()[-1:] or "")[:400]}
-                      if done.returncode else {}))
+                   finished_at=now().isoformat())
+    if done.returncode:
+        receipt.update(explain(_message(reply) or _last_line(done.stderr)))
     write_json(path, receipt)
+
+
+def _message(reply) -> str:
+    """The error the CLI printed with --json: {"ok": false, "data": <words or a result>} (rem_commands._emit)."""
+    if not isinstance(reply, dict) or reply.get("ok", True):
+        return ""
+    data = reply.get("data")
+    if isinstance(data, dict):
+        data = data.get("error") or data.get("reason") or data.get("message") or ""
+    return data if isinstance(data, str) else ""
+
+
+def _last_line(stderr: str) -> str:
+    """The last line on stderr that is not a progress line ("Investigation: writing investigation")."""
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    said = [line for line in lines if not line.startswith("Investigation: ")]
+    return (said or lines or [""])[-1]
+
+
+# Why a run stopped, in words the reader can show: a kind it says in the owner's language, and a plain
+# sentence. It once showed "['Investigation: writing investigation']", a Python list of a progress line.
+REASONS = [
+    ("too_long", re.compile(r"Page is ([\d,]+) characters \(was ([\d,]+)\)"),
+     "The page is too long to add to ({0} characters); the draft is kept and nothing on the page changed."),
+    ("changed", re.compile(r"Page changed during investigation"),
+     "The page changed while it was being investigated; nothing was written. Run it again."),
+    ("dropped", re.compile(r"Dropped (?:claim line|quote|source id) the page had"),
+     "The draft left out lines the page had, so it was not saved; nothing on the page changed."),
+]
+
+
+def explain(message: str) -> dict:
+    """{"reason": a plain sentence, "reason_kind": what kind}: never a list or a traceback."""
+    message = " ".join(str(message or "").split())
+    for kind, pattern, sentence in REASONS:
+        if match := pattern.search(message):
+            return {"reason": sentence.format(*match.groups()), "reason_kind": kind}
+    return {"reason": (message[:300] or "The investigation stopped without saying why."), "reason_kind": "other"}
 
 
 def _progress(root: Path, receipt: dict, logs: list[dict]) -> list[dict]:

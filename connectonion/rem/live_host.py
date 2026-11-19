@@ -141,10 +141,10 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
             return held
         if held is REPLACE:
             process, renewed = _renew(directory, saved, address, wait=timeout / 2), True
-        elif host_online(address):
+        elif host_online(address) and not _gone(saved, address):
             return None
         elif saved.get("address") != address or not _alive(saved):
-            process = _launch(directory, address)
+            process = _launch(directory, address, port=_saved_port(saved))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if process is not None and process.poll() is not None:
@@ -367,6 +367,30 @@ def renew_idle() -> None:
             print(f"Replaced the server from before the upgrade: co ai pid {process.pid} on port {_port(process.args)}.")
 
 
+def _gone(saved, address: str) -> bool:
+    """The record names this address's Host, that process is gone, and nothing answers locally as the address.
+
+    Then the relay's listing is stale (it holds a dead Host's registration for a while) and is not trusted:
+    after the owner's Host was killed, `co rem open --live` believed it and started nothing (#3112). A Host
+    the owner started by hand answers on a known port, so it is still reused, never doubled.
+    """
+    return (saved.get("address") == address and not _alive(saved)
+            and not any(answers(port, address) for port in _known_ports()))
+
+
+def recorded_gone(address: str) -> bool:
+    """_gone for this identity's record: the live open asks before trusting the relay."""
+    from ..project import selected_identity_dir
+    return _gone(read_json(selected_identity_dir() / "rem-live-host.json", {}), address)
+
+
+def _saved_port(saved):
+    """The port the last Host had, when it is free: an open reader tab keeps its address (#3130).
+    None lets _spawn take a random one, as before, when something else holds it."""
+    port = saved.get("port")
+    return port if isinstance(port, int) and _free(port) else None
+
+
 def outdated(address: str) -> bool:
     """A server of another version answers as this identity on a port co rem knows."""
     return any(_other_version(port, address) for port in _known_ports())
@@ -406,7 +430,7 @@ def start(address: str) -> str | None:
             return None
         exited = (saved.get("address") == address and isinstance(saved.get("started_at"), (int, float))
                   and time.time() - saved["started_at"] < STARTUP_WINDOW)
-        _launch(directory, address, background=True)
+        _launch(directory, address, background=True, port=_saved_port(saved))
     if exited:
         return (f"co ai exited during startup; see {directory / 'rem-live-host.log'}. "
                 "Starting it again; retry with `co ai` to see the error")

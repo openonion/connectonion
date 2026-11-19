@@ -349,8 +349,11 @@ def skill_record_context(root: Path, source: str) -> dict | None:
             'origin': saved['origin'], 'sender': '', 'thread': '', 'input_scope': saved['input_scope']}
 
 
-def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -> int:
-    """Keep only cited, bounded instruction excerpts whose content matches their ID."""
+def retain_instruction_context(root: Path, items: list[dict], cited: set[str], *, lock_held=False) -> int:
+    """Keep only cited, bounded instruction excerpts whose content matches their ID.
+
+    `lock_held`: the caller already holds the maintenance lock (`co rem next` finishing the page it
+    investigated). Taking it again waited on itself for the whole deadline (#3128)."""
     from .evidence import FILE_CHARS
     from .files import SECRET_SHAPES
     from .reader_model import PRIVATE
@@ -378,15 +381,16 @@ def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -
                      'source': kind, 'time': item.get('timestamp') or '', 'sender': '', 'thread': '',
                      'input_scope': scope, 'content_sha256': digest, 'part': int(part[1]) if part else None,
                      'recovered_at': datetime.now(timezone.utc).isoformat() if item.get('recovered') else ''}
-            _save_instruction_context(root, value)
+            _save_instruction_context(root, value, lock_held=lock_held)
             retained += 1
     return retained
 
 
-def _save_instruction_context(root: Path, value: dict) -> None:
+def _save_instruction_context(root: Path, value: dict, *, lock_held=False) -> None:
+    from contextlib import nullcontext
     from .files import read_json, state_path, write_json
     path = state_path(root, 'skill-sources/' + hashlib.sha256(value['id'].encode()).hexdigest() + '.json')
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         previous = read_json(path, {})
         if previous:
             if previous.get('content_sha256') != value['content_sha256']:

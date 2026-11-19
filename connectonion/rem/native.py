@@ -45,6 +45,10 @@ DEADLINE_EXIT = 75  # EX_TEMPFAIL: run next again
 # How long an interrupted preparation has to let go of the lock before the process ends.
 UNWIND_SECONDS = 30
 STALLED = "stalled-next.json"
+# A deadline at a step that names no page parks nothing (#3128): after this many in a row the step is held for
+# STALL_HOLD_HOURS, so a turn does not spend five calls and fifty minutes on it again and again.
+STALL_HOLD_AFTER = 5
+STALL_HOLD_HOURS = 6
 # `timings` is where this call's seconds went, keyed by what the progress line said.
 # `interrupt` is the thread the deadline interrupts (exec, catchup); None ends the process.
 # `last_words` is what a longer command prints before a deadline ends its process.
@@ -431,6 +435,10 @@ def _skip_stalled(root):
         return []
     state_path(root, STALLED).unlink()
     cursor = read_json(state_path(root, "round.json"), {})
+    if not stall.get("record") and cursor:
+        cursor.update(unnamed_stalls=cursor.get("unnamed_stalls", 0) + 1, unnamed_stall_step=stall.get("step") or stall["label"],
+                      unnamed_stall_at=service.now().isoformat())
+        write_json(state_path(root, "round.json"), cursor)
     if cursor.get("started_at") != stall.get("round") or cursor.get("pending"):
         return [f"The last co rem next passed its deadline while {stall['label']}; trying again"]
     if "mail_slot" in stall:
@@ -443,6 +451,23 @@ def _skip_stalled(root):
             cursor.update(job_index=index + 1, current=None, project_quote=None)
     write_json(state_path(root, "round.json"), cursor)
     return [f"Skipped {stall['label']}: the last co rem next passed its deadline there"]
+
+
+def _stall_hold(root):
+    """Why next holds instead of trying a step that keeps passing the deadline unnamed; '' to go on.
+
+    The hold lets go STALL_HOLD_HOURS after the last stall, and a served task clears the count."""
+    cursor = read_json(state_path(root, "round.json"), {})
+    count = cursor.get("unnamed_stalls", 0)
+    if count < STALL_HOLD_AFTER:
+        return ""
+    if service.now() - datetime.fromisoformat(cursor["unnamed_stall_at"]) >= timedelta(hours=STALL_HOLD_HOURS):
+        for key in ("unnamed_stalls", "unnamed_stall_step", "unnamed_stall_at"):
+            cursor.pop(key, None)
+        write_json(state_path(root, "round.json"), cursor)
+        return ""
+    return (f"co rem next passed its deadline {count} times in a row while {cursor['unnamed_stall_step']}; "
+            f"held for {STALL_HOLD_HOURS} hours from the last one (co rem logs shows where the time went)")
 
 
 @contextmanager
@@ -499,6 +524,9 @@ def _next_task(root, *, scheduled, discard, own=False, in_round=False):
         _WATCH["deadline"] = time.monotonic() + NEXT_DEADLINE_SECONDS
         progress_step("preparing the next task")
         stall_notices = _skip_stalled(root)
+        if hold := _stall_hold(root):
+            _held(root, hold)
+            return {"outcome": "done", "reason": hold, "notices": stall_notices}
         cursor = read_json(state_path(root, "round.json"), {})
         previous = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {}) if cursor.get("pending") else {}
         notices = stall_notices
@@ -520,6 +548,8 @@ def _next_task(root, *, scheduled, discard, own=False, in_round=False):
             # this turn without claiming a slot that did not start the round.
             cursor = read_json(state_path(root, "round.json"), {})
             cursor['served_turn'] = _turn()
+            for key in ("unnamed_stalls", "unnamed_stall_step", "unnamed_stall_at"):  # it got past: no hold
+                cursor.pop(key, None)
             if scheduled and not cursor.get("slot"):
                 cursor["scheduled"] = True
             write_json(state_path(root, "round.json"), cursor)

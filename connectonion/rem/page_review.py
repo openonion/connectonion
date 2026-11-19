@@ -1360,8 +1360,95 @@ def size_errors(candidate: str, original: str) -> list[str]:
     if len(candidate) <= PAGE_REFUSED or len(candidate) <= len(original):
         return []
     return [f'Page is {len(candidate):,} characters (was {len(original):,}), over the {PAGE_LIMIT:,} limit; '
-            'keep it near 15,000: fold the oldest History into dated one-line summaries with their '
-            'citations, and keep the lead and the current state']
+            'keep it near 15,000: say the lead and the current state shortly and merge repeated lines; '
+            'the program moves the oldest History to the page\'s archive, so do not drop cited lines']
+
+
+# An append (#3105) keeps every cited line, so a page already near the limit could never grow: on
+# 2026-11-19 a 22,670-character person page appended to 32,360 and was refused on every repair, each
+# asked to fold History it was also forbidden to drop. Over the limit, the program moves the oldest
+# dated History lines, word for word with the sources they cite, to an archive beside the page in
+# logs/ (run records, never read back as material), and the page says so in one linked line.
+ARCHIVE_DIR = 'logs/history'
+ARCHIVE_KEEP = 4  # the newest dated History lines always stay on the page
+ARCHIVE_LINE = re.compile(r'^- Earlier history: \d+ (?:entry|entries) moved to \[[^\]]*\]\([^)]*\)\.?[ \t]*$')
+_SOURCE_LINE = re.compile(r'^[ \t]*[-*][ \t]*\[(W?\d+)\][ \t]+(.+?)[ \t]*$')
+
+
+def archive_record(record: str) -> str:
+    """Where a page's moved History lives: logs/history/<the page's own path>."""
+    return f'{ARCHIVE_DIR}/{record}'
+
+
+def _relative(from_record: str, to_record: str) -> str:
+    return '../' * from_record.count('/') + to_record
+
+
+def _sources(text: str) -> dict[str, str]:
+    """{id: what follows it} for each definition under ## Sources."""
+    section = text.partition('\n## Sources\n')[2].split('\n## ', 1)[0]
+    return {m[1]: m[2] for line in section.splitlines() if (m := _SOURCE_LINE.match(line))}
+
+
+def _archived(archive: str) -> list[str]:
+    section = archive.partition('\n## History\n')[2].split('\n## ', 1)[0]
+    return [line for line in section.splitlines() if DATED.match(line)]
+
+
+def archive_history(record: str, text: str, archive: str = '') -> tuple[str, str, list[str]]:
+    """(page, archive, moved lines): over PAGE_LIMIT, the page's oldest dated History lines move to the
+    archive, oldest first, until the page is under the limit or only ARCHIVE_KEEP remain. A moved line
+    keeps its words; its citation numbers are the archive's own, defined in the archive's Sources by the
+    same source the page cited, so a later renumbering of the page cannot point it elsewhere. The page
+    keeps its Sources and gains one line linking the archive. Under the limit nothing changes."""
+    span = re.search(r'(?ms)^## History[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    if len(text) <= PAGE_LIMIT or not span:
+        return text, archive, []
+    lines = span[1].split('\n')
+    dated = sorted((line for line in lines if DATED.match(line)), key=lambda line: DATED.match(line)['date'])
+    moved, size = [], len(text)
+    for line in dated[:max(0, len(dated) - ARCHIVE_KEEP)]:
+        if size <= PAGE_LIMIT:
+            break
+        moved.append(line)
+        size -= len(line) + 1
+    if not moved:
+        return text, archive, []
+    page_sources, kept_sources = _sources(text), _sources(archive)
+    number = {value: key for key, value in kept_sources.items()}
+
+    def renumber(match):
+        source = page_sources.get(match[1])
+        if source is None:
+            return match[0]
+        if source not in number:
+            number[source] = str(1 + max((int(key) for key in kept_sources if key.isdigit()), default=0))
+            kept_sources[number[source]] = source
+        return f'[{number[source]}]'
+    history = sorted([*_archived(archive), *(CITATION.sub(renumber, line) for line in moved)],
+                     key=lambda line: DATED.match(line)['date'], reverse=True)
+    title = (re.search(r'(?m)^# (.+)$', text) or [None, record])[1].strip()
+    target = archive_record(record)
+    archive = (f'# {title}: earlier history\n\n'
+               f'Moved from [{title}]({_relative(target, record)}) when the page passed {PAGE_LIMIT:,} characters. '
+               'Each line is as it was written; its numbers cite the sources below.\n\n'
+               '## History\n' + '\n'.join(history) + '\n\n## Sources\n'
+               + '\n'.join(f'- [{key}] {value}' for key, value in sorted(kept_sources.items(), key=lambda kv: int(kv[0].lstrip('W') or 0))) + '\n')
+    total = len(history)
+    note = (f'- Earlier history: {total} {"entry" if total == 1 else "entries"} moved to '
+            f'[archive]({_relative(record, target)}).')
+    body = [line for line in lines if line not in moved and not ARCHIVE_LINE.match(line)]
+    last = max((i for i, line in enumerate(body) if line.startswith('- ')), default=len(body) - 1)
+    body.insert(last + 1, note)
+    return text[:span.start(1)] + '\n'.join(body) + text[span.end(1):], archive, moved
+
+
+def with_moved(text: str, moved: list[str]) -> str:
+    """The page as the loss checks read it: lines moved to the archive count as kept, with the page's numbers."""
+    if not moved:
+        return text
+    head, sep, tail = text.partition('\n## Sources\n')
+    return head.rstrip('\n') + '\n' + '\n'.join(moved) + '\n' + sep + tail if sep else text + '\n' + '\n'.join(moved)
 
 
 def size_note(page_chars: int) -> str:
@@ -1372,8 +1459,9 @@ def size_note(page_chars: int) -> str:
     the same mail (#2026 for project pages, #2041 for the others)."""
     if page_chars <= PAGE_LIMIT * 3 // 4:
         return f"The page must stay under {PAGE_LIMIT:,} characters. "
-    return (f"The page is {page_chars:,} characters; it must end under {PAGE_LIMIT:,}, or at least not grow: "
-            "first fold the oldest History into dated one-line summaries with their citations, then add. ")
+    return (f"The page is {page_chars:,} characters; it should end under {PAGE_LIMIT:,}: keep every cited line, "
+            "say new things shortly, and leave the oldest History where it is; the program moves it to the "
+            "page's archive. ")
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),

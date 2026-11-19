@@ -248,7 +248,8 @@ def _run_locked(root, run, lock_fd):
             # Inherit the lock so killing the launcher cannot overlap a still
             # running Codex session with the next fire.
             result = run(command, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
-                         cwd=root, pass_fds=(lock_fd,), env={**subprocess_environment(), 'CO_REM_TURN_ID': name})
+                         cwd=root, pass_fds=(lock_fd,), env={**subprocess_environment(), 'CO_REM_TURN_ID': name,
+                                                              **_quota_reading()})
         cursor = read_json(state_path(root, 'round.json'), {})
         if cursor and cursor != before:
             from .schedule import calendar_round
@@ -305,6 +306,13 @@ def _run_locked(root, run, lock_fd):
         write_json(state_path(root, 'last-turn.json'), receipt)
 
     return outcome
+
+
+def _quota_reading():
+    """The meter, read here outside the worker's sandbox, for the turn's `co rem next` calls inside it (#3128)."""
+    from . import quota
+    value = quota.handed_down({"runner": "codex"})  # this launcher only ever starts Codex
+    return {quota.HANDED_DOWN: value} if value else {}
 
 
 def _record(root, event):

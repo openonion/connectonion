@@ -3350,6 +3350,9 @@
   .more-menu > summary::-webkit-details-marker { display: none; }
   .more-menu > summary:hover, .more-menu[open] > summary { background: var(--well); color: var(--ink); }
   .more-menu > .menu { left: 0; bottom: 44px; }
+  /* 以后直接发给他 / 以后先给我看 (#3121): what the click does, then what will happen, in words. */
+  .menu .direct-send { text-align: left; }
+  .menu .direct-send small { display: block; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
   .more-menu .menu .btn-quiet { display: flex; width: 100%; justify-content: flex-start; min-height: 36px; color: var(--ink); }
   .qdraft :is(.mail-body, .mail-choices, .mail-text, .mail-gist, .mail-head) { background: none; }
 
@@ -3529,11 +3532,15 @@
   .hero-acts .translation-line button { margin: 0 0 0 6px; padding: 0; height: auto; border: 0; background: none; box-shadow: none; color: var(--ink);
     font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
   /* The third line: place · last contact · mail · Today, in the reader's grey, one line on a desktop. */
-  .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
-  .hero-meta > * + *::before { content: "·"; margin: 0 8px; color: var(--grey); }
+  /* Dotted lines that wrap: each item carries its dot in a 16px gutter on its left, and the line is shifted left
+     by that gutter and clipped, so a dot that would start a wrapped line falls outside it. */
+  .hero-meta, .n3-person .r4-sub.dek { clip-path: inset(-4px -4px -4px 16px); }
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0 -16px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .hero-meta > * { margin-left: 16px; }
+  .hero-meta > *::before, .n3-person .dek > *::before { content: "·"; display: inline-block; width: 16px; margin-left: -16px; text-align: center; color: var(--grey); }
   .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
     font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .n3-person .hero-meta .r4-today.late { color: var(--red); }
+  .n3-person .hero-meta .r4-today.late { color: var(--red); box-shadow: none; padding: 0; }
   .hero-acts:empty { display: none; }
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
@@ -3596,7 +3603,8 @@
   .n3-person .dek-unit { color: var(--grey) !important; }
   /* The role is the line; organisation and units follow under it, spaced rather than dotted, so a wrapped line never starts with a dot. */
   /* Role · organisation · units on one line, wrapping as words, not as a stack of rows. */
-  .n3-person .dek > * + *::before { content: "·"; margin-right: 16px; margin-left: -8px; color: var(--grey); text-decoration: none; display: inline-block; }
+  .n3-person .r4-sub.dek { gap: 4px 0; margin-left: -16px; }
+  .n3-person .dek > * { margin-left: 16px; }
   /* The profile card: a fact box of four groups under one hairline; label above value, on the 4px grid. */
   .pcard { margin-top: 20px; padding-top: 16px; border-top: var(--hair) solid var(--rule); }
   /* Each fact one row, label column then value; the rows flow into two balanced columns. */
@@ -3617,8 +3625,17 @@
     display: inline-block; }
   /* Out of sight and out of the line's width until the row is pointed at or focused, but still in the page, so
      a keyboard reaches it and focus can come back to it from the evidence panel. */
-  .pc-row:not(:hover):not(:focus-within) .cite { width: 0; margin: 0; overflow: hidden; opacity: 0; }
-  .pc-item { display: flex; align-items: baseline; min-width: 0; max-width: 100%; }
+  .pc-row:not(:hover):not(:focus-within) .cite { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; opacity: 0; }
+  /* The value keeps its line; a qualifier ("mobile", "from the sender line") wraps under it rather than squeezing it. */
+  .pc-item { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; max-width: 100%; }
+  .pc-item .qual { margin-left: 0; }
+  .pcard .pc-copy, .pcard .pc-copy * { white-space: nowrap; }
+  /* A link or code value (split by factValue so its sources stay on its last word) is one line, ellipsised;
+     its qualifier takes the line under it. */
+  .pc-v .val.mono { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc-v .val.mono :is(span, a):not(.qual) { white-space: nowrap; }
+  .pc-v .val.mono wbr { display: none; }  /* Chrome breaks at a <wbr> even under nowrap */
+  .pc-v .val.mono .qual { display: block; margin-left: 0; white-space: normal; }
   .pc-after { white-space: nowrap; flex: none; }
   /* An address or handle is one line, ellipsised; a click copies the whole of it. */
   .pc-copy { position: relative; display: block; min-width: 0; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: var(--r-cell); background: none; color: inherit; font: inherit;
@@ -3714,7 +3731,7 @@
     .hero-acts .translation-line { text-align: left; align-self: flex-start; }
     /* On a phone the role and the organisation each take their line; a dot would start the second one. */
     .n3-person .dek { flex-direction: column; gap: 2px; }
-    .n3-person .dek > * + *::before { content: none; }
+    .n3-person .dek > *::before { content: none; }
     .bento { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .bento .span2, .bento .person-sessions { grid-column: auto; }
     .rh-row { flex-direction: column; align-items: stretch; }
@@ -6320,7 +6337,7 @@ function chooseHint(hint, open) {
     return [k ? (zh ? "、" : ", ") : "", jump];
   }));
 }
-function replyDraftCard(draft, onSent) {
+function replyDraftCard(draft, onSent, person) {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const fills = {}, filled = () => parts.every((part, i) => !/^(?:\[|［|【)/.test(part) || fills[i])
     ? parts.map((part, i) => fills[i] ?? part).join("") : null;
@@ -6355,7 +6372,7 @@ function replyDraftCard(draft, onSent) {
   // Send is the one green action. Writing full screen stays in sight beside it: behind 更多 the owner could not find
   // it (sprint 22); editing in the mail app and Skip wait behind 更多 (D-120).
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
-    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), skip])]);
+    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), skip, directSendItem(who || person)].filter(Boolean))]);
   const actions = el("div", { class: "mail-actions" }, [more, write, hint,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), send]);
@@ -6397,7 +6414,7 @@ function replyDraftCard(draft, onSent) {
     }
     if (action === "redraft") {
       REM.drafts = REM.drafts.map(d => d.id === draft.id ? result : d);
-      card.replaceWith(replyDraftCard(result));
+      card.replaceWith(replyDraftCard(result, onSent, person));
       return;
     }
     const next = action === "send" ? "sent" : "discarded";
@@ -7965,7 +7982,7 @@ function cardDraft(draft, group) {
     setTimeout(render, motionStilled() ? 0 : 320);
   };
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
-    replyDraftCard(draft, sent)]);
+    replyDraftCard(draft, sent, group.r)]);
 }
 // A snapshot can show the work but not do it: one plain line per page says so, never a command (D-60).
 function snapshotLine() {
@@ -8798,7 +8815,12 @@ function approvalUndoBar(onToday = true) {
   document.body.appendChild(bar);
   const tick = () => {
     const seconds = Math.max(0, Math.ceil((Math.max(...held.map(item => Date.parse(item.release_at))) - Date.now()) / 1000));
-    status.textContent = (undoFailure ? undoFailure + " · " : "") + (seconds ? t("{n} replies held · {time} to undo", {n: held.length, time: Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")}) : t("Hold ended. Delivery continues from the Host."));
+    const left = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+    // One reply REM chose to send itself says to whom and when (#3121); several say how many.
+    const own = held.length === 1 && held[0].by === "rem" ? held[0] : null;
+    status.textContent = (undoFailure ? undoFailure + " · " : "") + (!seconds ? t("Hold ended. Delivery continues from the Host.")
+      : own ? t("Sending to {name} at {time} · {left} to undo", { name: own.title, time: new Date(own.release_at).toLocaleTimeString(uiLanguage === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" }), left })
+      : t("{n} replies held · {time} to undo", {n: held.length, time: left}));
     if (!seconds) {undo.disabled = true; clearInterval(approvalTimer);}
   };
   undo.onclick = async () => {
@@ -9910,7 +9932,7 @@ function profileCard(r) {
   const languages = have("Language");
   if (languages.length) add("Identity", "Language", "", [{ node: el("span", { class: "pc-inline" }, languages.map(item => profileValue(item, r, "Language"))) }]);
   if (!have("Location").length) add("Identity", "Time zone", "", have("Time zone").map(item => ({ item })));
-  const extra = [...parsed.keys()].filter(label => !FACT_LABELS.people.includes(label) && !PROFILE_GROUPS.some(([, labels]) => labels.includes(label)) && !["Location", "Tags"].includes(label));
+  const extra = [...parsed.keys()].filter(label => !FACT_LABELS.people.includes(label) && !PROFILE_GROUPS.some(([, labels]) => labels.includes(label)) && !["Location", "Tags", "Direct send"].includes(label));
   for (const label of extra) add("Identity", label, "", have(label).map(item => ({ item })));
   // What the page has a line for and does not know; a unit or role the line above already says is not missing.
   const missing = [...FACT_LABELS.people, ...extra, ...["Unit", "Role in unit"].filter(label => parsed.has(label) && !units.length)]
@@ -9984,6 +10006,14 @@ Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "N
   "Could not do that: {why}": "没有做成：{why}",
   "This is a snapshot: investigate from the live reader.": "这是快照：请在实时阅读器里调查。" });
 const INV_STEPS = { write: "Write", append: "Append", rewrite: "Rewrite", enrich: "Web follow-up" };
+// Why a run stopped, by its kind (page_runs.REASONS), in the reader's language; any other reason is shown as written.
+const INV_REASONS = { too_long: "the page is too long to add to; the draft is kept and the page is unchanged",
+  changed: "the page changed while it was investigated; nothing was written, run it again",
+  dropped: "the draft left out lines the page had, so it was not saved; the page is unchanged" };
+Object.assign(UI.zh, { "the page is too long to add to; the draft is kept and the page is unchanged": "页面超过长度上限，候选稿已保存，页面没有改动",
+  "the page changed while it was investigated; nothing was written, run it again": "调查期间页面被改动，没有写入，请再试一次",
+  "the draft left out lines the page had, so it was not saved; the page is unchanged": "候选稿漏掉了页面原有的内容，没有保存，页面没有改动",
+  "Earlier history": "更早的经历" });
 const INV_LEVELS = [["full", "Full investigation", "Adds the web follow-up"],
   ["quick", "Quick update", "Reads only the new material, no web"], ["rewrite", "Rewrite the page", "Writes a new draft; replaces the page only when you accept it"]];
 const INV_RUNS = new Map();  // what this tab has seen of a page's run since the page data was built
@@ -10026,6 +10056,40 @@ function invParts(r, s, paint) {
   if (running && live) invFollow(r, paint);
   return parts;
 }
+// ---------- Who REM may reply to without asking (#3121, D-101) ----------
+// Each person has a tier on their page: partner (sent with no click, after the hold), close (routine replies
+// only), none (a card in Today) or never (drafts only). REM sets it from the relationship; the owner sets it
+// here in one click, and his choice wins from then on. The words say what will happen, not the tier's name.
+Object.assign(UI.zh, { "Send to them directly from now on": "以后直接发给他", "Show me first from now on": "以后先给我看",
+  "REM replies to them without asking; 10 minutes to undo": "REM 直接回复，10 分钟内可撤销",
+  "Their replies wait for you in Today": "他的回复先放在今天等你看",
+  "Replies to this person": "回复这个人", "Saved: REM sends to them directly": "已改：以后直接发给他",
+  "Saved: their replies wait for you": "已改：以后先给我看", "Sending to {name} at {time} · {left} to undo": "{time} 发给 {name} · 还有 {left} 可撤销" });
+const DIRECT_TIERS = new Map();  // this tab's changes since the page data was built
+function directTier(r) {
+  if (DIRECT_TIERS.has(r.path)) return DIRECT_TIERS.get(r.path);
+  const line = (parseFacts(r).get("Direct send") || [])[0];
+  return (/^(partner|close|none|never)\b/.exec(plainLine(line?.value || "")) || [])[1] || "none";
+}
+// The one item a menu shows: the opposite of what happens now, with what it will do in words.
+function directSendItem(r, close) {
+  if (!r || r.category !== "people" || !REM.live) return null;
+  const direct = ["partner", "close"].includes(directTier(r));
+  const [label, says, tier, done] = direct ? ["Show me first from now on", "Their replies wait for you in Today", "none", "Saved: their replies wait for you"]
+    : ["Send to them directly from now on", "REM replies to them without asking; 10 minutes to undo", "partner", "Saved: REM sends to them directly"];
+  const item = el("button", { type: "button", role: "menuitem", class: "direct-send", "data-tier": tier }, [t(label), el("small", { text: t(says) })]);
+  item.onclick = async () => {
+    item.disabled = true;
+    const response = await fetch("/rem/direct-send", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: r.path, tier, reason: "reader" }) }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) { item.disabled = false; item.lastChild.textContent = result.error || t("Could not do that: {why}", { why: t("Try again") }); return; }
+    DIRECT_TIERS.set(r.path, tier);
+    item.replaceChildren(t(done));
+    close?.();
+  };
+  return item;
+}
 function invMenu(r, s, paint, off) {
   const menu = el("details", { class: "inv-more" }, [el("summary", { "aria-label": t("Investigation level"), title: t("Investigation level") }, [icon("ellipsis")])]);
   const cost = mode => mode !== "rewrite" && s.cost?.[mode] ? " · " + t("Last time about {n} points", { n: s.cost[mode] }) : "";
@@ -10035,7 +10099,7 @@ function invMenu(r, s, paint, off) {
         [t(name), mode === "full" ? el("span", { class: "inv-default", text: " · " + t("default") }) : null, el("small", { text: t(says) + cost(mode) })]);
       item.onclick = () => { menu.open = false; invRun(r, mode, paint); };
       return item;
-    })]));
+    }), ...(r.category === "people" && REM.live ? [el("p", { class: "inv-h", text: t("Replies to this person") }), directSendItem(r)] : [])]));
   menu.onkeydown = event => { if (event.key === "Escape" && menu.open) { event.stopPropagation(); menu.open = false; menu.querySelector("summary").focus(); } };
   return menu;
 }
@@ -10067,7 +10131,8 @@ function invRecent(run) { return run.result !== "running" && Date.now() - Date.p
 function invResult(r, s, paint) {
   const run = s.run;
   if (run.result === "failed") return [el("p", { class: "inv-line", role: "status" }, [el("span", { class: "inv-fail",
-    text: run.reason ? t("The investigation stopped: {why}", { why: run.reason }) : t("The investigation stopped") })])];
+    text: run.reason ? t("The investigation stopped: {why}", { why: INV_REASONS[run.reason_kind] ? t(INV_REASONS[run.reason_kind]) : run.reason })
+      : t("The investigation stopped") })])];
   if (run.mode === "rewrite") return [];
   const added = run.added_lines || [], count = run.added_count ?? added.length;
   const words = !run.changed ? t("Nothing new to add") : count === 1 ? t("Updated · 1 line added")

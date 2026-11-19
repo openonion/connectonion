@@ -387,6 +387,11 @@ def prepare_task(root, cursor, config, directory):
             finish(root, cursor)
         return task
     if cursor["current"] and cursor["current"].get("finalized"):
+        # A named step: a deadline here parks this page and moves the round on (#3128). Unnamed, the stall
+        # parked nothing and every later call finished the same page again.
+        from .native import progress_step
+        record = cursor["current"]["record"]
+        progress_step(f"finishing {record}", round=cursor["started_at"], job_index=cursor["job_index"], record=record)
         _finish_investigation(root, cursor)
     from . import same_person
     # Same-person checks are investigation runs (quota.INVESTIGATION_PHASES): they wait with it.
@@ -1044,7 +1049,8 @@ def _finish_investigation(root, cursor):
     if state.get("skill_items") and state["changed"]:
         from .skill_runs import retain_instruction_context
         from .reader_model import _source_ids
-        retain_instruction_context(root, state["skill_items"], _source_ids([{"text": Notebook(root).read(state["record"])}]))
+        retain_instruction_context(root, state["skill_items"], _source_ids([{"text": Notebook(root).read(state["record"])}]),
+                                   lock_held=True)
     from .refusals import remember_refusal, forget_refusal
     if state["refused_sources"]:
         remember_refusal(root, state["record"], state["refused_sources"], state["refused_rounds"][-1], stage="investigation round")
