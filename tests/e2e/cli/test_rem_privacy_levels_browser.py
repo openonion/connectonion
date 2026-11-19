@@ -217,3 +217,65 @@ def test_a_sensitive_waiting_item_is_covered_in_today_and_the_open_list(tmp_path
             page.wait_for_timeout(400)
             assert "in hospital" not in page.evaluate(VISIBLE_TEXT, isolated_context=False), place
         browser.close()
+
+
+# rc35 hunt: a curtain in the middle of a sentence broke the line. Its label rode in front of the hidden words, so
+# the bar was wider than the passage and could not wrap, and the word before it ("如果") hung at the end of the line.
+# A curtain is a word-sized redaction on the same line as its sentence, on every page kind.
+INLINE_SECRET = "the landlord sells the building"
+INLINE_PAGES = {
+    "people/ivy-marsh.md": ("# Ivy Marsh\n\n## Who they are\nIvy rents a studio. If " + INLINE_SECRET + " [sensitive] [1] she will"
+                            " move the studio.\n\n## Sources\n- [1] file:/notes/ivy.md — 2026-09-30\n"),
+    "orgs/cedar-hall.md": ("# Cedar Hall\n\nCedar Hall runs classes. If " + INLINE_SECRET + " [sensitive] [1] it"
+                           " will close in spring.\n\n## Sources\n- [1] file:/notes/cedar.md — 2026-09-30\n"),
+}
+
+
+def _curtain_geometry(page):
+    """The first curtain on the page, the text just before it, and its container, as boxes."""
+    return page.evaluate("""() => {
+      const c = document.querySelector('#main .curtain:not(.lifted)');
+      if (!c) return null;
+      const range = document.createRange(), before = c.previousSibling;
+      const text = before && before.nodeType === 3 ? before : null;
+      let word = null;
+      if (text) { const end = text.data.trimEnd().length; range.setStart(text, Math.max(0, end - 2)); range.setEnd(text, end);
+        const r = range.getClientRects(); word = r.length ? r[r.length - 1].toJSON() : null; }
+      const box = c.closest('p, li, .ov-prose, section') || c.parentElement;
+      return { rects: [...c.getClientRects()].map(r => r.toJSON()), word, line: parseFloat(getComputedStyle(c).lineHeight) || 24,
+               box: box.getBoundingClientRect().toJSON(), scroll: document.documentElement.scrollWidth - innerWidth,
+               text: c.innerText.trim() };
+    }""", isolated_context=False)
+
+
+@pytest.mark.parametrize("record", list(INLINE_PAGES))
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_curtain_in_mid_sentence_stays_on_the_sentence_line(tmp_path, monkeypatch, record, width):
+    from patchright.sync_api import sync_playwright
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    root = tmp_path / "rem"
+    prepare(root)
+    for rel, text in INLINE_PAGES.items():
+        Notebook(root).write(rel, text)
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel="chrome", headless=True)
+        page = browser.new_page(viewport={"width": width, "height": 900 if width > 400 else 844}, locale="zh-CN", reduced_motion="reduce")
+        page.goto(path.as_uri() + "#r=" + record.replace("/", "%2F"))
+        page.locator("#main h1").first.wait_for()
+        page.wait_for_selector("#main .curtain:not(.lifted)")
+        g = _curtain_geometry(page)
+        assert not _legible(page, "landlord sells")                  # still a solid redaction
+        assert len(g["rects"]) == 1                                  # one bar, never split across lines
+        bar = g["rects"][0]
+        assert bar["width"] <= g["box"]["width"] + 1                 # it fits its column
+        assert g["scroll"] <= 0
+        if width == 1440:
+            # The word before the curtain and the curtain sit on the same line.
+            assert g["word"] and abs(g["word"]["top"] - bar["top"]) < g["line"] / 2, (g["word"], bar)
+        if SHOTS and record.startswith("orgs"):
+            SHOTS.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(SHOTS / f"privacy-inline-curtain-{width}.png"))
+        page.locator("#main .curtain:not(.lifted)").first.click()   # still lifts on a click
+        assert _legible(page, "landlord sells")
+        browser.close()

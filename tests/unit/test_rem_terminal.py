@@ -250,3 +250,27 @@ def test_status_still_answers_waiting_on_you_when_only_quiet_threads_remain(tmp_
     monkeypatch.setattr("connectonion.rem.census.open_threads", lambda root, found=None: {
         "mine": 0, "theirs": 0, "other": 0, "quiet": 3, "open": 0})
     assert "0 of 0 open threads" in Text.from_markup("\n".join(_waiting(tmp_path, {}))).plain
+
+
+# ------------------------------------------------ rc35 hunt: "Your day" printed [sensitive] text and full links
+
+
+def test_status_hides_sensitive_day_plan_text_and_full_links_unless_asked(tmp_path, monkeypatch):
+    from connectonion.cli.commands import rem_status
+    for name in ("_notebook", "_today", "_mailboxes", "_archive", "_waiting"):
+        monkeypatch.setattr(rem_status, name, lambda *a, **k: [])
+    monkeypatch.setattr(rem_status, "_header", lambda *a: ["co rem status"])
+    value = {"day_plan": {"text": "Your day (2026-11-20); 10:00–10:30 Studio lease — https://meet.example.com/abc-defg-hij; "
+                                  "Proposed: The landlord may sell the building [sensitive] [4]"},
+             "calendar": {"text": "Calendar: Ivy's private diary https://calendar.example.com/ical/secret-token/basic.ics"}}
+    plain = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "")).plain
+    assert "landlord" not in plain and "[hidden]" in plain
+    assert "abc-defg-hij" not in plain and "secret-token" not in plain
+    assert "meet.example.com" in plain and "calendar.example.com" in plain and "Studio lease" in plain
+    shown = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "", show_private=True)).plain
+    assert "landlord" in shown and "abc-defg-hij" in shown
+
+
+def test_status_offers_show_private_in_its_help(tmp_path):
+    out = CliRunner().invoke(app, ["rem", "status", "--help"]).output
+    assert "--show-private" in out
