@@ -399,3 +399,16 @@ def test_the_depth_budget_counts_deepening_by_its_tokens(tmp_path):
     now = {"used_percent": 78, "window_minutes": WEEK, "resets_at": RESETS}
     run = _spent("2026-09-30T01:00:00+00:00", 40, 78, 3_320_000, "medium", finished="2026-09-30T02:00:00+00:00")
     assert quota.depth_points([run], now) == 2
+
+
+def test_a_saved_reading_without_a_plan_name_still_prints_the_week(tmp_path, monkeypatch):
+    """CI, 2026-11-19: a recorded meter with no `plan` made `co rem` exit with KeyError('plan')."""
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare, read_config
+
+    root = tmp_path / "rem"
+    prepare(root)
+    config = {**read_config(root), "runner": "codex"}
+    reading = {"used_percent": 37, "window_minutes": WEEK, "resets_at": service.now().timestamp() + 3600}
+    bits = service._quota_status(config, [{"quota": {"after": reading}}])
+    assert bits["codex_week"].startswith("37% used (last recorded); resets ")

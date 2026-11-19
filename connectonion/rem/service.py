@@ -916,7 +916,9 @@ def _quota_status(config: dict, logs: list[dict]) -> dict:
     else:
         zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
         resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
-        week = f"{meter['used_percent']}% used on {meter['plan']} (last recorded); resets {resets}"
+        # A reading need not name its plan (an older recorder, a test meter); status must still print.
+        on_plan = f" on {meter['plan']}" if meter.get("plan") else ""
+        week = f"{meter['used_percent']}% used{on_plan} (last recorded); resets {resets}"
     # Sentences first for people; the same numbers stay structured for --json.
     return {"codex_week": week,
             "investigation_this_week": (f"{spent} of {limits['investigation_quota_points']} points; "

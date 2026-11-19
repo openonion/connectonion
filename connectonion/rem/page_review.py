@@ -2231,8 +2231,13 @@ def dropped(before: str, after: str, exempt=frozenset(), *, claims=False) -> lis
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
                for source in sorted(_evidence_sources(before) - _listed_sources(after))]
-            + ([f'Dropped claim line the page had: {re.sub(r"[ ]*(?:\[W?\d+\](?!\()[ ]*)+", "", line).rstrip()}'
+            + (['Dropped claim line the page had: ' + _CITATION_MARKS.sub("", line).rstrip()
                 for line in _lost_claims(before, after).values()] if claims else []))
+
+
+# Citation marks such as [3] or [W2] (not a [text](link)), stripped from a dropped claim line.
+# A module constant, not inline: a backslash inside an f-string is a SyntaxError before Python 3.12.
+_CITATION_MARKS = re.compile(r"[ ]*(?:\[W?\d+\](?!\()[ ]*)+")
 
 
 def restore_dropped(before: str, after: str, exempt=frozenset(), *, claims=False) -> str:
