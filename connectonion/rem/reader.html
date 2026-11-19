@@ -3346,8 +3346,9 @@
   .not-person:hover, .is-person:hover, .not-person:focus-visible, .is-person:focus-visible { color: var(--ink); background: var(--well); }
   .hero-acts .not-person { display: block; margin: 4px 0 0 auto; }
   .contact-directory td .is-person { min-height: 44px; }
-  /* Over the name cell's right end, so a row's names keep their width; shown on hover or focus. */
-  .people-table td.c-name { position: relative; }
+  /* Over the name cell's right end, so a row's names keep their width; shown on hover or focus. The sticky name
+     column (.sheet .name) already anchors it; relative only where the cell isn't sticky, or the name would scroll away. */
+  .people-table td.c-name:not(.name) { position: relative; }
   .people-table .not-person.compact { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 30px; padding: 0 10px;
     background: var(--well); visibility: hidden; }
   .people-table tr:hover .not-person.compact, .people-table .not-person.compact:focus-visible { visibility: visible; }

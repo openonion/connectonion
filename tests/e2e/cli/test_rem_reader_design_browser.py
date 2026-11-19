@@ -3933,7 +3933,8 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
     page.evaluate(r'''() => { peopleColumns = [...peopleColumnKeys(null), 'role']; render(); }''', isolated_context=False)
     row = page.locator('.people-table tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
-    assert 'Fernhill Labs 科研团队' in row.locator('.c-org').inner_text()
+    # #3157: a page linked under a longer label goes by the organisation's own name in the People table.
+    assert row.locator('.c-org').inner_text().strip() == 'Fernhill Labs'
     assert row.locator('.c-org').is_visible()
     assert '理学院教授' in row.locator('.c-role').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
@@ -3943,7 +3944,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert '研究气候数据' in page.locator('.ov-about').inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert '理学院教授' in page.locator('.r4-sub').inner_text()
-    assert 'Fernhill Labs 科研团队' in page.locator('.r4-sub').inner_text()
+    assert page.locator('.r4-sub').inner_text().strip().endswith('Fernhill Labs')  # #3157: the organisation's own name
     assert page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md'), first = parseFacts(r);
       if (parseFacts(r) !== first) return false;
