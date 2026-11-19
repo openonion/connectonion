@@ -96,6 +96,8 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import"):
+        await _keys(scope, receive, send, root, headers)
     elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/investigate", "/rem/direct-send"):
         await _action(scope, receive, send, root, headers)
     else:
@@ -251,6 +253,37 @@ async def _action(scope, receive, send, root, headers):
             or scope["path"] in ("/rem/talk", "/rem/translate-all")):
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
+
+
+async def _keys(scope, receive, send, root, headers):
+    """Keys (#3137). Like every /rem route, only this computer reaches it (``_local``) with the page's cookie, so a
+    relayed or remote reader never can. A secret travels only in the reveal's reply and the add's body; neither is
+    logged, and the reply is never cached."""
+    from ...rem import keys
+    from ...rem.files import RemError
+    if headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        await _reply(send, 415, "application/json required")
+        return
+    try:
+        body = json.loads(await read_body(receive, 4_000_000 if scope["path"] == "/rem/keys/import" else 8192) or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
+        return
+    text = lambda name: body.get(name) if isinstance(body, dict) and isinstance(body.get(name), str) else ""  # noqa: E731
+    action = scope["path"].rsplit("/", 1)[1]
+    operations = {"add": lambda: {"page": keys.add(root, text("service"), text("account"), text("secret"),
+                                                   purpose=text("purpose"), link=text("link"))},
+                  "reveal": lambda: {"secret": keys.reveal(root, text("page"))},
+                  "import": lambda: keys.import_csv(root, text("csv"))}
+    try:
+        result = await asyncio.to_thread(operations[action])
+    except RemError as error:
+        await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
+        return
+    if action != "reveal":
+        from ...rem.reader import owner_changed
+        await asyncio.to_thread(owner_changed, root)
+    await _reply(send, 200, json.dumps(result), "application/json")  # SECURITY_HEADERS carry no-store
 
 
 def _talk(root, body):

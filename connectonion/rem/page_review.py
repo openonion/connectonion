@@ -1471,6 +1471,9 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     from .reader_model import source_definitions
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
+    # A secret never enters a page, a keys page least of all (#3137): its value lives in the OS vault.
+    from .keys import secret_errors
+    errors += secret_errors(record, candidate)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
     if record.startswith('knowledge/') and not abstract:
