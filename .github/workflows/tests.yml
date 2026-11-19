@@ -18,7 +18,7 @@ concurrency:
 # setup before tests ran. Install dependencies directly; all checks stay enabled.
 jobs:
   # A release PR changes only version strings and release notes; the code is
-  # what main just tested. On such a PR the matrix below is skipped and
+  # what main just tested. On such a PR, or its release/** branch push, the matrix below is skipped and
   # tests-passed says why (.github/scripts/version_only.py). Pushes and
   # release re-runs always run everything.
   scope:
@@ -32,13 +32,17 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Does this PR change only release metadata?
+      - name: Does this PR or release branch change only release metadata?
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        # The push to release/** ran the whole matrix next to the PR's skipped
+        # one, and a release still waited ten minutes on it (rc32). main and
+        # workflow_call (the release re-run) always run everything.
         run: |
           only=false
-          if [ "$EVENT_NAME" = pull_request ]; then
+          if [ "$EVENT_NAME" = pull_request ] || { [ "$EVENT_NAME" = push ] && [[ "$REF" == refs/heads/release/* ]]; }; then
             only=$(python3 .github/scripts/version_only.py HEAD^1 HEAD)
           fi
           echo "version-only: $only"
