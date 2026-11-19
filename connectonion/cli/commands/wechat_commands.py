@@ -16,6 +16,8 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from ..typer_groups import _OneSuggestion
+
 console = Console()
 
 # WeChat 4.x for Mac. db_storage holds the SQLCipher databases. See docs/wechat-read.md.
@@ -31,6 +33,7 @@ RAW_KEY_RE = re.compile(r"^x'[0-9a-fA-F]{64}'$")
 DOCS = "docs/wechat-read.md"
 
 wechat_app = typer.Typer(
+    cls=_OneSuggestion,
     help="Read your own WeChat for Mac history locally (read-only). macOS only. See " + DOCS + ".",
     no_args_is_help=True,
     epilog="Example:  co wechat doctor  |  co wechat key set x'0f1e...'  |  co wechat chats  |  co wechat export --db message_0.db --table Msg",
@@ -134,6 +137,7 @@ def doctor():
 
 
 key_app = typer.Typer(
+    cls=_OneSuggestion,
     help="The WeChat database key: how to obtain it (a consented local step), and how to save one you have. Read-only unless you run `set`.",
     no_args_is_help=False,
     invoke_without_command=True,
@@ -156,7 +160,7 @@ def key_help(ctx: typer.Context):
             "own debugger against a RE-SIGNED COPY of WeChat (never the real /Applications/WeChat.app).",
             "This uses only OS tools (codesign, lldb, python3) — no package is installed.",
             "",
-            "co wechat does not do this for you. Follow one of the open-source references in the design",
+            "This is not automated for you. Follow one of the open-source references in the design",
             f"doc ({DOCS}), on your own account, then save the key you get:",
             "",
             "    co wechat key set x'<64 hex characters>'",

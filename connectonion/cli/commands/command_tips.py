@@ -186,6 +186,7 @@ NEXT = {
     "co whatsapp send": "co whatsapp receive --timeout 0",
     "co whatsapp reply": "co whatsapp receive --timeout 0",
     "co whatsapp done": "co whatsapp receive --timeout 0",
+    "co wechat *": HANDLER,            # doctor/key/chats/decrypt/export each print their own next step
     "co whatsapp edit": "co whatsapp log",
     "co whatsapp delete": "co whatsapp log",
     "co whatsapp react": "co whatsapp log",
