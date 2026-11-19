@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc27**: the person page's header and profile card are redesigned: three lines under
+Release candidate **1.9.6rc28**: REM's night runs again, Investigate appends to long pages by archiving their
+oldest History, the live reader recovers by itself after an upgrade, and a person's reply policy is one click.
+See [1.9.6rc28 notes](releases/1.9.6rc28.md).
+Before it, release candidate **1.9.6rc27**: the person page's header and profile card are redesigned: three lines under
 the name, one action column, and every fact one line with its sources a hover away. See
 [1.9.6rc27 notes](releases/1.9.6rc27.md).
 Before it, release candidate **1.9.6rc26**: REM sprint 22. Send on a Today reply always answers, full-screen writing is
@@ -120,7 +123,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc27'
+python -m pip install --upgrade 'connectonion==1.9.6rc28'
 ```
 
 ## Previous stable
