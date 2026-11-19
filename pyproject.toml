@@ -118,7 +118,7 @@ dependencies = [
 # demand too, so this is for anyone who would rather pin it in their own
 # requirements than have a command reach for pip.
 wtf = [
-    "onionwright>=0.0.15",
+    "onionwright>=0.0.16",
 ]
 synology = [
     "keyring>=25,<26",

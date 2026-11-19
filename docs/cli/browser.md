@@ -26,7 +26,7 @@ co browser --engine wtf go_to example.com     # paid WTF Browser, and only when 
 Paying is opt-in. An ordinary command never starts a billable session, even on
 a machine where Onionwright is installed and in credit.
 
-The paid path requires Onionwright 0.0.15 or newer. Install or upgrade the real
+The paid path requires Onionwright 0.0.16 or newer (the first with Windows support). Install or upgrade the real
 private wheel explicitly:
 
 ```bash
