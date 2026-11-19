@@ -279,6 +279,22 @@ def floor_block(reading: dict, limits: dict) -> str:
     return ""
 
 
+def ceiling_block(reading: dict, limits: dict) -> str:
+    """Past the floor the cheap stages go on; this is where they stop too.
+
+    Translate and tag are level-1/2 turns of a minute; the floor kept them waiting with
+    investigation, so a week at 90% on Friday held 142 translations and 226 untagged
+    pages until Tuesday. The floor protects the owner's own coding from investigation."""
+    if "unknown" in reading:
+        return ""
+    ceiling = max(limits["cheap_ceiling_percent"], limits["quota_floor_percent"])
+    if reading["used_percent"] >= ceiling:
+        resets = datetime.fromtimestamp(reading["resets_at"]).astimezone() if reading.get("resets_at") else None
+        return (f"the Codex week is at {reading['used_percent']}%, at or past the {ceiling}% ceiling for translation "
+                "and tagging" + (f"; they resume when it resets {resets:%a %d %b %H:%M}" if resets else ""))
+    return ""
+
+
 PAUSE = "quota-paused.json"
 
 
@@ -294,9 +310,17 @@ def record_pause(root, reading: dict, limits: dict) -> None:
     open_since = saved.get("since") if saved and not saved.get("ended_at") else None
     if floor_block(reading, limits):
         write_json(path, {"since": open_since or moment, "used_percent": reading["used_percent"],
-                          "floor": limits["quota_floor_percent"], "resets_at": reading.get("resets_at")})
+                          "floor": limits["quota_floor_percent"], "resets_at": reading.get("resets_at"),
+                          "ceiling": max(limits["cheap_ceiling_percent"], limits["quota_floor_percent"])})
     elif open_since:
         write_json(path, {**saved, "ended_at": moment})
+
+
+def cheap_go_on(found: dict) -> bool:
+    """Whether translation and tagging still run under this pause: below the ceiling (#3195).
+
+    A pause saved before the ceiling existed has none, and says what held then: everything."""
+    return "ceiling" in found and found["used_percent"] < found["ceiling"]
 
 
 def paused(root) -> dict | None:

@@ -160,16 +160,22 @@ def _zh(root, config):
 
 def _pause_line(root, local, zh):
     """One line while the Codex floor holds REM: a held night is not a quiet one (#2938)."""
-    from .quota import paused
+    from .quota import cheap_go_on, paused
     found = paused(root)
     if not found:
         return ''
     resets = datetime.fromtimestamp(found['resets_at'], local.tzinfo) if found.get('resets_at') else None
+    percent, cheap = found['used_percent'], cheap_go_on(found)
+    # Past the floor, translation and tagging go on to the ceiling: the line says which stopped (#3195).
     if zh:
-        when = f"{WORDS[True]['week'].split()[resets.weekday()]} {resets:%H:%M} 恢复" if resets else '本周额度重置后恢复'
-        return f"REM 暂停中：本周 Codex 额度已用 {found['used_percent']}%，{when}。"
-    when = f"It resumes {resets:%a %H:%M}." if resets else 'It resumes when the Codex week resets.'
-    return f"REM paused: this week's Codex allowance is {found['used_percent']}% used. {when}"
+        until = f"到 {WORDS[True]['week'].split()[resets.weekday()]}" if resets else '到本周额度重置'
+        if cheap:
+            return f"额度到 {percent}%：调查暂停{until}；翻译和标签照常。"
+        return f"额度到 {percent}%：调查、翻译和标签都暂停{until}。"
+    until = f" until {resets:%a}" if resets else ' until the week resets'
+    if cheap:
+        return f"Codex week at {percent}%: investigation paused{until}; translation and tagging continue."
+    return f"Codex week at {percent}%: investigation, translation and tagging paused{until}."
 
 
 def compose(root, config, local, saved, link):

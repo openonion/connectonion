@@ -80,9 +80,15 @@ def _paused(root, value, spell):
     since = datetime.fromisoformat(found['since']).astimezone(zone)
     resets = (f"until the week resets {datetime.fromtimestamp(found['resets_at'], zone):%a %d %b %H:%M}"
               if found.get('resets_at') else "until the Codex week resets")
-    return [rem_look.section('Codex week', style.warn(f"Paused since {since:%a %d %b %H:%M}")),
-            rem_look.follow(highlight(f"This week's Codex allowance is {found['used_percent']}% used, at the "
-                                      f"{found['floor']}% floor kept for your own work."), glyph=''),
+    # Past the floor translation and tagging go on to the ceiling (#3195): the head says which stopped.
+    from ...rem.quota import cheap_go_on
+    day = f" until {datetime.fromtimestamp(found['resets_at'], zone):%a}" if found.get('resets_at') else " until the week resets"
+    held = ("investigation paused" + day + "; translation and tagging continue" if cheap_go_on(found)
+            else "investigation, translation and tagging paused" + day)
+    return [rem_look.section('Codex week', style.warn(f"Codex week at {found['used_percent']}%: {held}.")),
+            rem_look.follow(highlight(f"Paused since {since:%a %d %b %H:%M}, at the {found['floor']}% floor kept for your "
+                                      "own work" + (f"; translation and tagging stop at {found['ceiling']}%"
+                                                    if "ceiling" in found else "") + "."), glyph=''),
             rem_look.follow(highlight(f"No investigation runs {resets}; mail is still read."), glyph=''),
             rem_look.follow(style.muted("To let REM work before then, raise the floor: ")
                             + style.command(spell(['config', 'set', 'limits.quota_floor_percent', 'PERCENT']))), '']
