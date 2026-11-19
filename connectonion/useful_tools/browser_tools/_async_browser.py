@@ -219,9 +219,8 @@ def _lock_dir_for(policy, resolved: str) -> Optional[Path]:
 
 def has_display() -> bool:
     """Whether a headed browser can open a window here."""
-    if platform.system() != "Linux":
-        return True
-    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    from .chrome_finder import has_a_display
+    return has_a_display()
 
 
 def _headless_without_display(headless: bool) -> bool:
