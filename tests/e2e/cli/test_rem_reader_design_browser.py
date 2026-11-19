@@ -150,7 +150,7 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, 
     boxes = """nodes => nodes.filter(n => n.getClientRects().length).map(n => { const b = n.getBoundingClientRect();
       return [b.top, b.bottom, b.width, n.getAttribute('href')]; })"""
     every = [box[3] for box in page.locator('#nav > a.nav').evaluate_all(boxes)]
-    assert len(every) == 10 and not page.locator('.nav.more').is_visible()  # room for all of them: no 更多
+    assert len(every) == 9 and not page.locator('.nav.more').is_visible()  # room for all of them: no 更多 (no Agenda, #3152)
     for height, places in ((700, 7), (540, 4)):
         page.set_viewport_size({'width': 960, 'height': height})
         page.wait_for_function(f"[...document.querySelectorAll('#nav > a.nav')].filter(n => n.getClientRects().length).length === {places}")
@@ -172,7 +172,7 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, 
       return {word: w.textContent, shown: s.opacity === '1' && s.visibility === 'visible', size: s.fontSize, height: b.height,
         inside: b.left >= cell.left && b.right <= cell.right && b.bottom <= cell.bottom, under: b.top >= picture.bottom}; })""")
     words = [w for w in words if w['height']]  # the folded places are not drawn
-    assert [w['word'] for w in words] == ['Today', 'Waiting', 'Agenda', 'People', 'More', 'Settings']
+    assert [w['word'] for w in words][:3] == ['Today', 'Waiting', 'People'] and [w['word'] for w in words][-2:] == ['More', 'Settings']  # no Agenda (#3152)
     expected = {'shown': True, 'size': '11px', 'height': 14, 'inside': True, 'under': True}
     failures = [{'word': w['word'], **{key: w[key] for key, value in expected.items() if w[key] != value}}
                 for w in words if any(w[key] != value for key, value in expected.items())]
@@ -2158,10 +2158,10 @@ def test_the_rail_counts_only_what_waits_on_you_and_shows_every_place_it_has_roo
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
     # #2961: each name starts with the word you see (Orgs · Organisations)
-    assert names == ['Today', 'Waiting on you', 'Agenda', 'People', 'Orgs · Organisations', 'Projects', 'Knowledge', 'Decisions', 'Skills',
+    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Knowledge', 'Decisions', 'Skills',
                      'Changes · Memory changes']
     assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == [
-        'Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Knowledge', 'Decisions', 'Skills', 'Changes']
+        'Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Knowledge', 'Decisions', 'Skills', 'Changes']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more == [] and not page.locator('.nav.more').is_visible()  # the rail is filled before anything folds
     assert not {'Graph', 'Activity', 'Questions & connections'} & set(names + more)  # D-02, D-03
