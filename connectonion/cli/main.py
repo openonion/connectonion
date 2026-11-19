@@ -3046,6 +3046,10 @@ app.add_typer(gcalendar_app, name="gcalendar")
 from .commands.synology_cli import syno_app
 app.add_typer(syno_app, name="syno")
 
+# WeChat (#3146): read the owner's own WeChat for Mac history locally, read-only. macOS only.
+from .commands.wechat_commands import wechat_app
+app.add_typer(wechat_app, name="wechat")
+
 # Linear (#2049): our own commands on Linear's GraphQL API, with LINEAR_API_KEY.
 from .commands.linear_commands import linear_app
 app.add_typer(linear_app, name="linear")
