@@ -3237,6 +3237,28 @@
   .sync:hover { background: var(--well); color: var(--ink); }
   .sync::after { content: ""; position: absolute; right: 7px; top: 7px; width: 7px; height: 7px; border-radius: var(--round); background: var(--ink); box-shadow: var(--e-ring); }
   .sync.off::after { background: var(--pencil); }
+  /* #2840 slice 1: three privacy levels, one control beside the language toggle. The word says the state. */
+  .privacy-level-host { position: relative; display: inline-flex; }
+  .privacy-level { min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); cursor: pointer; white-space: nowrap; }
+  .privacy-level .pl-short { display: none; }
+  @media (max-width: 640px) { .privacy-level .pl-short { display: inline; } }
+  .privacy-level:hover, .privacy-level[aria-expanded="true"] { background: var(--well); color: var(--ink); }
+  .privacy-menu { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: 260px; max-width: calc(100vw - 32px); margin: 0; padding: 4px; list-style: none;
+    border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); }
+  .privacy-menu button { display: block; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: var(--radius); background: none; color: var(--ink); text-align: left; cursor: pointer;
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .privacy-menu button:hover, .privacy-menu button:focus-visible { background: var(--well); }
+  .privacy-menu button[aria-checked="true"] { font-weight: var(--w-bold); }
+  .privacy-menu small { display: block; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  /* Cover sensitive: the passage is a curtain until it is lifted, one at a time. Its words are transparent on a
+     solid bar (a redaction, not a blur a screenshot could sharpen), unselectable, and its name to a screen reader is
+     the curtain's own words, not the passage. */
+  :root.privacy-cover .curtain:not(.lifted) { color: transparent !important; background: var(--well); cursor: pointer; user-select: none; -webkit-user-select: none;
+    border-radius: var(--r-cell); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  :root.privacy-cover .curtain:not(.lifted) * { color: transparent !important; background: none; border-color: transparent !important; pointer-events: none; }
+  :root.privacy-cover .curtain:not(.lifted)::before { content: attr(data-curtain); padding: 0 6px; color: var(--grey); font-size: var(--s-ui); font-weight: var(--w-regular); white-space: nowrap; }
+  :root.privacy-cover .curtain:not(.lifted):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .privacy-count { margin: 8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .lang-toggle { min-width: 36px; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); cursor: pointer; }
   .lang-toggle:hover { background: var(--well); color: var(--ink); }
   .lang-progress { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -3317,6 +3339,8 @@
     .crumb a { color: var(--ink); }
     .top-end { width: auto; }
     .lang-toggle { min-width: 44px; height: 44px; }
+    .privacy-level { min-height: 44px; min-width: 44px; padding: 0 6px; }
+    .privacy-level .pl-long { display: none; }
     .search { display: none; }
     body.searching .search { display: flex; position: fixed; left: 12px; right: 12px; top: 10px; z-index: 46; max-width: none; }
     body.searching .search input { font: var(--w-regular) var(--s-body)/1 var(--font); }
@@ -3969,7 +3993,7 @@
         <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
         <button class="kbd" type="button" aria-label="Command palette">⌘K</button>
       </div>
-      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><button id="lang-toggle" class="lang-toggle" type="button"></button><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
+      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><span class="privacy-level-host"><button id="privacy-level" class="privacy-level" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="lang-toggle" class="lang-toggle" type="button"></button><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
     </header>
     <main id="main" tabindex="-1"></main>
   </div>
@@ -5291,21 +5315,135 @@ function renderLangToggle() {
     drawKeepingView(true);
   });
 }
-function togglePrivate() {
-  const hidden = document.documentElement.classList.toggle("hide-private");
+// ---- Privacy levels (#2840 slice 1; owner, 2026-11-19: «隐私级别过滤的那么一个按钮…跟翻译的按钮…在右上角…某些内容默认是蒙版或者
+// 默认是消失的…分到一级二级三级») ----
+// One source of truth, privacyLevel: "all" shows every labelled passage; "cover" (this computer's default) shows
+// [personal] and keeps each [sensitive] passage behind a curtain lifted one at a time; "public" takes [personal] and
+// [sensitive] out of the page entirely, for screen sharing. A snapshot or remote reader starts at "public".
+// :root carries hide-private for "public" (every existing rule reads it) and privacy-cover for "cover".
+const PRIVACY_LEVELS = ["all", "cover", "public"];
+Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏感", "Public only": "只看公开", "Privacy": "隐私",
+  "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
+  "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
+  "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
+  "Sensitive · tap to show": "敏感 · 点一下显示", "All": "全部", "Covered": "遮挡", "Public": "公开", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
+  cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
+  public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
+let privacyLevel = "cover";
+// This computer: a file opened here, or the live reader on loopback. The phone and the relay are elsewhere.
+function onThisComputer() { return location.protocol === "file:" || /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname); }
+function privacyDefault() { return REM?.shared || !onThisComputer() ? "public" : "cover"; }
+function applyPrivacyClasses() {
+  const root = document.documentElement;
+  root.classList.toggle("hide-private", privacyLevel === "public");
+  root.classList.toggle("privacy-cover", privacyLevel === "cover");
+}
+let privacyRemoved = false;  // whether Public only has taken passages out of the page since it was drawn
+function setPrivacy(level, { save = true, redraw: again = true } = {}) {
+  // Shared and remote readers only *start* at Public only; whoever is looking may still choose.
+  privacyLevel = PRIVACY_LEVELS.includes(level) ? level : privacyDefault();
+  applyPrivacyClasses();
+  if (save) readerStorage("co-rem-privacy", privacyLevel);
+  renderPrivacyControl();
+  if (!again || !REM) return;
+  if (privacyLevel !== "public" && privacyRemoved) {
+    // Passages Public only took out come back only from the notebook: draw the page again.
+    privacyRemoved = false;
+    drawKeepingView(true);
+  } else {
+    if (privacyLevel !== "cover") uncurtain(document);
+    applyPrivacy(document.body);
+  }
   document.querySelectorAll(".activity-list").forEach(list => list.refreshActivity?.());
-  document.querySelectorAll(".r4-topics").forEach(section => section.refreshTopics?.());
   document.querySelectorAll(".session-find").forEach(bar => bar.refreshSessionFind?.());
-  if (location.protocol === "file:") readerStorage("co-rem-private", hidden ? "hidden" : "shown");
-  const button = document.getElementById("privacy-toggle");
-  button.classList.toggle("active", hidden);
-  button.setAttribute("aria-checked", String(hidden));
-  button.setAttribute("aria-label", t(hidden ? "Show labelled passages" : "Hide labelled passages"));
   const query = new URLSearchParams(location.hash.slice(1)).get("q");
   if (query) search(query);
   refreshFocusExpansion();
   if (REM.records.some(r => r.private && r.category === "knowledge")) render();
 }
+function uncurtain(root) {
+  for (const node of root.querySelectorAll(".curtain")) {
+    node.classList.remove("curtain", "lifted");
+    for (const name of ["role", "aria-label", "tabindex", "data-curtain"]) node.removeAttribute(name);
+  }
+}
+// The old switch and every "Show labelled passages" button now go through the levels.
+function togglePrivate() { setPrivacy(document.documentElement.classList.contains("hide-private") ? "all" : "public"); }
+function revealLabelled() { setPrivacy("all"); }
+function renderPrivacyControl() {
+  const button = document.getElementById("privacy-level");
+  if (!button) return;
+  const [word, , short] = PRIVACY_WORDS[privacyLevel];
+  // The state in words; a phone's top bar has room for its short word.
+  button.replaceChildren(el("span", { class: "pl-long", text: t(word) }), el("span", { class: "pl-short", text: t(short) }));
+  button.title = t(PRIVACY_WORDS[privacyLevel][1]);
+  button.setAttribute("aria-label", t("Privacy") + ": " + t(word));
+  button.onclick = event => { event.stopPropagation(); togglePrivacyMenu(); };
+}
+function togglePrivacyMenu(open) {
+  const button = document.getElementById("privacy-level"), host = button.parentElement;
+  const shown = host.querySelector(".privacy-menu");
+  if (shown || open === false) { shown?.remove(); button.setAttribute("aria-expanded", "false"); return; }
+  const menu = el("ul", { class: "privacy-menu", role: "menu", "aria-label": t("Privacy") }, PRIVACY_LEVELS.map(level => {
+    const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(level === privacyLevel), "data-level": level },
+      [el("span", { text: t(PRIVACY_WORDS[level][0]) }), el("small", { text: t(PRIVACY_WORDS[level][1]) })]);
+    item.onclick = () => { togglePrivacyMenu(false); setPrivacy(level); button.focus({ preventScroll: true }); };
+    return el("li", {}, [item]);
+  }));
+  host.appendChild(menu);
+  button.setAttribute("aria-expanded", "true");
+  menu.querySelector('[aria-checked="true"]').focus({ preventScroll: true });
+}
+// A labelled passage: one the markdown marked [personal] or [sensitive]. Raw source excerpts and conversation
+// messages are .private too, but carry no label; they keep their own rule (hidden at Public only by CSS).
+function labelled(node) { return node.hasAttribute("data-level") || !!node.querySelector(".privacy-tag, [data-level]"); }
+// A labelled passage's level: its own data-level, else the strongest label inside it.
+function passageLevel(node) {
+  return node.dataset.level || (node.querySelector('[data-level="sensitive"], .privacy-tag.sensitive') ? "sensitive" : "personal");
+}
+// Applied to whatever the page draws (a MutationObserver below), so every place gets it: pages, cards, sheets,
+// search, side cards, tag pages.
+function applyPrivacy(root) {
+  if (!(root instanceof Element) || privacyLevel === "all") return;
+  const within = selector => [...(root.matches(selector) ? [root] : []), ...root.querySelectorAll(selector)];
+  if (privacyLevel === "cover") {
+    for (const node of within(".private")) {
+      if (!labelled(node) || node.closest(".curtain") || node.parentElement?.closest(".private")) continue;
+      node.dataset.level = passageLevel(node);
+      if (node.dataset.level !== "sensitive") continue;
+      node.classList.add("curtain");
+      Object.assign(node, { tabIndex: 0 });
+      node.setAttribute("role", "button");
+      node.setAttribute("data-curtain", t("Sensitive · tap to show"));
+      node.setAttribute("aria-label", t("Sensitive · tap to show"));
+    }
+    return;
+  }
+  // Public only: the passages leave the page, and each place says how many it lost.
+  const lost = new Map();
+  for (const node of within(".private, li.private-item, .private-entry, .privacy-only > .privacy-content")) {
+    if (!node.isConnected && node !== root) continue;
+    if (node.classList.contains("private") && !labelled(node)) continue;
+    const quiet = node.closest(".privacy-only") || node.classList.contains("private-entry");
+    const place = node.parentElement?.closest("section, .widget, .pcard, .qcard, .deep-note, dialog, aside, li, td, #main");
+    if (place && !quiet) lost.set(place, (lost.get(place) || 0) + 1);
+    if (node === root) { node.replaceChildren(); node.hidden = true; } else node.remove();
+    privacyRemoved = true;
+  }
+  for (const [place, n] of lost) {
+    if (place.matches("li, td")) continue;  // a row's own gap says it; a line per row would be noise
+    const line = place.querySelector(":scope > .privacy-count") || place.appendChild(el("p", { class: "privacy-count" }));
+    const total = Number(line.dataset.n || 0) + n;
+    line.dataset.n = total;
+    line.textContent = t(total === 1 ? "1 passage hidden" : "{n} passages hidden", { n: total });
+  }
+}
+function liftCurtain(node) {
+  node.classList.add("lifted");
+  node.removeAttribute("role"); node.removeAttribute("aria-label"); node.removeAttribute("tabindex");
+}
+
 function setTheme(mode) {
   if (mode === "auto") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = mode;
@@ -7739,11 +7877,7 @@ function renderSettings() {
     button.onclick = () => setInterfaceLanguage(tag);
     languageSwitch.appendChild(button);
   }
-  const hidden = document.documentElement.classList.contains("hide-private"), calm = document.documentElement.classList.contains("calm");
-  const privacy = el("button", { id: "privacy-toggle", class: "switch" + (hidden ? " active" : ""), type: "button", role: "switch",
-    "aria-checked": String(hidden), "aria-label": t(hidden ? "Show labelled passages" : "Hide labelled passages"),
-    title: t("Also hides raw source and conversation excerpts. Names and unlabelled text stay visible.") });
-  privacy.onclick = togglePrivate;
+  const calm = document.documentElement.classList.contains("calm");
   const motion = el("button", { id: "calm-toggle", class: "switch", type: "button", role: "switch", "aria-checked": String(calm), "aria-label": t("Reduce motion") });
   motion.onclick = toggleCalm;
   const asOf = calendarDay(REM.as_of) === calendarDay(new Date().toISOString()) ? fmtTime(REM.as_of).split(" · ").pop() : fmtTime(REM.as_of);
@@ -7752,7 +7886,6 @@ function renderSettings() {
   const row = (title, control, note) => el("div", { class: "set-row" }, [el("div", {}, [el("div", { class: "set-k", text: t(title) }), note ? el("div", { class: "set-note", text: note }) : null]), control]);
   foot.replaceChildren(
     row("Interface language", languageSwitch), row("Theme", themeSwitch), row("Reduce motion", motion),
-    row("Hide labelled passages", privacy, t("Also hides raw excerpts; other details stay visible.")),
     // replaceChildren writes a null as the word "null": the rows only the live page has are left out instead.
     notebookLanguages(), ...[translating && row("Translate pages", translating), ignoredSendersList()].filter(Boolean),
     el("div", { class: "set-rem" }, [icon("moon"), el("span", { class: "set-state", text: words })]),
@@ -8947,7 +9080,7 @@ function taskSource(id, trigger) {
   const content = context ? el('div', {}, [evidenceOriginal(context, quote)]) : quote;
   if (context) {
     const reveal = el('button', { type: 'button', class: 'btn-action', text: t('Show labelled passages') });
-    reveal.onclick = () => togglePrivate();
+    reveal.onclick = () => revealLabelled();
     content.prepend(el('div', { class: 'private-hidden-notice' }, [reveal]));
   }
   openTaskPanel(context?.subject || sourceLabel(id), content, trigger);
@@ -9371,7 +9504,7 @@ function openApprovalSheet(items) {
   dialog.addEventListener("close", () => {dialog.remove(); render();});
   if (items.some(item => item.private)) {
     const reveal = el("button", {type: "button", class: "btn-quiet", text: t("Show labelled passages")});
-    reveal.onclick = () => {togglePrivate(); reveal.textContent = t(document.documentElement.classList.contains("hide-private") ? "Show labelled passages" : "Hide labelled passages");};
+    reveal.onclick = () => { revealLabelled(); reveal.remove(); };
     dialog.querySelector("header").appendChild(reveal);
   }
   document.body.appendChild(dialog); sync(); dialog.showModal();
@@ -15182,7 +15315,8 @@ function graphModel() {
 }
 function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 // A labelled-private record keeps its name only on this Mac and only while passages are shown.
-function graphHidden(n) { return n.private && (!n.r || document.documentElement.classList.contains("hide-private")); }
+// A private page's name on the knowledge graph shows only at "Show all": a label cannot be curtained (#2840).
+function graphHidden(n) { return n.private && (!n.r || privacyLevel !== "all"); }
 // The name in the reading language when the page has a current translation: its translated heading.
 function graphTitle(n) {
   if (graphHidden(n)) return graphT("Personal");
@@ -16482,7 +16616,7 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
   }
   if (context) {
     const reveal = el("button", { class: "btn-action", type: "button", text: t("Show labelled passages") });
-    reveal.onclick = () => { togglePrivate(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
+    reveal.onclick = () => { revealLabelled(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
     panel.appendChild(el("div", { class: "private-hidden-notice" }, [
       el("p", { text: t("Original excerpts are hidden until you show labelled passages.") }), reveal]));
     const text = excerpt + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
@@ -17034,9 +17168,26 @@ if (REM?.live) {
 window.addEventListener("focus", () => reconcileThreads().then(redraw));
 window.addEventListener("online", () => reconcileThreads().then(redraw));
 window.addEventListener("hashchange", render);
+// The privacy levels' page-wide wiring (#2840): close the menu, curtain whatever is drawn, lift a curtain.
+document.addEventListener("click", event => { if (!event.target.closest?.(".privacy-level-host")) document.querySelector(".privacy-menu") && togglePrivacyMenu(false); });
+window.addEventListener("keydown", event => { if (event.key === "Escape" && document.querySelector(".privacy-menu")) togglePrivacyMenu(false); });
+new MutationObserver(records => { for (const record of records) for (const node of record.addedNodes) applyPrivacy(node); })
+  .observe(document.documentElement, { childList: true, subtree: true });
+document.addEventListener("click", event => {
+  const curtain = event.target.closest?.(".curtain:not(.lifted)");
+  if (!curtain || privacyLevel !== "cover") return;
+  event.preventDefault(); event.stopPropagation();
+  liftCurtain(curtain);
+}, true);
+window.addEventListener("keydown", event => {
+  const curtain = event.target.closest?.(".curtain:not(.lifted)");
+  if (!curtain || privacyLevel !== "cover" || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault(); event.stopPropagation();
+  liftCurtain(curtain);
+}, true);
 window.addEventListener("resize", refreshFocusExpansion);
 readerStorage("co-rem-calm").then(calm => { if (calm === "calm") { document.documentElement.classList.add("calm"); if (REM) renderSettings(); } });
-Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-private"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
+Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"), readerStorage("co-rem-privacy"), readerStorage("co-rem-people-columns"), readerStorage(doneStorageKey()), readerStorage(threadStorageKey()),
   readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey()), readerStorage("co-rem-org-columns"), readerStorage("co-rem-org-collapsed")]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept, orgSaved, collapsed]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   peopleColumns = peopleColumnKeys(columns);
@@ -17052,7 +17203,9 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
   await readerStorage(threadStorageKey(), JSON.stringify({ states: threadStates, pending: pendingThreads }));
   await readerStorage(doneStorageKey(), "[]");
   if (location.protocol === "file:" && (theme === "light" || theme === "dark")) document.documentElement.dataset.theme = theme;
-  if (REM?.shared || location.protocol === "file:" && privacy === "hidden") document.documentElement.classList.add("hide-private");
+  // The level this device chose, else this computer's default (cover) or a shared or remote reader's (public).
+  // A shared snapshot always starts at Public only, whatever this device chose before.
+  setPrivacy(!REM?.shared && PRIVACY_LEVELS.includes(privacy) ? privacy : privacyDefault(), { save: false, redraw: false });
   render();
   // Offline snapshots finish loading after the shell without navigation.
   if (!detailReady && !REM.detail_url) {
