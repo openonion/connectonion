@@ -111,6 +111,22 @@ def _no_real_tmux(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_background_host(monkeypatch):
+    """Global `co init` starts the always-on Host (#3170); tests never install a real launchd or systemd unit.
+
+    A test about that step replaces `prepare_host` itself, or calls the service
+    classes with a fake runner, as tests/unit/test_host_service.py does.
+    """
+    from connectonion.cli import mac_bootstrap
+    from connectonion.cli.host_service import HostServiceError
+
+    def refuse():
+        raise HostServiceError("A background Host needs macOS or Linux with systemd. "
+                               "Next: co host --serve, to run it in this terminal")
+    monkeypatch.setattr(mac_bootstrap, "prepare_host", refuse)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_selected_environment(request, monkeypatch):
     """Auth/refresh and CLI selection cannot leak process state to another test."""
     if request.node.get_closest_marker("real_api"):

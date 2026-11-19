@@ -55,7 +55,7 @@ def test_install_and_rerun_use_one_service_without_secrets(service, monkeypatch)
     assert result['running'] and result['pid'] == 12345
     data = plistlib.loads(instance.plist.read_bytes())
     assert data['WorkingDirectory'] == str(instance.project)
-    assert data['ProgramArguments'][-1] == 'host'
+    assert data['ProgramArguments'][-3:] == ['host', '--agent', 'agent.py']
     assert 'synthetic-must-not-persist' not in instance.plist.read_text()
     assert data['KeepAlive'] is True and data['RunAtLoad'] is True
     instance.start()
@@ -135,6 +135,7 @@ def test_modified_service_is_preserved(service):
 def test_missing_agent_and_unsupported_platform_are_actionable(service, monkeypatch):
     instance, _ = service
     (instance.project/'agent.py').unlink()
+    instance.builtin = False
     with pytest.raises(module().HostServiceError, match='agent.py'):
         instance.start()
     monkeypatch.setattr(module().sys, 'platform', 'linux')
@@ -241,3 +242,78 @@ def test_native_health_requires_our_listener_not_a_shared_identity(service, monk
     assert instance._native_healthy(12345) is expected
     assert '-i4TCP' in calls[0]
     assert not (instance.project/'.co'/'keys').exists()
+
+
+def test_a_project_without_agent_py_serves_the_built_in_agent(service):
+    """#3170: an agent is host.yaml plus skills; no agent.py is the default, not an error."""
+    instance, control = service
+    (instance.project/'agent.py').unlink()
+    fresh = module().HostService(instance.project, home=instance.home, runner=control, uid=501)
+    fresh._native_healthy = lambda pid: True
+    fresh.start()
+    data = plistlib.loads(fresh.plist.read_bytes())
+    assert data['ProgramArguments'][-2:] == ['host', '--serve']
+
+
+class Systemctl:
+    """A fake `systemctl --user`: one unit that runs once started."""
+    def __init__(self):
+        self.calls = []
+        self.active = False
+    def __call__(self, args, **kwargs):
+        self.calls.append(tuple(args[2:]))
+        action = args[2]
+        if action in ('start', 'restart'):
+            self.active = True
+        if action == 'disable':
+            self.active = False
+        if action == 'show':
+            out = 'MainPID=4321\nActiveState=active\n' if self.active else 'MainPID=0\nActiveState=inactive\n'
+            return subprocess.CompletedProcess(args, 0, out, '')
+        return subprocess.CompletedProcess(args, 0, '', '')
+
+
+def test_linux_runs_the_same_host_as_a_systemd_user_unit(tmp_path):
+    """#3170: co init leaves a Host running on Linux too, as a user unit, no root."""
+    profile = tmp_path/'profile'
+    profile.mkdir()
+    control = Systemctl()
+    service = module().SystemdHostService(profile, home=tmp_path/'home', runner=control, builtin=True)
+    state = service.start()
+    assert state == {'configured': True, 'running': True, 'pid': 4321, 'device_ready': False}
+    unit = service.unit.read_text()
+    assert service.unit.parent == tmp_path/'home'/'.config'/'systemd'/'user'
+    assert '"host" "--serve"' in unit and f'WorkingDirectory={profile.resolve()}' in unit
+    assert 'Restart=always' in unit and 'WantedBy=default.target' in unit
+    assert ('enable', service.unit_name) in control.calls
+    # A rerun with nothing changed starts it, without rewriting or reloading.
+    control.calls.clear()
+    service.start()
+    assert ('daemon-reload',) not in control.calls and ('start', service.unit_name) in control.calls
+    assert service.stop()['running'] is False
+    service.uninstall()
+    assert not service.unit.exists()
+
+
+def test_linux_project_with_agent_py_serves_it_and_never_writes_secrets(tmp_path, monkeypatch):
+    project = tmp_path/'project'
+    project.mkdir()
+    (project/'agent.py').write_text('# synthetic')
+    monkeypatch.setenv('OPENAI_API_KEY', 'sk-synthetic-secret')
+    service = module().SystemdHostService(project, home=tmp_path/'home', runner=Systemctl(), port=8123)
+    service.start()
+    unit = service.unit.read_text()
+    assert '"host" "--agent" "agent.py" "--port" "8123"' in unit
+    assert 'sk-synthetic-secret' not in unit
+
+
+def test_the_platform_picks_launchd_or_systemd(tmp_path, monkeypatch):
+    api = module()
+    monkeypatch.setattr(api.sys, 'platform', 'darwin')
+    assert type(api.host_service(tmp_path)).__name__ == 'HostService'
+    monkeypatch.setattr(api.sys, 'platform', 'linux')
+    monkeypatch.setattr(api.shutil, 'which', lambda name: '/usr/bin/systemctl')
+    assert type(api.host_service(tmp_path)).__name__ == 'SystemdHostService'
+    monkeypatch.setattr(api.sys, 'platform', 'win32')
+    with pytest.raises(api.HostServiceError, match='co host --serve'):
+        api.host_service(tmp_path)

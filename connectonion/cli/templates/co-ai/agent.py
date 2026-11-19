@@ -8,7 +8,7 @@ has files, shell, browser, todos, and sub-agents. What makes it
     role=...                     what kind of agent it is
 
 Run it:
-    co host             serve it: HTTP/WS + relay, REM, and the channels in .co/host.yaml
+    co host --agent agent.py   serve it: HTTP/WS + relay, REM, and the channels in .co/host.yaml
     python agent.py     the same, with a python that has connectonion installed
     co deploy           ship it
 
