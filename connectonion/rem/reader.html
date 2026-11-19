@@ -3700,6 +3700,8 @@
     .hero-acts .inv { align-items: flex-start; width: 100%; }
     .hero-acts .inv-line, .hero-acts .inv-steps { text-align: left; justify-content: flex-start; }
     .hero-acts :is(.inv-menu, .inv-changed) { right: auto; left: 0; }
+    /* The ⋯ menu hangs from the whole Investigate block, not from the ⋯ itself, so it stays inside a phone. */
+    :is(.hero-acts, .page-head, .ov-say) .inv-more { position: static; }
     .n3-person .r4-today { height: 40px; margin-left: 0; padding: 0 12px; }
     .n3-person .r4-sub.dek { font-size: var(--s-body); }
     /* On a phone each fact is one line, its label in a narrow column, so the card fits the first screen. */
@@ -8373,8 +8375,9 @@ function handState(entry, show, panel, mark) {
 // /rem/task run as 交给 Codex, keyed by the project's own page; its progress and result show in place.
 function investigateRequest(r) {
   if (!REM.live) return liveReaderLine("This is a snapshot: ask Codex to look from the live reader.");
-  r.investigation ||= { keys: [r.path], task: r.task || null };
-  return handOff({ key: r.path, row: r.investigation, ask: true });
+  // Its own row: r.investigation is the Investigate button's state (#3105), and sharing it crashed the page.
+  r.codex_look ||= { keys: [r.path], task: r.task || null };
+  return handOff({ key: r.path, row: r.codex_look, ask: true });
 }
 function followTask(entry, task, status, show) {
   setTimeout(async () => {

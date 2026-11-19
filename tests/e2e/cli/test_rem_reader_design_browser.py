@@ -30,6 +30,21 @@ VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fma
          "#view=activity"]
 
 
+
+def in_full_memory(page, selector):
+    """What used to be hidden behind the folded Full memory now shows in it, open on arrival (#3104): it is still
+    off the record's head, and never printed above Full memory."""
+    return all(node.evaluate("n => !!n.closest('.deep-note')") for node in page.locator(selector).all())
+
+
+def memory_open(page):
+    """Full memory opens on arrival (#3104), so a click on its summary would fold it. Where a test used to open it,
+    it now checks that it is already open and leaves it so."""
+    note = page.locator("details.deep-note").first
+    note.wait_for(state="attached")
+    assert note.evaluate("d => d.open"), "full memory should be open on arrival (#3104)"
+
+
 def test_private_mapped_project_explains_why_it_waits_on_desktop_and_phone(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
     from connectonion.rem.config import prepare
@@ -107,8 +122,8 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
         assert page.locator(selector).bounding_box()['height'] >= 44
     assert page.locator('#crumb a').first.is_visible()  # People, in the top bar
     assert page.get_by_role('heading', name='Full memory and sources').is_visible()
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
+    memory_open(page)
     assert page.locator('.deep-note .note').is_visible()
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
     page.locator('.nav-toggle').click()
@@ -607,13 +622,15 @@ def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     assert page.locator('.r4-stats').inner_text().count('\n') >= 3
     assert page.locator('.r4-person #open-threads, .owe').count() == 0
     assert page.locator('.r4-fuse .rhythm').locator('i.l1, i.l2, i.l3').count() == 5  # one dark day per dated exchange
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    assert not page.locator('.factlist').is_visible()
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
+    # The facts sit in the profile card under the name, outside Full memory (#3103).
+    assert page.locator('.r4-person .pc-group').first.is_visible() and not page.locator('.r4-person .pc-group').first.evaluate("n => !!n.closest('.deep-note')")
+    memory_open(page)
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
-    assert value("Phone").get_attribute("class") == "none" and "not found" in value("Phone").inner_text()
+    # An unknown fact is no empty row: it is named in the one "N not found" line under the list (#3104).
+    assert value("Phone").count() == 0 and "Phone" in page.locator(".factlist ~ .fact-missing, .fact-missing").first.inner_text()
     role_source = value('Role').locator('.cite')
     assert role_source.inner_text() == 'Aug 22'
     assert role_source.get_attribute('aria-label') == 'Source: Outlook, Aug 22, original not in this snapshot'
@@ -636,7 +653,7 @@ def test_grouped_citation_sources_are_each_openable_on_phone(reader):
     page, uri = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
-    page.locator("details.deep-note > summary").click()
+    memory_open(page)
     assert page.locator(".block-insight .cite.run").count() == 3
     page.goto(uri + "#r=people%2Fmara-ostrowski.md&h=src-6")
     assert page.locator("details.deep-note").get_attribute("open") is not None
@@ -663,7 +680,7 @@ def test_adjacent_citation_chips_show_only_the_supporting_sentence(reader, width
       r.text = '# Mara Ostrowski\n\n' + text + '\n\n## Facts' + r.text.split('## Facts')[1];
       KNOWN.clear(); FACTS.clear(); render();
     }""", first + " [2][6]. " + second + " [4].", isolated_context=False)
-    page.locator("details.deep-note > summary").click()
+    memory_open(page)
     chips = page.locator(".deep-note .note > p").first.locator(".cite")
     assert chips.count() == 2
     for index, expected, other in ((0, first, second), (1, second, first)):
@@ -736,7 +753,7 @@ def test_pages_about_the_user_read_as_you_and_the_markdown_keeps_its_words(reade
     home_threads = page.locator('.task-band .threads').first.inner_text()
     assert "you have owed them" in home_threads and "the user" not in home_threads.lower()
     page.goto(page.url.split("#")[0] + "#r=people%2Fmara-ostrowski.md")
-    page.locator("details.deep-note > summary").click()
+    memory_open(page)
     main = page.locator("#main").inner_text()
     assert "the user" not in main.lower() and "you have not signed it" in main.lower()
     assert page.get_by_role("heading", name="How you write to them").count() == 1
@@ -810,9 +827,9 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page.goto(uri + "#r=projects%2Fharbour.md")
     # This fixture names the pilot participants without linking their paths.
     # They remain available as text hints, behind progressive disclosure.
-    assert not page.locator('.related-records').is_visible()
-    assert not page.locator('.deep-note-limit').is_visible()
-    page.locator('details.deep-note > summary').click()
+    assert in_full_memory(page, '.related-records')
+    assert in_full_memory(page, '.deep-note-limit')
+    memory_open(page)
     page.locator('.mention-hints > summary').click()
     connected = page.locator(".related-records .relation-card")
     assert {name.strip() for name in connected.locator("strong").all_inner_texts()} >= {
@@ -829,7 +846,7 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page.goto(uri + "#r=projects%2Fharbour.md")
     assert page.get_by_role("heading", name="Full memory and sources").is_visible()
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
-    page.locator("details.deep-note > summary").click()
+    memory_open(page)
     page.locator(".conversation-open").first.click()
     dialog = page.locator("#conversation-dialog")
     assert dialog.is_visible() and "usage export" in dialog.inner_text()
@@ -854,7 +871,7 @@ def test_conversations_precede_links_and_name_hints_keep_their_source_page(reade
       ];
       render();
     }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.conversation-view').bounding_box()['y'] < page.locator('.related-records').bounding_box()['y']
     assert page.locator('.relation-card').filter(has_text='weekly-brief').is_visible()
     note = page.locator('.relation-card').filter(has_text='Run note')
@@ -879,7 +896,7 @@ def test_person_lead_shows_two_sentences_without_a_second_hero(reader):
     page.evaluate("text => { const r = byPath('people/mara-ostrowski.md'); r.text = '# Mara Ostrowski\\n\\n' + text; KNOWN.clear(); FACTS.clear(); render(); }", text, isolated_context=False)
     assert page.locator('.focus-head, .contact-strip, .person-lead').count() == 0
     assert 'third sentence' not in page.locator('.r4-person').inner_text()
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert 'You owe Mara a revised pilot agreement.' in page.locator('.deep-note').inner_text()
     assert 'third sentence' in page.locator('.deep-note').inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -894,7 +911,7 @@ def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
     # The quiet contact line and disclosed facts share the page date.
     assert formatted in page.locator('.r4-stats').inner_text()
     assert '2001' not in page.locator('.r4-stats').inner_text()
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     fact_date = page.evaluate('date => fmtDate(date)', expected, isolated_context=False)
     assert fact_date in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
 
@@ -908,7 +925,7 @@ def test_empty_mail_keeps_private_header_evidence_without_inventing_a_body_excer
         participants: {from: 'mara@example.org', to: ['owner@example.org'], cc: []}
       });
     }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         trigger = page.locator('.deep-note a.cite[href$="h=src-5"]').first
@@ -941,10 +958,9 @@ def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
       FACTS.clear(); render();
     }""", isolated_context=False)
     assert page.evaluate("facts(byPath('projects/harbour.md')).first", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
-    started = page.locator('.factlist dt:text-is("Started") + dd')
-    assert started.locator('.val').count() == 0
-    assert 'not found' in started.inner_text()
+    memory_open(page)
+    assert page.locator('.factlist dt:text-is("Started")').count() == 0
+    assert 'Started' in page.locator('.fact-missing').first.inner_text()  # named once, no empty row (#3104)
 
 
 def test_project_full_memory_keeps_current_finding_before_historical_pattern(reader):
@@ -956,8 +972,8 @@ def test_project_full_memory_keeps_current_finding_before_historical_pattern(rea
         + '- Changed: A later UI request corrected its wording. [2]\\n- Now: A release was requested in July. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.focus-statement').is_visible()
-    page.locator('details.deep-note > summary').click()
+    assert in_full_memory(page, '.focus-statement')
+    memory_open(page)
     for width in (1440, 768, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
@@ -975,8 +991,8 @@ def test_project_full_memory_prefers_newest_where_it_stands_and_falls_back_to_in
         + '- 2026-10-15 - The release checks passed. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.focus-statement').is_visible()
-    page.locator('details.deep-note > summary').click()
+    assert in_full_memory(page, '.focus-statement')
+    memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'origin/main has a commit titled “1.9.3b5 release”.'
@@ -986,8 +1002,8 @@ def test_project_full_memory_prefers_newest_where_it_stands_and_falls_back_to_in
       r.text = r.text.split('## Where it stands')[0] + '## Where it stands\\n- Unknown';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.focus-statement').is_visible()
-    page.locator('details.deep-note > summary').click()
+    assert in_full_memory(page, '.focus-statement')
+    memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
         assert page.locator('.focus-statement').inner_text() == 'A release was requested in July.'
@@ -1008,10 +1024,9 @@ def test_unknown_repository_stays_unknown_and_the_workspace_path_stays_in_the_re
     assert not page.locator('.focus-facts dt:text-is("Local path")').count()
     assert '/tmp/session-workspace' not in page.locator('.focus-facts').inner_text()
     assert not page.locator('.focus-facts dt:text-is("Repository")').count()
-    page.locator('details.deep-note > summary').click()
-    repository = page.locator('.factlist dt:text-is("Repository") + dd')
-    assert not repository.locator('.val').count()
-    assert 'not found' in repository.inner_text()
+    memory_open(page)
+    assert page.locator('.factlist dt:text-is("Repository")').count() == 0
+    assert 'Repository' in page.locator('.fact-missing').first.inner_text()  # named once, no empty row (#3104)
     assert '/tmp/session-workspace' in page.locator('details.deep-note').inner_text()
     page.evaluate("() => { location.hash = '#q=Harbour'; render(); }", isolated_context=False)
     assert not page.locator('.best-facts dt:text-is("Local path")').count()
@@ -1047,7 +1062,7 @@ def test_a_session_summary_names_the_owner_you_not_owner(reader, language):
     }""", [language, list(cases)], isolated_context=False)
     shown = page.evaluate("summaries => summaries.map(s => ownerAsYou(s))", list(cases), isolated_context=False)
     assert dict(zip(cases, shown)) == cases
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     rows = page.locator('.project-sessions .session-context-summary').all_inner_texts()
     assert "你要求重写摘要。" in rows and "Owner 要求重写摘要。" not in rows, rows
     page.evaluate("() => { location.hash = 'r=sessions%2Fs0.md'; }", isolated_context=False)
@@ -1104,9 +1119,9 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
       r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 150, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         assert page.locator('.scope-note').count() == 0
@@ -1143,8 +1158,8 @@ def test_project_without_current_insight_keeps_purpose_and_input_limit_folded(re
       r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 7, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note-limit').is_visible()
-    page.locator('details.deep-note > summary').click()
+    assert in_full_memory(page, '.deep-note-limit')
+    memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         assert page.locator('.focus-kicker').first.inner_text() == 'What this project does'
@@ -1155,7 +1170,7 @@ def test_project_without_current_insight_keeps_purpose_and_input_limit_folded(re
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.evaluate("() => { byPath('projects/harbour.md').project_coverage.inputs_read = 0; render(); }",
                   isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
         assert 'No coding-session input was assigned' in page.locator('.deep-note-limit').inner_text()
@@ -1177,9 +1192,9 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
       r.project_coverage = {inputs_read: 114, inputs_available: 116, days: 90, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     purpose = page.locator('.project-purpose-preview')
     assert 'property lead workflow' in purpose.inner_text()
     purpose.scroll_into_view_if_needed()
@@ -1204,9 +1219,9 @@ def test_long_project_purpose_and_source_expand_inside_full_memory_on_phone(read
       r.text = r.text.replace(/## What it is\\n- [^\\n]+/, '## What it is\\n- ' + purpose + '[1].');
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     statement = page.locator('.focus-statement')
     assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
     assert statement.evaluate('(node) => getComputedStyle(node).webkitLineClamp') == '4'
@@ -1244,9 +1259,9 @@ def test_long_private_purpose_can_expand_after_revealing_passages(reader, has_fi
       document.documentElement.classList.add('hide-private');
       KNOWN.clear(); FACTS.clear(); render();
     }''', has_finding, isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     purpose = page.locator('.project-purpose-preview' if has_finding else '.focus-statement')
     more = page.locator('button.focus-more[aria-controls="' + purpose.get_attribute('id') + '"]')
     assert purpose.inner_text() == 'Hidden labelled passage'
@@ -1778,8 +1793,8 @@ def test_skill_name_matches_are_not_presented_as_installed_version_runs(reader):
         assert 'retained eval attempts are counted separately' in page.locator('.usage-scope').inner_text()
         assert 'Neither confirms this installed version or task outcome' in page.locator('.usage-scope').inner_text()
         assert page.locator('.panel h3:text-is("Usage")').count() == 0
-        assert page.locator('details.deep-note').get_attribute('open') is None
-        page.locator('details.deep-note > summary').click()
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
+        memory_open(page)
         assert 'Claude Code 3' not in page.locator('.leadrow').inner_text()
         assert 'Retained evaluation attempts: 0' in page.locator('.deep-note').inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -1816,12 +1831,12 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
       KNOWN.delete(r.path);
       render();
     }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.missing .names').inner_text() == 'Still unknown: Current status.'
     assert page.locator('.missing .lead').inner_text() == 'Page pending — background updates off'
     assert page.locator('.missing').get_attribute('class') == 'missing'
     page.evaluate("() => { REM.status.worker = {enabled: true}; render(); }", isolated_context=False)
-    page.locator('details.deep-note > summary').click()  # render() closes the disclosure again
+    memory_open(page)  # render() closes the disclosure again
     assert page.locator('.missing .lead').inner_text() == 'Unresolved sections queued for a future pass'
     page.goto(uri + '#r=people%2Fquinn-alder.md')
     assert page.locator('.missing .names').inner_text().endswith('sections will be written when it is investigated.')
@@ -1838,7 +1853,7 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
         assert 'Sep 16' in page.locator('.r4-stats').inner_text()
         assert page.locator('.focus-facts').count() == 0
-        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         assert page.locator('.deep-note .factlist').count() == 1
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         if width == 375:
@@ -1864,8 +1879,9 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
           KNOWN.delete(r.path); FACTS.delete(r.path); render();
         }""", isolated_context=False)
         assert 'Sep 16' not in page.locator('.r4-stats').inner_text()
-        page.locator('details.deep-note > summary').click()
-        assert '— not found' in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
+        memory_open(page)
+        assert page.locator('.factlist dt:text-is("Last contact")').count() == 0
+        assert 'Last contact' in page.locator('.fact-missing').first.inner_text()  # named once, no empty row (#3104)
 
 
 def test_unknown_open_status_is_not_a_current_exchange(reader):
@@ -1879,7 +1895,7 @@ def test_unknown_open_status_is_not_a_current_exchange(reader):
     }""", isolated_context=False)
     assert page.evaluate("threads(byPath('projects/harbour.md')).items.length", isolated_context=False) == 0
     assert page.get_by_role('heading', name='Next exchanges').count() == 0
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     note = page.locator('.deep-note')
     assert 'Historical requests do not establish currently pending work.' in note.inner_text()
     assert note.locator('a.cite[href$="h=src-1"]').first.is_visible()
@@ -1895,7 +1911,7 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
     assert 'Last mapped session' in page.locator('.project-state').inner_text()
-    assert not page.locator('.deep-note .focus-facts').is_visible()
+    assert in_full_memory(page, '.focus-facts')
     assert 'last mapped session' not in page.locator('.eyebrow').inner_text()
     assert 'File updated' in page.locator('.deep-head').inner_text()
     assert 'Last active' not in page.locator('.project-state').inner_text()
@@ -1933,7 +1949,7 @@ def test_marked_sentence_with_a_markdown_link_and_code_respects_private_mode(rea
       r.text += '\n\n## Private context\nPublic setup. [Quinn](quinn-alder.md) shared confidential details in `case.txt` [sensitive] [1]. Public follow-up.\n';
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     sentence = page.locator('.deep-note .private').filter(has_text='confidential details')
     assert sentence.locator('.privacy-tag.sensitive').is_visible()
     assert sentence.locator('a:not(.cite)').inner_text() == 'Quinn'
@@ -1964,13 +1980,13 @@ def test_consecutive_marked_sentences_hide_in_the_lead_and_full_note(reader):
       r.text = r.text.replace('## Who they are', paragraph + '## Who they are');
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     # The first line may carry a labelled sentence, but only inside its own labelled span.
     sub = page.locator('.ov-sub')
     sub.evaluate("n => n.querySelectorAll('.private').forEach(p => p.remove())")
     assert 'confidential finding' not in sub.inner_text() and 'secret-value' not in sub.inner_text()
     page.evaluate('render()', isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     for selector in ('.deep-note',):
         area = page.locator(selector)
         assert area.locator('.private').count() == 3
@@ -1998,8 +2014,8 @@ def test_connected_context_hides_private_bases_including_expanded_connections(re
         basis: n === 6 ? 'Private expanded context' : n === 0 ? 'Confidential background' : 'Public pilot context'}));
       render();
     }""", isolated_context=False)
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
+    memory_open(page)
     page.locator('.more-relations > summary').first.click()
     bases = page.locator('.relation-basis.private')
     assert bases.count() == 2
@@ -2096,7 +2112,7 @@ def test_fact_labels_and_addresses_never_break_mid_word(reader, width):
     page, uri = reader
     page.set_viewport_size({'width': width, 'height': 900})
     page.goto(uri + '#r=projects%2Fharbour.md')
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     page.locator('.factlist dt').first.wait_for()
     assert page.evaluate(WHOLE_WORDS, ['.factlist dt', ['REPOSITORY', 'ORGANISATION', 'Repository', 'Organisation']])
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
@@ -2106,7 +2122,7 @@ def test_fact_labels_and_addresses_never_break_mid_word(reader, width):
         .replace(/## Facts\\n/, '## Facts\\n- Handles: 0x3c3ae74550@mail.openonion.ai [1]\\n');
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     page.locator('.factlist dd').first.wait_for()
     assert page.evaluate(WHOLE_WORDS, ['.factlist dd, .contact-strip dd', ['0x3c3ae74550', 'openonion', 'mail']])
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -2128,7 +2144,8 @@ def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
     note = page.locator('.deep-note').inner_text()
     assert digest not in note
     assert 'skill-record:1831aa83d8a0…' in note
-    assert page.locator('.block-sources .id').first.get_attribute('title') == 'skill-record:' + digest
+    # A source row is named in words; its full id waits in the row's tooltip (#3104).
+    assert page.locator('.block-sources li.src-row').first.get_attribute('title') == 'skill-record:' + digest
     assert page.locator('.deep-note code[title="skill-record:' + digest + '"]').count() == 1
 
 
@@ -2334,7 +2351,7 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
         sourceChannel('claude-session'), sourceChannel('project-source'), sourceChannel('whatsapp')];
     }""", isolated_context=False)
     assert values == ['you, Outlook, Oct 14', 'Outlook, Aug 22', 'source 99', 'Session', 'Repo', 'WhatsApp']
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     missing = page.locator('.factlist a.cite[href$="src-1"]').first
     assert 'missing' in missing.get_attribute('class')
     assert 'original not in this snapshot' in missing.get_attribute('aria-label')
@@ -2489,9 +2506,9 @@ def test_project_focus_and_deep_note_do_not_repeat_purpose_or_threads(reader):
     assert page.locator('.lead-open').count() == 0
     assert page.locator('.next-exchanges .thread').count() == 0  # open work is Today's (#3096)
     assert page.locator('#what-it-is').count() == 1
-    assert not page.locator('#what-it-is').is_visible()
+    assert in_full_memory(page, '#what-it-is')
     assert page.locator('.deep-note .note #what-it-is').count() == 0
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.deep-note .person-threads li').count() == 5  # every thread, as written, and no buttons
     assert page.locator('.deep-note .thread-actions').count() == 0
     assert page.locator('.deep-note #what-it-is').count() == 1
@@ -2847,7 +2864,7 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
     }""", isolated_context=False)
     page.evaluate("location.hash = '#r=projects%2Falpha.md'", isolated_context=False)
     expect(page.locator(".project-recent li")).to_have_count(6)
-    page.locator("details.deep-note > summary").click()
+    memory_open(page)
     rows = page.locator(".project-sessions .session-context-row")
     expect(rows).to_have_count(10)
     expect(rows.first.locator(".session-context-summary")).to_have_text("Shipped a searchable reader with stable focus.")
@@ -2971,7 +2988,7 @@ def test_summary_omits_empty_relationship_history_and_unknown_facts(reader, labe
     assert page.locator('.hero-acts .round[aria-label^="Phone"]').count() == 0
     assert page.locator('.r4-sub').count() == 0  # Role "—" and no company: no invented subtitle
     assert page.locator('.r4-stats > div').count() == 0  # no mail and unknown dates: the first exchange sits under the rhythm
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.factlist').count() == 0
     assert page.locator('.timeline > li:visible').count() == 0
     assert page.locator('.block-history .private-history-notice').inner_text() == '1 private entry hidden'
@@ -2988,11 +3005,11 @@ def test_org_collapses_full_memory_and_omits_self_provenance(reader):
       r.relations = [{path: 'people/mara-ostrowski.md', via: r.path, kind: 'linked', basis: 'Pilot contact', sources: ['1']}];
       render();
     }''', isolated_context=False)
-    assert not page.locator('details.deep-note').evaluate('node => node.open')
+    assert page.locator('details.deep-note').evaluate('node => node.open')  # open on arrival (#3104)
     hint = page.locator('.deep-hint').inner_text()
     assert 'File updated' in hint and re.search(r'\d', hint)
     assert not re.search(r'today|sections|sources', hint, re.I)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     provenance = page.locator('.relation-provenance')
     assert provenance.locator('a:not(.cite)').count() == 0
     assert provenance.locator('a.cite').count() == 1
@@ -3046,7 +3063,7 @@ def test_project_has_one_boundary_rule_and_quiet_purpose_sources(reader):
     page, uri = reader
     page.goto(uri + '#r=projects%2Fharbour.md')
     page.evaluate(r"""() => { const r = byPath('projects/harbour.md'); r.text += '\n\n## Uncertainties\n- Pilot size is not confirmed. [1]'; KNOWN.clear(); render(); }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.project-context .focus-head').evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
     for node in page.locator('.record-focus.projects .focus-facts, .record-focus.projects .thread:last-child').all():
         assert node.evaluate('node => getComputedStyle(node).borderBottomWidth') == '0px'
@@ -3205,7 +3222,7 @@ def test_activity_discloses_five_complete_rows_and_filters(reader, path, width):
         return
     # The project lead has three recent rows; the full five-row activity and filters stay folded.
     assert page.locator('.record-focus.projects .recent-activity .activity-list > li:visible').count() == 3
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     activity = page.locator('.deep-note .activity-view')
     rows = activity.locator('.activity-list > li:visible')
     assert rows.count() == 5
@@ -3241,10 +3258,10 @@ def test_mapped_guidance_explains_before_command_with_secondary_copy(reader, pat
     assert box.locator('.lead').inner_text() == 'Page queued for tonight'
     assert not page.locator('.focus-command').count()
     if path.startswith('people/'):
-        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         assert page.locator('.deep-note .factlist').count() == 1
     else:
-        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         assert page.locator('.focus-facts').count() == 0
         assert page.locator('.lead-meta.usage').count() == 1
         assert page.locator('.panel h3:text-is("Usage")').count() == 0
@@ -3265,9 +3282,10 @@ def test_quotes_are_visually_distinct_from_search_marks(reader, theme):
     quote_background = quote.evaluate('node => getComputedStyle(node).backgroundColor')
     assert quote_background != mark.evaluate('node => getComputedStyle(node).backgroundColor')
     if theme == 'dark':
-        # No tint of its own in dark: the quote sits on the paper and only its underline marks it.
+        # No tint of its own in dark: the quote sits on the paper; quotes are no longer underlined (#3104), and the
+        # search mark keeps its own background, so the two still read apart.
         assert quote_background == page.evaluate("getComputedStyle(document.body).backgroundColor")
-        assert quote.evaluate('node => getComputedStyle(node).textDecorationLine') == 'underline'
+        assert quote.evaluate('node => getComputedStyle(node).textDecorationLine') == 'none'
 
 
 def test_org_context_citation_is_flush_and_uncertainty_has_an_icon_gap(reader):
@@ -3279,7 +3297,7 @@ def test_org_context_citation_is_flush_and_uncertainty_has_an_icon_gap(reader):
       r.text += '\n## Uncertainties\n- Timing is unconfirmed. [1]\n';
       KNOWN.clear(); render();
     }''', isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     cite = page.locator('.relation-provenance .cite').first
     assert abs(cite.bounding_box()['x'] - page.locator('.relation-card strong').first.bounding_box()['x']) <= 1
     assert 'Timing is unconfirmed' in page.locator('.deep-note .note').inner_text()
@@ -3319,7 +3337,7 @@ def test_full_memory_keeps_unheaded_content_and_counts_it(reader, body):
       KNOWN.clear(); FACTS.clear(); render();
     }''', body, isolated_context=False)
     assert page.locator('.deep-hint').inner_text() == '2 sections · 0 sources'  # body and Facts
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.deep-note .note').inner_text().strip()
     assert page.locator('.deep-note .factlist').is_visible()
 
@@ -3335,7 +3353,7 @@ def test_full_memory_counts_content_without_counting_toc_navigation(reader):
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
     assert page.locator('.deep-hint').inner_text() == '5 sections · 0 sources'  # four topics and Facts
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.deep-note .toc-panel').is_visible()
 
 
@@ -3480,7 +3498,7 @@ def test_org_avoids_repeating_header_threads_and_context_snippets(reader):
     assert page.locator('.ov-page').is_visible()
     assert page.locator('.ov-today').count() == 0
     assert page.locator('.record-focus .next-exchanges').count() == 0
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     snippets = [value.strip().lower() for value in page.locator('.relation-basis').all_inner_texts() if value.strip()]
     assert len(snippets) == len(set(snippets))
     assert snippets.count('your contacts: mara, quinn and tomás.') == 1
@@ -3544,7 +3562,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert 'Head of Partnerships' in role.inner_text()
     assert role.get_attribute('title') == ('昨夜变更：Partnerships lead → Head of Partnerships' if language == 'zh'
                                          else 'Changed last night: Partnerships lead → Head of Partnerships')
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.factlist .changed-value').filter(has_text='Head of Partnerships').is_visible()
     marker = page.locator('.note .uncertain-marker')
     assert marker.count() == 1
@@ -3621,7 +3639,7 @@ def test_connected_context_without_snippet_is_compact_and_top_aligned(reader, wi
           basis: 'The pilot renewal needs a decision before the next proposal is sent.', sources: ['2']}];
       render();
     }''', isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     entries = page.locator('.relation-list').first.locator('.relation-entry')
     assert entries.first.locator('.relation-basis').count() == 0
     assert entries.first.locator('.relation-provenance .cite').is_visible()
@@ -3791,7 +3809,7 @@ def test_cached_prose_follows_interface_and_page_override(reader, width):
     assert '中文人物摘要' in page.locator('#main').text_content()
     assert 'Theo Park 发来中文合同' in page.locator('.tl').inner_text()
     assert page.locator('#history-timeline h2').inner_text().startswith('往来')
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert '中文相识经过' in page.locator('.deep-note').inner_text()
     assert 'Original indexed relationship' not in page.locator('#main').text_content()
     assert page.locator('.eyebrow [title="尚无中文译文，显示原文"]').count() == 0
@@ -3880,11 +3898,11 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
       return parseFacts(r) === first && original !== first && original.get('Role')[0].value === 'Head of Partnerships';
     }''', isolated_context=False)
     page.evaluate(r'''() => { location.hash = 'r=orgs%2Ffernhill-labs.md'; }''', isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert 'Fernhill Labs 科研团队' in page.locator('.relation-basis').inner_text()
     assert page.evaluate(r'''document.documentElement.scrollWidth <= innerWidth''')
     page.evaluate(r'''() => setInterfaceLanguage('en')''', isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     assert page.locator('.relation-basis').inner_text() == 'Company: Fernhill Labs'
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert 'Head of Partnerships' in page.locator('.r4-sub').inner_text()
@@ -4010,7 +4028,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         assert page.locator('.task-band .lang-status').count() == 0
         no_private_words()
         page.goto(html.as_uri() + '#r=people%2Fmara-ostrowski.md')
-        page.locator('details.deep-note > summary').click()
+        memory_open(page)
         assert '公开历史' in page.locator('.timeline').inner_text()
         assert page.locator('.timeline .private-entry').count() == 1
         assert page.locator('.page-head .lang-bar').count() == 0
@@ -4229,9 +4247,13 @@ def test_round_eight_fact_labels_and_phone_disclosure_alignment(reader, tmp_path
         plus = summary.locator('.deep-toggle').bounding_box()
         assert abs(plus['y'] - heading['y']) <= 4
         assert plus['x'] > heading['x'] + heading['width']
-        assert summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''') == '"+"'
+        # Open on arrival (#3104): the toggle reads − and folds to + on a click, then opens again.
+        toggle = lambda: summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''')  # noqa: E731
+        assert toggle() == '"−"'
         summary.click()
-        assert summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''') == '"−"'
+        assert toggle() == '"+"'
+        summary.click()
+        assert toggle() == '"−"'
         facts = page.locator('.panel').filter(has=page.locator('.factlist'))
         assert facts.count() == 1
         if language == 'zh':
@@ -4240,8 +4262,10 @@ def test_round_eight_fact_labels_and_phone_disclosure_alignment(reader, tmp_path
             assert labels and all(not re.search('[A-Za-z]', label) for label in labels)
             assert '— not found' not in facts.inner_text()
             if record.startswith('people/'):
-                assert set(labels) >= {'时区', '链接', '如何认识', '首次联系', '签约主体', '账号', '语言', '别名'}
-                assert '— 未找到' in facts.inner_text()
+                # An unknown field is named in the folded "未找到" line, in Chinese too, instead of an empty row (#3104).
+                folded = (facts.locator('.fact-missing').get_attribute('title') or '').split(' · ')
+                assert set(labels) | set(folded) >= {'时区', '链接', '如何认识', '首次联系', '签约主体', '账号', '语言', '别名'}
+                assert '未找到' in facts.inner_text()  # one folded line for the unknown fields (#3104)
         assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 
@@ -4319,8 +4343,8 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
       return language === 'zh' ? chinese : purpose;
     }''', language, isolated_context=False)
     assert page.locator('.project-state').is_visible()
-    assert not page.locator('.project-purpose-preview').is_visible()
-    page.locator('details.deep-note > summary').click()
+    assert in_full_memory(page, '.project-purpose-preview')
+    memory_open(page)
     purpose = page.locator('.project-purpose-preview')
     assert purpose.count() == 1
     if width == 390:
@@ -4378,8 +4402,8 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
           KNOWN.clear(); FACTS.clear(); render();
         }''', record, isolated_context=False)
         # All three record categories keep these disclosures inside Full memory.
-        assert not page.locator('.related-records').is_visible()
-        page.locator('details.deep-note > summary').click()
+        assert in_full_memory(page, '.related-records')
+        memory_open(page)
         summaries = page.locator('.more-relations > summary:visible')
         assert page.locator('.related-records > .more-relations > summary:visible').count() == 3
         assert page.locator('.conversation-view .more-relations > summary:visible').count() == 1
@@ -4425,7 +4449,7 @@ def test_round_nine_fact_tails_preserve_nested_links_and_private_values(reader, 
       r.text = r.shown ? r.translations[r.shown] : r.original;
       setInterfaceLanguage(language); KNOWN.clear(); FACTS.clear(); render();
     }''', language, isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     role = page.locator('.factlist dt:text-is("' + ('职位' if language == 'zh' else 'Role') + '") + dd')
     tether = role.locator('.fact-tail')
     assert tether.count() == 1
@@ -4633,7 +4657,7 @@ def test_round10_muted_text_contrast_status_roles_and_underlined_prose(reader, t
                              ('#r=projects%2Fharbour.md', '.brand .sub, .deep-note-limit, .deep-hint')]:
         page.goto(uri + route)
         if page.locator('details.deep-note').count():
-            page.locator('details.deep-note > summary').click()
+            memory_open(page)
         values = page.locator(selectors).evaluate_all(r'''nodes => {
           const rgb = text => text.match(/[\d.]+/g).map(Number);
           const luminance = color => color.slice(0, 3).map(v => {
@@ -4751,7 +4775,7 @@ def test_cited_conversation_shows_only_this_pages_window_and_highlights_citation
           sender: 'You', time: '2026-10-01T10:00:00Z', excerpt: 'Example turn ' + i + (i < 3 ? ' Example context.'.repeat(80) : '')}))};
       render();
     }""", isolated_context=False)
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     page.locator('.conversation-open').first.click()
     dialog = page.locator('#conversation-dialog')
     assert dialog.locator('.conversation-message').count() == 5
@@ -4774,7 +4798,7 @@ def test_cited_conversation_shows_only_this_pages_window_and_highlights_citation
 def test_conversation_dialog_closes_on_page_navigation(reader):
     page, uri = reader
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     page.locator('.conversation-open').first.click()
     assert page.locator('#conversation-dialog').is_visible()
     page.evaluate("location.hash = '#r=projects%2Fharbour.md'")
@@ -5185,7 +5209,7 @@ def test_person_quotes_carry_their_source_and_open_the_original(reader):
     assert "h=src-" in cite.get_attribute("href")
     cite.click()
     expect(page.locator("#evidence-panel")).to_be_visible()
-    assert page.locator("details.deep-note").get_attribute("open") is None
+    assert page.locator("details.deep-note").get_attribute("open") is not None  # open on arrival (#3104)
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -6154,7 +6178,7 @@ def test_skills_have_one_search_that_is_big_enough_to_use(reader):
 def test_skill_page_says_where_it_lives_in_words(reader):
     page, uri = reader
     page.goto(uri + '#r=skills%2Fcatalog%2Fweekly-brief.md')
-    page.locator('details.deep-note > summary').click()
+    memory_open(page)
     source = page.locator('.panel').filter(has=page.locator('h3', has_text='Source'))
     assert 'Claude Code' in source.inner_text()
     assert 'claude-user' not in source.inner_text()
