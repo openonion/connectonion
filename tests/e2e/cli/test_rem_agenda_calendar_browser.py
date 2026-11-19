@@ -143,9 +143,11 @@ def test_agenda_opens_as_this_weeks_time_grid_with_calendar_events_and_notebook_
     today = _column(page, 1)
     assert _box(today, ".cal-ev", "Quarterly receipts with Ines")["y"] < _box(today, ".cal-ev", "Dentist")["y"]
     assert "09:30 – 10:00" in _column(page, 2).locator(".cal-ev", has_text="Pilot renewal call with Fernhill").get_attribute("title")
-    # The notebook's own dates sit in the all-day strip: Inès's promise due 3 Oct, the agenda page due 6 Oct.
+    # The notebook's own dates are counted in the all-day strip, one quiet line per day (#3188): Inès's promise due
+    # 3 Oct, the agenda page due 6 Oct; the items themselves are Today's cards.
     strip = page.locator(".cal-allday")
-    assert strip.locator(".cal-bar", has_text="Inès Halvorsen").count() == 1 and strip.locator(".cal-bar", has_text="Harbour filing").count() == 1
+    assert strip.locator('.cal-due-count[title*="Inès Halvorsen"]').count() == 1 and strip.locator('.cal-due-count[title*="Harbour filing"]').count() == 1
+    assert strip.locator(".cal-bar", has_text="Inès Halvorsen").count() == 0
     assert "Board dinner" not in week.inner_text(), "outside this week"
     # An empty day is empty: no placeholder card and no dash.
     assert page.locator(".cal-week .ag-empty").count() == 0 and "—" not in _column(page, 4).inner_text()
@@ -174,7 +176,7 @@ def test_an_event_opens_its_detail_in_words_and_a_notebook_date_goes_to_its_page
     assert 0 <= box["x"] and box["x"] + box["width"] <= 1440 and 0 <= box["y"] and box["y"] + box["height"] <= 900
     page.keyboard.press("Escape")
     detail.wait_for(state="detached", timeout=3000)  # it closes on Escape; counted at once it can still be leaving
-    page.locator(".cal-allday").get_by_role("link", name="Harbour filing").click()
+    page.locator('.cal-allday .cal-due-count[title*="Harbour filing"]').click()  # one date: its count opens its page
     page.wait_for_function("() => location.hash === '#r=agenda%2Fharbour-filing.md'")
 
 
@@ -256,12 +258,12 @@ def test_a_late_notebook_date_is_on_today_saying_when_it_was_due_and_no_second_l
     page = agenda
     _open(page, 1440)
     assert page.locator(".agenda-earlier").count() == 0
-    late = page.locator(".cal-allday .cal-bar.late", has_text="Fernhill invoice")
-    assert "Late, due Sep 25" in late.inner_text()
+    late = page.locator('.cal-allday .cal-due-count.late[title*="Fernhill invoice"]')  # counted on today, in red
+    assert "Late, due Sep 25" in late.get_attribute("title")
     first = _column(page, 1).bounding_box()
     assert first["x"] <= late.bounding_box()["x"] <= first["x"] + first["width"]
     page.get_by_role("button", name="Next week").click()
-    assert page.locator(".cal-bar", has_text="Fernhill invoice").count() == 0
+    assert page.locator('.cal-due-count[title*="Fernhill invoice"]').count() == 0
 
 
 def test_the_week_moves_and_month_is_a_grid_of_weeks_with_bars_across_cells(agenda):
@@ -441,7 +443,7 @@ def test_before_any_night_and_with_no_calendar_connected_the_page_says_so(agenda
     # The file a night writes when co can read no calendar: not an unexplained empty week.
     note = _show(page, _night(tmp_path, monkeypatch, connected=()))
     assert "No calendar is connected" in note
-    assert "Inès Halvorsen" in page.locator(".cal-week").inner_text(), "the notebook's dates still fill the week"
+    assert page.locator('.cal-week .cal-due-count[title*="Inès Halvorsen"]').count() == 1, "the notebook's dates are still counted in the week"
     assert "co auth" not in page.locator("#main").inner_text()
 
 
@@ -622,3 +624,71 @@ def test_on_a_phone_the_strip_scrolls_sideways_and_the_page_does_not(agenda):
     assert week.evaluate("n => n.scrollWidth > n.clientWidth")
     assert page.locator("#today-calendar .tcal-day .cal-week").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+# #3188 (hourly hunt on rc31): the detail sat at the far left over the rail and the event, the all-day lane held
+# truncated red deadline chips, and the day timeline opened at 13:00 with the morning out of view.
+@pytest.mark.parametrize("width", [1440])
+def test_an_event_detail_opens_beside_its_event_without_covering_it(agenda, width):
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900})
+    page.evaluate("() => { location.hash = ''; }", isolated_context=False)
+    block = page.locator(".today-cal .cal-day .cal-event").first
+    block.wait_for()
+    block.scroll_into_view_if_needed()
+    block.click()
+    detail = page.locator("dialog.cal-detail")
+    detail.wait_for()
+    d, b = detail.bounding_box(), block.bounding_box()
+    main = page.locator("#main").bounding_box()
+    overlap = not (d["x"] >= b["x"] + b["width"] or d["x"] + d["width"] <= b["x"] or d["y"] >= b["y"] + b["height"] or d["y"] + d["height"] <= b["y"])
+    assert not overlap, (d, b)
+    assert d["x"] >= main["x"] - 1, "the detail never covers the rail"
+    assert 0 <= d["x"] and d["x"] + d["width"] <= width and 0 <= d["y"]
+    topmost = page.evaluate("""() => { const n = document.querySelector('dialog.cal-detail'), r = n.getBoundingClientRect(), pts = [];
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) pts.push([r.left + 16 + (r.width - 32) * i / 4, r.top + 16 + (r.height - 32) * j / 4]);
+      return pts.filter(([x, y]) => y < innerHeight).every(([x, y]) => n.contains(document.elementFromPoint(x, y))); }""", isolated_context=False)
+    assert topmost
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"cal-detail-{width}.png"))
+
+
+def test_the_all_day_lane_holds_events_and_one_quiet_count_of_deadlines_per_day(agenda):
+    page = agenda
+    _open(page, 1440)
+    lane = page.locator(".cal-allday")
+    # No notebook date is drawn as a bar in the lane: no red truncated chips, no 'X owes the …' words.
+    assert lane.locator(".cal-bar.cal-due, .cal-bar.cal-page, .cal-bar.late").count() == 0
+    count = lane.locator(".cal-due-count").first
+    assert count.is_visible()
+    assert count.inner_text() == "1 due"
+    page.evaluate("() => setInterfaceLanguage('zh')", isolated_context=False)
+    assert page.locator(".cal-allday .cal-due-count").first.inner_text() == "1 个期限", "the lane's words are translated"
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
+    late = lane.locator(".cal-due-count.late")
+    assert late.count() == 1 and "Fernhill invoice" in late.get_attribute("title")
+    first = _column(page, 1).bounding_box()
+    assert first["x"] <= late.bounding_box()["x"] <= first["x"] + first["width"]
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "cal-week-lane-1440.png"))
+
+
+def test_the_day_timeline_opens_with_the_days_first_event_in_view(agenda):
+    page = agenda
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.evaluate("() => { location.hash = ''; }", isolated_context=False)
+    # Late in the evening (the hunt saw 23:00): the old rule scrolled to now - 10 h, 13:00, past the morning.
+    page.evaluate("() => { REM.as_of = REM.as_of.slice(0, 11) + '23:05:00+00:00'; overview(); }", isolated_context=False)
+    scroll = page.locator(".today-cal .cal-scroll")
+    scroll.wait_for()
+    first = page.locator(".today-cal .cal-day .cal-event").first
+    s, f = scroll.bounding_box(), first.bounding_box()
+    assert s["y"] <= f["y"] < s["y"] + s["height"], "the first event of the day is in view on load"
+    if os.environ.get("REM_PR_SHOTS"):
+        page.locator(".today-cal").scroll_into_view_if_needed()
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "cal-today-late-evening-1440.png"))
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.locator(".today-cal").scroll_into_view_if_needed()
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "cal-today-390.png"))
+        counts = page.locator(".today-cal .cal-due-count").evaluate_all("ns => ns.every(n => n.scrollWidth <= n.clientWidth)")
+        assert counts, "a day's count is never cut on a phone"

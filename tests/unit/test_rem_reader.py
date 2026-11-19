@@ -2084,7 +2084,7 @@ def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
 ])
 def test_fact_citations_stay_with_the_last_word_or_chinese_character(value, tail):
     page = TEMPLATE.read_text()
-    function = re.search(r'function factValue\(.*?\n\}', page, re.S).group(0)
+    function = re.search(r'function oneDate\(.*?\n\}', page, re.S).group(0) + '\n' + re.search(r'function factValue\(.*?\n\}', page, re.S).group(0)
     result = _run_reader_js(function + r'''
       const inline = text => text, softBreaks = node => node;
       const citeChip = n => '<a class="cite">' + n + '</a>';

@@ -448,3 +448,22 @@ def test_a_chip_whose_page_is_not_in_the_snapshot_says_so_and_stays_put(reader):
     assert page.evaluate("location.hash", isolated_context=False) == before
     page.keyboard.press("Escape")
     assert not panel.is_visible()
+
+
+# #3131 (hunt on rc31): a person's Full memory repeated every fact the profile card shows ('资料 · 已知 15/17 项'),
+# and dates printed twice ('2026-10-29 10月29日'). One place per fact, one date per value.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_person_shows_each_fact_once_and_each_date_once(reader, width):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="zh")
+    page.evaluate("""() => { const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Last contact:[^\\n]*/m, '- Last contact: 2026-10-29 (10月29日) [3]')
+        .replace(/^- First contact:[^\\n]*/m, '- First contact: 2015-11-18 2015年11月18日 [3]');
+      KNOWN.clear(); FACTS.clear(); render(); }""", isolated_context=False)
+    assert page.locator(".person-head .pcard").count() == 1
+    assert page.locator("#main .factlist").count() == 0, "the profile card is the one place for facts"
+    text = page.locator("#main").inner_text()
+    assert "2026-10-29" not in text and "2015-11-18" not in text  # ISO forms never reach the Chinese page
+    assert text.count("2015年11月18日") <= 1 and text.count("10月29日 10月29日") == 0
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"cal-person-facts-once-{width}.png"), full_page=True)
