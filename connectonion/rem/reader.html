@@ -3752,7 +3752,11 @@
     display: inline-block; }
   /* Out of sight and out of the line's width until the row is pointed at or focused, but still in the page, so
      a keyboard reaches it and focus can come back to it from the evidence panel. */
-  .pc-row:not(:hover):not(:focus-within) .cite { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; opacity: 0; }
+  /* Hover reveals a fact's sources; a device that cannot hover (a phone, a tablet) shows them, or its owner could
+     never open one (#3165 deep hunt: the profile card's sources were unreachable by touch). */
+  @media (hover: hover) { .pc-row:not(:hover):not(:focus-within) .cite { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; opacity: 0; } }
+  /* A finger needs room: the mark keeps its look and gains a tap area, not layout. */
+  @media (hover: none) { .pcard .cite { min-width: 28px; padding: 12px 10px; margin: -12px -10px -12px -8px; text-align: center; } }
   /* The value keeps its line; a qualifier ("mobile", "from the sender line") wraps under it rather than squeezing it. */
   .pc-item { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; max-width: 100%; }
   .pc-item .qual { margin-left: 0; }
@@ -4600,6 +4604,8 @@ const UI = {
     "Source for this line": "这条陈述的来源",
     "Original excerpts are hidden until you show labelled passages.": "原始摘录已隐藏，可选择显示已标记段落。",
     "The original isn't in this snapshot.": "此快照未包含原始内容。",
+    "Getting the original…": "正在取原文…", "REM kept this link, not a copy of the page.": "REM 只记下了这个链接，没有存网页副本。",
+    "REM did not keep a copy of this source.": "REM 没有存下这个来源的原文。", "Open the web page": "打开网页",
     "Full source ID": "完整来源 ID",
     "Find in archived source": "在存档来源中查找",
     "Previous match": "上一个匹配",
@@ -16241,7 +16247,7 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
     panel.appendChild(evidenceOriginal(context, quote));
   } else if (source.text && !sourceId(source.text, source.plain)) {
     panel.appendChild(el("p", { class: "evidence-description", text: source.text }));
-  } else panel.appendChild(el("p", { class: "evidence-unavailable", text: t("The original isn't in this snapshot.") }));
+  } else panel.append(...missingOriginal(r, number, trigger, { fromList }, sourceId(source.text, source.plain)));
   evidenceTrigger = trigger;
   panel.parentElement.hidden = false;
   document.body.classList.add("evidence-open");
@@ -16250,6 +16256,28 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
   close.focus({ preventScroll: true });
   scrollEvidenceSpan(panel);
   return true;
+}
+// A card never opens empty (#3165: 29/40, 32/40 and 40/40 source titles on three real project pages did). The
+// snapshot's excerpts share one budget across the notebook, mail first, so the live reader asks its Host for the one
+// source it is opening, once, and redraws the card when it comes. Without a Host, or when REM kept nothing, the card
+// says so in words and still offers what it can: the web page for a link.
+const SOURCE_ASKED = new Set();
+function missingOriginal(r, number, trigger, options, id) {
+  const parts = [];
+  if (id && liveHere() && !SOURCE_ASKED.has(id)) {
+    SOURCE_ASKED.add(id);
+    fetch("/rem/source?id=" + encodeURIComponent(id)).then(reply => reply.ok ? reply.json() : null).catch(() => null).then(context => {
+      const open = document.getElementById("evidence-layer")?.hidden === false && evidenceTrigger === trigger;
+      if (context) (REM.source_context = REM.source_context || {})[id] = context;
+      if (open) openEvidence(r, number, trigger, options);
+    });
+    return [el("p", { class: "evidence-unavailable", role: "status", text: t("Getting the original…") })];
+  }
+  const web = /^https?:\/\//.test(id || "");
+  parts.push(el("p", { class: "evidence-unavailable", text: t(web ? "REM kept this link, not a copy of the page." : liveHere()
+    ? "REM did not keep a copy of this source." : "The original isn't in this snapshot.") }));
+  if (web) parts.push(el("a", { class: "btn-action evidence-web", href: id, target: "_blank", rel: "noopener noreferrer", text: t("Open the web page") + " ↗" }));
+  return parts;
 }
 function evidenceControls(panel) {
   return [...panel.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter(node =>
