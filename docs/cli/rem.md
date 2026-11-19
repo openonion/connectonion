@@ -4202,3 +4202,31 @@ send paths. Email is the last choice: a company mailbox is wrong for personal
 content. Nothing is sent to a guessed recipient. Open Today using the last line
 (the live reader when serving, otherwise `co rem open`). See
 [the morning data contract](../rem-night-outcomes.md#morning-message-sprint-11).
+
+## Keys (#3137)
+
+A **钥匙 / Keys** place in the reader keeps every account and key in one list, like a password manager, with
+one rule: **a secret's value never enters the notebook**. The notebook is Markdown that the night's models read
+and that the phone can open over the relay, so a `keys/<slug>.md` page says only what a secret is:
+
+- service, account, purpose, who else has it, where it is used, created / rotated / expires, link;
+- `Vault: macOS Keychain (co-rem:<slug>)`: where the value is.
+
+The value is a generic password in the macOS Keychain under the service `co-rem:<slug>` (`rem/vault.py`, through
+`security`). In the reader on this Mac:
+
+- **Add a key**: service, account, the password and its purpose. The value goes to the Keychain and the page is
+  written without it; the field is cleared as soon as it is sent.
+- **Import a password export (CSV)** from 1Password, LastPass, Bitwarden or a browser: every row's value goes to
+  the Keychain, every row gets a page, and the reply gives counts only. Delete the export file afterwards: it holds
+  every password in plain text.
+- **Copy** and **Show** on a key's page ask the Keychain (its own prompt: Touch ID or the login password). A copy
+  leaves the clipboard after 30 s and a shown value hides after 15 s.
+
+The Host routes (`/rem/keys/add`, `/rem/keys/reveal`, `/rem/keys/import`) answer only this computer, with the
+page's cookie, like every `/rem` route; a snapshot, the phone included, shows the rows and never a value. Page
+review refuses any page carrying something shaped like a key or token, and a keys page carrying any long
+random-looking string, so a draft cannot put a secret there either.
+
+Not yet: the Windows and Linux vaults (the reader says so), and a night stage that files rows from mail and
+sessions and warns about exposed secrets.
