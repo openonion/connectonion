@@ -10006,6 +10006,14 @@ Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "N
   "Could not do that: {why}": "没有做成：{why}",
   "This is a snapshot: investigate from the live reader.": "这是快照：请在实时阅读器里调查。" });
 const INV_STEPS = { write: "Write", append: "Append", rewrite: "Rewrite", enrich: "Web follow-up" };
+// Why a run stopped, by its kind (page_runs.REASONS), in the reader's language; any other reason is shown as written.
+const INV_REASONS = { too_long: "the page is too long to add to; the draft is kept and the page is unchanged",
+  changed: "the page changed while it was investigated; nothing was written, run it again",
+  dropped: "the draft left out lines the page had, so it was not saved; the page is unchanged" };
+Object.assign(UI.zh, { "the page is too long to add to; the draft is kept and the page is unchanged": "页面超过长度上限，候选稿已保存，页面没有改动",
+  "the page changed while it was investigated; nothing was written, run it again": "调查期间页面被改动，没有写入，请再试一次",
+  "the draft left out lines the page had, so it was not saved; the page is unchanged": "候选稿漏掉了页面原有的内容，没有保存，页面没有改动",
+  "Earlier history": "更早的经历" });
 const INV_LEVELS = [["full", "Full investigation", "Adds the web follow-up"],
   ["quick", "Quick update", "Reads only the new material, no web"], ["rewrite", "Rewrite the page", "Writes a new draft; replaces the page only when you accept it"]];
 const INV_RUNS = new Map();  // what this tab has seen of a page's run since the page data was built
@@ -10123,7 +10131,8 @@ function invRecent(run) { return run.result !== "running" && Date.now() - Date.p
 function invResult(r, s, paint) {
   const run = s.run;
   if (run.result === "failed") return [el("p", { class: "inv-line", role: "status" }, [el("span", { class: "inv-fail",
-    text: run.reason ? t("The investigation stopped: {why}", { why: run.reason }) : t("The investigation stopped") })])];
+    text: run.reason ? t("The investigation stopped: {why}", { why: INV_REASONS[run.reason_kind] ? t(INV_REASONS[run.reason_kind]) : run.reason })
+      : t("The investigation stopped") })])];
   if (run.mode === "rewrite") return [];
   const added = run.added_lines || [], count = run.added_count ?? added.length;
   const words = !run.changed ? t("Nothing new to add") : count === 1 ? t("Updated · 1 line added")

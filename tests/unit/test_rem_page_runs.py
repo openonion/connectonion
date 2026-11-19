@@ -124,3 +124,45 @@ def test_your_own_page_has_no_button_and_cannot_be_started_from_it(root):
     assert page_runs.states(root, [PAGE], mail_days={}) == {}
     with pytest.raises(RemError, match="investigate me"):
         page_runs.start(root, PAGE, "full")
+
+
+# 2026-11-19: the reader showed "调查没有完成：['Investigation: writing investigation']". The CLI's --json
+# error is {"ok": false, "data": ...}; the worker read a key that does not exist, then printed the Python
+# list of stderr's last line, a progress line.
+TOO_LONG = ("Candidate rejected, kept at /tmp/x/candidate.md: Page is 32,360 characters (was 22,670), over the "
+            "20,000 limit; keep it near 15,000")
+
+
+def test_a_failed_run_says_why_in_one_plain_sentence(root, monkeypatch):
+    path = page_runs.receipt_path(root, PAGE)
+    write_json(path, {"record": PAGE, "result": "running", "started_at": "2026-10-01T00:00:00+00:00"})
+
+    class Done:
+        returncode = 1
+        stdout = json.dumps({"ok": False, "data": TOO_LONG, "next": "co rem logs"}) + "\n"
+        stderr = "Investigation: gathering mail\nInvestigation: writing investigation\n"
+    monkeypatch.setattr(page_runs.subprocess, "run", lambda *a, **k: Done())
+    page_runs._work(root, PAGE, "full")
+    receipt = json.loads(path.read_text())
+    assert receipt["result"] == "failed" and receipt["reason_kind"] == "too_long"
+    assert receipt["reason"] == ("The page is too long to add to (32,360 characters); the draft is kept and "
+                                 "nothing on the page changed.")
+    assert "[" not in receipt["reason"] and "Investigation:" not in receipt["reason"]
+
+
+@pytest.mark.parametrize("stdout,stderr,kind,words", [
+    ("", "Investigation: writing investigation\nPage changed during investigation; preserve current page and retry\n",
+     "changed", "changed while it was being investigated"),
+    ("not json", "Investigation: a\nInvestigation: b\n", "other", "Investigation: b"),
+    (json.dumps({"ok": False, "data": {"error": "Dropped claim line the page had: x"}}), "", "dropped", "left out lines"),
+    ("", "", "other", "without saying why"),
+])
+def test_the_reason_is_never_a_list_or_a_progress_line_when_a_real_one_exists(stdout, stderr, kind, words):
+    reply = {}
+    try:
+        reply = json.loads(stdout)
+    except ValueError:
+        pass
+    found = page_runs.explain(page_runs._message(reply) or page_runs._last_line(stderr))
+    assert found["reason_kind"] == kind and words in found["reason"]
+    assert not found["reason"].startswith("[")
