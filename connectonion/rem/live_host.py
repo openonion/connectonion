@@ -367,6 +367,26 @@ def renew_idle() -> None:
             print(f"Replaced the server from before the upgrade: co ai pid {process.pid} on port {_port(process.args)}.")
 
 
+# The Host watches for an upgrade itself (#3112): the build that replaces an idle old Host (renew_idle) used to run
+# only when an open page polled, so with no tab open the old code was served until the next `co rem open`.
+UPGRADE_CHECK = 60    # seconds between looks at the installed version
+UPGRADE_RETRY = 600   # while still the old release (busy, or the build failed), start the build again this often
+
+
+def notice_upgrade(root, kicked: dict, *, now=time.monotonic) -> bool:
+    """When this process runs an older release than is installed, start the page build: it runs the installed code
+    and replaces this Host on the same port once it is idle (renew_idle, _upgrade). Once per installed release, then
+    every UPGRADE_RETRY while this Host is still the old one. `kicked` is the caller's memory of when."""
+    from .._version import __version__ as running
+    installed = version_on_disk()
+    if installed == running or installed in kicked and now() - kicked[installed] < UPGRADE_RETRY:
+        return False
+    kicked[installed] = now()
+    from .reader import owner_changed
+    owner_changed(Path(root))
+    return True
+
+
 def _gone(saved, address: str) -> bool:
     """The record names this address's Host, that process is gone, and nothing answers locally as the address.
 

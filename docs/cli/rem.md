@@ -1488,6 +1488,11 @@ A `co ai` keeps running the version it was started with, so after an upgrade:
   onto the new render. A task started from the reader runs in its own process
   and continues. An identity selected with `--env-file` is replaced by the next
   `co rem open`, not by the build.
+- **With no tab open** the server notices by itself (#3112): once a minute it
+  compares its own version with the installed one, and when they differ it
+  starts that same background build, which replaces it on the same port when
+  idle. While it is still the old version (busy, or the build failed) it starts
+  the build again every ten minutes.
 - **Not while it is working.** Neither an open nor the build stops it while
   `session_results.jsonl` holds a turn still `running` or `waiting_approval`
   (a conversation, an approval being waited for, or a scheduled `run:` turn) or
