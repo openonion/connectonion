@@ -822,6 +822,9 @@
     .contact-directory td button { min-height: 44px; }
     .contact-directory .directory-action { display: block; margin: -9px 0 9px; }
     .contact-directory .directory-action td { display: block; border: 1px solid var(--rule); border-radius: var(--radius); }
+    /* The agents and services group has three cells: who, the address, 是人 on the right. */
+    .machine-directory tbody > tr:not(.directory-action) > td:nth-child(3) { grid-column: 1 / -1; text-align: right; color: inherit; }
+    .machine-directory tbody > tr:not(.directory-action) > td:nth-child(3)::before { content: none; }
   }
 
   /* People at 1440: every column fits (main 1136px); narrower, the sheet scrolls inside itself. */
@@ -3320,6 +3323,18 @@
   .set-ignored li > :first-child { flex: 1 1 12em; color: var(--ink); }
   /* An address has no spaces: on a phone the notice breaks it rather than run past the edge. */
   .done-notice .sender-ignore { overflow-wrap: anywhere; text-align: left; }
+  /* 不是人 / 是人 (rc35 check): a quiet worded button, 44px to touch; in People's rows it shows on hover or focus. */
+  .not-person, .is-person { min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent;
+    color: var(--grey); font: inherit; font-size: var(--s-ui); cursor: pointer; white-space: nowrap; }
+  .not-person:hover, .is-person:hover, .not-person:focus-visible, .is-person:focus-visible { color: var(--ink); background: var(--well); }
+  .hero-acts .not-person { display: block; margin: 4px 0 0 auto; }
+  .contact-directory td .is-person { min-height: 44px; }
+  /* Over the name cell's right end, so a row's names keep their width; shown on hover or focus. */
+  .people-table td.c-name { position: relative; }
+  .people-table .not-person.compact { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 30px; padding: 0 10px;
+    background: var(--well); visibility: hidden; }
+  .people-table tr:hover .not-person.compact, .people-table .not-person.compact:focus-visible { visibility: visible; }
+  @media (hover: none) { .people-table .not-person.compact { position: static; transform: none; visibility: visible; min-height: 44px; background: transparent; } }
   .set-note, .notebook-languages, .memory-legend, .foot-line { font: var(--w-regular) var(--s-ui)/1.5 var(--font); color: var(--grey); }
   .notebook-languages, .set-rem, .memory-legend, .foot-line { padding: 12px 0; border-top: var(--hair) solid var(--rule); }
   .set-rem { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
@@ -9510,11 +9525,19 @@ function taskView(kind) {
 // the address (tag=), so a reload or the back button keeps it.
 function openTags(entry) {
   const r = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
-  const name = r.category === "people" ? company(r) : r.category === "orgs" || r.category === "projects" ? r.title : "";
+  // A person's place is the organisation People names (personOrg): never a raw domain, a code or a second spelling.
+  const name = r.category === "people" ? personOrg(r)?.name || "" : r.category === "orgs" ? orgName(r) : r.category === "projects" ? r.title : "";
   const place = name ? [{ id: (r.category === "projects" ? "project:" : "org:") + name, label: name }] : [];
   // The item's own tags (#3093): its queue row's, else its page's; each a chip, so "close all 9900" is one filter away.
   const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
-  const pageTags = (row?.tags || r.tags || []).filter(slug => REM.tags?.[slug]).map(slug => ({ id: "tag:" + slug, label: tagLabel(slug) }));
+  // A tag naming an organisation is that organisation's place chip, so "Harbour Uni" the place and "Harbour Uni" the tag are one
+  // chip, not two (rc35 hunt).
+  const tagChip = slug => {
+    const page = byPath(REM.tags[slug].page || "");
+    return page?.category === "orgs" ? { id: "org:" + orgName(page), label: orgName(page) } : { id: "tag:" + slug, label: tagLabel(slug) };
+  };
+  const pageTags = (row?.tags || r.tags || []).filter(slug => REM.tags?.[slug]).map(tagChip)
+    .filter((chip, i, all) => !place.some(p => p.id === chip.id) && all.findIndex(c => c.id === chip.id) === i);
   if (!waitingOnYou(entry)) return [...place, ...pageTags];
   const replied = queuedReply(entry)?.state === "replied";
   return [{ id: replied ? "state:replied" : "state:owe", label: t(replied ? "I replied, waiting on them" : "I still owe a reply or an action") }, ...place, ...pageTags];
@@ -10542,8 +10565,87 @@ function activityView() {
 }
 
 function shellArg(value) { return "'" + String(value).replace(/'/g, "'\\''") + "'"; }
+// ---------- 不是人 / 是人 (rc35 check): the owner's word on who is a person ----------
+// An assistant that mails from its company's domain led People. The night already moves one out when its company's
+// page names it as the assistant (census.assistant_contact); the owner's one click settles the rest. The mark is
+// one dated line per address in the notebook's state (threads.mark_person), which the night reads too, and Undo
+// or 是人 in the agents and services group takes it back.
+Object.assign(UI.zh, { "Not a person": "不是人", "A person": "是人", "Moved out of People · {name}": "已移出人物 · {name}",
+  "Back in People · {name}": "已回到人物 · {name}", "{n} agents and services found in mail": "邮件里的 {n} 个助理和服务",
+  "Assistants, bots and services: their company's page says so, or you said so. They stay out of People.": "助理、机器人和服务：公司页面这么写，或者你这么说过。它们不进人物。",
+  "Not a person: an assistant, a bot or a service": "不是人：是助理、机器人或服务" });
+function recordEmails(r) {
+  return [...new Set((String(facts(r).email || "").match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []).map(address => address.toLowerCase()))];
+}
+async function savePersonMark(addresses, person) {
+  for (const address of addresses) {
+    const reply = await hostPost("/rem/person", { address, person });
+    if (!reply.ok) return false;
+    REM.person_marks = reply.marks || {};
+  }
+  return true;
+}
+function personMarkNotice(words, undo) {
+  document.getElementById("done-notice")?.remove();
+  const button = el("button", { type: "button", text: t("Undo") });
+  button.onclick = undo;
+  document.body.appendChild(el("div", { id: "done-notice", class: "done-notice", role: "status" }, [words, " · ", button, " · ", t("Saved in notebook")]));
+  button.focus({ preventScroll: true });
+}
+function notPersonButton(r, compact = false) {
+  const addresses = recordEmails(r);
+  if (!liveHere() || !addresses.length || r.path === REM.owner) return null;
+  const button = el("button", { type: "button", class: "not-person" + (compact ? " compact" : ""), title: t("Not a person: an assistant, a bot or a service"), text: t("Not a person") });
+  const out = async () => {
+    button.disabled = true;
+    if (!await savePersonMark(addresses, false)) { button.disabled = false; return notSavedNotice(retryReplacing(out), null); }
+    r.service_rule ??= !!r.service;
+    r.service = true;
+    render();
+    personMarkNotice(t("Moved out of People · {name}", { name: r.title }), async () => {
+      if (!await savePersonMark(addresses, null)) return notSavedNotice(() => {}, null);
+      r.service = r.service_rule;
+      document.getElementById("done-notice")?.remove();
+      render();
+    });
+  };
+  button.onclick = event => { event.stopPropagation(); out(); };
+  return button;
+}
+// Where an assistant or service waits: a folded group under People, each with 是人 to bring it back.
+function machineDirectory() {
+  const marks = REM.person_marks || {};
+  const pages = REM.records.filter(r => r.category === "people" && r.service && (r.agent || recordEmails(r).some(address => marks[address] === "not-person")));
+  const contacts = (REM.contact_candidates || []).filter(row => row.machine);
+  if (!pages.length && !contacts.length) return null;
+  const back = (row, addresses, done, undone) => {
+    if (!liveHere()) return el("span");
+    const button = el("button", { type: "button", class: "is-person", text: t("A person") });
+    button.onclick = async () => {
+      button.disabled = true;
+      if (!await savePersonMark(addresses, true)) { button.disabled = false; return notSavedNotice(() => button.click(), null); }
+      done();
+      render();
+      personMarkNotice(t("Back in People · {name}", { name: row }), async () => {
+        if (!await savePersonMark(addresses, null)) return notSavedNotice(() => {}, null);
+        undone();
+        document.getElementById("done-notice")?.remove();
+        render();
+      });
+    };
+    return button;
+  };
+  const rows = [...pages.map(r => el("tr", {}, [el("td", {}, [el("a", { href: href(r), text: r.title })]), el("td", { text: recordEmails(r).join(", ") }),
+      el("td", {}, [back(r.title, recordEmails(r), () => { r.service = false; }, () => { r.service = true; })])])),
+    ...contacts.map(row => el("tr", {}, [el("td", { text: row.name || row.email }), el("td", { text: row.email }),
+      el("td", {}, [back(row.name || row.email, [row.email.toLowerCase()], () => { row.machine = false; }, () => { row.machine = true; })])]))];
+  return el("details", { class: "contact-directory machine-directory" }, [
+    el("summary", { text: t("{n} agents and services found in mail", { n: rows.length }) }),
+    el("div", { class: "directory-body" }, [el("p", { class: "directory-note", text: t("Assistants, bots and services: their company's page says so, or you said so. They stay out of People.") }),
+      el("div", { class: "directory-scroll" }, [el("table", {}, [el("tbody", {}, rows)])])])]);
+}
 function contactDirectory() {
-  const candidates = REM.contact_candidates || [];
+  const candidates = (REM.contact_candidates || []).filter(row => !row.machine);
   const coverage = REM.contact_coverage || {};
   if (!candidates.length && !coverage.incomplete) return null;
   const details = el("details", { class: "contact-directory" });
@@ -10680,7 +10782,42 @@ function personOrg(r) {
   const full = link ? plainLine(link[1]) : wiki ? plainLine(wiki[2] || org?.title || wiki[1])
     : plainLine(company).replace(/\s*\(from email domain\)$/i, "") || org?.title || "";
   const acronym = /^(.+?)\s*\(([\p{Lu}&]{2,8})\)$/u.exec(full);
-  return knownValue(full) ? { org, name: acronym ? acronym[2] : full, full: acronym ? acronym[1] : "" } : null;
+  return knownValue(full) ? orgNamed(r, org, acronym ? acronym[2] : full, acronym ? acronym[1] : "") : null;
+}
+// What People's organisation column and the open list's place chips call a person's organisation (rc35 hunt,
+// #3157: a course-group code, two university domains, and one company as both a short and a full name).
+function orgNamed(r, org, label, full) {
+  const domain = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i, title = org?.title.trim() || "";
+  const name = label.replace(/\s*[（(][^()（）]*[)）]\s*$/, "") || label;
+  // An internal code (digits, capitals and dashes, no space: a course group, a ticket) is never an organisation.
+  if (/^(?=\S*\d)[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(name.trim())) return null;
+  // A page linked under a longer label ("Harbour Uni Founders" → Harbour Uni) or under its domain goes by its own name.
+  if (org && !domain.test(title) && (domain.test(name) || startsWords(name, title)))
+    return { org, name: orgName(org), full: label === orgName(org) ? full : label };
+  if (!org) {
+    const matches = inCategory("orgs").filter(page => sameCompany(r, page, name));
+    if (matches.length === 1) return { org: matches[0], name: orgName(matches[0]), full: label };
+  }
+  return domain.test(name) ? { org, name: domainName(name), full: label } : { org, name: label, full };
+}
+// A domain reads as a name, the domain itself kept for the tooltip: "harbour.edu.au" → Harbour, "fernhill.example" → Fernhill.
+function domainName(domain) {
+  const parts = domain.toLowerCase().split("."), label = parts[0] === "www" ? parts[1] : parts[0];
+  return parts.some(part => part === "edu" || part === "ac") && label.length <= 5 ? label.toUpperCase() : label[0].toUpperCase() + label.slice(1);
+}
+function startsWords(long, short) {
+  return long.toLowerCase().startsWith(short.toLowerCase() + " ");
+}
+function personDomain(r) {
+  return (String(facts(r).email).match(/@([\w.-]+\.[a-z]{2,})/i) || [])[1]?.toLowerCase() || "";
+}
+// One company, one name: a short name and a full one ("Acme" / "Acme Fine Foods") are one organisation when one begins
+// the other and the page's domain (or its name run together) is the person's mail domain.
+function sameCompany(r, org, name) {
+  const title = org.title.trim();
+  if (/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(title) || !(startsWords(title, name) || startsWords(name, title))) return false;
+  const domain = personDomain(r), domains = (rawSection(org, "Domains") || "").toLowerCase();
+  return !!domain && (domains.includes(domain) || domain.split(".")[0] === title.toLowerCase().replace(/[^a-z0-9]/g, ""));
 }
 function personProject(r) {
   const link = /\]\((?:\.\.\/)?(projects\/[^)]+\.md)\)/.exec(known(r).intro + "\n" + r.text);
@@ -10748,7 +10885,7 @@ function personHead(r) {
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
         el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late)]),
-      el("div", { class: "hero-acts" }, [investigateControl(r)])]),
+      el("div", { class: "hero-acts" }, [investigateControl(r), notPersonButton(r)])]),
     profileCard(r)]);
 }
 // The third header line: where they are, how recent, how much mail, and Today when something waits there.
@@ -11386,7 +11523,7 @@ function personNameCell(d) {
   const name = addressTitle(d.r)
     ? el("a", { href: href(d.r), class: "nm-unknown", title: d.r.title }, [el("span", { text: t("Name unknown") }), el("span", { class: "nm-address", text: d.r.title })])
     : el("a", { href: href(d.r), title: d.r.title, text: d.r.title });
-  return el("span", { class: "nm" }, [name, updatedMarker(d.r)]);
+  return el("span", { class: "nm" }, [name, updatedMarker(d.r), notPersonButton(d.r, true)]);
 }
 // The organisation's name only; where it came from ("(their signature)") is its tooltip (#3157).
 function personOrgCell(org) {
@@ -11467,7 +11604,7 @@ function peopleFoot() {
   const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
     held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
     service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
-  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory()]);
+  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory(), machineDirectory()]);
 }
 function peopleView(items, config = {}) {
   const columns = config.columns || PEOPLE_COLUMNS, state = config.state || PEOPLE_SORT;

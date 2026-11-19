@@ -139,7 +139,7 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
     elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import"):
         await _keys(scope, receive, send, root, headers)
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/investigate", "/rem/direct-send"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/person", "/rem/investigate", "/rem/direct-send"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -289,6 +289,14 @@ async def _action(scope, receive, send, root, headers):
             await _reply(send, 400, json.dumps({"error": "Expected one mail address and ignored true or false"}), "application/json")
             return
         operation = lambda: {"ignored": threads.ignore_sender(root, body["address"], ignored=body["ignored"])}
+    elif scope["path"] == "/rem/person":
+        from ...rem.files import EMAIL
+        # 不是人 / 是人 for one address, or null to let the rules decide again; never a domain.
+        if (not isinstance(body.get("address"), str) or len(body["address"]) > 254
+                or not EMAIL.fullmatch(body["address"]) or body.get("person") not in (True, False, None)):
+            await _reply(send, 400, json.dumps({"error": "Expected one mail address and person true, false or null"}), "application/json")
+            return
+        operation = lambda: {"marks": threads.mark_person(root, body["address"], person=body["person"])}
     elif scope["path"] == "/rem/direct-send":
         # 以后直接发给他 / 以后先给我看 (#3121): one person's send policy, the owner's own line on their page.
         from ...rem import direct_send

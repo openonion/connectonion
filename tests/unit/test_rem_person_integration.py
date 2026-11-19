@@ -74,7 +74,7 @@ def test_person_contact_metric_is_a_true_readable_sentence(language, history):
     ('', 'Fernhill Labs'),
 ])
 def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_labels(company, label):
-    result = run_js(['personOrg'], r'''
+    result = run_js(['personOrg', 'orgNamed', 'domainName', 'startsWords', 'personDomain', 'sameCompany'], r'''
       const facts = () => ({company: ''' + json.dumps(company) + r'''});
       const plainLine = text => text, knownValue = Boolean;
       const org = {path: 'orgs/fernhill.md', title: 'Fernhill Labs'};
