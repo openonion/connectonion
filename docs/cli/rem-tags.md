@@ -19,8 +19,8 @@ tag; search resolves `tag:9900` through aliases.
 | `Tag:` line in `co rem status` | `stages.py` | built |
 | Tags on open items (`today_queue[].tags`) | `today.py` | built |
 | Tag nodes and edges (`graph.tags`) | `reader_model.py` | built |
-| Chips, tag pages, `tag:` in search, graph drawing | `reader.html` | **not built**: the reader branch, on the contract below |
-| Tags on decisions, knowledge, principles | Abstract | **not built**: owned by Abstract, format below |
+| Tag pages (`#q=tag:SLUG`), `tag:` and a word that is a tag in search, tag rows on person pages, tag chips on every list (`&tag=`), tag chips and close-all in the open items, tag nodes and a Tags tab in the graph | `reader.html` (`tagPage`, `tagBar`, `listRows`, `openTags`, `graphModel`) | built (rc31) |
+| Tags on decisions, knowledge, principles and skills | the tag stage (`TAGGED_KINDS`), the line under the title (`with_tags`) | built (rc31) |
 
 ## Data
 
@@ -90,7 +90,8 @@ person's page name.
 ## The stage: `co rem tag`
 
 - **Reads pages, never sources** (like `rem-abstract`). Pages are people,
-  organisations and projects with a `## Facts` section.
+  organisations and projects with a `## Facts` section, and (rc31) decisions,
+  knowledge, principles and skills, whose line sits directly under the title.
 - **Waiting** = a written page (not a stub the map made alone, `census.written`) whose text, without its Tags line, has a different hash
   from the one saved in `.state/tag-pages.json` when it was last tagged. So a
   page that was never tagged waits, and a page investigation or deepen changed
@@ -164,15 +165,15 @@ Every field is new; the current reader ignores all of them.
   `tags.resolve(vocabulary, "tag:comp9900") == "9900"` and
   `tags.matching(records, vocabulary, "tag:9900")` lists the records.
 
-## Decisions, knowledge and principles: owned by Abstract
+## Decisions, knowledge, principles and skills
 
-These pages have no `## Facts`, so `co rem tag` does not read them. Abstract
-writes them and owns their tags: one line directly under the title, the same
-grammar, each tag cited from the page's own sources:
+These pages have no `## Facts`. Since rc31 the tag stage reads them too and
+writes one line directly under the title, the same grammar, each tag cited from
+the page's own sources:
 
     # Keep one vocabulary for every kind
 
     - Tags: rem [2], reader-ui [2]
 
-`tags.page_tags` already reads such a line anywhere on a page; `with_tags`
-would need a second insertion point (under the title) before Abstract can use it.
+`with_tags` puts the line there when a page has no Facts, and moves or removes
+it there on a later run; `only_tags_changed` holds as for any page.

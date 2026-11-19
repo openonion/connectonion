@@ -16,7 +16,10 @@ TAG_KINDS = ("course", "team", "organisation", "project", "role", "topic", "plac
 # Kinds that name something: their evidence must contain the name.
 NAMED_KINDS = ("course", "team", "organisation", "project", "place")
 CATCH_ALL = {"misc", "general", "other", "workflow", "platform", "tools", "automation", "people", "contact", "work"}
-TAGGED_KINDS = ("people", "orgs", "projects")
+# Every page kind carries tags (#3093; owner, 2026-11-19: «所有的内容里面应该都有 tag 吧»). The first three keep the
+# line at the end of `## Facts`; the rest have no Facts and keep it directly under the title.
+FACT_KINDS = ("people", "orgs", "projects")
+TAGGED_KINDS = FACT_KINDS + ("skills", "decisions", "knowledge", "principles")
 # Roles every notebook starts with, so a person's commonest tag needs no new word.
 ROLES = ("student", "tutor", "lecturer", "colleague", "client", "investor", "partner", "supplier",
          "candidate", "recruiter", "mentor", "founder", "advisor")
@@ -59,13 +62,20 @@ def without_tags(text: str) -> str:
 
 
 def with_tags(text: str, rows: list[dict]) -> str:
-    """The page with its Tags line set to `rows` (none: no line), at the end of `## Facts`."""
-    text = re.sub(r"(?m)^- Tags:[^\n]*\n?", "", text)
+    """The page with its Tags line set to `rows` (none: no line): at the end of `## Facts`, or directly under the
+    title on a page with no Facts (decisions, knowledge, principles, skills)."""
+    under_title = re.search(r"\A# [^\n]*\n\n- Tags:[^\n]*\n\n", text)
+    text = text[:under_title.start()] + text[under_title.start():under_title.end()].rsplit("\n- Tags:", 1)[0] + "\n" + text[under_title.end():] \
+        if under_title else re.sub(r"(?m)^- Tags:[^\n]*\n?", "", text)
     if not rows:
         return text
     facts = re.search(r"(?m)^## Facts[ \t]*\n", text)
     if not facts:
-        raise ValueError("A page needs a ## Facts section to hold its Tags line")
+        title = re.match(r"# [^\n]*\n", text)
+        if not title:
+            raise ValueError("A page needs a title or a ## Facts section to hold its Tags line")
+        rest = text[title.end():].lstrip("\n")
+        return text[:title.end()] + "\n" + format_line(rows) + "\n\n" + rest
     following = re.search(r"(?m)^#{1,2} ", text[facts.end():])
     end = facts.end() + following.start() if following else len(text)
     body = text[facts.end():end].rstrip("\n")
