@@ -14,7 +14,13 @@ from .files import WRITE_WAIT_SECONDS, CATEGORIES, RemError, atomic_write, maint
 
 def local_timezone() -> str:
     candidate = os.environ.get("TZ", "").removeprefix(":")
-    if not candidate:
+    if not candidate and os.name == "nt":
+        # Windows has no /etc/localtime; the registry names a Windows zone
+        # ("AUS Eastern Standard Time") and tzlocal maps it to IANA. co rem
+        # init stopped at "Set schedule.timezone" on every Windows PC.
+        from tzlocal import get_localzone_name
+        candidate = get_localzone_name() or ""
+    elif not candidate:
         # macOS resolves further into zoneinfo.default, so inspect the public
         # localtime link before canonicalizing its target.
         local = Path("/etc/localtime")

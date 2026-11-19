@@ -1046,3 +1046,17 @@ def test_followup_registration_keeps_saved_times_and_consent(native, tmp_path, m
     assert service.status(root)['schedule_times'] == status['schedule_times'] == config['schedule']['times']
     assert service.consent_summary(root) == summary
     assert service.summary_fingerprint(root) == before
+
+
+def test_windows_reads_its_timezone_from_the_registry_through_tzlocal(monkeypatch):
+    # Windows has no /etc/localtime: co rem init stopped at "Set schedule.timezone
+    # to a valid IANA timezone" on every Windows PC.
+    import sys
+    import types
+    from connectonion.rem import config
+
+    monkeypatch.delenv("TZ", raising=False)
+    monkeypatch.setattr(config, "os", types.SimpleNamespace(name="nt", environ={}))
+    monkeypatch.setitem(sys.modules, "tzlocal",
+                        types.SimpleNamespace(get_localzone_name=lambda: "Pacific/Chatham"))
+    assert config.local_timezone() == "Pacific/Chatham"

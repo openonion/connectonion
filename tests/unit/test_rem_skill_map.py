@@ -325,3 +325,14 @@ def test_the_night_round_recounts_skill_calls_made_after_init(tmp_path, monkeypa
                                  "message": {"content": "plan the week"}}) + "\n")
     native_round.prepare(root, read_config(root), scheduled=False)
     assert nb.read("skills/catalog/weekly-report.md") == page
+
+
+def test_a_windows_path_in_the_metadata_line_is_written_as_is():
+    # A replacement string reads "C:\Program Files" as the escape \P: co rem init
+    # stopped with "bad escape \P" on every Windows PC with an installed skill.
+    from connectonion.rem.skill_map import _shape
+
+    path = r"C:\Program Files\Python312\Lib\site-packages\connectonion\useful_skills\co-inbox\SKILL.md"
+    page = "# co-inbox\n\n## Sources\n- Skill metadata: old\n"
+    shaped = _shape(page, [{"path": path, "sha256": "a" * 64, "location": "package", "allowed_tools": ""}], [], "", "")
+    assert f"- Skill metadata: {path}" in shaped
