@@ -3631,6 +3631,16 @@
   .n3-person .r4-sub.dek { gap: 4px 0; margin-left: -16px; }
   .n3-person .dek > * { margin-left: 16px; }
   /* The profile card: a fact box of four groups under one hairline; label above value, on the 4px grid. */
+  /* Keys (#3137): the add form and import under one disclosure; a key page's facts read like a profile card. */
+  .key-adder { margin: 8px 0 20px; }
+  .key-adder > summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-add { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .key-add input { min-width: 0; flex: 1 1 180px; height: 40px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-import { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-status { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .key-value { padding: 4px 8px; border-radius: var(--r-cell); background: var(--well); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
+  .key-page .key-facts { columns: 1; max-width: 720px; margin-top: 20px; }
   .pcard { margin-top: 20px; padding-top: 16px; border-top: var(--hair) solid var(--rule); }
   /* Each fact one row, label column then value; the rows flow into two balanced columns. */
   .pc-list { columns: 2 300px; column-gap: 48px; margin: 0; }
@@ -4329,7 +4339,7 @@ const UI = {
     "People": "人物",
     "Organisations": "组织",
     "Projects": "项目",
-    "Skills": "技能",
+    "Skills": "技能", "Keys": "钥匙",
     "Decisions": "决定",
     "Principles": "原则",
     "Agent sessions": "智能体会话",
@@ -5157,7 +5167,7 @@ function el(tag, attrs, children) {
   return node;
 }
 const CATEGORY_LABEL = {
-  people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge",
+  people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge", keys: "Keys",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
   agenda: "Agenda", sessions: "Agent sessions", notes: "AI notes", logs: "Maps"
 };
@@ -7297,6 +7307,7 @@ const ICONS = {
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   "building-2": '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
   folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  key: '<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/>',
   zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
   // Lucide draws the lid as a rect with rx="1"; it is the same lid as a path, because the sheet owns every radius attribute.
   archive: '<path d="M3 3h18a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
@@ -7363,6 +7374,7 @@ function railPlaces(active) {
     ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail"), 0],
     category("agenda", "calendar", 0),
     category("people", "users", 1), category("orgs", "building-2", 1, t("Organisations, in the rail")), category("projects", "folder", 1),
+    category("keys", "key", 1),
     // One Knowledge place, not Knowledge plus All records (#2996): the owner could not tell them apart. It holds
     // the wiki's entries and the graph All records drew; every record that list held is in its own category.
     category("knowledge", "book", 2), category("decisions", CATEGORY_ICON.decisions, 2), category("principles", CATEGORY_ICON.principles, 2),
@@ -10890,6 +10902,7 @@ function categoryCount(c, counts, total) {
   return counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped, unit }) : t("{n}{unit}", { n: total, unit });
 }
 function category(c) {
+  if (c === "keys") { keysView(); return; }
   if (c === "sessions") { sessionsView(); return; }
   if (c === "projects" && inCategory("projects").length) { projectsView(); return; }
   if (c === "orgs") { orgsView(); return; }
@@ -10928,6 +10941,89 @@ function category(c) {
   }
   if (COLUMNS[c] && items.length) main.appendChild(sheet(c, items));
   else if (items.length) main.appendChild(el("ul", { class: "hits" + (c === "skills" ? " skills" : "") }, items.sort(byActivity).map(r => row(r))));
+}
+
+// ---------- 钥匙 / Keys (#3137, owner 2026-11-19: «类似于 LastPass 或者 1Password 那种») ----------
+// A key's page is what the secret is; its value is in this Mac's Keychain (rem/vault.py), never in the notebook.
+// Copy and Show reach the Keychain through the Host, on this computer only (its own prompt: Touch ID or the login
+// password); a copy leaves the clipboard after 30 s. A snapshot, the phone included, shows the rows and says
+// where the value is, never the value.
+Object.assign(UI.zh, { "Service": "服务", "Account": "账号", "Purpose": "用途", "Used in": "用在", "Rotated": "最近更换", "Expires": "到期",
+  "Who else has it": "还有谁知道", "Created": "建立", "Link": "链接", "Vault": "保存在",
+  "Add a key": "添加钥匙", "Import a password export (CSV)": "导入密码导出文件（CSV）", "Password or key": "密码或密钥",
+  "Save to the Keychain": "存进钥匙串", "Copy": "复制", "Show": "显示", "Hide": "隐藏",
+  "Copied · cleared from the clipboard in 30 s": "已复制 · 30 秒后从剪贴板清除",
+  "The value is in this Mac's Keychain. Copy it from the reader on this Mac.": "密码在这台电脑的钥匙串里，只能在这台电脑上的阅读器里复制。",
+  "Filed {n} keys; {m} rows had no password. Delete the export file now: it holds every password in plain text.":
+    "已存入 {n} 个钥匙，{m} 行没有密码。现在请删除那个导出文件：里面是明文的全部密码。",
+  "No keys yet. Add one, or import a password manager's export.": "还没有钥匙。添加一个，或导入密码管理器的导出文件。",
+  "Saved · the value is in the Keychain": "已存好 · 密码在钥匙串里" });
+function keyFact(r, label) { return plainLine(((parseFacts(r).get(label) || [])[0] || {}).value || "").replace(/^Unknown$/, ""); }
+function keysView() {
+  const main = document.getElementById("main"), items = inCategory("keys").sort((a, b) => a.title.localeCompare(b.title));
+  main.textContent = "";
+  const head = el("div", { class: "category-head" }, [el("h1", { text: label("keys") }), items.length ? el("span", { class: "mono", text: String(items.length) }) : null]);
+  main.append(head, liveHere() ? keyAdder() : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
+  if (!items.length) { main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export.")); return; }
+  const cols = ["Service", "Account", "Purpose", "Used in", "Rotated"];
+  main.appendChild(el("div", { class: "sheet-scroll keys-sheet", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("keys") }) }, [
+    el("table", { class: "sheet" }, [el("thead", {}, [el("tr", {}, cols.map(col => el("th", { text: t(col) })))]),
+      el("tbody", {}, items.map(r => el("tr", {}, [el("td", { class: "name" }, [el("a", { href: href(r), text: r.title })]),
+        ...cols.slice(1).map(col => el("td", {}, [textCell(keyFact(r, col))]))])))])]));
+}
+function keyAdder() {
+  const field = (name, type = "text") => el("input", { type, name, placeholder: t(name), "aria-label": t(name), autocomplete: type === "password" ? "new-password" : "off" });
+  const service = field("Service"), account = field("Account"), secret = field("Password or key", "password"), purpose = field("Purpose");
+  const status = el("p", { class: "key-status", role: "status" });
+  const save = el("button", { type: "submit", class: "btn-act", text: t("Save to the Keychain") });
+  const form = el("form", { class: "key-add" }, [service, account, secret, purpose, save]);
+  form.onsubmit = async event => {
+    event.preventDefault();
+    save.disabled = true;
+    const reply = await hostPost("/rem/keys/add", { service: service.value, account: account.value, secret: secret.value, purpose: purpose.value });
+    secret.value = "";  // the value leaves the page as soon as it is sent
+    save.disabled = false;
+    status.textContent = reply.ok ? t("Saved · the value is in the Keychain") : reply.error || t("Could not do that. Try again.");
+  };
+  const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": t("Import a password export (CSV)") });
+  file.onchange = async () => {
+    if (!file.files[0]) return;
+    const reply = await hostPost("/rem/keys/import", { csv: await file.files[0].text() });
+    file.value = "";
+    status.textContent = reply.ok ? t("Filed {n} keys; {m} rows had no password. Delete the export file now: it holds every password in plain text.", { n: reply.filed, m: reply.skipped })
+      : reply.error || t("Could not do that. Try again.");
+  };
+  return el("details", { class: "key-adder" }, [el("summary", { text: t("Add a key") }), form,
+    el("label", { class: "key-import" }, [el("span", { text: t("Import a password export (CSV)") }), file]), status]);
+}
+function keyPage(r) {
+  const rows = ["Service", "Account", "Purpose", "Who else has it", "Used in", "Created", "Rotated", "Expires", "Link", "Vault"]
+    .map(name => [name, keyFact(r, name)]).filter(([, value]) => value);
+  const value = el("code", { class: "key-value", hidden: "" }), status = el("span", { class: "key-status", role: "status" });
+  const reveal = async () => { const reply = await hostPost("/rem/keys/reveal", { page: r.path }); if (!reply.ok) status.textContent = reply.error || t("Could not do that. Try again."); return reply.ok ? reply.secret : null; };
+  const copy = el("button", { type: "button", class: "btn-act", text: t("Copy") }), show = el("button", { type: "button", class: "btn-quiet", text: t("Show") });
+  copy.onclick = async () => {
+    const secret = await reveal();
+    if (secret == null) return;
+    await navigator.clipboard.writeText(secret);
+    status.textContent = t("Copied · cleared from the clipboard in 30 s");
+    setTimeout(() => navigator.clipboard.writeText("").catch(() => {}), 30000);
+  };
+  show.onclick = async () => {
+    if (!value.hidden) { value.hidden = true; value.textContent = ""; show.textContent = t("Show"); return; }
+    const secret = await reveal();
+    if (secret == null) return;
+    Object.assign(value, { hidden: false, textContent: secret });
+    show.textContent = t("Hide");
+    setTimeout(() => { value.hidden = true; value.textContent = ""; show.textContent = t("Show"); }, 15000);
+  };
+  const actions = liveHere() ? el("div", { class: "key-actions" }, [copy, show, status, value])
+    : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") });
+  return el("div", { class: "r4 key-page" }, [
+    el("div", { class: "mobile-back" }, [el("a", { href: categoryHref("keys") }, ["← " + label("keys")])]),
+    el("header", { class: "page-head" }, [el("h1", { text: r.title }), actions]),
+    el("dl", { class: "pc-list key-facts" }, rows.map(([name, text]) => el("div", { class: "pc-row" }, [el("dt", { class: "pc-k", text: t(name) }),
+      el("dd", { class: "pc-v" }, [/^https?:\/\//.test(text) ? el("a", { href: text, target: "_blank", rel: "noopener", text: text.replace(/^https?:\/\//, "") }) : el("span", { text })])])))]);
 }
 
 // ---------- agenda: a calendar of the owner's next days (#2998, asked in #2841) ----------
@@ -14143,6 +14239,7 @@ function record(path, heading) {
   CITES = { from: r.path, sources: Object.fromEntries(sourceList(r).map(s => [s.n, s.text])) };
   // A knowledge entry, a decision and a principle are one reading with their notes last (#3097): no focus block, no Full memory.
   if (ENTRY_KINDS.has(r.category)) { main.appendChild(entryPage(r)); entryReveal(heading); return; }
+  if (r.category === "keys") { main.appendChild(keyPage(r)); return; }
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
