@@ -3632,6 +3632,12 @@
   .pc-v a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .pc-v .qual { margin-left: 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); white-space: nowrap; }
   .pc-inline { display: flex; flex-wrap: wrap; gap: 0 4px; }
+  /* Tags (#3093): words that link to their tag page, never pills on a record page (maps, not CTAs). */
+  .tag-links { display: flex; flex-wrap: wrap; gap: 0 12px; }
+  .tag-link { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .tag-bar { margin: 0 0 16px; }
+  .tag-hit { margin: 0 0 16px; }
+  .tag-group { margin-top: 24px; }
   .pc-inline > * + *::before { content: "·"; margin-right: 4px; color: var(--grey); }
   /* Sources stay one hover away: a number after every value was the card's noise. */
   .pcard .cite { position: relative; top: -0.5em; margin-left: 2px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); text-decoration: none;
@@ -5097,13 +5103,75 @@ function byPath(path) { return REM.records.find(r => r.path === path); }
 function privateTopicHidden(r) { return r.private && r.category === "knowledge" && document.documentElement.classList.contains("hide-private"); }
 function listedRecords() { return REM.records.filter(r => !privateTopicHidden(r) && !r.catalog_parent && !r.needs_review && !r.unnamed && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category && (category !== "people" || r.path !== REM.owner)); }
+// A list shows what the address's tag filter keeps (#3093): the list views read their rows through this.
+function listRows(category) {
+  const { tag, category: shown, record, query } = route();
+  const all = inCategory(category);
+  return tag && shown === category && !record && !query && TAG_LISTS.includes(category) ? tagged(all, tag) : all;
+}
 function peopleExclusions() {
   const people = REM.records.filter(r => r.category === "people");
   return { held: people.filter(r => r.needs_review).length,
     service: people.filter(r => r.service && !r.needs_review).length };
 }
 // The default notebook needs no --root; another shows `~/` for home, which only expands unquoted.
-function href(r) { return "#r=" + encodeURIComponent(r.path); }
+function href(r) { return r.path?.startsWith("tag:") ? tagHref(r.path.slice(4)) : "#r=" + encodeURIComponent(r.path); }
+// ---------- tags (#3093): one vocabulary over every page; a tag is a page of the pages that carry it ----------
+// The vocabulary is REM.tags ({slug: {label, kind, aliases, count}}); a page's slugs are r.tags; an open item's are
+// its queue row's tags. Resolution follows tags.resolve in Python: slug, then normalised label, then an alias.
+Object.assign(UI.zh, { "Tags": "标签", "Tag": "标签", "Tag: {label}": "标签：{label}", "1 page carries this tag": "1 页带这个标签",
+  "{n} pages carry this tag": "{n} 页带这个标签", "No page carries this tag yet": "还没有页面带这个标签", "No such tag": "没有这个标签",
+  "Filter by tag": "按标签筛选", "All": "全部", "Tag {label}": "标签 {label}" });
+function tagNorm(text) {
+  return String(text || "").trim().toLowerCase().replace(/^tag:/, "").replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+function tagResolve(text) {
+  const wanted = tagNorm(text), vocabulary = REM.tags || {};
+  if (!wanted) return null;
+  if (vocabulary[wanted]) return wanted;
+  return Object.keys(vocabulary).find(slug => tagNorm(vocabulary[slug].label) === wanted || (vocabulary[slug].aliases || []).some(alias => tagNorm(alias) === wanted)) || null;
+}
+function tagLabel(slug) { return REM.tags?.[slug]?.label || slug; }
+function tagHref(slug) { return "#q=" + encodeURIComponent("tag:" + slug); }
+function tagged(records, slug) { return slug ? records.filter(r => (r.tags || []).includes(slug)) : records; }
+// A page's tags as quiet links, each to its tag page; nothing when it has none.
+function tagLinks(r) {
+  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug]);
+  return slugs.length ? el("span", { class: "tag-links" }, slugs.map(slug => el("a", { class: "tag-link", href: tagHref(slug), text: tagLabel(slug) }))) : null;
+}
+// The tag page: every page carrying it, grouped by kind, each group with its count (#3093 point 2).
+function tagPage(slug) {
+  const main = document.getElementById("main");
+  main.textContent = "";
+  main.appendChild(el("div", { class: "eyebrow", text: t("Tag") }));
+  if (!slug) { main.appendChild(el("h1", { text: t("No such tag") })); return; }
+  const pages = tagged(listedRecords().concat(REM.records.filter(r => r.category === "sessions")), slug)
+    .filter((r, i, all) => all.findIndex(x => x.path === r.path) === i);
+  main.appendChild(el("h1", { class: "tag-title", text: tagLabel(slug) }));
+  main.appendChild(el("p", { class: "lede", text: pages.length ? t(pages.length === 1 ? "1 page carries this tag" : "{n} pages carry this tag", { n: pages.length })
+    : t("No page carries this tag yet") }));
+  const order = ["people", "orgs", "projects", "sessions", "skills", "decisions", "knowledge", "principles"];
+  for (const kind of order) {
+    const group = pages.filter(r => r.category === kind);
+    if (!group.length) continue;
+    main.appendChild(el("section", { class: "tag-group" }, [sectionHead(label(kind), String(group.length)),
+      el("ul", { class: "hits" }, group.map(r => row(r, { kind: false, hideZeroUsage: true })))]));
+  }
+}
+// A list's tag chips: the tags its pages carry, with counts, most used first; one tap filters, a second clears.
+function tagBar(c, records) {
+  const counts = new Map();
+  for (const r of records) for (const slug of r.tags || []) if (REM.tags?.[slug]) counts.set(slug, (counts.get(slug) || 0) + 1);
+  const active = route().tag;
+  const chips = [...counts].filter(([slug, n]) => n > 1 || slug === active).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  if (!chips.length) return null;
+  const base = "#c=" + c;
+  return el("nav", { class: "open-chips tag-bar", "aria-label": t("Filter by tag") }, [
+    el("a", { class: "chip" + (active ? "" : " on"), href: base, "aria-current": active ? null : "true", text: t("All") }),
+    ...chips.map(([slug, n]) => el("a", { class: "chip" + (slug === active ? " on" : ""), href: slug === active ? base : base + "&tag=" + encodeURIComponent(slug),
+      "aria-current": slug === active ? "true" : null }, [tagLabel(slug), " ", el("span", { class: "chip-n", text: String(n) })]))]);
+}
+const TAG_LISTS = ["people", "orgs", "projects", "skills", "decisions", "principles"];
 function calendarDay(iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
   const d = new Date(iso);
@@ -8640,9 +8708,12 @@ function openTags(entry) {
   const r = entry.r.path === REM.owner ? ownerCounterpart(entry) || entry.r : entry.r;
   const name = r.category === "people" ? company(r) : r.category === "orgs" || r.category === "projects" ? r.title : "";
   const place = name ? [{ id: (r.category === "projects" ? "project:" : "org:") + name, label: name }] : [];
-  if (!waitingOnYou(entry)) return place;
+  // The item's own tags (#3093): its queue row's, else its page's; each a chip, so "close all 9900" is one filter away.
+  const row = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)));
+  const pageTags = (row?.tags || r.tags || []).filter(slug => REM.tags?.[slug]).map(slug => ({ id: "tag:" + slug, label: tagLabel(slug) }));
+  if (!waitingOnYou(entry)) return [...place, ...pageTags];
   const replied = queuedReply(entry)?.state === "replied";
-  return [{ id: replied ? "state:replied" : "state:owe", label: t(replied ? "I replied, waiting on them" : "I still owe a reply or an action") }, ...place];
+  return [{ id: replied ? "state:replied" : "state:owe", label: t(replied ? "I replied, waiting on them" : "I still owe a reply or an action") }, ...place, ...pageTags];
 }
 function openTagged(entry, tag) { return openTags(entry).some(({ id }) => id === tag); }
 function openChips(entries, active) {
@@ -9945,6 +10016,8 @@ function profileCard(r) {
   const mapped = !have("Last contact").length && mappedContact(r) && known(r).last;
   const aliases = have("Also known as").filter(item => !seen.includes(plainLine(item.value).toLowerCase()));
   if (aliases.length) add("Identity", "Also known as", "", [{ node: el("span", { class: "pc-inline" }, aliases.map(item => profileValue(item, r, "Also known as"))) }]);
+  const tagRow = tagLinks(r);
+  if (tagRow) add("Identity", "Tags", "", [{ node: tagRow }]);
   const languages = have("Language");
   if (languages.length) add("Identity", "Language", "", [{ node: el("span", { class: "pc-inline" }, languages.map(item => profileValue(item, r, "Language"))) }]);
   if (!have("Location").length) add("Identity", "Time zone", "", have("Time zone").map(item => ({ item })));
@@ -10591,6 +10664,16 @@ function categoryCount(c, counts, total) {
   const unit = uiLanguage === "zh" ? ({ people: " 人", orgs: " 个组织", projects: " 个项目", skills: " 项", decisions: " 项", principles: " 条" })[c] || " 页" : " pages";
   return counts ? t("{n} written of {m}", { n: counts.written, m: counts.mapped, unit }) : t("{n}{unit}", { n: total, unit });
 }
+// Every list but Sessions (which has its own tag filter) takes the tag chips under its head (#3093 point 3).
+function tagBarInto(c) {
+  if (!TAG_LISTS.includes(c)) return;
+  const main = document.getElementById("main"), bar = tagBar(c, inCategory(c));
+  if (!bar || main.querySelector(".tag-bar")) return;
+  // Right under the heading row (the title and its finder), above the rows it filters.
+  const title = main.querySelector(".category-head") || main.querySelector("h1");
+  const head = title && title.parentElement !== main && !title.classList.contains("category-head") ? title.parentElement : title;
+  head ? head.after(bar) : main.prepend(bar);
+}
 function category(c) {
   if (c === "sessions") { sessionsView(); return; }
   if (c === "projects" && inCategory("projects").length) { projectsView(); return; }
@@ -10600,7 +10683,7 @@ function category(c) {
   if (c === "agenda") { agendaView(); return; }
   const main = document.getElementById("main");
   main.textContent = "";
-  const items = inCategory(c);
+  const items = listRows(c);
   if (c === "people") { peopleView(items); return; }
   // The page names itself and nothing more (#2994): the order and the cards say what a sentence used to. The
   // count stays as a number beside the name; Skills puts it in its finder instead.
@@ -11735,7 +11818,7 @@ function projectBoard(all, notes, pairs, ask) {
 // Every count and row comes from all project pages, sub-projects included; nothing is merged.
 function projectsView() {
   PD_SESSIONS = null;
-  const state = pdParams(), all = inCategory("projects").sort(projectRank);
+  const state = pdParams(), all = listRows("projects").sort(projectRank);
   const asked = state.view === "board" && state.ask !== "state";
   const pairs = asked ? projectPairs(all) : [], notes = asked ? projectNotes(all, pairs) : new Map();
   const body = state.view === "list" ? projectList(all) : state.view === "board" ? projectBoard(all, notes, pairs, state.ask) : projectTimeline(all);
@@ -11918,7 +12001,7 @@ function owedWords(entry) {
 // the organisation it sits in (#2992): it is drawn inside that row's shape, not listed beside it.
 function orgRows() {
   const byName = new Map();
-  for (const r of inCategory("orgs").filter(page => !byPath(page.parent))) {
+  for (const r of listRows("orgs").filter(page => !byPath(page.parent))) {
     const key = (orgHidden(r) || r.unit_kind ? "page:" + r.path + ":" : "visible:") + orgName(r).toLowerCase();
     byName.set(key, [...(byName.get(key) || []), r]);
   }
@@ -12543,7 +12626,7 @@ function skillGroups(shown) {
     [{ heading: [skillFamilyName(family), el("span", { class: "n", text: String(n) })] }, ...shown.filter(d => d.family === family)]);
 }
 function skillsView() {
-  const items = inCategory("skills"), rows = skillRows(items), state = skillsState(rows);
+  const items = listRows("skills"), rows = skillRows(items), state = skillsState(rows);
   const days = rows.find(d => d.u)?.u.days ?? 180;
   document.getElementById("main").textContent = "";
   // Choosing a view sets the order once; a header click after that sorts inside the view.
@@ -14059,6 +14142,7 @@ function identityChoices(records, query, related = false) {
 function search(q, relatedPath = "") {
   const main = document.getElementById("main");
   main.textContent = "";
+  if (/^\s*tag:/i.test(q)) { tagPage(tagResolve(q)); return; }
   if (/\b(who\s+(?:do\s+i\s+)?owe|what\s+do\s+i\s+owe|waiting\s+on\s+me|open\s+threads)\b/i.test(q)) { taskView("open"); return; }
   if (/\b(what\s+changed|memory\s+changes|learned\s+(?:last\s+night|overnight))\b/i.test(q)) { taskView("changes"); return; }
   const connected = /\b(?:connected|related)\s+to\s+(.+)/i.exec(q);
@@ -14103,6 +14187,9 @@ function search(q, relatedPath = "") {
   hits.sort((a, b) => (b.r.title.toLowerCase().includes(needle) ? 1 : 0) - (a.r.title.toLowerCase().includes(needle) ? 1 : 0));
   main.appendChild(el("div", { class: "eyebrow" }, [el("span", { text: t("Search") })]));
   main.appendChild(el("h1", { text: "“" + q + "”" }));
+  const asTag = tagResolve(q);
+  if (asTag) main.appendChild(el("p", { class: "tag-hit" }, [el("a", { class: "chip", href: tagHref(asTag) },
+    [t("Tag {label}", { label: tagLabel(asTag) }), " ", el("span", { class: "chip-n", text: String(REM.tags[asTag].count || 0) })])]));
   main.appendChild(el("p", { class: "lede", text: t(hits.length === 1 ? "{n} page matches — literal, case-insensitive" : "{n} pages match — literal, case-insensitive", { n: hits.length }) }));
   if (!hits.length) {
     main.appendChild(emptyState("No match"));
@@ -14264,6 +14351,7 @@ function loadDetails() {
 const GRAPH_UI_ZH = {
   "Graph": "图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
+  "Tags": "标签", "Tag": "标签", "1 tag": "1 个标签", "{n} tags": "{n} 个标签",
 
   "Search people, organisations, knowledge": "搜索人、组织、知识，看它连着谁", "Clear focus": "清除聚焦",
   "A bigger mark has more links": "记号越大，连接越多", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
@@ -14301,14 +14389,15 @@ function graphT(key, values = {}) {
   return (words || key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
 const GRAPH_ORDER = ["knowledge", "people", "orgs", "projects", "notes", "sessions"];
-const GRAPH_NAME = { knowledge: "Knowledge", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions" };
+const GRAPH_NAME = { knowledge: "Knowledge", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions", tags: "Tags" };
 // A count in words, beside its shape: [one, many]. The sentence over the map and the panel both read these.
 const GRAPH_COUNT = { knowledge: ["1 knowledge entry", "{n} knowledge entries"], people: ["1 person", "{n} people"], orgs: ["1 organisation", "{n} organisations"],
-  projects: ["1 project", "{n} projects"], notes: ["1 skill or decision", "{n} skills and decisions"], sessions: ["1 session", "{n} sessions"] };
+  projects: ["1 project", "{n} projects"], notes: ["1 skill or decision", "{n} skills and decisions"], sessions: ["1 session", "{n} sessions"],
+  tags: ["1 tag", "{n} tags"] };
 function graphCount(k, n) { return graphT(GRAPH_COUNT[k][n === 1 ? 0 : 1], { n }); }
-const GRAPH_ONE = { knowledge: "Knowledge entry", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session" };
-const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"]];
-function graphKind(kind) { return GRAPH_NAME[kind] ? kind : "notes"; }
+const GRAPH_ONE = { knowledge: "Knowledge entry", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session", tag: "Tag", tags: "Tag" };
+const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"], ["tags", "Tags"]];
+function graphKind(kind) { return kind === "tag" ? "tags" : GRAPH_NAME[kind] ? kind : "notes"; }
 function graphPhone() { return innerWidth < 720; }
 function graphCss(name) { return getComputedStyle(document.querySelector(".gx") || document.documentElement).getPropertyValue(name).trim(); }
 // The canvas cannot read var(), so each graph role names the sheet token it is painted with.
@@ -14316,7 +14405,7 @@ function graphCss(name) { return getComputedStyle(document.querySelector(".gx") 
 // Pencil means REM's inference and nothing here is inferred, so the graph does not use it. A private
 // record keeps its kind's shape, drawn as an outline with a slash through it.
 const GRAPH_TONE = { bg: "--paper", ink: "--ink", ink2: "--grey",
-  knowledge: "--ink", people: "--grey", orgs: "--ink", projects: "--ink", notes: "--grey", sessions: "--grey",
+  knowledge: "--ink", people: "--grey", orgs: "--ink", projects: "--ink", notes: "--grey", sessions: "--grey", tags: "--ink",
   edge: "--rule", topicEdge: "--grey" };
 // One outline per kind, shared by the canvas and the SVG glyphs: [kind] -> path in a box of radius r around (x, y).
 function graphOutline(k, x, y, r) {
@@ -14324,6 +14413,7 @@ function graphOutline(k, x, y, r) {
   if (k === "projects") return `M${x} ${y - r * 1.25}L${x + r * 1.25} ${y}L${x} ${y + r * 1.25}L${x - r * 1.25} ${y}Z`;
   if (k === "notes") return `M${x} ${y - r * 1.15}L${x + r * 1.1} ${y + r * .8}L${x - r * 1.1} ${y + r * .8}Z`;
   if (k === "sessions") return `M${x - r * 1.2} ${y - r * .4}h${2.4 * r}v${.8 * r}h${-2.4 * r}Z`;  // a session is a stretch of time
+  if (k === "tags") return `M${x - r * .5} ${y - r}h${r}l${r * .5} ${r}l${-r * .5} ${r}h${-r}l${-r * .5} ${-r}Z`;  // a tag: a hexagon
   return `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
 }
 // A private mark is an outline, which vanishes at a session's small radius; below this it is drawn larger.
@@ -14336,9 +14426,11 @@ function graphModel() {
   if (GRAPH && GRAPH.source === REM.graph) return GRAPH;
   const source = REM.graph || { nodes: [], edges: [] };
   const records = new Map(REM.records.map(r => [r.path, r]));
-  const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) }));
+  // Each tag is a node, linked to the pages that carry it (graph.tags, #3093); its "record" opens the tag page.
+  const tagNodes = (source.tags?.nodes || []).map(n => ({ ...n, k: "tags", title: n.label, r: { path: n.id, title: n.label, category: "tags" } }));
+  const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) })).concat(tagNodes);
   const byId = new Map(nodes.map(n => [n.id, n]));
-  const edges = source.edges.filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
+  const edges = source.edges.concat(source.tags?.edges || []).filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
   const adj = new Map();
   for (const e of edges) for (const [a, b] of [[e.s, e.t], [e.t, e.s]]) (adj.get(a) || adj.set(a, new Set()).get(a)).add(b);
   const linked = nodes.filter(n => adj.has(n.id));
@@ -14441,6 +14533,8 @@ function graphVisible(n) {
   if (tab === "people") return n.k === "people" || n.k === "orgs";
   if (tab === "projects") return n.k === "projects" || n.k === "sessions";
   if (tab === "knowledge") return n.k === "knowledge" || [...GRAPH.adj.get(n.id)].some(id => GRAPH.byId.get(id).k === "knowledge");
+  if (tab === "tags") return n.k === "tags" || [...GRAPH.adj.get(n.id)].some(id => GRAPH.byId.get(id).k === "tags");
+  if (n.k === "tags" && tab !== "all") return false;
   return true;
 }
 function graphFocusSets() {
@@ -14837,7 +14931,7 @@ function graphPanel() {
 function graphTies(n) {
   const count = {};
   for (const id of GRAPH.adj.get(n.id) || []) { const k = GRAPH.byId.get(id).k; count[k] = (count[k] || 0) + 1; }
-  return ["people", "projects", "orgs", "knowledge", "notes"].filter(k => count[k]).map(k => graphCount(k, count[k])).join(" · ");
+  return ["people", "projects", "orgs", "knowledge", "notes", "tags"].filter(k => count[k]).map(k => graphCount(k, count[k])).join(" · ");
 }
 // A record's own first sentence: a knowledge entry's What it is, anything else's lead.
 function graphSummary(n) {
@@ -15321,7 +15415,7 @@ function render() {
   else if (view === "activity") activityView();
   // #c=all was All records' address (#2996); a kept bookmark opens the graph it drew, now under Knowledge.
   else if (knowledgeShowsGraph({ category: c, view })) knowledgeGraph();
-  else if (c) category(c);
+  else if (c) { category(c); tagBarInto(c); }
   else overview();
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? label("knowledge") : c ? label(c) : t("Today")) + " · co rem";
