@@ -790,10 +790,20 @@ def failure(root: Path):
     return json.loads(text) if text else None
 
 
+def _install_stamp():
+    """[release, template stat] of what is installed now, or None while an upgrade is still writing it."""
+    try:
+        info = TEMPLATE.stat()
+        return [_release(), info.st_mtime_ns, info.st_size]
+    except (OSError, SyntaxError, ImportError):  # mid-upgrade: a file missing or half-written
+        return None
+
+
 def _keep_failure(root: Path) -> None:
+    # The install it failed under: a failure is a reason to wait only while that install is what runs (#3112).
     _replace(_cached(root, "failed.json"),
              json.dumps({"at": datetime.fromtimestamp(_now(), timezone.utc).isoformat(timespec="seconds"),
-                         "seconds": _now(), "log": str(_cached(root, "build.log"))}))
+                         "seconds": _now(), "log": str(_cached(root, "build.log")), "install": _install_stamp()}))
 
 
 @contextmanager
@@ -812,15 +822,18 @@ def _building(root: Path):
         os.close(fd)
 
 
-def refresh(root: Path, builds=("live", "full")) -> None:
+def refresh(root: Path, builds=("live", "full")) -> bool:
     """The background build: bring these saved pages, and any others already saved,
-    up to date, unless a build runs. It passes again only for an owner action made
-    meanwhile, also one made after its last look (bounded); other writes wait for
-    the next interval."""
+    up to date, unless a build runs (False then). It passes again only for an owner
+    action made meanwhile, also one made after its last look (bounded); other writes
+    wait for the next interval."""
     for _ in range(3):
         finished = _refresh_once(root, builds)
-        if finished is None or not _owner_since(root, finished):
-            return
+        if finished is None:
+            return False
+        if not _owner_since(root, finished):
+            return True
+    return True
 
 
 def _refresh_once(root: Path, builds):
@@ -870,10 +883,14 @@ def main(argv) -> None:
     """The detached build (python -m connectonion.rem.reader ROOT BUILD...)."""
     root = Path(argv[0])
     try:
-        refresh(root, argv[1:])
+        ran = refresh(root, argv[1:])
     except Exception:
         _keep_failure(root)
         raise  # the traceback is the log's last lines
+    if not ran:
+        # Run by hand while the Host's build held the lock, this printed nothing and changed nothing (#3112).
+        print("Another build is running; it saves the pages when it finishes.")
+        return
     # After the pages are saved, and outside the build's failure: a Host that
     # could not be replaced is not a failed build, and the log says why in a line.
     # Any error, because the expected one is an upgrade still being written under
@@ -893,7 +910,11 @@ def _spawn_refresh(root: Path, builds) -> bool:
         if not free:
             return True
     failed = failure(root)
-    if failed and _now() - failed.get("seconds", 0) < REBUILD_INTERVAL:
+    # Backed off only while the install it failed under is still the one installed: an upgrade that finished
+    # since (or one that was mid-write then, recorded as None) is a new cause, tried now (#3112).
+    install = _install_stamp()
+    same_install = install is not None and failed is not None and failed.get("install") == install
+    if same_install and _now() - failed.get("seconds", 0) < REBUILD_INTERVAL:
         return False
     log = _cached(root, "build.log")
     kept = (_read(log) or "").splitlines(keepends=True)[-LOG_LINES:]
