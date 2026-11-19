@@ -20,6 +20,8 @@ investigations still run.
 `calendar_events` is the one place that talks to a provider; tests replace it.
 """
 
+import html
+import re
 import ssl
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -129,7 +131,8 @@ def _microsoft_events(start, end, zone) -> tuple[list[dict], dict]:
             break
         events += _graph_pages(client, f"/me/calendars/{listed['id']}/calendarView", {
             'startDateTime': start.isoformat(), 'endDateTime': end.isoformat(), '$top': 250,
-            '$select': 'id,subject,start,end,isAllDay,isCancelled,location,attendees,webLink'}, headers, CAP - len(events))
+            '$select': 'id,subject,start,end,isAllDay,isCancelled,location,attendees,webLink,onlineMeeting,onlineMeetingUrl,organizer,bodyPreview'},
+            headers, CAP - len(events))
     return events, counts
 
 
@@ -163,6 +166,31 @@ def _google_label(item: dict) -> str:
     return 'Busy' if hidden and access not in ('owner', 'writer') and not item.get('summary') else ''
 
 
+# A meeting link names its service in the event's detail (#3135: "if it has a Meet link, say Meet").
+MEETING_SERVICES = (('meet.google.com', 'Google Meet'), ('teams.microsoft.com', 'Microsoft Teams'), ('teams.live.com', 'Microsoft Teams'),
+                    ('zoom.us', 'Zoom'), ('webex.com', 'Webex'))
+NOTES_LIMIT = 1200
+
+
+def _meeting(*texts: str) -> dict | None:
+    """The first meeting URL among the event's own link, location and notes, with its service's name."""
+    for text in texts:
+        for url in re.findall(r'https?://[^\s<>"\')]+', text or ''):
+            service = next((name for host, name in MEETING_SERVICES if host in url.split('/')[2]), None)
+            if service:
+                return {'url': url.rstrip('.,;'), 'service': service}
+    return None
+
+
+def _notes(text: str) -> str:
+    """An event's description as plain text: Google sends HTML, Outlook a preview; both trimmed."""
+    text = re.sub(r'(?i)<br\s*/?>|</p>|</div>|</li>', '\n', text or '')
+    text = html.unescape(re.sub(r'<[^>]+>', '', text))
+    text = '\n'.join(line.strip() for line in text.splitlines()).strip()
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text[:NOTES_LIMIT] + ('…' if len(text) > NOTES_LIMIT else '')
+
+
 def _google(item: dict, zone) -> dict:
     start, end = item.get('start', {}), item.get('end', {})
     return {'id': item.get('id', ''), 'title': item.get('summary') or '', 'all_day': 'date' in start,
@@ -170,6 +198,10 @@ def _google(item: dict, zone) -> dict:
             'location': item.get('location', ''), 'link': item.get('htmlLink', ''),
             'attendees': [a['email'] for a in item.get('attendees', []) if a.get('email') and not a.get('self')],
             'label': _google_label(item), 'calendar_name': item.get('_calendar', {}).get('name', ''),
+            'meet': _meeting(item.get('hangoutLink', ''), *[point.get('uri', '') for point in (item.get('conferenceData') or {}).get('entryPoints', [])
+                                                              if point.get('entryPointType') == 'video'], item.get('location', ''), item.get('description', '')),
+            'organizer': (item.get('organizer') or {}).get('displayName') or ('' if (item.get('organizer') or {}).get('self') else (item.get('organizer') or {}).get('email', '')),
+            'notes': _notes(item.get('description', '')),
             # Where he works that day is not an event he attends.
             'skip': item.get('status') == 'cancelled' or item.get('eventType') == 'workingLocation'}
 
@@ -184,7 +216,12 @@ def _microsoft(item: dict, zone) -> dict:
             'location': (item.get('location') or {}).get('displayName', ''), 'link': item.get('webLink', ''),
             'attendees': [a.get('emailAddress', {}).get('address', '') for a in item.get('attendees', [])
                           if a.get('emailAddress', {}).get('address')],
-            'label': '', 'calendar_name': '', 'skip': bool(item.get('isCancelled'))}
+            'label': '', 'calendar_name': '',
+            'meet': _meeting((item.get('onlineMeeting') or {}).get('joinUrl', ''), item.get('onlineMeetingUrl') or '',
+                             (item.get('location') or {}).get('displayName', ''), item.get('bodyPreview', '')),
+            'organizer': ((item.get('organizer') or {}).get('emailAddress') or {}).get('name', ''),
+            'notes': _notes(item.get('bodyPreview', '')),
+            'skip': bool(item.get('isCancelled'))}
 
 
 def _reason(error: Exception) -> str | None:

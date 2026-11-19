@@ -2353,8 +2353,12 @@
   .cal-detail p { margin: 4px 0 0; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
   .cal-detail .cal-where, .cal-detail .cal-source, .cal-detail .cal-who { color: var(--grey); }
   .cal-detail .cal-who a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .cal-detail .cal-open { display: inline-flex; align-items: center; min-height: 32px; margin-top: 12px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); color: var(--ink); font: var(--w-bold) var(--s-ui) var(--font); text-decoration: none; }
-  .cal-detail .cal-open:hover { background: var(--well); }
+  /* Joining is the event's one action; the provider's page is a quiet link at the foot (#3135). */
+  .cal-detail .cal-join { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; margin: 12px 0 4px; padding: 0 18px; text-decoration: none; }
+  .cal-detail .cal-org { color: var(--grey); }
+  .cal-detail .cal-notes { margin-top: 12px; padding-top: 12px; border-top: var(--hair) solid var(--rule); color: var(--ink); white-space: pre-line; max-height: 40vh; overflow: auto; }
+  .cal-detail .cal-open { display: inline-block; margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .cal-detail .cal-open:hover { color: var(--ink); }
 
   /* the month: weekday names, then one grid a week; bars and lines sit in the rows under each date */
   .cal-month { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
@@ -10638,7 +10642,7 @@ const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开",
+  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Organised by {name}": "组织者：{name}",
   "{n} items": "{n} 项", "1 item": "1 项",
   "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
   "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
@@ -10720,7 +10724,7 @@ function agLastDay(e, first) {
 }
 const AG_SOURCE = { google: "Google Calendar", microsoft: "Outlook" };
 function agEvent(e, first) {
-  return { kind: "event", allDay: !!e.all_day, first, last: agLastDay(e, first), start: e.start, end: e.end, title: eventTitle(e), link: e.link || "", where: e.location || "",
+  return { kind: "event", allDay: !!e.all_day, first, last: agLastDay(e, first), start: e.start, end: e.end, title: eventTitle(e), link: e.link || "", where: e.location || "", meet: e.meet || null, organizer: e.organizer || "", notes: e.notes || "",
     people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, provider: e.calendar || "",
     source: [AG_SOURCE[e.calendar], e.calendar_name].filter(Boolean).join(" · ") };
 }
@@ -10784,7 +10788,12 @@ function agDetail(e, anchor) {
   const phone = innerWidth <= 640, close = el("button", { type: "button", class: "ibtn", "aria-label": agT("Close") }, [icon("x")]);
   const dialog = el("dialog", { class: "cal-detail" + (phone ? " n3-sheet" : ""), "aria-label": e.title }, [
     el("div", { class: "sheet-head" }, [el("h2", { text: e.title }), close]),
-    el("p", { class: "cal-when", text: agWhen(e) }), agWeather(e.first) && e.first === e.last ? el("p", { class: "cal-wx-line", text: agWeatherSaid(agWeather(e.first)) }) : null, e.where ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
+    el("p", { class: "cal-when", text: agWhen(e) }), agWeather(e.first) && e.first === e.last ? el("p", { class: "cal-wx-line", text: agWeatherSaid(agWeather(e.first)) }) : null,
+    // The event's own details first (#3135): how to join, who called it, where, who comes, what it is about.
+    e.meet ? el("a", { class: "btn-act cal-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null,
+    e.organizer ? el("p", { class: "cal-org", text: agT("Organised by {name}", { name: e.organizer }) }) : null,
+    e.where && e.where !== e.meet?.url ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
+    e.notes ? el("p", { class: "cal-notes", text: e.notes }) : null,
     e.source ? el("p", { class: "cal-source", text: agT("In {name}", { name: e.source }) }) : null,
     e.link ? el("a", { class: "cal-open", href: e.link, target: "_blank", rel: "noopener", text: agT("Open in {name}", { name: AG_SOURCE[e.provider] || e.source }) + " ↗" }) : null]);
   close.onclick = () => dialog.close();

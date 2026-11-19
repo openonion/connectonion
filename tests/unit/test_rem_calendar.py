@@ -83,7 +83,7 @@ def test_the_night_saves_both_calendars_next_weeks_in_one_shape(tmp_path, calend
     assert by_id['g1'] == {'id': 'g1', 'title': 'Pilot renewal call with Fernhill', 'all_day': False,
                            'start': '2026-10-02T09:30:00+13:00', 'end': '2026-10-02T10:00:00+13:00',
                            'location': 'Video call', 'link': 'https://calendar.example/g1',
-                           'attendees': ['Mara@Fernhill.example'], 'label': '', 'calendar_name': '', 'calendar': 'google'}
+                           'attendees': ['Mara@Fernhill.example'], 'label': '', 'calendar_name': '', 'meet': None, 'organizer': '', 'notes': '', 'calendar': 'google'}
     assert by_id['g2']['all_day'] and by_id['g2']['start'] == '2026-10-05'
     # Graph's UTC has no offset in the string; it is written with one.
     assert by_id['o1']['start'] == '2026-10-03T01:00:00+00:00' and by_id['o1']['location'] == 'Harbour office'
@@ -593,3 +593,25 @@ def test_codex_exec_saves_calendar_when_child_only_writes_round_state(tmp_path, 
     assert read_json(state_path(tmp_path, 'last-turn.json'), {})['calendar']['events'] == 4
     assert codex_exec.run_turn(tmp_path, run=lambda *a, **kw: CompletedProcess(a, 0)) == 'completed'
     assert len(calendars[1]) == 2, 'an unchanged finished round is not read again'
+
+
+def test_an_event_brings_its_meeting_link_organiser_and_notes():
+    """#3135 (owner, 2026-11-19): the detail said only 'Open in Outlook'; a Meet link should be named plainly."""
+    google = calendar._google({'id': 'g1', 'summary': 'Design review', 'start': {'dateTime': '2026-11-20T10:00:00+11:00'},
+                               'end': {'dateTime': '2026-11-20T10:30:00+11:00'}, 'htmlLink': 'https://calendar.google.com/x',
+                               'hangoutLink': 'https://meet.google.com/abc-defg-hij', 'organizer': {'email': 'ana@example.test', 'displayName': 'Ana'},
+                               'description': '<p>Agenda:<br>1. Header</p>'}, SYDNEY)
+    assert google['meet'] == {'url': 'https://meet.google.com/abc-defg-hij', 'service': 'Google Meet'}
+    assert google['organizer'] == 'Ana' and google['notes'] == 'Agenda:\n1. Header'
+    outlook = calendar._microsoft({'id': 'o1', 'subject': 'Sync', 'start': {'dateTime': '2026-11-20T10:00:00', 'timeZone': 'UTC'},
+                                   'end': {'dateTime': '2026-11-20T10:30:00', 'timeZone': 'UTC'}, 'webLink': 'https://outlook.office.com/x',
+                                   'onlineMeeting': {'joinUrl': 'https://teams.microsoft.com/l/meetup-join/1'},
+                                   'organizer': {'emailAddress': {'name': 'Bo', 'address': 'bo@example.test'}},
+                                   'bodyPreview': 'Please read the doc first.'}, SYDNEY)
+    assert outlook['meet'] == {'url': 'https://teams.microsoft.com/l/meetup-join/1', 'service': 'Microsoft Teams'}
+    assert outlook['organizer'] == 'Bo' and outlook['notes'] == 'Please read the doc first.'
+    zoom = calendar._microsoft({'id': 'o2', 'subject': 'Call', 'start': {}, 'end': {},
+                                'location': {'displayName': 'https://us02web.zoom.us/j/123?pwd=x'}}, SYDNEY)
+    assert zoom['meet'] == {'url': 'https://us02web.zoom.us/j/123?pwd=x', 'service': 'Zoom'}
+    plain = calendar._microsoft({'id': 'o3', 'subject': 'Lunch', 'start': {}, 'end': {}, 'location': {'displayName': 'Cafe'}}, SYDNEY)
+    assert plain['meet'] is None and plain['notes'] == '' and plain['organizer'] == ''
