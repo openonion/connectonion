@@ -2353,6 +2353,11 @@
   .cal-due-count { align-self: center; min-width: 0; margin: 0 4px; overflow: hidden; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
     white-space: nowrap; text-overflow: ellipsis; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; position: relative; z-index: 1; }
   .cal-due-count.late { color: var(--red); }
+  /* A phone's day list: the day's deadlines as one quiet line in words, opening them in place (#3188 on a phone). */
+  .cal-due-line { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
+    text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; text-align: left; }
+  .cal-due-line.late { color: var(--red); }
+  .cal-due-list:not([hidden]) { display: grid; gap: 4px; }
   .cal-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-bar.cal-microsoft { background: var(--grey); }
   .cal-bar.cal-due, .cal-bar.cal-page { background: var(--paper); color: var(--ink) !important; box-shadow: var(--e-ring); font-weight: var(--w-regular) !important; }
@@ -3255,6 +3260,9 @@
   .lang-badge { min-width: 28px; height: 22px; padding: 0 7px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
     font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); font-variant-numeric: tabular-nums; cursor: pointer; }
   .lang-badge:hover, .lang-badge[aria-expanded="true"] { box-shadow: var(--e-ring); }
+  .lang-badge { white-space: nowrap; }
+  .lang-badge .lb-short { display: none; }
+  @media (max-width: 1100px) { .lang-badge .lb-long { display: none; } .lang-badge .lb-short { display: inline; } }
   .lang-menu, .display-pop { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: 280px; max-width: calc(100vw - 32px); padding: 12px;
     border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); color: var(--ink); white-space: normal;
     font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
@@ -3489,7 +3497,13 @@
   .tnext-dots { min-height: 1em; color: var(--grey); letter-spacing: 1px; }
   .tnext .wt .end { margin-left: auto; }
   .tnext-day.today .tnext-num { font-weight: var(--w-bold); }
-  .tnext-all { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
+  .tnext-all { flex: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; white-space: nowrap; }
+  /* rc35 hunt: a long event title made the Next widget 494px inside the 300px side column and the whole page scrolled
+     sideways. A side widget is never wider than its column; a title ends in an ellipsis. */
+  .tgrid > .side > * { min-width: 0; max-width: 100%; }
+  .tnext li { min-width: 0; }
+  .tnext-ev { width: 100%; overflow: hidden; }
+  .tnext .wt { min-width: 0; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
   .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
     background: var(--raised); box-shadow: var(--e1); }
@@ -3713,7 +3727,8 @@
     .tnext-line { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin: 8px 0 0; padding: 0 12px; border: 0; border-radius: var(--radius);
       background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-align: left; cursor: pointer; }
     .tnext-line .tnext-label { flex: none; color: var(--grey); }
-    .tnext-line .tnext-title { flex: 1 1 auto; }
+    .tnext-line .tnext-title { flex: 1 1 auto; min-width: 0; }
+    .tnext-line { min-width: 0; overflow: hidden; }
     .tnext-line .tnext-join { flex: none; }
     .today-brief .qcard.focal { padding: 18px 16px 16px; }
     .qhead .org-chip { display: none; }
@@ -5372,13 +5387,19 @@ function renderLangProgress() {
   if (!parts.length) { box.replaceChildren(); box.hidden = true; renderDisplayMenu(); return; }
   // A small count beside the toggle; while it translates, its progress.
   const badge = el("button", { type: "button", class: "lang-badge", "aria-haspopup": "menu", "aria-expanded": "false",
-    title: parts.map(part => part.textContent).join(" · "),
-    text: busy && job.total != null ? job.done + "/" + job.total : String(left) });
+    title: parts.map(part => part.textContent).join(" · ") }, langBadgeWords(busy && job.total != null ? job : null, left));
   badge.onclick = event => { event.stopPropagation(); toggleLangMenu(); };
   box.replaceChildren(badge);
   box.hidden = false;
   if (wasOpen) toggleLangMenu(true);
   renderDisplayMenu();
+}
+// The badge says what it counts, in words (rc35 check: a bare "373" pill beside 遮敏感 / EN read as nothing); a narrower
+// bar swaps to the short words, never to the number alone.
+Object.assign(UI.zh, { "{n} untranslated": "{n} 页待翻译", "{n} to do": "{n} 待译", "Translating {n}/{m}": "翻译中 {n}/{m}" });
+function langBadgeWords(job, left) {
+  if (job) return [el("span", { text: t("Translating {n}/{m}", { n: job.done, m: job.total }) })];
+  return [el("span", { class: "lb-long", text: t("{n} untranslated", { n: left }) }), el("span", { class: "lb-short", text: t("{n} to do", { n: left }) })];
 }
 function refreshDisplayLang(parts) {
   const pop = document.querySelector(".display-pop");
@@ -10289,7 +10310,7 @@ function todayNext() {
     const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
     return el("li", {}, [open, join]);
   });
-  const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": t("This week") }, Array.from({ length: 7 }, (_, i) => {
+  const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": agT("This week") }, Array.from({ length: 7 }, (_, i) => {
     const day = agDay(today, i), n = agOnDay(entries, day).length;
     const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), ...(day === today ? { "aria-current": "date" } : {}),
       "aria-label": (day === today ? agT("Today") + agT(", ") : "") + agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")) }, [
@@ -10298,16 +10319,16 @@ function todayNext() {
     b.onclick = () => { todayCal.day = day; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
     return b;
   }));
-  const all = el("a", { class: "tnext-all", href: "#today-calendar", text: t("Full schedule ↓") });
+  const all = el("a", { class: "tnext-all", href: "#today-calendar", text: agT("Full schedule ↓") });
   all.onclick = event => { event.preventDefault(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
-  return el("section", { class: "widget tnext", "aria-label": t("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: t("Next") }), el("span", { class: "end" }, [all])]),
-    rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: t("Nothing else today") }), strip]);
+  return el("section", { class: "widget tnext", "aria-label": agT("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: agT("Next") }), el("span", { class: "end" }, [all])]),
+    rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: agT("Nothing else today") }), strip]);
 }
 // On a phone: one line above the cards, the next event, a tap to the calendar.
 function todayNextLine() {
   const [e] = nextEvents(1);
   if (!e) return null;
-  const line = el("button", { type: "button", class: "tnext-line" }, [el("span", { class: "tnext-label", text: t("Next") }),
+  const line = el("button", { type: "button", class: "tnext-line" }, [el("span", { class: "tnext-label", text: agT("Next") }),
     el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title }), e.meet ? el("span", { class: "tnext-join", text: agT("Join {service}", { service: e.meet.service }) }) : null]);
   line.onclick = () => document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" });
   return line;
@@ -12007,10 +12028,21 @@ function agRow(e, when) {
   return agPress(e, "cal-row" + (agOnStrip(e) ? " cal-row-bar" : ""), [el("span", { class: "cal-row-time", text: when }), el("span", { class: "cal-row-title", text: e.title }),
     e.where ? el("span", { class: "cal-row-where", text: e.where }) : null]);
 }
+// The calendar's events only; the notebook's deadlines that day fold into one "N 个期限" line that opens them in
+// place, the phone's form of the desk's count in the all-day lane (#3188: red late chips between real events).
 function agDayRows(entries, day, from) {
-  const bars = entries.filter(e => agOnStrip(e) && e.first <= day && e.last >= day && (e.first === day || day === from));
-  const short = e => e.kind !== "event" ? agWhen(e) : e.first === e.last ? agT("All day") : agWhen(e);
-  return [...bars.map(e => agRow(e, short(e))), ...agSegments(entries, day).map(seg => agRow(seg.entry, agHours(seg)))];
+  const events = entries.filter(e => e.kind === "event"), dated = entries.filter(e => e.kind !== "event" && e.first <= day && e.last >= day);
+  const bars = events.filter(e => agOnStrip(e) && e.first <= day && e.last >= day && (e.first === day || day === from));
+  const short = e => e.first === e.last ? agT("All day") : agWhen(e);
+  return [...bars.map(e => agRow(e, short(e))), ...agSegments(events, day).map(seg => agRow(seg.entry, agHours(seg))), agDueLine(dated)].filter(Boolean);
+}
+function agDueLine(items) {
+  if (!items.length) return null;
+  const list = el("div", { class: "cal-due-list", hidden: "" }, items.map(e => agRow(e, agWhen(e))));
+  const line = el("button", { type: "button", class: "cal-due-line" + (items.some(e => e.late) ? " late" : ""), "aria-expanded": "false",
+    title: items.map(e => e.title + " · " + agWhen(e)).join("\n") }, [el("span", { text: agT("{n} due", { n: items.length }) })]);
+  line.onclick = () => { const open = list.hidden; list.hidden = !open; line.setAttribute("aria-expanded", String(open)); };
+  return el("div", { class: "cal-due-day" }, [line, list]);
 }
 function agDaySection(entries, day, today, from) {
   const rows = agDayRows(entries, day, from), name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";

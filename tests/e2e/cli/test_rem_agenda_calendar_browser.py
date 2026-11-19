@@ -343,7 +343,8 @@ def test_a_phone_gets_a_strip_of_dates_over_a_day_by_day_list(agenda):
     assert "Board dinner" in days.inner_text()
     # The first event is on the first screen; a row is a thumb's height.
     assert page.locator(".agenda-days .cal-row").first.bounding_box()["y"] < 360
-    assert page.locator(".agenda-days .cal-row").evaluate_all("rows => rows.every(row => row.getBoundingClientRect().height >= 44)")
+    # Every row you can see; a day's deadlines stay folded in its "N due" line until tapped (rc35 check).
+    assert page.locator(".agenda-days .cal-row, .agenda-days .cal-due-line").evaluate_all("rows => rows.filter(row => row.offsetParent).every(row => row.getBoundingClientRect().height >= 44)")
     # A date in the strip jumps to its day.
     strip.nth(1).click()
     page.wait_for_timeout(200)
@@ -737,3 +738,102 @@ def test_pr_shots_today_first_screen(agenda, width):
           const b = d.getBoundingClientRect(); let ok = true;
           for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { const x = b.left + 16 + (b.width - 32) * i / 4, y = b.top + 16 + (b.height - 32) * j / 4;
             if (y < innerHeight && x < innerWidth && !d.contains(document.elementFromPoint(x, y))) ok = false; } return ok; }""", isolated_context=False)
+
+
+def test_a_phones_day_list_holds_events_and_one_line_of_deadlines_that_opens_them(agenda):
+    """rc35 check (Mac session): on a phone the agenda still listed red 已过期 / 期限 cards between real events. The
+    day list is the calendar's events; the notebook's deadlines fold into one "N due" line that opens them in place,
+    the phone's form of the desk's count in the all-day lane (#3188)."""
+    page = agenda
+    _open(page, 390)
+    today = page.locator(".agenda-days .ag-day.today")
+    titles = today.locator(":scope > .cal-row .cal-row-title").all_inner_texts()
+    assert "Fernhill invoice" not in " ".join(titles), titles  # no late card among the events
+    assert not today.locator(":scope > .cal-row", has_text="Late, due").count()
+    line = today.locator(".cal-due-line")
+    assert line.count() == 1 and line.inner_text() == "1 due" and "late" in line.get_attribute("class")
+    assert line.bounding_box()["height"] >= 44
+    hidden = today.locator(".cal-due-list")
+    assert not hidden.is_visible()
+    line.click()
+    assert hidden.is_visible() and line.get_attribute("aria-expanded") == "true"
+    assert "Fernhill invoice" in hidden.inner_text() and "Late, due Sep 25" in hidden.inner_text()
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "phone-deadlines-open-390.png"))
+    line.click()
+    assert not hidden.is_visible()
+    page.evaluate("() => setInterfaceLanguage('zh')", isolated_context=False)
+    _open(page, 390)
+    assert page.locator(".agenda-days .ag-day.today .cal-due-line").inner_text() == "1 个期限"
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
+    assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
+
+
+ENGLISH_UI = ("Next", "Full schedule", "Nothing else today", "This week", "Join ", "All day", "due", "Today", "Tomorrow")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_todays_calendar_says_its_own_words_in_chinese(agenda, width):
+    """rc35 check: Today's calendar card said "Next" and "Full schedule ↓" in the Chinese reader. Every label the
+    calendar draws itself is translated; event titles are his own words and stay as written."""
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("() => { setInterfaceLanguage('zh'); overview(); }", isolated_context=False)
+    selector = ".tnext" if width > 640 else ".tnext-line"
+    page.locator(selector).wait_for()
+    labels = page.evaluate("""sel => { const out = [];
+      for (const root of document.querySelectorAll(sel + ', #today-calendar')) {
+        root.querySelectorAll('*').forEach(n => { if (n.closest('.tnext-title, .cal-ev-title, .cal-row-title, .cal-row-where, .cal-ev-where, .cal-bar')) return;
+          for (const c of n.childNodes) if (c.nodeType === 3 && c.textContent.trim()) out.push(c.textContent.trim()); });
+        for (const a of ['aria-label']) root.querySelectorAll('[' + a + ']').forEach(n => out.push(n.getAttribute(a))); }
+      return out; }""", selector, isolated_context=False)
+    english = [label for label in labels if any(word in label for word in ENGLISH_UI) and not any("一" <= ch <= "鿿" for ch in label)]
+    assert not english, english
+    text = page.locator(selector).inner_text()
+    assert "接下来" in text
+    if width > 640:
+        assert "完整日程" in text
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
+
+
+LONG_TITLE = ("Quarterly receipts reconciliation with Ines, the Harbour filing, the Fernhill invoice and the supplier renewal terms")
+
+
+@pytest.mark.parametrize("width", [1024, 1280, 1440, 390])
+def test_a_long_event_title_never_widens_today_or_scrolls_the_page_sideways(agenda, width):
+    """rc35 hunt: Today's Next widget measured 494px inside the 300px side column, so the page scrolled sideways at
+    every width up to 1440 and "Full schedule ↓" was cut off. The fixture's short titles hid it. A long title ends in
+    an ellipsis; no widget in the side column is wider than the column."""
+    page = agenda
+    assert len(LONG_TITLE) >= 110
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("""title => { for (const e of REM.calendar.events) e.title = title + ' ' + e.title; overview(); }""", LONG_TITLE, isolated_context=False)
+    page.locator(".tnext" if width > 640 else ".tnext-line").wait_for()
+    assert page.evaluate("() => document.documentElement.scrollWidth <= document.documentElement.clientWidth"), "the page scrolls sideways"
+    if width > 640:
+        wide = page.evaluate("""() => { const side = document.querySelector('.tgrid > .side'), w = side.getBoundingClientRect().width;
+          return [...side.children].filter(n => n.getBoundingClientRect().width > w + 1 || n.scrollWidth > n.clientWidth + 1).map(n => n.className); }""", isolated_context=False)
+        assert not wide, wide
+        allbox, widget = page.locator(".tnext-all").bounding_box(), page.locator(".tnext").bounding_box()
+        assert allbox["x"] + allbox["width"] <= widget["x"] + widget["width"] + 1, "Full schedule is inside the widget"
+        assert page.locator(".tnext-all").evaluate("n => n.scrollWidth <= n.clientWidth + 1"), "never cut"
+    else:
+        line = page.locator(".tnext-line")
+        assert line.evaluate("n => n.scrollWidth <= n.clientWidth + 1")
+
+
+@pytest.mark.skipif(not os.environ.get("REM_PR_SHOTS"), reason="screenshots for a PR only")
+@pytest.mark.parametrize("width", [1440, 390])
+def test_pr_shots_rc35_leftovers(agenda, width):
+    page = agenda
+    shots = os.environ["REM_PR_SHOTS"]
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("""title => { setInterfaceLanguage('zh'); for (const e of REM.calendar.events) e.title = title + ' ' + e.title; overview(); scrollTo(0, 0); }""", LONG_TITLE, isolated_context=False)
+    page.wait_for_timeout(300)
+    page.screenshot(path=os.path.join(shots, f"today-zh-long-title-{width}.png"))
+    if width < 640:
+        page.evaluate("() => { location.hash = '#c=agenda'; }", isolated_context=False)
+        page.locator(".agenda").wait_for()
+        page.wait_for_timeout(300)
+        page.screenshot(path=os.path.join(shots, "agenda-phone-390.png"))
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
