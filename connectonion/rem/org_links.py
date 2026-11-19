@@ -55,14 +55,44 @@ def _links(text: str) -> dict[str, str]:
     return found
 
 
+SUFFIX = re.compile(r'\b(pty|ltd|limited|inc|llc|gmbh|co|corp|corporation|company|group|the)\b')
+
+
+def _key(name: str) -> str:
+    """An organisation's name compared loosely: case, punctuation and legal suffixes aside."""
+    return " ".join(SUFFIX.sub(" ", re.sub(r'[^\w\s]', ' ', name.lower())).split())
+
+
+def _existing(notebook) -> dict[str, str]:
+    """{loose name: orgs/<page>.md} for the organisation pages the notebook has."""
+    found = {}
+    folder = notebook.root / "orgs"
+    for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        title = re.search(r'^# (.+)$', path.read_text(encoding="utf-8"), re.M)
+        if title:
+            found.setdefault(_key(title[1]), f"orgs/{path.name}")
+    return found
+
+
 def link_orgs(notebook, record: str, text: str) -> list[dict]:
-    """Create the linked organisation pages that do not exist and put the person in each one's People here."""
+    """Create the linked organisation pages that do not exist and put the person in each one's People here.
+
+    A link to a new slug for an organisation the notebook already has (the same name, loosely) is pointed
+    at that page instead: on a notebook copy, 2 of 4 new pages duplicated one (2026-11-19)."""
     if not record.startswith("people/"):
         return []
     title = re.search(r'^# (.+)$', text, re.M)
     person = f"[{title[1].strip() if title else record}](../{record})"
+    existing, links = _existing(notebook), _links(text)
+    for org, name in list(links.items()):
+        same = existing.get(_key(name))
+        if not notebook.exists(org) and same and same != org:
+            text = text.replace(f"](../{org})", f"](../{same})").replace(f"]({org})", f"]({same})")
+            links.setdefault(same, links.pop(org))
+    if links != _links(notebook.read(record)) and notebook.exists(record):
+        notebook.write(record, text)
     done = []
-    for org, name in _links(text).items():
+    for org, name in links.items():
         created = notebook.stub_org(org, name, people=[record])
         page = notebook.read(org)
         if created:

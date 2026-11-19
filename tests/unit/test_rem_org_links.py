@@ -86,3 +86,18 @@ def test_a_promoted_person_page_creates_and_links_its_organisations(tmp_path):
     runner._promote_candidate(notebook, "people/petra.md", path, original, [*page, *items], tmp_path, None, carried=original)
     assert "[One Consulting](../orgs/one-consulting.md)" in notebook.read("people/petra.md")
     assert "[Petra Lind](../people/petra.md)" in notebook.read("orgs/one-consulting.md")
+
+
+def test_a_link_to_a_new_slug_for_an_organisation_the_notebook_has_goes_to_that_page(tmp_path):
+    """A/B on a notebook copy, 2026-11-19: 2 of 4 new org pages duplicated an existing org under another slug."""
+    prepare(tmp_path)
+    notebook, original = _person(tmp_path)
+    notebook.stub_org("orgs/kiln-labs-1a2b3c.md", "Kiln Labs Pty Ltd", ["kiln.example"])
+    text = _with(original, company="[Kiln Labs](../orgs/kiln-labs.md) [1]", who="- 2019–now: Founder, [Kiln Labs](../orgs/kiln-labs.md) [1]")
+    notebook.write("people/petra.md", text)
+    done = link_orgs(notebook, "people/petra.md", text)
+    assert done == [{"record": "orgs/kiln-labs-1a2b3c.md", "title": "Kiln Labs", "created": False}]
+    assert not notebook.exists("orgs/kiln-labs.md")
+    saved = notebook.read("people/petra.md")
+    assert "](../orgs/kiln-labs-1a2b3c.md)" in saved and "](../orgs/kiln-labs.md)" not in saved
+    assert "[Petra Lind](../people/petra.md)" in notebook.read("orgs/kiln-labs-1a2b3c.md")
