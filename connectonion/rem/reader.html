@@ -15123,7 +15123,8 @@ function localiseDates(text) {
   ISO_RANGE.lastIndex = 0;
   return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end));
 }
-// "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once.
+// "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once. Prose only: a fact's value is made single by
+// oneDate before it is drawn (#3192), and every pass here skips text that holds no ISO date, so nothing is formatted twice.
 function onceDates(text) {
   const date = uiLanguage === "zh" ? "(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日" : "(?:[A-Z][a-z]{2,8} \\d{1,2}(?:, \\d{4})?|\\d{1,2} [A-Z][a-z]{2,8}(?: \\d{4})?)";
   return text.replace(new RegExp("(" + date + ")\\s*[（(]\\s*\\1\\s*[)）]", "g"), "$1")
