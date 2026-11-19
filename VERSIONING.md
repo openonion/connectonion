@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc32
+## Current Version: 1.9.6rc33
+Release candidate 1.9.6rc33 for 1.9.6: REM's bug-hunt fixes and the knowledge-graph model. Tags link pages, and
+`co rem investigate tag "X"` writes a tag's page from every page carrying it (kind first, then name; tag = topic). A
+closed item stays closed (old marks migrated; the night reads the owner's day). A three-level privacy control sits in the
+top bar. Source cards and citation chips always open their original beside the page. Search is grouped. The people and
+orgs lists are cleaner, decision titles are translated, and list text is 13px with 44px phone targets. Stable remains
+1.9.5. See [candidate notes](docs/releases/1.9.6rc33.md).
+
+- 1.9.6rc33 (tags link pages; closed stays closed; privacy levels; sources and citations open; bug-hunt fixes).
+
+### Previous candidate: 1.9.6rc32
 Release candidate 1.9.6rc32 for 1.9.6: `co browser` starts headless on Windows in session 0 (OpenSSH logins,
 services, scheduled tasks), where a headed Chrome could never show a window and go_to waited 120 s. Together with
 rc31's Windows fixes for co rem (timezone, UTF-8, paths, long prompts) and the onionwright install, co runs on a
