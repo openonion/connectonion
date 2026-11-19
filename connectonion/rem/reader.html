@@ -9143,13 +9143,16 @@ function approvalUndoBar(onToday = true) {
 function turnTrouble(failure) {
   const evidence = String(failure.evidence || "");
   if (failure.failures) {
-    const since = String(failure.since || "").slice(0, 16).replace("T", " ");
+    // Local time in the reader's words (#3156: an ISO timestamp in UTC read as a system log).
+    const zone = (typeof REM !== "undefined" && REM.status?.timezone) || undefined;
+    const since = failure.since ? new Date(failure.since).toLocaleString(uiLanguage === "zh" ? "zh-CN" : "en-GB",
+      { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: zone }) : "";
     // `empty`: turns that exited cleanly with no task served and nothing submitted (1.9.6rc18).
     const empty = failure.empty || 0, all = empty === failure.failures;
-    if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} UTC 起。REM 会自动重试。`;
+    if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} 起。REM 会自动重试，不需要你做什么。`;
     const said = all ? (failure.failures === 1 ? "turn ran but produced nothing" : "turns ran but produced nothing")
       : (failure.failures === 1 ? "turn failed" : "turns failed") + (empty ? ` (${empty} ran but produced nothing)` : "");
-    return `Background: the last ${failure.failures} ${said}, since ${since} UTC. REM retries automatically.`;
+    return `Background: the last ${failure.failures} ${said}, since ${since}. REM retries by itself; nothing is needed from you.`;
   }
   if (/^Turn exceeded \d+ hours/.test(evidence)) return t("One round last night ran too long and was stopped; the next round continues.");
   if (/^MAINTENANCE_BUSY\b/.test(evidence)) return t("Another job was holding the notebook, so the last round did not run; the next round tries again.");
@@ -9498,7 +9501,7 @@ function overview() {
   const cards = deckOrder(groups);
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
-  main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
+  main.append(...whyNotes(), ...[snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
     staleWidget(todayEntries(entries).filter(staleEntry)), closedToday(), todoSection(), yourDay(), todayFolds(entries, counts)].filter(Boolean));
   if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
@@ -9556,7 +9559,9 @@ function nightCard(groups, current, ticked) {
     chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
       el("span", { class: full ? "legend" : "night-sum", text: full ? chart.legend : chart.sparse })]) : null,
     nightStall(),
-    el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
+    el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])]),
+    // System health is the night's own business (#3156): one quiet line in its card, never above the work.
+    scheduleFailure()]);
 }
 // Why the nights read nothing (sprint 14): a mailbox failed while REM prepared a page. One plain sentence, never
 // an exception name; the pages set aside fold under it with when each is tried again (fetch_stalls.last_night).
