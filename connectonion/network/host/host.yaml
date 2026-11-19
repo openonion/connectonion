@@ -2,6 +2,7 @@
 # Who answers. One line; the frontend does not change when it does:
 #   codex                  native Codex, the account you are logged into
 #   claude-code            native Claude Code, the account you are logged into
+#   claude-code/<model>    the same, on that Claude model (codex/<model> too)
 #   co/gemini-4-hydrogen   the built-in agent on that model (the default)
 # model: co/gemini-4-hydrogen
 trust: careful

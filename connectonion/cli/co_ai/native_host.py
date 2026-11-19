@@ -4,6 +4,7 @@
 
     model: codex                  native Codex, the account you are logged into
     model: claude-code            native Claude Code, the account you are logged into
+    model: claude-code/<model>    native Claude Code on that model (codex/<model> too)
     model: co/gemini-4-hydrogen   the co-ai agent on that model (the default)
 
 `host_agent_factory()` turns that one line into the function `host()` calls for
@@ -86,13 +87,18 @@ class _NativeHostAgent(Agent):
         return ''
 
 
+def _label(provider: str, model: str) -> str:
+    """What /info reports as the model: the provider and the model it runs."""
+    return f'{provider}/{model}' if model else f'{provider} (native account default)'
+
+
 class NativeCodexHostAgent(_NativeHostAgent):
     provider = 'codex'
     tool = 'codex'
 
     def __init__(self, workspace: Path, *, co_dir: Path, model: str = ''):
         super().__init__('Mac Codex', CodexPlugin(workspace=workspace, use_host_permissions=True),
-                         co_dir=co_dir, model=model, label='codex (native account default)')
+                         co_dir=co_dir, model=model, label=_label('codex', model))
 
     def _answer_text(self, answer: dict) -> str | None:
         if (answer.get('error') or answer.get('exit_code') not in (None, 0)
@@ -107,7 +113,7 @@ class NativeClaudeHostAgent(_NativeHostAgent):
 
     def __init__(self, workspace: Path, *, co_dir: Path, model: str = ''):
         super().__init__('Claude Code', ClaudeCodePlugin(workspace=workspace, use_host_permissions=True),
-                         co_dir=co_dir, model=model, label='claude-code (native account default)')
+                         co_dir=co_dir, model=model, label=_label('claude-code', model))
 
     def _answer_text(self, answer: dict) -> str | None:
         if answer.get('error') or answer.get('status') != 'completed' or not isinstance(answer.get('result'), str):
@@ -130,11 +136,22 @@ def configured_model(co_dir: Path) -> str:
     return model.strip()
 
 
+def native_provider(model: str) -> tuple[str, str] | None:
+    """`claude-code/claude-sonnet-4-5` -> ('claude-code', 'claude-sonnet-4-5'); None for a non-native model."""
+    provider, _, native_model = model.partition('/')
+    if provider not in NATIVE_MODELS:
+        return None
+    if '/' in model and not native_model.strip():
+        raise ValueError(f"model: {model} names no model after the slash; write {provider} or {provider}/<model>")
+    return provider, native_model.strip()
+
+
 def host_agent_factory(project: Path, co_dir: Path, model: str | None = None):
     """The per-conversation agent factory for a Host whose model is one config line."""
     model = model or configured_model(co_dir)
-    native = NATIVE_MODELS.get(model)
+    native = native_provider(model)
     if native:
-        return lambda: native(Path(project), co_dir=Path(co_dir))
+        provider, native_model = native
+        return lambda: NATIVE_MODELS[provider](Path(project), co_dir=Path(co_dir), model=native_model)
     from .agent import create_agent
     return lambda: create_agent(model=model, co_dir=Path(co_dir), role='coding')

@@ -41,8 +41,8 @@ def default_model() -> str:
 
 
 def _prepare_profile(runtime: Path) -> None:
-    from .commands.init import handle_init
     from ..rem.files import atomic_write
+    from .commands.init import handle_init
     fresh = not (runtime/'.co'/'host.yaml').exists()
     runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
     runtime.chmod(0o700)
@@ -65,6 +65,7 @@ def _codex_readiness(environment: dict | None = None) -> dict:
     import os
     import shlex
     import subprocess
+
     from ..codex_cli import INSTALL_COMMAND, resolve_codex
     if environment is None:
         environment = {key: os.environ[key] for key in ('PATH', 'HOME', 'TMPDIR', 'CODEX_HOME', 'CODEX_CMD', 'SYSTEMROOT') if key in os.environ}
@@ -85,9 +86,10 @@ def _codex_readiness(environment: dict | None = None) -> dict:
 
 def _model_readiness(model: str, environment: dict) -> dict:
     """Whether the configured native provider can answer; a managed model needs no login."""
-    if model == 'codex':
+    provider = model.partition('/')[0]
+    if provider == 'codex':
         return _codex_readiness(environment=environment)
-    if model == 'claude-code':
+    if provider == 'claude-code':
         from .codex_setup import claude_ready
         ready = claude_ready()
         return {'codex_ready': True, 'model_ready': ready, 'model_problem': '' if ready else 'Claude Code is not logged in',
@@ -97,7 +99,7 @@ def _model_readiness(model: str, environment: dict) -> dict:
 
 def prepare_host() -> dict:
     """Prepare and start the always-on Host; global init owns the consent-aware REM step."""
-    from ..environment import global_config_dir, explicit_env_file
+    from ..environment import explicit_env_file, global_config_dir
     if explicit_env_file() is not None:
         raise HostServiceError('Global Host setup does not accept --env-file. Next: co init')
     runtime = profile_dir()

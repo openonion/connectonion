@@ -119,3 +119,38 @@ def test_a_malformed_model_line_says_what_it_should_be(tmp_path):
     co_dir = _host_yaml(tmp_path, 'model: [codex]\n')
     with pytest.raises(ValueError, match='codex or claude-code'):
         configured_model(co_dir)
+
+
+@pytest.mark.parametrize('line, provider, runner, expected_model', [
+    ('model: claude-code/claude-sonnet-4-5\n', 'NativeClaudeHostAgent', 'run_co_claude', 'claude-sonnet-4-5'),
+    ('model: claude-code\n', 'NativeClaudeHostAgent', 'run_co_claude', ''),
+    ('model: codex/gpt-5.5\n', 'NativeCodexHostAgent', '_run_codex', 'gpt-5.5'),
+])
+def test_a_model_name_after_the_provider_reaches_the_native_cli(tmp_path, monkeypatch, line, provider, runner,
+                                                                expected_model):
+    """`model: claude-code/<model>`: Claude Code is the provider, and that model is what it runs."""
+    from connectonion.cli.co_ai.native_host import host_agent_factory
+    calls = []
+    def native(**kwargs):
+        calls.append(kwargs)
+        return json.dumps({'session_id': CLAUDE_SESSION, 'status': 'completed', 'result': 'ok',
+                           'last_message': 'ok', 'exit_code': 0})
+    monkeypatch.setattr(coding_agents, runner, native)
+    agent = host_agent_factory(tmp_path, _host_yaml(tmp_path, line))()
+    assert type(agent).__name__ == provider
+    assert agent.input('Question') == 'ok'
+    assert calls[0]['model'] == expected_model
+
+
+def test_a_provider_with_nothing_after_the_slash_says_how_to_write_it(tmp_path):
+    from connectonion.cli.co_ai.native_host import host_agent_factory
+    with pytest.raises(ValueError, match='claude-code/<model>'):
+        host_agent_factory(tmp_path, _host_yaml(tmp_path, 'model: claude-code/\n'))
+
+
+def test_info_reports_the_model_the_native_cli_runs(tmp_path):
+    from connectonion.cli.co_ai.native_host import host_agent_factory
+    agent = host_agent_factory(tmp_path, _host_yaml(tmp_path, 'model: claude-code/haiku\n'))()
+    assert agent.llm.model == 'claude-code/haiku'
+    agent = host_agent_factory(tmp_path, _host_yaml(tmp_path, 'model: claude-code\n'))()
+    assert agent.llm.model == 'claude-code (native account default)'
