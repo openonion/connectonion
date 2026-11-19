@@ -284,3 +284,23 @@ def test_a_support_desk_that_replies_is_a_service_and_its_engineer_a_person(tmp_
     found = pages(tmp_path)
     assert found["people/acmecloud.md"]["service"] and found["people/acme-help.md"]["service"]
     assert not found["people/mia.md"]["service"] and listed(found["people/mia.md"])
+
+
+# #3157 (bug hunt on the owner's notebook): People listed a shop's ordering inbox, a notifications sender, and an
+# agent's own mailbox as people. A page whose every address is a desk, a bot or an agent is not a person.
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("emails", [["orders@fine-wines.example"], ["notifications@app.example"],
+                                      ["0xab12cd34ef@mail.openonion.ai"], ["bookings@harbour-hotel.example"],
+                                      ["enquiries@council.example", "alerts@council.example"]])
+def test_a_page_whose_every_address_is_a_desk_a_bot_or_an_agent_is_not_a_person(emails):
+    from connectonion.rem.census import non_person
+    text = "# Somebody\n\n## Facts\n- Email: " + "; ".join(emails) + "\n"
+    assert non_person("Somebody", text, emails, None, set())
+
+
+@_pytest.mark.parametrize("emails", [["ines.halvorsen@fernhill.example"], ["ody@gmail.com", "0xab12cd34ef@mail.openonion.ai"]])
+def test_a_person_with_their_own_address_stays_a_person(emails):
+    from connectonion.rem.census import non_person
+    assert not non_person("Ines Halvorsen", "# Ines Halvorsen\n", emails, None, set())

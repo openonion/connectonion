@@ -141,6 +141,33 @@ def explain(message: str) -> dict:
     return {"reason": (message[:300] or "The investigation stopped without saying why."), "reason_kind": "other"}
 
 
+def _unlisted(reason: str) -> str:
+    """A reason an older worker stored as str(list) ("['Investigation: writing investigation']"), as its words,
+    without the progress lines; anything else as it is."""
+    text = str(reason or "").strip()
+    if text.startswith("[") and text.endswith("]"):
+        import ast
+        try:
+            items = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            return text
+        if isinstance(items, list):
+            return " ".join(str(item) for item in items if not str(item).startswith("Investigation: "))
+    return text
+
+
+def _readable(receipt: dict, progress: list[dict]) -> dict:
+    """A failed receipt's reason as a sentence and a kind (#3155): receipts written before rc28 kept the raw text.
+    The run's own recorded error is preferred when the stored reason says nothing (a progress line)."""
+    if receipt.get("result") != "failed" or receipt.get("reason_kind"):
+        return {}
+    for error in [row["error"] for row in progress if row.get("error")] + [_unlisted(receipt.get("reason"))]:
+        said = explain(error)
+        if said["reason_kind"] != "other" or (error and not error.startswith("Investigation: ")):
+            return said
+    return explain("")
+
+
 def _progress(root: Path, receipt: dict, logs: list[dict]) -> list[dict]:
     """Each step of this click, from the run records it made: write/append (or rewrite), then enrich."""
     runs = sorted((run for run in logs if run.get("record") == receipt["record"]
@@ -184,7 +211,8 @@ def status(root, record: str, *, logs=None) -> dict:
             receipt.update(result="failed", reason="The investigation stopped without saying how it ended; "
                                                    "see co rem logs", finished_at=now().isoformat())
             write_json(path, receipt)
-    value = {**receipt, "progress": _progress(root, receipt, run_logs(root) if logs is None else logs)}
+    progress = _progress(root, receipt, run_logs(root) if logs is None else logs)
+    value = {**receipt, **_readable(receipt, progress), "progress": progress}
     if receipt["result"] != "running":
         book = Notebook(root)
         after = book.read(record) if book.exists(record) else ""
@@ -284,6 +312,14 @@ def states(root, records: list[str], *, mail_days=None) -> dict[str, dict]:
     return found
 
 
+def _changed_since(root: Path, record: str, moment) -> bool:
+    from datetime import datetime
+    if not moment:
+        return False
+    page = Path(root) / record
+    return page.is_file() and page.stat().st_mtime > datetime.fromisoformat(str(moment).replace("Z", "+00:00")).timestamp()
+
+
 def _new_sessions(root: Path, record: str) -> int:
     from .project_pages import pending
     messages, kind = pending(root, record)
@@ -295,6 +331,9 @@ def _run_state(root: Path, record: str, logs) -> dict:
     run = None
     if receipt_path(root, record).is_file():
         run = status(root, record, logs=logs)
+        # A failed run the page has changed since (a later night, a later run) is history, not news (#3155).
+        if run["result"] == "failed" and _changed_since(root, record, run.get("finished_at")):
+            run = None
     return {"run": run, "undo": page_versions.can_undo(root, record), "rewrite": _draft(root, record)}
 
 

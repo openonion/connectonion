@@ -298,3 +298,88 @@ def test_a_person_page_leads_with_what_happened_and_a_row_opens_its_original(rea
     page.keyboard.press("Escape")
     assert not panel.is_visible() and "on" not in (row.get_attribute("class") or "").split()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_people_never_show_an_address_as_a_name_and_cells_never_overlap(reader, width):
+    """#3157: rows named by an address, organisation cells carrying provenance prose, long names drawn over the next
+    column. An address-titled page reads as 'name unknown' with its address quiet; provenance is a tooltip."""
+    open_page, _ = reader
+    page = open_page("c=people", width=width, language="zh")
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      REM.records.push({...r, path: 'people/someone-at-example.md', title: 'someone.unknown@example.test',
+        text: '# someone.unknown@example.test\\n\\n## Facts\\n- Email: someone.unknown@example.test\\n- Company: Fernhill Labs (their signature)\\n'});
+      REM.records.push({...r, path: 'people/long-name.md', title: 'Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff',
+        text: '# Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff\\n\\n## Facts\\n- Company: Fernhill Labs\\n'});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    rows = page.locator(".people-table tbody tr")
+    text = page.locator(".people-table tbody").inner_text()
+    assert "someone.unknown@example.test" not in page.locator(".people-table td.c-name a").all_inner_texts()
+    assert "未知姓名" in text
+    assert "(their signature)" not in text  # provenance moves to the tooltip
+    if width == 1440:
+        overlap = page.evaluate("""() => [...document.querySelectorAll('.people-table tbody tr')].some(tr => {
+          const name = tr.querySelector('td.c-name'), org = tr.querySelector('td.c-org');
+          if (!name || !org) return false;
+          const inner = name.querySelector('a').getBoundingClientRect(), cell = name.getBoundingClientRect();
+          return inner.right > cell.right + 1; })""", isolated_context=False)
+        assert not overlap
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_orgs_merge_same_named_units_keep_people_out_and_hide_empty_columns(reader):
+    """#3160: a unit listed twice, a person's role filed as an organisation, columns mostly '—', and '推断' as a line."""
+    open_page, _ = reader
+    page = open_page("c=orgs", width=1440, language="zh")
+    page.evaluate("""() => {
+      const base = byPath('orgs/fernhill-labs.md');
+      const org = (path, title, extra = {}) => ({...base, path, title, text: '# ' + title + '\\n\\n## Facts\\n- Kind: company\\n', children: [], parent: undefined, unit_kind: undefined, people: [], ...extra});
+      REM.records.push(org('orgs/eng-a.md', 'Faculty of Engineering', {unit_kind: 'faculty'}), org('orgs/eng-b.md', 'Faculty of Engineering', {unit_kind: 'faculty'}),
+        org('orgs/deputy.md', 'Deputy Director, Research Partnerships'));
+      for (let i = 0; i < 6; i++) REM.records.push(org('orgs/filler-' + i + '.md', 'Filler Company ' + i));
+      KNOWN.clear(); FACTS.clear(); orgTableColumns = null; render();
+    }""", isolated_context=False)
+    names = page.locator(".org-table tbody td.c-name a").all_inner_texts()
+    assert names.count("Faculty of Engineering") == 1
+    assert not any("Deputy Director" in n for n in names)
+    headers = page.locator(".org-table thead th").all_inner_texts()
+    assert not any("位置" in h for h in headers)  # empty for 80%+ of rows
+    assert page.locator(".org-table .org-site small").count() == 0  # 推断 is a dot with a tooltip, not a line
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_decision_titles_carry_no_privacy_label_and_leads_no_timestamps(reader):
+    """#3159: a title ended with a literal '[personal]'; leads opened with '这项选择作于 2026-11-08 的 10:20…'."""
+    open_page, _ = reader
+    page = open_page("c=decisions", width=1440, language="zh")
+    page.evaluate("""() => {
+      REM.records.push({path: 'decisions/keep-markdown.md', title: 'Keep Markdown [personal]', category: 'decisions', written: true,
+        text: '# Keep Markdown [personal]\\n\\n## Decision\\n这项选择作于 2026-11-08 的 10:20，所在会话开始于 2026-10-29T09:00:00Z。保留 Markdown 作为笔记格式。 [1]\\n\\n## Sources\\n- [1] codex:01a1a594\\n'});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    text = page.locator("#main").inner_text()
+    assert "[personal]" not in text and "Keep Markdown" in text
+    assert "2026-11-08" not in text and "T09:00" not in text and "这项选择作于" not in text
+    assert "保留 Markdown 作为笔记格式" in text
+
+
+def test_an_agent_mailbox_is_the_persons_agent_and_the_owners_own_address_is_never_theirs(reader):
+    """#3164: the 账号 row listed an agent mailbox as the person's account, and an owner's own address can appear."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=1440, language="en")
+    owner_address = page.evaluate("""() => {
+      const owner = byPath(REM.owner);
+      const mine = (/[\\w.+-]+@[\\w.-]+\\.\\w+/.exec(owner?.text || '') || ['owner@self.example'])[0];
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Handles:[^\\n]*/m, '- Handles: 0xab12cd34ef@mail.openonion.ai; ' + mine);
+      KNOWN.clear(); FACTS.clear(); render();
+      return mine;
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    rows = {row.locator(".pc-k").inner_text(): row.locator(".pc-v").inner_text() for row in card.locator(".pc-row").all()}
+    assert "Their agent" in rows and "0xab12cd34ef@mail.openonion.ai" in rows["Their agent"]
+    assert not any("0xab12cd34ef" in value for key, value in rows.items() if key != "Their agent")
+    if owner_address != "owner@self.example":
+        assert owner_address not in card.inner_text()

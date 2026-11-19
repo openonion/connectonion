@@ -1482,6 +1482,11 @@
   .people-table .c-name .nm a { color: var(--ink); text-decoration: none; }
   .people-table .c-name .nm a:hover { text-decoration: underline; }
   .people-table .c-org .clamp { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A long name ellipsises inside its own cell; it never draws over the Organisation column (#3157). */
+  .people-table td.c-name .nm { display: flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; }
+  .people-table td.c-name .nm > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .people-table .nm-unknown { color: var(--grey); }
+  .people-table .nm-unknown .nm-address { margin-left: 8px; color: var(--grey); font-size: var(--s-ui); }
   .people-table .depth { display: inline-flex; align-items: center; gap: 6px; color: var(--grey); }
   .people-table .depth .moon { width: 10px; height: 10px; color: var(--ink); }
   .people-table .unk { color: var(--grey); }
@@ -1546,6 +1551,10 @@
   .org-disclosure { flex: none; width: 24px; min-height: 32px; padding: 0; border: 0; color: var(--grey); background: transparent; cursor: pointer; }
   .org-disclosure-space { flex: none; width: 24px; }
   .org-site small { color: var(--grey); font-size: var(--s-meta); }
+  /* Inferred is a quiet dot with its word on hover (#3160), not a second line under every domain. */
+  .org-derived { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: var(--round); background: var(--rule); vertical-align: middle; }
+  /* A long organisation name takes two lines before it is cut (#3160). */
+  .org-name-text > a { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .org-activity { display: flex; flex-direction: column; gap: 4px; font-size: var(--s-meta); }
   @media (max-width: 600px) {
     .org-directory .org-kind-filters button { min-height: 44px; }
@@ -5274,7 +5283,7 @@ function label(c) { return t(CATEGORY_LABEL[c] || c); }
 function singular(c) { return t(({ people: "Person", orgs: "Organisation", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
-function privateTopicHidden(r) { return r.private && r.category === "knowledge" && document.documentElement.classList.contains("hide-private"); }
+function privateTopicHidden(r) { return r.private && ["knowledge", ...STATEMENT_CATEGORIES].includes(r.category) && document.documentElement.classList.contains("hide-private"); }
 function listedRecords() { return REM.records.filter(r => !privateTopicHidden(r) && !r.catalog_parent && !r.needs_review && !r.unnamed && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category && (category !== "people" || r.path !== REM.owner)); }
 // A list shows what the address's tag filter keeps (#3093): the list views read their rows through this.
@@ -7730,7 +7739,7 @@ function row(r, opts) {
     el("div", { class: "t" }, [
       el("span", {}, [el("a", { href: href(r), text: r.title }), updatedMarker(r), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
       el("span", { class: "when", text: shortDate(k.last) })])]);
-  const summary = summaryLine(k.summary);
+  const summary = STATEMENT_CATEGORIES.includes(r.category) ? statementLead(summaryLine(k.summary)) : summaryLine(k.summary);
   const lead = summary.length > 220 ? summary.slice(0, 217) + "…" : summary;
   if (lead) li.appendChild(el("div", { class: "hit", text: lead }));
   const open = threads(r).items[0];
@@ -7739,6 +7748,13 @@ function row(r, opts) {
   if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "meta usage" }, [t("{n} uses", { n: u.count }) + (u.last ? t(" · last {last}", { last: shortDate(u.last) }) : "")]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: t("{n} installed copies — open to compare sources", { n: r.installations.length }) }));
   return li;
+}
+// A decision's lead is what was decided (#3159): not "这项选择作于 2026-11-08 的 10:20，所在会话开始于…", and a date reads once,
+// in the reader's words, never as an ISO timestamp.
+function statementLead(text) {
+  const when = /(?:^|[，,。.;；]\s*)(?:这项(?:选择|决定)(?:作于|做于|是在|发生在)|所在会话开始于|This (?:choice|decision) was (?:made|taken)|The session (?:began|started))[^，,。.;；]*[，,。.;；]?/gi;
+  const iso = /\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?:\s*的\s*\d{1,2}:\d{2})?/g;
+  return String(text || "").replace(when, " ").replace(iso, (_, day) => fmtDate(day)).replace(/^[\s，,。.;；]+/, "").replace(/\s{2,}/g, " ").trim();
 }
 function alsoOn(records = []) {
   if (!records.length) return null;
@@ -9313,13 +9329,16 @@ function approvalUndoBar(onToday = true) {
 function turnTrouble(failure) {
   const evidence = String(failure.evidence || "");
   if (failure.failures) {
-    const since = String(failure.since || "").slice(0, 16).replace("T", " ");
+    // Local time in the reader's words (#3156: an ISO timestamp in UTC read as a system log).
+    const zone = (typeof REM !== "undefined" && REM.status?.timezone) || undefined;
+    const since = failure.since ? new Date(failure.since).toLocaleString(uiLanguage === "zh" ? "zh-CN" : "en-GB",
+      { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: zone }) : "";
     // `empty`: turns that exited cleanly with no task served and nothing submitted (1.9.6rc18).
     const empty = failure.empty || 0, all = empty === failure.failures;
-    if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} UTC 起。REM 会自动重试。`;
+    if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} 起。REM 会自动重试，不需要你做什么。`;
     const said = all ? (failure.failures === 1 ? "turn ran but produced nothing" : "turns ran but produced nothing")
       : (failure.failures === 1 ? "turn failed" : "turns failed") + (empty ? ` (${empty} ran but produced nothing)` : "");
-    return `Background: the last ${failure.failures} ${said}, since ${since} UTC. REM retries automatically.`;
+    return `Background: the last ${failure.failures} ${said}, since ${since}. REM retries by itself; nothing is needed from you.`;
   }
   if (/^Turn exceeded \d+ hours/.test(evidence)) return t("One round last night ran too long and was stopped; the next round continues.");
   if (/^MAINTENANCE_BUSY\b/.test(evidence)) return t("Another job was holding the notebook, so the last round did not run; the next round tries again.");
@@ -9624,7 +9643,7 @@ function overview() {
   const cards = deckOrder(groups);
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
-  main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
+  main.append(...whyNotes(), ...[snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
     // The calendar is part of Today, under the cards (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个
     // component，而不是单独的一个 category»); the day plan's proposals are its suggested blocks, not a list on top.
@@ -9685,7 +9704,9 @@ function nightCard(groups, current, ticked) {
     chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
       el("span", { class: full ? "legend" : "night-sum", text: full ? chart.legend : chart.sparse })]) : null,
     nightStall(),
-    el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
+    el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])]),
+    // System health is the night's own business (#3156): one quiet line in its card, never above the work.
+    scheduleFailure()]);
 }
 // Why the nights read nothing (sprint 14): a mailbox failed while REM prepared a page. One plain sentence, never
 // an exception name; the pages set aside fold under it with when each is tried again (fetch_stalls.last_night).
@@ -10293,9 +10314,9 @@ function personSub(r) {
 // The profile card (owner, 2026-11-18: "shouldn't the profile card be the first thing shown?"): every known fact
 // as a label over its value, right under the name, nothing to expand. Role, organisation and units are the line
 // above it, so it does not repeat them; unknown facts are one quiet count, never rows of "not found".
-const PROFILE_GROUPS = [["Contact", ["Email", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
+const PROFILE_GROUPS = [["Contact", ["Email", "Their agent", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
   ["Relationship", ["How we know them", "First contact", "Last contact", "Mail"]], ["Identity", ["Also known as", "Language", "Location", "Time zone"]]];
-Object.assign(UI.zh, { "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
+Object.assign(UI.zh, { "Their agent": "对方的 agent", "Name unknown": "未知姓名", "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
   "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射",
   "Last contact {when}": "最近联系 {when}", "1 mail": "1 封邮件", "{n} mails": "{n} 封邮件", "+{n} more": "还有 {n} 个", "Show less": "收起" });
 // A handle or link says its platform in words; its picture is that service's published mark (Simple Icons) or,
@@ -10327,10 +10348,16 @@ function profileCard(r) {
     .map(item => [...item.qualifier].length > 16 ? { ...item, qualifier: "", note: item.qualifier } : item);
   const units = (r.units || []).map(edge => byPath(edge.path)).filter(unit => unit && !orgHidden(unit));
   const mails = have("Email").flatMap(item => plainLine(item.value).toLowerCase().match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []);
-  const handles = have("Handles").filter(item => !mails.includes(plainLine(item.value).toLowerCase()));
+  // #3164: an agent's mailbox is the person's agent, its own row; an address on the owner's page is never theirs.
+  const ownerAddresses = new Set(((byPath(REM.owner)?.text || "").toLowerCase().match(/[^\s<>(),;:\[\]]+@[^\s<>(),;\[\]]+/g) || []));
+  const agentAddress = item => /^0x[0-9a-f]{6,}@/i.test(plainLine(item.value));
+  const notOwners = item => !ownerAddresses.has(plainLine(item.value).toLowerCase()) || r.path === REM.owner;
+  const allHandles = have("Handles").filter(item => !mails.includes(plainLine(item.value).toLowerCase()) && notOwners(item));
+  const handles = allHandles.filter(item => !agentAddress(item)), agents = allHandles.filter(agentAddress);
   const seen = [...mails, ...handles.map(item => plainLine(item.value).toLowerCase()), r.title.toLowerCase()];
   const rows = {}, add = (group, label, pic, values) => values.length && (rows[group] = rows[group] || []).push({ label, pic, values });
-  add("Contact", "Email", "mail", have("Email").map(item => ({ item, copy: true })));
+  add("Contact", "Email", "mail", have("Email").filter(notOwners).map(item => ({ item, copy: true })));
+  add("Contact", "Their agent", "", agents.map(item => ({ item, copy: true })));
   add("Contact", "Phone", "phone", have("Phone").map(item => ({ item, copy: true })));
   const places = new Map();
   for (const item of handles) {
@@ -10882,6 +10909,20 @@ function peopleRow(r) {
   const f = facts(r);
   return { r, f, open: openItems(r, f), org: personOrg(r), rel: relation(r), status: known(r).status };
 }
+// #3157: a page titled by an address is a person whose name REM does not know; it never reads as a name.
+function addressTitle(r) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(r.title || "").trim()); }
+function personNameCell(d) {
+  const name = addressTitle(d.r)
+    ? el("a", { href: href(d.r), class: "nm-unknown", title: d.r.title }, [el("span", { text: t("Name unknown") }), el("span", { class: "nm-address", text: d.r.title })])
+    : el("a", { href: href(d.r), title: d.r.title, text: d.r.title });
+  return el("span", { class: "nm" }, [name, updatedMarker(d.r)]);
+}
+// The organisation's name only; where it came from ("(their signature)") is its tooltip (#3157).
+function personOrgCell(org) {
+  const note = /\s*[（(]([^()（）]*)[)）]\s*$/.exec(org.name);
+  const name = note ? org.name.slice(0, note.index) : org.name;
+  return el("span", { class: "clamp", title: [org.full, note?.[1]].filter(Boolean).join(" · "), text: name });
+}
 function depthCell(status) {
   const mark = moon(status);
   mark.setAttribute("aria-hidden", "true");
@@ -10891,8 +10932,8 @@ const DEPTH_RANK = { "Investigated": 0, "Partly investigated": 1, "Mapped": 2 };
 const blank = value => value === "" || value == null ? null : value;
 // A sort key of null is a blank: it goes last whichever way the column is sorted.
 const PEOPLE_COLUMNS = [
-  { key: "name", label: "Name", sort: d => d.r.title, cell: d => el("span", { class: "nm" }, [el("a", { href: href(d.r), text: d.r.title }), updatedMarker(d.r)]) },
-  { key: "org", label: "Organisation", sort: d => blank(d.org?.name), cell: d => d.org ? el("span", { class: "clamp", title: d.org.full || "", text: d.org.name }) : textCell("") },
+  { key: "name", label: "Name", sort: d => addressTitle(d.r) ? "\uffff" + d.r.title : d.r.title, cell: d => personNameCell(d) },
+  { key: "org", label: "Organisation", sort: d => blank(d.org?.name), cell: d => d.org ? personOrgCell(d.org) : textCell("") },
   { key: "last", label: "Last contact", num: true, desc: true, sort: d => blank(d.f.last), cell: d => dateCell(d.f.last, mappedContact(d.r)) },
   { key: "m90", label: "Messages · 90 days", num: true, desc: true, sort: d => blank(d.rel?.messages_90d),
     cell: d => d.rel?.messages_90d == null ? textCell("") : el("span", { class: "mono", text: String(d.rel.messages_90d) }) },
@@ -12513,10 +12554,14 @@ function owedWords(entry) {
 // ---------- the list ----------
 // Two pages with one name (one company, two mail domains) are one organisation. A unit is part of
 // the organisation it sits in (#2992): it is drawn inside that row's shape, not listed beside it.
+// A page titled by a person's role is a person filed as a unit (#3160), not an organisation.
+const ROLE_TITLE = /\b(?:Deputy|Director|Manager|Officer|Coordinator|Lecturer|Professor|Dean|Head of|Chair(?:man|woman)?|Founder|CEO|CTO|COO|CFO)\b/i;
+function personAsOrg(r) { return ROLE_TITLE.test(orgName(r)) && !(r.people || []).length && !(r.children || []).length; }
 function orgRows() {
   const byName = new Map();
-  for (const r of listRows("orgs").filter(page => !byPath(page.parent))) {
-    const key = (orgHidden(r) || r.unit_kind ? "page:" + r.path + ":" : "visible:") + orgName(r).toLowerCase();
+  for (const r of listRows("orgs").filter(page => !byPath(page.parent) && !personAsOrg(page))) {
+    // Same-named units are one row (#3160: a faculty listed twice); a private page stays its own.
+    const key = (orgHidden(r) ? "page:" + r.path + ":" : r.unit_kind ? "unit:" : "visible:") + orgName(r).toLowerCase();
     byName.set(key, [...(byName.get(key) || []), r]);
   }
   return [...byName.values()].map(pages => {
@@ -12620,7 +12665,7 @@ function orgNameCell(d, draw) {
 }
 function orgWebsiteCell(d) {
   return d.website ? el("span", {class: "org-site"}, [el("a", {href: d.website.url, target: "_blank", rel: "noopener",
-    text: d.website.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}), d.website.derived ? el("small", {text: orgTableT("Derived")}) : null]) : textCell("");
+    text: d.website.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}), d.website.derived ? el("span", {class: "org-derived", title: orgTableT("Derived"), "aria-label": orgTableT("Derived")}) : null]) : textCell("");
 }
 const ORG_COLUMNS = [
   {key: "name", label: "Organisation", sort: d => orgName(d.r), cell: orgNameCell},
@@ -12642,7 +12687,10 @@ const ORG_COLUMNS = [
 function orgTableChildren(d, seen = new Set()) {
   if (seen.has(d.r.path) || orgHidden(d.r)) return [];
   const next = new Set([...seen, d.r.path]);
-  return d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path)).map(r => {
+  const named = new Map();  // two child pages with one name under one parent are one unit (#3160)
+  for (const r of d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path) && !personAsOrg(r)))
+    if (!named.has(orgName(r).toLowerCase()) || orgHidden(r)) named.set(orgHidden(r) ? r.path : orgName(r).toLowerCase(), r);
+  return [...named.values()].map(r => {
     const people = orgMembers(r), last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
     const child = orgTableRow({r, pages: [r], people, last, units: orgUnitNames(r)});
     child.ancestors = [...(d.ancestors || []), orgName(d.r)];
@@ -12653,8 +12701,10 @@ function orgTableChildren(d, seen = new Set()) {
 }
 function orgsView() {
   document.getElementById("main").textContent = "";
-  orgTableColumns ??= peopleColumnKeys(null, ORG_COLUMNS);
   const rows = orgRows().map(orgTableRow);
+  // A column empty for 80% or more of the rows is left out of the default set (#3131, #3160); Columns still offers it.
+  const sparse = ORG_COLUMNS.filter(c => c.key !== "name" && rows.length >= 5 && rows.filter(d => c.sort(d) == null || c.sort(d) === "").length / rows.length >= 0.8).map(c => c.key);
+  orgTableColumns ??= peopleColumnKeys(null, ORG_COLUMNS).filter(key => !sparse.includes(key));
   for (const d of rows) { d.children = orgTableChildren(d); d.unitCount = d.children.length; }
   if (orgFilter.tab !== "all" && !rows.some(d => [d, ...orgDescendants(d)].some(child => child.kind === orgFilter.tab))) orgFilter.tab = "all";
   peopleView([], {category: "orgs", translate: orgTableT,
@@ -15896,7 +15946,11 @@ function localiseTitles() {
     r.title_original ??= r.title;
     const translated = uiLanguage !== "en" ? (r.translations?.[uiLanguage] || "") : "";
     const head = /^# (.+)$/m.exec(translated);
-    r.title = head ? head[1].trim() : r.title_original;
+    const title = head ? head[1].trim() : r.title_original;
+    // A privacy label is never printed in a title (#3159): the page keeps it; the list hides the title in private
+    // mode like any labelled passage.
+    r.private = r.private || hasPrivacy(title);
+    r.title = title.replace(/\s*[\[［](?:personal|sensitive)[\]］]/gi, "").trim();
   }
 }
 function render() {
@@ -16743,7 +16797,7 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
   readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey()), readerStorage("co-rem-org-columns"), readerStorage("co-rem-org-collapsed")]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept, orgSaved, collapsed]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   peopleColumns = peopleColumnKeys(columns);
-  orgTableColumns = peopleColumnKeys(orgSaved, ORG_COLUMNS);
+  orgTableColumns = orgSaved ? peopleColumnKeys(orgSaved, ORG_COLUMNS) : null;  // none saved: orgsView picks the default, sparse columns left out
   orgCollapsed = new Set((collapsed || "").split("\n").filter(Boolean));
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
   keptOpen = kept ? JSON.parse(kept) : {};
