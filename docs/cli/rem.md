@@ -1945,7 +1945,7 @@ pinned to that edge: it comes into view with the draft.
   its word under it, in ONE order that reads from what you act on, to who and
   what it is about, to what the notebook concluded, to the raw material it was
   built from. A short hairline parts the four groups:
-  **Today**, **Waiting on you** (*Waiting*), **Agenda** | **People**,
+  **Today**, **Waiting on you** (*Waiting*) | **People**,
   **Organisations** (*Orgs*), **Projects** | **Knowledge**, **Decisions**,
   **Principles**, **Skills** | **Agent sessions** (*Sessions*),
   **Opportunities** (*Opps*), **Works**, **Memory changes** (*Changes*). At
@@ -2144,7 +2144,15 @@ pinned to that edge: it comes into view with the draft.
   *Google Tasks are not read: Google must be reconnected with access to tasks*;
   REM never adds a scope or starts a login by itself. Only the owner's own
   reader carries to-dos; a shared page has none.
-- **Agenda** is a calendar (#2998), drawn as one: no heading, then **‹ Today ›**,
+- **The calendar is part of Today** (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个 component，而不是单独的
+  一个 category»). Under the action cards, **Schedule** shows the coming seven days as a strip (weather, how much
+  is on each day, and bars for what spans days) over the chosen day's timeline (hours, events, the now line).
+  Clicking a day switches the timeline; clicking an event opens its detail (join link, organiser, notes). The day
+  plan's proposals with a time are dashed **Suggested** blocks in the timeline: one click raises that item's card,
+  × dismisses it for the day. **Show the week / This month** opens the grids described below in place, and
+  **Back to the day** folds them. There is no Agenda place in the rail; `#c=agenda` and `#view=agenda` open
+  Today with the calendar open. On Today the arrow keys move the calendar only while it has the focus.
+- **The week and month grids** (#2998) are drawn as a calendar: **‹ Today ›**,
   the range in words, **Week / Month**, and under them one small line saying
   which calendars were read. **Week** is a time grid starting today (‹ › move
   it a week): hours down a quiet axis at 44 px an hour, hairline hour lines and

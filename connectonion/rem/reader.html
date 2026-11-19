@@ -2286,6 +2286,7 @@
     .brief-header h1, .brief-header .lede, .brief-header .count, .fuse .seg, .qsent, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
     .today-brief .qcard, .qitem { transition: none; }
   }
+  /* The to-do list (todoSection) keeps the row styles the day plan shared with it. */
   .day-plan { max-width: 760px; margin: 0 0 32px; overflow-wrap: anywhere; }
   .day-plan h2 { margin: 0 0 12px; }
   .day-plan h3 { margin: 20px 0 8px; font-size: var(--s-body); }
@@ -2293,7 +2294,6 @@
   .day-plan-item { padding: 12px 0; border-bottom: 1px solid var(--rule); }
   .day-plan-item p { margin: 4px 0 0; }
   .day-plan-item a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
-  .day-plan-address { white-space: pre-wrap; }
   .day-plan-when { font-weight: var(--w-bold); }
   .todo-list-name, .todo-note { color: var(--grey); font-size: var(--s-meta); }
   .day-plan-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -2385,6 +2385,33 @@
   .cal-line-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-more { grid-row: 5; justify-self: start; margin: 0 4px; padding: 0 6px; border: 0; border-radius: var(--r-cell); background: none; color: var(--grey) !important; cursor: pointer; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font) !important; position: relative; z-index: 1; }
   .cal-daylist, .cal-phone { display: none; }
+  /* Today's calendar (#3152): under the cards; a seven-day strip over the chosen day's hours. */
+  .today-cal { margin: 32px 0 40px; }
+  .tcal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .tcal-head h2 { margin: 0; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); }
+  .tcal-controls { display: flex; gap: 8px; margin-left: auto; }
+  .tcal-frame { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .tcal-frame .cal-week { border: 0; border-top: var(--hair) solid var(--rule); border-radius: 0; }
+  .tcal-week { overflow-x: auto; }
+  .tcal-strip, .tcal-week .cal-allday { min-width: 520px; }
+  .tcal-strip { display: grid; grid-template-columns: 72px repeat(7, minmax(56px, 1fr)); }
+  .today-cal .cal-jump { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 64px; padding: 6px 0; border: 0; border-left: var(--hair) solid var(--rule); background: none; color: var(--ink); cursor: pointer; font: inherit; }
+  .today-cal .cal-jump.weekend { background: var(--well); }
+  .today-cal .cal-jump.on { box-shadow: var(--e-ink); }
+  .today-cal .cal-jump .cal-wx { margin: 0; order: 0; }
+  .tcal-dots { min-height: 13px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); letter-spacing: 2px; }
+  .tcal-week .cal-allday { grid-template-columns: 72px repeat(7, minmax(56px, 1fr)); border-bottom: 0; }
+  .tcal-day .cal-heads, .tcal-day .cal-allday, .tcal-day .cal-grid { grid-template-columns: 72px minmax(0, 1fr); }
+  .today-cal .cal-scroll { height: 440px; }
+  .today-cal.expanded .agenda-week .cal-scroll { height: 620px; }  /* 07:00 to 20:00 in view */
+  .tcal-suggest-box { position: absolute; left: 2px; right: 2px; z-index: 0; }
+  .cal-ev.cal-suggest { position: absolute; inset: 0; z-index: 0; margin: 0; border: 1.5px dashed var(--pencil); border-left-width: 1.5px; background: transparent; color: var(--grey); }
+  .cal-ev.cal-suggest .cal-ev-title { font-weight: var(--w-regular); color: var(--ink); white-space: nowrap; padding-right: 24px; }
+  .cal-ev.cal-suggest .cal-ev-time { display: none; }  /* the time is the block's place; the whole sentence is its title */
+  /* The strip above already carries the all-day bars; the day under it does not repeat them. */
+  .tcal-day .cal-allday { display: none; }
+  .tcal-drop { position: absolute; top: 2px; right: 4px; z-index: 1; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--round); background: var(--paper); color: var(--grey); cursor: pointer; font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); }
+  .tcal-drop:hover { color: var(--ink); background: var(--well); }
   .cal-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0 12px; align-items: baseline; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-left: 3px solid var(--ink); border-radius: var(--r-cell); background: var(--rule); cursor: pointer; text-align: left; }
   .cal-row.cal-microsoft { border-left-color: var(--grey); }
   .cal-row.cal-due, .cal-row.cal-page { background: var(--paper); box-shadow: var(--e-ring); border-left-color: var(--rule); }
@@ -2400,6 +2427,10 @@
     /* a phone: the week is a strip of dates over a day-by-day list; the month keeps its grid with a count in each
        cell and the chosen day's list under it */
     .cal-week { display: none; }
+    /* Today's day timeline is one column: it stays a timeline on a phone; the strip scrolls sideways. */
+    .tcal-day .cal-week { display: block; }
+    .today-cal .cal-scroll { height: 380px; }
+    .tcal-head { flex-wrap: wrap; }
     .agenda-bar { gap: 6px; }
     .agenda-bar .ag-source { display: none; }
     .agenda-bar button { min-height: 40px; }
@@ -7405,6 +7436,8 @@ function route() {
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
   const kind = r && r.split("/")[0];
+  // The calendar lives in Today (#3152): its old addresses light Today in the rail.
+  if (c === "agenda" || view === "agenda") return "today";
   return reviews ? "reviews" : view === "graph" || c === "all" || c === "knowledge" ? "knowledge" : view || c || (r ? (ACTIVITY.has(kind) ? "activity" : kind) : (query ? "search" : "today"));
 }
 function scheduleState(s) {
@@ -7495,7 +7528,6 @@ function railPlaces(active) {
   const category = (c, picture, group, word) => [c, picture, label(c), "#c=" + c, word, group];
   return [["today", "sun", t("Today"), "#", undefined, 0],
     ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail"), 0],
-    category("agenda", "calendar", 0),
     category("people", "users", 1), category("orgs", "building-2", 1, t("Organisations, in the rail")), category("projects", "folder", 1),
     category("keys", "key", 1),
     // One Knowledge place, not Knowledge plus All records (#2996): the owner could not tell them apart. It holds
@@ -9445,12 +9477,6 @@ function dealNext(step) {
   const at = cards.findIndex(card => card.classList.contains("focal"));
   dealCard(cards[(at + step + cards.length) % cards.length].dataset.path);
 }
-function planWhen(item) {
-  return item.all_day ? t("All day") : item.time ? item.time + "–" + item.end_time : t(item.placement || "");
-}
-function planReason(item) {
-  return (item.reasons || []).map(reason => t(reason.text, reason.values)).join(uiLanguage === "zh" ? "；" : "; ");
-}
 // An event that came without a title says what it is: focus time, out of office, or busy on a calendar
 // shared without its details (with that calendar's name). Only an event of his own with no title is "No title".
 function eventTitle(e) {
@@ -9458,35 +9484,15 @@ function eventTitle(e) {
   if (e.label === "Busy" && e.calendar_name) return t("Busy ({calendar})", {calendar: e.calendar_name});
   return t(e.label || "No title");
 }
-function planWords(item) {
-  return [planWhen(item), eventTitle(item), planReason(item)].filter(Boolean).join(" — ");
-}
 // A proposal is three things in words: when (or that there is no time), what in two lines with the whole
 // sentence in its title, and one short link to its page. The sentence is not a link: a whole underlined
 // paragraph read as an error, and five of them filled a phone.
-function proposalItem(item) {
-  const page = byPath(item.record), reason = planReason(item), text = proposalWords(item);
-  return el("li", {class: "day-plan-item day-plan-proposal"}, [
-    el("p", {class: "day-plan-when", text: [planWhen(item), t("Proposed")].filter(Boolean).join(" — ")}),
-    el("p", {class: "day-plan-text", title: text, text}),
-    el("p", {class: "day-plan-why"}, [reason ? reason + " — " : null,
-      el("a", {href: "#r=" + encodeURIComponent(item.record), text: page?.title || item.title})])]);
-}
 // The plan saved the line as the night read it; the card above shows the same item in the reader's language and
 // in the second person, so the proposal says it the card's way whenever the item is still on the page.
 function proposalWords(item) {
   const keys = item.keys || [item.key];
   const entry = typeof threadEntries === "function" ? threadEntries().find(entry => keys.includes(doneKey(entry)) || entry.members?.some(member => keys.includes(doneKey(member)))) : null;
   return entry ? morningWords(entry.t.text, entry.r, entry.t).words : item.text;
-}
-function dayPlanItem(item) {
-  if (item.kind === "proposal") return proposalItem(item);
-  const label = planWords(item), people = (item.people || []).map(byPath).filter(Boolean);
-  return el("li", {class: "day-plan-item"}, [
-    item.link ? el("a", {href: item.link, text: label, target: "_blank", rel: "noopener"}) : el("p", {text: label}),
-    people.length ? el("p", {}, people.flatMap((r, i) => [i ? ", " : null, el("a", {href: href(r), text: r.title})])) : null,
-    item.location ? el("p", {class: "day-plan-address", text: item.location}) : null,
-    item.address_missing ? el("p", {text: t("address not in the calendar event")}) : null]);
 }
 function dayPlanVisible(item) {
   if (item.kind !== "proposal") return true;
@@ -9499,24 +9505,6 @@ function dayPlanVisible(item) {
     if (entry && !waitingOnYou(entry)) return false;
   }
   return true;
-}
-function yourDay() {
-  const plan = REM.day_plan;
-  if (!plan || REM.shared) return null;
-  const today = calendarDay(REM.as_of), day = plan.days.find(day => day.date === today) || plan.days[0];
-  const tomorrow = day.date === today ? plan.days.find(next => next.date > day.date) : null, items = day.items.filter(dayPlanVisible);
-  const events = (tomorrow?.items || []).filter(item => item.kind === "event");
-  return el("section", {class: "day-plan", "aria-label": t("Your day")}, [el("h2", {text: t("Your day")}),
-    el("p", {text: t("Plan for {date} ({zone})", {date: day.date, zone: plan.timezone || REM.status?.timezone || "UTC"})}),
-    day.date !== today ? el("p", {text: t("This saved plan is out of date.")}) : null,
-    !plan.calendar_read ? el("p", {text: t("No calendar has been read yet.")}) : null,
-    plan.calendar_read && plan.not_saved ? el("p", {text: t("No day plan has been saved yet.")}) : null,
-    ...(plan.calendar_errors || []).map(error => el("p", {text: t("{name} could not be read: {reason}; events last read {date}", {name: error.name, reason: t(error.reason), date: error.read_at?.slice(0, 10) || t("never")})})),
-    items.length ? el("ul", {class: "day-plan-list"}, items.map(dayPlanItem)) : el("p", {text: t("No events or proposed things for this day.")}),
-    events.length ? el("div", {class: "day-plan-tomorrow"}, [el("h3", {text: t("Tomorrow: first event")}),
-      el("ul", {class: "day-plan-list"}, [dayPlanItem(events[0])]),
-      ...events.filter(item => item.location).flatMap(item => [el("h3", {text: t("Tomorrow: place to go")}),
-        el("ul", {class: "day-plan-list"}, [dayPlanItem(item)])])]) : null]);
 }
 // To-dos are not events (#3087): they sit in their own short section, each row saying in words that it is a
 // to-do, when it is due (or that it is overdue), and which list it is on. Nothing is ticked off here: that is
@@ -9638,7 +9626,10 @@ function overview() {
   shownCount = groups.length;
   main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
-    staleWidget(todayEntries(entries).filter(staleEntry)), closedToday(), todoSection(), yourDay(), todayFolds(entries, counts)].filter(Boolean));
+    // The calendar is part of Today, under the cards (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个
+    // component，而不是单独的一个 category»); the day plan's proposals are its suggested blocks, not a list on top.
+    todayCalendar(), staleWidget(todayEntries(entries).filter(staleEntry)), closedToday(), todoSection(), todayFolds(entries, counts)].filter(Boolean));
+  tcalScroll();
   if (inDeck) focusRaisedCard();  // a redraw (a save confirmed, new mail) never takes the keyboard out of the deck
 }
 function scheduleFailure() {
@@ -11403,8 +11394,8 @@ function agAxis(now) {
 function agRules() {
   return Array.from({ length: 47 }, (_, i) => el("i", { class: "cal-rule" + (i % 2 ? "" : " half"), style: `top:${(i + 1) * AG_HOUR / 2}px`, "aria-hidden": "true" }));
 }
-function agendaWeek(entries, start) {
-  const today = agToday(), days = Array.from({ length: 7 }, (_, i) => agDay(start, i)), now = days.includes(today) ? agNow() : null;
+function agendaWeek(entries, start, length = 7) {
+  const today = agToday(), days = Array.from({ length }, (_, i) => agDay(start, i)), now = days.includes(today) ? agNow() : null;
   const grid = el("div", { class: "cal-grid", style: `height:${24 * AG_HOUR}px` }, [agAxis(now), ...agRules(), ...days.map(day => agDayColumn(entries, day, today))]);
   return el("div", { class: "cal-week" }, [el("div", { class: "cal-heads" }, [el("span", {}), ...days.map(day => agHead(day, today))]),
     agAllDay(entries, days, today), el("div", { class: "cal-scroll", tabindex: "0", "data-first": String(agFirstMinute(entries, days, now)) }, [grid])]);
@@ -11419,7 +11410,7 @@ function agFirstMinute(entries, days, now) {
 // The grid ends at the window's foot and scrolls inside it, so the heads and the all-day strip stay in view.
 function agSizeWeek() {
   const scroll = document.querySelector(".agenda .cal-scroll");
-  if (!scroll || !scroll.offsetParent) return;
+  if (!scroll || !scroll.offsetParent || scroll.closest(".today-cal")) return;  // Today's calendar keeps its own height
   const height = Math.max(240, innerHeight - scroll.getBoundingClientRect().top - scrollY - 16);
   scroll.style.height = height + "px";
   // Whatever sits under the calendar (the page's own foot) comes off the grid, so the page itself has nothing to scroll.
@@ -11552,7 +11543,7 @@ function agendaBar(range) {
 // Arrows move the chosen day (left and right a day, up and down a week) and the view follows it; T is today;
 // Enter opens the chosen day's first event.
 function agKey(event) {
-  if (!document.querySelector(".agenda") || document.querySelector("dialog[open]") || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (!document.querySelector(".agenda") || (document.querySelector(".today-cal") && !document.activeElement?.closest(".agenda")) || document.querySelector("dialog[open]") || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || event.metaKey || event.ctrlKey || event.altKey) return;
   const move = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
   if (event.key === "Enter" && !event.target.closest("button, a")) {
     event.preventDefault();  // or the same Enter presses the detail's Close, which takes the focus
@@ -11571,15 +11562,87 @@ function agListen() {
   addEventListener("resize", agSizeWeek);
   addEventListener("mousedown", event => { if (!event.target.closest(".cal-detail, .cal-event")) document.querySelector(".cal-detail:not(.n3-sheet)")?.close(); });
 }
+// The week and month grids live in Today's calendar (#3152); every control that redrew the old Agenda page now
+// redraws Today with the calendar open where it was.
 function agendaView() {
-  const main = document.getElementById("main"), entries = agendaEntries(), month = agendaState.view === "month";
-  const start = agendaState.start || agToday(), first = agMonthFirst();
+  todayCal.expanded = true;
+  const at = document.getElementById("today-calendar")?.getBoundingClientRect().top, focused = !!document.activeElement?.closest(".agenda");
+  overview();
+  const now = document.getElementById("today-calendar");
+  if (now && at != null) scrollBy(0, now.getBoundingClientRect().top - at);
+  // The keyboard stays in the calendar it was moving through (agKey answers only there on Today).
+  if (focused) now?.querySelector(".agenda .cal-scroll")?.focus({ preventScroll: true });
+}
+function agendaBlock(entries) {
+  const month = agendaState.view === "month", start = agendaState.start || agToday(), first = agMonthFirst();
   const range = month ? agFormat(first, { month: "long", year: "numeric" })
     : agFormat(start, { day: "numeric", month: "short" }) + " – " + agFormat(agDay(start, 6), { day: "numeric", month: "short", year: "numeric" });
+  return el("div", { class: "agenda agenda-" + agendaState.view, "aria-label": label("agenda") }, [agendaBar(range), agendaRead(),
+    ...(month ? [agendaMonth(entries, first)] : [agendaWeek(entries, start), agendaPhone(entries, start)])]);
+}
+// ---------- The calendar on Today (#3152) ----------
+// Collapsed: the coming seven days as a strip (weather, how much is on, bars for what spans days) over the chosen
+// day's timeline, with the day plan's proposals as dashed "suggested" blocks. Expanded: the week or month grid.
+const todayCal = { day: "", expanded: false };
+Object.assign(UI.zh, { "Schedule": "日程", "Show the week": "展开一周", "This month": "本月", "Back to the day": "收起",
+  "Suggested": "建议", "Dismiss this suggestion": "不要这个建议", "Go to its card": "去这张卡片" });
+function todayCalendar() {
+  if (REM.shared) return null;
+  const entries = agendaEntries();
   agListen();
-  main.replaceChildren(el("div", { class: "agenda agenda-" + agendaState.view, "aria-label": label("agenda") }, [agendaBar(range), agendaRead(), agendaNote(),
-    ...(month ? [agendaMonth(entries, first)] : [agendaWeek(entries, start), agendaPhone(entries, start)])]));
-  agSizeWeek();
+  const button = (text, act, attrs = {}) => { const b = el("button", { type: "button", class: "chip ghost tcal-toggle", ...attrs, text }); b.onclick = act; return b; };
+  const open = view => { Object.assign(agendaState, { view, start: "", month: "", sel: "" }); agendaView(); };
+  const controls = todayCal.expanded
+    ? [button(t("Back to the day"), () => { todayCal.expanded = false; overview(); })]
+    : [button(t("Show the week"), () => open("week")), button(t("This month"), () => open("month"))];
+  return el("section", { class: "today-cal" + (todayCal.expanded ? " expanded" : ""), id: "today-calendar", "aria-label": t("Schedule") }, [
+    el("div", { class: "tcal-head" }, [el("h2", { text: t("Schedule") }), el("div", { class: "tcal-controls" }, controls)]),
+    agendaNote(), ...(todayCal.expanded ? [agendaBlock(entries)] : [el("div", { class: "tcal-frame" }, [tcalWeek(entries), tcalDay(entries)])])]);
+}
+function tcalWeek(entries) {
+  const today = agToday(), sel = todayCal.day || today, days = Array.from({ length: 7 }, (_, i) => agDay(today, i));
+  const strip = el("div", { class: "tcal-strip" }, [el("span", {}), ...days.map(day => {
+    const n = agOnDay(entries, day).length, jump = el("button", { type: "button", class: "cal-jump" + agDayClass(day, today) + (day === sel ? " on" : ""),
+      "aria-pressed": String(day === sel), "aria-label": agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")), "data-day": day }, [
+      el("span", { class: "cal-wd", text: day === today ? agT("Today") : agFormat(day, { weekday: "short" }) }), el("span", { class: "cal-num", text: String(Number(day.slice(8))) }),
+      el("span", { class: "tcal-dots", "aria-hidden": "true", text: "•".repeat(Math.min(3, n)) }), agWeatherMark(day, true)]);
+    jump.onclick = () => { todayCal.day = day; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "nearest" }); };
+    return jump;
+  })]);
+  return el("div", { class: "tcal-week" }, [strip, agAllDay(entries, days, today)]);
+}
+function tcalDay(entries) {
+  const day = todayCal.day || agToday(), node = el("div", { class: "tcal-day" }, [agendaWeek(entries, day, 1)]);
+  const column = node.querySelector(".cal-day");
+  for (const item of tcalSuggestions(day)) column.appendChild(tcalSuggestion(item));
+  return node;
+}
+// The day plan's proposals with a time (day_plan.py), minus what was closed, answered or dismissed.
+function tcalSuggestions(day) {
+  const plan = REM.day_plan?.days?.find(d => d.date === day);
+  const gone = tcalDismissed();
+  return (plan?.items || []).filter(item => item.kind === "proposal" && item.time && dayPlanVisible(item) && !gone.includes(item.key || item.record + "@" + item.time));
+}
+function tcalDismissed() {
+  try { return JSON.parse(localStorage.getItem("co-rem-dismissed-suggestions:" + calendarDay(REM.as_of)) || "[]"); } catch { return []; }
+}
+function tcalSuggestion(item) {
+  const start = agMinutes(item.time), end = agMinutes(item.end_time || item.time) || start + 30, { top, height } = agBlock(start, Math.max(end, start + 20));
+  const words = proposalWords(item), key = item.key || item.record + "@" + item.time;
+  const go = el("button", { type: "button", class: "cal-ev cal-suggest", title: t("Suggested") + " · " + words + " — " + t("Go to its card") }, [
+    el("span", { class: "cal-ev-title", text: t("Suggested") + " · " + words }), el("span", { class: "cal-ev-time", text: item.time + "–" + (item.end_time || "") })]);
+  go.onclick = () => { dealCard(item.record); document.querySelector("#main .today-brief")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
+  const drop = el("button", { type: "button", class: "tcal-drop", "aria-label": t("Dismiss this suggestion"), title: t("Dismiss this suggestion"), text: "×" });
+  drop.onclick = () => {
+    try { localStorage.setItem("co-rem-dismissed-suggestions:" + calendarDay(REM.as_of), JSON.stringify([...tcalDismissed(), key])); } catch { /* the block still leaves this view */ }
+    box.remove();
+  };
+  const box = el("div", { class: "tcal-suggest-box", style: `top:${top}px;height:${height - 1}px` }, [go, drop]);
+  return box;
+}
+// Today's grids scroll inside a fixed height, opened at the first hour that matters (agFirstMinute).
+function tcalScroll() {
+  for (const scroll of document.querySelectorAll(".today-cal .cal-scroll")) scroll.scrollTop = Number(scroll.dataset.first) * AG_HOUR / 60 - 10;
 }
 // The forecast the night saved for these days (weather.py; the page never asks anyone). A day says its weather
 // in words on hover and in its list; the small picture and "22° / 14°" are the second cue. A day with no
@@ -15873,7 +15936,7 @@ function render() {
   if (box.value !== (query || "")) box.value = query || "";
   window.scrollTo(0, 0);
   // The sheet views use the full width; reading views keep a measure.
-  document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && (COLUMNS[c] && inCategory(c).length || c === "agenda")));
+  document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && (COLUMNS[c] && inCategory(c).length)));
   // #3131: a record you read (person, organisation, project, knowledge entry) is one 720px measure, centred, so its
   // crumb, title and body share one left edge; lists and the calendar keep the wide sheet.
   const reading = r && byPath(r);
@@ -15885,6 +15948,7 @@ function render() {
   else if (view === "activity") activityView();
   // #c=all was All records' address (#2996); a kept bookmark opens the graph it drew, now under Knowledge.
   else if (knowledgeShowsGraph({ category: c, view })) knowledgeGraph();
+  else if (c === "agenda" || view === "agenda") { todayCal.expanded = true; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start" }); }
   else if (c) { category(c); tagBarInto(c); }
   else overview();
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
