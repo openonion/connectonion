@@ -383,3 +383,65 @@ def test_an_agent_mailbox_is_the_persons_agent_and_the_owners_own_address_is_nev
     assert not any("0xab12cd34ef" in value for key, value in rows.items() if key != "Their agent")
     if owner_address != "owner@self.example":
         assert owner_address not in card.inner_text()
+
+
+# A citation chip opens its source beside the page and never navigates (#3165 deep hunt, 2026-11-19: «我点了一个引用，
+# 结果跳到别人的人物页去了，我刚才在看项目啊»). Each page kind, a chip quoted from another page, and a chip whose page
+# is not in this snapshot.
+CITED = {
+    "decisions/notebook-format.md": "# Notebook format\n\n## Decision\nPages stay Markdown so they can be read without co rem [1].\n\n## Sources\n- [1] file:/notes/format.md — 2026-09-02\n",
+    "skills/catalog/weekly-brief.md": "# weekly-brief\n\n## Insight\nA saved draft needs a queue readback before it can be sent [1].\n\n## Sources\n- [1] file:/notes/brief.md — 2026-09-03\n",
+}
+
+
+def _chip_opens_beside(page, chip, path):
+    before = page.evaluate("location.hash", isolated_context=False)
+    chip.click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert page.evaluate("location.hash", isolated_context=False) == before, "the chip navigated away"
+    assert page.evaluate("new URLSearchParams(location.hash.slice(1)).get('r')", isolated_context=False) == path
+    page.keyboard.press("Escape")
+
+
+@pytest.mark.parametrize("path", ["projects/harbour.md", "orgs/fernhill-labs.md", MARA, "decisions/notebook-format.md",
+                                  "skills/catalog/weekly-brief.md"])
+def test_a_citation_chip_opens_its_source_beside_the_page_and_never_navigates(reader, path):
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"), language="en")
+    if path in CITED:
+        page.evaluate("""([path, text]) => { const r = byPath(path); r.text = text; delete r.translations; KNOWN.clear(); FACTS.clear(); render(); }""",
+                      [path, CITED[path]], isolated_context=False)
+    page.evaluate("() => document.querySelectorAll('details').forEach(d => d.open = true)", isolated_context=False)
+    # A chip in the page's text (the profile card's sources are a hover away and have their own touch test, #3179).
+    page.evaluate("() => { const a = [...document.querySelectorAll('#main a.cite')].find(n => !n.closest('.pc-row') && n.getClientRects().length); if (a) a.id = 'first-text-chip'; }",
+                  isolated_context=False)
+    chip = page.locator("#first-text-chip")
+    assert chip.count(), path
+    _chip_opens_beside(page, chip, path)
+
+
+def test_a_chip_quoted_from_another_page_opens_that_pages_source_and_stays_put(reader):
+    open_page, _ = reader
+    page = open_page("r=projects%2Fharbour.md", language="en")
+    page.evaluate("""() => { const card = relationCard({path: 'people/mara-ostrowski.md', via: 'people/mara-ostrowski.md',
+        kind: 'mentioned by', basis: 'Mara leads the pilot', sources: ['1']}, 'projects/harbour.md');
+      card.id = 'quoted-card'; document.getElementById('main').prepend(card); }""", isolated_context=False)
+    chip = page.locator("#quoted-card a.cite").first
+    assert "people%2Fmara-ostrowski.md" in chip.get_attribute("href")  # the number is Mara's page's
+    _chip_opens_beside(page, chip, "projects/harbour.md")
+
+
+def test_a_chip_whose_page_is_not_in_the_snapshot_says_so_and_stays_put(reader):
+    open_page, _ = reader
+    page = open_page("r=projects%2Fharbour.md", language="zh")
+    page.evaluate("""() => { const a = Object.assign(document.createElement('a'), { className: 'cite', id: 'gone-chip', textContent: '1',
+        href: '#r=people%2Fnot-in-this-snapshot.md&h=src-1' }); document.getElementById('main').prepend(a); }""", isolated_context=False)
+    before = page.evaluate("location.hash", isolated_context=False)
+    page.locator("#gone-chip").click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert "这条来源所在的页面不在这份快照里" in panel.inner_text()
+    assert page.evaluate("location.hash", isolated_context=False) == before
+    page.keyboard.press("Escape")
+    assert not panel.is_visible()
