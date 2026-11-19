@@ -2694,9 +2694,15 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 "text": f"{ask}\n\n{normalize(record, text, owner=sent_only)}",
                 "timestamp": now, "source": "investigation:page"}
 
+    # What the owner did in the day and what he closed on this page (#3174): settled input, not material to cite.
+    from .owner_today import note as owner_note
+    from .threads import closed_note
+    owner_text = "\n\n".join(part for part in (owner_note(root, record), closed_note(root, record)) if part)
     prompt_items = [page_item(notebook.read(record))] + (
         [{"role": "round", "source": "investigation:append", "timestamp": now, "text": append_note(root, last)}]
         if append else []) + (
+        [{"role": "owner-today", "source": "investigation:owner-today", "timestamp": now, "text": owner_text}]
+        if owner_text else []) + (
         [{"role": "own-company", "source": "investigation:own-company", "timestamp": now, "text": company_note}]
         if company_note else []) + ([{"role": "project-repositories", "source": "investigation:project-repositories",
            "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]

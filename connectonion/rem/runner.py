@@ -1213,6 +1213,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     text, archive_text, moved = archive_history(record, text, archived) if not draft_only else (text, archived, [])
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
+    if not draft_only:
+        from .threads import closed_errors  # an item the owner closed is not written back as open (#3174)
+        errors += closed_errors(notebook.root, record, text)
     if carried:
         errors += dropped_content(carried, with_moved(text, moved), exempt, claims=claims)
     if ask_quotes and record.startswith("projects/"):
