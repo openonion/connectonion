@@ -1609,7 +1609,8 @@ def make_rem_app(factory):
 
     @rem.command("investigate", cls=V("co rem investigate"))
     def investigate_page(ctx: typer.Context,
-                         target: str = typer.Argument(""),
+                         target: str = typer.Argument("", metavar="KIND"),
+                         name: str = typer.Argument("", metavar="NAME"),
                          handle: List[str] = typer.Option([], "--handle"),
                          days: Optional[int] = typer.Option(None, "--days", min=1),
                          quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
@@ -1761,27 +1762,53 @@ def make_rem_app(factory):
             result, record = _investigate_me(root, days=days, quick=quick, handle=handle)
             return result, ["show", record]
 
+        def topics(root, limit, list_only):
+            """Every tag page that is due (#3140): shared by enough pages, unwritten or with new or changed pages."""
+            from ...rem import tag_nodes
+            due = tag_nodes.due(root)
+            if list_only:
+                return {"category": "tags", "order": due}, (["investigate", "tags"] if due else ["status"])
+            report = tag_nodes.write_nodes(root, limit=limit or 50,
+                                           say=lambda line: rem_look.line(line, err=True))
+            return (report if ctx.obj["json"] else tag_nodes.summary(report)), (["logs"] if report["failed"] else ["open"]), \
+                bool(report["failed"])
+
         def run(root):
+            nonlocal target
+            from ...rem.named_pages import canonical
+            target = canonical(target)  # topic and topics are the same words as tag and tags (#3140)
             config = read_config(root)
             effective_workers = workers if workers is not None else (1 if (limit or budget) else config["limits"]["workers"])
             steps = {"--enrich": enrich, "--rewrite": rewrite, "--accept-rewrite": accept_rewrite,
                      "--discard-rewrite": discard_rewrite, "--undo": undo}
             asked = [flag for flag, on in steps.items() if on]
-            if asked and (not target or target in runnable or target == "me"):
-                raise RemError(f"{asked[0]} needs one page: co rem investigate PAGE {asked[0]}")
-            if quick and (not target or target in runnable):
-                raise RemError("--quick goes with me or one page: co rem investigate me --quick")
-            if retry_refused and (not target or target in runnable or target == "me"):
-                raise RemError("--retry-refused needs one page: co rem investigate PAGE --retry-refused")
-            if budget and target not in runnable:
+            one_page = bool(name) or "/" in target
+            if asked and not one_page:
+                raise RemError(f"{asked[0]} needs one page: co rem investigate person \"NAME\" {asked[0]}")
+            if quick and not one_page and target != "me":
+                raise RemError("--quick goes with me or one page: co rem investigate me --quick, or person \"NAME\" --quick")
+            if retry_refused and not one_page:
+                raise RemError("--retry-refused needs one page: co rem investigate person \"NAME\" --retry-refused")
+            if budget and target not in runnable and target not in ("tags", "topics"):
                 raise RemError("--budget goes with a category: co rem investigate all --budget 10")
-            if list_only and target not in runnable:
+            if list_only and target not in runnable and target not in ("tags", "topics"):
                 raise RemError("--list goes with a category: co rem investigate people --list "
                                 "(or projects, orgs, skills)")
             if recent_days is not None and target != "people":
                 raise RemError("--recent-days goes with people: co rem investigate people --recent-days 14")
+            from ...rem import named_pages, tag_nodes
             if not target:
                 return overview(root)
+            if name and target not in named_pages.KINDS:
+                raise (named_pages.unknown_kind(target) if target not in named_pages.PLURALS else
+                       RemError(f"{target} means every due page of that kind; for one page name its kind: "
+                                f"co rem investigate {named_pages.PLURALS[target]} \"{name}\""))
+            if target in named_pages.PLURALS and target not in runnable and target != "tags":
+                raise RemError(f"{target} are not investigated as a batch; name one: "
+                               f"co rem investigate {named_pages.PLURALS[target]} \"NAME\"")
+            if (target not in named_pages.KINDS and target not in runnable and target not in ("me", "tags")
+                    and "/" not in target):
+                raise named_pages.unknown_kind(target)
             if target == "people":
                 # An agent searching each person's prepared evidence (#1943, #1850).
                 from .rem_people import run_people
@@ -1791,10 +1818,22 @@ def make_rem_app(factory):
                                   workers=effective_workers)
             if target == "me":
                 return me(root)
+            if target == "tags":
+                return topics(root, pages_limit or None, list_only)
             if target in runnable:
                 return by_category(root, target, effective_workers)
             notebook = Notebook(root)
-            record = _resolve_page(notebook, target, next_args=["investigate"])
+            # KIND NAME is one page (owner, 2026-11-19: a bare name is ambiguous); a path is the old form.
+            record = (named_pages.resolve(root, target, name) if target in named_pages.KINDS
+                      else _resolve_page(notebook, target, next_args=["investigate"]))
+            slug = tag_nodes.topic_slug(root, record) if record.startswith("knowledge/") else ""
+            if slug and not (accept_rewrite or discard_rewrite or undo):
+                # A tag page (#3140): the pages carrying the tag are its material; written when missing, appended to.
+                report = tag_nodes.write_nodes(root, only=slug)
+                if report["failed"]:
+                    raise RemError(f"{slug}: " + "; ".join(report["errors"])[:400])
+                return ({**report, "tag": slug, "page": record} if ctx.obj["json"] else
+                        f"Investigated the tag {slug}: {record}"), ["show", record]
             from ...rem import page_versions
             if len(asked) > 1 and set(asked) - {"--enrich", "--rewrite"}:
                 raise RemError("Use one of --accept-rewrite, --discard-rewrite and --undo at a time")
@@ -1809,7 +1848,7 @@ def make_rem_app(factory):
             if rewrite and result["rewrite"]["changed"]:
                 return result, ["investigate", record, "--accept-rewrite"]
             return result, ["show", result["report"] if record.startswith("skills/") else record]
-        retry = ["investigate", *([target] if target else []),
+        retry = ["investigate", *([target] if target else []), *([name] if name else []),
                  *(["--days", str(days)] if days is not None else []),
                  *(["--quick"] if quick else []),
                  *(["--retry-refused"] if retry_refused else []),
@@ -1823,7 +1862,7 @@ def make_rem_app(factory):
         def operation(root):
             record = _resolve_page(Notebook(root), page)
             # #3105: enrich is a step of investigate now; say so once, then do it.
-            rem_look.line("co rem enrich moved: it runs co rem investigate PAGE --enrich "
+            rem_look.line("co rem enrich moved: it runs co rem investigate KIND NAME --enrich "
                           f"(co rem investigate {record} --enrich).", err=True)
             result = _page_steps(root, record, enrich=True)
             return (result, ["show", record])
@@ -1937,14 +1976,38 @@ def make_rem_app(factory):
         return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
 
     @rem.command("tag", cls=V("co rem tag"))
-    def tag_pages(ctx: typer.Context, pages: int = typer.Option(200, "--pages", min=1,
-                                                                 help="Tag at most N waiting pages")):
+    def tag_pages(ctx: typer.Context, kind: str = typer.Argument("", metavar="KIND"),
+                  name: str = typer.Argument("", metavar="NAME"),
+                  pages: int = typer.Option(200, "--pages", min=1, help="Tag at most N pages that have no tag"),
+                  dry_run: bool = typer.Option(False, "--dry-run", help="Count what would change; no model")):
+        from ...rem import named_pages, tag_nodes
+        from ...rem.files import RemError
         from ...rem.tag_stage import summary, tag_pages as run_tagging
 
         def operation(root):
             say = None if ctx.obj["json"] else typer.echo
-            report = run_tagging(root, limit=pages, say=say)
-            return (report if ctx.obj["json"] else summary(report)), ["open"], bool(report["failed"])
+            if dry_run:
+                from ...rem.tag_stage import candidates as untagged
+                plan = {**tag_nodes.dry_run(root), "untagged_waiting": len(untagged(root))}
+                plan.pop("members")
+                text = (f"{plan['untagged_waiting']} pages wait for tags · {plan['tags_linked_to_pages']} tags link to a "
+                        f"person, organisation or project page · {plan['tag_pages_possible']} tags get a tag page "
+                        f"({plan['waiting']} due) · {plan['single_page_tags']} tags on one page stay links")
+                return (plan if ctx.obj["json"] else text), ["tag"]
+            word = named_pages.canonical(kind)
+            if word and word not in named_pages.KINDS:
+                raise named_pages.unknown_kind(kind)
+            if word == "tag":
+                raise RemError("A tag's page is written by investigate: co rem investigate tag \"NAME\"")
+            only = [named_pages.resolve(root, word, name)] if word else None
+            report = run_tagging(root, limit=pages, say=say, only=only)
+            # Tags that name a person, organisation or project are links to those pages (#3140); the rest that
+            # two or more pages share get tag pages, written by investigate.
+            report.update(linked=len(tag_nodes.pages_for_tags(root)), tag_pages_due=len(tag_nodes.due(root)))
+            text = summary(report) + (f"\n{report['linked']} tags link to a person, organisation or project page; "
+                                      f"{report['tag_pages_due']} tag pages are due: co rem investigate tags")
+            return (report if ctx.obj["json"] else text), (["investigate", "tags"] if report["tag_pages_due"] else ["open"]), \
+                bool(report["failed"])
         _handle(ctx, operation, ["status"])
 
     @rem.command("list", cls=V("co rem list"))

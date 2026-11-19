@@ -6,6 +6,45 @@ So a stage of its own, `co rem tag`, reads pages and writes their tags from one
 vocabulary; open items inherit their record's tags; the graph gets a node per
 tag; search resolves `tag:9900` through aliases.
 
+Names: 知识图谱 / knowledge graph for the whole, 页面 / page for its one kind of
+point, 标签 / tag for a word that links pages, 标签页 / tag page for a tag's own
+page. See [rem-naming.md](rem-naming.md) for the principles every REM name
+follows.
+
+## Tags link pages; a shared tag gets a tag page (#3140)
+
+- **Two commands, kind first.**
+  - `co rem tag` tags every page that has no tag; `co rem tag person "X"` tags
+    one page. Each tag that names a person, organisation or project, by title,
+    alias or file name (`tag_nodes.pages_for_tags`), is a link to that page.
+  - `co rem investigate tag "AI Agent"` writes or appends that tag's page,
+    `knowledge/<tag>.md` (or the knowledge entry already named for it), from
+    every page carrying the tag. `co rem investigate tags` does every due tag
+    page.
+  - "topic" and "topics" are aliases (`named_pages.ALIASES`).
+- **Which tags get a page:** only tags shared by `limits.topic_min_pages` (2) or
+  more pages and named for no page. A tag on one page stays a plain link.
+- **How it is written:** the level-1 model (`STAGE_LEVELS["tag-node"]`) reads
+  the head of each member page and its lines naming the tag (at most 40
+  members, 1,200 characters each).
+  - Every line cites a number from one source table, so a line traces to the
+    member's own source.
+  - Code owns the Tags line, the `## Pages` member list, the `Investigation:`
+    stamp and the Sources.
+  - A reply with no title, no cited line, or a number it was not given is
+    refused. A cited line the page had is kept (#3105).
+- **Undo:** `page_versions.keep_previous` makes the investigate Undo work.
+- **Due:** `.state/tag-nodes.json` holds each tag's member hash. A tag page is
+  due when it is unwritten or its pages changed.
+- **Night:** each catchup round writes up to `limits.tag_nodes_per_round` (6)
+  due tag pages after its tag turns.
+- **Reader:**
+  - `data.tags[slug].page` is the page a tag links to; a chip opens it.
+  - The graph draws pages only. A tag adds edges between its pages and the page
+    it links to (`reader_model.tag_layer`).
+  - A tag page gets the 调查 (Investigate) button (`page_runs.KINDS` includes
+    `knowledge/` for tag pages).
+
 ## What exists where
 
 | Piece | Where | Status |

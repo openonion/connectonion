@@ -1575,7 +1575,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
       const REM = {owner: 'people/owner.md'}, DIRECTION_LABEL = {mine: 'Waiting on you'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const draft = {status: 'no_reply', gist: '需要你到场，已等3天。'}, threadDraft = () => draft;
-      const inline = text => text, threadWords = text => text, withoutDateClutter = text => text, capFirst = text => text, privateFallback = node => node;
+      const inline = text => text, threadWords = text => text, withoutDateClutter = text => text, rowWords = text => ({ lead: text, quote: "" }), capFirst = text => text, privateFallback = node => node;
       const threadActions = () => null, age = () => '', threadAge = () => '', blockerTag = () => null, daysSince = () => 1;
       const r = {path: 'people/fern.md'}, thread = {text: 'You owe Fern a response.', dir: 'mine'};
     ''' + f'console.log(JSON.stringify({renderer}(r, thread, false)));')
@@ -1692,9 +1692,9 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['nightCard', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
+                          for name in ['nightCard', 'scheduleFailure', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
     result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + 'const RING = 314.16;\n' + functions + r'''
-      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null, nightStall = () => null;
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null, nightWords = () => null, nightStall = () => null;
       let mine = 5;
       const threadCounts = () => ({mine}), staleEntry = () => false, threadDraft = () => null;
       const overdueDays = thread => thread.due && thread.due < REM.as_of ? Math.round((Date.parse(REM.as_of) - Date.parse(thread.due)) / 86400000) : 0;
@@ -1733,7 +1733,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
              'direction', 'owing', 'rawSection', 'threadEntries', 'obligationWords',
-             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate']
+             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'scheduleFailure', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + r'''
       const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
@@ -1743,7 +1743,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
       const threadWho = r => r.title, RING = 314.16, threadCounts = () => ({mine: 7}), threadDraft = () => null, staleEntry = () => false;
-      const icon = () => null, nightChart = () => null, nightStall = () => null, threadAge = () => 'new', overdueDays = () => 0;
+      const icon = () => null, nightChart = () => null, nightWords = () => null, nightStall = () => null, threadAge = () => 'new', overdueDays = () => 0;
       const face = name => ({tag: 'span', text: name, append() {}});
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
@@ -1832,7 +1832,7 @@ def test_claim_values_use_only_current_cached_facts_for_chinese_after():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['parseFacts', 'topLevelParts', 'rawSection', 'factText', 'plainLine',
-                                       'originalMark', 'claimValue', 'overnightChange', 'changeCard'])
+                                       'originalMark', 'claimValue', 'overnightChange', 'changeCard', 'localDates', 'fmtDate'])
     result = _run_reader_js(functions + r'''
       UI.zh = {Original: '原文', 'No Chinese translation yet; showing original': '尚无中文译文，显示原文', role: '职位'};
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, youify = text => text;
@@ -2435,7 +2435,7 @@ def test_schedule_reader_states_are_short_and_translated():
 def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadWho', 'cardHead', 'snapshotWhy', 'threadRow', 'withoutDateClutter'])
+                          for name in ['threadWho', 'cardHead', 'snapshotWhy', 'threadRow', 'withoutDateClutter', 'rowWords'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};
@@ -3527,11 +3527,12 @@ def test_the_empty_topic_list_says_rem_files_knowledge_on_its_night_run(language
       console.log(JSON.stringify(view));
     ''')
     text = json.dumps(result, ensure_ascii=False)
-    # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Topics" category.
+    # Owner, 2026-11-09: the category is Knowledge (知识), not a new "Tag pages" category.
     assert result['children'][0]['children'][0]['text'] == ('知识' if language == 'zh' else 'Knowledge')
     assert ('还没有知识条目' if language == 'zh' else 'No knowledge yet') not in text
     assert ('REM 会在夜里那一轮从已有记录里整理知识。' if language == 'zh' else 'REM files knowledge from your records on its night run.') in text
-    assert '主题' not in text and 'No topics' not in text and 'Topics are' not in text
+    # 标签页 / Tag pages is the knowledge view's own tab now (#3140): no empty-topic lines.
+    assert 'No topics' not in text and 'Topics are' not in text
     # D-60 (#2910): the night run files knowledge (daily.py backfill_topics); no command, no copy button.
     assert 'co rem' not in text and '"code"' not in text and '"复制"' not in text and '"Copy"' not in text
 
@@ -3826,9 +3827,9 @@ def test_knowledge_switch_uses_bookmarkable_paths_without_storage(mode):
     assert title['text'] == 'Knowledge'
     # #3085: the graph is first; the entries have an address of their own, since the rail's opens the graph.
     assert [(link['text'], link['href']) for link in nav['children']] == [
-        ('Graph', '#view=graph'), ('Entries', '#c=knowledge&view=entries')]
+        ('Knowledge graph', '#view=graph'), ('Tag pages', '#c=knowledge&view=entries')]
     assert [link['text'] for link in nav['children'] if link.get('aria-current') == 'page'] == [
-        'Entries' if mode == 'entries' else 'Graph']
+        'Tag pages' if mode == 'entries' else 'Knowledge graph']
 
 
 # ---------- opening is instant: the last page from disk, rebuilt behind it (owner, 2026-11-09) ----------
@@ -4776,7 +4777,7 @@ def test_an_org_record_never_counts_today_even_with_mixed_obligations():
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children});
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
       const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
-      const orgOpening = () => 'facts', orgTree = () => 'tree', investigateControl = () => null;
+      const orgOpening = () => 'facts', orgTree = () => 'tree', investigateControl = () => null, pageTagRow = () => null;
       const orgTodayLink = () => { throw Error('Organisation requested Today counts'); };
       const owed = ['addendum', 'export', 'quiet', 'stale', 'done', 'held', 'merged copy'];
       console.log(JSON.stringify(orgStage({r: {}, people: [], owed})));
@@ -5026,3 +5027,19 @@ def test_a_manual_build_says_when_another_build_holds_the_pages(tmp_path, monkey
         assert mine
         reader.main([str(root), "live", "full"])
     assert "Another build is running" in capsys.readouterr().out
+
+
+def test_rem_version_says_whether_a_newer_page_is_being_built(tmp_path, monkeypatch):
+    """Mac review of rc30: the open page kept "正在更新…" on a current render. /rem/version now says building, so the
+    page takes the line down once nothing newer is coming (clearUpdating)."""
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/alice.md", "# Alice Example\n")
+    monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
+    reader.cached_page(root, "live.html")
+    reader.refresh(root)
+    monkeypatch.setattr(reader, "_rebuild_stale", lambda root, name, version, owner=False: False)
+    assert reader.latest(root)["building"] is False
+    monkeypatch.setattr(reader, "_rebuild_stale", lambda root, name, version, owner=False: True)
+    assert reader.latest(root)["building"] is True

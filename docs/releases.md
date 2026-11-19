@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc33**: `co wechat` reads your own WeChat for Mac history locally (read-only) — a
+Release candidate **1.9.6rc34**: REM's knowledge graph (a tag links pages and gets its own page), a closed item
+that stays closed, three privacy levels that cover every place a passage shows, and the bug hunt's fixes. See
+[1.9.6rc34 notes](releases/1.9.6rc34.md).
+Before it, release candidate **1.9.6rc33**: `co wechat` reads your own WeChat for Mac history locally (read-only) — a
 SQLCipher-4 decryption engine with `doctor`, `key`, `chats`, `decrypt` and `export`. See
 [1.9.6rc33 notes](releases/1.9.6rc33.md).
 Before it, release candidate **1.9.6rc32**: `co browser` starts headless on a Windows machine with no desktop (SSH,
@@ -134,7 +137,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc33'
+python -m pip install --upgrade 'connectonion==1.9.6rc34'
 ```
 
 ## Previous stable

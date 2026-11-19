@@ -730,12 +730,9 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
 RAISED = """() => {
   const shows = node => node.getClientRects().length > 0;
   const green = [...document.querySelectorAll('.today-brief .qcard')].filter(card => [...card.querySelectorAll('.btn-act, .strip-lead')].some(shows));
-  // Faces that rose close together share one ring: its initials are the raised person's, its title names them all.
-  const waiting = [...document.querySelectorAll('.today-brief .qcard')].map(card => byPath(card.dataset.path));
-  const ringed = [...document.querySelectorAll('.night-card .fc.sel')].flatMap(ring => waiting.filter(r =>
-    ring.querySelector('title').textContent.includes(threadWho(r)) && ring.querySelector('text').textContent === face(threadWho(r)).textContent));
+  // The night card no longer draws a chart with faces (Mac review of rc30): the card, its primary and the faces agree.
   return [[...document.querySelectorAll('.today-brief .qcard.focal.open')], green, [...document.querySelectorAll('.deal[aria-pressed="true"]')],
-    [...document.querySelectorAll('.deal.on')]].map(nodes => nodes.map(node => node.dataset.path).join()).concat(ringed.map(r => r.path).join());
+    [...document.querySelectorAll('.deal.on')]].map(nodes => nodes.map(node => node.dataset.path).join());
 }"""
 
 
@@ -767,14 +764,14 @@ def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
     card.locator(".owner-slot input").fill("Thursday afternoon")
     faces = page.locator(".deal").evaluate_all(FACES)
     other = next(path for path in faces if path != start)
-    assert _raised_everywhere(page) == [start] * 5
+    assert _raised_everywhere(page) == [start] * 4
     page.locator(f'.deal[data-path="{other}"]').click()
-    assert _raised_everywhere(page) == [other] * 5
+    assert _raised_everywhere(page) == [other] * 4
     assert page.locator(f'.deal[data-path="{start}"]').get_attribute("aria-pressed") == "false"
     page.locator("body").press("s")  # S deals the next card; the words stay where they were typed
-    assert _raised_everywhere(page) == [faces[(faces.index(other) + 1) % len(faces)]] * 5
+    assert _raised_everywhere(page) == [faces[(faces.index(other) + 1) % len(faces)]] * 4
     page.locator(f'.deal[data-path="{start}"]').click()
-    assert _raised_everywhere(page) == [start] * 5
+    assert _raised_everywhere(page) == [start] * 4
     assert page.locator(".today-brief .qcard.focal .owner-slot input").input_value() == "Thursday afternoon"
     # The raised card carries the page's one primary action; a card waiting behind its face does not.
     assert page.locator(".today-brief .qcard:not(.focal) .card-acts .btn-act").count() == 0

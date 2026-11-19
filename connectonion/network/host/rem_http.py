@@ -94,6 +94,8 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
     elif scope["method"] == "GET" and scope["path"] == "/rem/task-file":
         await _task_file(scope, send, root)
+    elif scope["method"] == "GET" and scope["path"] == "/rem/source":
+        await _source(scope, send, root)
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
@@ -105,6 +107,26 @@ async def handle_rem_http(scope, receive, send, routes):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
+
+
+async def _source(scope, send, root):
+    """One cited source's retained excerpt, for a card the snapshot had no room for (#3165).
+
+    The snapshot's excerpts share one budget across the notebook, mail first, so a project's files, sessions and
+    commits rarely fit. Only what REM itself retained is read (the same readers as the snapshot), by a source id
+    of a known kind; never a path the request names."""
+    from ...rem.reader_model import SOURCE, cited_context
+    value = parse_qs(scope.get('query_string', b'').decode('utf-8')).get('id', [''])[0]
+    match = SOURCE.search(f"- [1] {value}") if value and len(value) <= 512 and "\n" not in value else None
+    if not match or match[2] != value:
+        await _reply(send, 404, 'not found')
+        return
+    found = await asyncio.to_thread(cited_context, root, [{'text': f"- [1] {value}"}], budget=200_000, private=True)
+    context = found.get(value)
+    if not context:
+        await _reply(send, 404, 'not found')
+        return
+    await _reply(send, 200, json.dumps(context, ensure_ascii=False), 'application/json')
 
 
 async def _task_file(scope, send, root):

@@ -57,13 +57,14 @@ def test_reader_today_background_status_says_failure_count_and_since(count, lang
     from connectonion.rem.reader import TEMPLATE
     from tests.unit.test_rem_reader import _run_reader_js
     function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
-    script = f'uiLanguage = {json.dumps(language)};\n' + function
+    script = f'uiLanguage = {json.dumps(language)}; const REM = {{status: {{timezone: "Australia/Sydney"}}}};\n' + function
     script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
         "code": "blocked", "failures": count, "since": "2026-11-14T14:00:00+00:00",
         "evidence": "Permission denied: /private/fixture/.git"}) + ')));'
     output = _run_reader_js(script)
-    assert str(count) in output and "2026-11-14 14:00" in output
-    assert "UTC" in output
+    # #3156: local time in the reader's words (14:00 UTC is 01:00 on the 15th in Sydney), never ISO or UTC.
+    assert str(count) in output and "01:00" in output and "15" in output
+    assert "UTC" not in output and "2026-11-14" not in output
     assert ("failed" if language == "en" else "失败") in output
     assert "/private/fixture" not in output
 

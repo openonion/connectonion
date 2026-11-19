@@ -700,7 +700,8 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem stub project "Aurora" --path /path/to/repo` | Create a project skeleton. |
 | `co rem list people --aliases` | Existing identity roster: page, title, aliases, addresses, relationship summary. |
 | `co rem list people --review` | Pages held for review: titled by an address the owner never wrote to, or only ever wrote to. |
-| `co rem investigate people/alice.md` | Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. |
+| `co rem investigate person "Alice Ng"` | Name the kind, then the page (title or alias, case and spaces ignored; two matches are refused with both names). Read the existing page, gather sources, digest oversized material, fill that same page through the Skill. `org`, `project`, `skill`, `decision` work the same way. |
+| `co rem investigate tag "AI Agent"` | Write or append that tag's page (`knowledge/<tag>.md`) from every page carrying it; `topic` is the same word. `co rem investigate tags` does every due tag page ([details](rem-tags.md)). |
 | `co rem investigate` | What is left to investigate, by category, most useful first. No model. |
 | `co rem investigate people --limit 3` | Investigate the next three people, the last 14 days' correspondents first (`--recent-days`): a person investigated before reads only the mail since then ([details](rem-people-pages.md)). `--list` prints the order and the cost and runs nothing. `projects`, `orgs`, `skills` take unfinished pages, most mail or sessions first. |
 | `co rem investigate me` | Fill your own page from what you sent and your coding sessions of the last 30 days. |
@@ -1185,11 +1186,11 @@ back as material.
 The options are steps, each with its own prompt:
 
 ```bash
-co rem investigate people/avery-lin.md            # write or append, notebook material only
-co rem investigate people/avery-lin.md --enrich   # then follow its leads: links, attachments, the web
-co rem investigate people/avery-lin.md --rewrite  # a whole-page rewrite, kept as a draft
-co rem investigate people/avery-lin.md --accept-rewrite
-co rem investigate people/avery-lin.md --undo     # the page as it was before its last investigation
+co rem investigate person "Avery Lin"            # write or append, notebook material only
+co rem investigate person "Avery Lin" --enrich   # then follow its leads: links, attachments, the web
+co rem investigate person "Avery Lin" --rewrite  # a whole-page rewrite, kept as a draft
+co rem investigate person "Avery Lin" --accept-rewrite
+co rem investigate person "Avery Lin" --undo     # the page as it was before its last investigation
 ```
 
 - `--enrich` runs the enrich prompt (`rem-enrich`) on the result, even when
@@ -3868,7 +3869,7 @@ pass that samples recent items across available source types and labels the
 result partial; it is only for `me`, and neither mode approves a candidate
 without review.
 
-`co rem investigate <page> --days 5` reports source gathering, evidence
+`co rem investigate person "NAME" --days 5` reports source gathering, evidence
 preparation, extraction chunk counts when the material exceeds one model turn,
 and candidate writing in its run log and terminal. A failed model or provider
 call exits nonzero and keeps the page unchanged. Project investigations may

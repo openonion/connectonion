@@ -98,7 +98,9 @@ def reader(tmp_path, monkeypatch):
 def _open(page, language):
     page.goto(BASE)
     page.locator(".night-card .count").wait_for()
-    page.evaluate(f"() => {{ REM.live = true; setInterfaceLanguage('{language}'); dealCard('{SHOP}'); scrollTo(0, 0); }}",
+    # The fixture stands in for the owner's live reader on this computer, so it starts where that one does:
+    # sensitive covered, the rest shown (#2840); a test that wants labelled passages hidden says so itself.
+    page.evaluate(f"() => {{ REM.live = true; setPrivacy('cover', {{ save: false, redraw: false }}); setInterfaceLanguage('{language}'); dealCard('{SHOP}'); scrollTo(0, 0); }}",
                   isolated_context=False)
 
 

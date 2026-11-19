@@ -32,7 +32,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     from ...rem.migrate import program
     found = pages(Path(root))
     counts = notebook(root, found)
-    lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found), *_today(root, value), "",
+    lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found, value), *_today(root, value), "",
              *(highlight(part) for row in value.get('stages', []) for part in _clause_rows(row['text'])), "",
              *([highlight(value['calendar']['text']), ""] if value.get('calendar') else []),
              *([highlight(value['day_plan']['text']), ""] if value.get('day_plan') else []),
@@ -124,12 +124,15 @@ def _tonight(value):
             *(rem_look.follow(highlight(f"{row['title']}: {row['text']} — {row['reason']}"), glyph='') for row in night['unprepared']), '']
 
 
-def _waiting(root, found: dict) -> list[str]:
+def _waiting(root, found: dict, value: dict | None = None) -> list[str]:
     """What needs the owner, first: the open threads waiting on them, counted as the reader's home counts them."""
     from ...rem.census import open_threads
     found = open_threads(Path(root), found)
+    unmatched = (value or {}).get('closed_unmatched', 0)
+    # A mark kept although its line is gone (#3174): said, so nothing the owner closed is lost quietly.
+    gone = [rem_look.follow(f"{_plural(unmatched, 'closed item')} no longer match a line on their page", glyph='')] if unmatched else []
     return [rem_look.section("Waiting on you", f"{_number(found['mine'])} of {_plural(found['open'], 'open thread')}"),
-            ""]
+            *gone, ""]
 
 
 def _budget(root, value: dict, verbose: bool) -> list[str]:
