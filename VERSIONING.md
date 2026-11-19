@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc31
+## Current Version: 1.9.6rc32
+Release candidate 1.9.6rc32 for 1.9.6: `co browser` starts headless on Windows in session 0 (OpenSSH logins,
+services, scheduled tasks), where a headed Chrome could never show a window and go_to waited 120 s. Together with
+rc31's Windows fixes for co rem (timezone, UTF-8, paths, long prompts) and the onionwright install, co runs on a
+Windows PC end to end. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc32.md).
+
+- 1.9.6rc32 (co browser headless in Windows session 0).
+
+### Previous candidate: 1.9.6rc31
 Release candidate 1.9.6rc31 for 1.9.6: the calendar is part of Today (a week strip over the day's timeline, under
 the cards; no separate Agenda place), record pages read in one 720 px measure with a flat header and an ink accent,
 a Keys place whose values live only in the macOS Keychain, tags on every page kind with tag pages, filters and graph
