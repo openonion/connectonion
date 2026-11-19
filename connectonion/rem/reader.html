@@ -3196,7 +3196,9 @@
     font: var(--w-bold) var(--s-ui)/1 var(--font); letter-spacing: 0; }
   .face.s { width: 22px; height: 22px; font: var(--w-bold) var(--s-meta)/1 var(--font); }
   .face.l { width: 46px; height: 46px; }
-  .face.xl { width: 104px; height: 104px; font: var(--w-bold) var(--s-head)/1 var(--font); }
+  .face.xl { width: 64px; height: 64px; font: var(--w-bold) var(--s-lead)/1 var(--font); }
+  /* The ring is drawn over the face, not beside its letters: as a grid item it took a second row and lifted them. */
+  .face .ring-host { position: absolute; inset: 0; }
   .face svg.ring { position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); transform: rotate(-90deg); overflow: visible; }
   .face svg.ring circle { fill: none; stroke-width: 3; }
   .face.xl svg.ring circle { stroke-width: 2.4; }
@@ -3512,16 +3514,26 @@
   .n3-person .chip.ghost { background: transparent; box-shadow: var(--e-ring); color: var(--grey); }
   .n3-person :is(a, button).chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
   .n3-person .chip .ic { width: 14px; height: 14px; }
-  .n3-person .hero { display: block; margin: 0; padding: 32px 32px 28px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1);
+  .n3-person .hero { display: block; margin: 0; padding: 28px 32px 24px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1);
     animation: n3-rise var(--t-draw) var(--spring) both; }
-  .hero-top { display: flex; align-items: center; gap: 24px; }
+  .hero-top { display: flex; align-items: flex-start; gap: 20px; }
   .n3-person .face { background: var(--well); color: var(--ink); }
   .hero-who { flex: 1; min-width: 0; }
   .n3-person .hero .r4-name { margin: 0; font: var(--w-bold) var(--s-display)/var(--lh-tight) var(--font); letter-spacing: var(--track-display); }
   .hero-marks { color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .hero-marks:empty { display: none; }
   .n3-person .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; font: inherit; }
-  .hero-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+  /* One fixed action column, top right: 调查 (with ⋯), and under it the page's translation state in one quiet line. */
+  .hero-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; max-width: 320px; }
+  .hero-acts .translation-line { align-self: flex-end; margin: 0; text-align: right; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-ui) var(--font); }
+  .hero-acts .translation-line button { margin: 0 0 0 6px; padding: 0; height: auto; border: 0; background: none; box-shadow: none; color: var(--ink);
+    font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
+  /* The third line: place · last contact · mail · Today, in the reader's grey, one line on a desktop. */
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .hero-meta > * + *::before { content: "·"; margin: 0 8px; color: var(--grey); }
+  .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
+    font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .n3-person .hero-meta .r4-today.late { color: var(--red); }
   .hero-acts:empty { display: none; }
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
@@ -3577,36 +3589,44 @@
   .hero-acts:has(.inv) { align-items: flex-start; }
   .hero-acts:has(.inv) .r4-today { align-self: flex-start; }
   /* The dek: who they are in one line of words, role · organisation · unit (owner, 2026-11-18). */
-  .n3-person .r4-sub.dek { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; max-width: none; margin: 8px 0 0; color: var(--ink); font: var(--w-regular) var(--s-lead)/var(--lh-body) var(--font); }
+  .n3-person .r4-sub.dek { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; max-width: none; margin: 6px 0 0; color: var(--ink); font: var(--w-regular) var(--s-body)/var(--lh-body) var(--font); }
   .n3-person .dek a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .n3-person .dek a:hover { text-decoration-color: var(--ink); }
   .n3-person .dek .org-mark { width: 14px; height: 14px; margin-right: 6px; vertical-align: 1px; }
   .n3-person .dek-unit { color: var(--grey) !important; }
   /* The role is the line; organisation and units follow under it, spaced rather than dotted, so a wrapped line never starts with a dot. */
-  .n3-person .dek .dek-role { flex-basis: 100%; }
-  .n3-person .dek .dek-role ~ * { margin-top: 4px; font-size: var(--s-body); }
+  /* Role · organisation · units on one line, wrapping as words, not as a stack of rows. */
+  .n3-person .dek > * + *::before { content: "·"; margin-right: 16px; margin-left: -8px; color: var(--grey); text-decoration: none; display: inline-block; }
   /* The profile card: a fact box of four groups under one hairline; label above value, on the 4px grid. */
-  .pcard { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 24px 32px; margin-top: 24px; padding-top: 24px; border-top: var(--hair) solid var(--rule); }
-  .pc-group { min-width: 0; }
-  .pcard .pc-h { margin: 0 0 12px; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); letter-spacing: 0; }
-  .pcard dl { display: grid; gap: 12px; margin: 0; }
-  .pc-row { display: grid; gap: 4px; min-width: 0; }
-  .pc-k { display: flex; align-items: center; gap: 4px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-head) var(--font); }
-  .pc-k .icw, .pc-k .ic { width: 12px; height: 12px; }
-  .pc-v { display: grid; gap: 4px; margin: 0; min-width: 0; color: var(--ink); font: var(--w-regular) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; }
-  :root[lang="zh"] .pc-v { line-height: var(--lh-read); }
+  .pcard { margin-top: 20px; padding-top: 16px; border-top: var(--hair) solid var(--rule); }
+  /* Each fact one row, label column then value; the rows flow into two balanced columns. */
+  .pc-list { columns: 2 300px; column-gap: 48px; margin: 0; }
+  .pc-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; padding: 6px 0; break-inside: avoid; min-width: 0; }
+  .pc-k { margin: 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc-v { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 0; min-width: 0; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .pc-v > * { max-width: 100%; }
   .pc-v .val, .pc-v .val.mono > span:first-child, .pc-v .val.mono > .fact-tail { font: inherit; color: inherit; }
+  /* Prose (how you know them) stops at two lines; the whole of it is one hover away. */
+  .pc-v > .val:not(.mono) { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .pc-v a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .pc-v .qual { margin-left: 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); white-space: normal; }
-  /* Sources stay one tap away as small grey numbers, not chips. */
-  .pcard .cite { position: relative; top: -0.6em; vertical-align: baseline; margin-left: 2px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); text-decoration: none; }
-  .pc-item { display: inline; }
-  .pc-after { white-space: nowrap; }
-  .pc-copy { position: relative; display: inline; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: var(--r-cell); background: none; color: inherit; font: inherit; text-align: left; cursor: copy; overflow-wrap: anywhere; }
+  .pc-v .qual { margin-left: 6px; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-tight) var(--font); white-space: nowrap; }
+  .pc-inline { display: flex; flex-wrap: wrap; gap: 0 4px; }
+  .pc-inline > * + *::before { content: "·"; margin-right: 4px; color: var(--grey); }
+  /* Sources stay one hover away: a number after every value was the card's noise. */
+  .pcard .cite { position: relative; top: -0.5em; margin-left: 2px; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-tight) var(--font); text-decoration: none;
+    display: none; }
+  .pc-row:hover .cite, .pc-row:focus-within .cite { display: inline; }
+  .pc-item { display: flex; align-items: baseline; min-width: 0; max-width: 100%; }
+  .pc-after { white-space: nowrap; flex: none; }
+  /* An address or handle is one line, ellipsised; a click copies the whole of it. */
+  .pc-copy { position: relative; display: block; min-width: 0; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: var(--r-cell); background: none; color: inherit; font: inherit;
+    text-align: left; cursor: copy; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pc-copy:hover, .pc-copy:focus-visible { background: var(--well); }
-  .pc-done { display: none; margin-left: 8px; color: var(--grey); font: var(--w-bold) var(--s-ui)/var(--lh-tight) var(--font); }
+  .pc-done { display: none; margin-left: 8px; color: var(--grey); font: var(--w-bold) var(--s-meta)/var(--lh-tight) var(--font); }
   .pc-copy.done .pc-done { display: inline; }
-  .pc-missing { grid-column: 1 / -1; margin: -8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-head) var(--font); }
+  .pc-more { padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-body) var(--font); cursor: pointer;
+    text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .pc-more:hover { color: var(--ink); }
   .n3-person .r4-today { display: inline-flex; align-items: center; gap: 8px; height: 44px; margin-left: 8px; padding: 0 16px; border: 0; border-radius: var(--r-pill); box-shadow: var(--e-ring);
     color: var(--grey); font: var(--w-bold) var(--s-ui)/1 var(--font); white-space: nowrap; text-decoration: none !important; }
   .n3-person .r4-today.late { color: var(--red); box-shadow: var(--e-fuse); }
@@ -3674,7 +3694,7 @@
     /* The face stays in the header beside the name, as on a contact card; the Today link takes the row
        below (sprint 15: it had sat among the actions). A long name hyphenates instead of breaking. */
     .hero-top { flex-wrap: wrap; align-items: center; gap: 12px 16px; }
-    .n3-person .hero .face.xl { align-self: flex-start; width: 44px; height: 44px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
+    .n3-person .hero .face.xl { align-self: flex-start; width: 48px; height: 48px; font: var(--w-bold) var(--s-body)/1 var(--font); }
     .hero-who { flex: 1 1 0; }
     .hero-acts { flex: 1 1 100%; justify-content: flex-start; gap: 6px; }
     .hero-acts .inv { align-items: flex-start; width: 100%; }
@@ -3683,14 +3703,14 @@
     .n3-person .r4-today { height: 40px; margin-left: 0; padding: 0 12px; }
     .n3-person .r4-sub.dek { font-size: var(--s-body); }
     /* On a phone each fact is one line, its label in a narrow column, so the card fits the first screen. */
-    .pcard { grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 16px; padding-top: 16px; }
-    .pcard .pc-h { margin-bottom: 8px; }
-    .pcard dl { gap: 8px; }
-    .pc-row { grid-template-columns: 80px minmax(0, 1fr); gap: 8px; align-items: start; }
-    /* The label sits on the value's first line, however many lines the value takes. */
-    .pc-k { line-height: var(--lh-read); }
-    .pc-k .icw { display: none; }
-    .pc-missing { margin-top: -4px; }
+    .pcard { margin-top: 16px; padding-top: 12px; }
+    .pc-list { columns: 1; }
+    .pc-row { grid-template-columns: 80px minmax(0, 1fr); gap: 12px; }
+    .hero-acts { flex-direction: row; flex-wrap: wrap; align-items: center; max-width: none; }
+    .hero-acts .translation-line { text-align: left; align-self: flex-start; }
+    /* On a phone the role and the organisation each take their line; a dot would start the second one. */
+    .n3-person .dek { flex-direction: column; gap: 2px; }
+    .n3-person .dek > * + *::before { content: none; }
     .bento { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .bento .span2, .bento .person-sessions { grid-column: auto; }
     .rh-row { flex-direction: column; align-items: stretch; }
@@ -9780,13 +9800,30 @@ function personHead(r) {
   // The same fuse as their face on Today: the days overdue on their card there.
   const group = todayGroups(threadEntries().filter(entry => !isDone(entry))).find(group => group.r.path === r.path);
   const late = group ? groupLate(group) : 0;
+  // Sprint 23 (owner, 2026-11-19: «人物页面的第一个卡片很丑»): one header of three lines (name, who they are,
+  // where and how recent), one fixed action column on the right (调查, then the page's translation state), and
+  // the facts under one hairline as single-line rows. Nothing else floats in the header.
   return el("header", { class: "r4-head person-head hero" }, [
     el("div", { class: "hero-top" }, [fusedFace(r, late, "xl"),
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
-        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r)]),
-      el("div", { class: "hero-acts" }, [investigateControl(r), personTodayLink(r, late)])]),
+        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late)]),
+      el("div", { class: "hero-acts" }, [investigateControl(r), translationLine(r)])]),
     profileCard(r)]);
+}
+// The third header line: where they are, how recent, how much mail, and Today when something waits there.
+// These facts are said here, so the card below does not repeat them.
+function personMeta(r, late) {
+  const parsed = parseFacts(r), have = label => (parsed.has(label) ? parsed.get(label) : legacyFact(r, label)).filter(item => knownValue(item.value));
+  const place = have("Location")[0], last = have("Last contact")[0];
+  const lastValue = last ? plainLine(last.value) : "";
+  const lastText = /^\d{4}-\d{2}-\d{2}$/.test(lastValue) ? fmtDate(lastValue) : lastValue || (mappedContact(r) && known(r).last ? fmtDate(known(r).last) : "");
+  const parts = [place ? el("span", { text: plainLine(place.value) }) : null,
+    lastText ? el("span", { text: t("Last contact {when}", { when: lastText }) }) : null,
+    r.mail?.mails ? el("span", { title: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }),
+      text: t(r.mail.mails === 1 ? "1 mail" : "{n} mails", { n: r.mail.mails }) }) : null,
+    personTodayLink(r, late)].filter(Boolean);
+  return parts.length ? el("p", { class: "hero-meta" }, parts) : null;
 }
 // Who they are in one line of words: role, organisation (→ its page) and units (→ theirs). These are said here
 // and nowhere else in the header (owner, 2026-11-18: one place per fact); where a value came from stays in its title.
@@ -9808,7 +9845,8 @@ function personSub(r) {
 const PROFILE_GROUPS = [["Contact", ["Email", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
   ["Relationship", ["How we know them", "First contact", "Last contact", "Mail"]], ["Identity", ["Also known as", "Language", "Location", "Time zone"]]];
 Object.assign(UI.zh, { "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
-  "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射" });
+  "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射",
+  "Last contact {when}": "最近联系 {when}", "1 mail": "1 封邮件", "{n} mails": "{n} 封邮件", "+{n} more": "还有 {n} 个", "Show less": "收起" });
 // A handle or link says its platform in words; its picture is that service's published mark (Simple Icons) or,
 // where the set publishes none (LinkedIn, Slack, Teams), an @. [test, picture, name].
 const HANDLE_MARKS = [
@@ -9860,25 +9898,36 @@ function profileCard(r) {
   const project = personProject(r);
   if (project) add("Work", "Project", "", [{ node: el("a", { href: href(project), text: project.title }) }]);
   for (const label of ["How we know them", "First contact"]) add("Relationship", label, "", have(label).map(item => ({ item })));
+  // Last contact, mail and location are the header's third line (personMeta); said once.
   const mapped = !have("Last contact").length && mappedContact(r) && known(r).last;
-  // A date from the map, not the page, says so beside it; the label stays short enough for a phone's label column.
-  add("Relationship", "Last contact", "", mapped ? [{ node: el("span", { class: "val", title: t("Last contact in map") }, [el("span", { text: fmtDate(known(r).last) }), el("span", { class: "qual", text: t("from the map") })]) }]
-    : have("Last contact").map(item => ({ item })));
-  if (r.mail) add("Relationship", "Mail", "", [{ node: el("span", { class: "val", text: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }) }) }]);
-  add("Identity", "Also known as", "", have("Also known as").filter(item => !seen.includes(plainLine(item.value).toLowerCase())).map(item => ({ item })));
-  for (const label of ["Language", "Location", "Time zone"]) add("Identity", label, "", have(label).map(item => ({ item })));
-  const extra = [...parsed.keys()].filter(label => !FACT_LABELS.people.includes(label) && !PROFILE_GROUPS.some(([, labels]) => labels.includes(label)));
+  const aliases = have("Also known as").filter(item => !seen.includes(plainLine(item.value).toLowerCase()));
+  if (aliases.length) add("Identity", "Also known as", "", [{ node: el("span", { class: "pc-inline" }, aliases.map(item => profileValue(item, r, "Also known as"))) }]);
+  const languages = have("Language");
+  if (languages.length) add("Identity", "Language", "", [{ node: el("span", { class: "pc-inline" }, languages.map(item => profileValue(item, r, "Language"))) }]);
+  if (!have("Location").length) add("Identity", "Time zone", "", have("Time zone").map(item => ({ item })));
+  const extra = [...parsed.keys()].filter(label => !FACT_LABELS.people.includes(label) && !PROFILE_GROUPS.some(([, labels]) => labels.includes(label)) && !["Location", "Tags"].includes(label));
   for (const label of extra) add("Identity", label, "", have(label).map(item => ({ item })));
   // What the page has a line for and does not know; a unit or role the line above already says is not missing.
   const missing = [...FACT_LABELS.people, ...extra, ...["Unit", "Role in unit"].filter(label => parsed.has(label) && !units.length)]
     .filter(label => !have(label).length && !(label === "Last contact" && mapped) && !(label === "Company" && personOrg(r)));
-  const groups = PROFILE_GROUPS.filter(([name]) => rows[name]).map(([name]) => el("section", { class: "pc-group" }, [el("h2", { class: "pc-h", text: t(name) }),
-    el("dl", {}, rows[name].map(row => el("div", { class: "pc-row" }, [el("dt", { class: "pc-k" }, [row.pic ? icon(row.pic) : null, el("span", { text: t(row.label) })]),
-      privateFallback(el("dd", { class: "pc-v" }, row.values.map(value => value.node || profileValue(value.item, r, row.label, value.copy)))) ])))]));
-  if (!groups.length) return null;
-  const quiet = missing.length ? el("p", { class: "pc-missing", title: missing.map(label => t(label)).join(" · "),
-    text: t(missing.length === 1 ? "1 fact not found" : "{n} facts not found", { n: missing.length }) }) : null;
-  return el("div", { class: "pcard", role: "group", "aria-label": t("Facts") }, [...groups, quiet]);
+  // One list, in the groups' order, each fact one row: its label in a fixed column, its value beside it. The
+  // rows flow into two balanced columns, so no column runs long while another stands empty. A list of more
+  // than two values shows two and folds the rest behind "+N". What the page does not know is left out; its
+  // labels are the card's tooltip, not a line of "not found".
+  const flat = PROFILE_GROUPS.flatMap(([name]) => rows[name] || []);
+  if (!flat.length) return null;
+  const list = el("dl", { class: "pc-list" }, flat.map(row => {
+    const values = row.values.map(value => value.node || profileValue(value.item, r, row.label, value.copy));
+    const dd = el("dd", { class: "pc-v" }, values.slice(0, 2));
+    if (values.length > 2) {
+      const more = el("button", { type: "button", class: "pc-more", text: t("+{n} more", { n: values.length - 2 }) });
+      more.onclick = () => { more.replaceWith(...values.slice(2)); };
+      dd.append(more);
+    }
+    return el("div", { class: "pc-row" }, [el("dt", { class: "pc-k", text: t(row.label) }), privateFallback(dd)]);
+  }));
+  const title = missing.length ? t(missing.length === 1 ? "1 fact not found" : "{n} facts not found", { n: missing.length }) + ": " + missing.map(label => t(label)).join(" · ") : null;
+  return el("div", { class: "pcard", role: "group", "aria-label": t("Facts"), ...(title ? { title } : {}) }, [list]);
 }
 // One value: email, phone and handle copy on a click and say so; everything else reads as the fact card does.
 // Its sources are small numbers after it; a labelled value hides with the labelled passages.
@@ -10110,7 +10159,7 @@ function personStats(r, d = personFuseData(r)) {
 // What is still open with them leads, right under the header: it is what the owner opens a person for (sprint 15).
 // The rest of the record as widgets; the full note with every source stays below them.
 function personPage(r) {
-  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r), translationLine(r), personTopics(r),
+  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r), personTopics(r),
     el("div", { class: "bento" }, [personFuse(r), personQuotes(r), personTimeline(r), el("section", { class: "widget rel-slot", "aria-label": t("Relationships") }),
       el("div", { class: "stack2" }, [railUnsure(r), railSources(r)].filter(Boolean)), personSessions(r)].filter(Boolean))].filter(Boolean));
 }
