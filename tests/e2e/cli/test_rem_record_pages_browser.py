@@ -357,6 +357,9 @@ def test_decision_titles_carry_no_privacy_label_and_leads_no_timestamps(reader):
     page.evaluate("""() => {
       REM.records.push({path: 'decisions/keep-markdown.md', title: 'Keep Markdown [personal]', category: 'decisions', written: true,
         text: '# Keep Markdown [personal]\\n\\n## Decision\\n这项选择作于 2026-11-08 的 10:20，所在会话开始于 2026-10-29T09:00:00Z。保留 Markdown 作为笔记格式。 [1]\\n\\n## Sources\\n- [1] codex:01a1a594\\n'});
+      // This fixture is served from a non-loopback host, which starts at Public only (#2840) and so takes a
+      // [personal] title out of the list; the label rule is about what a shown title prints.
+      setPrivacy('cover', {save: false, redraw: false});
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
     text = page.locator("#main").inner_text()

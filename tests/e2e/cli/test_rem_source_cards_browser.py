@@ -54,7 +54,9 @@ def project_page(tmp_path, monkeypatch):
 def test_a_source_the_snapshot_left_out_is_fetched_when_its_card_opens(project_page, width):
     page, asked = project_page
     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
-    page.evaluate(f"() => {{ REM.live = true; delete REM.source_context['{REPO}']; }}", isolated_context=False)
+    # rem.test is not loopback, so the reader starts at Public only (#2840), which keeps original excerpts out of
+    # sight; this test is about fetching the original, so it reads at this computer's default, Cover sensitive.
+    page.evaluate(f"() => {{ REM.live = true; delete REM.source_context['{REPO}']; setPrivacy('cover', {{save: false}}); }}", isolated_context=False)
     title = page.locator(".deep-sources li#src-1 .src-title")
     assert not __import__("re").match(r"^[0-9a-f]{16,}", title.inner_text()), title.inner_text()  # never a hash as a name
     title.click()

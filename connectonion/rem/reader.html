@@ -2406,6 +2406,8 @@
   .tcal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
   .tcal-head h2 { margin: 0; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); }
   .tcal-controls { display: flex; gap: 8px; margin-left: auto; }
+  /* #3163: 本月 is two characters, so on a phone its chip fell under the 44px target the rest of the page keeps. */
+  @media (max-width: 820px), (pointer: coarse) { .tcal-toggle { min-height: 44px; min-width: 44px; } }
   .tcal-frame { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
   .tcal-frame .cal-week { border: 0; border-top: var(--hair) solid var(--rule); border-radius: 0; }
   .tcal-week { overflow-x: auto; }

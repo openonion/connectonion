@@ -3339,7 +3339,7 @@ def test_full_memory_keeps_unheaded_content_and_counts_it(reader, body):
       r.text = '# Mara Ostrowski\n\n' + body;
       KNOWN.clear(); FACTS.clear(); render();
     }''', body, isolated_context=False)
-    assert page.locator('.deep-hint').inner_text() == '2 sections · 0 sources'  # body and Facts
+    assert page.locator('.deep-hint').inner_text() == '2 sections'  # body and Facts; zero sources go unsaid (#3165)
     memory_open(page)
     assert page.locator('.deep-note .note').inner_text().strip()
     assert page.locator('.deep-note .factlist').is_visible()
@@ -3355,7 +3355,7 @@ def test_full_memory_counts_content_without_counting_toc_navigation(reader):
         '## Topic ' + i + '\nUseful content.').join('\n\n');
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
-    assert page.locator('.deep-hint').inner_text() == '5 sections · 0 sources'  # four topics and Facts
+    assert page.locator('.deep-hint').inner_text() == '5 sections'  # four topics and Facts; zero sources go unsaid (#3165)
     memory_open(page)
     assert page.locator('.deep-note .toc-panel').is_visible()
 

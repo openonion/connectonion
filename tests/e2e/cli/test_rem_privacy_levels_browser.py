@@ -73,12 +73,14 @@ def test_on_this_computer_sensitive_is_covered_by_default_and_lifts_one_at_a_tim
         curtains = page.locator("#main .curtain:not(.lifted)")
         assert curtains.count() >= 2
         assert curtains.first.get_attribute("aria-label") == "敏感 · 点一下显示"
+        if SHOTS:  # the default as it opens, every curtain down; the lifted one is its own picture
+            SHOTS.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(SHOTS / "privacy-cover-1440.png"))
         curtains.first.click()
         assert page.locator("#main .curtain.lifted").count() == 1
         assert page.locator("#main .curtain:not(.lifted)").count() == curtains.count()  # the others stay covered
         if SHOTS:
-            SHOTS.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=str(SHOTS / "privacy-cover-1440.png"))
+            page.screenshot(path=str(SHOTS / "privacy-lifted-1440.png"))
         browser.close()
 
 
