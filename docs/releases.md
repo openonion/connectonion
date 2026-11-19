@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc29**: a source's title opens its original in the side card, a calendar event shows
+Release candidate **1.9.6rc30**: hand-offs you can watch and pick up, enrich that writes career timelines and
+links organisations, one language control, and a person page that leads with what happened. See
+[1.9.6rc30 notes](releases/1.9.6rc30.md).
+Before it, release candidate **1.9.6rc29**: a source's title opens its original in the side card, a calendar event shows
 its meeting link, organiser and notes, and the Investigate popovers float over the page. See
 [1.9.6rc29 notes](releases/1.9.6rc29.md).
 Before it, release candidate **1.9.6rc28**: REM's night runs again, Investigate appends to long pages by archiving their
@@ -126,7 +129,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc29'
+python -m pip install --upgrade 'connectonion==1.9.6rc30'
 ```
 
 ## Previous stable

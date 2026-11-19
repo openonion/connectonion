@@ -203,6 +203,7 @@ def _run_claude_code(
     bridge_events: Path | None = None,
     add_dirs: tuple[str, ...] | list[str] = (),
     cancelled=None,
+    on_activity=None,
 ) -> str:
     """Private runner shared by safe, configured, and co-ai entry points.
 
@@ -229,7 +230,7 @@ def _run_claude_code(
     argv = _stream_command(
         command, prompt, session_id, permission_mode, model, bridge_settings, add_dirs
     )
-    forwarder = _ClaudeStreamForwarder(agent)
+    forwarder = _ClaudeStreamForwarder(agent, on_activity)
     # An operator's stop check (REM's task Stop) stands in for the Agent's Work Room Stop.
     cancelled = cancelled or _provider_cancellation_check(agent)
 
@@ -300,6 +301,7 @@ def run_co_claude(
     workspace: str | Path | None = None,
     add_dirs: tuple[str, ...] | list[str] = (),
     cancelled=None,
+    on_activity=None,
 ) -> str:
     """Run one owned Claude turn with a scoped session-identity Hook.
 
@@ -323,6 +325,7 @@ def run_co_claude(
             bridge_events=events,
             add_dirs=add_dirs,
             cancelled=cancelled,
+            on_activity=on_activity,
         )
         outcome = json.loads(result)
         if outcome["status"] != "completed":
@@ -698,8 +701,10 @@ def _provider_cancellation_check(agent):
 class _ClaudeStreamForwarder:
     """Translate Claude stream-json messages into native live tool events."""
 
-    def __init__(self, agent) -> None:
+    def __init__(self, agent, on_activity=None) -> None:
         self._agent = agent
+        # An operator's live view without an Agent (co rem's hand-off): each step, as OIP.
+        self._on_activity = on_activity
         self._io = getattr(agent, "io", None) if agent is not None else None
         session = getattr(agent, "current_session", None)
         self._parent_tool_call_id = (
@@ -731,7 +736,7 @@ class _ClaudeStreamForwarder:
         self._emit_message(message_id, "user", text)
 
     def handle(self, event: dict[str, Any]) -> None:
-        if self._io is None or not isinstance(event, dict):
+        if (self._io is None and self._on_activity is None) or not isinstance(event, dict):
             return
         event_type = event.get("type")
         if event_type == "assistant":
@@ -939,9 +944,13 @@ class _ClaudeStreamForwarder:
         details: dict[str, Any],
         status: str,
     ) -> None:
+        activity_id = _wire_tool_id(provider_id)
+        if self._on_activity is not None:
+            self._on_activity(provider_activity_event(
+                provider="claude_code", activity_id=activity_id, sequence=0, native_kind="tool",
+                status=status, name=metadata["name"], details=details))
         if not self._correlation:
             return
-        activity_id = _wire_tool_id(provider_id)
         fields = provider_activity_event(
             provider="claude_code",
             activity_id=activity_id,
@@ -976,6 +985,8 @@ class _ClaudeStreamForwarder:
         return True
 
     def _send(self, event_type: str, **fields: Any) -> None:
+        if self._io is None:  # an operator's live view only (on_activity), no Agent to send to
+            return
         entry = {"type": event_type, **fields}
         record = getattr(self._agent, "_record_trace", None)
         if callable(record) and isinstance(getattr(self._agent, "current_session", None), dict):

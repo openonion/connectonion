@@ -91,7 +91,8 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     assert 'do not send anything to anyone; write the result and stop' in prompt
     assert saved['deliverable'] in prompt
     assert saved['session_id'] == '01a1bda7-ca66-7640-88ca-79eb9b66e649'
-    assert saved.get('prepared_reply', '').startswith('REM 已经做完：') == (expected == 'completed')
+    assert bool(saved.get('summary')) == (expected == 'completed')
+    assert not saved.get('prepared_reply')
     assert tasks.start(root, receipt['id'])['finished_at'] == saved['finished_at']
 
 
@@ -214,7 +215,7 @@ def test_night_dispatches_when_on_and_records_rem_as_the_one_who_started(task_no
     assert record['by'] == 'rem' and record['kind'] == 'task' and record['status'] == 'dispatched'
     assert record['receipt_id'] == saved['id'] and record['keys'] == night.listing(task_notebook)[0]['keys']
     task = reader.snapshot(task_notebook, local=True, today=True)['today_queue'][0]['outcome']['task']
-    assert task['by'] == 'rem' and task['prepared_reply'].startswith('REM 已经做完：')
+    assert task['by'] == 'rem' and bool(task['summary'])
     # The next round finds the receipt: no second session, no second record.
     assert tasks.auto_dispatch(task_notebook, config) == []
     assert tasks.status(task_notebook, saved['id'])['finished_at'] == saved['finished_at']
@@ -421,7 +422,7 @@ def test_reader_uses_receipt_and_does_not_trust_last_message(task_notebook, fake
     data = reader.snapshot(task_notebook, local=True, today=True)
     task = data['today_queue'][0]['outcome']['task']
     assert task['result'] == 'completed' and Path(task['deliverable']).is_file()
-    assert task['prepared_reply'].startswith('REM 已经做完：')
+    assert bool(task['summary'])
     saved = read_json(Path(receipt['receipt']), {})
     write_json(Path(receipt['receipt']), {**saved, 'result': 'failed', 'exit_code': 1})
     task = reader.snapshot(task_notebook, local=True, today=True)['today_queue'][0]['outcome']['task']
@@ -557,7 +558,7 @@ def test_claude_runs_a_task_like_codex_with_full_access_and_the_same_receipt(tas
     assert (folder / 'cwd.txt').read_text() == str(folder / 'work') == saved['cwd']
     assert 'Done means:' in argv[-1] and 'Never push' in argv[-1]
     assert saved['session_id'] == 'bf1b715f-3272-4573-b78d-359571db650a'
-    assert saved['prepared_reply'] == f"REM 已经做完：Added to the end of README.md: · 附：{saved['deliverable']}"
+    assert saved['summary'] and not saved['reply'] and not saved.get('prepared_reply')
 
 
 def test_a_claude_task_loads_the_owners_own_claude_setup(task_notebook, fake_claude):
@@ -626,3 +627,83 @@ def test_a_key_that_matches_no_unfinished_row_is_unknown(task_notebook):
     from connectonion.rem import tasks
     with pytest.raises(tasks.UnknownItem, match='no longer open'):
         tasks.dispatch(task_notebook, 'people/nobody.md\nNothing.', agent='codex')
+
+
+# #3138 (owner, 2026-11-19): a hand-off is not a black box until it ends.
+def test_a_codex_run_writes_each_step_as_it_goes_and_status_says_the_latest(task_notebook, fake_codex):
+    from connectonion.rem import tasks
+    root = task_notebook
+    receipt = tasks.reserve(root, night.listing(root)[0])
+    tasks.execute(root, receipt['id'])
+    folder = tasks.directory(root, receipt['id'])
+    steps = [json.loads(line) for line in (folder / 'events.jsonl').read_text().splitlines()]
+    assert steps and all(step['at'] and step['summary'] and step['status'] in ('running', 'completed', 'failed') for step in steps)
+    # The Work Room's safe words, never the command line itself.
+    assert all(set(step) <= {'at', 'kind', 'status', 'title', 'summary', 'files'} for step in steps)
+    saved = tasks.status(root, receipt['id'])
+    assert saved['step'] == steps[-1] and saved['steps'] == len(steps)
+
+
+def test_a_claude_run_writes_its_steps_too(task_notebook, fake_claude):
+    from connectonion.rem import tasks
+    root = task_notebook
+    receipt = tasks.reserve(root, night.listing(root)[0], agent='claude')
+    tasks.execute(root, receipt['id'])
+    steps = (tasks.directory(root, receipt['id']) / 'events.jsonl').read_text().splitlines()
+    assert steps and json.loads(steps[0])['summary']
+
+
+@pytest.fixture
+def fake_tmux(tmp_path, monkeypatch):
+    """A tmux that records its arguments; new-session answers a pane pid, has-session says the session exists."""
+    log = tmp_path / 'tmux-calls.jsonl'
+    script = tmp_path / 'tmux'
+    script.write_text('#!/usr/bin/env python3\nimport json, sys\n'
+                      f'open({str(log)!r}, "a").write(json.dumps(sys.argv[1:]) + "\\n")\n'
+                      'print(4242) if sys.argv[1] == "new-session" else None\n')
+    script.chmod(0o755)
+    from connectonion.rem import tasks
+    monkeypatch.setattr(tasks, '_tmux', lambda: str(script))
+    return log
+
+
+def test_with_tmux_the_worker_runs_in_a_named_session_with_rems_environment(task_notebook, fake_tmux, monkeypatch):
+    from connectonion.rem import tasks
+    root = task_notebook
+    receipt = tasks.reserve(root, night.listing(root)[0])
+    tasks.start(root, receipt['id'])
+    saved = read_json(tasks.directory(root, receipt['id']) / 'receipt.json', {})
+    assert saved['tmux'] == 'rem-' + receipt['id'][:12] and saved['pid'] == 4242 and saved['result'] == 'starting'
+    calls = [json.loads(line) for line in fake_tmux.read_text().splitlines()]
+    new = calls[0]
+    assert new[:3] == ['new-session', '-d', '-s'] and new[3] == saved['tmux']
+    worker = new[new.index('env') + 2:]
+    assert 'connectonion.rem.tasks' in worker and receipt['id'] in worker and any(arg.startswith('PATH=') for arg in worker)
+    assert calls[1][0] == 'pipe-pane' and 'worker.log' in calls[1][-1]  # the pane is still the worker's log
+
+
+def test_watch_opens_terminal_on_the_session_and_resume_on_the_finished_session(task_notebook, fake_tmux, fake_codex, monkeypatch):
+    from connectonion.rem import tasks
+    root = task_notebook
+    opened = []
+    monkeypatch.setattr(tasks, '_open_in_terminal', lambda script: opened.append(Path(script).read_text()))
+    receipt = tasks.reserve(root, night.listing(root)[0])
+    folder = tasks.directory(root, receipt['id'])
+    saved = read_json(folder / 'receipt.json', {})
+    write_json(folder / 'receipt.json', {**saved, 'tmux': tasks.tmux_name(receipt['id'])})
+    tasks.watch(root, receipt['id'])
+    assert f"attach -t 'rem-{receipt['id'][:12]}'" in opened[-1]
+    with pytest.raises(RemError, match='kept no session'):
+        tasks.resume(root, receipt['id'])
+    tasks.execute(root, receipt['id'])
+    done = tasks.status(root, receipt['id'])
+    tasks.resume(root, receipt['id'])
+    assert f"codex resume {done['session_id']}" in opened[-1] and f"cd '{done['cwd']}'" in opened[-1]
+
+
+def test_without_tmux_watch_says_the_progress_is_on_the_page(task_notebook):
+    from connectonion.rem import tasks
+    root = task_notebook
+    receipt = tasks.reserve(root, night.listing(root)[0])
+    with pytest.raises(RemError, match='progress shows on the page'):
+        tasks.watch(root, receipt['id'])

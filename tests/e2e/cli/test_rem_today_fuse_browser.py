@@ -321,7 +321,8 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     strip = page.locator("#work-strip")
     strip.get_by_text("Claude 正在做 1 件事").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
-    strip.locator("summary").click()
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
     assert strip.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]
     other = page.locator(".deal").evaluate_all(FACES)[1]
@@ -441,7 +442,7 @@ def test_counts_name_their_unit(today):
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
                                            (500, "REM 暂时没回应，过会儿再试。"),
                                            # No answer at all: the page has lost REM, and waiting will not bring it back (#3072).
-                                           (None, "这个页面已经连不上 REM，所以没有交出去。重新打开 REM，在它打开的页面里操作。")])
+                                           (None, "这页连不上 REM 了（REM 刚重启过），所以没有交出去。重新连接后再试。")])
 def test_hand_off_failures_are_plain_words(today, status, words):
     page, _, answers = today
     page.evaluate("() => { REM.live = true; setInterfaceLanguage('zh'); render(); }", isolated_context=False)

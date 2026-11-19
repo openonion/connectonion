@@ -4500,14 +4500,14 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     assert ('夜间更新已关闭。' if language == 'zh' else 'Nightly updates are off.') in page.locator('.reader-settings').inner_text()
     assert 'co rem' not in page.locator('.reader-settings').inner_text()  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
     page.keyboard.press('Escape')
-    notice = page.locator('#main .desk-more > .translation-note')
+    # #3143: one language control. What is not yet in Chinese is the top bar's quiet line, never a note in the body.
+    notice = page.locator('#lang-progress')
+    assert page.locator('#main .desk-more > .translation-note, #main .translation-line').count() == 0
     if language == 'zh':
-        assert notice.inner_text() == '打开页面时会翻译成中文。'
-        # The notice follows the queue: nothing about the reader's own upkeep sits above what needs you.
-        assert notice.bounding_box()['y'] > page.locator('.today-brief').bounding_box()['y']
-        assert notice.locator('button, code').count() == 0
+        assert '页还没有中文版' in notice.inner_text()
+        assert notice.locator('code').count() == 0
     else:
-        assert notice.count() == 0
+        assert notice.is_hidden()
     page.locator('#processing > summary').click()
     assert page.locator('.night-title').inner_text() == ('首次建立' if language == 'zh' else 'First build')
     assert ('昨夜' if language == 'zh' else 'Last night') not in page.locator('#processing').inner_text()
@@ -4522,20 +4522,20 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     }''', isolated_context=False)
     assert page.locator('.overnight .cmd').count() == 0
     if language == 'zh':
-        assert notice.inner_text() == '打开页面时会翻译成中文。'
+        assert '页还没有中文版' in notice.inner_text()
     page.evaluate(r'''() => {
       REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
       render();
     }''', isolated_context=False)
-    assert page.locator('#main .desk-more > .translation-note').count() == 0
+    assert page.locator('#main .desk-more > .translation-note, #main .translation-line').count() == 0
     page.set_viewport_size({'width': 390, 'height': 844})
     page.evaluate(r'''() => {
       REM.default_root = false; REM.root = REM.root_display = '/tmp/' + 'invented notebook/'.repeat(12);
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert page.locator('#main .desk-more > .translation-note').inner_text() == '打开页面时会翻译成中文。'
-    assert page.locator('#main .desk-more > .translation-note button, #main > .translation-note code').count() == 0
+    assert '页还没有中文版' in page.locator('#lang-progress').inner_text()
+    assert page.locator('#main .desk-more > .translation-note, #main .translation-line').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -4615,10 +4615,9 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
     # A thread that names no debtor is not Today's, and her page has no ledger (D-30): the record
     # keeps it as written in its full memory, so it is never lost.
     assert page.locator('.r4-person #open-threads, .r4-today').count() == 0
-    # Unfolded, as a fact of the record (D-36), with nothing to click (D-30).
-    topics = page.locator('.r4-person .r4-topics')
-    assert 'Discuss the pilot review with Theo Park' in topics.inner_text()
-    assert topics.locator('button, a.btn-act, .chip').count() == 0
+    # #3145: no open-topics block on a person (it disagreed with Today); the line is kept in Full memory, never lost.
+    assert page.locator('.r4-person .r4-topics').count() == 0
+    assert 'Discuss the pilot review with Theo Park' in page.locator('.deep-note').inner_text()
 
 
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
@@ -4742,23 +4741,21 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
           title: 'Mapped ' + n, category: 'projects', written: false, text: '# Mapped\n'}))];
       REM.logs = []; setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    notice = page.locator('#main .desk-more > .translation-note')
-    assert notice.count() == 0  # Mapped-only stubs do not trigger the fallback.
+    notice = page.locator('#lang-progress')  # #3143: the top bar's language line, not a body note
+    assert notice.is_hidden()  # Mapped-only stubs do not trigger the fallback.
     page.evaluate(r'''() => {
       delete REM.records[0].translations;
       render();
     }''', isolated_context=False)
-    assert notice.inner_text() == '打开页面时会翻译成中文。'
+    assert '1 页还没有中文版' in notice.inner_text()
     page.evaluate(r'''() => {
       REM.logs = [{phase: 'init-translation', pages: [{page: 'people/avery-lin.md', outcome: 'failed'}]}];
       render();
     }''', isolated_context=False)
     assert notice.inner_text().startswith('1 个页面未能翻译。')
-    assert notice.inner_text() == '1 个页面未能翻译。 打开页面时会翻译成中文。'
-    assert notice.locator('button, code').count() == 0
+    assert notice.locator('code').count() == 0
     page.evaluate("() => { REM.status.worker = {enabled: true}; render(); }", isolated_context=False)
-    assert notice.inner_text() == '1 个页面未能翻译。 打开页面时会翻译成中文。'
-    assert notice.locator('button, code').count() == 0
+    assert notice.inner_text().startswith('1 个页面未能翻译。')
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 
@@ -4923,7 +4920,8 @@ def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
 @pytest.mark.parametrize('width', [1440, 390])
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypatch, rem_clock, width, theme):
-    """A real receipt supplies the Today card; model prose alone cannot finish it."""
+    """A real receipt supplies the Today card; model prose alone cannot finish it. In a snapshot the finished card
+    shows the run's one-line summary and the reply it wrote, never a file path or a 'REM did it' notice (#3147)."""
     from patchright.sync_api import sync_playwright
     from connectonion.rem import night, tasks
     from connectonion.rem.config import prepare, read_config
@@ -4938,7 +4936,7 @@ def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypa
         '## Open threads\n', '## Open threads\n- You owe Mara a pilot review.\n'))
     night.prepare(root, read_config(root))
     receipt = tasks.reserve(root, night.listing(root)[0])
-    Path(receipt['deliverable']).write_text('# Mara pilot review\nReviewed the fictional pilot.\n')
+    Path(receipt['deliverable']).write_text('# Mara pilot review\nReviewed the fictional pilot.\n\n```reply\nHi Mara, the pilot review is attached.\n```\n')
     Path(receipt['last_message']).write_text('Reviewed the Mara pilot.')
     write_json(Path(receipt['receipt']), {**receipt, 'result': 'completed', 'exit_code': 0,
                                          'started_at': '2026-09-07T10:00:00Z', 'finished_at': '2026-09-07T10:01:00Z'})
@@ -4955,8 +4953,8 @@ def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypa
         assert result.is_visible()
         assert 'Completed' in result.inner_text()
         assert page.locator('#approve-all').count() == 0  # nothing to approve in a snapshot
-        assert receipt['deliverable'] in result.inner_text()
-        assert result.locator('textarea').input_value() == f"REM 已经做完：Reviewed the Mara pilot. · 附：{receipt['deliverable']}"
+        assert 'Mara pilot review' in result.inner_text() and receipt['deliverable'] not in result.inner_text()
+        assert result.locator('textarea').input_value() == 'Hi Mara, the pilot review is attached.'
         assert result.locator('textarea').get_attribute('readonly') is not None
         assert result.get_by_role('button', name='Copy prepared reply').is_visible()
         assert 'Send' not in result.locator('button').all_inner_texts()
@@ -5129,17 +5127,15 @@ def test_person_fuse_without_dated_exchanges_draws_only_what_rem_knows(reader):
 
 
 @pytest.mark.parametrize("language", ["en", "zh"])
-def test_person_open_topics_are_facts_without_actions(reader, language):
+def test_a_person_page_carries_no_open_topics_and_leads_with_what_happened(reader, language):
+    """#3145 (owner, 2026-11-19): open topics disagreed with Today, where those items were already closed; they leave
+    the person page, and what is open is only the header's count from Today's own state."""
     page, uri = reader
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
     page.evaluate("language => setInterfaceLanguage(language)", language, isolated_context=False)
-    topics = page.locator(".r4-person .r4-topics")
-    assert topics.locator("h2").inner_text() == ("还没结的话题" if language == "zh" else "Open topics")
-    rows = topics.locator("li")
-    assert rows.count() == 2
-    assert "Data-sharing addendum" in topics.inner_text() and "Usage export" in topics.inner_text()
-    assert rows.first.locator(".d").inner_text().strip()
-    assert topics.locator("button, .chip, a.btn-act, input").count() == 0
+    assert page.locator(".r4-person .r4-topics").count() == 0
+    assert "Data-sharing addendum" not in page.locator(".r4-person > :not(.deep-note):not(details)").all_inner_texts().__str__()
+    assert page.locator(".r4-person > .tl-lead").count() == 1
     assert page.evaluate(GREEN, isolated_context=False) == 0
 
 

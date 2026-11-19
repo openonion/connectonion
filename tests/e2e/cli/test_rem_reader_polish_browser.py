@@ -207,31 +207,18 @@ def test_waiting_on_you_gives_the_body_the_phone_width(reader):
 
 
 @pytest.mark.parametrize("path, head", [("people/mara-ostrowski.md", ".person-head"), ("projects/harbour.md", ".page-head")])
-def test_a_pending_translation_is_a_quiet_worded_line_under_the_header(reader, path, head):
+def test_a_pending_translation_is_asked_for_once_and_said_only_by_the_top_bar(reader, path, head):
+    """#3143: the page body carries no translation line or button; the top bar's language control says it."""
     page, calls, _ = reader
     page.evaluate("""path => { REM.live = true; delete byPath(path).translations?.zh; setInterfaceLanguage('zh');
       location.hash = 'r=' + encodeURIComponent(path); render(); }""", path, isolated_context=False)
     h1 = page.locator("#main h1").first
     h1.wait_for()
-    # Opening a page only moves it up the nightly queue: nothing is translating it now, so the
-    # line says the page is in its original language, never a "translating" that never ends.
+    # Opening a page only moves it up the nightly queue: never a "translating" that never ends.
     assert page.locator("#main").get_by_text(re.compile("^(翻译中|翻译待处理)$")).count() == 0
     # The owner read the old 原文 chip above the name as jargon (sprint 15): it is gone from the header.
     assert page.locator(f"#main {head} .lang-status, #main .hero-marks .lang-status, #main .eyebrow .lang-status").count() == 0
-    line = page.locator("#main .translation-line")
-    # #2999 adds the bulk action beside the D-103 notice; the notice itself stays quiet.
-    assert line.count() == 1
-    assert line.evaluate("n => n.firstChild.textContent") == "中文版还没好，先看原文"
-    assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
-    assert line.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
+    assert page.locator("#main .translation-line, #main .translate-all").count() == 0
     assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
-    assert line.get_attribute("role") is None                       # not announced again on every render
-    step = "--s-ui" if path.startswith(("projects/", "people/")) else "--s-meta"   # nothing in Projects (#3096) or a person header (#3131) is under 13px
-    meta = page.evaluate(f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
-    assert line.evaluate("n => getComputedStyle(n).fontSize") == meta
-    box, header = line.bounding_box(), page.locator(f"#main {head}").first.bounding_box()
-    if head == ".person-head":  # a person's controls have one home, the header's action column (#3131)
-        assert line.evaluate("n => !!n.closest('.person-head .hero-acts')")
-    else:
-        assert box["y"] >= header["y"] + header["height"] - 1         # under the header, by the body
+    assert sum(1 for call in calls if call == ("/rem/translation-request", {"page": path, "language": "zh"})) == 1
     assert page.locator("#main > p[role=status]").filter(has_text="翻译中").count() == 0

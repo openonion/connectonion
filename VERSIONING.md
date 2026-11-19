@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc29
+## Current Version: 1.9.6rc30
+Release candidate 1.9.6rc30 for 1.9.6: hand-offs to Codex and Claude you can watch and pick up (live steps, a tmux
+session, Watch in Terminal, Continue in Codex/Claude; the row turns at the click, a finished run says so with a
+summary and offers to draft its reply, failures say why with Retry), enrich that writes like OSINT (career timelines,
+organisation pages created and linked both ways), decisions found on the cheap model with translated titles, one
+language control in the top bar, a page that lost its Host says so and reconnects, and a person page that leads with
+what happened (no open-topics block; a timeline row opens its original). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc30.md).
+
+- 1.9.6rc30 (hand-offs you can watch; OSINT enrich; one language control; person timeline first).
+
+### Previous candidate: 1.9.6rc29
 Release candidate 1.9.6rc29 for 1.9.6: a source's title in Full memory's Sources opens its original (mail, file,
 session) in the side card again (#3134); a calendar event shows how to join (Google Meet, Teams, Zoom named), who
 organised it and its notes, with the provider's page a quiet link (#3135); and the Investigate menu and "What

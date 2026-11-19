@@ -136,7 +136,7 @@ def test_ask_codex_to_look_investigates_a_private_project_in_place(live):
     line.get_by_text("Codex is working").wait_for(timeout=10000)
     line.get_by_text("Codex finished").wait_for(timeout=30000)
     line.get_by_role("button", name="See result").click()
-    box.locator(".task-output").wait_for()
+    page.locator("#evidence-panel").wait_for()  # the report opens in the side card (#3147)
     if SHOTS:
         box.screenshot(path=str(Path(SHOTS) / "ask-codex-finished.png"))
         page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)

@@ -171,3 +171,11 @@ def test_config_help_documents_the_levels():
     output = CliRunner().invoke(app, ["rem", "config", "--help"]).output
     assert "models.level1" in output and "models.level4" in output and "route.<stage>" in output
     assert "models.investigate" in output and "efforts.investigate" in output and "Sol at low" in output
+
+
+def test_abstract_finds_decisions_on_the_cheap_model(tmp_path):
+    """#3142 (owner, 2026-11-19): «关于 decisions，你应该用 Luna 这种模型去找». Abstract's output is checked by code
+    (at most 20 pages, only decisions/knowledge/principles), so it sits on level 1 with tags."""
+    config = read_config(tmp_path)
+    assert STAGE_LEVELS["abstract"] == "level1"
+    assert stage_config(tmp_path, config, "abstract")["model"] == "gpt-6-luna"

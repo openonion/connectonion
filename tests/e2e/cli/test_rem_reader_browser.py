@@ -706,3 +706,31 @@ def test_a_source_title_opens_its_original_in_the_side_card(tmp_path, monkeypatc
         assert panel.locator('.evidence-claim').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         browser.close()
+
+
+def test_a_decisions_translated_title_shows_in_its_list_head_and_search(tmp_path, monkeypatch):
+    """#3142 (owner, 2026-11-19): decision titles stayed English in the Chinese reader."""
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    Notebook(root).write('decisions/notebook-format.md', '# Keep the notebook in Markdown\n\n## Decision\nKeep Markdown.\n')
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 1440, 'height': 900})
+        page.goto(path.as_uri() + '#c=decisions')
+        page.evaluate("""() => { const r = byPath('decisions/notebook-format.md');
+          r.translations = { zh: '# 笔记本保持 Markdown 格式\\n\\n## Decision\\n保留 Markdown。\\n' }; setInterfaceLanguage('zh'); }""",
+                      isolated_context=False)
+        assert '笔记本保持 Markdown 格式' in page.locator('#main').inner_text()
+        assert 'Keep the notebook in Markdown' not in page.locator('#main').inner_text()
+        page.goto(path.as_uri() + '#r=decisions%2Fnotebook-format.md')
+        page.evaluate("""() => { const r = byPath('decisions/notebook-format.md');
+          r.translations = { zh: '# 笔记本保持 Markdown 格式\\n\\n## Decision\\n保留 Markdown。\\n' }; setInterfaceLanguage('zh'); }""",
+                      isolated_context=False)
+        assert page.locator('#main h1').first.inner_text() == '笔记本保持 Markdown 格式'
+        page.evaluate("setInterfaceLanguage('en')", isolated_context=False)
+        assert page.locator('#main h1').first.inner_text() == 'Keep the notebook in Markdown'
+        browser.close()

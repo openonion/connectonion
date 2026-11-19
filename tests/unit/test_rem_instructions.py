@@ -145,7 +145,10 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
 # characters carried once cost less than the help pages they replace, re-sent every turn.
 # The same budget holds the 120 characters that make the memory step conditional on
 # the task naming a memory path.
-INSTRUCTION_BUDGET = 24_500
+# 25k from #3141: 'Who they are' as a dated career skeleton with organisations as page links, and the
+# OSINT line (about 500 characters): the owner found an investigated person with one line of who
+# they were and their own company without a page (2026-11-19). Nothing trialled was condensed.
+INSTRUCTION_BUDGET = 25_000
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])

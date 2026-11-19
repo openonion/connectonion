@@ -1,5 +1,5 @@
-"""«全部翻译成中文» in the live reader (#2999, opt in): one worded button, in Settings and beside
-«中文版还没好，先看原文», starts the job `co rem translate` runs, says «已翻译 N / M» as it goes, and stops.
+"""«全部翻译成中文» in the live reader (#2999, opt in): one worded button in Settings, and the top bar's language
+control beside EN/中 (#3143), start the job `co rem translate` runs, says «已翻译 N / M» as it goes, and stops.
 
 The owner, 2026-11-13: «命令行里应该有一个"一键翻译所有页面"的功能 … 如果有这么一个命令行和这么一个 button
 的话，是不是会好一点？» Every /rem/* request goes through the real Host handler (rem_http), with its loopback,
@@ -117,28 +117,45 @@ def test_the_settings_button_translates_every_page_and_says_how_far_it_is(live, 
 
 
 @pytest.mark.parametrize("live", [True], indirect=True)
-def test_progress_shows_while_it_runs_and_stop_leaves_the_pages_not_begun(live):
+@pytest.mark.parametrize("width", [1440, 390])
+def test_the_top_bar_is_the_one_language_control_and_stop_leaves_the_pages_not_begun(live, width):
+    """#3143 (owner, 2026-11-19): the page's translate button and the EN/中 switch are one control, in one place."""
     from patchright.sync_api import expect
     page, root, calls, gate, _ = live
+    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
     page.goto(BASE + "/rem#r=people%2Favery-lin.md")
-    line = page.locator("#main .translation-line")
-    expect(line).to_contain_text("中文版还没好，先看原文")
-    # Beside the line, the same worded button; no command to copy anywhere (D-60).
-    line.get_by_role("button", name="全部翻译成中文（2 页）").click()
-    stop = line.get_by_role("button", name="停止翻译")
+    page.locator("#main").wait_for()
+    # No translate button or "not translated yet" line in the page body.
+    assert page.locator("#main .translation-line, #main .translate-all").count() == 0
+    progress = page.locator("#lang-progress")
+    expect(progress).to_contain_text("2 页还没有中文版")
+    if SHOTS:
+        page.screenshot(path=str(Path(SHOTS) / f"lang-progress-idle-{width}.png"))
+    progress.get_by_role("button", name="翻译").click()
+    stop = progress.get_by_role("button", name="停止")
     expect(stop).to_be_visible(timeout=10000)
     from connectonion.rem.files import Notebook
     total = len(Notebook(root).list())
-    expect(line.locator(".ta-state")).to_have_text(f"已翻译 {total - 2} / {total}")
+    expect(progress).to_contain_text(f"中文版 {total - 2} / {total}")
+    assert page.evaluate("""() => { const n = document.getElementById('lang-progress'), b = n.getBoundingClientRect();
+      return n.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)); }""", isolated_context=False)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if SHOTS:
-        line.screenshot(path=str(Path(SHOTS) / "line-translate-all-running.png"))
+        page.screenshot(path=str(Path(SHOTS) / f"lang-progress-running-{width}.png"))
     stop.click()
-    expect(line.locator(".ta-state")).to_contain_text("正在停止")
     gate.set()
-    expect(line.locator(".ta-state")).to_have_text(f"已停止。 已翻译 {total - 1} / {total}", timeout=20000)
-    expect(line.get_by_role("button", name="全部翻译成中文（1 页）")).to_be_visible()     # it can be started again
+    expect(progress).to_contain_text("1 页还没有中文版", timeout=20000)          # it can be started again
     assert len(calls) == 1
-    assert not re.search(r"co rem [a-z-]+", page.locator("body").inner_text()) and "co rem" not in line.inner_text()
+    assert not re.search(r"co rem [a-z-]+", page.locator("body").inner_text())
+
+
+def test_switching_to_chinese_starts_the_translation_at_once(live):
+    from patchright.sync_api import expect
+    page, root, calls, _, posts = live
+    page.evaluate("() => { setInterfaceLanguage('en'); renderLangToggle(); }", isolated_context=False)
+    page.locator("#lang-toggle").click()                 # EN → 中
+    expect(page.locator("#lang-progress")).to_be_hidden(timeout=20000)    # every page now reads in Chinese
+    assert sorted(calls) == ["# Avery Lin", "# Fernhill pilot"]
 
 
 def test_a_refused_start_says_so_in_words_and_a_dropped_poll_is_retried(live):

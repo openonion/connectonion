@@ -22,6 +22,7 @@ from .service import now
 
 
 ACTIVE = ('starting', 'running')
+FAILED = ('failed', 'stopped', 'timed-out')
 # Who does the work: the owner's 交给 Codex / 交给 Claude. One runner, the agent as data:
 # each is co's own native integration, reached through co ai's harness by its harness name.
 HARNESSES = {'codex': 'codex', 'claude': 'claude-code'}
@@ -62,6 +63,7 @@ def _agent(agent):
 
 def reserve(root, outcome, by='owner', agent='codex'):
     """Queue without a model call. Host and night share this idempotent claim."""
+    from .languages import owner_language
     _agent(agent)
     task_id = identity(outcome.get('key') or outcome['keys'][0])
     folder = directory(root, task_id)
@@ -71,6 +73,7 @@ def reserve(root, outcome, by='owner', agent='codex'):
         receipt = {'id': task_id, 'result': 'queued', 'queued_at': now().isoformat(), 'by': by, 'agent': agent,
                    'key': outcome.get('key') or outcome['keys'][0], 'keys': outcome['keys'],
                    'record': outcome.get('record', ''), 'title': outcome['title'], 'text': outcome['text'],
+                   'language': owner_language(root) or read_config(root)['language'],
                    'prompt': outcome.get('task', {}).get('prompt') or f"Prepare the work owed: {outcome['text']}",
                    'receipt': str(folder / 'receipt.json'), 'deliverable': str(folder / 'result.md'),
                    'last_message': str(folder / 'last.md'), 'log': str(folder / 'codex.jsonl')}
@@ -113,7 +116,7 @@ def workspace(root, receipt, folder):
         receipt['project'] = str(project)
         top = subprocess.run(['git', '-C', str(project), 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
         if top.returncode == 0:
-            branch = f"rem/task-{receipt['id']}"
+            branch = f"rem/task-{receipt['id']}" + (f"-{receipt['attempt']}" if receipt.get("attempt") else "")
             _git('-C', top.stdout.strip(), 'worktree', 'add', '-q', '-b', branch, str(work), 'HEAD')
             receipt.update(repository=top.stdout.strip(), branch=branch, gitdir=(work / '.git').read_text())
     work.mkdir(exist_ok=True, mode=0o700)
@@ -121,6 +124,9 @@ def workspace(root, receipt, folder):
 
 
 def _prompt(receipt):
+    from .languages import native_name
+    language = receipt.get('language', 'en')
+    tab = 'rem-' + receipt['id']
     place = f"Project, to read only: {receipt['project']}\n" if receipt.get('project') else ''
     if receipt.get('branch'):
         place += (f"Your copy is the worktree {receipt['cwd']} on branch {receipt['branch']}: "
@@ -129,7 +135,11 @@ def _prompt(receipt):
             f"Done means: produce reviewable work satisfying this obligation: {receipt['text']} "
             'Include evidence and validation. If inputs are missing, explain them and do not claim completion.\n'
             f"Deliverable: {receipt['deliverable']} — write the result here, including any changed files and checks.\n"
-            'End with a one-line summary of the work. '
+            f"Write the report in the notebook owner's language: {native_name(language)} ({language}). "
+            'Start with a one-line summary, then the full report. '
+            'Put any proposed reply in a fenced block marked reply (```reply\n...\n```). '
+            f'For browser work, first run co browser tab open {tab}; use -t {tab} on every browser command. '
+            f'At the end, close your tab with co browser tab close {tab}. Never use the default shared tab. '
             'Never push, merge, send mail or post: those stay the owner\'s click. '
             'do not send anything to anyone; write the result and stop')
 
@@ -157,12 +167,45 @@ def start(root, task_id, agent=None):
             return _project(receipt)
         receipt['agent'] = _agent(agent or receipt.get('agent', 'codex'))
         command = [sys.executable, '-m', 'connectonion.rem.tasks', '--root', str(root), '--id', task_id]
-        with (folder / 'worker.log').open('ab') as output:
-            process = subprocess.Popen(command, cwd=root, env=child_env(), stdin=subprocess.DEVNULL,
-                                       stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
-        receipt.update(result='starting', pid=process.pid, command=' '.join(command[1:]))
+        pid, session = _in_tmux(root, folder, task_id, command, child_env())
+        if pid is None:
+            with (folder / 'worker.log').open('ab') as output:
+                pid = subprocess.Popen(command, cwd=root, env=child_env(), stdin=subprocess.DEVNULL,
+                                       stdout=output, stderr=subprocess.STDOUT, start_new_session=True).pid
+        receipt.update(result='starting', pid=pid, command=' '.join(command[1:]), **({'tmux': session} if session else {}))
         write_json(folder / 'receipt.json', receipt)
         return _project(receipt)
+
+
+# #3138 (owner, 2026-11-19: «能不能在终端里直接用 tmux 之类的启动一个后台 session，这样我就可以接着做，或者能看到它
+# 的进度？»): with tmux on this computer the worker runs in a named session the owner can attach to and watch.
+# Without it, a plain detached process, as before. `env -i` hands the worker REM's own environment and then
+# execs it, so the pane's pid is the worker's and `_alive` recognises it as before.
+def _tmux():
+    return shutil.which('tmux')
+
+
+def tmux_name(task_id):
+    return 'rem-' + task_id[:12]
+
+
+def _in_tmux(root, folder, task_id, command, env):
+    """(worker pid, session name) when tmux started it, else (None, None)."""
+    tmux = _tmux()
+    if not tmux:
+        return None, None
+    attempt = read_json(folder / "receipt.json", {}).get("attempt")
+    name = tmux_name(task_id) + (f"-{attempt}" if attempt else "")
+    started = subprocess.run([tmux, 'new-session', '-d', '-s', name, '-x', '160', '-y', '48', '-c', str(root), '-P', '-F', '#{pane_pid}',
+                              'env', '-i', *[f'{key}={value}' for key, value in env.items()], *command],
+                             capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+    pid = started.stdout.strip()
+    if started.returncode != 0 or not pid.isdigit():
+        return None, None
+    # The pane is also the worker's log, as the detached process's stdout was.
+    subprocess.run([tmux, 'pipe-pane', '-o', '-t', name, f"cat >> '{folder / 'worker.log'}'"],
+                   capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
+    return int(pid), name
 
 
 def _interrupted(signum, frame):
@@ -198,7 +241,7 @@ def _delegate(receipt, folder, config, timeout):
     with _tmpdir(folder / 'tmp'):
         answer = harness.run(HARNESSES[agent], _prompt(receipt), model, cwd=receipt['cwd'],
                              timeout=math.ceil(timeout), effort=config['effort'], add_dirs=(str(folder),),
-                             user_setup=True, cancelled=_STOPPED.is_set, **FULL_ACCESS)
+                             user_setup=True, cancelled=_STOPPED.is_set, on_activity=_step_writer(folder), **FULL_ACCESS)
     if _STOPPED.is_set():
         raise InterruptedError('Task stopped by the owner')
     Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n')
@@ -208,6 +251,35 @@ def _delegate(receipt, folder, config, timeout):
     if answer['error']:
         receipt['reason'] = answer['error']
     return {'natural': 0, 'timeout': 124}.get(answer['outcome'], 1)
+
+
+# What the agent is doing, while it does it (#3138): each step co ai's Work Room would show (an OIP
+# provider_activity: a fixed phrase such as "Running the requested tests", never the command), one line of
+# events.jsonl. The status a page polls reads the last one; the worker's own output, the tmux pane, says it too.
+STEP_FIELDS = ('kind', 'status', 'title', 'summary', 'files')
+
+
+def _step_writer(folder):
+    path = folder / 'events.jsonl'
+
+    def write(activity):
+        step = {'at': now().isoformat(), **{key: activity[key] for key in STEP_FIELDS if key in activity}}
+        with path.open('a', encoding='utf-8') as out:
+            out.write(json.dumps(step, ensure_ascii=False) + '\n')
+        print(f"{step['at'][11:19]}  {step.get('summary', '')}", flush=True)
+    return write
+
+
+def _last_step(folder):
+    """(the latest step, how many) from events.jsonl; a half-written last line is skipped."""
+    path = folder / 'events.jsonl'
+    if not path.is_file():
+        return None, 0
+    lines = path.read_text(encoding='utf-8').splitlines()
+    for line in reversed(lines):
+        with suppress(ValueError):
+            return json.loads(line), len(lines)
+    return None, len(lines)
 
 
 def execute(root, task_id, *, timeout=None):
@@ -263,14 +335,45 @@ def _neuter(work, gitdir):
     (Path(gitdir.split(':', 1)[1].strip()) / 'config.worktree').unlink(missing_ok=True)
 
 
+def _report(receipt):
+    for name in ('deliverable', 'last_message'):
+        path = Path(receipt[name])
+        if path.is_file() and not path.is_symlink() and (text := path.read_text().strip()):
+            return text
+    return ''
+
+
+def _failure(receipt):
+    agent = 'Claude' if receipt.get('agent') == 'claude' else 'Codex'
+    reason = receipt.get('reason', '')
+    if 'Operation not permitted' in reason and agent == 'Codex':
+        return 'Codex 当时无法启动（已修复），可以重试'
+    if receipt['result'] == 'timed-out':
+        return f'{agent} 超时了，可以重试'
+    if receipt['result'] == 'stopped':
+        return f'{agent} 已停止，可以重试'
+    if 'without a nonempty deliverable' in reason:
+        return f'{agent} 没有留下报告，可以重试'
+    if 'not found' in reason or 'No such file' in reason:
+        return f'{agent} 无法启动，请检查安装后重试'
+    return f'{agent} 这次未能完成，可以重试'
+
+
 def _project(receipt):
     value = {**receipt}
     value.pop('prepared_reply', None)
-    deliverable = Path(value['deliverable'])
-    if value['result'] == 'completed' and deliverable.is_file() and not deliverable.is_symlink():
-        last = Path(value['last_message'])
-        summary = last.read_text().strip().splitlines()[0][:240] if last.is_file() and last.read_text().strip() else value['text']
-        value['prepared_reply'] = f"REM 已经做完：{summary} · 附：{deliverable}"
+    if value.get('last_message'):
+        step, count = _last_step(Path(value['last_message']).parent)
+        if step:
+            value.update(step=step, steps=count)
+    text = _report(value) if value['result'] not in (*ACTIVE, 'queued') else ''
+    value['has_output'] = bool(text)
+    if value['result'] == 'completed':
+        value['summary'] = re.sub(r'^#+\s*', '', text.splitlines()[0])[:240] if text else value['text']
+        reply = re.search(r'^```reply[^\S\n]*\n(.*?)^```[ \t]*$', text, re.M | re.S)
+        value['reply'] = reply[1].strip() if reply else ''
+    elif value['result'] in FAILED:
+        value['failure'] = _failure(value)
     return value
 
 
@@ -279,16 +382,14 @@ def result(root, task_id):
     receipt = status(root, task_id)
     if receipt['result'] in (*ACTIVE, 'queued', 'ready'):
         raise RemError('The agent is still working; its result shows when it finishes')
-    files = [Path(receipt[name]) for name in ('deliverable', 'last_message')]
-    text = next((path.read_text() for path in files if path.is_file() and not path.is_symlink()
-                 and path.read_text().strip()), '')
+    text = _report(receipt)
     return {'id': receipt['id'], 'result': receipt['result'], 'agent': receipt.get('agent', 'codex'),
             'reason': receipt.get('reason', ''), 'text': text}
 
 
 def receipt_for(root, key):
     receipt = read_json(directory(root, identity(key)) / 'receipt.json', {})
-    return _project(receipt) if receipt else None
+    return _project(receipt) if receipt and not receipt.get('dismissed') else None
 
 
 def _reap_codex(receipt):
@@ -332,7 +433,8 @@ def status(root, task_id=None):
              for row in listing(root) if row['kind'] == 'task'}
     for path in state_path(Path(root), 'tasks').glob('do-*/receipt.json'):
         saved = _reconcile(path.parent)
-        ready[saved['id']] = _project(saved)
+        if not saved.get('dismissed'):
+            ready[saved['id']] = _project(saved)
     return list(ready.values())
 
 
@@ -361,6 +463,55 @@ def stop(root, task_id):
     raise RemError('Task has not confirmed stop yet; inspect co rem task status')
 
 
+# Pick it up yourself (#3138): a running task's tmux session, or the finished session in its own agent, opened in
+# Terminal on this computer. Buttons only (D-60): the command lives in a script REM writes, never on the page.
+def _open_in_terminal(script):
+    """Open a .command script in Terminal (macOS); tests replace this."""
+    if sys.platform != 'darwin':
+        raise RemError('Opening a terminal from the page works on macOS; on this computer use the agent directly')
+    subprocess.run(['open', '-a', 'Terminal', str(script)], check=True, capture_output=True, timeout=10)
+
+
+def _terminal_script(folder, name, lines):
+    script = folder / f'{name}.command'
+    script.write_text('#!/bin/sh\n' + '\n'.join(lines) + '\n', encoding='utf-8')
+    script.chmod(0o700)
+    return script
+
+
+def watch(root, task_id):
+    """Open Terminal attached to the running task's tmux session."""
+    folder = directory(root, task_id)
+    receipt = read_json(folder / 'receipt.json', {})
+    tmux = _tmux()
+    if not receipt.get('tmux') or not tmux:
+        raise RemError('This run is not in a terminal session; its progress shows on the page')
+    if subprocess.run([tmux, 'has-session', '-t', receipt['tmux']], capture_output=True, timeout=10).returncode != 0:
+        raise RemError('The run has ended, so there is no live session to watch')
+    _open_in_terminal(_terminal_script(folder, 'watch', [f"exec '{tmux}' attach -t '{receipt['tmux']}'"]))
+    return _project(receipt)
+
+
+RESUME = {'codex': ('codex', 'resume'), 'claude': ('claude', '--resume')}
+
+
+def resume(root, task_id):
+    """Open Terminal in the task's folder with its agent resuming its session, to carry on by hand."""
+    folder = directory(root, task_id)
+    receipt = read_json(folder / 'receipt.json', {})
+    agent, session = receipt.get('agent', 'codex'), receipt.get('session_id')
+    if receipt.get('result') in ACTIVE:
+        raise RemError('The agent is still working; watch it, or carry on once it finishes')
+    if not session or not re.fullmatch(r'[A-Za-z0-9-]{8,80}', session):
+        raise RemError('This run kept no session to continue')
+    program, flag = RESUME[agent]
+    cwd = receipt.get('cwd') or str(folder)
+    if "'" in cwd:
+        raise RemError('The task folder has a quote in its path; open it in the agent directly')
+    _open_in_terminal(_terminal_script(folder, 'resume', [f"cd '{cwd}' || exit 1", f"exec {program} {flag} {session}"]))
+    return _project(receipt)
+
+
 def auto_dispatch(root, config):
     """After the night's drafts, start the next owed task REM may start; the rest wait with a reason."""
     if not config['tasks']['auto']:
@@ -371,6 +522,7 @@ def auto_dispatch(root, config):
     launched = []
     for row in listing(root):
         if (row['kind'] != 'task' or withdrawn(root, row['key']) or receipt_for(root, row['key'])
+                or (directory(root, identity(row['key'])) / 'receipt.json').is_file()
                 or gate(root, config, row['key'])):
             continue
         receipt = reserve(root, row, by='rem')
@@ -475,7 +627,100 @@ def dispatch(root, key, agent='codex'):
     (a row key always holds a newline; a page path never does): reserve its work and start it now."""
     _agent(agent)
     work = unfinished(root, key) if '\n' in key else investigation(root, key)
+    saved = read_json(directory(root, identity(work['key'])) / 'receipt.json', {})
+    if saved.get('result') in FAILED:
+        return retry(root, saved['id'], agent)
     return start(root, reserve(root, work, agent=agent)['id'], agent)
+
+
+def retry(root, task_id, agent=None):
+    """Keep the failed attempt for inspection; a fresh workspace and session for this item."""
+    folder = directory(root, task_id)
+    with _lock(folder.parent, folder.name + '.retry.lock'):
+        saved = read_json(folder / 'receipt.json', {})
+        if saved.get('result') not in FAILED:
+            raise RemError('Only a failed or stopped task can be retried')
+        work = unfinished(root, saved['key']) if '\n' in saved['key'] else investigation(root, saved['key'])
+        history = folder.parent / 'history'
+        history.mkdir(exist_ok=True, mode=0o700)
+        archived = history / f"{folder.name}-{time.time_ns()}"
+        folder.rename(archived)
+        _archive_receipt(saved, folder, archived)
+        receipt = reserve(root, work, by='owner', agent=agent or saved.get('agent', 'codex'))
+        receipt['attempt'] = saved.get('attempt', 0) + 1
+        write_json(Path(receipt['receipt']), receipt)
+        return start(root, receipt['id'], agent)
+
+
+def _archive_receipt(saved, folder, archived):
+    for field in ('receipt', 'deliverable', 'last_message', 'log', 'cwd'):
+        if saved.get(field):
+            saved[field] = str(archived / Path(saved[field]).relative_to(folder))
+    if saved.get('repository'):
+        _git('-C', saved['repository'], 'worktree', 'repair', str(archived / 'work'))
+        saved['gitdir'] = (archived / 'work' / '.git').read_text()
+    write_json(archived / 'receipt.json', saved)
+
+
+def clear_failed(root):
+    """Hide old failures together without deleting their evidence or stopping live work."""
+    cleared = []
+    for path in state_path(Path(root), 'tasks').glob('do-*/receipt.json'):
+        with _lock(path.parent):
+            saved = read_json(path, {})
+            if saved.get('result') in FAILED and not saved.get('dismissed'):
+                write_json(path, {**saved, 'dismissed': True})
+                cleared.append(saved['id'])
+    return {'cleared': cleared}
+
+
+def prepare_reply(root, task_id):
+    """Promote the report's reply to the existing local draft store. Never send or open mail."""
+    from . import drafts
+    receipt = status(root, task_id)
+    folder = directory(root, task_id)
+    with _lock(folder):
+        saved = read_json(folder / 'receipt.json', {})
+        if draft_id := saved.get('draft_id'):
+            return drafts._current(root, draft_id, refresh_index=False)
+        draft = _prepare_reply(root, receipt)
+        write_json(folder / 'receipt.json', {**saved, 'draft_id': draft['id']})
+        return draft
+
+
+def _prepare_reply(root, receipt):
+    from . import drafts, threads
+    if receipt['result'] != 'completed' or not receipt.get('reply'):
+        raise RemError('This task has no reply draft')
+    rows = [row for row in drafts.candidates(root, refresh_index=False)
+            if any(threads.done_key(item['record'], item['text']) in receipt['keys'] for item in row['obligations'])]
+    if len(rows) != 1:
+        raise RemError('This item must match one current mail thread before preparing its reply')
+    row = rows[0]
+    drafts._not_held(read_json(drafts.path(root, row['id']), {}))
+    plan = {key: val for key, val in row.items() if key not in ('material', 'obligations')}
+    drafts.promote(root, {**plan, 'body': receipt['reply'], 'sources': [item['source'] for item in row['material']],
+                          'verdict': 'reply', 'send': 'owner', 'needs_owner': [], 'channel': 'mail',
+                          'gist': receipt['summary'], 'why': receipt['summary']})
+    return read_json(drafts.path(root, row['id']), {})
+
+
+def task_file(root, task_id, name):
+    """Resolve only a file inside this task's work folder, including through symlinks."""
+    folder = directory(root, task_id)
+    relative = Path(name)
+    if relative.is_absolute() or '..' in relative.parts or folder.is_symlink() or not (folder / 'receipt.json').is_file():
+        raise RemError('No such task file')
+    if relative.parts[:1] == ('work',):
+        relative = Path(*relative.parts[1:])
+    work = (folder / 'work').resolve()
+    # A work directory symlink must not turn another directory into this task's work.
+    if work != folder.resolve() / 'work':
+        raise RemError('No such task file')
+    path = (work / relative).resolve()
+    if not path.is_relative_to(work) or not path.is_file():
+        raise RemError('No such task file')
+    return path
 
 
 def host_dispatch(root, item, agent='codex'):

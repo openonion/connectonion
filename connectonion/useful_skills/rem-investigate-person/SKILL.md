@@ -9,6 +9,7 @@ description: Read a person’s identity, relationship and obligations from gathe
 
 Follow `rem-investigate` for research tools, privacy, own browser tab, the
 LinkedIn prohibition and saved captures. Resolve identity across names, company, public role and links; distinguish a name match from the same person. Lead with who they are and what they can do for/with the user, citing outside findings beside the mail.
+Research them as an OSINT analyst would: career, prior employers and what they did, public work, who they overlap with.
 
 ## Identity is given, not guessed
 

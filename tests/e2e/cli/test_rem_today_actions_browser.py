@@ -200,12 +200,13 @@ def test_hand_to_codex_moves_on_at_once_and_the_work_shows_in_one_place(today):
     strip = page.locator("#work-strip")
     strip.wait_for()
     assert _focal(page) == order[2], "the next card is in front while the Host has not answered yet"
-    assert "Handing 1 thing to Codex" in strip.inner_text()
+    assert "Codex is working on 1 thing" in strip.inner_text()
     page.evaluate("releaseTask()", isolated_context=False)
     page.wait_for_function("() => document.getElementById('work-strip')?.textContent.includes('Codex is working on 1 thing')")
-    assert "started 2 min ago" in strip.inner_text()
+    assert "2:00" in strip.inner_text()
     assert _focal(page) == order[2] and page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
-    strip.locator("summary").click()
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
     row = strip.locator(".work-row")
     assert row.count() == 1 and "Q3 receipts" in row.inner_text()
     row.get_by_role("button", name="Take back from Codex").click()
@@ -401,13 +402,14 @@ def test_the_numbers_on_today_are_one_number_or_say_what_they_count(today):
 
 
 def test_a_page_that_has_lost_its_host_says_how_to_act(desk):
-    """The click cannot start anything: the card comes back and names the command, it never sits at «handing»."""
+    """The click cannot start anything: the card comes back and says the Host is gone, never «handing» or «busy» (#3139)."""
     page, _, _ = desk
     page.evaluate("() => { window.fetch = () => Promise.reject(new TypeError('Failed to fetch')); }", isolated_context=False)
     page.locator(".qcard.focal [data-agent=codex]").first.click()
     page.wait_for_function("() => document.querySelector('.qcard.focal .hand-failed')")
     words = page.locator(".qcard.focal .hand-failed").first.inner_text()
-    assert "nothing was handed over" in words and "Open REM again" in words
+    assert "nothing was handed over" in words and "lost touch with REM" in words
+    assert page.locator("#host-lost").get_by_role("button", name="Reconnect").is_visible()
 
 
 def test_a_snapshot_says_in_words_that_it_cannot_act_and_never_appears_to_start(desk):
@@ -487,3 +489,44 @@ def test_threads_he_already_answered_are_a_filter_of_their_own(desk):
     page.locator(".open-chips .chip", has_text="I replied").click()
     rows = page.locator(".task-band ul.threads > li")
     assert rows.count() == 1 and "Q3 receipts" in rows.first.inner_text()
+
+
+def test_a_hand_off_shows_what_the_agent_is_doing_and_can_be_watched_then_continued(today):
+    """#3138 (owner, 2026-11-19): see the progress, and pick the session up in Terminal or the agent itself."""
+    page, calls, answers = today
+    state = {"done": False}
+
+    def task(body):
+        if state["done"]:
+            return 200, {"id": "task-ines", "result": "completed", "agent": "codex", "finished_at": "2026-10-01T12:06:00+00:00",
+                         "session_id": "01a1bda7-ca66-7640-88ca-79eb9b66e649", "deliverable": "/tmp/x.md", "last_message": "/tmp/last.md"}
+        return 200, {"id": "task-ines", "result": "running", "agent": "codex", "started_at": "2026-10-01T11:58:00+00:00",
+                     "tmux": "rem-task-ines", "steps": 3, "step": {"at": "2026-10-01T12:00:00+00:00", "status": "running",
+                                                                    "summary": "Running the requested tests"}}
+    answers["/rem/task"] = task
+    order = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
+    page.evaluate("path => dealCard(path)", order[1], isolated_context=False)
+    page.locator(".qcard.focal [data-agent=codex]").first.click()
+    strip = page.locator("#work-strip")
+    page.wait_for_function("() => document.getElementById('work-strip')?.textContent.includes('Codex is working on 1 thing')")
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
+    row = strip.locator(".work-row")
+    row.get_by_text("Running the requested tests").wait_for()  # the step, in words, while it runs
+    shots = os.environ.get("CO_REM_PR_SHOTS")
+    if shots:
+        page.screenshot(path=os.path.join(shots, f"handoff-running-{page.viewport_size['width']}.png"))
+    row.get_by_role("button", name="Watch in Terminal").click()
+    page.wait_for_function("() => true")
+    assert ("/rem/task", {"id": "task-ines", "action": "watch"}) in calls
+    state["done"] = True
+    page.wait_for_function("() => document.getElementById('work-strip')?.textContent.includes('Codex finished')", timeout=15000)
+    strip = page.locator("#work-strip")
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
+    strip.locator(".work-row").get_by_role("button", name="Continue in Codex").click()
+    page.wait_for_function("() => true")
+    assert ("/rem/task", {"id": "task-ines", "action": "resume"}) in calls
+    if shots:
+        page.screenshot(path=os.path.join(shots, f"handoff-finished-{page.viewport_size['width']}.png"))
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

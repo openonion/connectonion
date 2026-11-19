@@ -113,7 +113,9 @@ def test_a_waiting_row_the_night_never_prepared_is_handed_watched_and_its_result
     line.get_by_text("Codex finished").wait_for(timeout=30000)       # it follows the run by itself
     line.get_by_role("button", name="See result").click()
     from patchright.sync_api import expect
-    expect(row.locator(".task-output h2")).to_have_text("Pilot review")          # "# Pilot review", rendered
+    # The report opens in the side card (#3147), rendered, not inline under the row.
+    expect(page.locator("#evidence-panel h2")).to_have_text("Pilot review")          # "# Pilot review", rendered
+    page.keyboard.press("Escape")
     if SHOTS:
         row.screenshot(path=str(Path(SHOTS) / "hand-row-finished.png"))
     line.get_by_role("button", name="Take back from Codex").click()

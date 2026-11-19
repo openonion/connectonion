@@ -599,3 +599,18 @@ def test_daily_summary_and_per_page_usage_are_not_counted_twice(notebook, monkey
 def test_issue_numbers_at_line_start_are_prose_not_headings():
     original = '# Theo Park\n\n## History\n- Fixed in #1037 [1].\n'
     assert tr.checked(original, '# Theo Park\n\n## History\n#1037 中修复 [1]。\n') .startswith('# Theo Park')
+
+
+def test_a_decisions_title_is_a_statement_and_is_translated_a_persons_name_is_not():
+    """#3142 (owner, 2026-11-19): «decision 的标题为什么是英文的呢？». A decision, knowledge or principle title says
+    something; a person, organisation or project title names one."""
+    from connectonion.rem import translate
+    decision = "# Keep the notebook in Markdown\n\nWe chose Markdown [1].\n"
+    assert "Keep the notebook in Markdown" not in translate.page_names(decision, "decisions/notebook-format.md")
+    assert "Mara Ostrowski" in translate.page_names("# Mara Ostrowski\n\nRuns the pilot.\n", "people/mara.md")
+    assert "translate its title" in translate.prompt("zh", statement=True)
+    assert "translate its title" not in translate.prompt("zh")
+    # The checker lets a statement's title change and still holds every other heading.
+    assert translate.checked(decision, "# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n", title_free=True)
+    with pytest.raises(RemError):
+        translate.checked(decision, "# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n")
