@@ -3246,8 +3246,28 @@
   /* #2840 slice 1: three privacy levels, one control beside the language toggle. The word says the state. */
   .privacy-level-host { position: relative; display: inline-flex; }
   .privacy-level { min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); cursor: pointer; white-space: nowrap; }
-  .privacy-level .pl-short { display: none; }
-  @media (max-width: 640px) { .privacy-level .pl-short { display: inline; } }
+  /* rc34 check: the bar is one compact cluster. The language badge (a count) opens the translation menu; the privacy
+     level is a short word; on a phone both live in one 显示 menu. */
+  .lang-progress { position: relative; }
+  .lang-badge { min-width: 28px; height: 22px; padding: 0 7px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); font-variant-numeric: tabular-nums; cursor: pointer; }
+  .lang-badge:hover, .lang-badge[aria-expanded="true"] { box-shadow: var(--e-ring); }
+  .lang-menu, .display-pop { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: 280px; max-width: calc(100vw - 32px); padding: 12px;
+    border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); color: var(--ink); white-space: normal;
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .lang-menu { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+  .display-menu-host { position: relative; display: none; }
+  .display-menu { min-width: 44px; min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--radius); background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .display-pop .dp-h { margin: 8px 0 4px; color: var(--grey); }
+  .display-pop .dp-h:first-child { margin-top: 0; }
+  .display-pop .dp-row { display: flex; gap: 8px; }
+  .display-pop .dp-lang { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0; }
+  .display-pop button[role="menuitemradio"] { display: block; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: var(--radius); background: none; color: var(--ink);
+    font: inherit; text-align: left; cursor: pointer; }
+  .display-pop .dp-row button[role="menuitemradio"] { width: auto; flex: 1; text-align: center; }
+  .display-pop button[aria-checked="true"] { font-weight: var(--w-bold); background: var(--well); }
+  .display-pop small { display: block; color: var(--grey); font: inherit; }
+  @media (max-width: 640px) { #lang-toggle, #lang-progress, .privacy-level-host { display: none !important; } .display-menu-host { display: inline-flex; } }
   .privacy-level:hover, .privacy-level[aria-expanded="true"] { background: var(--well); color: var(--ink); }
   .privacy-menu { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: 260px; max-width: calc(100vw - 32px); margin: 0; padding: 4px; list-style: none;
     border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); }
@@ -3346,7 +3366,6 @@
     .top-end { width: auto; }
     .lang-toggle { min-width: 44px; height: 44px; }
     .privacy-level { min-height: 44px; min-width: 44px; padding: 0 6px; }
-    .privacy-level .pl-long { display: none; }
     .search { display: none; }
     body.searching .search { display: flex; position: fixed; left: 12px; right: 12px; top: 10px; z-index: 46; max-width: none; }
     body.searching .search input { font: var(--w-regular) var(--s-body)/1 var(--font); }
@@ -4011,7 +4030,7 @@
         <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
         <button class="kbd" type="button" aria-label="Command palette">⌘K</button>
       </div>
-      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><span class="privacy-level-host"><button id="privacy-level" class="privacy-level" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="lang-toggle" class="lang-toggle" type="button"></button><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
+      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><span class="privacy-level-host"><button id="privacy-level" class="privacy-level" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="lang-toggle" class="lang-toggle" type="button"></button><span class="display-menu-host"><button id="display-menu" class="display-menu" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
     </header>
     <main id="main" tabindex="-1"></main>
   </div>
@@ -5286,9 +5305,9 @@ function untranslatedPages() {
   return (REM.records || []).filter(r => r.written && ["people", "orgs", "projects", "decisions", "principles", "knowledge", "skills"].includes(r.category)
     && !hasChinese(r) && !/^zh(?:-|$)/i.test(r.written_in || ""));
 }
-function renderLangProgress() {
-  const box = document.getElementById("lang-progress");
-  if (!box) return;
+// What the language line says (the rc34 check: the top bar had grown to "369 页还没有中文版 · 翻译 · 遮住敏感 · EN"):
+// the parts live in the language badge's menu and in the phone's 显示 menu; the bar itself shows only a count.
+function langParts() {
   if (liveHere() && uiLanguage === "zh" && !translateAllAsked) { translateAllAsked = true; translateAllSend("status"); }
   const job = translateAllJob || {}, busy = ["starting", "running", "stopping"].includes(job.state);
   // The Host's count, once it has answered: it knows which pages already read in Chinese; until then, the page's own.
@@ -5313,8 +5332,70 @@ function renderLangProgress() {
       parts.push(go);
     } else parts.push(el("span", { class: "lang-when", text: t("tonight") }));
   }
-  box.replaceChildren(...parts);
-  box.hidden = !parts.length;
+  return { parts, busy, left, job };
+}
+function renderLangProgress() {
+  const box = document.getElementById("lang-progress");
+  if (!box) return;
+  const { parts, busy, left, job } = langParts();
+  // An open menu stays open while the count moves (the Host polls during a translation); only its words change.
+  const wasOpen = !!box.querySelector(".lang-menu");
+  refreshDisplayLang(parts);
+  if (!parts.length) { box.replaceChildren(); box.hidden = true; renderDisplayMenu(); return; }
+  // A small count beside the toggle; while it translates, its progress.
+  const badge = el("button", { type: "button", class: "lang-badge", "aria-haspopup": "menu", "aria-expanded": "false",
+    title: parts.map(part => part.textContent).join(" · "),
+    text: busy && job.total != null ? job.done + "/" + job.total : String(left) });
+  badge.onclick = event => { event.stopPropagation(); toggleLangMenu(); };
+  box.replaceChildren(badge);
+  box.hidden = false;
+  if (wasOpen) toggleLangMenu(true);
+  renderDisplayMenu();
+}
+function refreshDisplayLang(parts) {
+  const pop = document.querySelector(".display-pop");
+  if (!pop) return;
+  const shown = pop.querySelector(".dp-lang");
+  if (!parts.length) { shown?.remove(); return; }
+  const fresh = el("div", { class: "dp-lang" }, parts);
+  if (shown) shown.replaceWith(fresh); else pop.querySelector(".dp-row").after(fresh);
+}
+function toggleLangMenu(open) {
+  const box = document.getElementById("lang-progress"), badge = box.querySelector(".lang-badge"), shown = box.querySelector(".lang-menu");
+  if (shown || open === false) { shown?.remove(); badge?.setAttribute("aria-expanded", "false"); return; }
+  const menu = el("div", { class: "lang-menu", role: "menu", "aria-label": t("Language") }, langParts().parts);
+  box.appendChild(menu);
+  badge.setAttribute("aria-expanded", "true");
+}
+// The phone's one control (rc34 check): language, translation and privacy in one 显示 menu, nothing truncated.
+function renderDisplayMenu() {
+  const button = document.getElementById("display-menu");
+  if (!button) return;
+  button.textContent = t("Display");
+  button.setAttribute("aria-label", t("Display") + ": " + t(PRIVACY_WORDS[privacyLevel][0]));
+  button.onclick = event => { event.stopPropagation(); toggleDisplayMenu(); };
+}
+function toggleDisplayMenu(open) {
+  const button = document.getElementById("display-menu"), host = button.parentElement, shown = host.querySelector(".display-pop");
+  if (shown || open === false) { shown?.remove(); button.setAttribute("aria-expanded", "false"); return; }
+  const lang = ["zh", "en"].map(code => {
+    const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(uiLanguage === code), text: code === "zh" ? "中文" : "English" });
+    item.onclick = () => { toggleDisplayMenu(false); if (uiLanguage !== code) document.getElementById("lang-toggle").click(); };
+    return item;
+  });
+  const levels = PRIVACY_LEVELS.map(level => {
+    const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(level === privacyLevel), "data-level": level },
+      [el("span", { text: t(PRIVACY_WORDS[level][0]) }), el("small", { text: t(PRIVACY_WORDS[level][1]) })]);
+    item.onclick = () => { toggleDisplayMenu(false); setPrivacy(level); };
+    return item;
+  });
+  const { parts } = langParts();
+  const pop = el("div", { class: "display-pop", role: "menu", "aria-label": t("Display") }, [
+    el("p", { class: "dp-h", text: t("Language") }), el("div", { class: "dp-row" }, lang),
+    parts.length ? el("div", { class: "dp-lang" }, parts) : null,
+    el("p", { class: "dp-h", text: t("Privacy") }), ...levels].filter(Boolean));
+  host.appendChild(pop);
+  button.setAttribute("aria-expanded", "true");
 }
 function renderLangToggle() {
   const button = document.getElementById("lang-toggle");
@@ -5344,7 +5425,7 @@ Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏
   "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
   "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
   "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
-  "Sensitive · tap to show": "敏感 · 点一下显示", "All": "全部", "Covered": "遮挡", "Public": "公开", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+  "Sensitive · tap to show": "敏感 · 点一下显示", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
 const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
   cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
   public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
@@ -5364,6 +5445,7 @@ function setPrivacy(level, { save = true, redraw: again = true } = {}) {
   applyPrivacyClasses();
   if (save) readerStorage("co-rem-privacy", privacyLevel);
   renderPrivacyControl();
+  renderDisplayMenu();
   if (!again || !REM) return;
   if (privacyLevel !== "public" && privacyRemoved) {
     // Passages Public only took out come back only from the notebook: draw the page again.
@@ -5394,7 +5476,8 @@ function renderPrivacyControl() {
   if (!button) return;
   const [word, , short] = PRIVACY_WORDS[privacyLevel];
   // The state in words; a phone's top bar has room for its short word.
-  button.replaceChildren(el("span", { class: "pl-long", text: t(word) }), el("span", { class: "pl-short", text: t(short) }));
+  // The short word in the bar (公开 / 遮敏感 / 全部); the full word and its meaning in the title and menu (rc34 check).
+  button.replaceChildren(el("span", { class: "pl-short", text: t(short) }));
   button.title = t(PRIVACY_WORDS[privacyLevel][1]);
   button.setAttribute("aria-label", t("Privacy") + ": " + t(word));
   button.onclick = event => { event.stopPropagation(); togglePrivacyMenu(); };
@@ -7868,6 +7951,8 @@ function renderRail(active) {
   renderRailEnd(active);
   renderTabbar(active);
   renderLangToggle();
+  renderPrivacyControl();
+  renderDisplayMenu();
   renderSettings();
   const ownerPage = byPath(REM.owner);
   document.getElementById("brand-sub").textContent = ownerPage ? t("{name}'s memory", { name: ownerPage.title.split(/\s+/)[0] }) : (REM.root || "").split("/").filter(Boolean).slice(-1).join("");
@@ -8338,7 +8423,7 @@ function taskResult(entry) {
   const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", completed: "Completed"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
-    task.reason ? el("p", {text: task.reason}) : null, snapshotDone && task.summary ? el("p", {text: task.summary}) : null]);
+    task.reason ? el("p", {text: task.reason}) : null, snapshotDone && summaryHere(task.summary) ? el("p", {text: summaryHere(task.summary)}) : null]);
   if (snapshotDone && task.reply) {
     const reply = el("textarea", {readonly: "", "aria-label": t("Prepared reply")});
     reply.value = task.reply;
@@ -8836,11 +8921,17 @@ function taskFailure(task) {
   if (task.reason?.includes('Operation not permitted') && agent === 'Codex') return 'Codex 当时无法启动（已修复），可以重试';
   return task.result === 'timed-out' ? `${agent} 超时了，可以重试` : task.result === 'stopped' ? `${agent} 已停止，可以重试` : `${agent} 这次未能完成，可以重试`;
 }
+// A run's one-line summary goes on its row only in the reader's language: runs from before the language rule wrote
+// English headings ("… — written feedback preparation", rc34 check). The row already says the item in its own words;
+// the agent's heading stays inside the report.
+function summaryHere(summary) {
+  return summary && (uiLanguage !== "zh" || /[\u4e00-\u9fff]{2}/.test(summary)) ? summary : "";
+}
 function taskStatus(task) {
   const agent = AGENT_NAMES[task.agent || 'codex'];
   if (ACTIVE_TASK.includes(task.result)) return t('{agent} is working', { agent }) + ' · ' + taskElapsed(task.started_at || task.queued_at) + (taskStep(task) ? ' · ' + taskStep(task) : '');
   // State in words first (owner: words for state), then what it found in one line.
-  return task.result === 'completed' ? t('{agent} finished', { agent }) + (task.summary ? ' · ' + task.summary : '') : taskFailure(task);
+  return task.result === 'completed' ? t('{agent} finished', { agent }) + (summaryHere(task.summary) ? ' · ' + summaryHere(task.summary) : '') : taskFailure(task);
 }
 function taskStatusNode(task) {
   if (ACTIVE_TASK.includes(task.result)) startTaskClock();
@@ -17308,6 +17399,15 @@ window.addEventListener("online", () => reconcileThreads().then(redraw));
 window.addEventListener("hashchange", render);
 // The privacy levels' page-wide wiring (#2840): close the menu, curtain whatever is drawn, lift a curtain.
 document.addEventListener("click", event => { if (!event.target.closest?.(".privacy-level-host")) document.querySelector(".privacy-menu") && togglePrivacyMenu(false); });
+document.addEventListener("click", event => {
+  if (!event.target.closest?.("#lang-progress")) document.querySelector(".lang-menu") && toggleLangMenu(false);
+  if (!event.target.closest?.(".display-menu-host")) document.querySelector(".display-pop") && toggleDisplayMenu(false);
+});
+window.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  if (document.querySelector(".lang-menu")) toggleLangMenu(false);
+  if (document.querySelector(".display-pop")) toggleDisplayMenu(false);
+});
 window.addEventListener("keydown", event => { if (event.key === "Escape" && document.querySelector(".privacy-menu")) togglePrivacyMenu(false); });
 new MutationObserver(records => { for (const record of records) for (const node of record.addedNodes) applyPrivacy(node); })
   .observe(document.documentElement, { childList: true, subtree: true });
