@@ -371,6 +371,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "owner_language": owner_language(root),
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # The release that drew this page: after an upgrade the open page compares it with the Host's.
+            "release": _release(),
             # The sidebar footer names the release ("co 1.9.3"), so a report can say which one it was.
             "version": connectonion.__version__,
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
@@ -1036,10 +1038,14 @@ def latest(root: Path) -> dict:
     the open page); starts a rebuild when one is due."""
     try:
         building = _rebuild_stale(root, "live.html", reader_version(root))
+        row = saved(root, "live")
         # `building` lets the open page take down its "Updating…" line once no newer page is coming (Mac review of rc30).
-        return {"as_of": saved(root, "live").get("as_of"), "failed": failure(root), "building": bool(building)}
+        # `installed`: the release on disk; `release`: the one that drew the saved page. When they differ the
+        # new page is still being built, and the open page waits for it instead of reloading the old one.
+        return {"as_of": row.get("as_of"), "failed": failure(root), "building": bool(building),
+                "release": row.get("release"), "installed": _release()}
     except CacheRefused:
-        return {"as_of": None, "failed": None, "building": False}
+        return {"as_of": None, "failed": None, "building": False, "release": None, "installed": _release()}
 
 
 def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False) -> bool:
