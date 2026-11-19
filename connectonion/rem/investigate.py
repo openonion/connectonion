@@ -851,20 +851,25 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached, gone = 0, []
 
+        # A mail deleted or moved since it was listed is that mail's gap, never the page's: one Graph 404 ended
+        # 16 turns in a row on 2026-11-12, and parking the page "until it changes" could last for ever (#3101).
+        # A body REM saved is read from the archive first (_mail_body); otherwise the mail is left out and said.
         def attachment_metadata(message_id: str) -> list[dict]:
-            with _fetch_slot(kind):
-                return read_mail(partial(_patient, client.list_attachments), message_id,
-                                 provider=kind, root=archive_root, operation='attachments')
+            try:
+                with _fetch_slot(kind):
+                    return read_mail(partial(_patient, client.list_attachments), message_id,
+                                     provider=kind, root=archive_root, operation='attachments')
+            except MissingMail:
+                if message_id not in gone:
+                    gone.append(message_id)
+                return []
 
         def fetch_body(message_id: str) -> str | None:
-            # A mail deleted or moved since it was listed is that mail's gap:
-            # one Graph 404 ended 16 turns in a row on 2026-11-12.
             try:
                 return _mail_body(client, message_id, kind=kind, root=archive_root)
             except MissingMail:
-                if archive_root is not None:
-                    raise
-                gone.append(message_id)
+                if message_id not in gone:
+                    gone.append(message_id)
                 return None
 
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",

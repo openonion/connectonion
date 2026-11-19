@@ -806,6 +806,20 @@ parked the page for one such id (2026-11-17). It is no longer refused.
 The restore runs only when every error left is a dropped quote or source; a
 refusal that also names another error (a capture's format, a quote not in its
 source) is repaired by the worker and parked on the usual count.
+A cited mail deleted from the mailbox (Graph or Gmail 404/410), for its body or
+its attachments, is that mail's gap and never the page's (#3101): a copy REM saved
+is read from the archive; otherwise the mail is left out of the page's material
+and the run record says "N message(s) skipped" with the missing ids, and the
+investigation goes on. It used to park the page until the page changed.
+
+Marks made in Today (done, ignored, put off) are kept in `.state/threads.json`,
+keyed by the line's words, and each remembers the sources the line cites (#3098).
+When the night rewords a line it keeps ("open as of 9 Nov" becomes "open as of
+17 Nov"), the mark follows it to the line on the same page that cites the same
+sources, so a closed item stays closed. Only new mail on its thread brings it
+back, and the returned item carries `reason: new_mail`. A line that cites other
+sources is a new item.
+
 A task refused twice for the same reason, or three times in all, is parked:
 the reason goes to the refusal ledger (`.state/refused-investigations.json`),
 the last candidate and its `review.json` stay in the task's folder under

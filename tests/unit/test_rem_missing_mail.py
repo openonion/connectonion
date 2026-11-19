@@ -23,30 +23,34 @@ def gone(status=404):
 
 
 @pytest.mark.parametrize('status', [404, 410])
-def test_scheduled_next_parks_gmail_attachment_metadata_and_serves_other_work(notebook, monkeypatch, status):
-    round_of(notebook, monkeypatch, ['orgs/lantern.md'])
-    book = Notebook(notebook)
-    book.write('orgs/lantern.md', '# Lantern\n\n- Domain: lantern.example\n')
-    mailbox = Mailbox(attachment_errors={'mail-1': lambda: gone(status)})
-    monkeypatch.setattr(native_round, '_prepare_investigation', lambda *a: inv.gather(
-        'Lantern', ['lantern.example'], days=5, clients={'gmail': mailbox}, subscriptions={},
-        archive_root=notebook, record='orgs/lantern.md', attachments_dir=notebook / 'attachments', lock_held=True))
-    task = native.next_task(notebook, scheduled=True)
-    assert task['outcome'] == 'task' and task['record'] == 'projects/heron.md'
-    parked = read_json(state_path(notebook, fetch_stalls.LEDGER), {})['items']['orgs/lantern.md']
-    assert parked['missing_id'] == 'mail-1'
-    assert 'no longer exists' in parked['error']
-    assert any('mail-1' in notice for notice in task['notices'])
-
-
-@pytest.mark.parametrize('status', [404, 410])
 @pytest.mark.parametrize('provider', ['gmail', 'outlook'])
 @pytest.mark.parametrize('record', ['people/ivy.md', 'orgs/lantern.md', 'projects/pilot.md'])
-def test_investigate_body_parks_gone_evidence(notebook, provider, status, record):
-    mailbox = Mailbox(body_errors={'mail-1': lambda: gone(status)})
-    with pytest.raises(MissingMail, match='mail-1.*no longer exists'):
-        inv.gather('Ivy', ['ivy@lantern.example', 'lantern.example'], days=5, clients={provider: mailbox}, subscriptions={},
-                   archive_root=notebook, record=record, lock_held=True)
+@pytest.mark.parametrize('site', ['body', 'attachments'])
+def test_a_mail_gone_from_the_mailbox_is_dropped_and_the_investigation_goes_on(notebook, provider, status, record, site):
+    """#3101 (was: the whole page parked "until the page changes", which may never happen). A cited mail deleted
+    from the mailbox is left out of that page's material with one line in the run record; the rest is read."""
+    errors = {'mail-1': lambda: gone(status)}
+    mailbox = Mailbox(**({'body_errors': errors} if site == 'body' else {'attachment_errors': errors}))
+    items, coverage = inv.gather('Ivy', ['ivy@lantern.example', 'lantern.example'], days=5, clients={provider: mailbox}, subscriptions={},
+                                 archive_root=notebook, record=record, attachments_dir=notebook / 'attachments', lock_held=True)
+    texts = ' '.join(item['text'] for item in items)
+    assert 'Body of mail-2' in texts
+    if site == 'body':
+        assert 'Body of mail-1' not in texts
+    assert any('1 message' in line for line in coverage) and any('mail-1' in line for line in coverage), coverage
+    assert record not in read_json(state_path(notebook, fetch_stalls.LEDGER), {}).get('items', {})
+
+
+@pytest.mark.parametrize('provider', ['gmail', 'outlook'])
+def test_a_gone_mail_rem_saved_is_read_from_the_archive(notebook, provider):
+    """#3101: a message gone from the mailbox is read from the archive when REM saved it."""
+    from connectonion.rem.mail_archive import retain_message
+    mailbox = Mailbox(body_errors={'mail-1': lambda: gone(404)})
+    retain_message(notebook, provider, {**mailbox.rows[0]}, 'Saved copy of mail-1: the pilot moved to Tuesday.',
+                   fetched_at=service.now().isoformat())
+    items, _ = inv.gather('Ivy', ['ivy@lantern.example', 'lantern.example'], days=5, clients={provider: mailbox}, subscriptions={},
+                          archive_root=notebook, record='people/ivy.md', lock_held=True)
+    assert 'Saved copy of mail-1' in ' '.join(item['text'] for item in items)
 
 
 @pytest.mark.parametrize('site', ['body', 'attachments', 'night-metadata', 'night-body'])
