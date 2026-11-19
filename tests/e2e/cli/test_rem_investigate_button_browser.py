@@ -102,6 +102,16 @@ def live(tmp_path, monkeypatch):
     assert not errors, errors
 
 
+def _topmost(page, selector):
+    """A 5×5 grid of points over the opened element (16px in, clear of its rounded corners) are the element itself to the
+    pointer, not a card drawn over it."""
+    return page.evaluate("""sel => { const n = document.querySelector(sel), b = n.getBoundingClientRect(), points = [];
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++)
+        points.push([b.left + 16 + (b.width - 32) * i / 4, b.top + 16 + (b.height - 32) * j / 4]);
+      return points.filter(([x, y]) => y < innerHeight && x < innerWidth).every(([x, y]) => n.contains(document.elementFromPoint(x, y))); }""",
+                         selector, isolated_context=False)
+
+
 def test_the_button_says_why_offers_its_levels_runs_in_place_and_undoes(live):
     from patchright.sync_api import expect
     from connectonion.rem.files import Notebook
@@ -123,6 +133,7 @@ def test_the_button_says_why_offers_its_levels_runs_in_place_and_undoes(live):
     control.locator(".inv-more > summary").click()
     levels = control.locator(".inv-menu [data-level]")
     expect(levels).to_have_count(3)
+    assert _topmost(page, ".inv-menu"), "the Investigate menu is covered by the page below it"
     assert [text.split("\n")[0] for text in levels.all_inner_texts()] == ["Full investigation · default", "Quick update", "Rewrite the page"]
     levels.first.click()                                       # an up-to-date page can still be run from ⋯
     steps = control.locator(".inv-steps li")
@@ -133,8 +144,14 @@ def test_the_button_says_why_offers_its_levels_runs_in_place_and_undoes(live):
     expect(line).to_contain_text("Updated · 1 line added", timeout=30000)
     line.get_by_role("button", name="What changed").click()
     expect(control.locator(".inv-changed li")).to_have_text("Mara moved the pilot review to Friday.")
+    # A real run lists many lines (the owner's had a dozen), so the card reaches over the cards under the head.
+    page.evaluate("""() => { const ul = document.querySelector('.inv-changed ul');
+      for (let i = 1; i <= 10; i++) ul.append(Object.assign(document.createElement('li'), { textContent: 'Another line the run added, number ' + i + '.' })); }""",
+                  isolated_context=False)
     if SHOTS:
         page.screenshot(path=str(Path(SHOTS) / "investigate-done.png"))
+    # It floats over everything under it (owner, 2026-11-19: some cards were drawn over it, some under).
+    assert _topmost(page, ".inv-changed"), "the 'What changed' card is covered by the page below it"
     assert "Friday" in Notebook(root).read(PAGE)
     line.get_by_role("button", name="Undo").click()
     expect(control.locator(".inv-line[role=status]")).to_have_text("Undone · the page is back as it was")

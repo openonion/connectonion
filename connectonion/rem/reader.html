@@ -3591,6 +3591,10 @@
   @keyframes inv-beat { 50% { transform: scale(1.35); } }
   @media (prefers-reduced-motion: reduce) { .inv-steps li.running::before { animation: none; } }
   /* What changed opens over the page like the ⋯ menu, so the name beside it never gives up its width. */
+  /* A record head that holds 调查 is lifted above the cards after it: its rise animation makes it a stacking
+     context, so the menu's and "What changed"'s own z-index only counted inside the head, and every later card
+     (risen the same way, painted later) was drawn over them (owner, 2026-11-19). */
+  :is(.r4-head, .ov-say, .page-head):has(.inv) { position: relative; z-index: 10; }
   .inv-changed { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: 420px; max-width: calc(100vw - 32px); margin: 0;
     padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); color: var(--ink);
     font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-align: left; }

@@ -695,6 +695,8 @@ def test_a_source_title_opens_its_original_in_the_side_card(tmp_path, monkeypatc
         panel.wait_for(state='visible')
         assert 'the venue is booked for March' in panel.inner_text()
         assert panel.locator('.evidence-claim').count() == 0  # nothing of the page to quote from the list
+        if os.environ.get('REM_PR_SHOTS'):
+            page.screenshot(path=os.path.join(os.environ['REM_PR_SHOTS'], f'source-card-{width}.png'))
         page.keyboard.press('Escape')
         assert not panel.is_visible()
         assert page.evaluate("document.activeElement.closest('li')?.id") == 'src-1'  # focus returns to the title

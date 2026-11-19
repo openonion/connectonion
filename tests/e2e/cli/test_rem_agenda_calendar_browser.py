@@ -511,3 +511,5 @@ def test_an_event_detail_shows_how_to_join_who_called_it_and_its_notes(agenda):
     # The provider's page is the last, quiet thing: after the details, not instead of them.
     names = detail.locator("a").all_inner_texts()
     assert names[0] == "Join Google Meet" and names[-1].startswith("Open in Google Calendar")
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "calendar-event-detail-1440.png"))
