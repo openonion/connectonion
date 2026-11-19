@@ -3544,9 +3544,12 @@
   .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0 -16px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .hero-meta > * { margin-left: 16px; }
   .hero-meta > *::before, .n3-person .dek > *::before { content: "·"; display: inline-block; width: 16px; margin-left: -16px; text-align: center; color: var(--grey); }
-  .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
+  .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0 0 0 16px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
     font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .n3-person .hero-meta .r4-today.late { color: var(--red); box-shadow: none; padding: 0; }
+  /* In the meta line the Today link takes the line's "·" like its neighbours, never the card's red dot (Mac review, rc28). */
+  .n3-person .hero-meta .r4-today::before, .n3-person .hero-meta .r4-today.late::before { content: "·"; display: inline-block; width: 16px; height: auto;
+    margin-left: -16px; border-radius: 0; background: none; color: var(--grey); text-align: center; }
   .hero-acts:empty { display: none; }
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
