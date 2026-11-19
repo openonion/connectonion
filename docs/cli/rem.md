@@ -1140,6 +1140,23 @@ what the repair still drops is put back beside the new work, as dropped quotes
 and sources already are. The lead, `History` (folded by the program at sixteen
 lines) and `Uncertainties` (questions that get answered) are excluded on purpose.
 
+A page over the 20,000-character limit keeps every line too. Before the size
+check, the program moves the page's oldest dated `History` lines, word for word,
+to an archive beside it, `logs/history/<the page's path>` (for example
+`logs/history/people/avery-lin.md`). It moves them oldest first until the page
+is under the limit, and always keeps the newest four on the page. Each moved
+line keeps its words; its citation numbers become the archive's own, defined in
+the archive's `## Sources` by the same source the page cited, so a later
+renumbering of the page cannot point them elsewhere. The page keeps its own
+Sources and ends its History with one line, "Earlier history: N entries moved
+to [archive](…)", which opens the archive as a page in the reader. A later move
+adds to the same archive. The loss checks count a moved line as kept. Before
+this, a page already over the limit could never be appended to: the size check
+asked for History to be folded, and the append rule refused every fold
+(2026-11-19, a 22,670-character page appended to 32,360, refused on each repair).
+The archive is in `logs/`, which holds run records: the night never reads it
+back as material.
+
 The options are steps, each with its own prompt:
 
 ```bash
@@ -1344,7 +1361,10 @@ live Host (`POST /rem/investigate`): a detached worker runs the public CLI and
 the head follows it step by step from the run records (Append or Write, then Web
 follow-up, with the run's current stage). When it ends the head says how many
 lines it added, lists them under **What changed**, and offers **Undo** while
-nothing else has changed the page. The ⋯ beside it holds the levels: **Full
+nothing else has changed the page. A run that stops says why in one plain
+sentence in the reader's language ("调查没有完成：页面超过长度上限，候选稿已保存，页面没有改动"),
+read from the CLI's `--json` error, never a Python list or a progress line
+(1.9.6rc27 showed "['Investigation: writing investigation']"). The ⋯ beside it holds the levels: **Full
 investigation** (default), **Quick update** (write or append only, no web) and
 **Rewrite the page** (a draft, then **Replace the page** or **Discard** in the
 head). A level shows "last time about N points" only when that page has a
