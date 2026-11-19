@@ -241,7 +241,8 @@ def test_a_click_opens_the_records_page_and_back_returns_to_the_same_mark_and_vi
     assert js(page, "() => location.hash") == "#c=knowledge" and js(page, "() => [graphState.T.k, graphState.T.x, graphState.T.y]") == view
     page.mouse.click(*at)
     page.wait_for_function("() => location.hash === '#r=projects%2Fquarry-open-day.md'")
-    assert page.locator("#main h1").first.inner_text() == "Quarry open day"
+    # The record renders after the hash changes (its page states are read first); wait for it, then compare.
+    page.wait_for_function("() => document.querySelector('#main h1')?.innerText === 'Quarry open day'")
     page.go_back()
     page.locator(".gx-map canvas").wait_for()
     assert js(page, "() => location.hash") == "#view=graph&focus=projects%2Fquarry-open-day.md"

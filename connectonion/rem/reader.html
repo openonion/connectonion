@@ -8353,8 +8353,9 @@ function handState(entry, show, panel, mark) {
 // /rem/task run as 交给 Codex, keyed by the project's own page; its progress and result show in place.
 function investigateRequest(r) {
   if (!REM.live) return liveReaderLine("This is a snapshot: ask Codex to look from the live reader.");
-  r.investigation ||= { keys: [r.path], task: r.task || null };
-  return handOff({ key: r.path, row: r.investigation, ask: true });
+  // Its own row: r.investigation is the Investigate button's state (#3105), and sharing it crashed the page.
+  r.codex_look ||= { keys: [r.path], task: r.task || null };
+  return handOff({ key: r.path, row: r.codex_look, ask: true });
 }
 function followTask(entry, task, status, show) {
   setTimeout(async () => {
