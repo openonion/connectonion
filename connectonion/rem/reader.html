@@ -4600,6 +4600,7 @@ const UI = {
     "Source for this line": "这条陈述的来源",
     "Original excerpts are hidden until you show labelled passages.": "原始摘录已隐藏，可选择显示已标记段落。",
     "The original isn't in this snapshot.": "此快照未包含原始内容。",
+    "The page this source belongs to isn't in this snapshot.": "这条来源所在的页面不在这份快照里。",
     "Full source ID": "完整来源 ID",
     "Find in archived source": "在存档来源中查找",
     "Previous match": "上一个匹配",
@@ -16304,15 +16305,36 @@ document.addEventListener("click", hideCitationTip);
 window.addEventListener("resize", hideCitationTip);
 window.addEventListener("scroll", hideCitationTip, true);
 window.addEventListener("hashchange", hideCitationTip);
+// A citation chip opens its source beside the page and never navigates. Its link names the page whose Sources list
+// defines the number, which may not be the page on screen (a relation card, a quoted line). Navigating was the
+// fallback whenever that page was not in the snapshot or the card could not open, and the owner landed on someone
+// else's page while reading a project (#3165, deep hunt 2026-11-19). Navigation is stopped first; a page that is
+// not here says so in the card.
 document.addEventListener("click", e => {
   const citation = e.target.closest("a.cite");
   if (!citation) return;
+  e.preventDefault();
   const url = new URL(citation.href);
   const params = new URLSearchParams(url.hash.slice(1));
   const path = params.get("r"), number = (params.get("h") || "").replace(/^src-/, "");
   const r = byPath(path);
-  if (r && openEvidence(r, number, citation)) e.preventDefault();
+  if (r) openEvidence(r, number, citation);
+  else openMissingSource(number, citation);
 });
+// The source card for a chip whose page is not in this snapshot (a private or unlisted page): it says so, no jump.
+function openMissingSource(number, trigger) {
+  const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close source context") });
+  close.onclick = closeEvidence;
+  panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
+    el("div", { class: "evidence-top" }, [el("span", { text: t("Source {n}", { n: number.toUpperCase() }) }), close]),
+    el("p", { class: "evidence-unavailable", text: t("The page this source belongs to isn't in this snapshot.") }));
+  evidenceTrigger = trigger;
+  panel.parentElement.hidden = false;
+  document.body.classList.add("evidence-open");
+  evidenceLayout();
+  close.focus({ preventScroll: true });
+  return true;
+}
 
 const qInput = document.getElementById("q");
 const qClear = document.getElementById("q-clear");
