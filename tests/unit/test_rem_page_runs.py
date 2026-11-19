@@ -182,3 +182,37 @@ def test_what_changed_names_the_organisations_the_run_linked_and_made(root, monk
     book.stub_org("orgs/kiln-labs.md", "Kiln Labs")
     page_versions.keep_previous(root, PAGE, INVESTIGATED, after)
     assert page_runs.status(root, PAGE)["orgs"] == [{"title": "Kiln Labs", "record": "orgs/kiln-labs.md", "created": True}]
+
+
+# #3155: a receipt written before rc28 holds str(list) of a progress line; the reader printed it as is.
+def test_an_old_list_shaped_reason_is_read_as_a_sentence_from_the_runs_own_error(root):
+    _run(root, 1, phase="investigate", started="2026-10-02T00:00:00+00:00", outcome="refused", stage="writing investigation",
+         error=TOO_LONG)
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append", "enrich"],
+                                                    "result": "failed", "started_at": "2026-10-01T23:00:00+00:00",
+                                                    "finished_at": "2026-10-02T00:20:00+00:00",
+                                                    "before_sha256": page_runs._sha(INVESTIGATED),
+                                                    "reason": "['Investigation: writing investigation']"})
+    run = page_runs.status(root, PAGE)
+    assert run["reason_kind"] == "too_long" and "[" not in run["reason"] and "Investigation:" not in run["reason"]
+
+
+def test_an_old_list_shaped_reason_with_nothing_better_says_it_stopped_without_saying_why(root):
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append"], "result": "failed",
+                                                    "started_at": "2026-10-01T23:00:00+00:00", "finished_at": "2026-10-02T00:20:00+00:00",
+                                                    "before_sha256": page_runs._sha(INVESTIGATED),
+                                                    "reason": "['Investigation: writing investigation']"})
+    run = page_runs.status(root, PAGE)
+    assert run["reason"] == "The investigation stopped without saying why." and run["reason_kind"] == "other"
+
+
+def test_a_failed_run_older_than_the_pages_last_change_is_not_shown(root):
+    import os, time
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append"], "result": "failed",
+                                                    "started_at": "2026-10-01T23:00:00+00:00", "finished_at": "2026-10-02T00:20:00+00:00",
+                                                    "before_sha256": page_runs._sha(INVESTIGATED), "reason": "x", "reason_kind": "other"})
+    Notebook(root).write(PAGE, INVESTIGATED.replace("leads design", "leads design and research"))
+    page = Notebook(root).path(PAGE) if hasattr(Notebook(root), "path") else root / PAGE
+    stamp = datetime(2026, 10, 5, tzinfo=timezone.utc).timestamp()
+    os.utime(page, (stamp, stamp))
+    assert page_runs.states(root, [PAGE], mail_days={})[PAGE]["run"] is None
