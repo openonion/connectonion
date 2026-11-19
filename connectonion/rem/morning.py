@@ -206,7 +206,8 @@ def compose(root, config, local, saved, link):
 
 # ---------- the morning mail: one column, table layout, inline styles ----------
 INK, BODY, MUTED, RULE, PAPER, CANVAS = '#0f1a14', '#2b332e', '#6b736e', '#e6e2da', '#ffffff', '#f3f1ec'
-ALARM, GREEN, GREEN_INK = '#e2401c', '#22d27a', '#05301b'
+# The morning mail's one primary action uses the reader's accent (ink, #3144).
+ALARM, GREEN, GREEN_INK = '#e2401c', '#121512', '#ffffff'
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Helvetica,Arial,sans-serif"
 WORDS = {
     # A draft is prepared, not done: the lead names drafts and sends apart, so 13 drafts

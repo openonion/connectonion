@@ -22,7 +22,7 @@ from pathlib import Path
 from . import fetch_stalls
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, KEY_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
@@ -443,7 +443,7 @@ def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file:
         path = Path(name)
         with path.open(encoding="utf-8", errors="replace") as handle:
             raw = handle.read(chars_per_file + 1)
-        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
+        text = KEY_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
         truncated = len(raw) > chars_per_file or len(text) > chars_per_file
         captured = datetime.now(timezone.utc).isoformat()
         items.append({"role": "project-file", "source": "file:" + name, "file": name,
@@ -550,7 +550,7 @@ SCRUBBED = "[secret-shaped text removed by co rem]"
 
 def _mention_excerpt(text: str, pattern: re.Pattern, chars: int) -> tuple[int, str]:
     """Keep the lines around a client's name, rather than sending their whole project file."""
-    text = SECRET_SHAPES.sub(SCRUBBED, text)
+    text = KEY_SHAPES.sub(SCRUBBED, text)
     lines = text.splitlines()
     hits = [(i, len(pattern.findall(line))) for i, line in enumerate(lines) if pattern.search(line)]
     selected = sorted({n for i, _ in hits for n in range(max(0, i - 3), min(len(lines), i + 4))})
@@ -851,20 +851,25 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached, gone = 0, []
 
+        # A mail deleted or moved since it was listed is that mail's gap, never the page's: one Graph 404 ended
+        # 16 turns in a row on 2026-11-12, and parking the page "until it changes" could last for ever (#3101).
+        # A body REM saved is read from the archive first (_mail_body); otherwise the mail is left out and said.
         def attachment_metadata(message_id: str) -> list[dict]:
-            with _fetch_slot(kind):
-                return read_mail(partial(_patient, client.list_attachments), message_id,
-                                 provider=kind, root=archive_root, operation='attachments')
+            try:
+                with _fetch_slot(kind):
+                    return read_mail(partial(_patient, client.list_attachments), message_id,
+                                     provider=kind, root=archive_root, operation='attachments')
+            except MissingMail:
+                if message_id not in gone:
+                    gone.append(message_id)
+                return []
 
         def fetch_body(message_id: str) -> str | None:
-            # A mail deleted or moved since it was listed is that mail's gap:
-            # one Graph 404 ended 16 turns in a row on 2026-11-12.
             try:
                 return _mail_body(client, message_id, kind=kind, root=archive_root)
             except MissingMail:
-                if archive_root is not None:
-                    raise
-                gone.append(message_id)
+                if message_id not in gone:
+                    gone.append(message_id)
                 return None
 
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",

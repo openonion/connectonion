@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
 BASE = "http://rem.test/"
-GREEN = ("rgb(34, 210, 122)", "rgb(59, 227, 143)")
+GREEN = ("rgb(18, 21, 18)", "rgb(238, 240, 237)")
 
 # Ines is overdue five days (due 3 Oct), Mara two (a review due 6 Oct); Fernhill Labs and Harbour carry no due date.
 OVERDUE = r'''async () => {
@@ -110,7 +110,8 @@ def _box_inside(page, locator, margin):
 def _greens(page):
     return page.evaluate("""green => [...document.querySelectorAll('#main *')].filter(node => {
       const box = node.getBoundingClientRect();
-      return box.width > 0 && box.height > 0 && green.includes(getComputedStyle(node).backgroundColor);
+      // The accent is ink (#3144): the one primary *control*; ink-filled content (the night card, a date) is not one.
+      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && green.includes(getComputedStyle(node).backgroundColor);
     }).map(node => node.textContent.trim())""", list(GREEN), isolated_context=False)
 
 
@@ -586,7 +587,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     # The sheet is in the rail's one order (#3091), with the places this notebook has pages for.
     rows = page.locator("#nav > a")
     assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
-        '"Today"', '"Waiting on you"', '"Agenda"', '"People"', '"Organisations"', '"Projects"', '"Knowledge"',
+        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Keys"', '"Knowledge"',  # no Agenda: it is in Today (#3152)
         '"Decisions"', '"Skills"', '"Memory changes"']
     assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.

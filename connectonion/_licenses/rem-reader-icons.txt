@@ -16,6 +16,7 @@ drawn at 20/24 of the box so they match the outline icons optically.
    users -> users
    building-2 -> building-2
    folder -> folder
+   key -> key
    zap -> zap
    archive -> archive
    ellipsis -> ellipsis

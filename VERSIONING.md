@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc30
+## Current Version: 1.9.6rc31
+Release candidate 1.9.6rc31 for 1.9.6: the calendar is part of Today (a week strip over the day's timeline, under
+the cards; no separate Agenda place), record pages read in one 720 px measure with a flat header and an ink accent,
+a Keys place whose values live only in the macOS Keychain, tags on every page kind with tag pages, filters and graph
+nodes, approve and talk answering in under a second, a Host that moves itself onto a new release, done marks that
+survive the night's rewording, and a deleted mail that no longer fails an investigation. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc31.md).
+
+- 1.9.6rc31 (calendar in Today; reading measure and ink; Keys; tags everywhere; faster approve and talk).
+
+### Previous candidate: 1.9.6rc30
 Release candidate 1.9.6rc30 for 1.9.6: hand-offs to Codex and Claude you can watch and pick up (live steps, a tmux
 session, Watch in Terminal, Continue in Codex/Claude; the row turns at the click, a finished run says so with a
 summary and offers to draft its reply, failures say why with Retry), enrich that writes like OSINT (career timelines,

@@ -586,3 +586,51 @@ def test_new_mail_still_brings_a_put_off_item_back_before_its_day(notebook, monk
     threads.set_state(notebook, key, 'skipped', until='2026-12-01T00:00:00Z')
     mail_thread(notebook, latest='two')
     assert threads.listing(notebook)[key]['returned_at'] == '2026-11-07T02:00:00+00:00'
+
+
+@pytest.mark.parametrize('state', ['done', 'ignored'])
+def test_a_mark_survives_the_night_rewording_its_line(notebook, state):
+    """#3098: the night rewrites 'open as of 9 Nov' to 'open as of 17 Nov'; the item he closed stays closed."""
+    from connectonion.rem import census, threads
+    from connectonion.rem.files import Notebook
+    mail_thread(notebook)
+    key = thread_key(notebook)
+    threads.set_state(notebook, key, state)
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace(
+        '- You owe Fern a pilot review. [1]', '- You owe Fern a pilot review — still open as of 17 Nov. [1]'))
+    reworded = threads.done_key('people/fern.md', 'You owe Fern a pilot review — still open as of 17 Nov. [1]')
+    states = threads.listing(notebook)
+    assert states[reworded]['state'] == state and states[reworded]['moved_from'] == key
+    assert threads.blocked(notebook, reworded)
+    assert reader.snapshot(notebook, local=True)['threads'][reworded]['state'] == state  # Today's isDone reads this
+    assert not drafts.queue(notebook)
+    assert census.open_threads(notebook)['open'] == 0
+
+
+def test_a_reworded_done_line_with_new_mail_comes_back_and_says_why(notebook):
+    """#3098: only new evidence reopens it, a newer message on the thread, and the mark says so."""
+    from connectonion.rem import threads
+    from connectonion.rem.files import Notebook
+    mail_thread(notebook)
+    key = thread_key(notebook)
+    threads.set_state(notebook, key, 'done')
+    mail_thread(notebook, latest='two')
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace(
+        '- You owe Fern a pilot review. [1]', '- Fern asked again for the pilot review. [1]'))
+    reworded = threads.done_key('people/fern.md', 'Fern asked again for the pilot review. [1]')
+    value = threads.listing(notebook)[reworded]
+    assert value['reason'] == 'new_mail' and value['returned_at'] == '2026-11-07T02:00:00+00:00'
+    assert not threads.blocked(notebook, reworded)
+
+
+def test_a_reworded_line_citing_other_sources_is_a_new_item(notebook):
+    from connectonion.rem import threads
+    from connectonion.rem.files import Notebook
+    mail_thread(notebook)
+    threads.set_state(notebook, thread_key(notebook), 'done')
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace(
+        '- You owe Fern a pilot review. [1]', '- You owe Fern the signed contract.'))
+    assert not threads.blocked(notebook, threads.done_key('people/fern.md', 'You owe Fern the signed contract.'))

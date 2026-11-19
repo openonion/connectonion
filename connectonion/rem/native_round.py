@@ -966,7 +966,7 @@ def _json_text(value):
 
 
 def _summary_outputs(root, plan):
-    from .project_material import SECRET_SHAPES, REDACTED
+    from .project_material import KEY_SHAPES, REDACTED
     outputs = {state_path(root, "session-tags.json"): [_json_text(plan["tags"])]}
     for entry in plan["entries"]:
         saved, snapshot = entry["saved"], entry["snapshot"]
@@ -975,7 +975,7 @@ def _summary_outputs(root, plan):
         for message in snapshot["messages"]:
             source = message["source"]
             path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
-            outputs[path] = [_json_text({"source": source, "text": SECRET_SHAPES.sub(REDACTED, message["text"]),
+            outputs[path] = [_json_text({"source": source, "text": KEY_SHAPES.sub(REDACTED, message["text"]),
                 "timestamp": message.get("timestamp") or "", "input_scope": message.get("input_scope") or ""})]
     return outputs
 

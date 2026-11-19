@@ -806,6 +806,20 @@ parked the page for one such id (2026-11-17). It is no longer refused.
 The restore runs only when every error left is a dropped quote or source; a
 refusal that also names another error (a capture's format, a quote not in its
 source) is repaired by the worker and parked on the usual count.
+A cited mail deleted from the mailbox (Graph or Gmail 404/410), for its body or
+its attachments, is that mail's gap and never the page's (#3101): a copy REM saved
+is read from the archive; otherwise the mail is left out of the page's material
+and the run record says "N message(s) skipped" with the missing ids, and the
+investigation goes on. It used to park the page until the page changed.
+
+Marks made in Today (done, ignored, put off) are kept in `.state/threads.json`,
+keyed by the line's words, and each remembers the sources the line cites (#3098).
+When the night rewords a line it keeps ("open as of 9 Nov" becomes "open as of
+17 Nov"), the mark follows it to the line on the same page that cites the same
+sources, so a closed item stays closed. Only new mail on its thread brings it
+back, and the returned item carries `reason: new_mail`. A line that cites other
+sources is a new item.
+
 A task refused twice for the same reason, or three times in all, is parked:
 the reason goes to the refusal ledger (`.state/refused-investigations.json`),
 the last candidate and its `review.json` stay in the task's folder under
@@ -1503,6 +1517,11 @@ A `co ai` keeps running the version it was started with, so after an upgrade:
   onto the new render. A task started from the reader runs in its own process
   and continues. An identity selected with `--env-file` is replaced by the next
   `co rem open`, not by the build.
+- **With no tab open** the server notices by itself (#3112): once a minute it
+  compares its own version with the installed one, and when they differ it
+  starts that same background build, which replaces it on the same port when
+  idle. While it is still the old version (busy, or the build failed) it starts
+  the build again every ten minutes.
 - **Not while it is working.** Neither an open nor the build stops it while
   `session_results.jsonl` holds a turn still `running` or `waiting_approval`
   (a conversation, an approval being waited for, or a scheduled `run:` turn) or
@@ -1926,7 +1945,7 @@ pinned to that edge: it comes into view with the draft.
   its word under it, in ONE order that reads from what you act on, to who and
   what it is about, to what the notebook concluded, to the raw material it was
   built from. A short hairline parts the four groups:
-  **Today**, **Waiting on you** (*Waiting*), **Agenda** | **People**,
+  **Today**, **Waiting on you** (*Waiting*) | **People**,
   **Organisations** (*Orgs*), **Projects** | **Knowledge**, **Decisions**,
   **Principles**, **Skills** | **Agent sessions** (*Sessions*),
   **Opportunities** (*Opps*), **Works**, **Memory changes** (*Changes*). At
@@ -2125,7 +2144,15 @@ pinned to that edge: it comes into view with the draft.
   *Google Tasks are not read: Google must be reconnected with access to tasks*;
   REM never adds a scope or starts a login by itself. Only the owner's own
   reader carries to-dos; a shared page has none.
-- **Agenda** is a calendar (#2998), drawn as one: no heading, then **‹ Today ›**,
+- **The calendar is part of Today** (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个 component，而不是单独的
+  一个 category»). Under the action cards, **Schedule** shows the coming seven days as a strip (weather, how much
+  is on each day, and bars for what spans days) over the chosen day's timeline (hours, events, the now line).
+  Clicking a day switches the timeline; clicking an event opens its detail (join link, organiser, notes). The day
+  plan's proposals with a time are dashed **Suggested** blocks in the timeline: one click raises that item's card,
+  × dismisses it for the day. **Show the week / This month** opens the grids described below in place, and
+  **Back to the day** folds them. There is no Agenda place in the rail; `#c=agenda` and `#view=agenda` open
+  Today with the calendar open. On Today the arrow keys move the calendar only while it has the focus.
+- **The week and month grids** (#2998) are drawn as a calendar: **‹ Today ›**,
   the range in words, **Week / Month**, and under them one small line saying
   which calendars were read. **Week** is a time grid starting today (‹ › move
   it a week): hours down a quiet axis at 44 px an hour, hairline hour lines and
@@ -4217,3 +4244,31 @@ send paths. Email is the last choice: a company mailbox is wrong for personal
 content. Nothing is sent to a guessed recipient. Open Today using the last line
 (the live reader when serving, otherwise `co rem open`). See
 [the morning data contract](../rem-night-outcomes.md#morning-message-sprint-11).
+
+## Keys (#3137)
+
+A **钥匙 / Keys** place in the reader keeps every account and key in one list, like a password manager, with
+one rule: **a secret's value never enters the notebook**. The notebook is Markdown that the night's models read
+and that the phone can open over the relay, so a `keys/<slug>.md` page says only what a secret is:
+
+- service, account, purpose, who else has it, where it is used, created / rotated / expires, link;
+- `Vault: macOS Keychain (co-rem:<slug>)`: where the value is.
+
+The value is a generic password in the macOS Keychain under the service `co-rem:<slug>` (`rem/vault.py`, through
+`security`). In the reader on this Mac:
+
+- **Add a key**: service, account, the password and its purpose. The value goes to the Keychain and the page is
+  written without it; the field is cleared as soon as it is sent.
+- **Import a password export (CSV)** from 1Password, LastPass, Bitwarden or a browser: every row's value goes to
+  the Keychain, every row gets a page, and the reply gives counts only. Delete the export file afterwards: it holds
+  every password in plain text.
+- **Copy** and **Show** on a key's page ask the Keychain (its own prompt: Touch ID or the login password). A copy
+  leaves the clipboard after 30 s and a shown value hides after 15 s.
+
+The Host routes (`/rem/keys/add`, `/rem/keys/reveal`, `/rem/keys/import`) answer only this computer, with the
+page's cookie, like every `/rem` route; a snapshot, the phone included, shows the rows and never a value. Page
+review refuses any page carrying something shaped like a key or token, and a keys page carrying any long
+random-looking string, so a draft cannot put a secret there either.
+
+Not yet: the Windows and Linux vaults (the reader says so), and a night stage that files rows from mail and
+sessions and warns about exposed secrets.
