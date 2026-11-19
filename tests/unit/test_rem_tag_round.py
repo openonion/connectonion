@@ -67,12 +67,25 @@ def test_a_refused_batch_is_not_offered_again_in_the_same_round(notebook):
     assert len(tag_stage.candidates(notebook)) == 3
 
 
-def test_one_tag_turn_comes_between_two_portions_of_investigation(notebook, monkeypatch):
+def test_a_break_between_two_portions_tags_every_batch_that_fits_its_share(notebook, monkeypatch):
     serve(monkeypatch)
     people(notebook, 25)
     cursor = cursor_of(notebook, [person(name) for name in ("ivy", "wren", "fern")])
-    # After a tag turn the same stage's second step writes one topic page (#3140): 'student' is on two or more pages.
-    assert night(notebook, cursor) == ["investigate", "investigate", "tag", "tag-node", "investigate", "tag"]
+    # Both batches fit one break's share; then the same stage's second step writes one topic page (#3140):
+    # 'student' is on two or more pages.
+    assert night(notebook, cursor) == ["investigate", "investigate", "tag", "tag", "tag-node", "investigate"]
+
+
+def test_a_break_tags_a_quarter_of_what_waits_so_a_long_backlog_drains_in_one_night(notebook, monkeypatch):
+    """rc34 hunt (#3165): 262 pages waited for tags at one batch a break, two nights or more."""
+    serve(monkeypatch)
+    people(notebook, 170)  # 9 batches: a share of 3 a break
+    assert native_round.tag_share(notebook) == 3
+    cursor = cursor_of(notebook, [person(name) for name in ("ivy", "wren", "fern", "moss", "reed")])
+    served = night(notebook, cursor)
+    assert served[:6] == ["investigate", "investigate", "tag", "tag", "tag", "tag-node"]
+    assert served[6:9] == ["investigate", "investigate", "tag"]
+    assert tag_stage.candidates(notebook) == []
 
 
 def test_the_bound_is_a_round_limit_with_a_high_default():
