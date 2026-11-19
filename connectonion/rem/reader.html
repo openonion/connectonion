@@ -387,7 +387,7 @@
   /* skills: the most-used as cards, everything else as an index that fills the width (sprint 13) */
   .category-head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 24px; }
   .category-head h1 { margin: 0; }
-  .category-head .mono { color: var(--grey); font-size: var(--s-meta); }
+  .category-head .mono { color: var(--grey); font-size: var(--s-ui); }
   /* Skills (#3094): People's table (.people-table) under family tabs, with a view switch beside the name. */
   .skill-views { display: flex; gap: 14px; margin-left: 12px; }
   .skill-views a { padding: 8px 0; color: var(--grey); font: var(--s-ui) var(--font); text-decoration: none; white-space: nowrap; }
@@ -730,7 +730,7 @@
   /* ---- the sheet: a page per row, facts in columns ---- */
   main.wide { max-width: none; }
   .sheet-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 12px; }
-  .sheet-find { flex: 0 1 260px; min-width: 0; padding: 7px 11px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta) var(--font); }
+  .sheet-find { flex: 0 1 260px; min-width: 0; padding: 7px 11px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-ui) var(--font); }
   .sheet-find:focus { border-color: var(--ink); outline: var(--rule-heavy) solid var(--ink); }
   .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
   .seg button { font: var(--s-meta) var(--font); color: var(--grey); background: transparent; border: 1px solid var(--rule); border-radius: var(--radius); padding: 4px 11px; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; }
@@ -738,15 +738,15 @@
   .seg button:hover { border-color: var(--rule); color: var(--ink); }
   .seg button.on { background: var(--paper); border-color: var(--grey); color: var(--ink); }
   .seg button.on .n { color: var(--grey); }
-  .sheet-count { margin-left: auto; font-size: var(--s-meta); color: var(--grey); }
+  .sheet-count { margin-left: auto; font-size: var(--s-ui); color: var(--grey); }
   .held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: -18px 0 20px; color: var(--grey); font-size: var(--s-meta); }
   .held-note button { min-height: 44px; padding: 7px 11px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--grey); font: var(--w-bold) var(--s-meta) var(--font); cursor: pointer; }
   .sheet-scroll { overflow: auto; max-height: calc(100vh - 150px); background: transparent; border: 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); border-radius: var(--radius); }
-  table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-size: var(--s-meta); }
+  table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-size: var(--s-ui); }
   .sheet th { position: sticky; top: 0; z-index: 2; text-align: left; padding: 0; border-bottom: 1px solid var(--rule); white-space: nowrap; background: var(--paper); }
-  .sheet th button { all: unset; box-sizing: border-box; display: flex; gap: 6px; align-items: center; width: 100%; padding: 9px 12px; letter-spacing: 0; text-transform: none; color: var(--grey); cursor: pointer; font: var(--w-bold) var(--s-meta) var(--font); }
+  .sheet th button { all: unset; box-sizing: border-box; display: flex; gap: 6px; align-items: center; width: 100%; padding: 9px 12px; letter-spacing: 0; text-transform: none; color: var(--grey); cursor: pointer; font: var(--w-bold) var(--s-ui) var(--font); }
   .sheet th button:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
-  .sheet th .arrow { color: var(--grey); opacity: 0.6; font-size: var(--s-meta); }
+  .sheet th .arrow { color: var(--grey); opacity: 0.6; font-size: var(--s-ui); }
   .sheet th[aria-sort="ascending"] .arrow, .sheet th[aria-sort="descending"] .arrow { color: var(--ink); opacity: 1; }
   .sheet th.num button { justify-content: flex-end; }
   .sheet td { padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; color: var(--ink); max-width: 260px; min-width: 120px; overflow-wrap: normal; word-break: normal; }
@@ -757,7 +757,7 @@
   .sheet tbody tr:hover td { background: var(--rule); }
   .sheet tbody tr:last-child td { border-bottom: 0; }
   .sheet td.num { text-align: right; white-space: nowrap; }
-  .sheet td.mono-col { white-space: nowrap; font-size: var(--s-meta); }
+  .sheet td.mono-col { white-space: nowrap; font-size: var(--s-ui); }
   .sheet td.wide { min-width: 240px; max-width: 380px; color: var(--grey); }
   .sheet .name { position: sticky; left: 0; z-index: 1; min-width: 220px; max-width: 300px; border-right: var(--hair) solid var(--rule); background: var(--paper); }
   .sheet th.name { z-index: 3; background: var(--paper); }
@@ -779,22 +779,22 @@
   .contact-directory summary { cursor: pointer; padding: 15px 0; font: var(--w-bold) var(--s-body)/1.5 var(--font); color: var(--ink); }
   .contact-directory summary:focus-visible { outline: 2px solid var(--ink); outline-offset: -3px; }
   .contact-directory .directory-body { padding: 0 18px 18px; }
-  .contact-directory .directory-note { margin: 0 0 12px; color: var(--grey); font-size: var(--s-meta); line-height: 1.5; }
+  .contact-directory .directory-note { margin: 0 0 12px; color: var(--grey); font-size: var(--s-ui); line-height: 1.5; }
   .contact-directory .directory-note.warn { color: var(--ink); }
   .contact-directory .directory-find { width: 100%; max-width: 420px; margin: 3px 0 12px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: inherit; }
   .contact-directory .directory-scroll { overflow-x: auto; }
-  .contact-directory table { width: 100%; border-collapse: collapse; font-size: var(--s-meta); }
+  .contact-directory table { width: 100%; border-collapse: collapse; font-size: var(--s-ui); }
   .contact-directory th, .contact-directory td { padding: 8px 9px; border-bottom: 1px solid var(--rule); text-align: left; }
-  .contact-directory th { color: var(--grey); font: var(--w-bold) var(--s-meta) var(--font); text-transform: none; letter-spacing: 0; }
+  .contact-directory th { color: var(--grey); font: var(--w-bold) var(--s-ui) var(--font); text-transform: none; letter-spacing: 0; }
   .contact-directory td:last-child, .contact-directory th:last-child { text-align: right; }
   .contact-directory .candidate-name { font-weight: var(--w-bold); }
-  .contact-directory .candidate-email { color: var(--grey); font: var(--s-meta) var(--font); }
+  .contact-directory .candidate-email { color: var(--grey); font: var(--s-ui) var(--font); }
   .contact-directory button { cursor: pointer; }
-  .contact-directory td button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--rule); color: var(--ink); font: var(--w-bold) var(--s-meta) var(--font); white-space: nowrap; }
+  .contact-directory td button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--rule); color: var(--ink); font: var(--w-bold) var(--s-ui) var(--font); white-space: nowrap; }
   .contact-directory td button:hover, .contact-directory td button:focus-visible { background: var(--ink); color: var(--paper); }
   .contact-directory td button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .contact-directory .directory-more { margin-top: 10px; border: 1px solid var(--rule); border-radius: var(--radius); padding: 6px 10px; background: var(--rule); color: var(--ink); }
-  .contact-directory .directory-action td { padding: 12px; text-align: left; background: var(--rule); color: var(--grey); font-size: var(--s-meta); }
+  .contact-directory .directory-action td { padding: 12px; text-align: left; background: var(--rule); color: var(--grey); font-size: var(--s-ui); }
   .contact-directory .directory-action code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 8px; padding: 10px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--s-meta)/1.45 var(--font); text-align: left; }
   .contact-directory .directory-action button { display: block; margin-top: 8px; }
   @media (max-width: 600px) {
@@ -819,7 +819,7 @@
   /* People at 1440: every column fits (main 1136px); narrower, the sheet scrolls inside itself. */
   @media (min-width: 821px) { main.wide { padding-left: 28px; padding-right: 28px; } }
   .sheet th button { padding: 9px 9px; }
-  .sheet td { padding: 8px 9px; min-width: 0; font-size: var(--s-meta); }
+  .sheet td { padding: 8px 9px; min-width: 0; font-size: var(--s-ui); }
   .sheet .name { min-width: 180px; max-width: 200px; width: 190px; }
   .sheet .c-open { min-width: 220px; max-width: 250px; width: 240px; }
   .sheet .c-company, .sheet .c-role { min-width: 92px; max-width: 112px; }
@@ -863,7 +863,7 @@
   .lead-meta.usage .bar { width: 120px; height: 5px; border-radius: var(--radius); background: var(--rule); overflow: hidden; display: inline-block; }
   .lead-meta.usage .bar i { display: block; height: 100%; background: var(--grey); }
   .fresh-dot, .memory-legend-dot { color: var(--ink); font: var(--s-meta) var(--font); margin-left: 6px; vertical-align: middle; }
-  .fresh-label { color: var(--ink); font: var(--s-meta) var(--font); margin-left: 6px; white-space: nowrap; }
+  .fresh-label { color: var(--ink); font: var(--s-ui) var(--font); margin-left: 6px; white-space: nowrap; }
   .updated-label { white-space: nowrap; color: var(--grey); font: var(--s-meta) var(--font); }
   .updated-label .fresh-dot { margin: 0 5px 0 0; }
   .changed-value { text-decoration: underline; text-decoration-color: var(--rule); text-decoration-thickness: 3px; text-underline-offset: 4px; }
@@ -1500,7 +1500,7 @@
     /* A card: the name on its own line, then each filled column as "label value", wrapping. */
     .sheet.people-table tbody tr { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 12px; padding: 14px 0; border-top: 1px solid var(--rule); }
     .sheet.people-table tbody tr:hover td { background: transparent; }
-    .sheet.people-table td { position: static; min-width: 0; max-width: none; width: auto; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; font-size: var(--s-meta); }
+    .sheet.people-table td { position: static; min-width: 0; max-width: none; width: auto; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; font-size: var(--s-ui); }
     .sheet.people-table td.c-name { grid-column: 1 / -1; font-size: var(--s-body); font-weight: var(--w-bold); border-right: 0; }
     .sheet.people-table td.c-org .clamp, .sheet.people-table td .clamp { display: inline; white-space: normal; }
     .sheet.people-table td:not(.c-name)::before { content: attr(data-label) " "; color: var(--grey); }
@@ -1536,7 +1536,7 @@
   .org-table-name { display: flex; align-items: center; gap: 8px; min-width: 0; position: relative; }
   .org-table-name a { overflow: hidden; text-overflow: ellipsis; }
   .org-name-text { min-width: 0; display: flex; flex-direction: column; }
-  .org-unit-summary, .org-unit-path { color: var(--grey); font: var(--s-meta)/1.5 var(--font); white-space: normal; }
+  .org-unit-summary, .org-unit-path { color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); white-space: normal; }
   .org-tree-guide { position: absolute; top: -12px; bottom: -12px; border-left: 1px solid var(--rule); pointer-events: none; }
   .org-list-controls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; }
   .org-layout-switch { display: flex; gap: 12px; }
@@ -1545,7 +1545,7 @@
   .org-table .org-logo { flex: none; width: 28px; height: 28px; object-fit: contain; border-radius: var(--radius); font-size: var(--s-meta); }
   .org-disclosure { flex: none; width: 24px; min-height: 32px; padding: 0; border: 0; color: var(--grey); background: transparent; cursor: pointer; }
   .org-disclosure-space { flex: none; width: 24px; }
-  .org-site small { color: var(--grey); font-size: var(--s-meta); }
+  .org-site small { color: var(--grey); font-size: var(--s-ui); }
   .org-activity { display: flex; flex-direction: column; gap: 4px; font-size: var(--s-meta); }
   @media (max-width: 600px) {
     .org-directory .org-kind-filters button { min-height: 44px; }
@@ -1710,9 +1710,9 @@
   .r4 .dot { width: 7px; height: 7px; border-radius: var(--round); flex: none; display: inline-block; }
   .r4 .dot.lamp { background: var(--ink); }
   .r4 .face { width: 32px; height: 32px; border-radius: var(--round); display: grid; place-items: center; font: var(--w-bold) var(--s-meta) var(--font); flex: none; color: var(--paper); background: var(--grey); letter-spacing: .02em; }
-  .r4-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius); font: var(--w-bold) var(--s-meta) var(--font); white-space: nowrap; outline: var(--hair) solid var(--rule); outline-offset: calc(-1 * var(--hair)); background: var(--paper); color: var(--ink); cursor: pointer; transition: background var(--t-press) var(--ease-out); }
+  .r4-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius); font: var(--w-bold) var(--s-ui) var(--font); white-space: nowrap; outline: var(--hair) solid var(--rule); outline-offset: calc(-1 * var(--hair)); background: var(--paper); color: var(--ink); cursor: pointer; transition: background var(--t-press) var(--ease-out); }
   .r4-btn:hover { background: var(--rule); }
-  .r4-btn.sm { height: 28px; padding: 0 10px; font-size: var(--s-meta); }
+  .r4-btn.sm { height: 28px; padding: 0 10px; font-size: var(--s-ui); }
   .r4-btn.ghost { outline-color: transparent; background: none; color: var(--grey); }
   .r4-btn.ghost:hover { background: var(--rule); }
   .r4 .r4-today { flex: none; align-self: center; color: var(--grey); font: var(--w-regular) var(--s-body) var(--font); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
@@ -1801,7 +1801,7 @@
   .r4-foot .contact-directory { margin-top: 8px; }
   .r4-bar .table-toggle { margin-left: auto; }
   .r4-foot .contact-directory { margin: 0; padding: 0; border: 0; }
-  .r4-foot .contact-directory > summary { font: var(--w-regular) var(--s-meta)/20px var(--font); color: var(--grey); cursor: pointer; }
+  .r4-foot .contact-directory > summary { font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); color: var(--grey); cursor: pointer; }
   .r4 .said { font: inherit; color: var(--grey); background: none; padding: 0; border: 0; text-decoration: none; }
   @media (max-width: 719px) {
     .r4 h1 { font-size: var(--s-head); line-height: 31px; }
@@ -2183,6 +2183,8 @@
   .handoff { flex-direction: column; align-items: stretch; gap: var(--u1); }
   .handoff-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u2); }
   .handoff-line > .sep { color: var(--grey); }
+  /* Hidden but keeping its width, so hiding it never reflows the row back onto one line. */
+  .sep.sep-wrap { visibility: hidden; }
   .talk-menu { position: relative; }
   .talk-menu > summary { list-style: none; min-height: 32px; display: inline-flex; align-items: center; color: var(--grey); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
   .talk-menu > summary::-webkit-details-marker { display: none; }
@@ -2855,7 +2857,31 @@
   .gx-panel-body { flex: 1; overflow: auto; padding: 4px 12px 18px; }
   .gx-panel-body h3 { display: flex; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--grey); padding: 16px 10px 6px; }
   .gx-panel-body h3 span { margin-left: auto; font-weight: var(--w-regular); }
-  .gx-item { display: flex !important; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: var(--radius) !important; min-height: 40px; }
+  .gx-item { display: flex !important; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: var(--radius) !important; min-height: 44px; }
+  /* #3163: on a phone every control is a 44px hit, made with padding, not bigger type. Links inside a sentence and
+     source marks stay inline (they are words in the text, as WCAG's inline exception allows). */
+  @media (max-width: 640px) {
+    #main :is(button, summary, .chip, .btn-quiet, .btn-act, .ibtn, .r4-btn, .pc-copy, .pc-more, .tl-more, .page-crumb):not(.cite) {
+      min-height: 44px; box-sizing: border-box; }
+    #main :is(.btn-quiet, .page-crumb, .dek-org, .dek-unit) { display: inline-flex; align-items: center; }
+    /* A text action's hit grows into the space around it, not the layout: 44px tall, but it takes the line it had, so
+       Today's Send stays on the first screen. */
+    #main :is(.btn-quiet, .link-btn, .page-crumb, .thread .who a, .pc-v a, .row-quote > summary) { margin-block: -8px; }
+    #main .dek > :is(a, span) { min-height: 44px; display: inline-flex; align-items: center; }
+    #main .ibtn { min-width: 44px; }
+    .open-chips .chip { min-height: 44px; }
+    #main .pc-copy { display: flex; align-items: center; }
+    /* A short word ("忽略", "看", "人物") still gets a 44px-wide target; the word stays where it was. */
+    #main :is(.btn-quiet, .link-btn, .page-crumb, .pc-v a) { min-width: 44px; justify-content: center; }
+    /* The meta line's Today link stays a word in its line; its hit grows into the line's own space. */
+    #main .hero-meta .r4-today { display: inline; min-height: 0; padding: 14px 0; margin: -14px 0 -14px 16px; }
+    #main :is(.thread .who a, .pc-v a, .pair-cell) { display: inline-flex; align-items: center; min-height: 44px; }
+  }
+  .gx .gx-unlinked { min-height: 44px; padding: 0 2px; border: 0; background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
+  .gx-unlinked-list h3 { margin: 16px 0 4px; color: var(--grey); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .gx-unlinked-list ul { margin: 0; padding: 0; list-style: none; }
+  .gx-unlinked-list li { padding: 0; }
+  .gx-unlinked-list li a { display: flex; align-items: center; min-height: 44px; color: var(--ink); }
   .gx-item:hover { background: var(--rule) !important; }
   .gx-item-body { min-width: 0; display: flex; flex-direction: column; }
   .gx-item > .gx-glyph { margin-top: 4px; }
@@ -3241,8 +3267,10 @@
     body.searching .search { display: flex; position: fixed; left: 12px; right: 12px; top: 10px; z-index: 46; max-width: none; }
     body.searching .search input { font: var(--w-regular) var(--s-body)/1 var(--font); }
     .search .kbd { display: none; }
-    main { padding: 4px 16px 40px; }
-    .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: 14px; height: 62px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2);
+    /* The fixed tab bar (62px, 14px above the edge, plus the phone's safe area) never covers the last block (Mac
+       review of rc30): the page ends that far above it, with a little air. */
+    main, main:has(> .agenda) { padding: 4px 16px calc(62px + 14px + 24px + env(safe-area-inset-bottom, 0px)); }
+    .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); height: 62px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2);
       justify-content: space-around; align-items: center; z-index: 30; }
     .tab { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 60px; min-height: 48px; justify-content: center; color: var(--grey);
       font: var(--w-regular) var(--s-meta)/1.3 var(--font); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none !important; }
@@ -3472,7 +3500,21 @@
   .handoff:has(> .hand-failed, > .put-off-note) { display: flex; flex-direction: column; }
   .handoff > .hand-failed, .handoff > .put-off-note { order: -1; margin: 0 0 8px; }
   .later-ask { color: var(--grey); margin-right: 4px; }
-  .open-chips { display: flex; gap: 8px; margin: 4px 0 16px; padding: 4px 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  /* #3158: the chips wrap on a desk, never cut at the edge; on a phone they scroll inside a faded edge. */
+  .open-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; padding: 4px 0; }
+  @media (max-width: 640px) { .open-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; white-space: nowrap;
+    -webkit-mask-image: linear-gradient(90deg, var(--ink) 85%, transparent); mask-image: linear-gradient(90deg, var(--ink) 85%, transparent); } }
+  /* One primary per screen: later list actions keep their words and their 44px hit, not the fill. */
+  ul.threads .btn-act.act-quiet { min-height: 44px; padding: 0 2px; background: none; box-shadow: none; color: var(--ink) !important; font-weight: var(--w-regular);
+    text-decoration: underline !important; text-decoration-color: var(--rule) !important; text-underline-offset: 3px; }
+  ul.threads .btn-act.act-quiet:hover { background: none; text-decoration-color: var(--ink) !important; }
+  .row-quote { margin: 4px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .row-quote > summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; list-style: none; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .row-quote > summary::-webkit-details-marker { display: none; }
+  .row-quote q { display: block; color: var(--ink); }
+  /* A row's sources are one hover or focus away, not a number after every line (#3158). */
+  ul.threads .thread .what { position: relative; }
+  ul.threads .thread:not(:hover):not(:focus-within) .what .cite { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
   .open-chips .chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: var(--r-pill); box-shadow: var(--e-ring);
     color: var(--ink); background: var(--raised); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-decoration: none; }
   .open-chips .chip.on { background: var(--ink); color: var(--paper); }
@@ -3693,7 +3735,8 @@
     display: inline-block; }
   /* Out of sight and out of the line's width until the row is pointed at or focused, but still in the page, so
      a keyboard reaches it and focus can come back to it from the evidence panel. */
-  .pc-row:not(:hover):not(:focus-within) .cite { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; opacity: 0; }
+  .pc-row { position: relative; }
+  .pc-row:not(:hover):not(:focus-within) .cite { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; overflow: hidden; opacity: 0; }
   /* The value keeps its line; a qualifier ("mobile", "from the sender line") wraps under it rather than squeezing it. */
   .pc-item { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; max-width: 100%; }
   .pc-item .qual { margin-left: 0; }
@@ -3986,7 +4029,7 @@ const UI = {
 
     "Task: {promise} · since {since}": "任务：{promise} · 自 {since} 起",
     "Task": "任务",
-    "Open the recorded source": "打开已记录的来源",
+    "Open the recorded source": "打开已记录的来源", "Their words": "原话",
     "Waiting for their reply; open the thread to follow up.": "正在等对方回复；可打开原会话跟进。",
     "Draft now": "现在起草",
     "Open the {channel} thread": "打开 {channel} 原会话",
@@ -5031,7 +5074,9 @@ const UI = {
     "sessions import": "导入会话",
     // N3 "Desk" (D-123): the shell, Today and a person
     "Settings": "设置", "Reduce motion": "减少动态效果", "REM status": "REM 状态", "Waiting": "等你",
-    "Night chart": "夜图", "{n} d": "{n} 天",
+    "Night chart": "夜图", "{n} d": "{n} 天", "Last night": "昨夜", "read 1 mail": "读了 1 封邮件", "read {n} mails": "读了 {n} 封邮件",
+    "wrote 1 page": "写了 1 页", "wrote {n} pages": "写了 {n} 页", "drafted 1 reply": "起草了 1 封回复", "drafted {n} replies": "起草了 {n} 封回复",
+    "prepared 1 task": "准备了 1 件事", "prepared {n} tasks": "准备了 {n} 件事", "nothing new to do": "没有新的事要做",
     "thing waiting on you": "件在等你", "things waiting on you": "件在等你",
     "See the {n} waiting on others →": "看 {n} 件在等谁 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
     "1 has gone quiet for a long time · Look": "1 件很久没动静 · 看看", "Mark all done": "都标为完成", "Mark all {n} done": "都标为完成（{n}）",
@@ -6245,6 +6290,11 @@ function primaryAction(entry, completion = true) {
   const url = threadUrl(reply, kind);
   if (url) return el("a", {class: "btn-quiet", href: url.href, target: "_blank", rel: "noopener", text: t("Open the {channel} thread", {channel: url.channel})});
   return el("a", { class: "btn-act", href: href(r) + "&h=open-threads", text: t("Open the page") });
+}
+// One primary per screen (#3158): the first filled action in the lists keeps its fill; every later one reads as a
+// quiet worded action, the same click.
+function quietLaterPrimaries(root) {
+  [...root.querySelectorAll("ul.threads .btn-act")].slice(1).forEach(node => node.classList.add("act-quiet"));
 }
 function threadUrl(reply, kind) {
   if (!reply?.provider && !kind?.mail) return null;
@@ -7557,13 +7607,22 @@ function alsoOn(records = []) {
 function threadWho(r) {
   return r.path === REM.owner ? t("Your page") : r.title;
 }
+// #3158: a row is one line to read at a glance: dates in the reader's words, a long quote one level down (原话,
+// one click), the sources on hover. The quote is kept, never cut.
+function rowWords(text) {
+  const quote = /\s*[—–-]?\s*[“"]([^”"]{24,})[”"]/.exec(text);
+  const lead = (quote ? text.replace(quote[0], "") : text).replace(/\b(\d{4}-\d{2}-\d{2})\b/g, day => fmtDate(day));
+  return { lead, quote: quote ? quote[1] : "" };
+}
 function threadRow(r, thread, withPage, also = [], grouped = false, strip = false) {
   const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
-  const text = withoutDateClutter(thread.text, thread) + " " + cites;
+  const { lead, quote } = rowWords(withoutDateClutter(thread.text, thread));
+  const text = lead + " " + cites;
   return el("li", { class: "thread " + thread.dir + (grouped ? " grouped" : "") }, [
     grouped ? null : el("span", { class: "dir", text: t(DIRECTION_LABEL[thread.dir]) }),
     el("div", {}, [el("div", { class: "what", html: inline(text, r.path) }),
       withPage ? el("div", { class: "who" }, [el("a", { href: href(r), text: threadWho(r) }), r.path === REM.owner ? "" : " · " + singular(r.category)]) : null,
+      quote ? el("details", { class: "row-quote" }, [el("summary", { text: t("Their words") }), el("q", { text: quote })]) : null,
       withPage ? alsoOn(also) : null, threadActions({ r, t: thread, also }, !withPage, strip), draftNote(threadDraft({ r, t: thread, also }))]),
     // A stale promise keeps its date but not the red (staleEntry): it is asked about, not burning.
     el("span", { class: "when" + (thread.due && thread.due < calendarDay(REM.as_of) && !staleEntry({ r, t: thread }) ? " overdue" : (!thread.due && daysSince(thread.since) === 0) ? " today" : ""), title: (thread.since ? t("since ") + threadDate(thread.since) : "") + (thread.due ? t(" · due ") + threadDate(thread.due) : "") }, [threadAge(thread), blockerTag(thread)])]);
@@ -8250,6 +8309,25 @@ async function saveIgnoredSender(address, ignored) {
 // One line of actions, a quiet dot between each: 标为完成 · 暂不处理 · 忽略 · 交给 Codex · 交给 Claude · 更多 ▾
 function dotted(nodes) {
   return nodes.filter(Boolean).flatMap((node, i) => i ? [el("span", { class: "sep", "aria-hidden": "true", text: "·" }), node] : [node]);
+}
+// One rule for every dotted row (Mac review of rc30: "· 在 Codex 里接着做" started a line): a "·" whose neighbours sit
+// on different lines is where the row wrapped, so it is hidden, at either end of the break. Rechecked whenever the
+// page changes or resizes, so rows redrawn in place (a hand-off's steps) stay tidy.
+function tidyDots(root = document.getElementById("main")) {
+  if (!root?.querySelectorAll) return;
+  for (const sep of root.querySelectorAll(".sep")) {
+    sep.classList.remove("sep-wrap");
+    const prev = sep.previousElementSibling, next = sep.nextElementSibling;
+    if (!prev || !next || !sep.offsetParent) continue;
+    const a = prev.getBoundingClientRect(), b = next.getBoundingClientRect();
+    if (b.top >= a.bottom - 2 || b.left < a.left) sep.classList.add("sep-wrap");
+  }
+}
+let tidyFrame = 0;
+function tidyDotsSoon() { cancelAnimationFrame(tidyFrame); tidyFrame = requestAnimationFrame(() => tidyDots()); }
+if (typeof MutationObserver === "function" && typeof document !== "undefined" && document.getElementById?.("main")) {
+  new MutationObserver(tidyDotsSoon).observe(document.getElementById("main"), { childList: true, subtree: true });
+  addEventListener("resize", tidyDotsSoon);
 }
 function handButtons(entry, show, panel, mark, lead) {
   const status = el("span", { class: "handoff-status", role: "status" });
@@ -9327,14 +9405,26 @@ function chartToggle() {
   button.onclick = () => button.setAttribute("aria-expanded", String(button.closest(".night-card").classList.toggle("chart-open")));
   return button;
 }
+// What last night produced, in words and counts (Mac review of rc30: the chart's flat lines, spikes and "RU +4"
+// could not be read): mails read, pages written, replies and tasks prepared. Nothing done says so in one line.
+function nightWords() {
+  const end = Date.parse(REM.as_of || new Date().toISOString()), start = end - 18 * HOUR;
+  const runs = nightRuns().filter(run => run.to >= start && run.from <= end), rises = nightRises().filter(rise => rise.at >= start && rise.at <= end);
+  const read = runs.filter(run => run.level === "read").reduce((sum, run) => sum + run.items, 0);
+  const pages = lastPass()?.changed?.length || 0, replies = rises.filter(rise => rise.kind !== "task").length, tasks = rises.length - replies;
+  const parts = [read ? t(read === 1 ? "read 1 mail" : "read {n} mails", { n: read }) : null,
+    pages ? t(pages === 1 ? "wrote 1 page" : "wrote {n} pages", { n: pages }) : null,
+    replies ? t(replies === 1 ? "drafted 1 reply" : "drafted {n} replies", { n: replies }) : null,
+    tasks ? t(tasks === 1 ? "prepared 1 task" : "prepared {n} tasks", { n: tasks }) : null].filter(Boolean);
+  if (!runs.length && !rises.length) return null;
+  return parts.length ? parts.join(uiLanguage === "zh" ? "，" : ", ") : t("nothing new to do");
+}
 function nightCard(groups, current, ticked) {
-  const n = groups.length, count = countLine(ticked);
-  const chart = nightChart(current), full = !!chart?.svg;
-  return el("section", { class: "night-card card" + (chart && !full ? " sparse" : ""), "aria-label": t("Night chart") }, [
-    chart ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Night chart") }), full ? chartToggle() : null,
-      el("span", { class: full ? "legend" : "night-sum", text: full ? chart.legend : chart.sparse })]) : null,
+  const n = groups.length, count = countLine(ticked), words = nightWords();
+  return el("section", { class: "night-card card sparse", "aria-label": t("Last night") }, [
+    words ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), el("span", { class: "night-sum", text: words })]) : null,
     nightStall(),
-    el("div", { class: "nb" + (full ? "" : " solo") }, [full ? chart.svg : null, el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
+    el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])])]);
 }
 // Why the nights read nothing (sprint 14): a mailbox failed while REM prepared a page. One plain sentence, never
 // an exception name; the pages set aside fold under it with when each is tried again (fetch_stalls.last_night).
@@ -14324,7 +14414,7 @@ const GRAPH_UI_ZH = {
 
   "Search people, organisations, knowledge": "搜索人、组织、知识，看它连着谁", "Clear focus": "清除聚焦",
   "A bigger mark has more links": "记号越大，连接越多", "{n} sessions folded into their projects": "{n} 个会话折进了项目",
-  "{n} records link to nothing yet": "{n} 条还没连上任何记录",
+  "{n} records link to nothing yet": "{n} 条还没连上任何记录", "Show the {n} unlinked records": "查看这 {n} 条", "Not linked yet": "还没连上的记录",
 
   "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
   "Open person page": "打开人物页", "Open organisation page": "打开组织页", "Open project page": "打开项目页",
@@ -14584,7 +14674,20 @@ function graphLegend(model) {
   const breakdown = Object.entries(alone).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => graphCount(k, n)).join(" · ");
   return el("footer", { class: "gx-legend" }, [el("span", { text: graphT("A bigger mark has more links") }),
     folded ? el("span", { text: graphT("{n} sessions folded into their projects", { n: folded }) }) : null,
-    model.isolated.length ? el("span", { text: graphT("{n} records link to nothing yet", { n: model.isolated.length }) + ": " + breakdown }) : null]);
+    model.isolated.length ? graphUnlinked(model, breakdown) : null]);
+}
+// The records the map does not draw are one click away, as a list to open, never 372 dots (#3161). Tags give most of
+// them a link once the night tags them (#3093).
+function graphUnlinked(model, breakdown) {
+  const open = el("button", { type: "button", class: "gx-unlinked", text: graphT("Show the {n} unlinked records", { n: model.isolated.length }) });
+  open.onclick = () => {
+    const kinds = new Map();
+    for (const n of model.isolated.filter(n => !graphHidden(n))) (kinds.get(n.k) || kinds.set(n.k, []).get(n.k)).push(n);
+    openListSheet(graphT("Not linked yet"), el("div", { class: "gx-unlinked-list" }, [...kinds].map(([k, list]) =>
+      el("section", {}, [el("h3", { text: graphCount(k, list.length) }), el("ul", {}, list.slice(0, 200).map(n =>
+        el("li", {}, [n.r ? el("a", { href: href(n.r), text: graphTitle(n) }) : el("span", { text: graphTitle(n) })])))]))));
+  };
+  return el("span", {}, [graphT("{n} records link to nothing yet", { n: model.isolated.length }) + ": " + breakdown + " · ", open]);
 }
 function graphZoom() {
   return el("div", { class: "gx-zoom" }, [["+", "Zoom in", 1.4], ["−", "Zoom out", 1 / 1.4], ["⤢", "Fit", 0]].map(([text, name, by]) =>
@@ -15384,6 +15487,7 @@ function render() {
   else if (knowledgeShowsGraph({ category: c, view })) knowledgeGraph();
   else if (c) category(c);
   else overview();
+  quietLaterPrimaries(document.getElementById("main"));
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? label("knowledge") : c ? label(c) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
@@ -16153,10 +16257,16 @@ function showRebuildState(latest) {
   if (latest.failed) line.title = t("Details: {path}", { path: latest.failed.log });
   else line.removeAttribute("title");
 }
+// The "Updating…" line the Host puts on a saved page stays only while a newer page is really being built.
+function clearUpdating(latest) {
+  // Found by the end of its id: the Host adds the line only to a stale page, and a current page names it nowhere.
+  if (latest && !latest.building && latest.as_of === REM.as_of) document.querySelector('[id$="-updating"]')?.remove();
+}
 async function checkForNewerRender() {
   if (document.hidden) return;
   const latest = await readVersion();
   showRebuildState(latest);
+  clearUpdating(latest);
   const choice = reloadChoice({ latest, asOf: REM.as_of, unsaved: unsavedDraft(),
     typing: !!document.activeElement?.matches("input, select") });
   if (choice === "reload") reloadOnto();

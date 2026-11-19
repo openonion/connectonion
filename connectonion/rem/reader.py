@@ -1011,10 +1011,11 @@ def latest(root: Path) -> dict:
     """When the live page was rendered and whether the newest build failed (polled by
     the open page); starts a rebuild when one is due."""
     try:
-        _rebuild_stale(root, "live.html", reader_version(root))
-        return {"as_of": saved(root, "live").get("as_of"), "failed": failure(root)}
+        building = _rebuild_stale(root, "live.html", reader_version(root))
+        # `building` lets the open page take down its "Updating…" line once no newer page is coming (Mac review of rc30).
+        return {"as_of": saved(root, "live").get("as_of"), "failed": failure(root), "building": bool(building)}
     except CacheRefused:
-        return {"as_of": None, "failed": None}
+        return {"as_of": None, "failed": None, "building": False}
 
 
 def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False) -> bool:
