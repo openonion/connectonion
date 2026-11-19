@@ -11308,7 +11308,8 @@ function timelineDay(day) {
   if (day.length !== 10) return [];
   const say = parts => new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", ...parts });
   const thisYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
-  return [say({ month: "numeric", day: "numeric" }), thisYear ? null : el("span", { class: "y", text: say({ year: "numeric" }) })];
+  // "9月3日" / "Sep 3", never "9/3": one date form on every page (rc35 hunt).
+  return [say({ month: "short", day: "numeric" }), thisYear ? null : el("span", { class: "y", text: say({ year: "numeric" }) })];
 }
 function timelineRow(r, item) {
   const text = withoutDateClutter(youify(item.text));
@@ -15242,10 +15243,17 @@ function record(path, heading) {
 // ---- One text pass over what the reader shows (#3165, rc34 hunt): every ISO date in the reader's own form, a date
 // never printed twice in a row, and a raw source id as a short named chip that opens it. The page text and the
 // Markdown keep what was written; only what is drawn changes.
-Object.assign(UI.zh, { "Record": "记录", "Its original isn't in this snapshot.": "这条来源的原文不在这份快照里。" });
+Object.assign(UI.zh, { "Record": "记录", "Commit": "提交", "Its original isn't in this snapshot.": "这条来源的原文不在这份快照里。" });
 const ISO_RANGE = /\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?:\s*(?:–|—|-|to|至|到)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?![\d-]))?\b/g;
 const RAW_ID = /\b(?:(?:codex|claude-code|gmail|outlook|github|mail|session):[A-Za-z0-9][\w.:@/+=-]{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,})\b/gi;
-const TIDY_SKIP = "a, pre, code, textarea, input, select, button, script, style, .local-path, .src-id, .cite, [contenteditable]";
+// A short hash (a commit, a hex record id): 7–23 hex characters with both a digit and a letter, so a plain number or
+// a word like "facade" never matches. Longer runs and prefixed ids are RAW_ID's.
+const SHORT_HEX = /\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,23}\b/gi;
+// Dates are put in the reader's form everywhere a person reads them, links and buttons included (a person's company
+// line and the sources' titles are links and buttons; rc35 hunt). What was written to be copied stays as written.
+const TIDY_SKIP = "pre, code, textarea, input, select, script, style, .local-path, .src-id, .cite, .evidence-meta, [contenteditable]";
+// Inside a link or a button a raw id cannot become a chip of its own (a control inside a control); it is named in place.
+const NO_CHIP = "a, button";
 function readerDate(day, locale = uiLocale()) {
   return calendarDate(day, locale);
 }
@@ -15270,7 +15278,9 @@ function readerRange(start, end, locale) {
 }
 function localiseDates(text, locale = uiLocale()) {
   ISO_RANGE.lastIndex = 0;
-  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale));
+  // "8 月 10 日", "2026 年 8 月 10 日": the spaced form a model sometimes writes reads as the reader's own "8月10日".
+  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale))
+    .replace(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日/g, (m, y, month, day) => (y ? y + "年" : "") + month + "月" + day + "日");
 }
 // "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once. Prose only: a fact's value is made single by
 // oneDate before it is drawn (#3192), and every pass here skips text that holds no ISO date, so nothing is formatted twice.
@@ -15290,7 +15300,8 @@ function sameDay(one, two) {
   return monthDay(one) === monthDay(two);
 }
 function rawIdLabel(id) {
-  const kind = /^(codex|claude-code|session):/i.test(id) ? "Session" : /^(gmail|outlook|mail):/i.test(id) ? "Mail" : /^github:/i.test(id) ? "GitHub" : "Record";
+  const kind = /^(codex|claude-code|session):/i.test(id) ? "Session" : /^(gmail|outlook|mail):/i.test(id) ? "Mail" : /^github:/i.test(id) ? "GitHub"
+    : /^[0-9a-f]{7,12}$/i.test(id) ? "Commit" : "Record";
   const when = REM.source_context?.[id]?.time;
   return t(kind) + (when ? " · " + readerDate(calendarDay(when)) : "");
 }
@@ -15325,28 +15336,62 @@ function rowDateLabel(node) {
   const label = row && [...row.querySelectorAll(".d, .when, .date, .day, time")].find(n => !n.contains(node));
   return label ? label.textContent.replace(/\s+/g, " ").trim() : "";
 }
+// Every raw id in a text: a long or prefixed id (RAW_ID) or a short hash (SHORT_HEX), in order, never overlapping.
+function rawIds(text) {
+  RAW_ID.lastIndex = 0; SHORT_HEX.lastIndex = 0;
+  const found = [...text.matchAll(RAW_ID)];
+  for (const m of text.matchAll(SHORT_HEX))
+    if (!found.some(f => m.index < f.index + f[0].length && f.index < m.index + m[0].length)) found.push(m);
+  return found.sort((a, b) => a.index - b.index);
+}
+// The text right before a citation chip, even when the chip is tethered to the word before it.
+function textBefore(node) {
+  for (let at = node; at && !/^(P|LI|TD|DD|BLOCKQUOTE|H\d)$/.test(at.tagName || ""); at = at.parentElement) {
+    let prev = at.previousSibling;
+    while (prev && prev.nodeType === 1 && prev.lastChild) prev = prev.lastChild;
+    if (prev) return prev.nodeType === 3 ? prev : null;
+  }
+  return null;
+}
+// "venue (8月10日) [chip: 8月10日]": the chip already says the day, so the prose copy goes (46 on the rc35 hunt).
+function dropDatesBeforeChips(root) {
+  const date = "(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日|[A-Z][a-z]{2,8} \\d{1,2}(?:, \\d{4})?|\\d{1,2} [A-Z][a-z]{2,8}(?: \\d{4})?";
+  const tail = new RegExp("\\s*[（(]\\s*(" + date + ")\\s*[)）]\\s*$");
+  for (const chip of root.querySelectorAll(".cite")) {
+    const node = textBefore(chip), said = chip.querySelector(".cite-short")?.textContent || "";
+    const m = node && tail.exec(node.nodeValue);
+    if (m && said && sameDay(m[1], said)) node.nodeValue = node.nodeValue.slice(0, m.index) + " ";
+  }
+}
 function tidyText(root) {
   if (!root || typeof document === "undefined" || !document.createTreeWalker) return root;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: node =>
-    /\d{4}-\d{2}|\d|[0-9a-f]{8}/i.test(node.nodeValue) && !node.parentElement.closest(TIDY_SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+    /\d/.test(node.nodeValue) && !node.parentElement.closest(TIDY_SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
     let text = onceDates(localiseDates(node.nodeValue, blockLocale(node)));
     const label = rowDateLabel(node);
     if (label && text.trimStart().startsWith(label)) text = text.trimStart().slice(label.length).replace(/^\s*[—–:：-]\s*/, "");
-    RAW_ID.lastIndex = 0;
-    if (!RAW_ID.test(text)) { if (text !== node.nodeValue) node.nodeValue = text; continue; }
+    const ids = rawIds(text);
+    if (!ids.length) { if (text !== node.nodeValue) node.nodeValue = text; continue; }
+    const control = node.parentElement.closest(NO_CHIP);
+    if (control) {
+      // Named in place; the whole id stays one hover away on the control itself.
+      if (!control.title) control.title = ids.map(m => m[0]).join(" ");
+      node.nodeValue = ids.reduceRight((out, m) => out.slice(0, m.index) + rawIdLabel(m[0]) + out.slice(m.index + m[0].length), text);
+      continue;
+    }
     const parts = [];
     let last = 0;
-    RAW_ID.lastIndex = 0;
-    for (const m of text.matchAll(RAW_ID)) {
+    for (const m of ids) {
       parts.push(document.createTextNode(text.slice(last, m.index)), rawIdChip(m[0]));
       last = m.index + m[0].length;
     }
     parts.push(document.createTextNode(text.slice(last)));
     node.replaceWith(...parts);
   }
+  dropDatesBeforeChips(root);
   shortenPaths(root);
   return root;
 }
@@ -17092,6 +17137,8 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
   } else if (source.text && !sourceId(source.text, source.plain)) {
     panel.appendChild(el("p", { class: "evidence-description", text: source.text }));
   } else panel.append(...missingOriginal(r, number, trigger, { fromList }, sourceId(source.text, source.plain)));
+  // The card's own words (who, when, what the source is) in the reader's form; the quoted original stays as written.
+  panel.querySelectorAll(".evidence-identity, .evidence-description").forEach(tidyText);
   evidenceTrigger = trigger;
   panel.parentElement.hidden = false;
   document.body.classList.add("evidence-open");

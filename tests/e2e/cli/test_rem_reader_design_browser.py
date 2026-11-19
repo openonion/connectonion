@@ -1589,13 +1589,15 @@ def test_phone_activity_shows_complete_rows_with_latest_first(reader):
       r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert page.locator('.tl-e .d').all_inner_texts() == ['9/4', '9/3', '9/2', '9/1']  # N3: month and day on each row
+    # N3: month and day on each row, in the one date form every page uses (rc35 hunt), not "9/4".
+    assert page.locator('.tl-e .d').all_inner_texts() == ['Sep 4', 'Sep 3', 'Sep 2', 'Sep 1']
     assert all(text.count('Confirmed the venue plan') == 5 for text in page.locator('.tl-e .x').all_inner_texts())
     assert page.locator('.tl').evaluate('e => e.scrollHeight <= e.clientHeight')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-@pytest.mark.parametrize('language, days', [('en', ['9/4', '12/24\n2025', '9/4\n2025']), ('zh', ['9/4', '12/24\n2025年', '9/4\n2025年'])])
+# One date form on every page (rc35 hunt): the timeline says "Sep 4" / "9月4日", as prose and chips do, not "9/4".
+@pytest.mark.parametrize('language, days', [('en', ['Sep 4', 'Dec 24\n2025', 'Sep 4\n2025']), ('zh', ['9月4日', '12月24日\n2025年', '9月4日\n2025年'])])
 def test_an_exchange_from_another_year_says_its_year(reader, language, days):
     """Review of #2929: the timeline gave month and day only, so last September read as this one. The notebook's
     as_of year is the current one (2026 here); an older entry carries its year under the day, inside the column."""
