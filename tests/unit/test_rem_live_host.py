@@ -617,3 +617,49 @@ def test_a_new_host_takes_the_port_it_had_when_that_port_is_free(startup, monkey
     monkeypatch.setattr(live_host, "_free", lambda port: False)
     live_host.start("owner")
     assert ports == [50123, None]
+
+
+def test_a_host_older_than_the_install_starts_the_build_that_replaces_it_once_per_release(monkeypatch, tmp_path):
+    """#3112: after an upgrade the old Host served the old code until the next `co rem open` (both Macs, rc27/rc28):
+    the build that replaces an idle old Host only ran when an open page polled. The Host now notices by itself."""
+    from connectonion.rem import live_host, reader
+    from connectonion import _version
+    kicks, clock = [], [1000.0]
+    monkeypatch.setattr(reader, "owner_changed", lambda root: kicks.append(root) or True)
+    monkeypatch.setattr(live_host, "version_on_disk", lambda: _version.__version__)
+    kicked = {}
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is False and kicks == []  # same release
+    monkeypatch.setattr(live_host, "version_on_disk", lambda: "9.9.9")
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is True and kicks == [tmp_path]
+    clock[0] += 60
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is False and len(kicks) == 1  # once
+    clock[0] += live_host.UPGRADE_RETRY
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is True and len(kicks) == 2  # still old: again
+
+
+def test_the_upgrade_watch_runs_only_for_a_host_that_serves_rem(tmp_path):
+    from connectonion.network.host.server import _create_rem_upgrade_lifespan
+    assert _create_rem_upgrade_lifespan(None) == (None, None)
+    start, stop = _create_rem_upgrade_lifespan(tmp_path)
+    assert callable(start) and callable(stop)
+
+
+def test_the_upgrade_watch_keeps_looking_after_a_half_written_install(monkeypatch, tmp_path):
+    """A tick that lands mid-upgrade (a half-written _version.py) is logged and the next tick looks again."""
+    import asyncio
+    import threading
+    from connectonion.network.host import server
+    from connectonion.rem import live_host
+    ticks, done = [], threading.Event()
+    monkeypatch.setattr(live_host, "UPGRADE_CHECK", 0.01)
+
+    def notice(root, kicked):
+        ticks.append(root)
+        if len(ticks) == 1:
+            raise SyntaxError("half-written _version.py")
+        done.set()
+    monkeypatch.setattr(live_host, "notice_upgrade", notice)
+    start, stop = server._create_rem_upgrade_lifespan(tmp_path)
+    asyncio.run(start())
+    assert done.wait(2) and ticks[:2] == [tmp_path, tmp_path]
+    asyncio.run(stop())

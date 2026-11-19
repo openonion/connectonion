@@ -1,10 +1,13 @@
 """The owner's Today order, shared by the snapshot and the night's draft budget."""
 
+import copy
 import re
-from calendar import monthrange
 import sqlite3
+import time
+from calendar import monthrange
 from contextlib import closing, nullcontext
 from datetime import date, timedelta
+from pathlib import Path
 
 from . import census, threads
 from .files import Notebook, read_json, state_path
@@ -260,8 +263,33 @@ def _named_elsewhere(row, records):
     return len(matches) == 1 and matches[0] != row['record']
 
 
+# The queue for the notebook as it stands (#3106: each approve and talk rebuilt it from every page, 8-24 s). Keyed
+# by the reader's own stamp, which every REM write moves (files._changed) and which carries the notebook's day, and
+# by the mail archive's folders, whose files are also removed (a reply's original gone is its state); a page edited
+# in place by another tool is picked up within QUEUE_TTL seconds.
+_QUEUE: dict = {}
+QUEUE_TTL = 60
+MAIL_FOLDERS = [f"mail/{kind}/{provider}" for kind in ("messages", "observed") for provider in ("gmail", "outlook")]
+
+
+def _queue_key(root: Path) -> str:
+    from .reader import reader_version
+    folders = [(path.stat().st_mtime_ns if path.is_dir() else None) for path in (state_path(root, name) for name in MAIL_FOLDERS)]
+    return repr([reader_version(root), folders])
+
+
 def queue(root, *, records=None, contexts=None, states=None, as_of=None):
     """Visible deadline cards, visible morning cards, then the rest; no model or writes."""
+    if records is None and contexts is None and states is None and as_of is None:
+        key, now = (str(Path(root).resolve()), _queue_key(Path(root))), time.monotonic()
+        held = _QUEUE.get(key[0])
+        if not held or held[0] != key[1] or now - held[1] > QUEUE_TTL:
+            _QUEUE[key[0]] = held = (key[1], now, _queue(root))
+        return copy.deepcopy(held[2])
+    return _queue(root, records=records, contexts=contexts, states=states, as_of=as_of)
+
+
+def _queue(root, *, records=None, contexts=None, states=None, as_of=None):
     today = as_of or notebook_today(root)
     if records is None:
         book = Notebook(root)
