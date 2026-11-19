@@ -104,7 +104,7 @@ def _hash(path):
 
 # Scheduling, concurrency and budgets govern future work, so a prepared task's digest
 # leaves them out; the retired count caps stay listed for tasks saved while they existed.
-RUN_LIMITS = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
+RUN_LIMITS = {"tag_nodes_per_round", "topic_min_pages", "runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
               "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
               "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
               "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",

@@ -3732,6 +3732,11 @@
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
   .inv { position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+  .gx-topic-head .inv { align-items: flex-start; margin-top: 12px; }
+  /* .gx resets every button (background: none); the Investigate button keeps its own look on a tag page. */
+  .gx .inv-go { padding: 0 18px; background: var(--green); color: var(--on-green); font: var(--w-bold) var(--s-body)/var(--lh-tight) var(--font); }
+  .gx .inv-go:disabled { background: var(--well); color: var(--grey); }
+  .gx-topic-head .inv-line { text-align: left; }
   .inv-row { display: inline-flex; align-items: center; gap: 6px; }
   .inv-go { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill);
     background: var(--green); color: var(--on-green); font: var(--w-bold) var(--s-body)/var(--lh-tight) var(--font); box-shadow: var(--e-green);
@@ -3822,9 +3827,16 @@
   .pc-inline { display: flex; flex-wrap: wrap; gap: 0 4px; }
   /* Tags (#3093): words that link to their tag page, never pills on a record page (maps, not CTAs). */
   .tag-links { display: flex; flex-wrap: wrap; gap: 0 12px; }
+  .page-tags { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 6px 0 0; font-size: var(--fs-small, 14px); }
+  .page-tags-label { color: var(--muted); }
+  /* The switch keeps its width when its bold tab changes (#3140's longer names moved it 3 px). */
+  .knowledge-switch .theme-btn { flex-direction: column; justify-content: center; }
+  .knowledge-switch .theme-btn::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: var(--w-bold); }
   .tag-link { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .tag-bar { margin: 0 0 16px; }
   .tag-hit { margin: 0 0 16px; }
+  .tag-written { max-width: 720px; margin: 8px 0 24px; padding-bottom: 16px; border-bottom: var(--hair) solid var(--rule); }
+  .tag-written-open { display: inline-block; margin-top: 8px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .tag-group { margin-top: 24px; }
   .pc-inline > * + *::before { content: "·"; margin-right: 4px; color: var(--grey); }
   /* Sources stay one hover away: a number after every value was the card's noise. */
@@ -5500,7 +5512,7 @@ function href(r) { return r.path?.startsWith("tag:") ? tagHref(r.path.slice(4)) 
 // ---------- tags (#3093): one vocabulary over every page; a tag is a page of the pages that carry it ----------
 // The vocabulary is REM.tags ({slug: {label, kind, aliases, count}}); a page's slugs are r.tags; an open item's are
 // its queue row's tags. Resolution follows tags.resolve in Python: slug, then normalised label, then an alias.
-Object.assign(UI.zh, { "Tags": "标签", "Tag": "标签", "Tag: {label}": "标签：{label}", "1 page carries this tag": "1 页带这个标签",
+Object.assign(UI.zh, { "1 page with this tag is new or changed": "有 1 个带这个标签的页面是新的或改过", "{n} pages with this tag are new or changed": "有 {n} 个带这个标签的页面是新的或改过", "Open the tag page →": "打开标签页 →", "Tag page": "标签页", "Tags": "标签", "Tag": "标签", "Tag: {label}": "标签：{label}", "1 page carries this tag": "1 页带这个标签",
   "{n} pages carry this tag": "{n} 页带这个标签", "No page carries this tag yet": "还没有页面带这个标签", "No such tag": "没有这个标签",
   "Filter by tag": "按标签筛选", "All": "全部", "Tag {label}": "标签 {label}" });
 function tagNorm(text) {
@@ -5513,22 +5525,50 @@ function tagResolve(text) {
   return Object.keys(vocabulary).find(slug => tagNorm(vocabulary[slug].label) === wanted || (vocabulary[slug].aliases || []).some(alias => tagNorm(alias) === wanted)) || null;
 }
 function tagLabel(slug) { return REM.tags?.[slug]?.label || slug; }
-function tagHref(slug) { return "#q=" + encodeURIComponent("tag:" + slug); }
+// A tag is a link to a page (#3140): the person, organisation, project or topic page it names; only a tag with
+// no page yet opens the list of pages that carry it.
+function tagHref(slug) {
+  const page = REM.tags?.[slug]?.page, r = page && byPath(page);
+  return r ? href(r) : "#q=" + encodeURIComponent("tag:" + slug);
+}
 function tagged(records, slug) { return slug ? records.filter(r => (r.tags || []).includes(slug)) : records; }
 // A page's tags as quiet links, each to its tag page; nothing when it has none.
 function tagLinks(r) {
   const slugs = (r.tags || []).filter(slug => REM.tags?.[slug]);
   return slugs.length ? el("span", { class: "tag-links" }, slugs.map(slug => el("a", { class: "tag-link", href: tagHref(slug), text: tagLabel(slug) }))) : null;
 }
+// One row of a page's tags under its title, on every kind (owner, 2026-11-19): the same links the person card shows,
+// each opening the page the tag names or the tag's own page. Nothing when the page has no tag.
+function pageTagRow(r) {
+  const links = tagLinks(r);
+  return links ? el("p", { class: "page-tags" }, [el("span", { class: "page-tags-label", text: t("Tags") }), links]) : null;
+}
 // The tag page: every page carrying it, grouped by kind, each group with its count (#3093 point 2).
+// The tag's page: knowledge/<slug>.md, or the knowledge entry named for the tag (tag_nodes.node_record).
+function tagWritten(slug) {
+  const page = REM.tags?.[slug]?.page;
+  if (page?.startsWith("knowledge/")) return byPath(page) || null;
+  const names = new Set([slug, tagLabel(slug)].map(name => String(name).toLowerCase()));
+  return (REM.records || []).find(r => r.path === "knowledge/" + slug + ".md")
+    || (REM.records || []).find(r => r.category === "knowledge" && names.has(String(r.title || "").toLowerCase())) || null;
+}
+// Its words without what code adds: the title (the tag page has its own), the Tags line, the member list, the Sources.
+function tagProse(r) {
+  return String(r.text || "").replace(/^# [^\n]*\n/, "").replace(/^- Tags:[^\n]*\n/m, "").split(/\n## (?:Pages|Sources)[ \t]*\n/)[0].trim();
+}
 function tagPage(slug) {
   const main = document.getElementById("main");
   main.textContent = "";
   main.appendChild(el("div", { class: "eyebrow", text: t("Tag") }));
   if (!slug) { main.appendChild(el("h1", { text: t("No such tag") })); return; }
   const pages = tagged(listedRecords().concat(REM.records.filter(r => r.category === "sessions")), slug)
-    .filter((r, i, all) => all.findIndex(x => x.path === r.path) === i);
+    .filter((r, i, all) => all.findIndex(x => x.path === r.path) === i && r.path !== tagWritten(slug)?.path);
   main.appendChild(el("h1", { class: "tag-title", text: tagLabel(slug) }));
+  // The tag page REM wrote from these pages (#3140, `co rem tag`): what the tag is, how its pages connect, when.
+  const written = tagWritten(slug);
+  if (written) main.appendChild(el("article", { class: "tag-written note", "aria-label": t("Tag page") }, [
+    el("div", { html: markdown(tagProse(written), written.path) }),
+    el("a", { class: "tag-written-open", href: href(written), text: t("Open the tag page →") })]));
   main.appendChild(el("p", { class: "lede", text: pages.length ? t(pages.length === 1 ? "1 page carries this tag" : "{n} pages carry this tag", { n: pages.length })
     : t("No page carries this tag yet") }));
   const order = ["people", "orgs", "projects", "sessions", "skills", "decisions", "knowledge", "principles"];
@@ -6021,6 +6061,8 @@ function splitTrailers(text) {
       body.push(line); continue;
     }
     if (fence) { body.push(line); continue; }
+    // Code-owned lines: the Tags line is the tag row under the title (#3140), the Investigation stamp is the button's.
+    if (/^-\s*Tags:/.test(t) || /^Investigation:/.test(t)) continue;
     if (/^(related|相关|相关页面|相关链接|相关项目|相关人物|相关决定|相关待办)[:：]/i.test(t)) related.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else if (/^(sources?|来源)[:：]/i.test(t)) sources.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else body.push(line);
@@ -10732,6 +10774,7 @@ function invLabel(s) { return [t(s.label === "current" ? "Up to date" : "Investi
 function invWhy(s) {
   const last = s.last ? " · " + t("last {date}", { date: fmtDate(s.last) }) : "";
   if (s.label === "investigate") return t("Not investigated yet");
+  if (s.label === "update" && s.new_pages) return invCount("1 page with this tag is new or changed", "{n} pages with this tag are new or changed", s.new_pages) + last;
   if (s.label === "update") return (s.new_mails ? invCount("1 new mail not in this page yet", "{n} new mails not in this page yet", s.new_mails)
     : invCount("1 new session not in this page yet", "{n} new sessions not in this page yet", s.new_sessions)) + last;
   if (s.label === "deeper") return invCount("1 lead not followed yet (uses the web)", "{n} leads not followed yet (uses the web)", s.leads) + last;
@@ -13093,7 +13136,7 @@ function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }),
-      orgOpening(v), investigateControl(r)]), orgTree(v)]);
+      pageTagRow(r), orgOpening(v), investigateControl(r)]), orgTree(v)]);
 }
 function orgOpening(v) {
   const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
@@ -14040,7 +14083,8 @@ function sessionRecord(r, heading) {
     el("div", { class: "eyebrow" }, [el("a", { href: lastSessionListHash, text: label("sessions") }),
       project ? el("span", { class: "sep", text: "/" }) : null, project ? el("a", { href: href(project), text: project.title }) : null]),
     el("header", { class: "page-head" }, [el("h1", { text: r.title }), sessionFactsLine(r),
-      el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
+      // The shared tag row when the session's tags are in the vocabulary; its own session filter links otherwise.
+      pageTagRow(r) || el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
     el("section", { class: "session-summary" }, [summary ? el("h2", { text: t("Summary") }) : null,
       el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || t("Not summarised yet") + " — " + unlabelled(r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
     attachment.node,
@@ -14760,6 +14804,7 @@ function record(path, heading) {
     main.appendChild(recordEyebrow(r, person));
     if (r.category === "projects") head.append(projectStateLine(r), investigateControl(r) || "");
     if (r.category !== "projects") head.appendChild(leadRow(r));
+    head.append(pageTagRow(r) || "");
     main.appendChild(head);
     // A page's translation state is the top bar's language control, not a line in the body (#3143).
     main.appendChild(recordFocus(r));
@@ -15224,7 +15269,7 @@ function loadDetails() {
 // One layout over every real link, kept still so the owner learns where things sit; a search
 // or a click turns it into the neighbourhood of one record (art direction, knowledge round 1).
 const GRAPH_UI_ZH = {
-  "Graph": "图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
+  "Knowledge graph": "知识图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
   "Tags": "标签", "Tag": "标签", "1 tag": "1 个标签", "{n} tags": "{n} 个标签",
 
@@ -15235,9 +15280,9 @@ const GRAPH_UI_ZH = {
   "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
   "Open person page": "打开人物页", "Open organisation page": "打开组织页", "Open project page": "打开项目页",
   "Depth": "深度", "1 hop": "1 层", "2 hops": "2 层", "Direct links only": "只看直接相连", "{n} more further out": "再远 {n} 条",
-  "{n} more": "其余 {n} 个", "Personal": "个人事项", "Knowledge entry": "知识", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
+  "{n} more": "其余 {n} 个", "Personal": "个人事项", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
   "Last mentioned": "最近提到", "First mentioned": "首次提到", "Aliases": "别名", "About": "关于",
-  "Local graph": "局部图谱", "Open in graph →": "在图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
+  "In the knowledge graph": "知识图谱（相关部分）", "Open in the knowledge graph →": "在知识图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
   "Related knowledge": "相关知识", "{n} shared records": "{n} 条共同记录", "REM is not sure": "REM 还不确定",
   "Linked here": "链接到这里", "Where you stand": "你现在在哪", "Timeline": "时间线", "Open threads": "还没结的线",
   "Maybe related": "可能也相关", "Only the words match; REM did not count these as links.": "只是字面相同，REM 没把它们算成链接。",
@@ -15251,7 +15296,7 @@ const GRAPH_UI_ZH = {
   "{n} records": "{n} 条记录",
   "REM files knowledge from your records on its night run.": "REM 会在夜里那一轮从已有记录里整理知识。",
   "Explore linked records →": "探索相连的记录 →",
-  "Entries": "条目", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
+  "Tag pages": "标签页", "1 tag page": "1 个标签页", "{n} tag pages": "{n} 个标签页", "Knowledge here": "相关知识", "Not in the knowledge graph yet": "知识图谱里还没有它",
   "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定",
   "1 knowledge entry": "1 条知识", "{n} knowledge entries": "{n} 条知识", "1 person": "1 个人", "{n} people": "{n} 个人",
   "1 organisation": "1 个组织", "{n} organisations": "{n} 个组织", "1 project": "1 个项目", "{n} projects": "{n} 个项目",
@@ -15264,15 +15309,15 @@ function graphT(key, values = {}) {
   return (words || key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
 const GRAPH_ORDER = ["knowledge", "people", "orgs", "projects", "notes", "sessions"];
-const GRAPH_NAME = { knowledge: "Knowledge", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions", tags: "Tags" };
+const GRAPH_NAME = { knowledge: "Knowledge", people: "People", orgs: "Organisations", projects: "Projects", notes: "Skills · decisions", sessions: "Sessions" };
 // A count in words, beside its shape: [one, many]. The sentence over the map and the panel both read these.
-const GRAPH_COUNT = { knowledge: ["1 knowledge entry", "{n} knowledge entries"], people: ["1 person", "{n} people"], orgs: ["1 organisation", "{n} organisations"],
+const GRAPH_COUNT = { knowledge: ["1 tag page", "{n} tag pages"], people: ["1 person", "{n} people"], orgs: ["1 organisation", "{n} organisations"],
   projects: ["1 project", "{n} projects"], notes: ["1 skill or decision", "{n} skills and decisions"], sessions: ["1 session", "{n} sessions"],
   tags: ["1 tag", "{n} tags"] };
 function graphCount(k, n) { return graphT(GRAPH_COUNT[k][n === 1 ? 0 : 1], { n }); }
-const GRAPH_ONE = { knowledge: "Knowledge entry", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session", tag: "Tag", tags: "Tag" };
-const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"], ["tags", "Tags"]];
-function graphKind(kind) { return kind === "tag" ? "tags" : GRAPH_NAME[kind] ? kind : "notes"; }
+const GRAPH_ONE = { knowledge: "Tag", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session" };
+const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"]];
+function graphKind(kind) { return GRAPH_NAME[kind] ? kind : "notes"; }
 function graphPhone() { return innerWidth < 720; }
 function graphCss(name) { return getComputedStyle(document.querySelector(".gx") || document.documentElement).getPropertyValue(name).trim(); }
 // The canvas cannot read var(), so each graph role names the sheet token it is painted with.
@@ -15288,7 +15333,6 @@ function graphOutline(k, x, y, r) {
   if (k === "projects") return `M${x} ${y - r * 1.25}L${x + r * 1.25} ${y}L${x} ${y + r * 1.25}L${x - r * 1.25} ${y}Z`;
   if (k === "notes") return `M${x} ${y - r * 1.15}L${x + r * 1.1} ${y + r * .8}L${x - r * 1.1} ${y + r * .8}Z`;
   if (k === "sessions") return `M${x - r * 1.2} ${y - r * .4}h${2.4 * r}v${.8 * r}h${-2.4 * r}Z`;  // a session is a stretch of time
-  if (k === "tags") return `M${x - r * .5} ${y - r}h${r}l${r * .5} ${r}l${-r * .5} ${r}h${-r}l${-r * .5} ${-r}Z`;  // a tag: a hexagon
   return `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
 }
 // A private mark is an outline, which vanishes at a session's small radius; below this it is drawn larger.
@@ -15302,8 +15346,8 @@ function graphModel() {
   const source = REM.graph || { nodes: [], edges: [] };
   const records = new Map(REM.records.map(r => [r.path, r]));
   // Each tag is a node, linked to the pages that carry it (graph.tags, #3093); its "record" opens the tag page.
-  const tagNodes = (source.tags?.nodes || []).map(n => ({ ...n, k: "tags", title: n.label, r: { path: n.id, title: n.label, category: "tags" } }));
-  const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) })).concat(tagNodes);
+  // One kind of point, the page (#3140): a tag only adds edges between the pages carrying it and its page.
+  const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) }));
   const byId = new Map(nodes.map(n => [n.id, n]));
   const edges = source.edges.concat(source.tags?.edges || []).filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
   const adj = new Map();
@@ -15409,8 +15453,6 @@ function graphVisible(n) {
   if (tab === "people") return n.k === "people" || n.k === "orgs";
   if (tab === "projects") return n.k === "projects" || n.k === "sessions";
   if (tab === "knowledge") return n.k === "knowledge" || [...GRAPH.adj.get(n.id)].some(id => GRAPH.byId.get(id).k === "knowledge");
-  if (tab === "tags") return n.k === "tags" || [...GRAPH.adj.get(n.id)].some(id => GRAPH.byId.get(id).k === "tags");
-  if (n.k === "tags" && tab !== "all") return false;
   return true;
 }
 function graphFocusSets() {
@@ -15434,10 +15476,10 @@ function knowledgeGraph() {
   else topicList();
 }
 function knowledgeHead(mode) {
-  const ways = [["graph", "Graph", "#view=graph"], ["entries", "Entries", "#c=knowledge&view=entries"]];
+  const ways = [["graph", "Knowledge graph", "#view=graph"], ["entries", "Tag pages", "#c=knowledge&view=entries"]];
   return el("div", { class: "knowledge-head" }, [el("h1", { text: label("knowledge") }),
     el("nav", { class: "knowledge-switch theme-switch", "aria-label": label("knowledge") }, ways.map(([key, name, link]) =>
-      el("a", { href: link, class: "theme-btn" + (mode === key ? " active" : ""), ...(mode === key ? { "aria-current": "page" } : {}), text: graphT(name) })))]);
+      el("a", { href: link, class: "theme-btn" + (mode === key ? " active" : ""), ...(mode === key ? { "aria-current": "page" } : {}), "data-text": graphT(name), text: graphT(name) })))]);
 }
 function graphView() {
   const main = document.getElementById("main");
@@ -15451,7 +15493,7 @@ function graphView() {
   // they link directly, which is the Knowledge filter; with no entry yet it draws everything.
   graphState.tab = graphPhone() && model.linked.some(n => n.k === "knowledge") ? "knowledge" : "all";
   graphFocusSets();
-  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Graph"), role: "img", tabindex: "0" }),
+  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Knowledge graph"), role: "img", tabindex: "0" }),
     el("div", { class: "gx-tip", hidden: "" })]), el("div", { class: "gx-foot" }, [graphLegend(model), graphZoom()]), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
   main.appendChild(box);
   if (!model.linked.length) { box.querySelector(".gx-stage").replaceWith(el("p", { class: "gx-empty", text: graphT("Nothing links here yet") })); return; }
@@ -15820,7 +15862,7 @@ function graphPanel() {
 function graphTies(n) {
   const count = {};
   for (const id of GRAPH.adj.get(n.id) || []) { const k = GRAPH.byId.get(id).k; count[k] = (count[k] || 0) + 1; }
-  return ["people", "projects", "orgs", "knowledge", "notes", "tags"].filter(k => count[k]).map(k => graphCount(k, count[k])).join(" · ");
+  return ["people", "projects", "orgs", "knowledge", "notes"].filter(k => count[k]).map(k => graphCount(k, count[k])).join(" · ");
 }
 // A record's own first sentence: a knowledge entry's What it is, anything else's lead.
 function graphSummary(n) {
@@ -16165,7 +16207,9 @@ function entryHead(r, model, written) {
     unwritten ? el("p", { class: "gx-lede", text: unwritten }) : null,
     el("p", { class: "entry-meta" }, [entryT("Updated {date}", { date: fmtDate(r.updated) }),
       sources ? " · " : null, sources ? el("a", { href: href(r) + "&h=sources", text: entryT(sources === 1 ? "1 source" : "{n} sources", { n: sources }) }) : null]),
-    topic ? entryCounts(r) : null]);
+    pageTagRow(r), topic ? entryCounts(r) : null,
+    // A tag page has the same Investigate control (#3140): it reads every page carrying the tag.
+    topic ? investigateControl(r) : null]);
 }
 // The side column: this entry's place in the graph and its neighbours. An outline only from four sections up.
 function entryRail(r, text) {
@@ -16215,7 +16259,7 @@ function entryReveal(heading) {
 // ---------- a local graph for a record's rail: one hop, kind shapes, labels for the few that matter ----------
 function graphLocal(r) {
   const model = graphModel(), centre = model.byId.get(r.path);
-  if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-local" }, [el("h4", { text: graphT("Local graph") }), el("p", { class: "gx-quiet-line", text: graphT("Not in the graph yet") })]);
+  if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-local" }, [el("h4", { text: graphT("In the knowledge graph") }), el("p", { class: "gx-quiet-line", text: graphT("Not in the knowledge graph yet") })]);
   const ring = [...model.adj.get(r.path)].map(id => model.byId.get(id))
     .sort((a, b) => GRAPH_ORDER.indexOf(a.k) - GRAPH_ORDER.indexOf(b.k) || graphTitle(a).localeCompare(graphTitle(b)));
   const W = 236, H = 200, cx = W / 2, cy = H / 2, labelled = new Set([...ring].sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5).map(n => n.id));
@@ -16228,10 +16272,10 @@ function graphLocal(r) {
     const text = labelled.has(n.id) && !n.private ? graphLocalLabel(graphTitle(n), x, W, Math.cos(angle) >= 0) : "";
     if (text) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(text)]));
   });
-  const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("Local graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
+  const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("In the knowledge graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
     graphLocalMark(centre, cx, cy, 7, true), svgEl("text", { x: cx, y: cy + 21, "text-anchor": "middle", class: "centre" }, [document.createTextNode(graphShort(graphTitle(centre), 16))]), ...labels]);
-  return el("section", { class: "gx-local" }, [el("h4", { text: graphT("Local graph") }), svg,
-    el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }), el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })])]);
+  return el("section", { class: "gx-local" }, [el("h4", { text: graphT("In the knowledge graph") }), svg,
+    el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }), el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in the knowledge graph →") })])]);
 }
 // A label gets the room between its 7px offset and the card's edge (about 6.5 per letter), not a fixed 18;
 // under three letters it is only "…", so none.
@@ -16257,7 +16301,7 @@ function graphRailAttach(main, r) {
   if (r.category === "projects") {
     const body = deep?.querySelector(".body");
     if (body) body.append(block);
-    else main.append(el("details", {}, [el("summary", { text: graphT("Local graph") }), block]));
+    else main.append(el("details", {}, [el("summary", { text: graphT("In the knowledge graph") }), block]));
   } else if (rail) rail.append(block);
   else main.insertBefore(block, deep);
   block.classList.toggle("gx-inline", !rail);
@@ -16826,7 +16870,7 @@ function todayActions() {
 function paletteItems() {
   const go = link => () => { location.hash = link; };
   const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"]]
-    .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]), [[graphT("Graph"), "#view=graph"]])
+    .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]), [[graphT("Knowledge graph"), "#view=graph"]])
     .map(([title, link]) => ({ id: "page:" + link, label: t("Open {page}", { page: title }), hint: t("Page"), run: go(link) }));
   const records = listedRecords().filter(r => ["people", "orgs", "projects", "skills", "decisions", "principles"].includes(r.category))
     .map(r => ({ id: "r:" + r.path, label: r.title, hint: singular(r.category), run: go(href(r)) }));

@@ -255,15 +255,16 @@ def _turn(root: Path, records: list[str], settings: dict, run) -> dict:
         return check(root, task, {"result": result, "usage": envelope.get("usage")})
 
 
-def tag_pages(root: Path, *, limit: int = 200, run=None, say=None) -> dict:
-    """Tag up to `limit` waiting pages, BATCH a turn; a refused or failed turn leaves its pages waiting."""
+def tag_pages(root: Path, *, limit: int = 200, run=None, say=None, only=None) -> dict:
+    """Tag up to `limit` waiting pages (or only the pages named, waiting or not), BATCH a turn; a refused or
+    failed turn leaves its pages waiting."""
     from . import config as rem_config, runner, service
     from .inquiry import stage_config
     settings = stage_config(root, rem_config.read_config(root), "tag")
     problem, fix = runner.ready(settings)
     if problem:
         raise RemError(f"{problem}; run `{fix}` and tag again")
-    rows, started = candidates(root)[:limit], time.monotonic()
+    rows, started = (list(only) if only else candidates(root)[:limit]), time.monotonic()
     record = {"id": "run_" + uuid.uuid4().hex, "phase": "tag", "started_at": service.now().isoformat(),
               "outcome": "running", "runner_attempts": 0, "changed": [], "items": len(rows), "tagged": 0,
               "failed": 0, "refused": [], "errors": [], "usage": {}, "model": settings["model"]}

@@ -23,7 +23,7 @@ from .service import now
 
 # The ⋯ menu's levels, as CLI flags: 完整调查 (default) · 快速更新 · 整页重写.
 MODES = {"full": ["--enrich"], "quick": [], "rewrite": ["--rewrite"]}
-KINDS = ("people/", "orgs/", "projects/")
+KINDS = ("people/", "orgs/", "projects/", "knowledge/")  # knowledge/: tag pages only (#3140), see _topic
 OPEN_LEAD = re.compile(r"(?m)^\s*[-*]\s*open\s*\|")
 
 
@@ -31,9 +31,15 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _topic(root, record: str) -> bool:
+    from .tag_nodes import topic_slug
+    return record.startswith("knowledge/") and bool(topic_slug(Path(root), record))
+
+
 def receipt_path(root, record: str) -> Path:
-    if not record.startswith(KINDS) or ".." in Path(record).parts:
-        raise RemError(f"{record}: the Investigate button is for people, orgs and projects pages")
+    if (not record.startswith(KINDS) or ".." in Path(record).parts
+            or (record.startswith("knowledge/") and not _topic(root, record))):
+        raise RemError(f"{record}: the Investigate button is for people, orgs, projects and tag pages")
     return state_path(Path(root), f"page-runs/{Path(record).with_suffix('.json')}")
 
 
@@ -290,7 +296,11 @@ def states(root, records: list[str], *, mail_days=None) -> dict[str, dict]:
     from .service import run_logs
     root, book = Path(root), Notebook(root)
     # Your own page has its own pass (investigate me), not this button.
-    records = [record for record in records if record.startswith(KINDS) and book.exists(record) and record != _owner(root)]
+    from . import tag_nodes
+    topics = tag_nodes.states(root, [record for record in records if record.startswith("knowledge/")])
+    for record in topics:
+        topics[record].update(_run_state(root, record, run_logs(root)))
+    records = [record for record in records if record.startswith(KINDS[:3]) and book.exists(record) and record != _owner(root)]
     logs = run_logs(root)
     mail_days = _mail_days(root, records, book) if mail_days is None else mail_days
     found = {}
@@ -309,7 +319,7 @@ def states(root, records: list[str], *, mail_days=None) -> dict[str, dict]:
         found[record] = {"last": last.isoformat() if last else None, "new_mails": new_mails,
                          "new_sessions": new_sessions, "leads": leads, "label": label,
                          "cost": {"quick": quick, "full": full}, **_run_state(root, record, logs)}
-    return found
+    return {**found, **topics}
 
 
 def _changed_since(root: Path, record: str, moment) -> bool:

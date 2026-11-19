@@ -60,7 +60,7 @@ LEVEL_EFFORTS = {"level1": "medium", "level2": "low", "level3": "low", "level4":
 EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 STAGE_LEVELS = {
     # 1: short, structured, and every answer checked by code afterwards.
-    "tag": "level1",
+    "tag": "level1", "tag-node": "level1",
     # Abstract: finding decisions, knowledge and principles; code checks the result (at most 20 pages, three
     # folders). The owner, 2026-11-19 (#3142): «关于 decisions，你应该用 Luna 这种模型去找».
     "abstract": "level1",
@@ -164,7 +164,7 @@ def default_config() -> dict:
                        "summaries_per_round": 40, "translations_per_round": 400,
                        # Tagging is the cheapest stage: 20 pages a level-1 turn, checked
                        # by code (#3093). A round's stated end, like translation's.
-                       "tags_per_round": 400,
+                       "tags_per_round": 400, "tag_nodes_per_round": 6, "topic_min_pages": 2,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no
