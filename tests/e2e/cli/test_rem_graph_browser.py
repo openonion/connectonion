@@ -172,7 +172,8 @@ def test_the_rail_has_no_graph_entry_and_knowledge_follows_projects(page):
     # #2996 made Knowledge the one place that holds the graph. #3091 put every place in one ordered rail:
     # what the notebook concluded starts with Knowledge, right after Projects, and Memory changes ends it.
     hrefs = page.locator("#nav > a").evaluate_all("links => links.map(a => a.getAttribute('href'))")
-    assert hrefs[hrefs.index("#c=projects") + 1] == "#c=knowledge"
+    # Keys (#3137) sits between Projects and Knowledge; Knowledge still opens the notebook's conclusions.
+    assert hrefs[hrefs.index("#c=projects") + 1:hrefs.index("#c=projects") + 3] == ["#c=keys", "#c=knowledge"]
     # Activity was the team's invention (D-03): REM's run history is reached from Memory changes only.
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     if page.locator('.nav.more').is_visible():  # More holds only what the rail's height could not

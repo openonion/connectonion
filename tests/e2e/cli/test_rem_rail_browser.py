@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
 
 FROZEN = datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
 # #3152: the calendar is part of Today and has no place of its own.
-ORDER = ["#", "#view=open", "#c=people", "#c=orgs", "#c=projects",
+ORDER = ["#", "#view=open", "#c=people", "#c=orgs", "#c=projects", "#c=keys",  # Keys after Projects (#3137)
          "#c=knowledge", "#c=decisions", "#c=principles", "#c=skills",
          "#c=sessions", "#c=opportunities", "#c=works", "#view=changes"]
 GROUP_STARTS = ["#c=people", "#c=knowledge", "#c=sessions"]
@@ -101,7 +101,7 @@ def test_a_tall_rail_shows_every_place_in_order_and_has_no_more(browser, tmp_pat
     assert rail["inside"] and rail["apart"] and not rail["scrolls"] and not rail["sideways"]
     assert rail["current"] == ["#"]  # the active place is marked and named
     words = page.locator("#nav > a.nav .w").all_inner_texts()
-    assert words == ["Today", "Waiting", "People", "Orgs", "Projects", "Knowledge", "Decisions", "Principles", "Skills",
+    assert words == ["Today", "Waiting", "People", "Orgs", "Projects", "Keys", "Knowledge", "Decisions", "Principles", "Skills",
                      "Sessions", "Opps", "Works", "Changes"]
     fits = page.locator("#nav > a.nav").evaluate_all("""cells => cells.every(cell => {
       const w = cell.querySelector('.w').getBoundingClientRect(), c = cell.getBoundingClientRect(); return w.left >= c.left && w.right <= c.right; })""")
@@ -126,14 +126,14 @@ def test_the_keyboard_walks_the_rail_in_the_order_you_see(browser, tmp_path, mon
 def test_at_900_the_rail_is_filled_and_only_the_overflow_is_under_more(browser, tmp_path, monkeypatch):
     page = _page(browser, _open(tmp_path, monkeypatch), 1440, 900)
     rail = page.evaluate(RAIL)
-    # With the calendar inside Today (#3152) one more place fits: Opportunities joins Sessions above the fold.
+    # The calendar left the rail (#3152) and Keys joined it (#3137): Sessions is again the last place above the fold.
     assert rail["places"] == ORDER[:11] and rail["more"]  # nothing he uses is folded
     assert rail["menu"] == ORDER[11:]
     assert rail["inside"] and rail["apart"] and not rail["scrolls"]
     page.locator(".nav.more").click()
     menu = page.locator("#rail-more").bounding_box()
     assert menu["x"] >= 64 and menu["y"] >= 0 and menu["y"] + menu["height"] <= 900
-    assert [text.strip() for text in page.locator("#rail-more a").all_inner_texts()] == ["Works", "Memory changes"]
+    assert [text.strip() for text in page.locator("#rail-more a").all_inner_texts()] == ["Opportunities", "Works", "Memory changes"]
     page.locator('#rail-more a[href="#view=changes"]').click()
     page.wait_for_function("location.hash === '#view=changes'")
     rail = page.evaluate(RAIL)
@@ -166,7 +166,7 @@ def test_the_phone_more_sheet_lists_every_place_in_the_rails_order(browser, tmp_
     rail = page.evaluate(RAIL)
     assert rail["places"] == ORDER and not rail["more"] and rail["groups"] == GROUP_STARTS
     names = page.locator("#nav > a.nav").evaluate_all("cells => cells.map(a => getComputedStyle(a, '::after').content.replace(/\"/g, ''))")
-    assert names == ["Today", "Waiting on you", "People", "Organisations", "Projects", "Knowledge", "Decisions", "Principles",
+    assert names == ["Today", "Waiting on you", "People", "Organisations", "Projects", "Keys", "Knowledge", "Decisions", "Principles",
                      "Skills", "Agent sessions", "Opportunities", "Works", "Memory changes"]
     lines = page.locator("#nav > a.nav.group").evaluate_all("""cells => cells.map(a => { const s = getComputedStyle(a, '::before');
       return parseFloat(s.borderTopWidth) > 0 && parseFloat(s.width) > 200; })""")

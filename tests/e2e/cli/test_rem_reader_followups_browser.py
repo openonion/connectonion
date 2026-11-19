@@ -33,7 +33,7 @@ def test_every_rail_word_is_the_start_of_its_places_name(reader, lang):
     cells = page.locator(".rail .nav").evaluate_all("""nodes => nodes.filter(n => n.querySelector('.w') && n.getClientRects().length)
       .map(n => [n.querySelector('.w').textContent, n.getAttribute('aria-label')])""")
     # #3091: every place the notebook has is in the rail at this height (ten of them), then Settings; no More.
-    assert len(cells) == 10 and all(name.startswith(word) for word, name in cells), cells  # no Agenda (#3152)
+    assert len(cells) == 11 and all(name.startswith(word) for word, name in cells), cells  # no Agenda (#3152)
     if lang == "en":  # what a voice-control user says is what they see
         assert page.get_by_role("link", name="Orgs").get_attribute("href") == "#c=orgs"
         assert "Organisations" in page.locator('#nav a[href="#c=orgs"]').get_attribute("aria-label")
@@ -86,7 +86,7 @@ def test_phone_more_sheet_starts_every_label_in_one_column(reader, theme):
       return {places}; }""")
     _shot(page, f"phone-more-sheet-{theme}-390.png")
     # #3091: the sheet is one list of every place, so there is no second list to line up with.
-    assert len(starts["places"]) == 10 and len(set(starts["places"])) == 1, starts  # no Agenda (#3152)
+    assert len(starts["places"]) == 11 and len(set(starts["places"])) == 1, starts  # no Agenda (#3152)
     assert page.locator("#rail-more .mi").count() == 0
 
 

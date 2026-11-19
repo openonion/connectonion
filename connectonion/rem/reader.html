@@ -11556,7 +11556,7 @@ function agKey(event) {
   agendaView();
 }
 function agListen() {
-  if (agendaState.listening) return;
+  if (agendaState.listening || typeof addEventListener !== "function") return;  // a test harness has no window
   agendaState.listening = true;
   addEventListener("keydown", agKey);
   addEventListener("resize", agSizeWeek);

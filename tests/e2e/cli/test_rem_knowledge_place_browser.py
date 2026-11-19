@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "fixtures"))
 
 # #3091: one ordered list; Decisions and Principles follow Knowledge, Memory changes is last.
 RAIL = ["#", "#view=open", "#c=people",  # no Agenda: the calendar is in Today (#3152)
-        "#c=orgs", "#c=projects", "#c=knowledge", "#c=decisions", "#c=principles",
+        "#c=orgs", "#c=projects", "#c=keys", "#c=knowledge", "#c=decisions", "#c=principles",
         "#c=skills", "#view=changes"]
 
 

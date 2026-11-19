@@ -587,7 +587,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     # The sheet is in the rail's one order (#3091), with the places this notebook has pages for.
     rows = page.locator("#nav > a")
     assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
-        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Knowledge"',  # no Agenda: it is in Today (#3152)
+        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Keys"', '"Knowledge"',  # no Agenda: it is in Today (#3152)
         '"Decisions"', '"Skills"', '"Memory changes"']
     assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.

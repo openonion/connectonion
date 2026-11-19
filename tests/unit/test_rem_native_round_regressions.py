@@ -308,8 +308,10 @@ def test_legacy_project_completion_never_marks_unchanged_inputs_read(notebook, m
 
 
 def test_native_abstract_submit_promotes_a_batch_and_leaves_other_pages_alone(notebook, monkeypatch):
-    from connectonion.rem import night, tasks
+    from connectonion.rem import night, tag_stage, tasks
     monkeypatch.setattr(night, 'prepare', lambda *a, **kw: [])
+    # The decisions written here are tag candidates since #3093; the round's tag turn is tested in test_rem_tag_stage.py.
+    monkeypatch.setattr(tag_stage, 'candidates', lambda root, *a, **k: [])
     monkeypatch.setattr(tasks, 'auto_dispatch', lambda *a: None)
     save_round(notebook, [])
     book = Notebook(notebook)
