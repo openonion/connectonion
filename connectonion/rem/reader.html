@@ -3465,6 +3465,8 @@
   .tnext-day:hover, .tnext-day.today { background: var(--well); }
   .tnext-wd { color: var(--grey); }
   .tnext-dots { min-height: 1em; color: var(--grey); letter-spacing: 1px; }
+  .tnext .wt .end { margin-left: auto; }
+  .tnext-day.today .tnext-num { font-weight: var(--w-bold); }
   .tnext-all { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
   .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
@@ -10194,15 +10196,16 @@ function todayNext() {
   });
   const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": t("This week") }, Array.from({ length: 7 }, (_, i) => {
     const day = agDay(today, i), n = agOnDay(entries, day).length;
-    const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), "aria-label": agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")) }, [
-      el("span", { class: "tnext-wd", text: day === today ? agT("Today") : agFormat(day, { weekday: "narrow" }) }), el("span", { class: "tnext-num", text: String(Number(day.slice(8))) }),
+    const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), ...(day === today ? { "aria-current": "date" } : {}),
+      "aria-label": (day === today ? agT("Today") + agT(", ") : "") + agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")) }, [
+      el("span", { class: "tnext-wd", text: agFormat(day, { weekday: "narrow" }) }), el("span", { class: "tnext-num", text: String(Number(day.slice(8))) }),
       el("span", { class: "tnext-dots", "aria-hidden": "true", text: "•".repeat(Math.min(3, n)) })]);
     b.onclick = () => { todayCal.day = day; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
     return b;
   }));
   const all = el("a", { class: "tnext-all", href: "#today-calendar", text: t("Full schedule ↓") });
   all.onclick = event => { event.preventDefault(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
-  return el("section", { class: "widget tnext", "aria-label": t("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("h2", { text: t("Next") }), el("span", { class: "end" }, [all])]),
+  return el("section", { class: "widget tnext", "aria-label": t("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: t("Next") }), el("span", { class: "end" }, [all])]),
     rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: t("Nothing else today") }), strip]);
 }
 // On a phone: one line above the cards, the next event, a tap to the calendar.
@@ -16644,9 +16647,15 @@ function markedSpan(text, range) {
   return range ? esc(text.slice(0, range[0])) + '<mark class="span">' + esc(text.slice(...range)) + '</mark>' + esc(text.slice(range[1])) : esc(text);
 }
 function evidenceText(range) {
-  const copy = range.cloneContents();
-  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
-  return copy.textContent.replace(/\u2060/g, "").trim();
+  return evidenceWords(range.cloneContents());
+}
+// The words a quote shows: no chips, labels or a copy button's hidden "Copied" (rc35 hunt: a profile-card row
+// quoted as "mara@…Copiedworkmara@…Copiedpersonal"), and each value and its qualifier apart.
+function evidenceWords(copy) {
+  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when, .pc-done, .pc-cites").forEach(node => node.remove());
+  copy.querySelectorAll(".pc-item + .pc-item").forEach(node => node.before(" · "));
+  copy.querySelectorAll(".pc-after, .qual").forEach(node => node.before(" "));
+  return copy.textContent.replace(/\u2060/g, "").replace(/[ \t]+/g, " ").trim();
 }
 function sentenceEnds(text) {
   const ends = [0];
@@ -16686,12 +16695,11 @@ function evidenceSentence(trigger, line) {
 function evidenceLine(trigger) {
   const line = trigger.closest("li, p, dd, blockquote") || trigger.closest(".focus-head") || trigger.parentElement;
   const copy = (line.querySelector(".focus-statement") || line).cloneNode(true);
-  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
   const path = new URLSearchParams(trigger.hash.slice(1)).get("r");
   const chips = [...line.querySelectorAll("a.cite")].filter(chip => new URLSearchParams(chip.hash.slice(1)).get("r") === path);
   const numbers = chips.flatMap(chip => (chip.dataset.sources || new URLSearchParams(chip.hash.slice(1)).get("h")?.replace("src-", "") || "").split(" "));
   const sentence = evidenceSentence(trigger, line);
-  return { text: sentence || copy.textContent.replace(/\u2060/g, "").trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+  return { text: sentence || evidenceWords(copy), numbers: [...new Set(numbers.filter(Boolean))] };
 }
 function scrollEvidenceSpan(panel, mark = panel.querySelector(".evidence-original mark.span")) {
   evidenceLayout();

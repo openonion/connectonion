@@ -719,3 +719,21 @@ def test_the_first_screen_shows_the_next_event_beside_the_cards(agenda, width):
         nxt.click()
         page.wait_for_function("() => { const c = document.getElementById('today-calendar'); const b = c.getBoundingClientRect(); return b.top < innerHeight && b.bottom > 0; }")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.skipif(not os.environ.get("REM_PR_SHOTS"), reason="screenshots for a PR only")
+@pytest.mark.parametrize("width", [1440, 390])
+def test_pr_shots_today_first_screen(agenda, width):
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("() => { overview(); scrollTo(0, 0); }", isolated_context=False)
+    page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"today-first-screen-{width}.png"))
+    if width > 640 and page.locator(".tnext-ev").count():
+        page.locator(".tnext-ev").first.click()
+        page.wait_for_timeout(300)
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"today-next-detail-{width}.png"))
+        # The opened detail is topmost (5x5 grid, 16px inset).
+        assert page.evaluate("""() => { const d = document.querySelector('.cal-detail, .ag-detail, [class*=detail][role=dialog]'); if (!d) return true;
+          const b = d.getBoundingClientRect(); let ok = true;
+          for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { const x = b.left + 16 + (b.width - 32) * i / 4, y = b.top + 16 + (b.height - 32) * j / 4;
+            if (y < innerHeight && x < innerWidth && !d.contains(document.elementFromPoint(x, y))) ok = false; } return ok; }""", isolated_context=False)

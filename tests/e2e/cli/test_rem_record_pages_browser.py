@@ -524,5 +524,6 @@ def test_a_citation_to_mail_rem_indexed_but_never_kept_opens_its_header(reader):
     assert "Pilot kickoff notes" in text and "Mara" in text
     assert "REM kept who wrote this and when, not the message itself." in text
     assert "did not keep a copy" not in text and "isn't in this snapshot" not in text
+    assert "Copied" not in text  # a profile-card row is quoted as its values, not its copy button (rc35 hunt)
     if os.environ.get("REM_PR_SHOTS"):
         page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "today-header-only-citation-1440.png"))
