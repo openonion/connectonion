@@ -55,11 +55,14 @@ EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 STAGE_LEVELS = {
     # 1: short, structured, and every answer checked by code afterwards.
     "tag": "level1",
+    # Abstract: finding decisions, knowledge and principles; code checks the result (at most 20 pages, three
+    # folders). The owner, 2026-11-19 (#3142): «关于 decisions，你应该用 Luna 这种模型去找».
+    "abstract": "level1",
     # 2: faithful transformation or a narrow judgement over small input.
     "sessions-summary": "level2", "topic": "level2",
     "translate": "level2", "extract": "level2", "same-person": "level2", "plan": "level2",
     # 3: writing pages and drafts the owner reads, from cited evidence.
-    "maintain": "level3", "abstract": "level3", "init": "level3",
+    "maintain": "level3", "init": "level3",
     "projects": "level3", "reply-draft": "level3", "native": "level3",
     # 4: deep rounds, independent audits, and owed work done for the owner.
     "enrich": "level4", "muse": "level4", "claim-audit": "level4", "insight-critic": "level4",

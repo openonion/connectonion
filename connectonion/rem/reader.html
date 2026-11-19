@@ -15259,8 +15259,22 @@ function graphRailAttach(main, r) {
   block.classList.toggle("gx-inline", !rail);
 }
 
+// A decision, knowledge entry or principle is titled by what it says, so its title follows the reader's language
+// wherever it is shown: list, head, search, graph (#3142, owner 2026-11-19: «decision 的标题为什么是英文的呢？»).
+// People, organisations and projects are titled by names, which stay as written. Links go by path, never title.
+const STATEMENT_CATEGORIES = ["decisions", "knowledge", "principles"];
+function localiseTitles() {
+  for (const r of REM.records || []) {
+    if (!STATEMENT_CATEGORIES.includes(r.category)) continue;
+    r.title_original ??= r.title;
+    const translated = uiLanguage !== "en" ? (r.translations?.[uiLanguage] || "") : "";
+    const head = /^# (.+)$/m.exec(translated);
+    r.title = head ? head[1].trim() : r.title_original;
+  }
+}
 function render() {
   if (!REM) return;
+  localiseTitles();
   threadEntries.cached = null;
   threadEntries.cacheEnabled = true;
   const state = route();
