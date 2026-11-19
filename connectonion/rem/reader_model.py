@@ -437,9 +437,18 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
             message = dict(row)
             saved = archived_message(root, message) or {}
             raw = saved.get("text" if message.get("body_line") else "body")
+            mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
+            if not isinstance(raw, str) and mail and private:
+                # Indexed, never archived (rc34 hunt: 214 of a real notebook's person and org citations). The owner's
+                # own reader still says who wrote, when and about what, rather than "REM did not keep a copy".
+                output[source] = {"excerpt": "", "truncated": False, "body_empty": True, "header_only": True,
+                                  "time": message.get("time") or "", "sender": message.get("sender") or "",
+                                  "thread": message.get("thread") or "", "source": message.get("source") or "",
+                                  "subject": message.get("subject") or "", "input_scope": "",
+                                  "participants": {"from": message.get("sender") or "", "to": [], "cc": []}}
+                continue
             if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
                 continue
-            mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
             if mail and "--- Email Body ---" in raw:
                 raw = raw.partition("--- Email Body ---")[2]
             excerpt = raw.strip()[: min(16_384 if mail else 2_048, budget)]

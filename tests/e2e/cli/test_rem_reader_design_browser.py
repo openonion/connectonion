@@ -4483,8 +4483,8 @@ def test_round_nine_fact_tails_preserve_nested_links_and_private_values(reader, 
     location = page.locator('.person-head .hero-place')  # the place is the header line's (one place per fact, #3131)
     # A shared snapshot is at Public only (#2840): the labelled value is not hidden but absent from the page.
     assert page.evaluate('privacyLevel', isolated_context=False) == 'public'
-    assert location.locator('.private').count() == 0
-    assert ('惠灵顿' if language == 'zh' else 'Wellington') not in location.inner_html()
+    assert location.count() == 0 or location.locator('.private').count() == 0
+    assert ('惠灵顿' if language == 'zh' else 'Wellington') not in page.locator('.person-head').inner_html()
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 
