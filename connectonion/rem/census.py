@@ -72,10 +72,12 @@ BARE_DOMAIN = re.compile(r"^(?:[a-z0-9-]+\.)+[a-z]{2,}$", re.I)
 # writes on someone's behalf (rc34 check). A human "executive assistant" or someone who works on agents stays a person.
 NOT_PERSON_ROLE = re.compile(r"^- Role:\s*(?:not a person\b|(?:an? |the )?(?:agent mailbox|ai (?:assistant|agent)|"
                              r"virtual assistant|chat ?bot|bot)\b)", re.I | re.M)
-# A mailbox described as one anywhere in the Role line: "Automated order-intake and result mailbox for …", "Building
-# management (shared mailbox used by successive managers)" (rc35 check: both still led People as 未知姓名 rows).
-MAILBOX_ROLE = re.compile(r"^- Role:[^\n]*?\b(?:(?:automated|shared|team|agent|account|order[- ]intake)\b[^\n;]{0,40}?\b"
-                          r"(?:mail ?box|inbox)|(?:mail ?box|inbox) (?:for|used for))\b", re.I | re.M)
+# A Role line that says the subject *is* a mailbox: the words open the value or a parenthesis, as in "Automated
+# order-intake and result mailbox for …" or "Building management (shared mailbox used by successive managers)"
+# (rc35 check: both still led People as 未知姓名 rows). Mailbox words later in the line describe what a person does
+# ("Team lead managing a shared mailbox": "team" opens it, but a verb sits between), so they keep the page a person.
+MAILBOX_ROLE = re.compile(r"^- Role:\s*(?:[^\n(]*\()?(?:(?:automated|shared|team|agent|account|order[- ]intake)\b"
+                          r"(?:(?!\w+ing\b)[^\n;()]){0,40}?\b(?:mail ?box|inbox)|(?:mail ?box|inbox) (?:for|used for))\b", re.I | re.M)
 # A company's or fund's name: it ends in a legal or fund word (rc34 check: "… Ventures" listed as a person).
 COMPANY_NAME = re.compile(r"(?:^|\s)(?:Ventures|Capital|Holdings|Pty\.? Ltd\.?|Pty|Ltd\.?|Limited|Inc\.?|LLC|GmbH|Corp\.?)\s*$")
 
