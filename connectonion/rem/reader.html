@@ -3287,6 +3287,14 @@
   :root.privacy-cover .curtain:not(.lifted) * { color: transparent !important; background: none; border-color: transparent !important; pointer-events: none; }
   :root.privacy-cover .curtain:not(.lifted)::before { content: attr(data-curtain); padding: 0 6px; color: var(--grey); font-size: var(--s-ui); font-weight: var(--w-regular); white-space: nowrap; }
   :root.privacy-cover .curtain:not(.lifted):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  /* A curtain inside a sentence is one word-sized bar on the sentence's own line (rc35 hunt: the label rode in front of
+     the hidden words, the bar outgrew the passage and could not wrap, and the word before it hung at a line end). The
+     bar is as long as the passage up to a cap, so a long secret does not announce its length; it wraps like a word;
+     its label sits inside it instead of adding width. */
+  :root.privacy-cover span.curtain:not(.lifted) { display: inline-block; position: relative; max-width: min(12em, 100%); overflow: hidden;
+    white-space: nowrap; vertical-align: bottom; line-height: inherit; }
+  :root.privacy-cover span.curtain:not(.lifted)::before { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center;
+    max-width: 100%; overflow: hidden; content: attr(data-curtain-short); }
   .privacy-count { margin: 8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .lang-toggle { min-width: 36px; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); cursor: pointer; }
   .lang-toggle:hover { background: var(--well); color: var(--ink); }
@@ -5454,7 +5462,7 @@ Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏
   "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
   "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
   "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
-  "Sensitive · tap to show": "敏感 · 点一下显示", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+  "Sensitive · tap to show": "敏感 · 点一下显示", "Sensitive": "敏感", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
 const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
   cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
   public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
@@ -5494,7 +5502,7 @@ function setPrivacy(level, { save = true, redraw: again = true } = {}) {
 function uncurtain(root) {
   for (const node of root.querySelectorAll(".curtain")) {
     node.classList.remove("curtain", "lifted");
-    for (const name of ["role", "aria-label", "tabindex", "data-curtain"]) node.removeAttribute(name);
+    for (const name of ["role", "aria-label", "tabindex", "data-curtain", "data-curtain-short", "title"]) node.removeAttribute(name);
   }
 }
 // The old switch and every "Show labelled passages" button now go through the levels.
@@ -5546,7 +5554,9 @@ function applyPrivacy(root) {
       Object.assign(node, { tabIndex: 0 });
       node.setAttribute("role", "button");
       node.setAttribute("data-curtain", t("Sensitive · tap to show"));
+      node.setAttribute("data-curtain-short", t("Sensitive"));
       node.setAttribute("aria-label", t("Sensitive · tap to show"));
+      node.title = t("Sensitive · tap to show");
     }
     return;
   }
@@ -5571,7 +5581,7 @@ function applyPrivacy(root) {
 }
 function liftCurtain(node) {
   node.classList.add("lifted");
-  node.removeAttribute("role"); node.removeAttribute("aria-label"); node.removeAttribute("tabindex");
+  for (const name of ["role", "aria-label", "tabindex", "title"]) node.removeAttribute(name);
 }
 
 function setTheme(mode) {

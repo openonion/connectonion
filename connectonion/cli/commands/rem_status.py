@@ -21,10 +21,12 @@ CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisa
               ("sessions", "Agent sessions"))
 
 
-def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
+def dashboard(root, value: dict, spell, *, verbose: bool = False, show_private: bool = False) -> str:
     """The status result as markup (the plain text is the same markup read without its styles).
 
     `spell` turns arguments into the command as this user types it (`_next`).
+    The notebook's own words (the calendar, the day plan, a turn's reason) are a glance: sensitive passages
+    hidden and links shortened to their host, unless `show_private` (rem_look.glance).
     A notebook consolidates overnight, so after the title it says what happened
     today before what it holds (1.9.0a9); every value starts at one column.
     """
@@ -32,10 +34,11 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     from ...rem.migrate import program
     found = pages(Path(root))
     counts = notebook(root, found)
+    seen = (lambda text: text) if show_private else rem_look.glance
     lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found, value), *_today(root, value), "",
              *(highlight(part) for row in value.get('stages', []) for part in _clause_rows(row['text'])), "",
-             *([highlight(value['calendar']['text']), ""] if value.get('calendar') else []),
-             *([highlight(value['day_plan']['text']), ""] if value.get('day_plan') else []),
+             *([highlight(seen(value['calendar']['text'])), ""] if value.get('calendar') else []),
+             *([highlight(seen(value['day_plan']['text'])), ""] if value.get('day_plan') else []),
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):
@@ -49,7 +52,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
         if turn.get('started_codex_after_s') is not None:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
         if turn.get('reason'):
-            lines += [rem_look.follow(highlight(turn['reason']), glyph='')]
+            lines += [rem_look.follow(highlight(seen(turn['reason'])), glyph='')]
             if turn['result'] == 'failed' and not turn.get('produced_nothing'):
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
@@ -57,7 +60,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     lines += [*_round(value), *_tonight(value), *_nights(value), *_budget(root, value, verbose), *_last_runs(root), *_parked(root)]
     if verbose:
         from .rem_output import _lines
-        lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
+        lines += ["", style.label("Details"), *(highlight(seen(line)) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
 
 

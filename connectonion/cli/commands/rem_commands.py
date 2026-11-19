@@ -225,10 +225,11 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     _emit(ctx, value, arguments, failed=failed, draw=draw)
 
 
-def _dashboard(ctx, verbose=False):
+def _dashboard(ctx, verbose=False, show_private=False):
     """How status draws its result: a small dashboard, internals only with --verbose (#1996)."""
     from .rem_status import dashboard
-    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose)
+    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose,
+                                   show_private=show_private)
 
 
 def _moved(ctx, old: str, new: list):
@@ -2170,7 +2171,8 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (stop(root, scheduler=rem_schedule.default_scheduler(root)), ["status"]), ["status"])
 
     @rem.command("status", cls=V("co rem status"))
-    def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose")):
+    def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose"),
+                       show_private: bool = typer.Option(False, "--show-private")):
         from ...rem.service import status
         from .rem_status import status_next
 
@@ -2182,7 +2184,7 @@ def make_rem_app(factory):
                 value.pop("translation_coverage", None)
             return value, status_next(value)
         _handle(ctx, operation, ["config"],
-                draw=_dashboard(ctx, verbose))
+                draw=_dashboard(ctx, verbose, show_private))
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days, *, collect_only=False):
         from ...rem.files import RemError
