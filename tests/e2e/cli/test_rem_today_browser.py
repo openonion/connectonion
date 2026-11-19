@@ -44,7 +44,7 @@ def test_today_is_one_card_per_person_with_one_green_action(reader):
     first = page.evaluate('todayGroups(threadEntries().filter(e => !isDone(e)))[0].r.path', isolated_context=False)
     assert paths[0] == first
     visible_green = page.evaluate('''() => [...document.querySelectorAll('#main button, #main a')]
-      .filter(node => node.getClientRects().length && /rgb\\((34, 210, 122|59, 227, 143)\\)/.test(getComputedStyle(node).backgroundColor)).length''', isolated_context=False)
+      .filter(node => node.getClientRects().length && /rgb\\((18, 21, 18|238, 240, 237)\\)/.test(getComputedStyle(node).backgroundColor)).length''', isolated_context=False)
     # One primary per card (sprint 14): green, or the row's lead in bold where the card has no green step.
     lead = page.locator('#main .qcard.focal .strip-lead').evaluate_all('nodes => nodes.filter(node => node.getClientRects().length).length')
     # A snapshot can close nothing from the strip and opens no page as a "step": its one line says where to act.

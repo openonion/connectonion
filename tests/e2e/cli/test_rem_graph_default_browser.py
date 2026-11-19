@@ -163,7 +163,8 @@ def test_no_saturated_colour_is_spent_on_a_navigation_button(browser, built):
     assert link.get_attribute("href") == "#r=knowledge%2Fheat-storage.md"
     green = js(page, "() => { const probe = document.body.appendChild(document.createElement('i')); probe.style.background = 'var(--green)';"
                      " const colour = getComputedStyle(probe).backgroundColor; probe.remove(); return colour; }")
-    painted = js(page, "() => [...document.querySelectorAll('.gx-map, .gx-map *')].map(node => getComputedStyle(node).backgroundColor)")
+    # The accent is ink now (#3144), and ink also draws the map's marks and labels: what must not wear it is a control.
+    painted = js(page, "() => [...document.querySelectorAll('.gx-map :is(a, button, [role=button]), .gx-panel .gx-open')].map(node => getComputedStyle(node).backgroundColor)")
     assert green not in painted
     page.close()
 

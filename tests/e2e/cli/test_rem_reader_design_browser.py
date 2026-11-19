@@ -4972,12 +4972,12 @@ def _green_primaries(page):
     """Visible elements filled with the Fresh green: the one primary per page."""
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const box = node.getBoundingClientRect(), fill = getComputedStyle(node).backgroundColor;
-      return box.width > 0 && box.height > 0 && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(fill);
+      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(fill);
     }).map(node => node.textContent.trim())""", isolated_context=False)
 
 
 # Visible Fresh-green fills; a collapsed "Full memory" note keeps its own controls out of sight.
-GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(getComputedStyle(node).backgroundColor)).length"
+GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(getComputedStyle(node).backgroundColor)).length"
 
 
 def _org_view(page, uri, hash_, width, theme):
@@ -5039,7 +5039,8 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
     assert "标为完成" not in main.inner_text()
     assert page.locator("#main a").filter(has_text=re.compile("今天里有")).count() == 1
     name = page.locator(".r4-person h1")
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")  # N3's one display size
+    # #3131: the page title is the head size on a reading page (it was the 44/36 display size, N3).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
     fuse = page.locator(".r4-fuse")
     dated = page.evaluate("historyItems(section(byPath('people/mara-ostrowski.md'), 'history').text).filter(i => i.day.length === 10).length",
                           isolated_context=False)
@@ -5230,7 +5231,7 @@ def _visible_green_buttons(page):
     page.wait_for_timeout(300)  # let the theme's colour transition settle
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const style = getComputedStyle(node), box = node.getBoundingClientRect();
-      return box.width && box.height && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(style.backgroundColor);
+      return box.width && box.height && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(style.backgroundColor);
     }).length""")
 
 
@@ -5735,8 +5736,8 @@ def test_org_first_screen_is_a_record_with_one_tree(org_reader, width, theme):
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
     assert _name(name) == "Fernhill University"
-    # The organisation's name is what the page is about: --s-display (N3: 44, 36 on a phone).
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
+    # The organisation's name is the page title: the head size on every reading page (#3131; it was 44/36, N3).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
     facts = page.locator(".ov-opening").inner_text()
     assert f"你认识这里的 {_people_known(page)} 个人" in facts and "起有往来" in facts and "最近往来" in facts
     assert page.locator(".ov-today, .ov-key, .ov-people").count() == 0
