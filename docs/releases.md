@@ -33,11 +33,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc32**: `co browser` starts headless on a Windows machine with no desktop (SSH, services,
-scheduled tasks). See [1.9.6rc32 notes](releases/1.9.6rc32.md).
-Before it, release candidate **1.9.6rc31**: the calendar lives in Today, record pages read in one measure with an ink
-accent, Keys keeps every account with its value in the Keychain, and tags reach every page. See
-[1.9.6rc31 notes](releases/1.9.6rc31.md).
+Release candidate **1.9.6rc33**: `co wechat` reads your own WeChat for Mac history locally (read-only) — a
+SQLCipher-4 decryption engine with `doctor`, `key`, `chats`, `decrypt` and `export`. See
+[1.9.6rc33 notes](releases/1.9.6rc33.md).
+Before it, release candidate **1.9.6rc32**: `co browser` starts headless on a Windows machine with no desktop (SSH,
+services, scheduled tasks). See [1.9.6rc32 notes](releases/1.9.6rc32.md).
 Before it, release candidate **1.9.6rc30**: hand-offs you can watch and pick up, enrich that writes career timelines and
 links organisations, one language control, and a person page that leads with what happened. See
 [1.9.6rc30 notes](releases/1.9.6rc30.md).
@@ -134,7 +134,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc32'
+python -m pip install --upgrade 'connectonion==1.9.6rc33'
 ```
 
 ## Previous stable
