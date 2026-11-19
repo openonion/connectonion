@@ -105,10 +105,15 @@ def test_people_names_organisations_never_codes_domains_or_two_spellings(reader,
     page.close()
 
 
+
+def shows_host(host, text):
+    """The domain appears as its own token in the tooltip, not inside a longer name."""
+    return re.search(r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", text) is not None
+
 def test_the_domain_and_the_page_words_stay_in_the_tooltip(reader, browser):
     page, _, _ = _orgs(browser, reader, 1440)
     tips = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.people-table tbody tr[data-href]')]
       .map(row => [row.querySelector('td.c-name').textContent.trim(), row.querySelector('td.c-org .clamp')?.title || '']))""")
-    assert "kiln.edu.au" in tips["Pia Grove"] and "wayfarer.io" in tips["Vic Hale"]
+    assert shows_host("kiln.edu.au", tips["Pia Grove"]) and shows_host("wayfarer.io", tips["Vic Hale"])
     assert "Harbour" in tips["Sol Reed"] and "Wren Founders" in tips["Uma Fell"]
     page.close()
