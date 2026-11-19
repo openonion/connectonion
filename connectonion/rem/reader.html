@@ -8373,13 +8373,18 @@ function taskStatus(task) {
   return task.result === 'completed' ? t('{agent} finished', { agent }) + (task.summary ? ' · ' + task.summary : '') : taskFailure(task);
 }
 function taskStatusNode(task) {
+  if (ACTIVE_TASK.includes(task.result)) startTaskClock();
   return el('span', { class: 'handed', role: 'status', text: taskStatus(task),
     ...(ACTIVE_TASK.includes(task.result) ? { 'data-task-start': task.started_at || task.queued_at || new Date(clockNow()).toISOString(),
       'data-task-agent': task.agent || 'codex', 'data-task-step': taskStep(task) } : {}) });
 }
-setInterval(() => document.querySelectorAll('[data-task-start]').forEach(node => {
-  node.textContent = t('{agent} is working', { agent: AGENT_NAMES[node.dataset.taskAgent] }) + ' · ' + taskElapsed(node.dataset.taskStart) + (node.dataset.taskStep ? ' · ' + node.dataset.taskStep : '');
-}), 1000);
+// The running rows' elapsed clocks tick once a second, started by the first running row drawn (not at load).
+function startTaskClock() {
+  if (startTaskClock.timer || typeof document === "undefined" || typeof document.querySelectorAll !== "function") return;
+  startTaskClock.timer = setInterval(() => document.querySelectorAll('[data-task-start]').forEach(node => {
+    node.textContent = t('{agent} is working', { agent: AGENT_NAMES[node.dataset.taskAgent] }) + ' · ' + taskElapsed(node.dataset.taskStart) + (node.dataset.taskStep ? ' · ' + node.dataset.taskStep : '');
+  }), 1000);
+}
 
 function refreshHandoff(entry, fallback) {
   const lines = typeof document === 'undefined' ? [] : [...document.querySelectorAll('.handoff-line')].filter(line => line.handoffKey === obligationKey(entry));

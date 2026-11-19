@@ -3425,7 +3425,7 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
 HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
-        'handButtons', 'handOver', 'handRefusal', 'handFailedNote', 'putOffNote', 'putOffOver', 'clockNow', 'todayStrip', 'moreButton', 'handState', 'taskStep', 'terminalButtons', 'followTask', 'seeResult', 'taskPrimary', 'taskStatus', 'taskStatusNode', 'taskElapsed', 'taskFailure', 'confirmHandoff', 'refreshHandoff', 'dotted', 'talkMenu', 'snapshotWhy', 'stripDone']
+        'handButtons', 'handOver', 'handRefusal', 'handFailedNote', 'putOffNote', 'putOffOver', 'clockNow', 'todayStrip', 'moreButton', 'handState', 'taskStep', 'terminalButtons', 'followTask', 'seeResult', 'taskPrimary', 'taskStatus', 'taskStatusNode', 'startTaskClock', 'taskElapsed', 'taskFailure', 'confirmHandoff', 'refreshHandoff', 'dotted', 'talkMenu', 'snapshotWhy', 'stripDone']
 
 
 def _hand_js(body):
