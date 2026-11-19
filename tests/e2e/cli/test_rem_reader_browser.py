@@ -40,14 +40,15 @@ def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, mon
         assert source in cite.get_attribute('title')
         cite.click()
         panel = page.locator('#evidence-panel')
-        assert source in panel.inner_text()
+        # The card shows its description in the reader's own date form (#3201), with the angle brackets kept as text.
+        assert source.replace('2026-11-01', 'Nov 1') in panel.inner_text()
         assert not panel.locator('card').count()
         assert "The original isn't in this snapshot." not in panel.inner_text()
         page.get_by_role('button', name='Close source context').click()
         assert cite.evaluate('e => e === document.activeElement')
         page.set_viewport_size({'width': 375, 'height': 812})
         cite.click()
-        assert source in panel.inner_text()
+        assert source.replace("2026-11-01", "Nov 1") in panel.inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         browser.close()
     assert notebook.read('people/elara-finch.md') == text
