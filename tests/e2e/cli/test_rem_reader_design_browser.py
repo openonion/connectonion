@@ -2883,7 +2883,9 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
     group = page.locator("h2.group").filter(has_text="Agent sessions")
     expect(group).to_be_visible()
     expect(group.locator(".n")).to_have_text("10")
-    expect(page.locator(".hits li")).to_have_count(8)
+    # #3169: a group shows its first five, then "Show all 10 results"; the sessions link still opens all.
+    expect(page.locator(".hits li:visible")).to_have_count(5)
+    expect(group.locator("xpath=..").get_by_role("button", name="Show all 10 results")).to_be_visible()
     all_hits = page.get_by_role("link", name="10 matching sessions →", exact=True)
     expect(all_hits).to_have_attribute("href", "#c=sessions&find=seventhneedle")
     expect(page.locator(".hits .t a").first).to_have_attribute("href", re.compile(r"&find=seventhneedle$"))
