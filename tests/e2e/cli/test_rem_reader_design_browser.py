@@ -194,19 +194,26 @@ def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    privacy = page.locator('#privacy-level')
+    # On a phone the level lives in the one Display menu with the language (rc34 check: four controls truncated).
+    privacy = page.locator('#display-menu')
     box = privacy.bounding_box()
     assert box['height'] >= 44 and box['width'] >= 44
     assert box['y'] >= 0 and box['y'] + box['height'] <= 812
     privacy.focus()
     privacy.press('Enter')
     item = page.get_by_role('menuitemradio', name=re.compile('Public only'))
-    assert item.evaluate('(node) => node === document.activeElement') or page.get_by_role('menuitemradio').count() == 3
+    assert item.evaluate('(node) => node === document.activeElement') or page.locator('.display-pop [data-level]').count() == 3
     item.press('Enter')
     assert page.evaluate('privacyLevel', isolated_context=False) == 'public'
     assert privacy.evaluate('(node) => node === document.activeElement')
     assert privacy.get_attribute('aria-label').endswith('Public only')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def lang_line(page):
+    """The top bar's language line: a count beside 中/EN that says the whole line as its title (rc34 check), or ''."""
+    badge = page.locator('#lang-progress .lang-badge')
+    return badge.get_attribute('title') if badge.count() else ''
 
 
 @pytest.fixture
@@ -2204,7 +2211,8 @@ def test_the_settings_sheet_names_the_release_and_keeps_every_switch(reader):
     page.wait_for_function('document.documentElement.lang === "en"')
     # Privacy is the top bar's control now (#2840), not a settings switch: one control, not two.
     assert page.locator('#settings').get_by_role('switch', name='Hide labelled passages').count() == 0
-    assert page.locator('#privacy-level').is_visible()
+    # The privacy control is the top bar's (#2840); on a phone it is inside the one Display menu (rc34 check).
+    assert page.locator('#privacy-level:visible, #display-menu:visible').count() == 1
     page.keyboard.press('Escape')
     assert not page.locator('#settings').evaluate('d => d.open')
     page.evaluate("() => localStorage.removeItem('co-rem-ui-language')")
@@ -2957,7 +2965,7 @@ def test_reader_settings_disclose_private_controls_and_wrap_command(reader, widt
         page.locator('.nav-toggle').click()
     settings = page.locator('.reader-settings')
     assert not settings.evaluate('node => node.open')  # the settings sheet is closed until asked for
-    assert page.locator('#privacy-level').is_visible()  # the privacy control lives in the top bar (#2840)
+    assert page.locator('#privacy-level:visible, #display-menu:visible').count() == 1  # the top bar's (#2840); a phone's Display menu
     assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
     assert 'Background updates off' not in page.locator('#foot').inner_text()
     page.locator('.settings-open').click()
@@ -4524,7 +4532,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     notice = page.locator('#lang-progress')
     assert page.locator('#main .desk-more > .translation-note, #main .translation-line').count() == 0
     if language == 'zh':
-        assert '页还没有中文版' in notice.inner_text()
+        assert '页还没有中文版' in lang_line(page)
         assert notice.locator('code').count() == 0
     else:
         assert notice.is_hidden()
@@ -4542,7 +4550,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     }''', isolated_context=False)
     assert page.locator('.overnight .cmd').count() == 0
     if language == 'zh':
-        assert '页还没有中文版' in notice.inner_text()
+        assert '页还没有中文版' in lang_line(page)
     page.evaluate(r'''() => {
       REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
       render();
@@ -4554,7 +4562,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert '页还没有中文版' in page.locator('#lang-progress').inner_text()
+    assert '页还没有中文版' in lang_line(page)
     assert page.locator('#main .desk-more > .translation-note, #main .translation-line').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -4767,15 +4775,15 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
       delete REM.records[0].translations;
       render();
     }''', isolated_context=False)
-    assert '1 页还没有中文版' in notice.inner_text()
+    assert '1 页还没有中文版' in lang_line(page)
     page.evaluate(r'''() => {
       REM.logs = [{phase: 'init-translation', pages: [{page: 'people/avery-lin.md', outcome: 'failed'}]}];
       render();
     }''', isolated_context=False)
-    assert notice.inner_text().startswith('1 个页面未能翻译。')
+    assert lang_line(page).startswith('1 个页面未能翻译。')
     assert notice.locator('code').count() == 0
     page.evaluate("() => { REM.status.worker = {enabled: true}; render(); }", isolated_context=False)
-    assert notice.inner_text().startswith('1 个页面未能翻译。')
+    assert lang_line(page).startswith('1 个页面未能翻译。')
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 

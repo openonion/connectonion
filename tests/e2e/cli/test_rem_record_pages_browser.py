@@ -121,13 +121,22 @@ def test_a_pending_translation_is_the_top_bars_one_language_control_not_a_line_i
     page = open_page(hash_, width=width, live=True)
     assert page.locator("#main .translation-line, #main .translate-all").count() == 0
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
-    progress = page.locator("#lang-progress")
-    assert progress.is_visible() and "还没有中文版" in progress.inner_text()
-    # Beside the EN/中 toggle in the top bar, in the 13px label size.
-    toggle = _box(page.locator("#lang-toggle"))
-    assert abs(_box(progress)["y"] + _box(progress)["height"] / 2 - (toggle["y"] + toggle["height"] / 2)) < 8
-    assert progress.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
-        "getComputedStyle(document.documentElement).getPropertyValue('--s-ui').trim()", isolated_context=False)
+    # rc34 check: the bar shows a count beside 中/EN whose menu holds the line; a phone has the one 显示 menu instead.
+    badge = page.locator("#lang-progress .lang-badge")
+    assert "还没有中文版" in badge.get_attribute("title")
+    if width > 400:
+        progress = page.locator("#lang-progress")
+        assert progress.is_visible()
+        # Beside the EN/中 toggle in the top bar, in the 13px label size.
+        toggle = _box(page.locator("#lang-toggle"))
+        assert abs(_box(progress)["y"] + _box(progress)["height"] / 2 - (toggle["y"] + toggle["height"] / 2)) < 8
+        assert progress.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
+            "getComputedStyle(document.documentElement).getPropertyValue('--s-ui').trim()", isolated_context=False)
+        badge.click()
+        assert "还没有中文版" in page.locator(".lang-menu").inner_text()
+    else:
+        page.locator("#display-menu").click()
+        assert "还没有中文版" in page.locator(".display-pop").inner_text()
     assert any(path == "/rem/translation-request" for path, _ in calls)   # the opened page is still asked for at once
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 

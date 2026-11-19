@@ -5408,13 +5408,14 @@ function toggleDisplayMenu(open) {
   if (shown || open === false) { shown?.remove(); button.setAttribute("aria-expanded", "false"); return; }
   const lang = ["zh", "en"].map(code => {
     const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(uiLanguage === code), text: code === "zh" ? "中文" : "English" });
-    item.onclick = () => { toggleDisplayMenu(false); if (uiLanguage !== code) document.getElementById("lang-toggle").click(); };
+    // Focus goes back to the 显示 button, where the keyboard was before the menu opened.
+    item.onclick = () => { toggleDisplayMenu(false); button.focus(); if (uiLanguage !== code) document.getElementById("lang-toggle").click(); };
     return item;
   });
   const levels = PRIVACY_LEVELS.map(level => {
     const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(level === privacyLevel), "data-level": level },
       [el("span", { text: t(PRIVACY_WORDS[level][0]) }), el("small", { text: t(PRIVACY_WORDS[level][1]) })]);
-    item.onclick = () => { toggleDisplayMenu(false); setPrivacy(level); };
+    item.onclick = () => { toggleDisplayMenu(false); button.focus(); setPrivacy(level); };
     return item;
   });
   const { parts } = langParts();
