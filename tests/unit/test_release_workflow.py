@@ -20,7 +20,7 @@ def test_release_reuses_full_tests_and_waits_for_them_before_publication():
 
 
 def test_ci_audits_the_exact_dependency_lock():
-    assert "uv==0.6.16" in TESTS
+    assert 'version: "0.6.16"' in TESTS
     assert "pip-audit==2.10.1" in TESTS
     assert "uv lock --check" in TESTS
     assert "uv export --quiet --frozen --all-extras --no-dev --no-emit-project" in TESTS
@@ -41,7 +41,7 @@ def test_every_pull_request_runs_the_test_workflow():
 
 
 def test_pytest_jobs_install_the_declared_dev_extra():
-    pytest_jobs = ("test", "cli-help-audit", "cli-help-audit-tree", "remote-browser-egress", "windows-browser")
+    pytest_jobs = ("test", "cli-help-audit", "tests-passed", "remote-browser-egress", "windows-browser")
     lines = TESTS.splitlines()
     for job in pytest_jobs:
         start = lines.index(f"  {job}:")
@@ -78,7 +78,7 @@ def test_test_job_does_not_inherit_repository_secrets():
 def test_release_uses_trusted_publishing_and_verifies_pypi():
     assert "id-token: write" in RELEASE
     assert "pypa/gh-action-pypi-publish@" in RELEASE
-    assert "--no-cache-dir \"connectonion==$VERSION\"" in RELEASE
+    assert "--no-cache \"connectonion==$VERSION\"" in RELEASE
     assert "connectonion.__version__ == '$VERSION'" in RELEASE
 
 
@@ -120,7 +120,7 @@ def test_preview_releases_are_not_advertised_as_latest():
 
 def test_artifact_job_installs_what_its_wheel_acceptance_test_needs():
     build_job = RELEASE.split("  build:", 1)[1].split("  publish:", 1)[0]
-    install = 'python -m pip install --upgrade pip build twine ".[dev]"'
+    install = 'uv pip install --system build twine ".[dev]"'
     acceptance = "pytest tests/e2e/test_the_wheel_works_when_installed.py"
 
     assert install in build_job
