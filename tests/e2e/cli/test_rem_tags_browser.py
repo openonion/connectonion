@@ -214,6 +214,7 @@ def test_a_tag_page_has_the_investigate_button_with_why_it_is_due(reader, width)
     control.wait_for()
     assert "有 2 个带这个标签的页面是新的或改过" in control.inner_text()
     assert control.locator(".inv-go").inner_text() == "调查"
+    assert control.locator(".inv-go").evaluate("b => getComputedStyle(b).backgroundColor") not in ("rgba(0, 0, 0, 0)", "transparent")
     _shot(page, "investigate-button", width)
     assert page.evaluate("liveHere()", isolated_context=False)
     control.locator(".inv-go").click()

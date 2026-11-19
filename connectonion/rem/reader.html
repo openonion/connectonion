@@ -3554,6 +3554,11 @@
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
   .inv { position: relative; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+  .gx-topic-head .inv { align-items: flex-start; margin-top: 12px; }
+  /* .gx resets every button (background: none); the Investigate button keeps its own look on a tag page. */
+  .gx .inv-go { padding: 0 18px; background: var(--green); color: var(--on-green); font: var(--w-bold) var(--s-body)/var(--lh-tight) var(--font); }
+  .gx .inv-go:disabled { background: var(--well); color: var(--grey); }
+  .gx-topic-head .inv-line { text-align: left; }
   .inv-row { display: inline-flex; align-items: center; gap: 6px; }
   .inv-go { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill);
     background: var(--green); color: var(--on-green); font: var(--w-bold) var(--s-body)/var(--lh-tight) var(--font); box-shadow: var(--e-green);
@@ -5674,6 +5679,8 @@ function splitTrailers(text) {
       body.push(line); continue;
     }
     if (fence) { body.push(line); continue; }
+    // Code-owned lines: the Tags line is the tag row under the title (#3140), the Investigation stamp is the button's.
+    if (/^-\s*Tags:/.test(t) || /^Investigation:/.test(t)) continue;
     if (/^(related|相关|相关页面|相关链接|相关项目|相关人物|相关决定|相关待办)[:：]/i.test(t)) related.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else if (/^(sources?|来源)[:：]/i.test(t)) sources.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else body.push(line);
