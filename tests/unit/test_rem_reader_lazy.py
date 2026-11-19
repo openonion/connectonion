@@ -69,6 +69,7 @@ def test_offline_startup_finishes_details_without_navigation():
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
+      const PRIVACY_LEVELS = ['all', 'cover', 'public'], privacyDefault = () => 'cover', setPrivacy = () => {};  // #2840
       const peopleColumnKeys = () => [];
       const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done', keptOpenStorageKey = () => 'kept-open';
       const reconcileThreads = () => Promise.resolve();

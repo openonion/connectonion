@@ -189,24 +189,23 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, 
 
 
 def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
+    """The privacy control moved from the settings sheet to the top bar (#2840); on a phone it is still a full touch
+    target, works from the keyboard, says its state in words and keeps focus where it was."""
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    page.locator('.nav-toggle').click()
-    page.locator('.settings-open').click()
-    page.locator('#privacy-toggle').scroll_into_view_if_needed()
-    privacy = page.get_by_role('switch', name='Hide labelled passages')
+    privacy = page.locator('#privacy-level')
     box = privacy.bounding_box()
     assert box['height'] >= 44 and box['width'] >= 44
     assert box['y'] >= 0 and box['y'] + box['height'] <= 812
     privacy.focus()
     privacy.press('Enter')
-    shown = page.get_by_role('switch', name='Show labelled passages')
-    assert shown.get_attribute('aria-checked') == 'true' and shown.get_attribute('aria-pressed') is None  # a switch is checked, not pressed
-    assert shown.evaluate('(node) => node === document.activeElement')
-    shown.press('Space')
-    assert privacy.get_attribute('aria-checked') == 'false'
+    item = page.get_by_role('menuitemradio', name=re.compile('Public only'))
+    assert item.evaluate('(node) => node === document.activeElement') or page.get_by_role('menuitemradio').count() == 3
+    item.press('Enter')
+    assert page.evaluate('privacyLevel', isolated_context=False) == 'public'
     assert privacy.evaluate('(node) => node === document.activeElement')
+    assert privacy.get_attribute('aria-label').endswith('Public only')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -2204,7 +2203,9 @@ def test_the_settings_sheet_names_the_release_and_keeps_every_switch(reader):
     assert page.locator('#nav a[href="#view=open"]').inner_text().startswith('等你处理')
     page.locator('#foot .language-switch').get_by_role('button', name='EN', exact=True).click()
     page.wait_for_function('document.documentElement.lang === "en"')
-    assert page.get_by_role('switch', name='Hide labelled passages').is_visible()
+    # Privacy is the top bar's control now (#2840), not a settings switch: one control, not two.
+    assert page.locator('#settings').get_by_role('switch', name='Hide labelled passages').count() == 0
+    assert page.locator('#privacy-level').is_visible()
     page.keyboard.press('Escape')
     assert not page.locator('#settings').evaluate('d => d.open')
     page.evaluate("() => localStorage.removeItem('co-rem-ui-language')")
@@ -2955,12 +2956,12 @@ def test_reader_settings_disclose_private_controls_and_wrap_command(reader, widt
         page.locator('.nav-toggle').click()
     settings = page.locator('.reader-settings')
     assert not settings.evaluate('node => node.open')  # the settings sheet is closed until asked for
-    assert not page.locator('#privacy-toggle').is_visible()
+    assert page.locator('#privacy-level').is_visible()  # the privacy control lives in the top bar (#2840)
     assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
     assert 'Background updates off' not in page.locator('#foot').inner_text()
     page.locator('.settings-open').click()
     assert settings.locator('code, .cmd').count() == 0  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
-    assert page.locator('#privacy-toggle').is_visible()
+    assert settings.locator('#privacy-toggle').count() == 0  # no second privacy control in the sheet
     assert 'Nightly updates are off.' in settings.inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -4030,7 +4031,8 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.goto(html.as_uri() + '#r=people%2Fmara-ostrowski.md')
         memory_open(page)
         assert '公开历史' in page.locator('.timeline').inner_text()
-        assert page.locator('.timeline .private-entry').count() == 1
+        # Public only (a shared snapshot, #2840) takes the labelled entry out of the page rather than hiding it.
+        assert page.locator('.timeline .private-entry').count() == 0
         assert page.locator('.page-head .lang-bar').count() == 0
         assert page.locator('.page-foot .lang-bar select').is_visible()
         no_private_words()
@@ -4461,10 +4463,10 @@ def test_round_nine_fact_tails_preserve_nested_links_and_private_values(reader, 
         && Math.abs(link.getBoundingClientRect().top - cite.getBoundingClientRect().top) < 12;
     }''', '人' if language == 'zh' else 'Programme')
     location = page.locator('.factlist dt:text-is("' + ('位置' if language == 'zh' else 'Location') + '") + dd')
-    assert location.locator('.private').count() > 0
-    page.evaluate(r'''() => document.documentElement.classList.add('hide-private')''')
-    assert not location.locator('.private').first.is_visible()
-    assert ('惠灵顿' if language == 'zh' else 'Wellington') not in location.inner_text()
+    # A shared snapshot is at Public only (#2840): the labelled value is not hidden but absent from the page.
+    assert page.evaluate('privacyLevel', isolated_context=False) == 'public'
+    assert location.locator('.private').count() == 0
+    assert ('惠灵顿' if language == 'zh' else 'Wellington') not in location.inner_html()
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 
