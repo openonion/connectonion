@@ -747,6 +747,11 @@ def schedule_failure(root: Path) -> dict | None:
                 'empty': sum(bool(turn.get('produced_nothing')) for turn in failures)} if failures else {})}
 
 
+def _unmatched_marks(root: Path) -> int:
+    from .threads import unmatched_marks
+    return unmatched_marks(root)
+
+
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
     """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
@@ -797,6 +802,8 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
             "paused": paused(root),
             "nights": _nights(root),
             **({"schedule_failure": failure} if (failure := schedule_failure(root)) else {}),
+            # Closed items whose line the page no longer has in any form (#3174): counted, never dropped.
+            **({"closed_unmatched": unmatched} if (unmatched := _unmatched_marks(root)) else {}),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),

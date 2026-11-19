@@ -183,7 +183,10 @@ def _jobs(root, first, logs, sources, set_aside=None):
                  for row in daily.unfinished_by_recency(root)
                  if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
     from .refusals import due_for_retry, parked_waiting, waiting_for_material
+    from .owner_today import investigated_today
     retries, parked, spent = due_for_retry(root), parked_waiting(root), waiting_for_material(root)
+    owner_ran = investigated_today(root)  # the owner investigated it today: not again tonight (#3174)
+    rows = [row for row in rows if row["record"] not in owner_ran]
     rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked
             and (row["record"] not in spent or _newer(row.get("last_activity"), spent[row["record"]]))]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}

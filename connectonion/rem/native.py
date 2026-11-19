@@ -899,6 +899,11 @@ def _save(root, cursor, task):
     today = re.findall(r"Today is (\d{4}-\d{2}-\d{2})", skill + prompt)[-1]
     memory = state_path(root, "memory.md")
     context = _memory_lines(memory.read_text(encoding="utf-8"), task["record"]) if memory.is_file() else ""
+    # What the owner did in the day (#3174), first, so a stage never re-opens what he closed or redoes his work.
+    from .owner_today import note as owner_note
+    from .threads import closed_note
+    context = "\n\n".join(part for part in (owner_note(root, task["record"]),
+                                            closed_note(root, task["record"]) if task["record"] else "", context) if part)
     if task["record"]:
         context += "\n\n" + _prior_reports(root, task["record"])
     # The task, what to write, the Skill, then memory. Memory came first until
