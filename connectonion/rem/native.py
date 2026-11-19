@@ -171,11 +171,20 @@ def _input_matches(root, task, path, digest):
             and _config_hash(previous) == _input_hash(root, path))
 
 
+def _before_pages(task):
+    """A task's `before` as {record: page text}. The tag-node stage (#3140) carries its one page as a string, "" when the
+    page is new; reading that string as a dict crashed every scheduled turn that reached a tag page (rc35–rc36)."""
+    before = task.get("before") or {}
+    if isinstance(before, str):
+        return {task["record"]: before} if task.get("record") else {}
+    return before
+
+
 def _inputs(root, task, directory, *, handler):
     paths = {root / "config.yaml"}
     book = Notebook(root)
     paths.update(Path(path) for path in task.get("input_paths", []))
-    paths.update(book.path(record) for record in task.get("before", {}))
+    paths.update(book.path(record) for record in _before_pages(task))
     output = Path(task["task_root"]) if task.get("stage") == "abstract" and task.get("task_root") else None
     paths.update(path for path in directory.rglob("*") if path.is_file() and path.name not in ("candidate.md", "notes.md")
                  and not (output and path.is_relative_to(output)))
@@ -1449,7 +1458,7 @@ def _source_view(root, task, *, handler):
     for item in items:
         sources.update(item.get("sources", []))
         sources.update(row["source"] for row in item.get("facts", []) if row.get("source"))
-    records = [{"text": text} for text in task.get("before", {}).values()]
+    records = [{"text": text} for text in _before_pages(task).values()]
     records.append({"text": "\n## Sources\n" + "\n".join(f"- [{n}] {source}" for n, source in enumerate(sorted(sources), 1))})
     sources.update(_source_ids(records))
     value = {"contexts": cited_context(root, records), "tails": later_in_threads(root, sources)}
@@ -1463,7 +1472,7 @@ def _source_view(root, task, *, handler):
 def _recovered_result(root, task):
     receipt = read_json(Path(task["directory"]) / "promotion.json", {})
     pages = receipt.get("pages", {}) if "pages" in receipt else {receipt["record"]: receipt["sha256"]}
-    before = task["task"].get("before", {})
+    before = _before_pages(task["task"])
     changed = sorted(record for record, digest in pages.items()
                      if record not in before or hashlib.sha256(before[record].encode()).hexdigest() != digest)
     report = Path(task["directory"]) / "report.md"
