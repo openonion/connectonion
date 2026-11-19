@@ -9,6 +9,7 @@ original quietly (D-103). The notebook is the invented one in tests/fixtures/rem
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -467,3 +468,38 @@ def test_a_chip_whose_page_is_not_in_the_snapshot_says_so_and_stays_put(reader):
     assert page.evaluate("location.hash", isolated_context=False) == before
     page.keyboard.press("Escape")
     assert not panel.is_visible()
+
+
+# rc34 hunt: a person page printed a raw "[sensitive]" label, and an organisation's tag row listed the organisation
+# itself. A label is a mark the reader turns into a curtain or a pill, never text; a page is never its own tag.
+LABEL = re.compile(r"[\[［](?:personal|sensitive)[\]］]", re.I)
+
+
+@pytest.mark.parametrize("level", ["all", "cover", "public"])
+@pytest.mark.parametrize("path", [MARA, "orgs/fernhill-labs.md", "projects/harbour.md"])
+def test_a_raw_privacy_label_never_reaches_the_page(reader, path, level):
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"), language="en")
+    page.evaluate(r"""([path, level]) => { const r = byPath(path);
+      // A label on every kind of line a record page draws: the lead, a fact, a bullet, a dated history row, a heading.
+      r.text = r.text.replace(/^(# [^\n]*\n+)([^\n#][^\n]*)/m, '$1$2 [sensitive]')
+        .replace(/^- (Role|Location|Company|Status|Stage|Owner): ([^\n]*)/gm, '- $1: $2 [sensitive]')
+        .replace(/^(## [^\n]*\n+- )([^\n]*)/gm, '$1$2 [personal]')
+        .replace(/^- (\d{4}-\d{2}-\d{2}[^\n]*)/gm, '- $1 [sensitive]');
+      r.index = {...(r.index || {}), how_known: 'Met through the pilot [sensitive]', role: 'Head of Partnerships [sensitive]'};
+      KNOWN.clear(); FACTS.clear(); setPrivacy(level, {save: false, redraw: false}); render(); }""", [path, level], isolated_context=False)
+    text = page.locator("body").inner_text()
+    found = [line for line in text.splitlines() if LABEL.search(line)]
+    assert not found, found[:5]
+
+
+def test_a_page_is_never_listed_in_its_own_tag_row(reader):
+    open_page, _ = reader
+    page = open_page("r=orgs%2Ffernhill-labs.md", language="en")
+    page.evaluate("""() => { REM.tags = {...REM.tags, 'fernhill-labs': {label: 'Fernhill Labs', kind: 'org', page: 'orgs/fernhill-labs.md', count: 2}, pilot: {label: 'Fernhill pilot', kind: 'topic', count: 2}};
+      for (const p of ['orgs/fernhill-labs.md', 'people/mara-ostrowski.md']) { const r = byPath(p); r.tags = [...new Set([...(r.tags || []), 'fernhill-labs', 'pilot'])]; }
+      render(); }""", isolated_context=False)
+    row = page.locator("#main .page-tags").first
+    row.wait_for()
+    assert row.get_by_role("link", name="Fernhill Labs").count() == 0, row.inner_text()
+    assert row.get_by_role("link", name="Fernhill pilot").count() == 1

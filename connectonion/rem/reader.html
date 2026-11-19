@@ -5563,7 +5563,9 @@ function tagHref(slug) {
 function tagged(records, slug) { return slug ? records.filter(r => (r.tags || []).includes(slug)) : records; }
 // A page's tags as quiet links, each to its tag page; nothing when it has none.
 function tagLinks(r) {
-  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug]);
+  // A page is never its own tag (rc34 hunt: an organisation's row listed the organisation): the tag that names this
+  // page is what the page is, so the row shows only the other nodes it links to.
+  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug] && REM.tags[slug].page !== r.path);
   return slugs.length ? el("span", { class: "tag-links" }, slugs.map(slug => el("a", { class: "tag-link", href: tagHref(slug), text: tagLabel(slug) }))) : null;
 }
 // One row of a page's tags under its title, on every kind (owner, 2026-11-19): the same links the person card shows,
@@ -7115,7 +7117,10 @@ function sourceSummary(r, src) {
   const context = id ? all[id] || (/^(gmail|outlook|imap):[^:]+:./.test(id) ? all[id.split(":").slice(0, 2).join(":")] : null) : null;
   const rest = (id ? src.text.slice(src.text.indexOf(id) + id.length) : src.text).replace(/^\s*[—–-]\s*/, "");
   const written = /\b(\d{4}-\d{2}-\d{2})\b/.exec(rest)?.[1] || "";
-  const note = rest.replace(/\b\d{4}-\d{2}-\d{2}\b/g, "").replace(/^[\s;·,—–-]+|[\s;·,—–-]+$/g, "");
+  // The note is a source's own words: its date is the row's date, not "observed ." left behind (rc34 hunt), and a
+  // [personal]/[sensitive] mark on the line is never printed as text.
+  const note = rest.replace(/[\[［](?:personal|sensitive)[\]］]/gi, "").replace(/\b(?:observed|seen|written)\s+\d{4}-\d{2}-\d{2}\b/gi, "")
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "").replace(/\s*([;·,])(?:\s*[;·,])+/g, "$1").replace(/^[\s;·,.—–-]+|[\s;·,.—–-]+$/g, "");
   const kind = id ? sourceKind(id, context) : "other", parts = id.split(":"), scheme = parts[0].toLowerCase();
   let title = "", who = context ? sourceIdentity(context) : "", day = context?.time ? calendarDay(context.time) : written;
   // A file's name, without its content hash ("CLAUDE.md@be1c3a…") or the folders above it.
