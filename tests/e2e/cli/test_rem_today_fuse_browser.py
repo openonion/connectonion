@@ -180,7 +180,7 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     assert _burn(page, "projects/harbour.md") == 0 and "late" not in undated.locator(".dd").get_attribute("class")
     # One number says one thing (TOP10 #9): the items total is the sidebar's, not said again here.
     assert "items waiting on you" not in page.locator(".night-card").inner_text()
-    assert page.locator(".others .waiting-more").inner_text().endswith("waiting on others →")
+    assert page.locator(".others .waiting-more").inner_text().endswith("you are waiting on others for →")
 
 
 def test_a_face_deals_its_card_and_skip_deals_the_next(today):
@@ -435,9 +435,9 @@ def test_counts_name_their_unit(today):
     page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
       REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
                   isolated_context=False)
-    assert page.locator("#approve-all").inner_text() == "一键批准这 2 件"
+    assert page.locator("#approve-all").inner_text() == "一键批准 REM 备好的 2 件"
     assert "件等你处理" not in page.locator(".night-card").inner_text()  # the sidebar's 等你处理 says it
-    assert page.locator(".others .waiting-more").inner_text().startswith("看 ") and page.locator(".others .waiting-more").inner_text().endswith(" 件在等谁 →")
+    assert page.locator(".others .waiting-more").inner_text().startswith("看你在等对方的 ") and page.locator(".others .waiting-more").inner_text().endswith(" 件 →")
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
@@ -833,7 +833,7 @@ def test_undoing_a_held_approval_shows_the_approve_button_again(today):
     page.locator("#approval-undo").get_by_role("button", name="Undo", exact=True).click()
     page.locator("#approve-all").wait_for()
     assert calls[-1] == ("/rem/approve", {"action": "undo", "ids": ["reply:ines"]})
-    assert page.locator("#approve-all").inner_text() == "Approve all 1" and page.locator("#approve-all").is_enabled()
+    assert page.locator("#approve-all").inner_text() == "Approve the 1 REM prepared" and page.locator("#approve-all").is_enabled()
     assert page.locator(".side .nothing-open").count() == 0
     assert "Cancelled" in page.locator("#approval-undo").inner_text()
 

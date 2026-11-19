@@ -1767,8 +1767,10 @@
   .tl.all .tl-m.later { display: block; }
   .tl-m { font: var(--w-bold) var(--s-meta) var(--font); color: var(--grey); padding: 16px 0 6px 92px; }
   .tl-m:first-child { padding-top: 4px; }
-  .tl-e { display: grid; grid-template-columns: 64px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: var(--s-body); line-height: 21px; }
+  .tl-e { display: grid; grid-template-columns: 72px 28px minmax(0, 1fr); align-items: baseline; padding: 7px 0; font-size: var(--s-body); line-height: 21px; }
   .tl-e .d { font-size: var(--s-meta); color: var(--grey); text-align: right; padding-right: 4px; }
+  /* A date is one word: "10月29日" broke across lines in the narrow column (rc36 hunt). */
+  .tl-e .d, .tnext-time, .gx-row-meta, time[datetime] { white-space: nowrap; }
   .tl-e .d .y { display: block; }
   .tl-e .w { display: grid; place-items: center; }
   .tl-e .w i { width: 7px; height: 7px; border-radius: var(--round); outline: var(--hair) solid var(--pencil); outline-offset: calc(-1 * var(--hair)); }
@@ -1831,7 +1833,7 @@
     .r4-said li, .r4-topics li { grid-template-columns: minmax(0, 1fr); gap: var(--u1); }
     .said-src { flex-direction: row; gap: var(--u2); }
     .tl-m { padding-left: 0; }
-    .tl-e { grid-template-columns: 40px 20px minmax(0, 1fr); }
+    .tl-e { grid-template-columns: 58px 16px minmax(0, 1fr); }
     .tl-more { margin-left: 0; }
     .r4-bar { flex-wrap: wrap; margin-top: 28px; }
     .r4-find { flex-basis: 100%; }
@@ -3989,7 +3991,7 @@
   .n3-person .r4-said ol.all li { display: grid; }
   .n3-person .said-q { order: -1; color: var(--ink); quotes: none; font: var(--w-regular) var(--s-ui)/1.6 var(--font); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
   .n3-person .said-src { display: flex; gap: 6px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
-  .n3-person .tl .tl-e { display: grid; grid-template-columns: 44px 12px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; border: 0; }
+  .n3-person .tl .tl-e { display: grid; grid-template-columns: 60px 12px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; border: 0; }
   .n3-person .tl .tl-e .d { text-align: right; color: var(--grey); font: var(--w-regular) var(--s-meta)/20px var(--font); }
   .n3-person .tl .tl-e .w i { display: block; width: 9px; height: 9px; margin-top: 6px; border-radius: var(--round); border: 1.6px solid var(--ink); background: none; }
   .n3-person .tl .tl-e .w i.me { background: var(--ink); }
@@ -4201,7 +4203,7 @@ const UI = {
     "Task dispatch is in progress.": "正在派发任务。",
     "Delivery not confirmed. Check the provider before sending again.": "尚未确认发送结果，请先在服务商处核实再重发。",
 
-    "Approve all {n}": "一键批准这 {n} 件",
+    "Approve all {n}": "一键批准这 {n} 件", "Approve the {n} REM prepared": "一键批准 REM 备好的 {n} 件",
     "Reply": "回信",
     "Already handled": "已处理",
     "Confirm": "确认",
@@ -5301,7 +5303,7 @@ const UI = {
     "wrote 1 page": "写了 1 页", "wrote {n} pages": "写了 {n} 页", "drafted 1 reply": "起草了 1 封回复", "drafted {n} replies": "起草了 {n} 封回复",
     "prepared 1 task": "准备了 1 件事", "prepared {n} tasks": "准备了 {n} 件事", "nothing new to do": "没有新的事要做",
     "thing waiting on you": "件在等你", "things waiting on you": "件在等你",
-    "See the {n} waiting on others →": "看 {n} 件在等谁 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
+    "See the {n} waiting on others →": "看 {n} 件在等谁 →", "See the {n} you are waiting on others for →": "看你在等对方的 {n} 件 →", "{n} have gone quiet for a long time · Look": "{n} 件很久没动静 · 看看",
     "1 has gone quiet for a long time · Look": "1 件很久没动静 · 看看", "Mark all done": "都标为完成", "Mark all {n} done": "都标为完成（{n}）",
     "Rises: replies and tasks REM prepared · dips: reading mail, rewriting and translating pages": "隆起 = REM 备好的回信和任务 · 下沉 = 读信、整理和翻译页面",
     "Read mail and sessions": "读邮件和会话", "Rewrote pages": "整理页面", "Translated pages": "翻译页面",
@@ -9650,7 +9652,7 @@ function approvalHeader() {
   // an item waiting for the owner to fill a gap is not approved by it. With none that can go there is no button,
   // never a greyed one or a "0" (TOP10 #9); an Undo that brings items back draws the widget again, button and all.
   const ready = readyCount(items);
-  const button = ready ? el("button", {id: "approve-all", class: "btn-line approve-all", type: "button", text: t("Approve all {n}", {n: ready})}) : null;
+  const button = ready ? el("button", {id: "approve-all", class: "btn-line approve-all", type: "button", text: t("Approve the {n} REM prepared", {n: ready})}) : null;
   if (button) {
     button.disabled = !REM.live;
     button.onclick = () => openApprovalSheet(REM.approval_outcomes || []);
@@ -9671,7 +9673,7 @@ function openApprovalSheet(items) {
   const notice = el("p", {class: "quiet-line", role: "status"});
   const list = el("div", {class: "approval-list"});
   const dialog = el("dialog", {id: "approval-sheet", "aria-labelledby": "approval-title"}, [
-    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve all {n}", {n: readyCount(items)})}), close]),
+    el("header", {}, [el("h2", {id: "approval-title", text: t("Approve the {n} REM prepared", {n: readyCount(items)})}), close]),
     el("p", {class: "quiet-line", text: t("Replies wait 10 minutes. Undo cancels held replies. Handled items are marked done; tasks are queued now.")}),
     list, el("footer", {}, [confirm, notice])]);
   const sync = () => {confirm.disabled = busy || !rows.some(row => row.check.checked && !row.check.disabled);};
@@ -9805,6 +9807,11 @@ function turnTrouble(failure) {
       { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: zone }) : "";
     // `empty`: turns that exited cleanly with no task served and nothing submitted (1.9.6rc18).
     const empty = failure.empty || 0, all = empty === failure.failures;
+    // The same code error again and again is a bug a retry cannot fix: say so, and never "nothing to do"
+    // (rc36 hunt: six turns on one AttributeError under "REM 会自动重试，不需要你做什么").
+    if (failure.code_error) return uiLanguage === "zh"
+      ? `后台：夜里的程序出错了（同一个错误 ${failure.code_error} 次），升级到新版本后会继续。自 ${since} 起。`
+      : `Background: The night runner hit a code error ${failure.code_error} ${failure.code_error === 1 ? "time" : "times"}; it resumes after an update. Since ${since}.`;
     if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} 起。REM 会自动重试，不需要你做什么。`;
     const said = all ? (failure.failures === 1 ? "turn ran but produced nothing" : "turns ran but produced nothing")
       : (failure.failures === 1 ? "turn failed" : "turns failed") + (empty ? ` (${empty} ran but produced nothing)` : "");
@@ -10329,23 +10336,40 @@ function todaySide(counts) {
 }
 // What is next, on the first screen beside the cards (rc34 hunt: the calendar sat ~989px down). The cards stay
 // first; this is the calendar's head, not a second calendar: it reuses agendaEntries and agDetail.
+// What starts next, in order from now. An event already under way is not "next": it went first in the list under its
+// past start ("周日 09:00" ahead of 10:00 today, rc36 hunt) and is said apart, by nowEvents.
 function nextEvents(limit = 3) {
   if (REM.shared) return [];
   const now = Date.parse(REM.as_of || "") || clockNow();
+  return timedEvents(now).filter(e => Date.parse(e.start) > now).slice(0, limit);
+}
+function nowEvents() {
+  if (REM.shared) return [];
+  const now = Date.parse(REM.as_of || "") || clockNow();
+  return timedEvents(now).filter(e => Date.parse(e.start) <= now);
+}
+function timedEvents(now) {
   return agendaEntries().filter(e => e.kind === "event" && !e.allDay && e.end && Date.parse(e.end) > now)
-    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start)).slice(0, limit);
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
 }
 function nextWhen(e) { return (e.first === agToday() ? "" : agFormat(e.first, { weekday: "short" }) + " ") + agTime(e.start); }
+// Until when, in the fewest words: a time today, a weekday this week, a date further off.
+function nowWhen(e) {
+  const today = agToday(), until = e.last === today ? agTime(e.end)
+    : agSpan(today, e.last) < 7 ? agFormat(e.last, { weekday: "short" }) : agFormat(e.last, { month: "short", day: "numeric" });
+  return agT("Now · until {when}", { when: until });
+}
+function nextRow(e, when) {
+  const open = el("button", { type: "button", class: "tnext-ev" }, [el("span", { class: "tnext-time", text: when }), el("span", { class: "tnext-title", text: e.title })]);
+  open.onclick = () => agDetail(e, open);
+  const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
+  return el("li", {}, [open, join]);
+}
 function todayNext() {
   const events = nextEvents();
   if (REM.shared) return null;
-  const today = agToday(), entries = agendaEntries();
-  const rows = events.map(e => {
-    const open = el("button", { type: "button", class: "tnext-ev" }, [el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title })]);
-    open.onclick = () => agDetail(e, open);
-    const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
-    return el("li", {}, [open, join]);
-  });
+  const today = agToday(), entries = agendaEntries(), under = nowEvents();
+  const rows = events.map(e => nextRow(e, nextWhen(e)));
   const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": agT("This week") }, Array.from({ length: 7 }, (_, i) => {
     const day = agDay(today, i), n = agOnDay(entries, day).length;
     const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), ...(day === today ? { "aria-current": "date" } : {}),
@@ -10358,6 +10382,7 @@ function todayNext() {
   const all = el("a", { class: "tnext-all", href: "#today-calendar", text: agT("Full schedule ↓") });
   all.onclick = event => { event.preventDefault(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
   return el("section", { class: "widget tnext", "aria-label": agT("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: agT("Next") }), el("span", { class: "end" }, [all])]),
+    under.length ? el("ul", { class: "tnext-list tnext-now" }, under.map(e => nextRow(e, nowWhen(e)))) : null,
     rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: agT("Nothing else today") }), strip]);
 }
 // On a phone: one line above the cards, the next event, a tap to the calendar.
@@ -10442,7 +10467,9 @@ function staleMore(n) {
   }), { once: true });
   return link;
 }
-// What others owe and what can be approved at once. With nothing open either way and nothing to approve, one
+// What others owe and what can be approved at once. The three numbers on Today read as one set (rc36 hunt: «14 件在等你 /
+// 55 件在等谁 / 批准 11 件» said nothing of how they relate): the big one is what waits on you, this link is the other
+// direction (what you wait on others for), and the batch is what REM prepared, which it names as REM's. With nothing open either way and nothing to approve, one
 // sentence says so, in a snapshot and live alike; with only your own items open, the link is to everything open.
 // Either shape carries the same id: an Undo that brings approvals back draws it again in place.
 function othersWidget(counts) {
@@ -10450,7 +10477,7 @@ function othersWidget(counts) {
   if (!counts.theirs && !counts.mine && !outcomes && !problems)
     return el("p", { id: "today-others", class: "quiet-line nothing-open", text: t("Nothing is open between you and anyone right now.") });
   // What others owe is a list to read, so it is a worded link to that list, not a big number to stare at.
-  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open", text: t("See the {n} waiting on others →", { n: counts.theirs }) })
+  const cell = counts.theirs ? el("a", { class: "pair-cell waiting-more", href: "#view=open", text: t("See the {n} you are waiting on others for →", { n: counts.theirs }) })
     : counts.mine ? el("a", { class: "pair-cell waiting-more", href: "#view=open" }, [el("span", { text: t("Everything open") + " →" })]) : null;
   // A batch that can go names itself; a heading of "Waiting on others" over it read as if the batch were theirs.
   const ready = outcomes && (REM.approval_outcomes || []).some(item => !item.blocked);
@@ -11744,7 +11771,7 @@ const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Next": "接下来", "Full schedule ↓": "完整日程 ↓", "Nothing else today": "今天没有别的安排了", "This week": "这一周", "Organised by {name}": "组织者：{name}",
+  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Next": "接下来", "Full schedule ↓": "完整日程 ↓", "Nothing else today": "今天没有别的安排了", "Now · until {when}": "进行中 · 至 {when}", "This week": "这一周", "Organised by {name}": "组织者：{name}",
   "{n} items": "{n} 项", "1 item": "1 项",
   "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
   "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",

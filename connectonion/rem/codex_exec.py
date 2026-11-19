@@ -269,6 +269,7 @@ def _run_locked(root, run, lock_fd):
         # Persist failed or interrupted deepening even after Codex itself exited zero.
         failed = True
         receipt['reason'] = str(error) or type(error).__name__
+        receipt['error_class'] = type(error).__name__
         with log.open('a', encoding='utf-8') as output:
             output.write(json.dumps({'type': 'rem.turn_failed', 'error': receipt['reason'],
                                      'traceback': traceback.format_exc()}) + '\n')
@@ -281,6 +282,9 @@ def _run_locked(root, run, lock_fd):
         if preparation_error and not skipped:
             outcome = 'failed'
             receipt['reason'] = preparation_error
+            # The class lets status tell a bug in REM's code from the weather (service._code_error).
+            if events[-1].get('error_class'):
+                receipt['error_class'] = events[-1]['error_class']
         # Kept on the receipt so status can tell a capped turn that did work from one that did none.
         receipt['accepted'] = sum(1 for event in events if event['type'] == 'rem.submitted' and event.get('outcome') == 'accepted')
         nothing = _produced_nothing(events) if outcome == 'completed' else ''
@@ -335,7 +339,7 @@ def record_preparation(root, error=None, result=None):
     """What one `co rem next` came to: an error, or its outcome (task, done and why)."""
     if error:
         _record(root, {'type': 'rem.preparation_failed', 'error': str(error) or type(error).__name__,
-                       'traceback': ''.join(traceback.format_exception(error))})
+                       'error_class': type(error).__name__, 'traceback': ''.join(traceback.format_exception(error))})
         return
     said = {key: result[key] for key in ('outcome', 'reason') if result and result.get(key)}
     _record(root, {'type': 'rem.prepared', **said})
