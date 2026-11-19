@@ -629,7 +629,8 @@ def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
     assert "Head of Partnerships" in value("Role").inner_text()
-    assert value("Phone").get_attribute("class") == "none" and "not found" in value("Phone").inner_text()
+    # An unknown fact is no empty row: it is named in the one "N not found" line under the list (#3104).
+    assert value("Phone").count() == 0 and "Phone" in page.locator(".factlist ~ .fact-missing, .fact-missing").first.inner_text()
     role_source = value('Role').locator('.cite')
     assert role_source.inner_text() == 'Aug 22'
     assert role_source.get_attribute('aria-label') == 'Source: Outlook, Aug 22, original not in this snapshot'
@@ -958,9 +959,8 @@ def test_project_first_seen_does_not_establish_an_unknown_start_date(reader):
     }""", isolated_context=False)
     assert page.evaluate("facts(byPath('projects/harbour.md')).first", isolated_context=False)
     memory_open(page)
-    started = page.locator('.factlist dt:text-is("Started") + dd')
-    assert started.locator('.val').count() == 0
-    assert 'not found' in started.inner_text()
+    assert page.locator('.factlist dt:text-is("Started")').count() == 0
+    assert 'Started' in page.locator('.fact-missing').first.inner_text()  # named once, no empty row (#3104)
 
 
 def test_project_full_memory_keeps_current_finding_before_historical_pattern(reader):
@@ -1025,9 +1025,8 @@ def test_unknown_repository_stays_unknown_and_the_workspace_path_stays_in_the_re
     assert '/tmp/session-workspace' not in page.locator('.focus-facts').inner_text()
     assert not page.locator('.focus-facts dt:text-is("Repository")').count()
     memory_open(page)
-    repository = page.locator('.factlist dt:text-is("Repository") + dd')
-    assert not repository.locator('.val').count()
-    assert 'not found' in repository.inner_text()
+    assert page.locator('.factlist dt:text-is("Repository")').count() == 0
+    assert 'Repository' in page.locator('.fact-missing').first.inner_text()  # named once, no empty row (#3104)
     assert '/tmp/session-workspace' in page.locator('details.deep-note').inner_text()
     page.evaluate("() => { location.hash = '#q=Harbour'; render(); }", isolated_context=False)
     assert not page.locator('.best-facts dt:text-is("Local path")').count()
@@ -1881,7 +1880,8 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         }""", isolated_context=False)
         assert 'Sep 16' not in page.locator('.r4-stats').inner_text()
         memory_open(page)
-        assert '— not found' in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
+        assert page.locator('.factlist dt:text-is("Last contact")').count() == 0
+        assert 'Last contact' in page.locator('.fact-missing').first.inner_text()  # named once, no empty row (#3104)
 
 
 def test_unknown_open_status_is_not_a_current_exchange(reader):
@@ -2144,7 +2144,8 @@ def test_long_hash_ids_are_shortened_with_the_full_id_on_hover(reader):
     note = page.locator('.deep-note').inner_text()
     assert digest not in note
     assert 'skill-record:1831aa83d8a0…' in note
-    assert page.locator('.block-sources .id').first.get_attribute('title') == 'skill-record:' + digest
+    # A source row is named in words; its full id waits in the row's tooltip (#3104).
+    assert page.locator('.block-sources li.src-row').first.get_attribute('title') == 'skill-record:' + digest
     assert page.locator('.deep-note code[title="skill-record:' + digest + '"]').count() == 1
 
 
@@ -3281,9 +3282,10 @@ def test_quotes_are_visually_distinct_from_search_marks(reader, theme):
     quote_background = quote.evaluate('node => getComputedStyle(node).backgroundColor')
     assert quote_background != mark.evaluate('node => getComputedStyle(node).backgroundColor')
     if theme == 'dark':
-        # No tint of its own in dark: the quote sits on the paper and only its underline marks it.
+        # No tint of its own in dark: the quote sits on the paper; quotes are no longer underlined (#3104), and the
+        # search mark keeps its own background, so the two still read apart.
         assert quote_background == page.evaluate("getComputedStyle(document.body).backgroundColor")
-        assert quote.evaluate('node => getComputedStyle(node).textDecorationLine') == 'underline'
+        assert quote.evaluate('node => getComputedStyle(node).textDecorationLine') == 'none'
 
 
 def test_org_context_citation_is_flush_and_uncertainty_has_an_icon_gap(reader):
@@ -4245,9 +4247,13 @@ def test_round_eight_fact_labels_and_phone_disclosure_alignment(reader, tmp_path
         plus = summary.locator('.deep-toggle').bounding_box()
         assert abs(plus['y'] - heading['y']) <= 4
         assert plus['x'] > heading['x'] + heading['width']
-        assert summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''') == '"+"'
+        # Open on arrival (#3104): the toggle reads − and folds to + on a click, then opens again.
+        toggle = lambda: summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''')  # noqa: E731
+        assert toggle() == '"−"'
         summary.click()
-        assert summary.locator('.deep-toggle').evaluate(r'''node => getComputedStyle(node, '::after').content''') == '"−"'
+        assert toggle() == '"+"'
+        summary.click()
+        assert toggle() == '"−"'
         facts = page.locator('.panel').filter(has=page.locator('.factlist'))
         assert facts.count() == 1
         if language == 'zh':
@@ -4256,8 +4262,10 @@ def test_round_eight_fact_labels_and_phone_disclosure_alignment(reader, tmp_path
             assert labels and all(not re.search('[A-Za-z]', label) for label in labels)
             assert '— not found' not in facts.inner_text()
             if record.startswith('people/'):
-                assert set(labels) >= {'时区', '链接', '如何认识', '首次联系', '签约主体', '账号', '语言', '别名'}
-                assert '— 未找到' in facts.inner_text()
+                # An unknown field is named in the folded "未找到" line, in Chinese too, instead of an empty row (#3104).
+                folded = (facts.locator('.fact-missing').get_attribute('title') or '').split(' · ')
+                assert set(labels) | set(folded) >= {'时区', '链接', '如何认识', '首次联系', '签约主体', '账号', '语言', '别名'}
+                assert '未找到' in facts.inner_text()  # one folded line for the unknown fields (#3104)
         assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 
