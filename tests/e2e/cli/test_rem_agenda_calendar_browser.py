@@ -149,8 +149,9 @@ def test_agenda_opens_as_this_weeks_time_grid_with_calendar_events_and_notebook_
     assert "Board dinner" not in week.inner_text(), "outside this week"
     # An empty day is empty: no placeholder card and no dash.
     assert page.locator(".cal-week .ag-empty").count() == 0 and "—" not in _column(page, 4).inner_text()
-    # Nothing to scroll the page for: the hours scroll inside the grid, under the heads.
-    assert page.evaluate("() => document.documentElement.scrollHeight <= innerHeight")
+    # #3152: the week is opened inside Today, scrolled into view; the hours scroll inside the grid, under the heads.
+    assert page.evaluate("() => { const b = document.getElementById('today-calendar').getBoundingClientRect(); return b.top >= -1 && b.top < innerHeight / 2; }")
+    assert page.evaluate("() => { const s = document.querySelector('.agenda .cal-scroll'); return s.scrollHeight > s.clientHeight; }")
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -302,6 +303,10 @@ def test_the_week_moves_and_month_is_a_grid_of_weeks_with_bars_across_cells(agen
 def test_arrows_move_the_day_t_is_today_and_enter_opens(agenda):
     page = agenda
     _open(page, 1440)
+    # On Today the arrows belong to the calendar only while it has the focus (#3152), never to the cards above.
+    page.keyboard.press("ArrowRight")
+    assert page.locator(".cal-head.sel").count() == 0
+    page.locator(".agenda .cal-scroll").focus()
     page.keyboard.press("ArrowRight")
     assert page.locator(".cal-head.sel").get_attribute("data-day") == "2026-10-02"
     page.keyboard.press("Enter")
@@ -513,3 +518,107 @@ def test_an_event_detail_shows_how_to_join_who_called_it_and_its_notes(agenda):
     assert names[0] == "Join Google Meet" and names[-1].startswith("Open in Google Calendar")
     if os.environ.get("REM_PR_SHOTS"):
         page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "calendar-event-detail-1440.png"))
+
+
+# ---------- #3152: the calendar is a component of Today ----------
+TCAL_SHOTS = os.environ.get("REM_PR_SHOTS")
+
+
+def _topmost(page, selector):
+    return page.evaluate("""sel => { const n = document.querySelector(sel), b = n.getBoundingClientRect(), points = [];
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) points.push([b.left + 16 + (b.width - 32) * i / 4, b.top + 16 + (b.height - 32) * j / 4]);
+      return points.filter(([x, y]) => y >= 0 && y < innerHeight && x < innerWidth).every(([x, y]) => n.contains(document.elementFromPoint(x, y))); }""",
+                         selector, isolated_context=False)
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_today_shows_its_cards_then_the_calendar_and_no_day_plan_list(agenda, width):
+    """Owner, 2026-11-19: «把我的日程放在 today 里面的一个 component，而不是单独的一个 category»; the cards come first."""
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("() => { location.hash = '#'; render(); }", isolated_context=False)
+    cal = page.locator("#today-calendar")
+    cal.wait_for()
+    assert page.locator(".today-brief").bounding_box()["y"] < cal.bounding_box()["y"]
+    assert page.locator(".day-plan-proposal").count() == 0 and "Your day" not in page.locator("#main").inner_text()
+    # The seven days from today, with today's timeline under them; Thursday 1 Oct is today in the fixture.
+    jumps = cal.locator(".tcal-strip .cal-jump")
+    assert jumps.count() == 7 and jumps.first.get_attribute("aria-pressed") == "true" and "Today" in jumps.first.inner_text()
+    assert cal.locator(".tcal-day .cal-day").count() == 1 and cal.locator(".tcal-day .cal-now").count() == 1
+    assert cal.locator(".tcal-day .cal-ev", has_text="Quarterly receipts with Ines").count() == 1
+    assert "#c=agenda" not in [a.get_attribute("href") for a in page.locator("#nav a").all()]
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    if TCAL_SHOTS:
+        cal.scroll_into_view_if_needed()
+        page.screenshot(path=os.path.join(TCAL_SHOTS, f"today-cal-after-{width}.png"))
+
+
+def test_a_day_in_the_strip_switches_the_timeline_and_an_event_opens_on_top(agenda):
+    page = agenda
+    page.evaluate("() => { location.hash = '#'; render(); }", isolated_context=False)
+    cal = page.locator("#today-calendar")
+    cal.locator('.cal-jump[data-day="2026-10-02"]').click()
+    assert cal.locator('.cal-jump[data-day="2026-10-02"]').get_attribute("aria-pressed") == "true"
+    assert cal.locator('.tcal-day .cal-day[data-day="2026-10-02"]').count() == 1
+    cal.locator(".tcal-day .cal-ev", has_text="Pilot renewal call with Fernhill").click()
+    detail = page.locator("dialog.cal-detail")
+    assert detail.locator("h2").inner_text() == "Pilot renewal call with Fernhill"
+    assert _topmost(page, "dialog.cal-detail"), "the event's detail is covered"
+    page.keyboard.press("Escape")
+
+
+def test_the_week_and_the_month_open_in_place_and_fold_back(agenda):
+    page = agenda
+    page.evaluate("() => { location.hash = '#'; render(); }", isolated_context=False)
+    cal = page.locator("#today-calendar")
+    cal.get_by_role("button", name="Show the week").click()
+    assert cal.locator(".agenda.agenda-week .cal-week").is_visible() and cal.locator(".cal-week .cal-day").count() == 7
+    assert page.locator(".today-brief").count() == 1, "still Today"
+    cal.get_by_role("button", name="Month").click()
+    assert cal.locator(".agenda.agenda-month .cal-month").is_visible()
+    assert _topmost(page, "#today-calendar .cal-month")
+    if TCAL_SHOTS:
+        page.screenshot(path=os.path.join(TCAL_SHOTS, "today-cal-after-month-1440.png"))
+    cal.get_by_role("button", name="Back to the day").click()
+    assert cal.locator(".tcal-strip").is_visible() and cal.locator(".agenda").count() == 0
+
+
+@pytest.mark.parametrize("address", ["#c=agenda", "#view=agenda"])
+def test_the_old_agenda_addresses_open_today_with_the_calendar_open(agenda, address):
+    page = agenda
+    page.evaluate(f"() => {{ location.hash = '{address}'; }}", isolated_context=False)
+    page.locator("#today-calendar.expanded .cal-week").wait_for()
+    assert page.locator(".today-brief").count() == 1
+    assert page.locator("#nav a.active").get_attribute("href") == "#"
+
+
+def test_the_day_plans_proposals_are_dashed_suggestions_that_lead_to_their_card(agenda):
+    page = agenda
+    page.evaluate("""() => {
+      const card = REM.today_queue.find(row => !row.closed && !row.quiet);
+      REM.day_plan = { days: [{ date: '2026-10-01', items: [
+        { kind: 'proposal', key: card.key, keys: card.keys, record: card.record, title: 'x', text: 'Reply about the pilot', time: '15:00', end_time: '15:30' }] }] };
+      window.suggested = card.record; location.hash = '#'; render();
+    }""", isolated_context=False)
+    block = page.locator("#today-calendar .cal-suggest")
+    assert block.count() == 1 and block.inner_text().startswith("Suggested · ")
+    assert block.evaluate("n => getComputedStyle(n).borderStyle") == "dashed"
+    if TCAL_SHOTS:
+        block.scroll_into_view_if_needed()
+        page.screenshot(path=os.path.join(TCAL_SHOTS, "today-cal-after-suggested-1440.png"))
+    block.click()
+    page.wait_for_function("() => document.querySelector('#main .today-brief .qcard.raised, #main .today-brief .qcard.focal')?.dataset.path === window.suggested")
+    page.locator("#today-calendar .tcal-drop").click()
+    assert page.locator("#today-calendar .cal-suggest").count() == 0
+    page.evaluate("() => render()", isolated_context=False)
+    assert page.locator("#today-calendar .cal-suggest").count() == 0, "a dismissed suggestion stays gone"
+
+
+def test_on_a_phone_the_strip_scrolls_sideways_and_the_page_does_not(agenda):
+    page = agenda
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate("() => { location.hash = '#'; render(); }", isolated_context=False)
+    week = page.locator("#today-calendar .tcal-week")
+    assert week.evaluate("n => n.scrollWidth > n.clientWidth")
+    assert page.locator("#today-calendar .tcal-day .cal-week").is_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
