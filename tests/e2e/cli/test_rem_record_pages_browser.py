@@ -299,6 +299,8 @@ def test_a_person_page_leads_with_what_happened_and_a_row_opens_its_original(rea
     panel.wait_for(state="visible")
     assert panel.locator(".evidence-claim").count() == 0 and "null" not in panel.inner_text()
     assert "on" in row.get_attribute("class")
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"person-timeline-open-{width}.png"))
     page.keyboard.press("Escape")
     assert not panel.is_visible() and "on" not in (row.get_attribute("class") or "").split()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
