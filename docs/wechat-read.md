@@ -1,9 +1,13 @@
 # `co wechat` — read your own WeChat history, locally (design)
 
-Status: **design + skeleton only.** The command surface, prerequisite checks and
-key storage land in this change. Decryption and key acquisition are deferred to a
-consented spike on a real machine (see "Why not more in this PR"). Tracks #3146;
-live reading/sending is #1215.
+Status: **working, pending verification against a real WeChat database.** The
+command surface, prerequisite checks, key storage, the SQLCipher-4 decryption
+engine, and `chats`/`decrypt`/`export` all land here. The decryption engine is
+tested against an independent `sqlcipher`-CLI oracle (`tests/fixtures/wechat/`);
+what remains unverified until the owner runs it on their own Mac is (a) obtaining
+the key, which is a consented manual step, and (b) WeChat 4.1.15's exact table
+schema, which `co wechat chats` is built to reveal. Tracks #3146; live
+reading/sending is #1215.
 
 ## Goal
 
@@ -17,8 +21,9 @@ same way it admits mail — after the owner's consent.
 co wechat doctor              # are the prerequisites in place? (read-only)
 co wechat key --help          # how to obtain the DB key, as a consented local step
 co wechat key set x'<hex>'    # save a key you obtained, into ~/.co/keys.env
-co wechat chats               # list chats from the decrypted DB        [deferred]
-co wechat export <chat> [--since ...] [--all]   # export to the notebook [deferred]
+co wechat chats               # decrypt each DB in memory; show its tables + row counts
+co wechat decrypt --out DIR   # write plaintext SQLite copies you can open with any tool
+co wechat export --db D --table T [--format json|md] [--out F]   # one table → JSON/Markdown
 ```
 
 ## Where the data lives
@@ -44,11 +49,14 @@ in our environment as a transitive dependency. The SQLCipher-4 page format
 page-by-page ourselves, so **`co wechat` adds no new dependency package.** This
 matches the owner's explicit constraint: learn the method, don't pull in a bundle.
 
-The decryptor is ~40 lines. It is **not** in this change, because it cannot be
-tested honestly yet: there is no trusted SQLCipher implementation on hand to
-validate a test fixture against, so a fixture we both encrypt and decrypt with our
-own understanding would prove nothing. It lands once the spike below yields a real
-encrypted DB to verify against.
+The decryptor is ~60 lines, in `useful_tools/wechat.py`. It is tested **against an
+independent oracle, not circularly**: `tests/fixtures/wechat/encrypted.db` was
+produced by the `sqlcipher` CLI (a different implementation) with a throwaway key;
+our code decrypts it and plain `sqlite3` reads it back, `integrity_check=ok`. The
+SQLCipher-4-default profile it uses (page 4096, kdf_iter 256000, HMAC-SHA512,
+PBKDF2-HMAC-SHA512) is what WeChat 4.x uses. What the oracle cannot confirm is
+WeChat 4.1.15's own table schema — so `co wechat chats` reveals the schema rather
+than assuming it, and `co wechat export` is schema-agnostic (any table → JSON/MD).
 
 ## The key, as a consented manual step
 
@@ -108,21 +116,25 @@ timezone.
 
 ## Staged plan
 
-1. **This change:** surface + `doctor` + `key set`/`key --help` + wiring + tests.
-   No decryption, no extractor. Reviewable without a live WeChat.
+1. **This change:** surface + `doctor` + `key set`/`key --help` + the decryption
+   engine + `chats`/`decrypt`/`export`, tested against an independent oracle.
+   Ships to a preview so the owner can run it on their own Mac.
 2. **Consented spike (owner present):** obtain the key via the re-signed copy,
-   decrypt one DB, check the last 10 messages of one chat against WeChat.
-3. **Decryption:** land the ~40-line page decryptor with a round-trip test
-   validated against the real DB from step 2; implement `chats` and `export`.
+   `co wechat key set` it, `co wechat chats` to see the real schema, and check the
+   last messages of one chat against WeChat.
+3. **Chat-aware export:** with the real schema known, map tables to chats and
+   render quotes, replies, media, voice (via `co asr`), sender names and local
+   timestamps — on top of the generic `export` that already works.
 4. **Incremental + REM:** re-read on a schedule, append new messages only, admit
    into REM with consent. Determine whether the key survives a WeChat restart,
    re-login or update, and if not, say so plainly instead of exporting nothing.
 
-## Why not more in this PR
+## What is still unverified
 
-The valuable core is small, but the two hard pieces — key acquisition and
-decryption — both need a real machine, the owner's consent, and a real encrypted
-DB to verify against. Writing them now would mean shipping untested security code.
-This change lands everything that is honestly testable offline and documents the
-rest, so the size of the remaining work is clear: roughly 40 lines of decryptor
-and a documented manual key step, both landing with tests after the spike.
+Two things cannot be confirmed until the owner runs it on their own Mac, and both
+are surfaced by the tool rather than hidden:
+
+- **Key acquisition** is a consented manual step (`co wechat key --help`); the tool
+  stores a key you obtained but does not extract one for you.
+- **WeChat 4.1.15's table schema** is unknown to us; `co wechat chats` reveals it,
+  and `export` is schema-agnostic, so neither depends on a guess.

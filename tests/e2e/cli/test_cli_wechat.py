@@ -75,11 +75,50 @@ def test_key_no_subcommand_explains_how_to_get_it(macos):
     assert "re-signed copy" in result.output.lower() or "re-signed" in result.output.lower()
 
 
-@pytest.mark.parametrize("command", ["chats", "export"])
-def test_read_commands_not_implemented_yet(macos, command):
-    result = runner.invoke(app, ["wechat", command])
+@pytest.fixture
+def ready(macos, keys_env, tmp_path):
+    """A tmp db_storage holding the committed encrypted fixture, with the key saved."""
+    import shutil
+    from pathlib import Path
+
+    fixture = Path(__file__).parent.parent.parent / "fixtures" / "wechat"
+    account = tmp_path / "account"
+    db_storage = account / "db_storage"
+    db_storage.mkdir(parents=True)
+    shutil.copy(fixture / "encrypted.db", db_storage / "message_0.db")
+    keys_env.write_text(f"{wc.KEY_NAME}={(fixture / 'key.txt').read_text().strip()}\n")
+    with patch.object(wc, "_container_status", return_value=("ok", account)):
+        yield db_storage
+
+
+def test_chats_lists_tables(ready):
+    result = runner.invoke(app, ["wechat", "chats"])
+    assert result.exit_code == 0
+    assert "message_0.db" in result.output and "Msg" in result.output
+
+
+def test_decrypt_writes_plaintext(ready, tmp_path):
+    out = tmp_path / "plain"
+    result = runner.invoke(app, ["wechat", "decrypt", "--out", str(out)])
+    assert result.exit_code == 0
+    written = out / "message_0.db"
+    assert written.exists()
+    import sqlite3
+    assert sqlite3.connect(written).execute("SELECT COUNT(*) FROM Msg").fetchone()[0] == 3
+
+
+def test_export_table_as_json(ready):
+    result = runner.invoke(app, ["wechat", "export", "--db", "message_0.db", "--table", "Msg", "--format", "json"])
+    assert result.exit_code == 0
+    assert "晚饭吃了吗" in result.output
+
+
+def test_commands_block_without_key(macos, keys_env, tmp_path):
+    account = tmp_path / "account"
+    with patch.object(wc, "_container_status", return_value=("ok", account)):
+        result = runner.invoke(app, ["wechat", "chats"])
     assert result.exit_code == 2
-    assert "not implemented yet" in result.output
+    assert "key" in result.output.lower()
 
 
 def test_doctor_blocks_when_unready(macos, keys_env):

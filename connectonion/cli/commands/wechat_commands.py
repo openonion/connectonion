@@ -1,11 +1,11 @@
 """
 Purpose: `co wechat` — read the owner's own WeChat for Mac history locally, read-only (#3146)
 LLM-Note:
-  Dependencies: imports from [os, re, platform, pathlib, typer, rich.console] | imported by [cli/main.py via wechat_app] | decryption (SQLCipher 4, cryptography) is deferred to a follow-up, see docs/wechat-read.md
-  Data flow: doctor → inspects the WeChat container path + whether WECHAT_DB_KEY is set → report | key set → validates x'<hex>' → writes WECHAT_DB_KEY to ~/.co/keys.env (0600) | key (no args) → prints the consented manual procedure | chats/export → guarded: exit 2 until the decryptor lands
-  State/Effects: read-only except `key set`, which upserts one line in ~/.co/keys.env | never reads WeChat's files in a way that can hang a non-interactive run | never writes to WeChat's files or network
-  Integration: exposes wechat_app for cli/main.py (`app.add_typer(wechat_app, name="wechat")`) | design + staged plan in docs/wechat-read.md | relates to #1215 (live read/send) and REM sources under ~/.co/rem
-  Errors: macOS-only — exit 2 off macOS | exit 2 when a read command needs the key or the decryptor that is not here yet, each with the exact next step | `key set` exit 2 on a malformed key
+  Dependencies: imports from [os, re, platform, pathlib, typer, rich.console, ...useful_tools.wechat] | imported by [cli/main.py via wechat_app] | decryption engine (SQLCipher 4, cryptography — no new package) in useful_tools/wechat.py
+  Data flow: doctor → inspects the WeChat container path + whether WECHAT_DB_KEY is set → report | key set → validates x'<hex>' → writes WECHAT_DB_KEY to ~/.co/keys.env (0600) | key (no args) → prints the consented manual procedure | chats → decrypt each db in memory, list tables+counts | decrypt → write plaintext .db copies | export → one table → JSON/Markdown
+  State/Effects: read-only except `key set` (upserts one line in ~/.co/keys.env) and `decrypt` (writes plaintext SQLite copies to --out) | the container probe runs in a timed daemon thread so a TCC prompt cannot hang a non-interactive run | never writes to WeChat's files or network
+  Integration: exposes wechat_app for cli/main.py (`app.add_typer(wechat_app, name="wechat")`) | design + staged plan in docs/wechat-read.md | relates to #1215 (live read/send); REM admission of the export is the next step
+  Errors: macOS-only — exit 2 off macOS | exit 2 when a read command lacks container access or the key, each with the exact next step | WrongKeyError per database is reported and skipped | `key set` exit 2 on a malformed key
 """
 
 import os
@@ -33,7 +33,7 @@ DOCS = "docs/wechat-read.md"
 wechat_app = typer.Typer(
     help="Read your own WeChat for Mac history locally (read-only). macOS only. See " + DOCS + ".",
     no_args_is_help=True,
-    epilog="Example:  co wechat doctor  |  co wechat key set x'0f1e...'  |  co wechat export \"Mum\" --since 30d",
+    epilog="Example:  co wechat doctor  |  co wechat key set x'0f1e...'  |  co wechat chats  |  co wechat export --db message_0.db --table Msg",
 )
 
 
@@ -126,7 +126,10 @@ def doctor():
     if not key:
         console.print(f"        Obtain it as a consented local step, then save it:  co wechat key --help")
 
-    console.print(f"\nReading itself (chats, export) is not implemented yet. Design and plan: {DOCS}")
+    if status == "ok" and key:
+        console.print("\nReady. Next:  co wechat chats  (then  co wechat decrypt  or  co wechat export)")
+    else:
+        console.print(f"\nOnce both are green:  co wechat chats. Design and plan: {DOCS}")
     raise typer.Exit(0 if (status == "ok" and key) else 2)
 
 
@@ -179,26 +182,100 @@ def key_set(
 wechat_app.add_typer(key_app, name="key")
 
 
-def _not_yet(command: str) -> None:
-    """Exit 2 with the exact next step: reading is designed but not implemented yet."""
+def _ready() -> tuple[Path, str]:
+    """Return (db_storage, key) once macOS, container access and the key are all in place; else exit 2."""
     _require_macos()
-    console.print(f"[yellow]co wechat {command} is not implemented yet.[/yellow]")
-    console.print(f"The decryptor lands after a consented spike on a real database. Design and staged plan: {DOCS}")
-    console.print("Meanwhile:  co wechat doctor")
-    raise typer.Exit(2)
+    status, account = _container_status()
+    if status != "ok":
+        console.print("[yellow]WeChat data is not accessible yet.[/yellow] Run:  co wechat doctor")
+        raise typer.Exit(2)
+    key = _read_key()
+    if not key:
+        console.print(f"[yellow]No database key saved.[/yellow] Obtain it (co wechat key --help), then: co wechat key set x'<hex>'")
+        raise typer.Exit(2)
+    return account / "db_storage", key
 
 
 @wechat_app.command("chats", epilog="Example:  co wechat chats")
 def chats():
-    """List the chats in the local WeChat database. [not implemented yet — see docs/wechat-read.md]"""
-    _not_yet("chats")
+    """Show each local WeChat database and its tables with row counts (schema discovery). Decrypts in memory; nothing is written."""
+    from ...useful_tools import wechat as engine
+
+    db_storage, key = _ready()
+    dbs = engine.message_dbs(db_storage)
+    if not dbs:
+        console.print(f"No .db files under {db_storage}")
+        raise typer.Exit(2)
+    for path in dbs:
+        try:
+            conn = engine.open_readonly(engine.decrypt_db(path, key))
+        except engine.WrongKeyError:
+            console.print(f"[yellow]{path.name}[/yellow]: key did not decrypt it (re-check: co wechat key)")
+            continue
+        listing = ", ".join(f"{name}({rows})" for name, rows in engine.tables(conn)) or "(no tables)"
+        console.print(f"[bold]{path.name}[/bold]: {listing}")
 
 
-@wechat_app.command("export", epilog='Example:  co wechat export "Mum" --since 30d  |  co wechat export --all')
-def export(
-    chat: str = typer.Argument(None, help="A chat name or id to export; omit with --all for every chat"),
-    since: str = typer.Option(None, "--since", help="Only messages newer than this, e.g. 30d or 2026-01-01"),
-    all_chats: bool = typer.Option(False, "--all", help="Export every chat"),
+@wechat_app.command("decrypt", epilog="Example:  co wechat decrypt --out ~/wechat-plain")
+def decrypt(
+    out: Path = typer.Option(Path("wechat-plain"), "--out", help="Directory to write plaintext SQLite copies into"),
 ):
-    """Export WeChat history to the REM notebook's sources as Markdown/JSON. [not implemented yet — see docs/wechat-read.md]"""
-    _not_yet("export")
+    """Decrypt every local WeChat database to plaintext SQLite files you can open with any sqlite tool. Local only."""
+    from ...useful_tools import wechat as engine
+
+    db_storage, key = _ready()
+    out.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for path in engine.message_dbs(db_storage):
+        try:
+            plaintext = engine.decrypt_db(path, key)
+        except engine.WrongKeyError:
+            console.print(f"[yellow]skip[/yellow] {path.name}: key did not decrypt it")
+            continue
+        target = out / path.name
+        target.write_bytes(plaintext)
+        written += 1
+        console.print(f"[green]wrote[/green] {target} ({len(plaintext) // 1024} KB)")
+    console.print(f"\n{written} database(s) decrypted to {out}. These are plaintext — keep them local.")
+    raise typer.Exit(0 if written else 2)
+
+
+@wechat_app.command("export", epilog='Example:  co wechat export --db message_0.db --table Msg --format json --out msg.json')
+def export(
+    db: str = typer.Option(..., "--db", help="A database file name, as shown by: co wechat chats"),
+    table: str = typer.Option(..., "--table", help="A table in that database, as shown by: co wechat chats"),
+    fmt: str = typer.Option("json", "--format", help="json or md"),
+    out: Path = typer.Option(None, "--out", help="Write here instead of stdout"),
+):
+    """Export one table from a local WeChat database as JSON or Markdown. Schema-agnostic; decrypts in memory."""
+    import json
+    from ...useful_tools import wechat as engine
+
+    db_storage, key = _ready()
+    matches = [p for p in engine.message_dbs(db_storage) if p.name == db]
+    if not matches:
+        console.print(f"[yellow]No database named {db}.[/yellow] List them:  co wechat chats")
+        raise typer.Exit(2)
+    try:
+        conn = engine.open_readonly(engine.decrypt_db(matches[0], key))
+    except engine.WrongKeyError:
+        console.print(f"[yellow]{db}[/yellow]: key did not decrypt it (re-check: co wechat key)")
+        raise typer.Exit(2)
+    try:
+        cursor = conn.execute(f'SELECT * FROM "{table}"')
+    except Exception:
+        console.print(f"[yellow]No table {table} in {db}.[/yellow] List them:  co wechat chats")
+        raise typer.Exit(2)
+    cols = [c[0] for c in cursor.description]
+    rows = [dict(zip(cols, r)) for r in cursor.fetchall()]
+    if fmt == "md":
+        lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join("---" for _ in cols) + " |"]
+        lines += ["| " + " | ".join(str(row[c]).replace("|", "\\|") for c in cols) + " |" for row in rows]
+        text = "\n".join(lines) + "\n"
+    else:
+        text = json.dumps(rows, ensure_ascii=False, indent=2)
+    if out:
+        out.write_text(text)
+        console.print(f"[green]wrote[/green] {len(rows)} rows to {out}")
+    else:
+        console.print(text)
