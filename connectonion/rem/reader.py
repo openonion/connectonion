@@ -171,8 +171,12 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
     must still be findable, without pretending a header established a person.
     Subjects and message bodies never enter the reader's directory.
     """
-    from .files import read_json, state_path
+    from .census import assistant_contact, assistant_orgs
+    from .files import Notebook, read_json, state_path
+    from .threads import person_marks
     mapped = read_json(state_path(root, "map.json"), {})
+    notebook, marks = Notebook(root), person_marks(root)
+    orgs = assistant_orgs([{"path": path, "text": notebook.read(path)} for path in notebook.list("orgs")])
     seen, rows = set(), []
     for row in mapped.get("without_page", []):
         address = str(row.get("address") or "").strip()
@@ -184,6 +188,9 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                      "mails": row.get("mails") if type(row.get("mails")) is int else 0,
                      "sent": row.get("sent") if type(row.get("sent")) is int else 0,
                      "received": row.get("received") if type(row.get("received")) is int else 0})
+        # An assistant or service (the owner's 不是人, else its company's page naming it) waits in its own folded group.
+        mark = marks.get(address.casefold())
+        rows[-1]["machine"] = mark == "not-person" or (mark != "person" and assistant_contact(rows[-1]["name"], address, orgs))
     rows.sort(key=lambda row: (-row["mails"], row["email"].casefold()))
     errors = [row for row in mapped.get("errors", []) if row.get("source") in ("gmail", "outlook")]
     return rows, {"scope": "all available history since 1970" if mapped.get("all_history") else
@@ -251,7 +258,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             record["unnamed"] = True
         entry = found.get(record["path"])
         if entry:
-            record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
+            record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"], agent=entry.get("agent", False))
         if record["category"] in ("decisions", "principles"):
             record["written"] = written(record["text"])
         if record["category"] == "projects" and not today:
@@ -401,6 +408,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # Settings lists them so an ignored sender can be seen again; a shared page names no addresses.
     from .threads import ignored_senders
     data['ignored_senders'] = ignored_senders(root) if local else {}
+    from .threads import person_marks
+    data['person_marks'] = person_marks(root) if local else {}
     # The owner's calendars as the night saved them; a shared page carries none of his meetings.
     from .calendar import upcoming
     data['calendar'] = upcoming(root, records, owner) if local else None
@@ -463,7 +472,7 @@ def _today_text(text: str) -> str:
 
 def _today_data(data: dict) -> dict:
     """Small, independently usable Today payload; the complete snapshot stays lazy."""
-    fields = ('path', 'category', 'title', 'updated', 'written', 'last_activity', 'service',
+    fields = ('path', 'category', 'title', 'updated', 'written', 'last_activity', 'service', 'agent',
               'needs_review', 'catalog_parent', 'mail', 'private_project', 'private', 'written_in', 'speaks', 'tags')
     records = [{**{key: r[key] for key in fields if key in r}, 'text': _today_text(r['text']),
                 'translations': {tag: _today_text(text) for tag, text in r.get('translations', {}).items()}}
