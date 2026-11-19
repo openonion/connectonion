@@ -706,6 +706,11 @@
   .best-open { margin-top: 12px; display: flex; gap: 8px; align-items: baseline; font: var(--s-body) var(--font); }
   .best-open .dir { flex-shrink: 0; color: var(--grey); }
   .search-group { max-width: 80ch; }
+  .search-group[hidden] { display: none; }
+  .search-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; max-width: 80ch; }
+  .search-kinds button[aria-pressed="true"] { box-shadow: var(--e-ink); color: var(--ink); }
+  .search-more { margin: 8px 0 0; }
+  .hits > li[hidden] { display: none; }
   h2.section.group { font-size: var(--s-body); margin: 28px 0 8px; }
   @media (max-width: 820px) { .best-facts { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: 96px minmax(0, 1fr); } }
 
@@ -4618,6 +4623,8 @@ const UI = {
     "The retained message has no body text. Its headers are available.": "留存的消息没有正文，可查看邮件头。",
     "Source-backed changes from the latest pass. Page rewrites are listed separately.": "上次更新中有来源支持的变化。页面改写单独列出。",
     "No verified claim change in this pass": "这次更新中没有已核实的陈述变化",
+    "No page content changed last night": "昨夜没有页面内容改变",
+    "What last night changed in your notebook, each with its source. Rewritten pages are listed below.": "昨夜笔记本里改了什么，每条都带出处。重写过的页面列在下面。",
     "Pages rewritten": "改写的页面",
     "Current context": "当前背景",
     "Nothing open": "暂无待办",
@@ -4703,6 +4710,7 @@ const UI = {
     "See all…": "查看全部…",
     "{n} things are waiting on you": "有 {n} 件事等你处理",
     "{n} sections · {m} sources": "{n} 个章节 · {m} 个来源",
+    "1 section": "1 个章节", "{n} sections": "{n} 个章节", "Show all {n} results": "显示全部 {n} 个", "Kinds": "类别",
     "Show all {n}": "显示全部 {n} 项",
     "Source {n} of {m} for this line": "这条陈述的来源 {n} / {m}",
     "You owe {name}": "你欠 {name}",
@@ -5697,9 +5705,9 @@ function quoteSpans(html) {
 function shortHash(text) {
   return text.replace(/\b([0-9a-f]{12})[0-9a-f]{28,}\b/gi, "$1…");
 }
-const UNKNOWN_TEXT = /^Unknown\s*—\s*(?:not investigated yet|not verified)/i;
+const UNKNOWN_TEXT = /^(?:Unknown\s*—\s*(?:not investigated yet|not verified)|未知\s*[—–-]+\s*尚未(?:调查|核实|验证))/i;
 // Only the placeholder: "Unknown — not verified. The latest session, 2026-06-09, …" is a finding (1.9.2b1).
-const UNFILLED_LINE = /^Unknown\s*—\s*(?:not investigated yet|not verified)[.;]?\s*(?:\[W?\d+\]\s*)*$/i;
+const UNFILLED_LINE = /^(?:Unknown\s*—\s*(?:not investigated yet|not verified)|未知\s*[—–-]+\s*尚未(?:调查|核实|验证))[.;。；]?\s*(?:\[W?\d+\]\s*)*$/i;
 
 function markdownList(lines, start, from) {
   const marker = /^( *)([-*+]|\d+[.)])\s+(.*)$/;
@@ -5859,7 +5867,7 @@ function sourceChips(text) {
 // that fills it, and lists rank by last contact instead of by the first
 // character of an email address. An unknown answer written as a bare line
 // (a mapped skill's sections) is dropped the same as one written as a bullet.
-const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:：\n]{1,40}[:：]\s*)?(?:unknown|not known)(?:\s*(?:[—(:.;-]|\[\d+\]).*)?\s*$/i;
+const UNKNOWN_LINE = /^\s*(?:[-*]\s*)?(?:[^:：\n]{1,40}[:：]\s*)?(?:unknown|not known|未知)(?:\s*(?:[—–(:.;。；-]|\[\d+\]).*)?\s*$/i;
 // Sections every mapped page fills from metadata alone: they are not findings.
 const MECHANICAL = new Set(["facts", "contact", "history", "uncertainties", "sources", "people here", "domains"]);
 // What mapping writes where an answer will go (files.py): a placeholder, not a finding.
@@ -5868,7 +5876,7 @@ const STAMP = /^Investigation:[^\n]*$/m;
 // Markers the notebook's own tools leave in a page (<!-- rem-usage -->): not text.
 const COMMENT = /<!--[\s\S]*?-->/g;
 // A person page's lead as mapping writes it (files.py PERSON_LEAD, #1974): a slot, not a finding.
-const UNFILLED_LEAD = /^Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact[:：]\s*Unknown\.?)?$/i;
+const UNFILLED_LEAD = /^(?:Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact[:：]\s*Unknown\.?)?|未知\s*[—–-]+\s*尚未调查[。.]?)$/i;
 const KNOWN = new Map();
 function known(r) {
   if (KNOWN.has(r.path)) return KNOWN.get(r.path);
@@ -7887,7 +7895,8 @@ function claimValue(claim, r, after, compact = false) {
     if (translated) { value = translated; original = false; }
   }
   // The 原文 mark stays outside the strike-through: it labels the language, not the old value.
-  return el("span", {}, [el(after ? "span" : "del", { text: compact ? plainLine(value) : value }), original ? originalMark() : null]);
+  value = localDates(compact ? plainLine(value) : value);  // the reader's dates, never 2026-11-18T14:00:00Z
+  return el("span", {}, [el(after ? "span" : "del", { text: value }), original ? originalMark() : null]);
 }
 function changeCard(claim) {
   const r = byPath(claim.record);
@@ -9048,12 +9057,13 @@ function taskView(kind) {
   if (kind === "changes") {
     const pass = lastPass();
     main.appendChild(el("h1", { text: t("Memory changes") }));
-    main.appendChild(el("p", { class: "lede", text: t("Source-backed changes from the latest pass. Page rewrites are listed separately.") }));
+    main.appendChild(el("p", { class: "lede", text: t("What last night changed in your notebook, each with its source. Rewritten pages are listed below.") }));
     const claims = firstBuild() ? [] : pass?.claims || [];
     if (claims.length) main.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
-    else main.appendChild(emptyState(firstBuild() ? "No changes yet — this is the first build." : "No verified claim change in this pass"));
-    if (!firstBuild() && pass?.changed?.length) main.appendChild(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
-      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))]));
+    // About the notebook, not about REM's checking (auto-scan, #3165).
+    else main.appendChild(emptyState(firstBuild() ? "No changes yet — this is the first build." : "No page content changed last night"));
+    if (!firstBuild() && pass?.changed?.length) main.appendChild(localDatesIn(el("div", { class: "changed-pages" }, [sectionHead("Pages rewritten", "Current context"),
+      el("ul", { class: "hits" }, pass.changed.map(r => row(r, { kind: true, hideZeroUsage: true })))])));
     // REM's own run history stays out of the sidebar (D-03); this is its only door.
     main.appendChild(el("a", { class: "rem-activity", href: "#view=activity", text: t("REM activity →") }));
     // Questions & connections left the sidebar too (2026-11-09); its route stays and this is its door.
@@ -14465,9 +14475,17 @@ function recordEyebrow(r, person) {
   return el("div", { class: "eyebrow" }, children);
 }
 
+// A skill is called by what it does when that is a short phrase ("AI 语言特征修复"), with its slug (what is typed)
+// under it; otherwise by the slug alone. A long sentence or a placeholder is not a name.
+function skillDisplayName(r) {
+  // Only a slug ("ai-language-fix") gives way; a skill already named in words ("Demo") keeps its name.
+  if (r.category !== "skills" || !/^[a-z0-9]+(?:[-_.][a-z0-9]+)+$/.test(r.title.trim())) return "";
+  const line = plainLine((section(r, "what it does")?.text || "").split("\n").find(l => l.trim()) || "").replace(/\s*\((?:user|project|plugin)\)\s*$/i, "").trim();
+  return line && line.length <= 40 && !UNKNOWN_TEXT.test(line) && !/^unknown\b|^未知/i.test(line) && line.toLowerCase() !== r.title.toLowerCase() ? line : "";
+}
 function memoryHint(r, disclosed, sections, sources) {
   if (r.category === "orgs") return r.updated ? t("File updated") + " " + calendarDate(calendarDay(r.updated)) : "";
-  return (disclosed ? t("{n} sections · {m} sources", { n: sections, m: sources }) : t("Original note · all fields · citations"))
+  return (disclosed ? (sources ? t("{n} sections · {m} sources", { n: sections, m: sources }) : t(sections === 1 ? "1 section" : "{n} sections", { n: sections })) : t("Original note · all fields · citations"))
     + (r.category === "projects" ? " · " + t("File updated") + " " + fmtDate(r.updated) : "");
 }
 
@@ -14496,7 +14514,8 @@ function record(path, heading) {
   // Keep the original prose in the full note. The first screen uses the
   // structured status, actions, facts and connections above that note.
   let intro = k.intro;
-  const head = el("header", { class: "page-head" }, [el("h1", { text: r.title })]);
+  const head = el("header", { class: "page-head" }, [el("h1", { text: skillDisplayName(r) || r.title }),
+    skillDisplayName(r) ? el("p", { class: "skill-slug mono", text: "/" + r.title }) : null].filter(Boolean));
   if (person) { main.appendChild(personPage(r)); fitNames(); }
   else if (r.category === "orgs") {
     main.appendChild(orgPage(r));
@@ -14646,6 +14665,27 @@ function record(path, heading) {
     } else if (target) target.scrollIntoView();
   }
   if (r.category !== "orgs") graphRailAttach(main, r);
+  shortenPaths(main);
+}
+// A local path in page text reads as its file name; the whole path is one hover away (auto-scan, #3165).
+const LOCAL_PATH = /(?:\/Users|\/home|\/private|\/var\/folders|~)\/[^\s<>"'`，。、；）)\]]+/g;
+function shortenPaths(root) {
+  const hasPath = text => { LOCAL_PATH.lastIndex = 0; return LOCAL_PATH.test(text); };
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: node =>
+    hasPath(node.nodeValue) && !node.parentElement.closest("a, pre, textarea, input, .local-path") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const parts = [], text = node.nodeValue;
+    let last = 0;
+    for (const m of text.matchAll(LOCAL_PATH)) {
+      parts.push(document.createTextNode(text.slice(last, m.index)));
+      parts.push(el("span", { class: "local-path", title: m[0], text: m[0].replace(/\/+$/, "").split("/").pop() }));
+      last = m.index + m[0].length;
+    }
+    parts.push(document.createTextNode(text.slice(last)));
+    node.replaceWith(...parts);
+  }
 }
 
 function highlight(line, needle) {
@@ -14760,10 +14800,12 @@ function search(q, relatedPath = "") {
   // The best match answers: a person's or organisation's name gets its facts right here.
   const eligible = new Set(listedRecords().map(r => r.path));
   const named = nameMatches(hits.map(h => h.r).filter(r => eligible.has(r.path) && FACT_LABELS[r.category]), q);
-  if (named.length > 1) main.appendChild(identityChoices(named, q));
+  // A handful of same-named pages is a choice; more than five is what the groups below are for.
+  if (named.length > 1 && named.length <= 5) main.appendChild(identityChoices(named, q));
   else if (named.length === 1) main.appendChild(bestMatch(named[0]));
-  // Grouped by kind, people first; one snippet a page, never a local path.
-  const ORDER = ["people", "orgs", "projects", "skills", "sessions"];
+  // Grouped by kind, people first; one snippet a page, never a local path. Each group shows its first five and
+  // "显示全部 N 个"; chips above filter to one kind (#3169: 232 hits used to be one 22-screen list).
+  const ORDER = ["people", "orgs", "projects", "knowledge", "skills", "decisions", "principles", "sessions"];
   const rank = c => ORDER.includes(c) ? ORDER.indexOf(c) : ORDER.length;
   const groups = new Map();
   for (const hit of hits.sort((a, b) => rank(a.r.category) - rank(b.r.category))) {
@@ -14771,23 +14813,60 @@ function search(q, relatedPath = "") {
     groups.get(hit.r.category).push(hit);
   }
   const isPath = l => /^(?:\/|~\/|[A-Z]:\\)\S+/.test(l) || /^(?:File|Path)[:：]\s*[/~]/.test(l);
+  if (groups.size > 1) {
+    const chips = el("div", { class: "search-kinds", role: "group", "aria-label": t("Kinds") });
+    const choose = kind => { chips.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.kind === kind)));
+      main.querySelectorAll(".search-group").forEach(g => { g.hidden = kind !== "all" && g.dataset.kind !== kind; }); };
+    for (const [kind, words, n] of [["all", t("All"), hits.length], ...[...groups].map(([c, list]) => [c, label(c), list.length])]) {
+      const b = el("button", { type: "button", class: "chip ghost", "data-kind": kind, "aria-pressed": String(kind === "all") }, [el("span", { text: words }), el("span", { class: "mono", text: " " + n })]);
+      b.onclick = () => choose(kind);
+      chips.appendChild(b);
+    }
+    main.appendChild(chips);
+  }
+  const FIRST = 5;
   for (const [c, list] of groups) {
-    const group = el("section", { class: "search-group" });
+    const group = el("section", { class: "search-group", "data-kind": c });
     main.appendChild(group);
     group.appendChild(el("h2", { class: "section group" }, [el("span", { text: label(c) }), el("span", { class: "n", text: String(list.length) })]));
     const ul = el("ul", { class: "hits" });
-    for (const { r, lines } of (c === "sessions" ? list.slice(0, 8) : list)) {
+    for (const [i, { r, lines }] of list.entries()) {
       const li = el("li", {}, [
         el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r) + (c === "sessions" ? "&find=" + encodeURIComponent(q) : ""), html: highlight(r.title, needle) }), statusPill(r)]),
           el("span", { class: "when", text: shortDate(known(r).last) })])]);
-      const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, "")).find(l => !isPath(l));
-      if (line) li.appendChild(el("div", { class: "hit", html: highlight(summaryLine(line), needle) }));
+      // The snippet adds what the title does not say: a line that only repeats the title is skipped.
+      const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, ""))
+        .find(l => !isPath(l) && l.toLowerCase() !== r.title.trim().toLowerCase());
+      if (line) li.appendChild(el("div", { class: "hit", html: highlight(searchSnippet(summaryLine(line)), needle) }));
+      if (i >= FIRST) li.hidden = true;
       ul.appendChild(li);
     }
     group.appendChild(ul);
+    if (list.length > FIRST) {
+      const more = el("button", { type: "button", class: "chip ghost search-more", text: t("Show all {n} results", { n: list.length }) });
+      more.onclick = () => { ul.querySelectorAll("li[hidden]").forEach(li => { li.hidden = false; }); more.remove(); };
+      group.appendChild(more);
+    }
     if (c === "sessions") group.appendChild(el("a", { href: sessionHash({ find: q }),
       text: list.length === 1 ? t("Open in Agent sessions →") : t("{n} matching sessions →", { n: list.length }) }));
   }
+}
+// A search snippet reads as a sentence: dates in the reader's own form, never a raw source id, hash or uuid.
+function searchSnippet(text) {
+  return localDates(text).replace(/\b(?:codex|claude-code|gmail|outlook|whatsapp|lark|feishu|wechat|session):[^\s)\]，。,;]+/gi, "")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "").replace(/\b[0-9a-f]{20,}\b/gi, "")
+    .replace(/\s+([，。,.;:])/g, "$1").replace(/\s{2,}/g, " ").trim();
+}
+// Every ISO date in a block's text, in the reader's form (links and code untouched).
+function localDatesIn(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode())
+    if (!node.parentElement.closest("pre, code") && /\d{4}-\d{2}-\d{2}/.test(node.nodeValue)) node.nodeValue = localDates(node.nodeValue);
+  return root;
+}
+// ISO dates and timestamps (2026-10-01, 2026-10-01T10:00:00Z) as the reader's short date.
+function localDates(text) {
+  return String(text).replace(/\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g, (m, day) => fmtDate(day));
 }
 function bestMatch(r) {
   const f = facts(r), k = known(r), parsed = parseFacts(r);
