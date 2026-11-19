@@ -226,9 +226,12 @@ def test_a_pending_translation_is_a_quiet_worded_line_under_the_header(reader, p
     assert line.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
     assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
     assert line.get_attribute("role") is None                       # not announced again on every render
-    step = "--s-ui" if path.startswith("projects/") else "--s-meta"   # nothing in Projects is under 13px (#3096)
+    step = "--s-ui" if path.startswith(("projects/", "people/")) else "--s-meta"   # nothing in Projects (#3096) or a person header (#3131) is under 13px
     meta = page.evaluate(f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
     assert line.evaluate("n => getComputedStyle(n).fontSize") == meta
     box, header = line.bounding_box(), page.locator(f"#main {head}").first.bounding_box()
-    assert box["y"] >= header["y"] + header["height"] - 1             # under the header, by the body
+    if head == ".person-head":  # a person's controls have one home, the header's action column (#3131)
+        assert line.evaluate("n => !!n.closest('.person-head .hero-acts')")
+    else:
+        assert box["y"] >= header["y"] + header["height"] - 1         # under the header, by the body
     assert page.locator("#main > p[role=status]").filter(has_text="翻译中").count() == 0

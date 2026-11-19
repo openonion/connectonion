@@ -180,11 +180,12 @@ def test_a_handle_carries_its_services_mark_or_an_at_with_the_services_name(valu
     assert mark == [picture, word]
 
 
-def test_a_contact_row_says_its_kind_in_words_beside_its_picture():
+def test_a_contact_row_says_its_kind_in_words():
     """Owner: state is said in words, never by a mark alone. The person page's round buttons became the profile
-    card (2026-11-18): every row puts its kind in words beside its picture, and a value copies with a worded reply."""
+    card (2026-11-18); its rows say their kind in a word in one label column, with no picture beside some labels and
+    not others (#3131, 2026-11-19), and a value copies with a worded reply."""
     card = _function('profileCard')
-    assert 'el("dt", { class: "pc-k" }, [row.pic ? icon(row.pic) : null, el("span", { text: t(row.label) })])' in card
+    assert 'el("dt", { class: "pc-k", text: t(row.label) })' in card and "icon(row.pic)" not in card
     assert 'add("Contact", "Email", "mail"' in card and 'add("Contact", "Phone", "phone"' in card
     copy = _function('profileValue')
     assert 'say("Copied")' in copy and 'say("Copy failed")' in copy

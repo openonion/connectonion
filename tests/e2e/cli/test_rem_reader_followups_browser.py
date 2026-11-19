@@ -117,7 +117,7 @@ def test_a_person_page_is_never_wider_than_its_window(reader, width, theme):
       .map(n => n.className + ' ' + Math.round(n.getBoundingClientRect().right)).slice(0, 6)""")
     assert page.evaluate("document.documentElement.scrollWidth") == width, wide
     tails = page.locator(".fact-tail").evaluate_all("""tails => tails.map(t => { const cite = t.querySelector('.cite');
-      if (!cite) return true; const range = document.createRange(); range.selectNodeContents(t.firstChild || t);
+      if (!cite || !cite.getClientRects().length) return true; const range = document.createRange(); range.selectNodeContents(t.firstChild || t);
       const words = [...range.getClientRects()].filter(r => r.width > 0), last = words[words.length - 1], c = cite.getBoundingClientRect();
       return !last || Math.abs(last.top - c.top) < c.height; })""")
     assert all(tails), tails  # the citation marks stay on the line of the fact's last word

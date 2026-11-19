@@ -4538,7 +4538,7 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
         REM.live = true;
         const reopened = words(investigateRequest({path: 'projects/private-notes-ab12.md', private_project: true,
           task: {id: 'f'.repeat(32), agent: 'codex', result: 'completed'}}));
-        console.log(JSON.stringify({before, after, requests, snapshot, reopened, kept: r.investigation.task.result}));
+        console.log(JSON.stringify({before, after, requests, snapshot, reopened, kept: r.codex_look.task.result}));
       });
     ''')
     assert result['before'] == ['Ask Codex to look', 'Ask Claude to look']

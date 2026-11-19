@@ -110,7 +110,8 @@ def test_an_english_page_with_no_translation_asked_for_carries_no_original_label
     assert page.locator("#main .translation-line").count() == 0
 
 
-# A translation genuinely on its way is one quiet worded line by the body, never a chip above the name.
+# A translation genuinely on its way is one quiet worded line, never a chip above the name. On a person it sits in
+# the header's one action column under 调查 (#3131: controls have a fixed home); elsewhere it is by the body.
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("hash_, head", [("r=" + MARA.replace("/", "%2F"), ".person-head"), ("r=orgs%2Ffernhill-labs.md", ".ov-say h1"),
                                          ("r=projects%2Fharbour.md", ".page-head")])
@@ -123,10 +124,13 @@ def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width,
     assert line.evaluate("n => n.firstChild.textContent") == "中文版还没好，先看原文"
     assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
-    assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
+    if head == ".person-head":
+        assert line.evaluate("n => !!n.closest('.person-head .hero-acts')")
+    else:
+        assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
     # Quiet means the smallest step the place allows: a caption on people and organisations, the 13px label
     # on a project, where nothing is under 13px (#3096).
-    step = "--s-ui" if head == ".page-head" else "--s-meta"
+    step = "--s-ui" if head in (".page-head", ".person-head") else "--s-meta"
     assert line.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
         f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
     assert any(path == "/rem/translation-request" for path, _ in calls)
@@ -188,20 +192,16 @@ def test_phone_person_face_sits_with_the_name_not_the_actions(reader):
 # handle a speech bubble. Each is now the published picture, the same size as its neighbours, centred in its
 # button, and its kind is said in words beside the value on hover and in its name.
 @pytest.mark.parametrize("width", [1440, 390])
-def test_contact_rows_are_published_pictures_with_their_kind_in_words(reader, width):
-    """The round contact buttons became the profile card's Contact rows (2026-11-18); the pictures stay the published
-    sets in the page's ink, and each row says its kind in words beside its picture."""
+def test_contact_rows_say_their_kind_in_words_and_copy_on_a_click(reader, width):
+    """The profile card's rows (#3131, owner 2026-11-19: «资料卡片很丑»): each says its kind in a word in one label
+    column, with no picture beside some labels and not others, and an address, phone or handle copies on a click."""
     open_page, _ = reader
     page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
-    rows = page.locator(".person-head .pcard .pc-row").evaluate_all("""rows => rows.filter(r => r.querySelector('.pc-k svg')).map(r => {
-      const svg = r.querySelector('.pc-k svg'), paint = getComputedStyle(svg), word = r.querySelector('.pc-k span:last-child');
-      return {word: word.textContent, hidden: r.querySelector('.pc-k .icw').getAttribute('aria-hidden'), copy: !!r.querySelector('.pc-copy'),
-        filled: paint.fill !== 'none', stroked: paint.stroke !== 'none',
-        same: paint.fill === getComputedStyle(svg.closest('.pc-k')).color || paint.stroke === getComputedStyle(svg.closest('.pc-k')).color}; })""")
-    assert [r["word"] for r in rows][:3] == ["Email", "Phone", "GitHub"]  # the word, not the picture alone
-    assert all(r["hidden"] == "true" and r["copy"] for r in rows[:3])
-    assert [(r["filled"], r["stroked"]) for r in rows[:3]] == [(False, True), (False, True), (True, False)]  # a mark is solid, in ink
-    assert all(r["same"] for r in rows[:3])
+    rows = page.locator(".person-head .pcard .pc-row").evaluate_all("""rows => rows.map(r => ({
+      word: r.querySelector('.pc-k').textContent, picture: !!r.querySelector('.pc-k svg'), copy: !!r.querySelector('.pc-copy')}))""")
+    assert [r["word"] for r in rows][:3] == ["Email", "Phone", "GitHub"]
+    assert all(r["copy"] for r in rows[:3])
+    assert not any(r["picture"] for r in rows)  # one label language: words
     assert page.locator(".person-head .round").count() == 0
 
 
@@ -242,8 +242,9 @@ def test_open_topics_count_only_shown_rows_when_labelled_passages_are_hidden(rea
     assert "5" not in page.locator(".r4-person .r4-topics h2, .r4-person .r4-topics .end").all_inner_texts().__str__()
 
 
-# 7. The profile card is the first thing on the person page (owner, 2026-11-18): every known fact as a label over
-# its value under the name, nothing to expand, unknown facts one quiet line, each fact in one place.
+# 7. The profile card is the first thing on the person page (owner, 2026-11-18): every known fact under the name,
+# nothing to expand, each fact in one place. #3131 (2026-11-19): one line per fact, place and last contact in the
+# header's third line, and what is unknown in the card's tooltip, not a line of "not found".
 @pytest.mark.parametrize("width", [1440, 390])
 def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(reader, width):
     open_page, _ = reader
@@ -263,13 +264,19 @@ def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(re
     name, box = _box(page.locator(".person-head h1")), _box(card)
     assert name["y"] + name["height"] <= box["y"] < 844, "the card is under the name, on the first screen"
     labels = card.locator(".pc-k").all_inner_texts()
-    for label in ["Email", "Phone", "GitHub", "Discord", "Signing entity", "How we know them", "First contact", "Last contact",
-                  "Also known as", "Language", "Location"]:
+    for label in ["Email", "Phone", "GitHub", "Discord", "Signing entity", "How we know them", "First contact",
+                  "Also known as", "Language"]:
         assert label in labels, label
+    meta = page.locator(".person-head .hero-meta").inner_text()
+    assert "Last contact" in meta and "Last contact" not in labels and "Location" not in labels  # said once, in the header
     text = card.inner_text()
     assert "+64 21 555 0199" in text and "Fernhill Labs Ltd" in text and "M. Ostrowski" in text
-    assert "not found" not in text.replace("1 fact not found", "")  # no rows of "not found"; at most one quiet line
-    assert "1 fact not found" in text and "Time zone" not in labels  # the one unknown left is a count, not a row
+    assert "not found" not in text and "Time zone" not in labels  # no rows or lines of "not found"
+    assert "1 fact not found" in card.get_attribute("title")  # what is unknown is one hover away
+    # Every fact is one row: a label column beside its value, never a label stacked over it.
+    for row in card.locator(".pc-row").all()[:4]:
+        k, v = _box(row.locator(".pc-k")), _box(row.locator(".pc-v"))
+        assert abs(k["y"] - v["y"]) < 6 and k["x"] + k["width"] <= v["x"]
     # One place per fact: role and organisation are the line under the name, not chips, rows or round buttons.
     assert "Head of Partnerships" in page.locator(".r4-sub").inner_text() and "Head of Partnerships" not in text
     assert page.locator(".person-head .round, .r4-sub .chip").count() == 0
