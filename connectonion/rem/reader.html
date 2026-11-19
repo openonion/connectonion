@@ -608,7 +608,9 @@
   .deep-sources li.src-row { grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "n title cited" "n meta cited"; gap: 0 var(--u2); align-items: center; padding: 6px 0; }
   .deep-sources li.src-row[hidden] { display: none; }
   .deep-sources .source-open { grid-area: n; min-width: 32px; min-height: 32px; justify-content: flex-start; top: 0; margin: 0; padding: 0; color: var(--grey); font: var(--s-ui) var(--mono); }
-  .deep-sources .src-title { grid-area: title; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deep-sources .src-title { grid-area: title; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deep-sources .src-title:hover, .deep-sources .src-title:focus-visible { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .deep-sources .src-meta { grid-area: meta; min-width: 0; color: var(--grey); font: var(--s-ui)/var(--lh-body) var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .deep-sources .src-cited { grid-area: cited; min-height: 32px; padding: 0 var(--u2); border: 0; border-radius: var(--radius); background: transparent; color: var(--grey); font: var(--s-ui) var(--font); white-space: nowrap; cursor: pointer; }
   .deep-sources .src-cited:hover, .deep-sources .src-cited:focus-visible { color: var(--ink); background: var(--well); }
@@ -2351,8 +2353,12 @@
   .cal-detail p { margin: 4px 0 0; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
   .cal-detail .cal-where, .cal-detail .cal-source, .cal-detail .cal-who { color: var(--grey); }
   .cal-detail .cal-who a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .cal-detail .cal-open { display: inline-flex; align-items: center; min-height: 32px; margin-top: 12px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); color: var(--ink); font: var(--w-bold) var(--s-ui) var(--font); text-decoration: none; }
-  .cal-detail .cal-open:hover { background: var(--well); }
+  /* Joining is the event's one action; the provider's page is a quiet link at the foot (#3135). */
+  .cal-detail .cal-join { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; margin: 12px 0 4px; padding: 0 18px; text-decoration: none; }
+  .cal-detail .cal-org { color: var(--grey); }
+  .cal-detail .cal-notes { margin-top: 12px; padding-top: 12px; border-top: var(--hair) solid var(--rule); color: var(--ink); white-space: pre-line; max-height: 40vh; overflow: auto; }
+  .cal-detail .cal-open { display: inline-block; margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .cal-detail .cal-open:hover { color: var(--ink); }
 
   /* the month: weekday names, then one grid a week; bars and lines sit in the rows under each date */
   .cal-month { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
@@ -3538,9 +3544,12 @@
   .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0 -16px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .hero-meta > * { margin-left: 16px; }
   .hero-meta > *::before, .n3-person .dek > *::before { content: "·"; display: inline-block; width: 16px; margin-left: -16px; text-align: center; color: var(--grey); }
-  .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
+  .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0 0 0 16px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
     font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .n3-person .hero-meta .r4-today.late { color: var(--red); box-shadow: none; padding: 0; }
+  /* In the meta line the Today link takes the line's "·" like its neighbours, never the card's red dot (Mac review, rc28). */
+  .n3-person .hero-meta .r4-today::before, .n3-person .hero-meta .r4-today.late::before { content: "·"; display: inline-block; width: 16px; height: auto;
+    margin-left: -16px; border-radius: 0; background: none; color: var(--grey); text-align: center; }
   .hero-acts:empty { display: none; }
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
@@ -3585,6 +3594,10 @@
   @keyframes inv-beat { 50% { transform: scale(1.35); } }
   @media (prefers-reduced-motion: reduce) { .inv-steps li.running::before { animation: none; } }
   /* What changed opens over the page like the ⋯ menu, so the name beside it never gives up its width. */
+  /* A record head that holds 调查 is lifted above the cards after it: its rise animation makes it a stacking
+     context, so the menu's and "What changed"'s own z-index only counted inside the head, and every later card
+     (risen the same way, painted later) was drawn over them (owner, 2026-11-19). */
+  :is(.r4-head, .ov-say, .page-head):has(.inv) { position: relative; z-index: 10; }
   .inv-changed { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: 420px; max-width: calc(100vw - 32px); margin: 0;
     padding: 14px 16px; border-radius: var(--r-inner); background: var(--raised); box-shadow: var(--e3); color: var(--ink);
     font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-align: left; }
@@ -6615,8 +6628,11 @@ function sourceRow(r, s) {
   chip.textContent = s.n;
   const meta = [s.channel, s.who, s.day ? fmtDate(s.day) : ""].filter(Boolean).join(" · ");
   const cited = el("button", { type: "button", class: "src-cited", hidden: "" });
+  // The title opens the source itself in the side card (#3134: before the band every source did).
+  const title = el("button", { type: "button", class: "src-title" + (s.missing ? " src-missing" : ""), text: s.title, title: t("Open the original") });
+  title.onclick = () => openEvidence(r, s.n, title, { fromList: true });
   const li = el("li", { id: "src-" + s.n.toLowerCase(), class: "src-row", "data-kind": s.kind, title: s.id || "" }, [chip,
-    el("span", { class: "src-title" + (s.missing ? " src-missing" : ""), text: s.title }), el("span", { class: "src-meta", text: meta }), cited]);
+    title, el("span", { class: "src-meta", text: meta }), cited]);
   li.search = [s.title, s.who, s.channel, s.id, meta].join(" ").toLowerCase();
   return li;
 }
@@ -9871,7 +9887,7 @@ function personSub(r) {
 // above it, so it does not repeat them; unknown facts are one quiet count, never rows of "not found".
 const PROFILE_GROUPS = [["Contact", ["Email", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
   ["Relationship", ["How we know them", "First contact", "Last contact", "Mail"]], ["Identity", ["Also known as", "Language", "Location", "Time zone"]]];
-Object.assign(UI.zh, { "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
+Object.assign(UI.zh, { "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
   "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射",
   "Last contact {when}": "最近联系 {when}", "1 mail": "1 封邮件", "{n} mails": "{n} 封邮件", "+{n} more": "还有 {n} 个", "Show less": "收起" });
 // A handle or link says its platform in words; its picture is that service's published mark (Simple Icons) or,
@@ -10633,7 +10649,7 @@ const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开",
+  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Organised by {name}": "组织者：{name}",
   "{n} items": "{n} 项", "1 item": "1 项",
   "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
   "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
@@ -10715,7 +10731,7 @@ function agLastDay(e, first) {
 }
 const AG_SOURCE = { google: "Google Calendar", microsoft: "Outlook" };
 function agEvent(e, first) {
-  return { kind: "event", allDay: !!e.all_day, first, last: agLastDay(e, first), start: e.start, end: e.end, title: eventTitle(e), link: e.link || "", where: e.location || "",
+  return { kind: "event", allDay: !!e.all_day, first, last: agLastDay(e, first), start: e.start, end: e.end, title: eventTitle(e), link: e.link || "", where: e.location || "", meet: e.meet || null, organizer: e.organizer || "", notes: e.notes || "",
     people: (e.people || []).map(byPath).filter(Boolean), guests: e.guests || 0, provider: e.calendar || "",
     source: [AG_SOURCE[e.calendar], e.calendar_name].filter(Boolean).join(" · ") };
 }
@@ -10779,7 +10795,12 @@ function agDetail(e, anchor) {
   const phone = innerWidth <= 640, close = el("button", { type: "button", class: "ibtn", "aria-label": agT("Close") }, [icon("x")]);
   const dialog = el("dialog", { class: "cal-detail" + (phone ? " n3-sheet" : ""), "aria-label": e.title }, [
     el("div", { class: "sheet-head" }, [el("h2", { text: e.title }), close]),
-    el("p", { class: "cal-when", text: agWhen(e) }), agWeather(e.first) && e.first === e.last ? el("p", { class: "cal-wx-line", text: agWeatherSaid(agWeather(e.first)) }) : null, e.where ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
+    el("p", { class: "cal-when", text: agWhen(e) }), agWeather(e.first) && e.first === e.last ? el("p", { class: "cal-wx-line", text: agWeatherSaid(agWeather(e.first)) }) : null,
+    // The event's own details first (#3135): how to join, who called it, where, who comes, what it is about.
+    e.meet ? el("a", { class: "btn-act cal-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null,
+    e.organizer ? el("p", { class: "cal-org", text: agT("Organised by {name}", { name: e.organizer }) }) : null,
+    e.where && e.where !== e.meet?.url ? el("p", { class: "cal-where", text: e.where }) : null, agGuests(e),
+    e.notes ? el("p", { class: "cal-notes", text: e.notes }) : null,
     e.source ? el("p", { class: "cal-source", text: agT("In {name}", { name: e.source }) }) : null,
     e.link ? el("a", { class: "cal-open", href: e.link, target: "_blank", rel: "noopener", text: agT("Open in {name}", { name: AG_SOURCE[e.provider] || e.source }) + " ↗" }) : null]);
   close.onclick = () => dialog.close();
@@ -15545,16 +15566,17 @@ function sourceIdentity(context) {
   const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
   return byPath(sender)?.title || sourceSender(context);
 }
-function openEvidence(r, number, trigger) {
+function openEvidence(r, number, trigger, { fromList = false } = {}) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase()) || { n: number.toUpperCase(), text: "" };
-  const context = (REM.source_context || {})[sourceId(source.text, source.plain)], line = evidenceLine(trigger);
+  // From the Sources list there is no line of the page to quote: the card is the source alone (#3134).
+  const context = (REM.source_context || {})[sourceId(source.text, source.plain)], line = fromList ? { text: "", numbers: [] } : evidenceLine(trigger);
   const numbers = line.numbers.length ? line.numbers : [source.n];
   const excerpt = context?.excerpt || "", span = supportingSpan(line.text, excerpt);
   const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close source context") });
   close.onclick = closeEvidence;
   panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
-    el("div", { class: "evidence-top" }, [el("span", { text: t("Source {n} of {m} for this line", { n: numbers.indexOf(source.n) + 1, m: numbers.length }) }), close]),
-    el("div", { class: "evidence-claim" }, [el("small", { text: t("On this page") }), el("div", { html: markedSpan(line.text, span?.claim) })]));
+    el("div", { class: "evidence-top" }, [el("span", { text: fromList ? t("Source {n}", { n: source.n }) : t("Source {n} of {m} for this line", { n: numbers.indexOf(source.n) + 1, m: numbers.length }) }), close]),
+    ...(fromList ? [] : [el("div", { class: "evidence-claim" }, [el("small", { text: t("On this page") }), el("div", { html: markedSpan(line.text, span?.claim) })])]));
   if (numbers.length > 1) {
     const select = el("select", { class: "evidence-source-select", "aria-label": t("Source for this line") }, numbers.map(n => el("option", { value: n, text: chipLabel(r, n) })));
     select.value = source.n;

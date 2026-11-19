@@ -490,3 +490,26 @@ def test_each_day_with_a_forecast_says_its_weather_and_the_page_says_where_it_is
     page.evaluate("() => { REM.weather = null; render(); }", isolated_context=False)
     assert page.locator(".cal-wx").count() == 0 and page.locator(".agenda-weather").count() == 0
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_an_event_detail_shows_how_to_join_who_called_it_and_its_notes(agenda):
+    """#3135 (owner, 2026-11-19): not only 'Open in Outlook'. A Meet link is said plainly, with the organiser and notes."""
+    page = agenda
+    _open(page, 1440)
+    page.evaluate("""() => {
+      const e = REM.calendar.events.find(e => e.title === 'Pilot renewal call with Fernhill');
+      Object.assign(e, { meet: { url: 'https://meet.google.com/abc-defg-hij', service: 'Google Meet' }, organizer: 'Mara Ostrowski',
+                         notes: 'Agenda:\\n1. Renewal terms' });
+      render();
+    }""", isolated_context=False)
+    _column(page, 2).get_by_role("button", name="Pilot renewal call with Fernhill").click()
+    detail = page.locator("dialog.cal-detail")
+    join = detail.get_by_role("link", name="Join Google Meet")
+    assert join.get_attribute("href") == "https://meet.google.com/abc-defg-hij"
+    text = detail.inner_text()
+    assert "Organised by Mara Ostrowski" in text and "1. Renewal terms" in text
+    # The provider's page is the last, quiet thing: after the details, not instead of them.
+    names = detail.locator("a").all_inner_texts()
+    assert names[0] == "Join Google Meet" and names[-1].startswith("Open in Google Calendar")
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "calendar-event-detail-1440.png"))

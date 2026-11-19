@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc28
+## Current Version: 1.9.6rc29
+Release candidate 1.9.6rc29 for 1.9.6: a source's title in Full memory's Sources opens its original (mail, file,
+session) in the side card again (#3134); a calendar event shows how to join (Google Meet, Teams, Zoom named), who
+organised it and its notes, with the provider's page a quiet link (#3135); and the Investigate menu and "What
+changed" float over every card under the record head. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc29.md).
+
+- 1.9.6rc29 (source titles open the original; calendar join links and notes; Investigate popovers on top).
+
+### Previous candidate: 1.9.6rc28
 Release candidate 1.9.6rc28 for 1.9.6: the night runs again (a finishing step deadlocked on its own lock; a step
 that keeps stalling is held and named; the Codex quota is read outside the sandbox), Investigate can append to a
 page already over the length limit (its oldest History moves word for word to an archive), the live reader

@@ -285,3 +285,20 @@ def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(re
     phone.click()
     assert "Copied" in phone.inner_text() and page.evaluate("window.copied", isolated_context=False) == "+64 21 555 0199"
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_the_header_meta_line_keeps_a_gap_and_a_dot_between_every_item(reader, width):
+    """Mac review of rc28: '43 封邮●今天 · 逾期 16 天' and '36 封邮件今天里有 6 件': the Today link lost its gap and dot."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width)
+    page.evaluate("""() => { const meta = document.querySelector('.person-head .hero-meta');
+      const late = Object.assign(document.createElement('a'), { className: 'r4-today late', href: '#', textContent: '今天 · 逾期 16 天' });
+      meta.append(Object.assign(document.createElement('span'), { textContent: '43 封邮件' }), late); }""", isolated_context=False)
+    gaps = page.evaluate("""() => { const items = [...document.querySelectorAll('.person-head .hero-meta > *')], out = [];
+      for (let i = 1; i < items.length; i++) { const a = items[i - 1].getBoundingClientRect(), b = items[i].getBoundingClientRect();
+        if (Math.abs(a.top - b.top) < 4) out.push(Math.round(b.left - a.right)); }
+      return out; }""", isolated_context=False)
+    assert gaps and all(gap >= 12 for gap in gaps), gaps
+    dot = page.locator(".person-head .hero-meta .r4-today.late").evaluate("n => getComputedStyle(n, '::before').content")
+    assert dot == '"·"', dot
