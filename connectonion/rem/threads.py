@@ -63,7 +63,10 @@ def observed_versions(root, records):
 
 def listing(root):
     found = read_json(state_path(root, 'threads.json'), {})
+    found.update(_carried(root, found))
     for key, value in found.items():
+        if value.get('moved_from'):
+            continue  # its return was decided where it was carried
         if value['state'] == 'skipped':
             latest = _mail_versions(root, key)
             changed = [row['time'] for thread, row in latest.items()
@@ -73,6 +76,46 @@ def listing(root):
             elif put_off_over(value):
                 value['returned_at'] = value['until']
     return found
+
+
+def line_sources(page, text):
+    """The source ids a page line cites, through the page's own Sources list: what the line rests on."""
+    from .census import CITATION, _thread_sources
+    sources = _thread_sources(page)
+    return sorted({sources[number] for number in CITATION.findall(text) if number in sources})
+
+
+def _carried(root, found):
+    """Marks carried onto the night's rewording of the line they closed (#3098).
+
+    A mark is keyed by its line's exact words, and the night rewrites pages ("open as of 9 Nov" becomes
+    "open as of 17 Nov"), so the item came back as new. A mark that no longer finds its line follows it to the
+    line on the same page that cites the same sources; it stays closed unless the thread has a newer message
+    than the one it was closed on, and then it says so (reason "new_mail"). Nothing is written: the carried
+    key exists only in what this returns, and a mark set on it later is a mark of its own."""
+    from .census import threads as open_lines
+    book, carried, pages = Notebook(root), {}, {}
+    for key, value in found.items():
+        record, _, text = key.partition('\n')
+        if not value.get('sources') or value['state'] not in ('done', 'ignored', 'skipped') or not book.exists(record):
+            continue
+        page = pages.setdefault(record, book.read(record))
+        lines = {done_key(record, line): line for line in open_lines(page)}
+        if key in lines:
+            continue
+        for new_key, line in lines.items():
+            if new_key in found or new_key in carried or line_sources(page, line) != value['sources']:
+                continue
+            moved = {**value, 'moved_from': key}
+            newer = [row['time'] for thread, row in _mail_versions(root, new_key).items()
+                     if thread in value.get('versions', {}) and row['id'] != value['versions'][thread]]
+            if newer:
+                moved.update(returned_at=max(newer), reason='new_mail')
+            elif value['state'] == 'skipped' and put_off_over(value):
+                moved['returned_at'] = value['until']
+            carried[new_key] = moved
+            break
+    return carried
 
 
 def put_off_over(value) -> bool:
@@ -145,6 +188,10 @@ def _set_state(root, key, state, *, device=None, versions=None, at=None, keys=No
             value['keys'] = keys
         if state == 'skipped' and until:
             value['until'] = _moment(until).isoformat()
+        # What the line rests on, so the mark can follow the night's rewording of it (#3098).
+        record, _, text = key.partition('\n')
+        if Notebook(root).exists(record):
+            value['sources'] = line_sources(Notebook(root).read(record), text)
         # The page names the mail it showed; a cited thread it could not place is held at the notebook's latest.
         value['versions'] = {**{thread: row['id'] for thread, row in _mail_versions(root, key).items()}, **(versions or {})}
         found[key] = value
