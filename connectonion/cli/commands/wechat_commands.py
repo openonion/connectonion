@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [os, re, platform, pathlib, typer, rich.console, ...useful_tools.wechat] | imported by [cli/main.py via wechat_app] | decryption engine (SQLCipher 4, cryptography — no new package) in useful_tools/wechat.py
   Data flow: doctor → inspects the WeChat container path + whether WECHAT_DB_KEY is set → report | key set → validates x'<hex>' → writes WECHAT_DB_KEY to ~/.co/keys.env (0600) | key (no args) → prints the consented manual procedure | chats → decrypt each db in memory, list tables+counts | decrypt → write plaintext .db copies | export → one table → JSON/Markdown
   State/Effects: read-only except `key set` (upserts one line in ~/.co/keys.env) and `decrypt` (writes plaintext SQLite copies to --out) | the container probe runs in a timed daemon thread so a TCC prompt cannot hang a non-interactive run | never writes to WeChat's files or network
-  Integration: exposes wechat_app for cli/main.py (`app.add_typer(wechat_app, name="wechat")`) | design + staged plan in docs/wechat-read.md | relates to #1215 (live read/send); REM admission of the export is the next step
+  Integration: cli/main.py registers wechat_app under the name "wechat" | design + staged plan in docs/wechat-read.md | relates to #1215 (live read/send); REM admission of the export is the next step
   Errors: macOS-only — exit 2 off macOS | exit 2 when a read command lacks container access or the key, each with the exact next step | WrongKeyError per database is reported and skipped | `key set` exit 2 on a malformed key
 """
 
@@ -134,15 +134,16 @@ def doctor():
 
 
 key_app = typer.Typer(
-    help="The WeChat database key: how to obtain it (a consented local step), and how to save one you have.",
+    help="The WeChat database key: how to obtain it (a consented local step), and how to save one you have. Read-only unless you run `set`.",
     no_args_is_help=False,
     invoke_without_command=True,
+    epilog="Example:  co wechat key  |  co wechat key set x'0f1e2d3c...'",
 )
 
 
 @key_app.callback(invoke_without_command=True)
 def key_help(ctx: typer.Context):
-    """With no subcommand, explain how to obtain the key. `co wechat key set x'<hex>'` saves one."""
+    """With no subcommand, explain how to obtain the key. Read-only. `co wechat key set x'<hex>'` saves one."""
     if ctx.invoked_subcommand is not None:
         return
     _require_macos()
@@ -169,7 +170,7 @@ def key_help(ctx: typer.Context):
 def key_set(
     key: str = typer.Argument(..., help="The SQLCipher raw key as x'<64 hex chars>', obtained per co wechat key --help"),
 ):
-    """Save a WeChat database key you obtained into ~/.co/keys.env (owner-only). Validates the x'<hex>' form."""
+    """Writes a WeChat database key you obtained into ~/.co/keys.env (owner-only). Validates the x'<hex>' form."""
     _require_macos()
     if not RAW_KEY_RE.match(key.strip()):
         console.print("[bold red]Not a valid key.[/bold red] Expected a SQLCipher raw key: x'<64 hex characters>'.")
@@ -198,7 +199,7 @@ def _ready() -> tuple[Path, str]:
 
 @wechat_app.command("chats", epilog="Example:  co wechat chats")
 def chats():
-    """Show each local WeChat database and its tables with row counts (schema discovery). Decrypts in memory; nothing is written."""
+    """Show each local WeChat database and its tables with row counts (schema discovery). Read-only: decrypts in memory, nothing is written."""
     from ...useful_tools import wechat as engine
 
     db_storage, key = _ready()
@@ -220,7 +221,7 @@ def chats():
 def decrypt(
     out: Path = typer.Option(Path("wechat-plain"), "--out", help="Directory to write plaintext SQLite copies into"),
 ):
-    """Decrypt every local WeChat database to plaintext SQLite files you can open with any sqlite tool. Local only."""
+    """Writes a plaintext SQLite copy of every local WeChat database into --out, openable by any sqlite tool. Local only."""
     from ...useful_tools import wechat as engine
 
     db_storage, key = _ready()
@@ -247,7 +248,7 @@ def export(
     fmt: str = typer.Option("json", "--format", help="json or md"),
     out: Path = typer.Option(None, "--out", help="Write here instead of stdout"),
 ):
-    """Export one table from a local WeChat database as JSON or Markdown. Schema-agnostic; decrypts in memory."""
+    """Writes one table from a local WeChat database as JSON or Markdown to --out, or prints it. Schema-agnostic; decrypts in memory."""
     import json
     from ...useful_tools import wechat as engine
 
