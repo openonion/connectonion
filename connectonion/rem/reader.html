@@ -4774,7 +4774,7 @@ const UI = {
     "Original excerpts are hidden until you show labelled passages.": "原始摘录已隐藏，可选择显示已标记段落。",
     "The original isn't in this snapshot.": "此快照未包含原始内容。",
     "Getting the original…": "正在取原文…", "Repository file": "代码仓库文件", "REM kept this link, not a copy of the page.": "REM 只记下了这个链接，没有存网页副本。",
-    "REM did not keep a copy of this source.": "REM 没有存下这个来源的原文。", "Open the web page": "打开网页",
+    "REM did not keep a copy of this source.": "REM 没有存下这个来源的原文。", "Open the web page": "打开网页", "{engine} search: {query}": "{engine} 搜索：{query}",
     "The page this source belongs to isn't in this snapshot.": "这条来源所在的页面不在这份快照里。",
     "Full source ID": "完整来源 ID",
     "Find in archived source": "在存档来源中查找",
@@ -5833,8 +5833,29 @@ function citationId(r, n) {
   return sourceId(citationSource(r, n), r && sourceList(r).find(s => s.n === n)?.plain);
 }
 function sourceChannel(kind) {
-  return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp" })[kind]
+  // A context without a kind (a web capture from an older Host) names no channel rather than throwing: the throw
+  // left a web source's card with its header alone (rc35 hunt).
+  kind = String(kind || "");
+  if (!kind) return "";
+  return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp", web: "Web" })[kind]
     || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1)));
+}
+// A web source is named for a person, never by its URL-encoded query (rc35 hunt: "duckduckgo.com/?q=%22…"): a saved
+// page by its own title, a search as "DuckDuckGo search: "…"", anything else by its site and decoded path.
+function isWebSource(id) {
+  return /^https?:\/\//i.test(id || "") && URL.canParse(id);
+}
+function webSource(id, context) {
+  const SEARCH_ENGINES = { google: "Google", duckduckgo: "DuckDuckGo", bing: "Bing", "search.brave": "Brave", baidu: "Baidu", yandex: "Yandex" };
+  const url = new URL(id), site = url.hostname.replace(/^www\./, "");
+  if (context?.title) return { site, title: context.title };
+  const engine = Object.entries(SEARCH_ENGINES).find(([key]) => site.startsWith(key + "."))?.[1];
+  const query = ["q", "query", "wd", "text", "p"].map(key => url.searchParams.get(key)).find(Boolean) || "";
+  if (engine && query) return { site, title: t("{engine} search: {query}", { engine,
+    query: uiLanguage === "zh" ? query.replace(/"([^"]*)"/g, "“$1”") : query }) };
+  const decoded = [url.pathname, url.search].map(part => { const text = part.replace(/\+/g, " ");
+    return /%[0-9a-f]{2}/i.test(text) && !/%(?![0-9a-f]{2})/i.test(text) ? decodeURIComponent(text) : text; }).join("");
+  return { site, title: site + (decoded === "/" ? "" : decoded.replace(/\/$/, "")) };
 }
 function sourceSender(context) {
   const from = context.participants?.from;
@@ -5856,6 +5877,8 @@ function chipLabel(r, n) {
   const kind = context?.source || id.split(":")[0] || /\b(gmail|outlook|codex|claude|project-source|whatsapp)\b/i.exec(text)?.[1]?.toLowerCase() || "";
   const day = context?.time ? calendarDay(context.time) : /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
   const when = day ? fmtDate(day) : "";
+  // A link is named by its site ("duckduckgo.com, Nov 17"), never "Https".
+  if (isWebSource(id)) return [webSource(id, context).site, when].filter(Boolean).join(", ");
   const label = [context && sourceSender(context), sourceChannel(kind), when].filter(Boolean);
   return label.join(", ") || t("source {n}", { n });
 }
@@ -7264,11 +7287,11 @@ function sourceSummary(r, src) {
     const origin = context?.origin || REM.source_labels?.[id]?.origin || "";
     title = origin ? fileName(origin.replace(/^(git|file):/, "").replace(/:[0-9a-f]{7,}$/, "").replace(/@[0-9a-f]{64}$/, "")) : t("Repository file");
   } else if (scheme === "file") title = fileName(id.slice(scheme.length + 1).replace(/@[0-9a-f]{64}$/, ""));
-  else if (/^https?$/.test(scheme)) title = id.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+  else if (isWebSource(id)) title = webSource(id, context).title;
   else if (scheme === "investigation") title = t("REM investigation") + (note ? " — " + note : "");
   else title = note || sourceLabel(id);
   const channel = !id ? "" : kind === "mail" ? sourceChannel(context?.source && context.source !== "attachment" ? context.source : scheme)
-    : kind === "session" ? (scheme === "codex" ? "Codex" : "Claude Code") : kind === "file" ? t("File") : /^https?$/.test(scheme) ? t("Web") : "";
+    : kind === "session" ? (scheme === "codex" ? "Codex" : "Claude Code") : kind === "file" ? t("File") : isWebSource(id) ? webSource(id).site : "";
   return { n: src.n, id, kind, title, who, channel, day, ...(id && !context && kind === "mail" ? { missing: true } : {}) };
 }
 // Most cited first, then newest, then the page's own number.
@@ -17031,7 +17054,12 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
     select.onchange = () => openEvidence(r, select.value, trigger);
     panel.insertBefore(select, panel.querySelector(".evidence-claim"));
   }
-  panel.appendChild(el("div", { class: "evidence-identity" }, [
+  const sourceKey = sourceId(source.text, source.plain), web = isWebSource(sourceKey) ? webSource(sourceKey, context) : null;
+  // A web source says which page, on which site, read when (rc35 hunt: its card said nothing at all).
+  const webDay = web && (context?.captured_at || /\b\d{4}-\d{2}-\d{2}\b/.exec(source.text.slice(sourceKey.length))?.[0] || "");
+  panel.appendChild(el("div", { class: "evidence-identity" }, web ? [
+    el("p", { class: "evidence-meta", text: [t("Web"), web.site, webDay && fmtDate(webDay)].filter(Boolean).join(" · ") }),
+    el("p", { class: "evidence-subject", text: web.title })] : [
     el("p", { class: "evidence-meta", text: context
       ? [sourceIdentity(context), sourceChannel(context.source), context.time && fmtTime(context.time)].filter(Boolean).join(" · ")
       : chipLabel(r, source.n) }),
@@ -17056,8 +17084,11 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
     reveal.onclick = () => { revealLabelled(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
     panel.appendChild(el("div", { class: "private-hidden-notice" }, [
       el("p", { text: t("Original excerpts are hidden until you show labelled passages.") }), reveal]));
-    const text = excerpt + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
-    panel.appendChild(evidenceOriginal(context, quote));
+    // `co fetch`'s own URL:/Title: lines repeat what the card's head already says.
+    const shown = web ? excerpt.replace(/^(?:(?:URL|Title|Status):[^\n]*\n)+\s*/, "") : excerpt;
+    const text = shown + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
+    panel.appendChild(evidenceOriginal(web ? { ...context, source: "", captured_at: "" } : context, quote));
+    if (web) panel.appendChild(webLink(sourceKey));
   } else if (source.text && !sourceId(source.text, source.plain)) {
     panel.appendChild(el("p", { class: "evidence-description", text: source.text }));
   } else panel.append(...missingOriginal(r, number, trigger, { fromList }, sourceId(source.text, source.plain)));
@@ -17089,8 +17120,11 @@ function missingOriginal(r, number, trigger, options, id) {
   const web = /^https?:\/\//.test(id || "");
   parts.push(el("p", { class: "evidence-unavailable", text: t(web ? "REM kept this link, not a copy of the page." : liveHere()
     ? "REM did not keep a copy of this source." : "The original isn't in this snapshot.") }));
-  if (web) parts.push(el("a", { class: "btn-action evidence-web", href: id, target: "_blank", rel: "noopener noreferrer", text: t("Open the web page") + " ↗" }));
+  if (web) parts.push(webLink(id));
   return parts;
+}
+function webLink(id) {
+  return el("a", { class: "btn-action evidence-web", href: id, target: "_blank", rel: "noopener noreferrer", text: t("Open the web page") + " ↗" });
 }
 function evidenceControls(panel) {
   return [...panel.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter(node =>
