@@ -120,7 +120,7 @@ When a fourth decision joins, add it to that list — do not open a second page.
 - **Do not restate a decision as a principle.** If the page reads like the
   decision with the specifics removed, it is a summary, not a lift.
 - **Do not write `agenda/` or `opportunities/`.** Both are views computed from
-  the Open threads and state already on entity pages.
+  the Open threads and state already on people, organisation and project pages.
 
 ## Knowledge lift: after decisions, before principles
 
