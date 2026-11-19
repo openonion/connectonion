@@ -33,7 +33,8 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc36**: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never
+Release candidate **1.9.6rc37**: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. See [1.9.6rc37 notes](releases/1.9.6rc37.md).
+Before it, release candidate **1.9.6rc36**: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never
 pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy
 curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said
 once. See [1.9.6rc36 notes](releases/1.9.6rc36.md).
