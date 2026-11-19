@@ -49,6 +49,8 @@ def test_search_reads_in_groups_of_five_with_counts_chips_and_show_all(reader, w
             assert group.get_by_role("button", name=f"显示全部 {total} 个").is_visible()
     # The page shows groups of five, not one long list.
     assert page.locator(".search-group[data-kind] .hits > li:visible").count() <= 5 * groups.count()
+    _shot(page, f"auto-search-{width}.png")
+    assert "Quill people 0\nQuill people 0" not in page.locator("#main").inner_text()  # no snippet that only repeats the title
     # Kind chips filter the groups.
     chips = page.locator(".search-kinds button")
     assert chips.count() >= 5
@@ -65,7 +67,6 @@ def test_search_reads_in_groups_of_five_with_counts_chips_and_show_all(reader, w
     assert "2026-10-0" not in text and "T10:00:00Z" not in text
     assert "codex:01a1a594" not in text and "7152b30ab162a51eeae8672cea167403" not in text
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    _shot(page, f"auto-search-{width}.png")
 
 
 def test_a_skill_page_prints_only_what_is_known(reader):  # noqa: F811

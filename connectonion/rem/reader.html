@@ -14480,7 +14480,9 @@ function search(q, relatedPath = "") {
       const li = el("li", {}, [
         el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r) + (c === "sessions" ? "&find=" + encodeURIComponent(q) : ""), html: highlight(r.title, needle) }), statusPill(r)]),
           el("span", { class: "when", text: shortDate(known(r).last) })])]);
-      const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, "")).find(l => !isPath(l));
+      // The snippet adds what the title does not say: a line that only repeats the title is skipped.
+      const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, ""))
+        .find(l => !isPath(l) && l.toLowerCase() !== r.title.trim().toLowerCase());
       if (line) li.appendChild(el("div", { class: "hit", html: highlight(searchSnippet(summaryLine(line)), needle) }));
       if (i >= FIRST) li.hidden = true;
       ul.appendChild(li);
