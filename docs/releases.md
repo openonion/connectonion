@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc28**: REM's night runs again, Investigate appends to long pages by archiving their
+Release candidate **1.9.6rc29**: a source's title opens its original in the side card, a calendar event shows
+its meeting link, organiser and notes, and the Investigate popovers float over the page. See
+[1.9.6rc29 notes](releases/1.9.6rc29.md).
+Before it, release candidate **1.9.6rc28**: REM's night runs again, Investigate appends to long pages by archiving their
 oldest History, the live reader recovers by itself after an upgrade, and a person's reply policy is one click.
 See [1.9.6rc28 notes](releases/1.9.6rc28.md).
 Before it, release candidate **1.9.6rc27**: the person page's header and profile card are redesigned: three lines under
@@ -123,7 +126,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc28'
+python -m pip install --upgrade 'connectonion==1.9.6rc29'
 ```
 
 ## Previous stable

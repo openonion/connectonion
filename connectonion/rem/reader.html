@@ -15573,7 +15573,7 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
   close.onclick = closeEvidence;
   panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
     el("div", { class: "evidence-top" }, [el("span", { text: fromList ? t("Source {n}", { n: source.n }) : t("Source {n} of {m} for this line", { n: numbers.indexOf(source.n) + 1, m: numbers.length }) }), close]),
-    fromList ? null : el("div", { class: "evidence-claim" }, [el("small", { text: t("On this page") }), el("div", { html: markedSpan(line.text, span?.claim) })]));
+    ...(fromList ? [] : [el("div", { class: "evidence-claim" }, [el("small", { text: t("On this page") }), el("div", { html: markedSpan(line.text, span?.claim) })])]));
   if (numbers.length > 1) {
     const select = el("select", { class: "evidence-source-select", "aria-label": t("Source for this line") }, numbers.map(n => el("option", { value: n, text: chipLabel(r, n) })));
     select.value = source.n;
