@@ -172,21 +172,24 @@ def test_the_hint_names_the_choice_left_and_a_tap_goes_to_it(today):
     assert hint.is_hidden() and send.is_enabled()
 
 
-def test_a_sparse_three_nights_give_the_row_back_and_a_busy_one_keeps_the_chart(today):
+def test_last_night_is_said_in_words_and_quiet_nights_give_the_row_back(today):
+    """Mac review of rc30: the night chart could not be read. The card says what last night produced, in words and
+    counts, and a night with nothing to say draws no line at all."""
     page, _, _ = today
-    assert page.locator(".night-card .hyp-wrap").is_visible()  # the fixture's nights hold several runs
-    tall = page.locator(".night-card").bounding_box()["height"]
-    page.evaluate("""() => { REM.logs = REM.logs.filter(run => Date.parse(REM.as_of) - Date.parse(run.started_at) > 3 * DAY_MS); REM.brief_logs = REM.logs; render(); }""",
-                  isolated_context=False)
+    import re
     card = page.locator(".night-card")
-    assert "sparse" in card.get_attribute("class") and card.locator(".hyp-wrap").count() == 0
-    # Its count is the side line's, so the two read as one story.
-    side = page.locator(".side .closed").inner_text()
-    n = side.split("handled ")[1].split()[0] if "handled " in side else ""
-    assert card.locator(".night-sum").inner_text() == ("Last 3 days: no mail read and no page rewritten"
-                                                         + (f"; REM handled {n} things in Today" if n else ""))
-    assert card.bounding_box()["height"] < tall - 30
-    assert page.locator(".deal").count() == int(card.locator(".count").inner_text())
+    assert card.locator(".hyp, .hyp-wrap").count() == 0
+    read = lambda: int((re.search(r"read (\d+) mail", page.locator(".night-card .nh").inner_text()) or [0, 0])[1])  # noqa: E731
+    before = read()
+    page.evaluate("""() => { const at = Date.parse(REM.as_of) - 4 * 3600000;
+      REM.logs = [...REM.logs, {phase: 'sync', started_at: new Date(at).toISOString(), finished_at: new Date(at + 600000).toISOString(), items: 9}];
+      REM.brief_logs = REM.logs; render(); }""", isolated_context=False)
+    head = page.locator(".night-card .nh")
+    assert "Last night" in head.inner_text() and read() == before + 9  # a run's mails are counted in words
+    page.evaluate("""() => { REM.logs = REM.logs.filter(run => Date.parse(REM.as_of) - Date.parse(run.started_at) > 3 * 86400000);
+      REM.brief_logs = REM.logs; REM.night_outcomes = []; render(); }""", isolated_context=False)
+    assert page.locator(".night-card .nh").count() == 0
+    assert page.locator(".deal").count() == int(page.locator(".night-card .count").inner_text())
 
 
 @pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
