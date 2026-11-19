@@ -145,20 +145,18 @@ def test_most_connected_leaves_the_owner_out(reader):
 
 # 3. Open topics are what he opens a person for: right under the header, top three, "全部 N 条".
 @pytest.mark.parametrize("width", [1440, 390])
-def test_open_topics_lead_the_person_page_with_the_top_three(reader, width):
+def test_the_headers_today_count_drops_when_an_item_is_closed_in_today(reader, width):
+    """#3145: what is open shows only as the header's count, from Today's own state; closed there, gone here."""
     open_page, _ = reader
     page = open_page("r=" + MARA.replace("/", "%2F"), width=width)
-    topics = page.locator(".r4-person .r4-topics")
-    hero, first_widget = _box(page.locator(".person-head")), _box(page.locator(".r4-person .bento > *"))
-    assert hero["y"] + hero["height"] <= _box(topics)["y"] < first_widget["y"]
-    assert topics.locator("li").evaluate_all("rows => rows.filter(r => r.offsetParent).length") == 3
-    more = topics.get_by_role("button")
-    assert more.inner_text() == "全部 5 条"
-    more.click()
-    assert topics.locator("li").evaluate_all("rows => rows.filter(r => r.offsetParent).length") == 5
-    # Still a record (D-30): nothing to mark, reply or close here.
-    assert topics.locator("a, .chip:not(button)").count() == 0
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    count = lambda: page.evaluate("waitingOn(byPath('people/mara-ostrowski.md')).length", isolated_context=False)  # noqa: E731
+    before = count()
+    assert before >= 1
+    page.evaluate("() => { const e = waitingOn(byPath('people/mara-ostrowski.md'))[0]; threadStates[doneKey(e)] = { state: 'done', at: new Date().toISOString() }; render(); }",
+                  isolated_context=False)
+    assert count() == before - 1
+    link = page.locator(".person-head .hero-meta .r4-today")
+    assert (link.count() == 0) if before == 1 else (str(before - 1) in link.inner_text())
 
 
 # 4. The Skills page says what its numbers are in the column's header (#3094), not in a caption about name matching.
@@ -211,29 +209,6 @@ def test_org_record_has_no_today_projection(reader):
     }""", isolated_context=False)
     assert page.locator(".ov-today").count() == 0
     assert page.locator(".ov-org-tree [role=tree]").is_visible()
-
-
-# Review: with labelled passages hidden, the card counts and slices only what is shown, and leaves when nothing is.
-@pytest.mark.parametrize("private_rows, expected", [(3, "还没结的话题\n2"), (5, None)])
-def test_open_topics_count_only_shown_rows_when_labelled_passages_are_hidden(reader, private_rows, expected):
-    open_page, _ = reader
-    page = open_page("r=" + MARA.replace("/", "%2F"))
-    page.evaluate("""n => {
-      const r = byPath('people/mara-ostrowski.md');
-      const rows = ['the signed addendum', 'the usage export', 'the seat price', 'a training date', 'the invoice correction']
-        .map((what, i) => '- You owe Mara ' + what + (i >= 5 - n ? ' [personal]' : '') + '.');
-      r.text = r.text.replace(/## Open threads\\n[\\s\\S]*?(?=\\n## )/, '## Open threads\\n' + rows.join('\\n') + '\\n');
-      KNOWN.clear(); FACTS.clear();
-      if (!document.documentElement.classList.contains('hide-private')) togglePrivate();
-      render();
-    }""", private_rows, isolated_context=False)
-    topics = page.locator(".r4-person .r4-topics")
-    if expected is None:
-        assert topics.count() == 0 or not topics.is_visible()
-    else:
-        assert topics.inner_text().startswith(expected + "\n")
-        assert "全部" not in topics.inner_text() and "[personal]" not in topics.inner_text()
-    assert "5" not in page.locator(".r4-person .r4-topics h2, .r4-person .r4-topics .end").all_inner_texts().__str__()
 
 
 # 7. The profile card is the first thing on the person page (owner, 2026-11-18): every known fact under the name,
@@ -296,3 +271,30 @@ def test_the_header_meta_line_keeps_a_gap_and_a_dot_between_every_item(reader, w
     assert gaps and all(gap >= 12 for gap in gaps), gaps
     dot = page.locator(".person-head .hero-meta .r4-today.late").evaluate("n => getComputedStyle(n, '::before').content")
     assert dot == '"·"', dot
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_person_page_leads_with_what_happened_and_a_row_opens_its_original(reader, width):
+    """#3145 (owner, 2026-11-19): no 还没结的话题 (it disagreed with Today); 往来 is first under the header, newest first,
+    and one click on a row shows its whole original beside it, the row marked while it is open."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width)
+    assert page.locator(".r4-person .r4-topics").count() == 0
+    timeline = page.locator(".r4-person > .tl-lead")
+    head = page.locator(".person-head").bounding_box()
+    assert timeline.bounding_box()["y"] >= head["y"] + head["height"] - 1
+    assert page.evaluate("document.querySelector('.r4-person > .tl-lead').previousElementSibling.classList.contains('person-head')")
+    days = timeline.locator(".tl-e .d").all_inner_texts()
+    assert days, "the timeline shows rows"
+    assert timeline.locator(".tl-e.tl-open").count(), timeline.locator(".tl-e").first.evaluate("n => n.outerHTML.slice(0, 600)")
+    row = timeline.locator(".tl-e.tl-open").first
+    row.click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert panel.locator(".evidence-claim").count() == 0 and "null" not in panel.inner_text()
+    assert "on" in row.get_attribute("class")
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"person-timeline-open-{width}.png"))
+    page.keyboard.press("Escape")
+    assert not panel.is_visible() and "on" not in (row.get_attribute("class") or "").split()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
