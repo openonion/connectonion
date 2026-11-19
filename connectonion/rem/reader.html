@@ -3038,6 +3038,43 @@
     .gx-row-name { flex-wrap: wrap; }
     .gx-rows .gx-entry { flex-basis: 100%; }
   }
+
+  /* ---- #3131 slice 2: one reading page (person, organisation, project, knowledge entry) ----
+     One measure (720px, centred) so the crumb, the title and the body share one left edge; one header: a quiet
+     crumb, the title at the head size (24, the scale's page title; the spec's 28 is not on the scale), one meta
+     line, and the actions in a fixed slot on the right; flat: no card behind the header, hairlines and space
+     between sections, no card inside a card. Lists, the calendar and Today keep the wide sheet. */
+  main.reading { max-width: calc(720px + 80px); }
+  /* On a phone the top bar already names the place, at the same left edge. */
+  @media (max-width: 640px) { main.reading { max-width: none; } main.reading .person-head > .page-crumb { display: none; } }
+  main.reading > .eyebrow { display: flex; align-items: center; gap: 8px; }
+  main.reading :is(.page-crumb, .ov-crumb, .gx-crumb) { display: block; }
+  main.reading :is(.page-crumb, .ov-crumb, .gx-crumb), main.reading > .eyebrow { margin: 0 0 8px; color: var(--grey);
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
+  main.reading :is(.page-crumb, .ov-crumb a, .gx-crumb), main.reading > .eyebrow a { color: var(--grey); }
+  main.reading :is(.page-crumb, .ov-crumb a, .gx-crumb):hover, main.reading > .eyebrow a:hover { color: var(--ink); }
+  main.reading :is(.n3-person .hero .r4-name, .ov.ov-r6 .ov-say h1.ov-name, .entry .gx-statement), main.reading > .page-head h1 {
+    margin: 0; font: var(--w-bold) var(--s-head)/var(--lh-head) var(--font); letter-spacing: -.01em; }
+  /* The person head is no longer a card: the page is the surface. */
+  main.reading .n3-person .hero { padding: 0 0 8px; border-radius: 0; background: none; box-shadow: none; animation: none; }
+  main.reading .n3-person .hero .face.xl { width: 48px; height: 48px; font: var(--w-bold) var(--s-body)/1 var(--font); }
+  main.reading .n3-person .hero-top { gap: 16px; }
+  /* Sections under it are flat too: a hairline above, space around, no raised card in a column of cards. */
+  main.reading .n3-person :is(.widget, .bento > *) { padding: 16px 0; border-radius: 0; background: none; box-shadow: none; animation: none; border-top: var(--hair) solid var(--rule); }
+  main.reading .n3-person .row2.dashed { border: 0; border-top: var(--hair) dashed var(--pencil); }
+  main.reading .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; margin-top: 8px; }
+  main.reading .bento > .span2, main.reading .bento > .person-sessions { grid-column: 1 / -1; }
+  /* The actions' fixed slot: top right of the head, the same on an organisation and a project as on a person. */
+  main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-items: start; }
+  main.reading .ov.ov-r6 .ov-say > *, main.reading > .page-head > * { grid-column: 1; }
+  main.reading .ov.ov-r6 .ov-say > .inv, main.reading > .page-head > .inv { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; align-items: flex-end; }
+  main.reading .ov.ov-r6 .ov-say > .inv :is(.inv-line, .inv-steps), main.reading > .page-head > .inv :is(.inv-line, .inv-steps) { text-align: right; justify-content: flex-end; }
+  main.reading .ov.ov-r6 .ov-say :is(.inv-menu, .inv-changed), main.reading > .page-head :is(.inv-menu, .inv-changed) { left: auto; right: 0; }
+  @media (max-width: 640px) {
+    main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { grid-template-columns: minmax(0, 1fr); }
+    main.reading .ov.ov-r6 .ov-say > .inv, main.reading > .page-head > .inv { grid-column: 1; grid-row: auto; align-items: flex-start; }
+    main.reading .bento { grid-template-columns: minmax(0, 1fr); }
+  }
 </style>
 <style id="n3-style">
   /* N3 "Desk" (D-123): the app shell and the shared components. Declared last, so a page redone in N3
@@ -9855,6 +9892,8 @@ function personHead(r) {
   // where and how recent), one fixed action column on the right (调查, then the page's translation state), and
   // the facts under one hairline as single-line rows. Nothing else floats in the header.
   return el("header", { class: "r4-head person-head hero" }, [
+    // The crumb starts the page's one left edge (#3131), above the face, as on every reading page.
+    el("a", { class: "page-crumb", href: categoryHref("people"), text: categoryName("people") }),
     el("div", { class: "hero-top" }, [fusedFace(r, late, "xl"),
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
@@ -15322,6 +15361,10 @@ function render() {
   window.scrollTo(0, 0);
   // The sheet views use the full width; reading views keep a measure.
   document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && (COLUMNS[c] && inCategory(c).length || c === "agenda")));
+  // #3131: a record you read (person, organisation, project, knowledge entry) is one 720px measure, centred, so its
+  // crumb, title and body share one left edge; lists and the calendar keep the wide sheet.
+  const reading = r && byPath(r);
+  document.getElementById("main").classList.toggle("reading", !query && !reviews && !!reading && ["people", "orgs", "projects", ...ENTRY_KINDS].includes(reading.category));
   if (reviews) reviewPage();
   else if (query) search(query, related);
   else if (r) record(r, heading);
