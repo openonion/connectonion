@@ -36,6 +36,42 @@ the latest weeks. For a monorepo sub-project, its history is the pull requests
 in the timeline whose titles name it. Follow those through the older months
 before following the latest session.
 
+## Think like an open-source intelligence analyst
+
+The owner, 2026-11-19: "你应该用开源情报的方式去写每一个段落…应该把骨架都写出来，既有丰富的细节，也要有整体的框架。"
+A page after enrich should let the user brief someone on the subject in two minutes.
+
+For a **person**, establish and cite, from their own words, the mail and public sources:
+- **Career timeline**: each employer or venture, the role, the years, and what they did there: products,
+  clients, size, results. Their own CV, LinkedIn snippet, company site, talks and registries come first.
+- **Education and credentials**; **public work**: companies registered, talks, papers, repositories, press.
+- **The people they overlap with**: co-founders, colleagues, investors, introducers. Link the ones the
+  notebook has pages for.
+- **Where they are online**: LinkedIn (snippet only), GitHub, their company's site.
+
+For an **organisation**: what it does and for whom, when and where it was founded, who runs it, its units,
+its size, funding and registration, its timeline, and the people the notebook knows there.
+
+Every organisation the subject works or worked at, founded, studied at or advises is written as a link to
+its page, `[Name](../orgs/<slug>.md)`, in `Company` and in each career line. The program creates a page
+that does not exist yet and adds the person to it. A career line or Company without that link is refused.
+
+Write each section as a **skeleton with detail**: a lead sentence that frames it, then the dated lines that
+fill it in, newest first. `Who they are` looks like this:
+
+```
+Founder of [Kiln Labs](../orgs/kiln-labs.md), an IT consultancy for local councils, with about 30 years in enterprise IT. [3][7]
+- 2019–now: Founder, [Kiln Labs](../orgs/kiln-labs.md) — runs infrastructure projects for three councils [3][7]
+- 2008–2019: Head of IT, [Harbour Health](../orgs/harbour-health.md) — led the move to cloud, a team of 40 [7]
+- 1994–2008: Systems engineer, then architect, [Northwind](../orgs/northwind.md) [7]
+- Education: BEng, [UNSW](../orgs/unsw.md) (1993) [7]
+- Worked with [Mara Ostrowski](../people/mara-ostrowski.md) at Harbour Health, 2015–2019 [8]
+```
+
+Say an unknown once ("Earlier career: not found in public sources [9]"); never pad and never guess from a
+name match. Length is not a cost here: when the page grows past the limit, the program moves the oldest
+History to the page's archive, word for word. Spend the space on substance.
+
 ## 1. Find the leads
 
 Read every cited original whole, then list what it points to that the page has
@@ -112,9 +148,9 @@ Most promising first: what could change the lead, Open threads or Facts.
   stays off the page.
 - Anything you add to `Uncertainties` is a question ending in `?`.
 
-Keep the page near the page rules' size (about 15,000 characters). As it
-fills, add only what changes Facts, the lead, `Open threads` or `History`;
-other findings go in your reply as followed leads, so muse can use them.
+Everything a lead established goes on the page in the section it belongs to: career lines and
+organisations in `Who they are`, terms in `Our relationship`, threads in `History` and `Open threads`.
+A lead that gave nothing new goes in your reply as followed.
 
 Before you finish, compare your page with the page you were given: every
 `“…”` quote and every `Sources` id it had must still be on the page, and every

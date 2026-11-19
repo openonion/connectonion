@@ -166,3 +166,19 @@ def test_the_reason_is_never_a_list_or_a_progress_line_when_a_real_one_exists(st
     found = page_runs.explain(page_runs._message(reply) or page_runs._last_line(stderr))
     assert found["reason_kind"] == kind and words in found["reason"]
     assert not found["reason"].startswith("[")
+
+
+def test_what_changed_names_the_organisations_the_run_linked_and_made(root, monkeypatch):
+    """#3141: a run that links a new organisation says so first, and whether it made the page."""
+    now = datetime.now(timezone.utc).isoformat()
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append", "enrich"],
+                                                    "result": "completed", "exit_code": 0, "pid": 1, "started_at": now,
+                                                    "before_sha256": page_runs._sha(INVESTIGATED)})
+    monkeypatch.setattr(page_runs, "_alive", lambda receipt: False)
+    after = INVESTIGATED.replace("- Avery leads design. [1]",
+                                 "- Avery leads design. [1]\n- 2020–now: Founder, [Kiln Labs](../orgs/kiln-labs.md) [1]")
+    book = Notebook(root)
+    book.write(PAGE, after)
+    book.stub_org("orgs/kiln-labs.md", "Kiln Labs")
+    page_versions.keep_previous(root, PAGE, INVESTIGATED, after)
+    assert page_runs.status(root, PAGE)["orgs"] == [{"title": "Kiln Labs", "record": "orgs/kiln-labs.md", "created": True}]

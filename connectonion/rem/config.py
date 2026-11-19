@@ -62,7 +62,9 @@ STAGE_LEVELS = {
     "maintain": "level3", "abstract": "level3", "init": "level3",
     "projects": "level3", "reply-draft": "level3", "native": "level3",
     # 4: deep rounds, independent audits, and owed work done for the owner.
-    "enrich": "level4", "muse": "level4", "claim-audit": "level4", "insight-critic": "level4",
+    # Enrich is investigation's web half (owner, 2026-11-19: "外部调查，那就很少"): it runs on investigation's
+    # level, Sol at medium, not level 4's low effort (#3141).
+    "enrich": "investigate", "muse": "level4", "claim-audit": "level4", "insight-critic": "level4",
     "synthesize": "level4", "task": "level4",
     # Investigation, and render: the turn that writes an investigated page (runner._run_stage).
     "investigate": "investigate", "render": "investigate",

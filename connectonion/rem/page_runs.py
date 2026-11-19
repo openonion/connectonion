@@ -190,7 +190,11 @@ def status(root, record: str, *, logs=None) -> dict:
         after = book.read(record) if book.exists(record) else ""
         previous = page_versions.previous(root, record)
         added = _added(previous["text"], after) if previous and _sha(after) != receipt["before_sha256"] else []
-        value.update(changed=_sha(after) != receipt["before_sha256"], added_lines=added[:40], added_count=len(added),
+        # The organisations this run linked, and whether it made their pages (#3141).
+        from .org_links import new_org_links
+        orgs = [{**org, "created": book.exists(org["record"]) and "not investigated yet" in book.read(org["record"])}
+                for org in (new_org_links(previous["text"], after) if previous and _sha(after) != receipt["before_sha256"] else [])]
+        value.update(changed=_sha(after) != receipt["before_sha256"], added_lines=added[:40], added_count=len(added), orgs=orgs,
                      undo=page_versions.can_undo(root, record),
                      rewrite=_draft(root, record))
     return value
