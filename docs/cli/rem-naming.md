@@ -14,7 +14,7 @@ These words open `co rem tag --help` and `co rem investigate --help`, word for w
 ```
 Words:
   page             One thing REM knows: a person, organisation, project, tag, skill or decision.
-  tag (= topic)    A word that links pages. "co rem tag" puts tags on pages; "investigate tag X"
+  tag (= topic)    A word that links pages. `co rem tag` puts tags on pages; `investigate tag X`
                    reads every page carrying X and writes X's tag page.
   knowledge graph  Every page and the links between them. Each tag page is a page in it;
                    tags are how pages connect.

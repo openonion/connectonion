@@ -1053,7 +1053,9 @@ def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch,
         calls.append(record)
         return {'record': record, 'changed': []}
     monkeypatch.setattr('connectonion.rem.investigate.investigate', run)
-    result = invoke(tmp_path, 'investigate', selector)
+    # Kind first, then name (#3140); a page path names its own kind.
+    kind = [] if selector.endswith('.md') else ['person']
+    result = invoke(tmp_path, 'investigate', *kind, selector)
     assert result.exit_code == 0, result.output
     assert calls == ['people/corin-123.md']
     assert result.output.rstrip().endswith('show people/corin-123.md')
@@ -1102,9 +1104,9 @@ def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkey
     for suffix in ('one', 'two'):
         Notebook(tmp_path).stub_person(f'people/corin-{suffix}.md', 'Corin', [])
     monkeypatch.setattr('connectonion.rem.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
-    result = invoke(tmp_path, 'investigate', 'Corin')
+    result = invoke(tmp_path, 'investigate', 'person', 'Corin')
     assert result.exit_code == 1, result.output
-    assert 'More than one page matches' in result.output
+    assert "2 people are named 'Corin'" in result.output  # every candidate's full name and path (#3140)
     assert 'people/corin-one.md' in result.output and 'people/corin-two.md' in result.output
     assert result.output.rstrip().endswith(' investigate')
 
@@ -1120,11 +1122,16 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     discovered = json.loads(invoke(tmp_path, '--json', 'investigate').stdout)
     assert discovered['ok'] and 'No pages available' in discovered['data']
     assert discovered['next'].endswith(' init')
+    # Kind first, then name (#3140): a bare word that is no kind says so and names the kinds.
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
-    assert ('No page matches "missing" in people, projects, orgs, skills or topics. '
-            'Search names and paths with `co rem investigate`.') == failed['data']
+    assert failed['data'].startswith("'missing' is not a kind. Name the kind, then the page:")
+    assert failed['next'].endswith(' investigate')
+    result = invoke(tmp_path, '--json', 'investigate', 'person', 'missing')
+    failed = json.loads(result.stdout)
+    assert result.exit_code == 1 and not failed['ok']
+    assert failed['data'] == "No person is named 'missing'. Find it with: co rem search 'missing'"
     assert failed['next'].endswith(' investigate')
 
 

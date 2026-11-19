@@ -62,7 +62,7 @@ def test_enrich_runs_after_the_append_and_the_old_command_says_it_moved(tmp_path
     moved = CliRunner().invoke(app, ["rem", "--root", str(root), "enrich", PAGE])
     assert moved.exit_code == 0, moved.output
     assert calls == [("investigate", ""), ("enrich", "")]
-    assert "co rem investigate PAGE --enrich" in moved.output
+    assert "co rem investigate KIND NAME --enrich" in moved.output  # kind first, then name (#3140)
 
 
 def test_enrich_still_runs_when_there_is_nothing_new_to_append(tmp_path, monkeypatch):

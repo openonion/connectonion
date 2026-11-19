@@ -64,6 +64,10 @@ def resolve(root: Path, kind: str, name: str) -> str:
         return _tag(root, name)
     book, wanted = Notebook(root), _key(name)
     found = [record for record in book.list(KINDS[kind]) if wanted in _names(book.read(record), record)]
+    if not found and kind == "person" and "@" in name:
+        # An address someone was seen at names them exactly, as it did before kinds came first.
+        found = [person["path"] for person in book.people()
+                 if wanted in {_key(email) for email in person.get("emails", [])}]
     if len(found) > 1:
         listed = "; ".join(f"{_title(root, record)} ({record})" for record in found)
         raise RemError(f"{len(found)} {PLURAL_OF[kind]} are named {name!r}: {listed}. Use a fuller name or one of these paths")

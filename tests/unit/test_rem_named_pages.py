@@ -71,4 +71,9 @@ def test_both_help_pages_open_with_the_same_glossary_the_naming_doc_holds():
     glossary = GLOSSARY.split("```\n", 2)[1].split("\n```")[0]
     assert glossary.startswith("Words:\n  page ")
     for name in ("co rem tag", "co rem investigate"):
-        assert help_page(name).startswith(glossary), name
+        # The glossary opens the page, under its one-line title where the page has one: every help page's first
+        # line is `co rem NAME — what it does`, and a wrapper sees its own name there.
+        page = help_page(name)
+        if page.startswith(name + " — "):
+            page = page.split("\n\n", 1)[1]
+        assert page.startswith(glossary), name

@@ -233,15 +233,15 @@ Back:     co rem --help
 ## co rem investigate
 
 ```
+co rem investigate — use a model to fill notebook pages from mail, sessions and files.
+
 Words:
   page             One thing REM knows: a person, organisation, project, tag, skill or decision.
-  tag (= topic)    A word that links pages. "co rem tag" puts tags on pages; "investigate tag X"
+  tag (= topic)    A word that links pages. `co rem tag` puts tags on pages; `investigate tag X`
                    reads every page carrying X and writes X's tag page.
   knowledge graph  Every page and the links between them. Each tag page is a page in it;
                    tags are how pages connect.
   entity           Not used in REM. It means any page in the knowledge graph.
-
-co rem investigate — use a model to fill notebook pages from mail, sessions and files.
 
 Name the kind, then the page: co rem investigate person "Jalaj Jain". A plural kind (people, tags) means every page of that kind that is due.
 
@@ -589,7 +589,7 @@ Back:     co rem --help
 ```
 Words:
   page             One thing REM knows: a person, organisation, project, tag, skill or decision.
-  tag (= topic)    A word that links pages. "co rem tag" puts tags on pages; "investigate tag X"
+  tag (= topic)    A word that links pages. `co rem tag` puts tags on pages; `investigate tag X`
                    reads every page carrying X and writes X's tag page.
   knowledge graph  Every page and the links between them. Each tag page is a page in it;
                    tags are how pages connect.
