@@ -10,7 +10,8 @@ browser key. The first request trades it for a SameSite=Strict, HttpOnly
 cookie and redirects to the bare /rem, so the token leaves the address bar.
 
 POST /rem/task hands any unfinished row to Codex or Claude and follows it
-(run, status, stop, undo, result); POST /rem/talk is a conversation with the
+(run, status, stop, undo, result), and on this computer opens Terminal on its tmux session (watch) or
+its finished session in Codex or Claude Code (resume) (#3138); POST /rem/talk is a conversation with the
 agent about a row or an archived session (begin, say, read); POST /rem/review
 records the owner's verdict on a review in 问题与关联 (reviews.decide); POST /rem/sender
 ignores one mail sender from Today and the night's drafts, or undoes it (threads.ignore_sender);
@@ -136,8 +137,8 @@ async def _action(scope, receive, send, root, headers):
                 await _reply(send, 400, json.dumps({"error": "Expected the item key and agent codex or claude"}), "application/json")
                 return
             operation = lambda: tasks.dispatch(root, body["key"], agent=body.get("agent", "codex"))
-        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo", "result"):
-            await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop, undo or result"}), "application/json")
+        elif not isinstance(body.get("id"), str) or action not in ("status", "stop", "undo", "result", "watch", "resume"):
+            await _reply(send, 400, json.dumps({"error": "Expected task id and action status, stop, undo, result, watch or resume"}), "application/json")
             return
         else:
             operation = lambda: getattr(tasks, action)(root, body['id'])
@@ -244,7 +245,7 @@ async def _action(scope, receive, send, root, headers):
     # The owner's own change shows now, not at the reader's next rebuild interval.
     # A task status or result read changes nothing, and neither does a conversation.
     # A page run's status changes nothing until it has ended; then the page it changed shows now.
-    if not (scope["path"] == "/rem/task" and body.get("action", "status") in ("status", "result")
+    if not (scope["path"] == "/rem/task" and body.get("action", "status") in ("status", "result", "watch", "resume")
             or scope["path"] == "/rem/investigate" and (body.get("action", "status") == "run"
                                                         or body.get("action", "status") == "status"
                                                         and (result or {}).get("result") == "running")
