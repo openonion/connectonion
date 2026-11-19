@@ -39,7 +39,7 @@ def candidates(root: Path) -> list[str]:
         for record in book.list(category):
             text = book.read(record)
             # A stub the map made has nothing to tag yet; once written it waits.
-            if (re.search(r"(?m)^## Facts[ \t]*$", text) and written(text)
+            if ((category not in tags.FACT_KINDS or re.search(r"(?m)^## Facts[ \t]*$", text)) and written(text)
                     and marks.get(record) != digest(text)):
                 waiting.append((record in marks, record))
     return [record for _, record in sorted(waiting)]
