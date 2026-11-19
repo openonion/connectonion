@@ -424,7 +424,9 @@ def _send_locked(root, draft_id, body=None, *, held=False):
         client = mail_client(saved['provider'])
         receipt = (client.reply(saved['in_reply_to'], text, cc=saved['cc'] or None) if saved['provider'] == 'outlook'
                    else client.reply(saved['in_reply_to'], text))
-    write_json(path(root, draft_id), {**saved, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
+    # What REM prepared, kept when the owner changed it: the night learns his voice from the difference (#3174).
+    prepared = {'prepared_body': saved['body']} if text != saved['body'] and 'prepared_body' not in saved else {}
+    write_json(path(root, draft_id), {**saved, **prepared, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
     return {'status': 'sent'}
 
 

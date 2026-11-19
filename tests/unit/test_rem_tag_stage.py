@@ -242,3 +242,15 @@ def test_every_page_kind_waits_to_be_tagged_and_one_without_facts_takes_its_line
     assert tags.page_tags(tagged) == ["rem"] and tags.only_tags_changed(DECISION, tagged)
     assert tags.with_tags(tagged, [{"tag": "reader-ui", "citation": ""}]).count("- Tags:") == 1
     assert tags.with_tags(tagged, []) == DECISION
+
+
+def test_principles_and_knowledge_wait_to_be_tagged_and_sessions_are_tagged_by_their_summary(book):
+    """Owner, 2026-11-19: confirm every kind is covered. The tag stage takes principles and knowledge too (as it does
+    decisions and skills); a session page is not its candidate, because the session summary writes its own tags
+    into the same vocabulary (docs/cli/rem-tags.md)."""
+    book.write("principles/steady.md", "# Steady pace\n\nOne change at a time [1].\n\n## Sources\n- [1] codex:fixture:2 — 2026-09-05\n")
+    book.write("knowledge/kiln-firing.md", "# Kiln firing\n\nCone 6 is the default [1].\n\n## Sources\n- [1] gmail:fixture:3 — 2026-09-06\n")
+    book.write("sessions/2026-09-06-kiln.md", "# Kiln session\n\n- Tags: kiln\n\nTuned the controller.\n")
+    waiting = tag_stage.candidates(book.root)
+    assert "principles/steady.md" in waiting and "knowledge/kiln-firing.md" in waiting
+    assert not any(record.startswith("sessions/") for record in waiting)

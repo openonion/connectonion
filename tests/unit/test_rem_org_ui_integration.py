@@ -21,6 +21,12 @@ def run_js(names, script):
         function = match[0] if match[0].endswith('}') else re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
         functions.append(function)
     functions = '\n'.join(functions)
+    # #3160: org rows leave out role-titled pages; the helper and its pattern come with any function that uses it.
+    if 'personAsOrg(' in functions and 'personAsOrg' not in names:
+        functions += '\n' + re.search(r'^const ROLE_TITLE = .*$', page, re.M)[0] + '\n' + re.search(r'^function personAsOrg\(.*$', page, re.M)[0]
+    # #3140: record heads carry their tag row; these tests are about the org head's other parts.
+    if 'pageTagRow(' in functions and 'pageTagRow' not in names and 'function pageTagRow' not in script:
+        functions += '\nfunction pageTagRow() { return null; }'
     result = subprocess.run([node], input=functions + '\n' + script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)

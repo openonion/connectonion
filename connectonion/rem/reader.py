@@ -30,6 +30,23 @@ D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"
 BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
+
+def source_labels(root: Path, records: list[dict], contexts: dict) -> dict[str, dict]:
+    """A repository file's name for every cited project source whose excerpt had no room in the snapshot (#3165).
+
+    Only the retained packet's origin is read, never its text, so the list stays a few kilobytes on any notebook."""
+    from .files import read_json, state_path
+    from .reader_model import SOURCE
+    labels = {}
+    for record in records:
+        for _, source in SOURCE.findall(record.get("text", "")):
+            if source in labels or source in contexts or not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
+                continue
+            origin = read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {}).get("origin", "")
+            if isinstance(origin, str) and origin:
+                labels[source] = {"origin": origin}
+    return labels
+
 def _title(record: str, text: str) -> str:
     """The page's heading, else an alias that names one thing, else the file's readable stem.
 
@@ -250,7 +267,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     if not today:
         # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
         from .page_runs import states
-        found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")])
+        found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")
+                                     or (r["category"] == "knowledge" and "- Tags:" in r["text"])])
         for record in records:
             if record["path"] in found_states:
                 record["investigation"] = found_states[record["path"]]
@@ -293,7 +311,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                                'doubtful': [d for d in candidate.get('doubtful', []) if d['record'] in record_paths],
                                'mentions': topic_mentions(candidate, record_paths, owner)}
     from .tags import page_tags, vocabulary as tag_vocabulary
+    from .tag_nodes import node_record, pages_for_tags
     tag_entries = tag_vocabulary(root, records)
+    # A tag is a link to a page (#3140): the person, organisation or project named for it, else its tag page.
+    named, present = pages_for_tags(root), {r['path'] for r in records}
+    for slug, entry in tag_entries.items():
+        topic = node_record(root, slug) if slug not in named else ''
+        entry['page'] = named.get(slug) or (topic if topic in present else '')
     for record in records:
         record['tags'] = page_tags(record['text'])
     graph = {} if today else graph_snapshot([r for r in records if r['path'] not in unnamed], links,
@@ -358,7 +382,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "drafts": reply_drafts(root, local=local, records=records),
             "threads": threads.listing(root) if local else {},
             "mail_versions": threads.observed_versions(root, records) if local else {},
-            "source_context": contexts, "conversations": {} if today else cited_conversations(root, contexts, private=local),
+            "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
@@ -1011,10 +1035,11 @@ def latest(root: Path) -> dict:
     """When the live page was rendered and whether the newest build failed (polled by
     the open page); starts a rebuild when one is due."""
     try:
-        _rebuild_stale(root, "live.html", reader_version(root))
-        return {"as_of": saved(root, "live").get("as_of"), "failed": failure(root)}
+        building = _rebuild_stale(root, "live.html", reader_version(root))
+        # `building` lets the open page take down its "Updating…" line once no newer page is coming (Mac review of rc30).
+        return {"as_of": saved(root, "live").get("as_of"), "failed": failure(root), "building": bool(building)}
     except CacheRefused:
-        return {"as_of": None, "failed": None}
+        return {"as_of": None, "failed": None, "building": False}
 
 
 def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False) -> bool:

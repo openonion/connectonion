@@ -317,3 +317,153 @@ def test_a_person_shows_each_fact_once_and_each_date_once(reader, width):
     assert text.count("2015年11月18日") <= 1 and text.count("10月29日 10月29日") == 0
     if os.environ.get("REM_PR_SHOTS"):
         page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"cal-person-facts-once-{width}.png"), full_page=True)
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_people_never_show_an_address_as_a_name_and_cells_never_overlap(reader, width):
+    """#3157: rows named by an address, organisation cells carrying provenance prose, long names drawn over the next
+    column. An address-titled page reads as 'name unknown' with its address quiet; provenance is a tooltip."""
+    open_page, _ = reader
+    page = open_page("c=people", width=width, language="zh")
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      REM.records.push({...r, path: 'people/someone-at-example.md', title: 'someone.unknown@example.test',
+        text: '# someone.unknown@example.test\\n\\n## Facts\\n- Email: someone.unknown@example.test\\n- Company: Fernhill Labs (their signature)\\n'});
+      REM.records.push({...r, path: 'people/long-name.md', title: 'Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff',
+        text: '# Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff\\n\\n## Facts\\n- Company: Fernhill Labs\\n'});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    rows = page.locator(".people-table tbody tr")
+    text = page.locator(".people-table tbody").inner_text()
+    assert "someone.unknown@example.test" not in page.locator(".people-table td.c-name a").all_inner_texts()
+    assert "未知姓名" in text
+    assert "(their signature)" not in text  # provenance moves to the tooltip
+    if width == 1440:
+        overlap = page.evaluate("""() => [...document.querySelectorAll('.people-table tbody tr')].some(tr => {
+          const name = tr.querySelector('td.c-name'), org = tr.querySelector('td.c-org');
+          if (!name || !org) return false;
+          const inner = name.querySelector('a').getBoundingClientRect(), cell = name.getBoundingClientRect();
+          return inner.right > cell.right + 1; })""", isolated_context=False)
+        assert not overlap
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_orgs_merge_same_named_units_keep_people_out_and_hide_empty_columns(reader):
+    """#3160: a unit listed twice, a person's role filed as an organisation, columns mostly '—', and '推断' as a line."""
+    open_page, _ = reader
+    page = open_page("c=orgs", width=1440, language="zh")
+    page.evaluate("""() => {
+      const base = byPath('orgs/fernhill-labs.md');
+      const org = (path, title, extra = {}) => ({...base, path, title, text: '# ' + title + '\\n\\n## Facts\\n- Kind: company\\n', children: [], parent: undefined, unit_kind: undefined, people: [], ...extra});
+      REM.records.push(org('orgs/eng-a.md', 'Faculty of Engineering', {unit_kind: 'faculty'}), org('orgs/eng-b.md', 'Faculty of Engineering', {unit_kind: 'faculty'}),
+        org('orgs/deputy.md', 'Deputy Director, Research Partnerships'));
+      for (let i = 0; i < 6; i++) REM.records.push(org('orgs/filler-' + i + '.md', 'Filler Company ' + i));
+      KNOWN.clear(); FACTS.clear(); orgTableColumns = null; render();
+    }""", isolated_context=False)
+    names = page.locator(".org-table tbody td.c-name a").all_inner_texts()
+    assert names.count("Faculty of Engineering") == 1
+    assert not any("Deputy Director" in n for n in names)
+    headers = page.locator(".org-table thead th").all_inner_texts()
+    assert not any("位置" in h for h in headers)  # empty for 80%+ of rows
+    assert page.locator(".org-table .org-site small").count() == 0  # 推断 is a dot with a tooltip, not a line
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_decision_titles_carry_no_privacy_label_and_leads_no_timestamps(reader):
+    """#3159: a title ended with a literal '[personal]'; leads opened with '这项选择作于 2026-11-08 的 10:20…'."""
+    open_page, _ = reader
+    page = open_page("c=decisions", width=1440, language="zh")
+    page.evaluate("""() => {
+      REM.records.push({path: 'decisions/keep-markdown.md', title: 'Keep Markdown [personal]', category: 'decisions', written: true,
+        text: '# Keep Markdown [personal]\\n\\n## Decision\\n这项选择作于 2026-11-08 的 10:20，所在会话开始于 2026-10-29T09:00:00Z。保留 Markdown 作为笔记格式。 [1]\\n\\n## Sources\\n- [1] codex:01a1a594\\n'});
+      // This fixture is served from a non-loopback host, which starts at Public only (#2840) and so takes a
+      // [personal] title out of the list; the label rule is about what a shown title prints.
+      setPrivacy('cover', {save: false, redraw: false});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    text = page.locator("#main").inner_text()
+    assert "[personal]" not in text and "Keep Markdown" in text
+    assert "2026-11-08" not in text and "T09:00" not in text and "这项选择作于" not in text
+    assert "保留 Markdown 作为笔记格式" in text
+
+
+def test_an_agent_mailbox_is_the_persons_agent_and_the_owners_own_address_is_never_theirs(reader):
+    """#3164: the 账号 row listed an agent mailbox as the person's account, and an owner's own address can appear."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=1440, language="en")
+    owner_address = page.evaluate("""() => {
+      const owner = byPath(REM.owner);
+      const mine = (/[\\w.+-]+@[\\w.-]+\\.\\w+/.exec(owner?.text || '') || ['owner@self.example'])[0];
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Handles:[^\\n]*/m, '- Handles: 0xab12cd34ef@mail.openonion.ai; ' + mine);
+      KNOWN.clear(); FACTS.clear(); render();
+      return mine;
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    rows = {row.locator(".pc-k").inner_text(): row.locator(".pc-v").inner_text() for row in card.locator(".pc-row").all()}
+    assert "Their agent" in rows and "0xab12cd34ef@mail.openonion.ai" in rows["Their agent"]
+    assert not any("0xab12cd34ef" in value for key, value in rows.items() if key != "Their agent")
+    if owner_address != "owner@self.example":
+        assert owner_address not in card.inner_text()
+
+
+# A citation chip opens its source beside the page and never navigates (#3165 deep hunt, 2026-11-19: «我点了一个引用，
+# 结果跳到别人的人物页去了，我刚才在看项目啊»). Each page kind, a chip quoted from another page, and a chip whose page
+# is not in this snapshot.
+CITED = {
+    "decisions/notebook-format.md": "# Notebook format\n\n## Decision\nPages stay Markdown so they can be read without co rem [1].\n\n## Sources\n- [1] file:/notes/format.md — 2026-09-02\n",
+    "skills/catalog/weekly-brief.md": "# weekly-brief\n\n## Insight\nA saved draft needs a queue readback before it can be sent [1].\n\n## Sources\n- [1] file:/notes/brief.md — 2026-09-03\n",
+}
+
+
+def _chip_opens_beside(page, chip, path):
+    before = page.evaluate("location.hash", isolated_context=False)
+    chip.click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert page.evaluate("location.hash", isolated_context=False) == before, "the chip navigated away"
+    assert page.evaluate("new URLSearchParams(location.hash.slice(1)).get('r')", isolated_context=False) == path
+    page.keyboard.press("Escape")
+
+
+@pytest.mark.parametrize("path", ["projects/harbour.md", "orgs/fernhill-labs.md", MARA, "decisions/notebook-format.md",
+                                  "skills/catalog/weekly-brief.md"])
+def test_a_citation_chip_opens_its_source_beside_the_page_and_never_navigates(reader, path):
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"), language="en")
+    if path in CITED:
+        page.evaluate("""([path, text]) => { const r = byPath(path); r.text = text; delete r.translations; KNOWN.clear(); FACTS.clear(); render(); }""",
+                      [path, CITED[path]], isolated_context=False)
+    page.evaluate("() => document.querySelectorAll('details').forEach(d => d.open = true)", isolated_context=False)
+    # A chip in the page's text (the profile card's sources are a hover away and have their own touch test, #3179).
+    page.evaluate("() => { const a = [...document.querySelectorAll('#main a.cite')].find(n => !n.closest('.pc-row') && n.getClientRects().length); if (a) a.id = 'first-text-chip'; }",
+                  isolated_context=False)
+    chip = page.locator("#first-text-chip")
+    assert chip.count(), path
+    _chip_opens_beside(page, chip, path)
+
+
+def test_a_chip_quoted_from_another_page_opens_that_pages_source_and_stays_put(reader):
+    open_page, _ = reader
+    page = open_page("r=projects%2Fharbour.md", language="en")
+    page.evaluate("""() => { const card = relationCard({path: 'people/mara-ostrowski.md', via: 'people/mara-ostrowski.md',
+        kind: 'mentioned by', basis: 'Mara leads the pilot', sources: ['1']}, 'projects/harbour.md');
+      card.id = 'quoted-card'; document.getElementById('main').prepend(card); }""", isolated_context=False)
+    chip = page.locator("#quoted-card a.cite").first
+    assert "people%2Fmara-ostrowski.md" in chip.get_attribute("href")  # the number is Mara's page's
+    _chip_opens_beside(page, chip, "projects/harbour.md")
+
+
+def test_a_chip_whose_page_is_not_in_the_snapshot_says_so_and_stays_put(reader):
+    open_page, _ = reader
+    page = open_page("r=projects%2Fharbour.md", language="zh")
+    page.evaluate("""() => { const a = Object.assign(document.createElement('a'), { className: 'cite', id: 'gone-chip', textContent: '1',
+        href: '#r=people%2Fnot-in-this-snapshot.md&h=src-1' }); document.getElementById('main').prepend(a); }""", isolated_context=False)
+    before = page.evaluate("location.hash", isolated_context=False)
+    page.locator("#gone-chip").click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert "这条来源所在的页面不在这份快照里" in panel.inner_text()
+    assert page.evaluate("location.hash", isolated_context=False) == before
+    page.keyboard.press("Escape")
+    assert not panel.is_visible()

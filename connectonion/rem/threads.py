@@ -63,19 +63,141 @@ def observed_versions(root, records):
 
 def listing(root):
     found = read_json(state_path(root, 'threads.json'), {})
+    found.update(_backfilled(root, found))
     found.update(_carried(root, found))
     for key, value in found.items():
         if value.get('moved_from'):
             continue  # its return was decided where it was carried
-        if value['state'] == 'skipped':
-            latest = _mail_versions(root, key)
-            changed = [row['time'] for thread, row in latest.items()
-                       if thread in value.get('versions', {}) and row['id'] != value['versions'][thread]]
-            if changed:
-                value['returned_at'] = max(changed)
-            elif put_off_over(value):
+        # Done and put off come back when the other person writes again on the thread (#3174); ignored is the
+        # owner saying he does not want it, so it stays closed (ignoring the sender stops their mail altogether).
+        if value['state'] in ('done', 'skipped'):
+            newer = newer_inbound(root, key, value)
+            if newer:
+                value.update(returned_at=max(row['time'] for row in newer), reason='new_mail', reopened_by=newer[-1])
+            elif value['state'] == 'skipped' and put_off_over(value):
                 value['returned_at'] = value['until']
     return found
+
+
+# Mail that reopens a closed item (#3174): a new message on its thread from the counterpart. The owner's own
+# reply, an auto-reply and a notification or newsletter answer nothing the owner owes, so they reopen nothing.
+AUTO_SUBJECT = re.compile(r'^\s*(?:automatic reply|auto[- ]?reply|out of office|自动回复|自動回覆|不在办公室)', re.I)
+
+
+def _inbound(row, owner):
+    from .mail import AUTOMATED_SENDER
+    sender = (row['sender'] or '').casefold()
+    return bool(sender) and sender not in owner and not AUTOMATED_SENDER.search(sender) \
+        and not AUTO_SUBJECT.search(row['subject'] or '')
+
+
+def newer_inbound(root, key, value):
+    """[{time, sender}] of counterpart messages on the item's cited threads newer than the mail it was closed on."""
+    from .store_messages import owner_addresses
+    record, _, text = key.partition('\n')
+    book, file = Notebook(root), state_path(root, 'rem.db')
+    if not book.exists(record) or not file.is_file():
+        return []
+    owner, found, versions = owner_addresses(root), [], value.get('versions', {})
+    with closing(sqlite3.connect(file)) as db:
+        db.row_factory = sqlite3.Row
+        # Only the threads the item was closed on (their latest message then is in versions), as before #3174.
+        for thread, seen in sorted(versions.items()):
+            seen_time = (db.execute('select time from messages where id = ?', (seen,)).fetchone() or [None])[0]
+            for row in db.execute('select id, time, sender, subject from messages where thread = ? order by time, id', (thread,)):
+                if row['id'] == seen or not row['time'] or (seen_time and row['time'] <= seen_time):
+                    continue
+                if _inbound(row, owner):
+                    found.append({'time': row['time'], 'sender': row['sender']})
+    return sorted(found, key=lambda row: row['time'])
+
+
+def _backfilled(root, found):
+    """Sources for marks saved before #3098 recorded them (#3174), read from the line they closed: the same
+    line if the page still has it, else the open line on that page citing the same mail threads, else the
+    most similar open line. In memory only; `migrate_marks` writes the same answer at night."""
+    from difflib import SequenceMatcher
+    from .census import threads as open_lines
+    book, out, pages = Notebook(root), {}, {}
+    for key, value in found.items():
+        record, _, text = key.partition('\n')
+        if value.get('sources') or value['state'] not in ('done', 'ignored', 'skipped') or not book.exists(record):
+            continue
+        page = pages.setdefault(record, book.read(record))
+        lines = {done_key(record, line): line for line in open_lines(page)}
+        match = lines.get(key)
+        if match is None:
+            wanted = set(value.get('versions', {}))
+            plain = lambda line: re.sub(r'\[W?\d+\]', '', line).strip()  # noqa: E731
+            scored = []
+            for line_key, line in lines.items():
+                overlap = len(wanted & set(_mail_versions(root, line_key))) if wanted else 0
+                similar = SequenceMatcher(None, plain(text), plain(line)).ratio()
+                if overlap or similar >= 0.6:
+                    scored.append((overlap, similar, line))
+            match = max(scored)[2] if scored else None
+        if match is not None:
+            out[key] = {**value, 'sources': line_sources(page, match), 'backfilled': True}
+        else:
+            out[key] = {**value, 'unmatched': True}
+    return out
+
+
+def migrate_marks(root):
+    """Write the backfilled sources into threads.json once (idempotent); the caller holds the writer lock.
+    Returns {migrated, unmatched}. An unmatched mark is kept as it was and counted, never dropped."""
+    found = read_json(state_path(root, 'threads.json'), {})
+    filled = _backfilled(root, found)
+    migrated = {key: {k: v for k, v in value.items() if k not in ('backfilled', 'unmatched')}
+                for key, value in filled.items() if value.get('sources')}
+    if migrated:
+        write_json(state_path(root, 'threads.json'), {**found, **migrated})
+    return {'migrated': len(migrated), 'unmatched': sum(1 for value in filled.values() if value.get('unmatched'))}
+
+
+def unmatched_marks(root):
+    """Closed items whose line the page no longer has in any form: counted in status."""
+    return sum(1 for value in _backfilled(root, read_json(state_path(root, 'threads.json'), {})).values()
+               if value.get('unmatched'))
+
+
+def closed_on(root, record):
+    """The items the owner closed on one page and that stay closed: [{state, at, line, sources}]."""
+    out = []
+    for key, value in listing(root).items():
+        page, _, line = key.partition('\n')
+        if page == record and value.get('state') in ('done', 'ignored', 'skipped') and not value.get('returned_at'):
+            out.append({'state': value['state'], 'at': value.get('at', ''), 'line': line, 'sources': value.get('sources', [])})
+    return out
+
+
+CLOSED_WORDS = {'done': 'marked done', 'ignored': 'ignored', 'skipped': 'put off'}
+
+
+def closed_note(root, record):
+    """What a page writer is told about the items the owner closed on this page (#3174)."""
+    items = closed_on(root, record)
+    if not items:
+        return ''
+    lines = '\n'.join(f'- {CLOSED_WORDS[item["state"]]} by the owner on {item["at"][:10]}: {item["line"]}' for item in items)
+    return ('The owner closed these items in the reader. Do not write any of them as open again. Move each one '
+            'still under Open threads to History as "<date>: <what it was> — closed by you on <closed date>", '
+            'or leave it where it is if it is already in History. Only a newer message from the other person on '
+            'the same thread may reopen one, and then say what that message asked.\n' + lines)
+
+
+def closed_errors(root, record, candidate):
+    """A draft that writes a closed item back under Open threads, with no newer inbound mail, is refused."""
+    from .census import threads as open_lines
+    errors = []
+    items = [item for item in closed_on(root, record) if item['sources']]
+    for line in open_lines(candidate):
+        cited = line_sources(candidate, line)
+        for item in items:
+            if cited and cited == item['sources']:
+                errors.append(f'Closed by the owner on {item["at"][:10]} but written as open again: "{line[:160]}". '
+                              'Move it to History as closed by you on that date.')
+    return errors
 
 
 def line_sources(page, text):
@@ -107,10 +229,9 @@ def _carried(root, found):
             if new_key in found or new_key in carried or line_sources(page, line) != value['sources']:
                 continue
             moved = {**value, 'moved_from': key}
-            newer = [row['time'] for thread, row in _mail_versions(root, new_key).items()
-                     if thread in value.get('versions', {}) and row['id'] != value['versions'][thread]]
+            newer = newer_inbound(root, new_key, value) if value['state'] != 'ignored' else []
             if newer:
-                moved.update(returned_at=max(newer), reason='new_mail')
+                moved.update(returned_at=newer[-1]['time'], reason='new_mail', reopened_by=newer[-1])
             elif value['state'] == 'skipped' and put_off_over(value):
                 moved['returned_at'] = value['until']
             carried[new_key] = moved
@@ -159,6 +280,8 @@ def set_state(root, key, state, *, device=None, versions=None, keys=None, until=
         stamp = now().isoformat()
         for item in keys:
             value = _set_state(root, item, state, device=device, versions=versions, at=stamp, keys=keys, until=until)
+        from . import owner_today
+        owner_today.record(root, 'mark', key=key, state=state, **({'until': until} if until else {}))
         return {**listing(root).get(key, value), 'keys': keys}
 
 
