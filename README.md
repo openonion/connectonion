@@ -21,6 +21,11 @@ work, keep it on your machine, and carry it into the next task.
 
 </div>
 
+<p align="center">
+  <img src="assets/co-harness.webp" alt="Your agent can fix the bug. It can't send the email. With co, Claude Code finds Dana's email, fixes the CSV export, drafts the reply, shows the exact text, and sends it only on your yes." width="100%">
+  <br><sub><a href="assets/co-harness.mp4">Watch it with sound</a> · illustrative UI</sub>
+</p>
+
 <!-- connections: generated, do not edit by hand. Refresh with
      curl -s https://www.connectonion.com/connections.md
      and paste the output between these two comments. -->

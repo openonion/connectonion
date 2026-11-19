@@ -400,15 +400,20 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc33
-Release candidate 1.9.6rc33 for 1.9.6: REM's bug-hunt fixes and the knowledge-graph model. Tags link pages, and
-`co rem investigate tag "X"` writes a tag's page from every page carrying it (kind first, then name; tag = topic). A
-closed item stays closed (old marks migrated; the night reads the owner's day). A three-level privacy control sits in the
-top bar. Source cards and citation chips always open their original beside the page. Search is grouped. The people and
-orgs lists are cleaner, decision titles are translated, and list text is 13px with 44px phone targets. Stable remains
-1.9.5. See [candidate notes](docs/releases/1.9.6rc33.md).
+## Current Version: 1.9.6rc34
+Release candidate 1.9.6rc34 for 1.9.6: REM gets the knowledge graph (a tag links pages; tag pages; `co rem investigate tag`), a closed item
+stays closed, three privacy levels in the reader's top bar that cover every place a passage shows, sources that never
+open empty, and the hourly bug hunt's fixes. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc34.md).
 
-- 1.9.6rc33 (tags link pages; closed stays closed; privacy levels; sources and citations open; bug-hunt fixes).
+- 1.9.6rc34 (REM: knowledge graph, closed stays closed, privacy levels, bug-hunt fixes).
+
+### Previous candidate: 1.9.6rc33
+Release candidate 1.9.6rc33 for 1.9.6: `co wechat` reads your own WeChat for Mac history locally, read-only — a
+SQLCipher-4 decryption engine (no new dependency, tested against an independent sqlcipher-CLI oracle) with `doctor`,
+`key`, `chats`, `decrypt` and `export`. Obtaining the key stays a consented manual step; the schema is revealed, not
+assumed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc33.md).
+
+- 1.9.6rc33 (co wechat: read your own WeChat for Mac history locally).
 
 ### Previous candidate: 1.9.6rc32
 Release candidate 1.9.6rc32 for 1.9.6: `co browser` starts headless on Windows in session 0 (OpenSSH logins,
