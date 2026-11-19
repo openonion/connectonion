@@ -30,6 +30,23 @@ D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"
 BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
+
+def source_labels(root: Path, records: list[dict], contexts: dict) -> dict[str, dict]:
+    """A repository file's name for every cited project source whose excerpt had no room in the snapshot (#3165).
+
+    Only the retained packet's origin is read, never its text, so the list stays a few kilobytes on any notebook."""
+    from .files import read_json, state_path
+    from .reader_model import SOURCE
+    labels = {}
+    for record in records:
+        for _, source in SOURCE.findall(record.get("text", "")):
+            if source in labels or source in contexts or not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
+                continue
+            origin = read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {}).get("origin", "")
+            if isinstance(origin, str) and origin:
+                labels[source] = {"origin": origin}
+    return labels
+
 def _title(record: str, text: str) -> str:
     """The page's heading, else an alias that names one thing, else the file's readable stem.
 
@@ -358,7 +375,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "drafts": reply_drafts(root, local=local, records=records),
             "threads": threads.listing(root) if local else {},
             "mail_versions": threads.observed_versions(root, records) if local else {},
-            "source_context": contexts, "conversations": {} if today else cited_conversations(root, contexts, private=local),
+            "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
