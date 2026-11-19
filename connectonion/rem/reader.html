@@ -9999,7 +9999,7 @@ Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "N
   "Last time about {n} points": "上次约 {n} 点", "Last investigated {date}": "上次调查 {date}", "Never investigated": "还没调查过这页",
   "Investigating…": "正在调查…", "Write": "写", "Append": "追加", "Web follow-up": "联网补充", "Rewrite": "重写",
   "Updated · {n} lines added": "已更新 · 新增 {n} 行", "Updated · 1 line added": "已更新 · 新增 1 行", "Updated": "已更新",
-  "Nothing new to add": "没有可补充的内容", "What changed": "改了什么", "Undone · the page is back as it was": "已撤销 · 页面已恢复",
+  "Nothing new to add": "没有可补充的内容", "new organisation page": "新建组织页", "linked": "已关联", "What changed": "改了什么", "Undone · the page is back as it was": "已撤销 · 页面已恢复",
   "A rewrite is ready · {before} → {after} characters": "整页重写稿已就绪 · {before} → {after} 字",
   "Replace the page": "替换页面", "Discard": "丢弃", "Rewrite discarded": "已丢弃重写稿",
   "The investigation stopped: {why}": "调查没有完成：{why}", "The investigation stopped": "调查没有完成",
@@ -10138,8 +10138,11 @@ function invResult(r, s, paint) {
   const words = !run.changed ? t("Nothing new to add") : count === 1 ? t("Updated · 1 line added")
     : count ? t("Updated · {n} lines added", { n: count }) : t("Updated");
   const line = el("p", { class: "inv-line", role: "status" }, [words]);
-  const changes = added.length ? el("div", { class: "inv-changed", hidden: "" }, [el("b", { text: t("What changed") }),
-    el("ul", {}, added.slice(0, 12).map(text => el("li", { html: inline(text.replace(/^[-*]\s+/, ""), r.path) })))]) : null;
+  // The organisations the run linked come first, each a link to its page, new pages said so (#3141).
+  const orgs = (run.orgs || []).map(org => el("li", { class: "inv-org" }, [el("a", { href: "#r=" + encodeURIComponent(org.record), text: org.title }),
+    " · " + t(org.created ? "new organisation page" : "linked")]));
+  const changes = added.length || orgs.length ? el("div", { class: "inv-changed", hidden: "" }, [el("b", { text: t("What changed") }),
+    el("ul", {}, [...orgs, ...added.slice(0, 12).map(text => el("li", { html: inline(text.replace(/^[-*]\s+/, ""), r.path) }))])]) : null;
   if (changes) {
     const open = el("button", { type: "button", "aria-expanded": "false", text: t("What changed") });
     open.onclick = () => { changes.hidden = !changes.hidden; open.setAttribute("aria-expanded", String(!changes.hidden)); };

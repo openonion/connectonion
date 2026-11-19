@@ -1331,6 +1331,9 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
             if moved:
                 notebook.write(archive_record(record), archive_text)
+            # The organisations it links get their pages, and the person is added to each (#3141).
+            from .org_links import link_orgs
+            link_orgs(notebook, record, notebook.read(record))
     return audit_usage
 
 

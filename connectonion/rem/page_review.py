@@ -1460,8 +1460,8 @@ def size_note(page_chars: int) -> str:
     if page_chars <= PAGE_LIMIT * 3 // 4:
         return f"The page must stay under {PAGE_LIMIT:,} characters. "
     return (f"The page is {page_chars:,} characters; it should end under {PAGE_LIMIT:,}: keep every cited line, "
-            "say new things shortly, and leave the oldest History where it is; the program moves it to the "
-            "page's archive. ")
+            "write what you found in full, and leave the oldest History where it is; the program moves it to "
+            "the page's archive. ")
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
@@ -1471,6 +1471,8 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     from .reader_model import source_definitions
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
+    from .org_links import org_errors
+    errors += org_errors(record, candidate, original)  # a person's organisations are pages (#3141)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
     if record.startswith('knowledge/') and not abstract:
