@@ -4615,10 +4615,9 @@ def test_round10_calm_record_sections_and_unassigned_person_threads(reader, widt
     # A thread that names no debtor is not Today's, and her page has no ledger (D-30): the record
     # keeps it as written in its full memory, so it is never lost.
     assert page.locator('.r4-person #open-threads, .r4-today').count() == 0
-    # Unfolded, as a fact of the record (D-36), with nothing to click (D-30).
-    topics = page.locator('.r4-person .r4-topics')
-    assert 'Discuss the pilot review with Theo Park' in topics.inner_text()
-    assert topics.locator('button, a.btn-act, .chip').count() == 0
+    # #3145: no open-topics block on a person (it disagreed with Today); the line is kept in Full memory, never lost.
+    assert page.locator('.r4-person .r4-topics').count() == 0
+    assert 'Discuss the pilot review with Theo Park' in page.locator('.deep-note').inner_text()
 
 
 def test_round10_list_empty_states_offer_one_working_next_action(reader):
@@ -5129,17 +5128,15 @@ def test_person_fuse_without_dated_exchanges_draws_only_what_rem_knows(reader):
 
 
 @pytest.mark.parametrize("language", ["en", "zh"])
-def test_person_open_topics_are_facts_without_actions(reader, language):
+def test_a_person_page_carries_no_open_topics_and_leads_with_what_happened(reader, language):
+    """#3145 (owner, 2026-11-19): open topics disagreed with Today, where those items were already closed; they leave
+    the person page, and what is open is only the header's count from Today's own state."""
     page, uri = reader
     page.goto(uri + "#r=people%2Fmara-ostrowski.md")
     page.evaluate("language => setInterfaceLanguage(language)", language, isolated_context=False)
-    topics = page.locator(".r4-person .r4-topics")
-    assert topics.locator("h2").inner_text() == ("还没结的话题" if language == "zh" else "Open topics")
-    rows = topics.locator("li")
-    assert rows.count() == 2
-    assert "Data-sharing addendum" in topics.inner_text() and "Usage export" in topics.inner_text()
-    assert rows.first.locator(".d").inner_text().strip()
-    assert topics.locator("button, .chip, a.btn-act, input").count() == 0
+    assert page.locator(".r4-person .r4-topics").count() == 0
+    assert "Data-sharing addendum" not in page.locator(".r4-person > :not(.deep-note):not(details)").all_inner_texts().__str__()
+    assert page.locator(".r4-person > .tl-lead").count() == 1
     assert page.evaluate(GREEN, isolated_context=False) == 0
 
 

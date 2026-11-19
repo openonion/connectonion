@@ -3669,6 +3669,12 @@
   .bento > :nth-child(3) { animation-delay: calc(var(--t-stagger) * 2); }
   .bento > :nth-child(4) { animation-delay: calc(var(--t-stagger) * 3); }
   :is(.bento, .n3-person > .r4-topics) .wt h2 { margin: 0; color: inherit; font: inherit; }
+  /* 往来 as the page's first block under the head (#3145): flat, no card, the reading width (#3131). */
+  .n3-person > .tl-lead { max-width: 760px; margin: 24px 0 8px; padding: 0 4px; background: none; box-shadow: none; border-radius: 0; animation: none; }
+  .n3-person > .tl-lead .wt { margin-bottom: 8px; }
+  .tl-e.tl-open { cursor: pointer; border-radius: var(--r-cell); }
+  .tl-e.tl-open:hover, .tl-e.tl-open:focus-visible { background: var(--well); outline: none; }
+  .tl-e.on { background: var(--well); box-shadow: inset 2px 0 0 var(--ink); }
   :is(.bento, .n3-person > .r4-topics) .wt .end { margin-left: auto; }
   .bento .r4-sec { margin: 0; padding: 18px 20px; border: 0; }
   .rh-row { display: flex; align-items: flex-end; gap: 22px; }
@@ -10245,8 +10251,10 @@ function personStats(r, d = personFuseData(r)) {
 // What is still open with them leads, right under the header: it is what the owner opens a person for (sprint 15).
 // The rest of the record as widgets; the full note with every source stays below them.
 function personPage(r) {
-  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r), personTopics(r),
-    el("div", { class: "bento" }, [personFuse(r), personQuotes(r), personTimeline(r), el("section", { class: "widget rel-slot", "aria-label": t("Relationships") }),
+  // #3145 (owner, 2026-11-19): no "open topics" here: it disagreed with Today, where those items were already closed,
+  // and to-dos live only in Today (D-30). What happened between you, newest first, is the first thing under the header.
+  return el("div", { class: "r4 r4-person n3-person" }, [personHead(r), personTimeline(r, { lead: true }),
+    el("div", { class: "bento" }, [personFuse(r), personQuotes(r), el("section", { class: "widget rel-slot", "aria-label": t("Relationships") }),
       el("div", { class: "stack2" }, [railUnsure(r), railSources(r)].filter(Boolean)), personSessions(r)].filter(Boolean))].filter(Boolean));
 }
 // The fuse: a heavy line from the first exchange REM knows to today, one tick per dated
@@ -10348,18 +10356,32 @@ function timelineRow(r, item) {
   const content = historyRowContent(text, r.path);
   if (!content) return null;
   const yours = /^\s*(?:\*\*)?(?:the user|you|你)\b/i.test(unlabelled(item.text));
-  return el("li", { class: "tl-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [el("span", { class: "d" }, timelineDay(item.day)),
+  const li = el("li", { class: "tl-e" + (content.classList.contains("privacy-only") ? " private-entry" : "") }, [el("span", { class: "d" }, timelineDay(item.day)),
     el("span", { class: "w" }, [el("i", { class: yours ? "me" : "", title: t(yours ? "You" : "Them") })]), el("span", { class: "x" }, [content])]);
+  // One click on the row shows the whole original beside it, in the source card (#3145, owner: «每点击一个，旁边就可以
+  // 显示完整的对话记录或者邮件»); the row stays marked while it is open. A row with no source stays a plain line.
+  // The row's sources are read from its written line: the timeline draws the words without their [n] marks.
+  const number = (/\[(W?\d+)\]/.exec(unlabelled(item.text)) || [])[1] || li.querySelector("a.cite")?.dataset.sources?.split(" ")[0];
+  if (number) {
+    Object.assign(li, { tabIndex: 0, title: t("Open the original") });
+    li.classList.add("tl-open");
+    li.setAttribute("role", "button");
+    const open = () => { document.querySelectorAll(".tl-e.on").forEach(row => row.classList.remove("on")); li.classList.add("on"); openEvidence(r, number, li, { fromList: true }); };
+    li.addEventListener("click", event => { if (!event.target.closest("a, button")) open(); });
+    li.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } });
+  }
+  return li;
 }
-function personTimeline(r) {
+function personTimeline(r, { lead = false } = {}) {
   const items = historyItems(section(r, "history")?.text || "").filter(item => item.day).sort((a, b) => b.day.localeCompare(a.day));
   const rows = items.map(item => timelineRow(r, item)).filter(Boolean);
   if (!rows.length) return null;
-  rows.slice(3).forEach(row => row.classList.add("later"));
-  const list = el("ol", { class: "tl" + (rows.length > 3 ? "" : " all") }, rows);
-  const more = rows.length > 3 ? el("button", { type: "button", class: "chip ghost tl-more", text: t("Show all {n} entries", { n: rows.length }) }) : null;
+  const first = lead ? 5 : 3;
+  rows.slice(first).forEach(row => row.classList.add("later"));
+  const list = el("ol", { class: "tl" + (rows.length > first ? "" : " all") }, rows);
+  const more = rows.length > first ? el("button", { type: "button", class: "chip ghost tl-more", text: t("Show all {n} entries", { n: rows.length }) }) : null;
   if (more) more.onclick = () => { list.classList.add("all"); more.remove(); };
-  return el("section", { class: "widget r4-sec", id: "history-timeline" }, [widgetHead("layers", t("Exchanges"), el("span", { text: t("{n} entries", { n: rows.length }) })),
+  return el("section", { class: "widget r4-sec" + (lead ? " tl-lead" : ""), id: "history-timeline" }, [widgetHead("layers", t("Exchanges"), el("span", { text: t("{n} entries", { n: rows.length }) })),
     list, privateHistoryNotice(rows), more]);
 }
 // REM's open questions about this person: its inference, so a dashed card; the questions open in a sheet.
@@ -10425,7 +10447,9 @@ function personTopics(r) {
 }
 // What is still owed between you and a person: Today's rows (D-30), counted here, never listed.
 function waitingOn(r) {
-  return personEntries(r).filter(entry => entry.t.dir === "mine" && !isDone(entry) && !looksDone(entry) && !entry.t.quiet && !staleEntry(entry)).sort(byUrgency);
+  // Today's own rule (waitingOnYou: answered, quiet and stale rows are not waiting) and its own marks (isDone), so the
+  // header's "N in Today" can never count what was closed there (#3145).
+  return personEntries(r).filter(entry => waitingOnYou(entry) && !isDone(entry) && !looksDone(entry)).sort(byUrgency);
 }
 // Entity lists are records; what you owe lives in Today, reached by this one quiet line.
 function listTodayLink(text) {
@@ -15531,6 +15555,7 @@ function closeEvidence() {
   const layer = document.getElementById("evidence-layer");
   if (!layer || layer.hidden) return;
   layer.hidden = true;
+  document.querySelectorAll(".tl-e.on").forEach(row => row.classList.remove("on"));
   document.body.classList.remove("evidence-open");
   evidenceLayout();
   evidenceTrigger?.focus({ preventScroll: true });
