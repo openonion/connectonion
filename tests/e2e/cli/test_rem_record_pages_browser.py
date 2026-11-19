@@ -327,3 +327,39 @@ def test_people_never_show_an_address_as_a_name_and_cells_never_overlap(reader, 
           return inner.right > cell.right + 1; })""", isolated_context=False)
         assert not overlap
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_orgs_merge_same_named_units_keep_people_out_and_hide_empty_columns(reader):
+    """#3160: a unit listed twice, a person's role filed as an organisation, columns mostly '—', and '推断' as a line."""
+    open_page, _ = reader
+    page = open_page("c=orgs", width=1440, language="zh")
+    page.evaluate("""() => {
+      const base = byPath('orgs/fernhill-labs.md');
+      const org = (path, title, extra = {}) => ({...base, path, title, text: '# ' + title + '\\n\\n## Facts\\n- Kind: company\\n', children: [], parent: undefined, unit_kind: undefined, people: [], ...extra});
+      REM.records.push(org('orgs/eng-a.md', 'Faculty of Engineering', {unit_kind: 'faculty'}), org('orgs/eng-b.md', 'Faculty of Engineering', {unit_kind: 'faculty'}),
+        org('orgs/deputy.md', 'Deputy Director, Research Partnerships'));
+      for (let i = 0; i < 6; i++) REM.records.push(org('orgs/filler-' + i + '.md', 'Filler Company ' + i));
+      KNOWN.clear(); FACTS.clear(); orgTableColumns = null; render();
+    }""", isolated_context=False)
+    names = page.locator(".org-table tbody td.c-name a").all_inner_texts()
+    assert names.count("Faculty of Engineering") == 1
+    assert not any("Deputy Director" in n for n in names)
+    headers = page.locator(".org-table thead th").all_inner_texts()
+    assert not any("位置" in h for h in headers)  # empty for 80%+ of rows
+    assert page.locator(".org-table .org-site small").count() == 0  # 推断 is a dot with a tooltip, not a line
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_decision_titles_carry_no_privacy_label_and_leads_no_timestamps(reader):
+    """#3159: a title ended with a literal '[personal]'; leads opened with '这项选择作于 2026-11-08 的 10:20…'."""
+    open_page, _ = reader
+    page = open_page("c=decisions", width=1440, language="zh")
+    page.evaluate("""() => {
+      REM.records.push({path: 'decisions/keep-markdown.md', title: 'Keep Markdown [personal]', category: 'decisions', written: true,
+        text: '# Keep Markdown [personal]\\n\\n## Decision\\n这项选择作于 2026-11-08 的 10:20，所在会话开始于 2026-10-29T09:00:00Z。保留 Markdown 作为笔记格式。 [1]\\n\\n## Sources\\n- [1] codex:01a1a594\\n'});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    text = page.locator("#main").inner_text()
+    assert "[personal]" not in text and "Keep Markdown" in text
+    assert "2026-11-08" not in text and "T09:00" not in text and "这项选择作于" not in text
+    assert "保留 Markdown 作为笔记格式" in text

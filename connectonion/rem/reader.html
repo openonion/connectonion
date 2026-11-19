@@ -1543,6 +1543,10 @@
   .org-disclosure { flex: none; width: 24px; min-height: 32px; padding: 0; border: 0; color: var(--grey); background: transparent; cursor: pointer; }
   .org-disclosure-space { flex: none; width: 24px; }
   .org-site small { color: var(--grey); font-size: var(--s-meta); }
+  /* Inferred is a quiet dot with its word on hover (#3160), not a second line under every domain. */
+  .org-derived { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: var(--round); background: var(--rule); vertical-align: middle; }
+  /* A long organisation name takes two lines before it is cut (#3160). */
+  .org-name-text > a { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .org-activity { display: flex; flex-direction: column; gap: 4px; font-size: var(--s-meta); }
   @media (max-width: 600px) {
     .org-directory .org-kind-filters button { min-height: 44px; }
@@ -5177,7 +5181,7 @@ function label(c) { return t(CATEGORY_LABEL[c] || c); }
 function singular(c) { return t(({ people: "Person", orgs: "Organisation", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
 function byPath(path) { return REM.records.find(r => r.path === path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
-function privateTopicHidden(r) { return r.private && r.category === "knowledge" && document.documentElement.classList.contains("hide-private"); }
+function privateTopicHidden(r) { return r.private && ["knowledge", ...STATEMENT_CATEGORIES].includes(r.category) && document.documentElement.classList.contains("hide-private"); }
 function listedRecords() { return REM.records.filter(r => !privateTopicHidden(r) && !r.catalog_parent && !r.needs_review && !r.unnamed && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
 function inCategory(category) { return listedRecords().filter(r => r.category === category && (category !== "people" || r.path !== REM.owner)); }
 function peopleExclusions() {
@@ -7568,7 +7572,7 @@ function row(r, opts) {
     el("div", { class: "t" }, [
       el("span", {}, [el("a", { href: href(r), text: r.title }), updatedMarker(r), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
       el("span", { class: "when", text: shortDate(k.last) })])]);
-  const summary = summaryLine(k.summary);
+  const summary = STATEMENT_CATEGORIES.includes(r.category) ? statementLead(summaryLine(k.summary)) : summaryLine(k.summary);
   const lead = summary.length > 220 ? summary.slice(0, 217) + "…" : summary;
   if (lead) li.appendChild(el("div", { class: "hit", text: lead }));
   const open = threads(r).items[0];
@@ -7577,6 +7581,13 @@ function row(r, opts) {
   if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "meta usage" }, [t("{n} uses", { n: u.count }) + (u.last ? t(" · last {last}", { last: shortDate(u.last) }) : "")]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: t("{n} installed copies — open to compare sources", { n: r.installations.length }) }));
   return li;
+}
+// A decision's lead is what was decided (#3159): not "这项选择作于 2026-11-08 的 10:20，所在会话开始于…", and a date reads once,
+// in the reader's words, never as an ISO timestamp.
+function statementLead(text) {
+  const when = /(?:^|[，,。.;；]\s*)(?:这项(?:选择|决定)(?:作于|做于|是在|发生在)|所在会话开始于|This (?:choice|decision) was (?:made|taken)|The session (?:began|started))[^，,。.;；]*[，,。.;；]?/gi;
+  const iso = /\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?:\s*的\s*\d{1,2}:\d{2})?/g;
+  return String(text || "").replace(when, " ").replace(iso, (_, day) => fmtDate(day)).replace(/^[\s，,。.;；]+/, "").replace(/\s{2,}/g, " ").trim();
 }
 function alsoOn(records = []) {
   if (!records.length) return null;
@@ -12238,10 +12249,14 @@ function owedWords(entry) {
 // ---------- the list ----------
 // Two pages with one name (one company, two mail domains) are one organisation. A unit is part of
 // the organisation it sits in (#2992): it is drawn inside that row's shape, not listed beside it.
+// A page titled by a person's role is a person filed as a unit (#3160), not an organisation.
+const ROLE_TITLE = /\b(?:Deputy|Director|Manager|Officer|Coordinator|Lecturer|Professor|Dean|Head of|Chair(?:man|woman)?|Founder|CEO|CTO|COO|CFO)\b/i;
+function personAsOrg(r) { return ROLE_TITLE.test(orgName(r)) && !(r.people || []).length && !(r.children || []).length; }
 function orgRows() {
   const byName = new Map();
-  for (const r of inCategory("orgs").filter(page => !byPath(page.parent))) {
-    const key = (orgHidden(r) || r.unit_kind ? "page:" + r.path + ":" : "visible:") + orgName(r).toLowerCase();
+  for (const r of inCategory("orgs").filter(page => !byPath(page.parent) && !personAsOrg(page))) {
+    // Same-named units are one row (#3160: a faculty listed twice); a private page stays its own.
+    const key = (orgHidden(r) ? "page:" + r.path + ":" : r.unit_kind ? "unit:" : "visible:") + orgName(r).toLowerCase();
     byName.set(key, [...(byName.get(key) || []), r]);
   }
   return [...byName.values()].map(pages => {
@@ -12345,7 +12360,7 @@ function orgNameCell(d, draw) {
 }
 function orgWebsiteCell(d) {
   return d.website ? el("span", {class: "org-site"}, [el("a", {href: d.website.url, target: "_blank", rel: "noopener",
-    text: d.website.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}), d.website.derived ? el("small", {text: orgTableT("Derived")}) : null]) : textCell("");
+    text: d.website.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}), d.website.derived ? el("span", {class: "org-derived", title: orgTableT("Derived"), "aria-label": orgTableT("Derived")}) : null]) : textCell("");
 }
 const ORG_COLUMNS = [
   {key: "name", label: "Organisation", sort: d => orgName(d.r), cell: orgNameCell},
@@ -12367,7 +12382,10 @@ const ORG_COLUMNS = [
 function orgTableChildren(d, seen = new Set()) {
   if (seen.has(d.r.path) || orgHidden(d.r)) return [];
   const next = new Set([...seen, d.r.path]);
-  return d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path)).map(r => {
+  const named = new Map();  // two child pages with one name under one parent are one unit (#3160)
+  for (const r of d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path) && !personAsOrg(r)))
+    if (!named.has(orgName(r).toLowerCase()) || orgHidden(r)) named.set(orgHidden(r) ? r.path : orgName(r).toLowerCase(), r);
+  return [...named.values()].map(r => {
     const people = orgMembers(r), last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
     const child = orgTableRow({r, pages: [r], people, last, units: orgUnitNames(r)});
     child.ancestors = [...(d.ancestors || []), orgName(d.r)];
@@ -12378,8 +12396,10 @@ function orgTableChildren(d, seen = new Set()) {
 }
 function orgsView() {
   document.getElementById("main").textContent = "";
-  orgTableColumns ??= peopleColumnKeys(null, ORG_COLUMNS);
   const rows = orgRows().map(orgTableRow);
+  // A column empty for 80% or more of the rows is left out of the default set (#3131, #3160); Columns still offers it.
+  const sparse = ORG_COLUMNS.filter(c => c.key !== "name" && rows.length >= 5 && rows.filter(d => c.sort(d) == null || c.sort(d) === "").length / rows.length >= 0.8).map(c => c.key);
+  orgTableColumns ??= peopleColumnKeys(null, ORG_COLUMNS).filter(key => !sparse.includes(key));
   for (const d of rows) { d.children = orgTableChildren(d); d.unitCount = d.children.length; }
   if (orgFilter.tab !== "all" && !rows.some(d => [d, ...orgDescendants(d)].some(child => child.kind === orgFilter.tab))) orgFilter.tab = "all";
   peopleView([], {category: "orgs", translate: orgTableT,
@@ -15609,7 +15629,11 @@ function localiseTitles() {
     r.title_original ??= r.title;
     const translated = uiLanguage !== "en" ? (r.translations?.[uiLanguage] || "") : "";
     const head = /^# (.+)$/m.exec(translated);
-    r.title = head ? head[1].trim() : r.title_original;
+    const title = head ? head[1].trim() : r.title_original;
+    // A privacy label is never printed in a title (#3159): the page keeps it; the list hides the title in private
+    // mode like any labelled passage.
+    r.private = r.private || hasPrivacy(title);
+    r.title = title.replace(/\s*[\[［](?:personal|sensitive)[\]］]/gi, "").trim();
   }
 }
 function render() {
@@ -16451,7 +16475,7 @@ Promise.all([readerStorage("co-rem-ui-language"), readerStorage("co-rem-theme"),
   readerStorage(notDoneStorageKey()), readerStorage(keptOpenStorageKey()), readerStorage("co-rem-org-columns"), readerStorage("co-rem-org-collapsed")]).then(async ([language, theme, privacy, columns, done, saved, notDone, kept, orgSaved, collapsed]) => {
   if (language === "zh" || language === "en") uiLanguage = language;
   peopleColumns = peopleColumnKeys(columns);
-  orgTableColumns = peopleColumnKeys(orgSaved, ORG_COLUMNS);
+  orgTableColumns = orgSaved ? peopleColumnKeys(orgSaved, ORG_COLUMNS) : null;  // none saved: orgsView picks the default, sparse columns left out
   orgCollapsed = new Set((collapsed || "").split("\n").filter(Boolean));
   notDoneKeys = new Set(notDone ? JSON.parse(notDone) : []);
   keptOpen = kept ? JSON.parse(kept) : {};
