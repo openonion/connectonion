@@ -281,6 +281,8 @@ def _run_locked(root, run, lock_fd):
         if preparation_error and not skipped:
             outcome = 'failed'
             receipt['reason'] = preparation_error
+        # Kept on the receipt so status can tell a capped turn that did work from one that did none.
+        receipt['accepted'] = sum(1 for event in events if event['type'] == 'rem.submitted' and event.get('outcome') == 'accepted')
         nothing = _produced_nothing(events) if outcome == 'completed' else ''
         if nothing:
             # Exit 0 says Codex ended cleanly, not that the turn did anything (11-16:

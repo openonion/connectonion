@@ -191,3 +191,33 @@ def test_a_round_whose_tasks_keep_landing_or_whose_turn_runs_is_working(tmp_path
     write_json(state_path(tmp_path, "runs/run_" + "a" * 32 + ".json"), {"id": "run_" + "a" * 32,
                "phase": "daily-update", "started_at": (moment - timedelta(minutes=20)).isoformat()})
     assert service.round_state(tmp_path, read_config(tmp_path))["state"] == "working"
+
+
+@pytest.mark.parametrize("recorded", [True, False])
+def test_a_turn_that_hit_the_three_hour_cap_after_accepting_work_is_not_a_failure(tmp_path, rem_clock, recorded):
+    """rc31 on a real notebook: three capped turns accepted 137, 126 and 217 items, each ending "the next fire
+    continues the round", yet Today said "the last 3 turns failed". A capped turn that did work is a normal turn.
+    `recorded`: the receipt carries its accepted count; otherwise (older receipts) it is read from the turn's log."""
+    import json
+    for index, accepted in enumerate((137, 126, 217)):
+        log = tmp_path / f"turn-{index}.jsonl"
+        log.write_text("".join(json.dumps({"type": "rem.submitted", "outcome": "accepted"}) + "\n" for _ in range(accepted)))
+        turn = {"turn_id": str(index), "started_at": f"2026-09-0{index + 5}T00:00:00Z", "result": "timed-out",
+                "exit_code": 124, "reason": "Turn exceeded 3 hours; the next fire continues the round", "log": str(log)}
+        if recorded:
+            turn["accepted"] = accepted
+        write_json(state_path(tmp_path, f"turns/{index:03}.json"), turn)
+    write_json(state_path(tmp_path, "last-turn.json"), turn)
+    assert service.schedule_failure(tmp_path) is None
+
+
+def test_a_capped_turn_that_accepted_nothing_still_counts_as_failed(tmp_path, rem_clock):
+    log = tmp_path / "empty.jsonl"
+    log.write_text("")
+    for index in range(2):
+        turn = {"turn_id": str(index), "started_at": f"2026-09-0{index + 5}T00:00:00Z", "result": "timed-out",
+                "exit_code": 124, "reason": "Turn exceeded 3 hours; the next fire continues the round", "log": str(log),
+                "accepted": 0}
+        write_json(state_path(tmp_path, f"turns/{index:03}.json"), turn)
+    write_json(state_path(tmp_path, "last-turn.json"), turn)
+    assert service.schedule_failure(tmp_path)["failures"] == 2

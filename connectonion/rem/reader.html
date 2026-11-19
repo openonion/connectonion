@@ -8329,7 +8329,7 @@ const HOST_LOST_WORDS = "This page lost touch with REM (it was just restarted)."
 function hostLost() {
   if (!liveHere() || document.getElementById("host-lost")) return;
   const again = el("button", { type: "button", class: "lang-act", text: t("Reconnect") });
-  again.onclick = () => reloadOnto();  // the one reload door: it keeps his place
+  again.onclick = () => reconnect();  // onto the new build when an upgrade restarted the Host
   document.body.appendChild(el("div", { id: "host-lost", class: "host-lost", role: "status" }, [el("span", { text: t(HOST_LOST_WORDS) }), again]));
 }
 function hostFound() { document.getElementById("host-lost")?.remove(); }
@@ -16711,6 +16711,31 @@ function offerReload() {
   link.onclick = reloadOnto;
   document.getElementById("main").prepend(el("p", { class: "quiet-line", role: "status" }, [link]));
 }
+// After an upgrade the Host serves the old saved page until the new release has drawn its own, so a reload too
+// early shows the old build again (Mac review of rc33). The page reloads only once the saved page is the
+// installed release's; until then it says so and asks again every few seconds.
+Object.assign(UI.zh, { "Switching to the new version…": "正在换到新版本…" });
+function upgradeState(latest) {
+  if (!latest?.installed || !REM?.release || latest.installed === REM.release) return "same";
+  return latest.release === latest.installed ? "ready" : "building";
+}
+function waitForNewBuild(again = false) {
+  if (waitForNewBuild.active && !again) return;  // one waiter, whoever noticed first
+  waitForNewBuild.active = true;
+  // Its own quiet bar: the lost-Host bar leaves as soon as the Host answers, but the new build may still be drawing.
+  if (!document.getElementById("upgrading")) document.body.appendChild(el("div", { id: "upgrading", class: "host-lost", role: "status" },
+    [el("span", { text: t("Switching to the new version…") })]));
+  setTimeout(async () => {
+    const latest = await readVersion();
+    if (upgradeState(latest) === "ready") reloadOnto();
+    else waitForNewBuild(true);
+  }, 4000);
+}
+async function reconnect() {
+  const latest = await readVersion();
+  if (upgradeState(latest) === "building") waitForNewBuild();
+  else reloadOnto();
+}
 function readVersion() {
   return fetch("/rem/version").then(response => { hostFound(); return response.ok ? response.json() : null; }, () => { hostLost(); return null; });
 }
@@ -16725,6 +16750,11 @@ async function checkForNewerRender() {
   if (document.hidden) return;
   const latest = await readVersion();
   showRebuildState(latest);
+  const busy = unsavedDraft() || !!document.activeElement?.matches("input, select");
+  // An upgrade: reload onto the new build by itself once it is drawn, unless he is typing or has a draft.
+  const upgrade = upgradeState(latest);
+  if (upgrade === "ready") return busy ? offerReload() : reloadOnto();
+  if (upgrade === "building") return waitForNewBuild();
   const choice = reloadChoice({ latest, asOf: REM.as_of, unsaved: unsavedDraft(),
     typing: !!document.activeElement?.matches("input, select") });
   if (choice === "reload") reloadOnto();

@@ -719,6 +719,17 @@ def round_state(root: Path, config: dict) -> dict | None:
     return {"state": "stuck", "since": touched, "reason": " ".join(str(reason).split())[:240]}
 
 
+def _accepted(turn: dict) -> int:
+    """How many submissions a turn had accepted: its receipt's count, or (older receipts) its log's."""
+    if 'accepted' in turn:
+        return int(turn['accepted'] or 0)
+    log = Path(turn.get('log') or '')
+    if not turn.get('log') or not log.is_file():
+        return 0
+    return sum(1 for line in log.read_text(encoding='utf-8', errors='replace').splitlines()
+               if '"rem.submitted"' in line and '"accepted"' in line)
+
+
 def schedule_failure(root: Path) -> dict | None:
     """Surface failed turns from their receipts, without inventing scheduler state."""
     receipts = [read_json(path, {}) for path in state_path(root, 'turns').glob('*.json')]
@@ -735,7 +746,9 @@ def schedule_failure(root: Path) -> dict | None:
     for turn in reversed(receipts):
         if turn.get('result') == 'skipped':
             continue
-        if turn.get('result') not in ('failed', 'timed-out'):
+        # A turn that hit the 3-hour cap after accepting work is a normal turn: the next fire continues
+        # the round. Only a turn that errored, or ran out of time with nothing accepted, is a failure.
+        if turn.get('result') not in ('failed', 'timed-out') or (turn.get('result') == 'timed-out' and _accepted(turn)):
             break
         failures.append(turn)
     if not blocked and not failures:
