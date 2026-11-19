@@ -74,3 +74,30 @@ class TestWhatIsStillPublished:
         monkeypatch.setattr(announce, 'get_ips', lambda: ['localhost'])
 
         assert announce.get_endpoints(8001) == []
+
+
+class TestTheRelayAcceptsTheList:
+    """A Windows 11 PC with disconnected adapters published 16 endpoints, and
+    the relay refuses more than 10: the host never registered (#3122)."""
+
+    WINDOWS_PC = ['localhost', '169.254.175.88', '192.168.20.131', '169.254.25.139',
+                  '169.254.149.150', '169.254.33.220', '169.254.64.126', '127.0.0.1',
+                  '172.25.128.1', '203.0.113.9']
+
+    def test_link_local_addresses_are_not_published(self, monkeypatch):
+        monkeypatch.setattr(announce, 'get_ips', lambda: self.WINDOWS_PC)
+
+        published = announce.get_endpoints(8001)
+
+        assert not [e for e in published if '169.254.' in e], published
+        assert len(published) == 6
+
+    def test_many_real_adapters_still_fit_and_keep_the_public_address(self, monkeypatch):
+        private = [f'10.0.{n}.1' for n in range(12)]
+        monkeypatch.setattr(announce, 'get_ips', lambda: ['localhost', *private, '203.0.113.9'])
+
+        published = announce.get_endpoints(8001)
+
+        assert len(published) == announce.RELAY_MAX_ENDPOINTS
+        assert 'http://203.0.113.9:8001' in published
+        assert 'http://10.0.0.1:8001' in published

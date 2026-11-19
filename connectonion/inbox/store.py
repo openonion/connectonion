@@ -791,7 +791,9 @@ class Inbox:
         # With the flags the operator last started it with: a replacement that
         # came back without --raw stopped the raw archive silently (#1882).
         argv += [self.provider, "listen", *self.listener_flags()]
-        env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent))
+        # UTF-8 into the log: on Windows the child's stdout would otherwise be
+        # the ANSI code page, and the 👀/✍️ lines read back as "�o?�,?".
+        env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent), PYTHONIOENCODING="utf-8")
         # In the inbox directory: `-m` puts the working directory first on
         # sys.path, and started from inside a connectonion checkout the
         # listener ran the checkout instead of the installed package (#1878).

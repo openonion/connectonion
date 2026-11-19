@@ -400,17 +400,25 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc25
-Release candidate 1.9.6rc25 for 1.9.6: REM sprint 22. Today's Send always answers (an unfilled slot is
+## Current Version: 1.9.6rc26
+Release candidate 1.9.6rc26 for 1.9.6: REM sprint 22. Today's Send always answers (an unfilled slot is
 pointed at, a sent reply says when and to whom with Undo), full-screen writing is a visible button, and the
 "more" panel's Codex/Claude actions are a button row. A person's profile card is the first thing under the
 name. Full memory opens by itself and its sources are short, named and linked both ways with the lines that
 cite them. `co rem investigate PAGE` writes a missing page and appends to an existing one (`--enrich` adds
 the web step, `--rewrite` is held for approval, `--undo` reverts), and record pages get one Investigate
 button. The calendar draws multi-day events as all-day bars. Stable remains 1.9.5. See
-[candidate notes](docs/releases/1.9.6rc25.md).
+[candidate notes](docs/releases/1.9.6rc26.md).
 
-- 1.9.6rc25 (REM sprint 22: Send feedback, profile card first, sources band, investigate appends).
+- 1.9.6rc26 (REM sprint 22: Send feedback, profile card first, sources band, investigate appends).
+
+### Previous candidate: 1.9.6rc25
+Release candidate 1.9.6rc25 for 1.9.6: a Windows PC can host. `co host` no longer publishes
+link-local 169.254.x addresses and never sends the relay more than its 10 endpoints, so a PC with
+disconnected adapters registers; `co call` runs on a Windows host through Git Bash (or `cmd /c`);
+the background listener's log is UTF-8. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc25.md).
+
+- 1.9.6rc25 (Windows hosts: announce within the relay limit, bash via Git Bash or cmd, UTF-8 listener log).
 
 ### Previous candidate: 1.9.6rc24
 Release candidate 1.9.6rc24 for 1.9.6: three Windows fixes from the first live `co whatsapp` run on
