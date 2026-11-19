@@ -138,11 +138,24 @@ def send_direct(root, draft_id):
     if saved.get('send') != 'now' or saved.get('status') != 'prepared' or drafts.has_slots(saved.get('body', '')):
         return None
     item = next((item for item in outcomes(root) if item.get('draft_id') == draft_id and item['kind'] == 'reply'), None)
-    return _approve(root, [item['id']], by='rem') if item else None
+    # A reply that carries a fact labelled private is the owner's to send, whoever it goes to (#3121, #2838).
+    if not item or item.get('private'):
+        return None
+    return _approve(root, [item['id']], by='rem', release_at=_waking_hours(root, service.now() + timedelta(minutes=10)))
 
 
-def _approve(root, ids, *, bodies=None, by='owner'):
-    release_at = (service.now() + timedelta(minutes=10)).isoformat()
+WAKING = 7  # no reply REM sends itself leaves before 07:00 in the notebook's zone (#3121)
+
+
+def _waking_hours(root, moment):
+    """The hold's end, moved to 07:00 when it falls in the small hours, so the owner wakes to it with Undo."""
+    from .config import read_config
+    local = moment.astimezone(service.notebook_zone(read_config(root)))
+    return local.replace(hour=WAKING, minute=0, second=0, microsecond=0).astimezone(moment.tzinfo) if local.hour < WAKING else moment
+
+
+def _approve(root, ids, *, bodies=None, by='owner', release_at=None):
+    release_at = (release_at or service.now() + timedelta(minutes=10)).isoformat()
     available = {item['id']: item for item in outcomes(root)}
     queue = read_json(state_path(root, 'approvals.json'), {})
     results = []

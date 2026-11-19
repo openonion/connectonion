@@ -3350,6 +3350,9 @@
   .more-menu > summary::-webkit-details-marker { display: none; }
   .more-menu > summary:hover, .more-menu[open] > summary { background: var(--well); color: var(--ink); }
   .more-menu > .menu { left: 0; bottom: 44px; }
+  /* 以后直接发给他 / 以后先给我看 (#3121): what the click does, then what will happen, in words. */
+  .menu .direct-send { text-align: left; }
+  .menu .direct-send small { display: block; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
   .more-menu .menu .btn-quiet { display: flex; width: 100%; justify-content: flex-start; min-height: 36px; color: var(--ink); }
   .qdraft :is(.mail-body, .mail-choices, .mail-text, .mail-gist, .mail-head) { background: none; }
 
@@ -6320,7 +6323,7 @@ function chooseHint(hint, open) {
     return [k ? (zh ? "、" : ", ") : "", jump];
   }));
 }
-function replyDraftCard(draft, onSent) {
+function replyDraftCard(draft, onSent, person) {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const fills = {}, filled = () => parts.every((part, i) => !/^(?:\[|［|【)/.test(part) || fills[i])
     ? parts.map((part, i) => fills[i] ?? part).join("") : null;
@@ -6355,7 +6358,7 @@ function replyDraftCard(draft, onSent) {
   // Send is the one green action. Writing full screen stays in sight beside it: behind 更多 the owner could not find
   // it (sprint 22); editing in the mail app and Skip wait behind 更多 (D-120).
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
-    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), skip])]);
+    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), skip, directSendItem(who || person)].filter(Boolean))]);
   const actions = el("div", { class: "mail-actions" }, [more, write, hint,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), send]);
@@ -6397,7 +6400,7 @@ function replyDraftCard(draft, onSent) {
     }
     if (action === "redraft") {
       REM.drafts = REM.drafts.map(d => d.id === draft.id ? result : d);
-      card.replaceWith(replyDraftCard(result));
+      card.replaceWith(replyDraftCard(result, onSent, person));
       return;
     }
     const next = action === "send" ? "sent" : "discarded";
@@ -7965,7 +7968,7 @@ function cardDraft(draft, group) {
     setTimeout(render, motionStilled() ? 0 : 320);
   };
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
-    replyDraftCard(draft, sent)]);
+    replyDraftCard(draft, sent, group.r)]);
 }
 // A snapshot can show the work but not do it: one plain line per page says so, never a command (D-60).
 function snapshotLine() {
@@ -8798,7 +8801,12 @@ function approvalUndoBar(onToday = true) {
   document.body.appendChild(bar);
   const tick = () => {
     const seconds = Math.max(0, Math.ceil((Math.max(...held.map(item => Date.parse(item.release_at))) - Date.now()) / 1000));
-    status.textContent = (undoFailure ? undoFailure + " · " : "") + (seconds ? t("{n} replies held · {time} to undo", {n: held.length, time: Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")}) : t("Hold ended. Delivery continues from the Host."));
+    const left = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+    // One reply REM chose to send itself says to whom and when (#3121); several say how many.
+    const own = held.length === 1 && held[0].by === "rem" ? held[0] : null;
+    status.textContent = (undoFailure ? undoFailure + " · " : "") + (!seconds ? t("Hold ended. Delivery continues from the Host.")
+      : own ? t("Sending to {name} at {time} · {left} to undo", { name: own.title, time: new Date(own.release_at).toLocaleTimeString(uiLanguage === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" }), left })
+      : t("{n} replies held · {time} to undo", {n: held.length, time: left}));
     if (!seconds) {undo.disabled = true; clearInterval(approvalTimer);}
   };
   undo.onclick = async () => {
@@ -9910,7 +9918,7 @@ function profileCard(r) {
   const languages = have("Language");
   if (languages.length) add("Identity", "Language", "", [{ node: el("span", { class: "pc-inline" }, languages.map(item => profileValue(item, r, "Language"))) }]);
   if (!have("Location").length) add("Identity", "Time zone", "", have("Time zone").map(item => ({ item })));
-  const extra = [...parsed.keys()].filter(label => !FACT_LABELS.people.includes(label) && !PROFILE_GROUPS.some(([, labels]) => labels.includes(label)) && !["Location", "Tags"].includes(label));
+  const extra = [...parsed.keys()].filter(label => !FACT_LABELS.people.includes(label) && !PROFILE_GROUPS.some(([, labels]) => labels.includes(label)) && !["Location", "Tags", "Direct send"].includes(label));
   for (const label of extra) add("Identity", label, "", have(label).map(item => ({ item })));
   // What the page has a line for and does not know; a unit or role the line above already says is not missing.
   const missing = [...FACT_LABELS.people, ...extra, ...["Unit", "Role in unit"].filter(label => parsed.has(label) && !units.length)]
@@ -10026,6 +10034,40 @@ function invParts(r, s, paint) {
   if (running && live) invFollow(r, paint);
   return parts;
 }
+// ---------- Who REM may reply to without asking (#3121, D-101) ----------
+// Each person has a tier on their page: partner (sent with no click, after the hold), close (routine replies
+// only), none (a card in Today) or never (drafts only). REM sets it from the relationship; the owner sets it
+// here in one click, and his choice wins from then on. The words say what will happen, not the tier's name.
+Object.assign(UI.zh, { "Send to them directly from now on": "以后直接发给他", "Show me first from now on": "以后先给我看",
+  "REM replies to them without asking; 10 minutes to undo": "REM 直接回复，10 分钟内可撤销",
+  "Their replies wait for you in Today": "他的回复先放在今天等你看",
+  "Replies to this person": "回复这个人", "Saved: REM sends to them directly": "已改：以后直接发给他",
+  "Saved: their replies wait for you": "已改：以后先给我看", "Sending to {name} at {time} · {left} to undo": "{time} 发给 {name} · 还有 {left} 可撤销" });
+const DIRECT_TIERS = new Map();  // this tab's changes since the page data was built
+function directTier(r) {
+  if (DIRECT_TIERS.has(r.path)) return DIRECT_TIERS.get(r.path);
+  const line = (parseFacts(r).get("Direct send") || [])[0];
+  return (/^(partner|close|none|never)\b/.exec(plainLine(line?.value || "")) || [])[1] || "none";
+}
+// The one item a menu shows: the opposite of what happens now, with what it will do in words.
+function directSendItem(r, close) {
+  if (!r || r.category !== "people" || !REM.live) return null;
+  const direct = ["partner", "close"].includes(directTier(r));
+  const [label, says, tier, done] = direct ? ["Show me first from now on", "Their replies wait for you in Today", "none", "Saved: their replies wait for you"]
+    : ["Send to them directly from now on", "REM replies to them without asking; 10 minutes to undo", "partner", "Saved: REM sends to them directly"];
+  const item = el("button", { type: "button", role: "menuitem", class: "direct-send", "data-tier": tier }, [t(label), el("small", { text: t(says) })]);
+  item.onclick = async () => {
+    item.disabled = true;
+    const response = await fetch("/rem/direct-send", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: r.path, tier, reason: "reader" }) }).catch(() => null);
+    const result = response ? await response.json().catch(() => ({})) : {};
+    if (!response?.ok) { item.disabled = false; item.lastChild.textContent = result.error || t("Could not do that: {why}", { why: t("Try again") }); return; }
+    DIRECT_TIERS.set(r.path, tier);
+    item.replaceChildren(t(done));
+    close?.();
+  };
+  return item;
+}
 function invMenu(r, s, paint, off) {
   const menu = el("details", { class: "inv-more" }, [el("summary", { "aria-label": t("Investigation level"), title: t("Investigation level") }, [icon("ellipsis")])]);
   const cost = mode => mode !== "rewrite" && s.cost?.[mode] ? " · " + t("Last time about {n} points", { n: s.cost[mode] }) : "";
@@ -10035,7 +10077,7 @@ function invMenu(r, s, paint, off) {
         [t(name), mode === "full" ? el("span", { class: "inv-default", text: " · " + t("default") }) : null, el("small", { text: t(says) + cost(mode) })]);
       item.onclick = () => { menu.open = false; invRun(r, mode, paint); };
       return item;
-    })]));
+    }), ...(r.category === "people" && REM.live ? [el("p", { class: "inv-h", text: t("Replies to this person") }), directSendItem(r)] : [])]));
   menu.onkeydown = event => { if (event.key === "Escape" && menu.open) { event.stopPropagation(); menu.open = false; menu.querySelector("summary").focus(); } };
   return menu;
 }

@@ -43,4 +43,24 @@ An offline snapshot keeps the letter readable. Its single draft action,
 `co rem open` command with a copy button. A custom notebook keeps its `--root`
 argument; live-reader availability still follows the existing CLI rules.
 
+## Who REM may reply to without asking (#3121)
+
+The owner, 2026-11-19: «回邮件如果是给我合伙人回，那就直接发就好了，因为合伙人和外部的人是不一样的……每一个人背后都有他自己的一套审批».
+Each person's page carries a send policy as its `Direct send` fact (D-101):
+
+| Tier | #3121 name | What happens to a prepared reply |
+|---|---|---|
+| `partner` | send | REM sends it without a click, through the same 10-minute hold with Undo |
+| `close` | send-routine | sent only when the writer marks it `send: now`, which it may do only for a reply with no owner slot and nothing for the owner to decide |
+| `none` (default) | approve | a card in Today, as before |
+| `never` | draft-only | a draft only; only the owner sets it, and REM's rule never raises it |
+
+- **Who sets it.** REM, from the relationship the page already states (co-founder or partner is `partner`); a line it wrote says `(set by REM, DATE; change it any time)`. The owner sets any person's tier in one click: **以后直接发给他 / Send to them directly from now on** or **以后先给我看 / Show me first from now on**, in the reply card's ⋯ and the person page's ⋯ (`POST /rem/direct-send`, `direct_send.set_tier`). His line reads `(set by you, DATE: reason)` and REM never changes it again.
+- **Every change is recorded,** REM's and the owner's, one JSON line each in `.state/direct_send.jsonl` with when, who and why.
+- **Never in the small hours.** A reply REM sends itself never leaves before 07:00 in the notebook's time zone: the hold ends at 07:00 instead, so the owner wakes to it with Undo.
+- **A private fact holds it.** A reply that carries a passage labelled private waits for the owner, whatever the tier.
+- **Today says so.** While REM's own reply is held, the Undo bar names it: **Sending to {name} at {time} · {left} to undo / {time} 发给 {name} · 还有 {left} 可撤销**. Sent ones are counted in "Replied to N people for you".
+
+Not in this slice: a `partners:` list in config.yaml (config keys are validated strictly; the page line and the one-click choice cover it), and `send-routine` judged by a separate classifier (the writer's `send: now` rule is the gate).
+
 Verification and remaining browser limits: [sprint evidence](testing/rem-draft-coverage.md).

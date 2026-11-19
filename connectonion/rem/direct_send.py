@@ -8,6 +8,12 @@ round's `co rem next` never does. A sentence the rule cannot place stays `none`.
 REM writes `- Direct send: TIER (set by REM, DATE; change it any time)` into Facts. A
 Direct send line without that note is the owner's own and is never touched. Every send
 still waits ten minutes with Undo (approvals.send_direct).
+
+#3121 names the tiers by what happens to a prepared reply: partner = send (no click),
+close = send-routine (the writer sends only what needs no decision), none = approve (a
+card in Today), never = draft-only (REM never sends; only the owner can set it). The owner
+sets any tier in one click from the reader (set_tier); every change, REM's or the owner's,
+is one line of state/direct_send.jsonl with its reason.
 """
 
 import json
@@ -16,7 +22,9 @@ import sqlite3
 from collections import Counter
 from contextlib import closing
 
-from .files import Notebook, read_json, state_path
+from .files import Notebook, RemError, maintenance_lock, read_json, state_path
+
+TIERS = ("partner", "close", "none", "never")
 
 PARTNER = re.compile(r"\bco-?founders?\b|\bbusiness partners?\b|\bfounding partners?\b|合伙人|联合创始人", re.I)
 CLOSE = re.compile(r"\b(?:good|close|best|old|very good) friends?\b|\bclose collaborators?\b|\bteammates?\b|"
@@ -82,6 +90,40 @@ def _with_tier(page, value, day):
     return page[:facts.end()] + line + page[facts.end():] if facts and line else page
 
 
+def _record(root, record, value, by, reason):
+    """One line per change of anyone's tier, so the digest and the owner can see who changed it and why."""
+    from . import service
+    line = json.dumps({"at": service.now().isoformat(), "page": record, "value": value, "by": by, "reason": reason},
+                      ensure_ascii=False)
+    with state_path(root, "direct_send.jsonl").open("a", encoding="utf-8") as log:
+        log.write(line + "\n")
+
+
+def set_tier(root, record: str, value: str, reason: str = "") -> dict:
+    """The owner's own tier for one person (以后直接发给他 / 以后先给我看): written as the owner's line,
+    which REM's rule never changes again, and recorded with its reason."""
+    from . import service
+    if value not in TIERS:
+        raise RemError(f"Direct send must be one of {', '.join(TIERS)}")
+    book = Notebook(root)
+    if not record.startswith("people/") or not book.exists(record):
+        raise RemError("Direct send is set on a person's page")
+    with maintenance_lock(root):
+        page = book.read(record)
+        note = service.notebook_today(root).isoformat() + (": " + " ".join(reason.split())[:120] if reason.strip() else "")
+        line = f"- Direct send: {value} (set by you, {note.replace(')', '')})\n"
+        facts = re.search(r"^## Facts\n(?:- [^\n]*\n)*", page, re.M)
+        if LINE.search(page):
+            updated = LINE.sub(line, page, count=1)
+        elif facts:
+            updated = page[:facts.end()] + line + page[facts.end():]
+        else:
+            raise RemError("This page has no Facts section to hold Direct send")
+        book.write(record, updated)
+        _record(root, record, value, "owner", reason.strip())
+    return {"page": record, "direct_send": value}
+
+
 def refresh(root, day: str) -> list[str]:
     """Set REM's tier on every person page whose owner has not set one; the pages changed."""
     book, owner = Notebook(root), read_json(state_path(root, "map.json"), {}).get("owner") or {}
@@ -100,4 +142,5 @@ def refresh(root, day: str) -> list[str]:
         if updated != page:
             book.write(record, updated)
             changed.append(record)
+            _record(root, record, value, "rem", "the relationship on the page")
     return changed

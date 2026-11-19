@@ -14,6 +14,7 @@ POST /rem/task hands any unfinished row to Codex or Claude and follows it
 agent about a row or an archived session (begin, say, read); POST /rem/review
 records the owner's verdict on a review in 问题与关联 (reviews.decide); POST /rem/sender
 ignores one mail sender from Today and the night's drafts, or undoes it (threads.ignore_sender);
+POST /rem/direct-send sets one person's send policy, the owner's own Direct send line (direct_send.set_tier);
 POST /rem/translate-all starts, follows or stops translating every page (translate.every_page).
 POST /rem/investigate runs `co rem investigate PAGE --enrich` (or its quick and rewrite levels) for the
 Investigate button, follows it step by step, and undoes it or accepts or discards a rewrite (page_runs).
@@ -95,7 +96,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/investigate"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/investigate", "/rem/direct-send"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
@@ -199,6 +200,14 @@ async def _action(scope, receive, send, root, headers):
             await _reply(send, 400, json.dumps({"error": "Expected one mail address and ignored true or false"}), "application/json")
             return
         operation = lambda: {"ignored": threads.ignore_sender(root, body["address"], ignored=body["ignored"])}
+    elif scope["path"] == "/rem/direct-send":
+        # 以后直接发给他 / 以后先给我看 (#3121): one person's send policy, the owner's own line on their page.
+        from ...rem import direct_send
+        if (not isinstance(body, dict) or body.get("tier") not in direct_send.TIERS or not isinstance(body.get("page"), str)
+                or not body["page"].startswith("people/") or ".." in body["page"] or not isinstance(body.get("reason", ""), str)):
+            await _reply(send, 400, json.dumps({"error": "Expected a person's page and tier partner, close, none or never"}), "application/json")
+            return
+        operation = lambda: direct_send.set_tier(root, body["page"], body["tier"], body.get("reason", ""))
     elif scope["path"] == "/rem/language":
         from ...rem.config import request_language
         operation = lambda: request_language(root, body.get("language"))
