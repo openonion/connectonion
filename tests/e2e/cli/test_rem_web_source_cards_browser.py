@@ -152,3 +152,25 @@ def test_zh_names_a_search_in_chinese(tmp_path, monkeypatch):
         title.wait_for()
         assert title.inner_text() == 'DuckDuckGo 搜索：“Mira Vale” “Atlas”'
         browser.close()
+
+
+def test_a_phone_source_sheet_is_not_covered_by_the_tab_bar(person_page):
+    """rc35 check: on a phone the fixed tab bar sat over the source sheet's last lines. An open sheet is modal, so the
+    bar steps aside while it is open and comes back when it closes."""
+    page, _, errors = person_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    bar = page.locator(".tabbar")
+    assert bar.is_visible()
+    title = page.locator(".deep-sources li#src-1 .src-title")
+    title.click()
+    panel = page.locator("#evidence-panel")
+    panel.get_by_text("Mira Vale leads the Atlas project.").wait_for(timeout=5000)
+    assert not bar.is_visible()
+    # The point just above the sheet's bottom edge belongs to the sheet, not to anything drawn over it.
+    owned = page.evaluate("""() => { const p = document.getElementById('evidence-panel').getBoundingClientRect();
+        const hit = document.elementFromPoint(p.left + p.width / 2, p.bottom - 6);
+        return !!hit && !!hit.closest('#evidence-panel'); }""", isolated_context=False)
+    assert owned
+    page.keyboard.press("Escape")
+    bar.wait_for(state="visible", timeout=3000)
+    assert errors == []

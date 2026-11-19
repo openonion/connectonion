@@ -3394,6 +3394,9 @@
     main, main:has(> .agenda) { padding: 4px 16px calc(62px + 14px + 24px + env(safe-area-inset-bottom, 0px)); }
     .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); height: 62px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2);
       justify-content: space-around; align-items: center; z-index: 30; }
+    /* An open source sheet is modal and rises from the bottom edge, so the tab bar steps aside while it is open, as a
+       native sheet covers the tab bar (rc35 check: the bar hid the sheet's last lines). */
+    body:has(#evidence-layer:not([hidden])) .tabbar { display: none; }
     .tab { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 60px; min-height: 48px; justify-content: center; color: var(--grey);
       font: var(--w-regular) var(--s-meta)/1.3 var(--font); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none !important; }
     .tab.active, .tab[aria-expanded="true"] { color: var(--ink); font-weight: var(--w-bold); }
