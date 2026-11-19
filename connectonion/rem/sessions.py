@@ -749,7 +749,7 @@ def _native_summary_prompt(rows, tags, directory, output):
         session['artifacts'] = [line for entry in session['artifacts'] for line in entry.splitlines()]
         path = material / f"{session['id']}.json"
         write_json(path, session)
-        paths.append(str(path.relative_to(directory)))
+        paths.append(path.relative_to(directory).as_posix())
     return (_summary_instructions(tags, candidate=output)
             + f'\nSessions: {len(rows)} session(s), one JSON file per session: ' + ', '.join(paths)
             + ". Read every file in pieces with sed/rg, for example "

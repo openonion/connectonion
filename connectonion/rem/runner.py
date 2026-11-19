@@ -197,7 +197,7 @@ def check_skill(root: Path, stage: str) -> None:
             f"sys.exit(0 if default_skill_path({name!r}) else 3)")
     try:
         done = subprocess.run([sys.executable, "-c", code], cwd=str(workspace), env=child_env(),
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise RemError(f"Could not check that co ai finds the {name} Skill: {error}") from error
     if done.returncode:
@@ -324,6 +324,9 @@ NO_DISCOVERY_NOTE = ("This task packet contains everything the task needs, inclu
                      "and how: do not run `co commands` or any `--help`.\n")
 
 
+ARGV_PROMPT_LIMIT = 30000  # characters; Windows refuses a whole command line over 32,767
+
+
 def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: str = "") -> dict:
     """Run every co rem model turn from its stable task workspace."""
     # Model/page text carried NULs into argv, which cannot hold them (2026-10-16 trial).
@@ -338,11 +341,14 @@ def run_task(workspace: Path, prompt: str, config: dict, stage: str, session: st
     # the server's process group, which no longer fits in the 15 seconds this allowed.
     process_timeout = timeout + ADAPTER_CLEANUP_S if config["runner"] != "coai" else timeout
     try:
+        # A long prompt goes on stdin: an investigation prompt passed Windows'
+        # 32K command-line limit, and co ai could not start (WinError 206).
+        long = len(prompt) > ARGV_PROMPT_LIMIT
         completed = subprocess.run(
             [*preflight(), "ai", "--json", *harness_flags(config, stage),
-             *(["--resume", session] if session else []), prompt],
-            cwd=str(workspace.resolve()), capture_output=True, text=True,
-            timeout=process_timeout, env=child_env(config))
+             *(["--resume", session] if session else []), "-" if long else prompt],
+            cwd=str(workspace.resolve()), capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=process_timeout, env=child_env(config), **({"input": prompt} if long else {}))
     except subprocess.TimeoutExpired as error:
         raise TimedOut(f"co ai timed out after {timeout}s; source progress was preserved") from error
     except OSError as error:
@@ -431,7 +437,7 @@ def run_claim_task(workspace: Path, prompt: str, config: dict, stage: str) -> di
         command += ["-c", 'service_tier="priority"']
     if config["model"] != "default":
         command += ["--model", config["model"]]
-    completed = subprocess.run(command + ["-"], input=prompt, capture_output=True, text=True,
+    completed = subprocess.run(command + ["-"], input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
                                cwd=workspace, timeout=config["limits"]["timeout_seconds"])
     events = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
     turn = next((event for event in reversed(events) if event.get("type") == "turn.completed"), {})
@@ -1861,9 +1867,9 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     metrics = {"stage": stage, "harness": config["runner"], "model": config["model"], "timeouts_retried": 0,
                "speed": config["speed"], "effort": worker_effort(config),
                "tier": "summary" if summary else "agent",
-               "instructions_chars": len((directory / "instructions.md").read_text()),
-               "material_chars": len((directory / "material.json").read_text()),
-               "readable_material_chars": len((directory / "material.md").read_text()),
+               "instructions_chars": len((directory / "instructions.md").read_text(encoding="utf-8")),
+               "material_chars": len((directory / "material.json").read_text(encoding="utf-8")),
+               "readable_material_chars": len((directory / "material.md").read_text(encoding="utf-8")),
                "input_items": len(items),
                "evidence": [{key: item[key] for key in ("source", "file", "timestamp", "captured_at", "origin", "paths")
                             if key in item} for item in items if item.get("source")

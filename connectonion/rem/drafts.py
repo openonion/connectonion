@@ -376,7 +376,7 @@ def _lark_open_id(found):
 
 
 def _cli(command):
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if completed.returncode:
         raise RemError((completed.stderr or completed.stdout).strip()[:400] or f'{command[0]} failed')
     return json.loads(completed.stdout or '{}')

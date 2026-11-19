@@ -712,7 +712,7 @@ def tree_version(root: Path) -> str:
             info = path.lstat()
             if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not info.st_size:
                 continue
-            files.append((str(path.relative_to(root)), info.st_mtime_ns, info.st_size))
+            files.append((path.relative_to(root).as_posix(), info.st_mtime_ns, info.st_size))
     return hashlib.sha256(json.dumps(files).encode()).hexdigest()
 
 

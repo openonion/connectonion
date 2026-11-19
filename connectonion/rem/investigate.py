@@ -640,7 +640,7 @@ STALE_CHECKOUT_DAYS = 14
 def _git(path: str, *args: str) -> str:
     import subprocess
     try:
-        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, errors="replace", timeout=10)
+        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -1412,7 +1412,7 @@ def github_search(query: str) -> list[dict]:
     argv = (["gh", "issue", "view", number, "-R", repo, "--json", GITHUB_FIELDS + ",body"] if number else
             ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "30", "--json",
              GITHUB_FIELDS.replace("createdAt", "createdAt,repository")])
-    run = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    run = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     if run.returncode:
         return [{"role": "search-failure", "source": "", "query": query, "text": f"gh: {run.stderr.strip()[:300]}"}]
     rows = json.loads(run.stdout or "[]")

@@ -48,3 +48,28 @@ def test_an_index_without_its_schema_is_closed_before_it_is_deleted(tmp_path, mo
     db, fresh = store._open_for_build(file)
     assert fresh is True
     db.close()
+
+
+def test_a_prompt_too_long_for_a_windows_command_line_goes_on_stdin(tmp_path, monkeypatch):
+    # An investigation prompt passed Windows' 32,767-character command line:
+    # "co ai could not start: [WinError 206] The filename or extension is too long".
+    runner = importlib.import_module("connectonion.rem.runner")
+    from connectonion.rem.config import default_config
+
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen["argv"], seen["input"] = argv, kwargs.get("input")
+        raise OSError("stop here")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    long = "x" * (runner.ARGV_PROMPT_LIMIT + 1)
+    config = default_config()
+    config["runner"] = "coai"
+    try:
+        runner.run_task(tmp_path, long, config, "investigate")
+    except Exception:
+        pass
+    assert seen["argv"][-1] == "-"
+    assert seen["input"].startswith(long)
+    assert sum(len(a) for a in seen["argv"]) < 32767

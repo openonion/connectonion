@@ -311,10 +311,10 @@ def seen_outcome(record: dict) -> str:
 def _boot_time() -> datetime | None:
     """The last boot in UTC, when the platform makes it available cheaply; None leaves live PIDs trusted."""
     if sys.platform == "darwin" and shutil.which("sysctl"):
-        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True)
+        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         match = re.search(r"\bsec = (\d+)", result.stdout) if result.returncode == 0 else None
     elif sys.platform.startswith("linux") and Path("/proc/stat").is_file():
-        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(), re.M)
+        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(encoding="utf-8"), re.M)
     else:
         return None
     return datetime.fromtimestamp(int(match[1]), timezone.utc) if match else None

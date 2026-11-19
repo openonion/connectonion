@@ -370,7 +370,7 @@ def live_git_snapshot(page: str, source: str) -> dict | None:
     if SECRET_SHAPES.search(text) or PRIVATE.search(text):
         return None
     date = subprocess.run(["git", "-C", str(repo), "show", "-s", "--format=%cI", match[2]],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if date.returncode or not date.stdout.strip():
         return None
     return {"id": source, "text": text, "sha256": hashlib.sha256(content.stdout).hexdigest(),
@@ -572,7 +572,7 @@ def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests
         if size > FILE_SNAPSHOT_CHARS:
             continue
         content = subprocess.run(["git", "-C", folder, "show", f"{revision}:{name}"],
-                                 capture_output=True, text=True, errors="replace", check=True, timeout=10).stdout
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", check=True, timeout=10).stdout
         if content:
             items.append(_implementation_item(folder, revision, name, content, stamp))
     listing = (f"Tracked tree at {revision}; {len(tree)} entries. Contents supplied for {len(items)} of "
@@ -981,7 +981,7 @@ def github_read(args):
                       and re.fullmatch(r'If-None-Match: [^\r\n]+', args[6]))))
     if not valid:
         raise GitHubReadRefused('REM GitHub ingest is read-only; refused gh arguments')
-    run = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=20)
+    run = subprocess.run(['gh', *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
     # gh exits 1 on a 304 ("gh: HTTP 304") while printing the --include headers.
     # Treating that as failure kept the old ETag, so every later sync failed too.
     if run.returncode and not ('--include' in args and re.match(r'HTTP/\S+ 304\b', run.stdout)):
@@ -1067,7 +1067,7 @@ def _code_run(row):
 
 
 def _code_command(args, evidence, resource):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=20, check=True).stdout
+    result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20, check=True).stdout
     evidence.append({'command': args, 'ran_at': code_utc(datetime.now(timezone.utc)), 'resource': resource})
     return result
 

@@ -935,10 +935,10 @@ def check_task(root, task, output):
     if task.get("pass") == "editing":
         before = prepared.get("draft_before", prepared["before"][task["record"]])
         candidate = Path(prepared["candidate"])
-        if candidate.is_file() and investigate._cut_too_much(before, candidate.read_text()):
+        if candidate.is_file() and investigate._cut_too_much(before, candidate.read_text(encoding="utf-8")):
             raise runner.RunFailed("Editing round cut the lead or a third of the page; fix the candidate")
         if candidate.is_file():
-            candidate.write_text(investigate.keep_editing(before, candidate.read_text()), encoding="utf-8")
+            candidate.write_text(investigate.keep_editing(before, candidate.read_text(encoding="utf-8")), encoding="utf-8")
     if handler == "project":
         result = project_pages.check(prepared, output, lock_held=True, native=True)
     else:

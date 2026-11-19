@@ -124,7 +124,7 @@ def _github_checkouts(page) -> list[tuple[str, str]]:
         if not Path(path).is_dir():
             continue
         remote = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"],
-                                capture_output=True, text=True, timeout=120)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         match = re.fullmatch(r"(?:https?://|ssh://git@|git://|git@)github\.com[:/]"
                              r"([\w.-]+/[\w.-]+?)(?:\.git)?/?", remote.stdout.strip())
         if remote.returncode == 0 and match:
@@ -155,7 +155,7 @@ def _github_items(page, title="") -> tuple[list[dict], list[str]]:
         for kind in ("issue", "pr"):
             result = subprocess.run(["gh", kind, "list", "-R", repo, "--state", "all", "--limit", str(GITHUB_LIST_LIMIT),
                                      "--json", "number,title,body,author,createdAt,state,url,comments"],
-                                    capture_output=True, text=True, timeout=600)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
             if result.returncode:
                 coverage.append(f"github {repo}: not read ({result.stderr.strip()[:200]})")
                 break
@@ -186,7 +186,7 @@ def _github_search(owner, title, *, history=False) -> tuple[list[dict], str]:
         result = subprocess.run(["gh", "search", kind, query, "--owner", owner, *order,
                                  "--limit", "300" if history else "100", "--json",
                                  "number,title,body,author,createdAt,state,url,repository"],
-                                capture_output=True, text=True, timeout=120)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode:
             return [], f"{label}: not read ({result.stderr.strip()[:200]})"
         rows.append([_github_item(row["repository"]["nameWithOwner"], row,
@@ -199,10 +199,10 @@ def _git_log_items(page) -> list[dict]:
     items = []
     for path, _ in _github_checkouts(page):
         argv = ["git", "-C", path, "log", "origin/HEAD", "--date=short", "--format=%h %ad %an %s", "--", "."]
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode:
             argv[4] = "HEAD"
-            result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode == 0:
             items.append({"role": "git-log", "source": f"git-log:{path}", "timestamp": now().isoformat(),
                           "text": result.stdout})
@@ -228,10 +228,10 @@ def _history_rows(page, github, title="") -> list[dict]:
             continue
         argv = ["git", "-C", path, "log", "origin/HEAD", "--first-parent", "--reverse",
                 "--date=short", "--format=%h %ad %s", "--", "."]
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode:
             argv[4] = "HEAD"
-            result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode == 0:
             for line in result.stdout.splitlines():
                 sha, date, subject = line.split(" ", 2)
