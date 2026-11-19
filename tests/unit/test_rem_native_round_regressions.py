@@ -352,3 +352,48 @@ def test_a_session_still_being_written_is_not_summarised_this_round(notebook, mo
     assert task["record"] == "sessions/still.md" and task["task"]["input_paths"] == [str(still)]
     assert [row["key"] for row in cursor["summaries"]] == ["claude:still"]
     assert not sessions.being_written(notebook, "claude:still")
+
+
+def test_a_stall_while_finishing_a_page_names_that_page_so_the_next_call_parks_it(tmp_path, monkeypatch):
+    """#3128: the deadline fired while next finished the page it had investigated, and the stall said only
+    "preparing the next task". With no page named, nothing was parked and the round stayed at that job: five
+    calls a turn, eight turns, nothing done. The finish is now a named step, so the stall parks the page."""
+    import pytest
+    from connectonion.rem import native, native_round
+
+    class Finished(Exception):
+        pass
+
+    def finish(root, cursor):
+        raise Finished(dict(native._WATCH["skip"]))
+
+    monkeypatch.setattr(native_round, "_reset_attempts", lambda root, cursor: None)
+    monkeypatch.setattr(native_round, "prepare_batch", lambda *args: None)
+    monkeypatch.setattr(native_round, "_finish_investigation", finish)
+    cursor = {"phase": "daily-investigation", "started_at": "2026-11-18T14:08:41+00:00", "job_index": 200,
+              "current": {"record": "skills/catalog/example.md", "finalized": True}, "jobs": []}
+    with pytest.raises(Finished) as stopped:
+        native_round.prepare_task(tmp_path, cursor, {}, tmp_path)
+    assert stopped.value.args[0] == {"round": "2026-11-18T14:08:41+00:00", "job_index": 200, "record": "skills/catalog/example.md"}
+
+
+def test_five_unnamed_stalls_in_a_row_hold_that_step_and_say_so_then_let_go(tmp_path, monkeypatch):
+    """#3128: a deadline at a step that names no page parked nothing, so each turn spent five calls and fifty
+    minutes on it. After five in a row the step is held, the reason says so, and six hours on it is tried again."""
+    from datetime import timedelta
+    from connectonion.rem import native, service
+    from connectonion.rem.files import read_json, state_path, write_json
+    clock = [service.now()]
+    monkeypatch.setattr(service, "now", lambda: clock[0])
+    write_json(state_path(tmp_path, "round.json"), {"started_at": "2026-11-18T14:08:41+00:00", "job_index": 200, "jobs": []})
+    for _ in range(4):
+        write_json(state_path(tmp_path, native.STALLED), {"label": "preparing the next task", "step": "preparing the next task"})
+        native._skip_stalled(tmp_path)
+        assert native._stall_hold(tmp_path) == ""
+    write_json(state_path(tmp_path, native.STALLED), {"label": "preparing the next task", "step": "preparing the next task"})
+    native._skip_stalled(tmp_path)
+    held = native._stall_hold(tmp_path)
+    assert "passed its deadline 5 times in a row while preparing the next task" in held and "co rem logs" in held
+    clock[0] += timedelta(hours=6, minutes=1)
+    assert native._stall_hold(tmp_path) == ""
+    assert "unnamed_stalls" not in read_json(state_path(tmp_path, "round.json"), {})

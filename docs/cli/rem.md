@@ -928,6 +928,17 @@ next passed its deadline while <step> and could not be interrupted`, so a
 night never ends without its totals. The page is parked by the next
 `co rem next`, exec or catchup.
 
+Finishing the page an investigation just wrote is a named step too
+(`finishing <page>`), so a deadline there parks that page and the round moves
+on (#3128). Before, the stall said only "preparing the next task", nothing was
+parked, and every later call finished the same page again: on 2026-11-17 to 19
+a newly mapped skill page waited on the notebook's lock it already held, and
+eight turns of five calls each did nothing. A deadline at a step that names no
+page is counted: after five in a row, `co rem next` holds that step for six
+hours and says so (`co rem next passed its deadline 5 times in a row while
+<step>; held for 6 hours from the last one`), in `co rem status` as the
+round's reason. A served task clears the count.
+
 What stops the round is what is about the round, not one page: the runner
 cannot start or does not complete (a refused model, a spent provider limit),
 the notebook's lock is held by another process, the notebook cannot be read.
@@ -2947,6 +2958,15 @@ weekly window's `used_percent`, its length and when it resets, as
 `codex app-server` reports them (`account/rateLimits/read`). Reading it starts
 no model turn and costs nothing. Codex reports whole percents, so every figure
 below is good to about one point.
+
+Inside the Codex worker's sandbox (`CODEX_SANDBOX` is set) the app-server
+cannot write `~/.codex` and exits ("failed to initialize sqlite state
+runtime"), so nothing is started there (#3128). `co rem exec` reads the meter
+before it starts each turn, outside the sandbox, and hands the reading down in
+`CO_REM_QUOTA_READING`. The turn's `co rem next` calls use it while it is less
+than three hours old and its window has not reset; otherwise they say the
+reading is unknown and why, and the last recorded reading in the window stands
+as before.
 
 - **Every run records the meter before and after** (`quota` in the run log,
   shown by `co rem logs`). The difference is what that run cost in points of
