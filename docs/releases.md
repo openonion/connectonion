@@ -33,7 +33,10 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc30**: hand-offs you can watch and pick up, enrich that writes career timelines and
+Release candidate **1.9.6rc31**: the calendar lives in Today, record pages read in one measure with an ink
+accent, Keys keeps every account with its value in the Keychain, and tags reach every page. See
+[1.9.6rc31 notes](releases/1.9.6rc31.md).
+Before it, release candidate **1.9.6rc30**: hand-offs you can watch and pick up, enrich that writes career timelines and
 links organisations, one language control, and a person page that leads with what happened. See
 [1.9.6rc30 notes](releases/1.9.6rc30.md).
 Before it, release candidate **1.9.6rc29**: a source's title opens its original in the side card, a calendar event shows
@@ -129,7 +132,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc30'
+python -m pip install --upgrade 'connectonion==1.9.6rc31'
 ```
 
 ## Previous stable
