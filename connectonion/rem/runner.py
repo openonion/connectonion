@@ -1199,10 +1199,16 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         # A quote edit need not copy a code-owned date to preserve it. Compute
         # it before validation too, so a blank model fact is not a regression.
         text = settle_last_activity(notebook.root, text, items)
+    # Over the size limit, the oldest History moves to the page's archive, word for word (2026-11-19: an
+    # append to a page already over the limit was refused on every repair). Losses are checked against
+    # the page and what moved, so a moved quote or line is kept, not dropped.
+    from .page_review import archive_history, archive_record, with_moved
+    archived = notebook.read(archive_record(record)) if notebook.path(archive_record(record)).is_file() else ""
+    text, archive_text, moved = archive_history(record, text, archived) if not draft_only else (text, archived, [])
     errors = citation_errors or validate(record, text, original, items, owner=record == owner.get("record"),
                                          root=notebook.root, removed_facts=cleared_facts)
     if carried:
-        errors += dropped_content(carried, text, exempt, claims=claims)
+        errors += dropped_content(carried, with_moved(text, moved), exempt, claims=claims)
     if ask_quotes and record.startswith("projects/"):
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
@@ -1323,6 +1329,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             candidate.write_text(text, encoding="utf-8")
         else:
             _write_page(notebook, record, text, items, **({"receipt": directory / "promotion.json"} if native else {}))
+            if moved:
+                notebook.write(archive_record(record), archive_text)
     return audit_usage
 
 

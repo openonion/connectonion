@@ -641,7 +641,7 @@ def test_the_page_s_size_and_the_limit_are_said_before_the_turn(tmp_path):
     small = prompt(tmp_path, [{"role": "page", "text": "# t"}], tmp_path / "candidate.md", 4_000)
     large = prompt(tmp_path, [{"role": "page", "text": "# t"}], tmp_path / "candidate.md", 24_586)
     assert "must stay under 20,000 characters" in small
-    assert "The page is 24,586 characters" in large and "fold the oldest History" in large
+    assert "The page is 24,586 characters" in large and "the program moves it to the page's archive" in large
 
 
 def test_write_pages_takes_a_portion_in_order_and_one_failure_does_not_stop_the_rest(world):

@@ -560,8 +560,9 @@ def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook,
         run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     size = len(notebook.read(record))
-    assert f'The page is {size:,} characters; it must end under 20,000' in prompts[0]
-    assert 'fold the oldest History' in prompts[0]
+    assert f'The page is {size:,} characters; it should end under 20,000' in prompts[0]
+    # An append may drop no cited line (#3105): the program archives the oldest History, the turn keeps it.
+    assert "keep every cited line" in prompts[0] and "the program moves it to the page's archive" in prompts[0]
 
 
 def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
