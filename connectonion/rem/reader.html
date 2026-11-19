@@ -3680,6 +3680,8 @@
     .hero-acts .inv { align-items: flex-start; width: 100%; }
     .hero-acts .inv-line, .hero-acts .inv-steps { text-align: left; justify-content: flex-start; }
     .hero-acts :is(.inv-menu, .inv-changed) { right: auto; left: 0; }
+    /* The ⋯ menu hangs from the whole Investigate block, not from the ⋯ itself, so it stays inside a phone. */
+    :is(.hero-acts, .page-head, .ov-say) .inv-more { position: static; }
     .n3-person .r4-today { height: 40px; margin-left: 0; padding: 0 12px; }
     .n3-person .r4-sub.dek { font-size: var(--s-body); }
     /* On a phone each fact is one line, its label in a narrow column, so the card fits the first screen. */

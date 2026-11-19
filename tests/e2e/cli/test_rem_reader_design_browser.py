@@ -31,6 +31,12 @@ VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fma
 
 
 
+def in_full_memory(page, selector):
+    """What used to be hidden behind the folded Full memory now shows in it, open on arrival (#3104): it is still
+    off the record's head, and never printed above Full memory."""
+    return all(node.evaluate("n => !!n.closest('.deep-note')") for node in page.locator(selector).all())
+
+
 def memory_open(page):
     """Full memory opens on arrival (#3104), so a click on its summary would fold it. Where a test used to open it,
     it now checks that it is already open and leaves it so."""
@@ -116,7 +122,7 @@ def test_mobile_record_keeps_freshness_and_primary_navigation_in_reach(reader):
         assert page.locator(selector).bounding_box()['height'] >= 44
     assert page.locator('#crumb a').first.is_visible()  # People, in the top bar
     assert page.get_by_role('heading', name='Full memory and sources').is_visible()
-    assert page.locator('details.deep-note').get_attribute('open') is None
+    assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
     memory_open(page)
     assert page.locator('.deep-note .note').is_visible()
     assert page.locator('.deep-note .note').bounding_box()['y'] < page.locator('.deep-note .side').bounding_box()['y']
@@ -616,8 +622,9 @@ def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     assert page.locator('.r4-stats').inner_text().count('\n') >= 3
     assert page.locator('.r4-person #open-threads, .owe').count() == 0
     assert page.locator('.r4-fuse .rhythm').locator('i.l1, i.l2, i.l3').count() == 5  # one dark day per dated exchange
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    assert not page.locator('.factlist').is_visible()
+    assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
+    # The facts sit in the profile card under the name, outside Full memory (#3103).
+    assert page.locator('.r4-person .pc-group').first.is_visible() and not page.locator('.r4-person .pc-group').first.evaluate("n => !!n.closest('.deep-note')")
     memory_open(page)
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
@@ -819,8 +826,8 @@ def test_focus_connects_project_people_org_and_archived_conversation(reader):
     page.goto(uri + "#r=projects%2Fharbour.md")
     # This fixture names the pilot participants without linking their paths.
     # They remain available as text hints, behind progressive disclosure.
-    assert not page.locator('.related-records').is_visible()
-    assert not page.locator('.deep-note-limit').is_visible()
+    assert in_full_memory(page, '.related-records')
+    assert in_full_memory(page, '.deep-note-limit')
     memory_open(page)
     page.locator('.mention-hints > summary').click()
     connected = page.locator(".related-records .relation-card")
@@ -965,7 +972,7 @@ def test_project_full_memory_keeps_current_finding_before_historical_pattern(rea
         + '- Changed: A later UI request corrected its wording. [2]\\n- Now: A release was requested in July. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     memory_open(page)
     for width in (1440, 768, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
@@ -984,7 +991,7 @@ def test_project_full_memory_prefers_newest_where_it_stands_and_falls_back_to_in
         + '- 2026-10-15 - The release checks passed. [3]';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
@@ -995,7 +1002,7 @@ def test_project_full_memory_prefers_newest_where_it_stands_and_falls_back_to_in
       r.text = r.text.split('## Where it stands')[0] + '## Where it stands\\n- Unknown';
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 1000})
@@ -1113,7 +1120,7 @@ def test_private_project_summary_is_clear_on_desktop_and_phone(reader):
       r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 150, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
     memory_open(page)
     for width in (1440, 375):
@@ -1152,7 +1159,7 @@ def test_project_without_current_insight_keeps_purpose_and_input_limit_folded(re
       r.project_coverage = {inputs_read: 3, inputs_available: 5, days: 7, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note-limit').is_visible()
+    assert in_full_memory(page, '.deep-note-limit')
     memory_open(page)
     for width in (1440, 375):
         page.set_viewport_size({'width': width, 'height': 812})
@@ -1186,7 +1193,7 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
       r.project_coverage = {inputs_read: 114, inputs_available: 116, days: 90, scope: 'archived'};
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
     memory_open(page)
     purpose = page.locator('.project-purpose-preview')
@@ -1213,7 +1220,7 @@ def test_long_project_purpose_and_source_expand_inside_full_memory_on_phone(read
       r.text = r.text.replace(/## What it is\\n- [^\\n]+/, '## What it is\\n- ' + purpose + '[1].');
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
     memory_open(page)
     statement = page.locator('.focus-statement')
@@ -1253,7 +1260,7 @@ def test_long_private_purpose_can_expand_after_revealing_passages(reader, has_fi
       document.documentElement.classList.add('hide-private');
       KNOWN.clear(); FACTS.clear(); render();
     }''', has_finding, isolated_context=False)
-    assert not page.locator('.deep-note .focus-statement').is_visible()
+    assert in_full_memory(page, '.focus-statement')
     assert page.locator('.project-state').is_visible()
     memory_open(page)
     purpose = page.locator('.project-purpose-preview' if has_finding else '.focus-statement')
@@ -1787,7 +1794,7 @@ def test_skill_name_matches_are_not_presented_as_installed_version_runs(reader):
         assert 'retained eval attempts are counted separately' in page.locator('.usage-scope').inner_text()
         assert 'Neither confirms this installed version or task outcome' in page.locator('.usage-scope').inner_text()
         assert page.locator('.panel h3:text-is("Usage")').count() == 0
-        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         memory_open(page)
         assert 'Claude Code 3' not in page.locator('.leadrow').inner_text()
         assert 'Retained evaluation attempts: 0' in page.locator('.deep-note').inner_text()
@@ -1847,7 +1854,7 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
         assert 'Sep 16' in page.locator('.r4-stats').inner_text()
         assert page.locator('.focus-facts').count() == 0
-        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         assert page.locator('.deep-note .factlist').count() == 1
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         if width == 375:
@@ -1904,7 +1911,7 @@ def test_project_map_date_is_labelled_as_a_session_not_verified_activity(reader)
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
     assert 'Last mapped session' in page.locator('.project-state').inner_text()
-    assert not page.locator('.deep-note .focus-facts').is_visible()
+    assert in_full_memory(page, '.focus-facts')
     assert 'last mapped session' not in page.locator('.eyebrow').inner_text()
     assert 'File updated' in page.locator('.deep-head').inner_text()
     assert 'Last active' not in page.locator('.project-state').inner_text()
@@ -2007,7 +2014,7 @@ def test_connected_context_hides_private_bases_including_expanded_connections(re
         basis: n === 6 ? 'Private expanded context' : n === 0 ? 'Confidential background' : 'Public pilot context'}));
       render();
     }""", isolated_context=False)
-    assert page.locator('details.deep-note').get_attribute('open') is None
+    assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
     memory_open(page)
     page.locator('.more-relations > summary').first.click()
     bases = page.locator('.relation-basis.private')
@@ -2498,7 +2505,7 @@ def test_project_focus_and_deep_note_do_not_repeat_purpose_or_threads(reader):
     assert page.locator('.lead-open').count() == 0
     assert page.locator('.next-exchanges .thread').count() == 0  # open work is Today's (#3096)
     assert page.locator('#what-it-is').count() == 1
-    assert not page.locator('#what-it-is').is_visible()
+    assert in_full_memory(page, '#what-it-is')
     assert page.locator('.deep-note .note #what-it-is').count() == 0
     memory_open(page)
     assert page.locator('.deep-note .person-threads li').count() == 5  # every thread, as written, and no buttons
@@ -2997,7 +3004,7 @@ def test_org_collapses_full_memory_and_omits_self_provenance(reader):
       r.relations = [{path: 'people/mara-ostrowski.md', via: r.path, kind: 'linked', basis: 'Pilot contact', sources: ['1']}];
       render();
     }''', isolated_context=False)
-    assert not page.locator('details.deep-note').evaluate('node => node.open')
+    assert page.locator('details.deep-note').evaluate('node => node.open')  # open on arrival (#3104)
     hint = page.locator('.deep-hint').inner_text()
     assert 'File updated' in hint and re.search(r'\d', hint)
     assert not re.search(r'today|sections|sources', hint, re.I)
@@ -3250,10 +3257,10 @@ def test_mapped_guidance_explains_before_command_with_secondary_copy(reader, pat
     assert box.locator('.lead').inner_text() == 'Page queued for tonight'
     assert not page.locator('.focus-command').count()
     if path.startswith('people/'):
-        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         assert page.locator('.deep-note .factlist').count() == 1
     else:
-        assert page.locator('details.deep-note').get_attribute('open') is None
+        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         assert page.locator('.focus-facts').count() == 0
         assert page.locator('.lead-meta.usage').count() == 1
         assert page.locator('.panel h3:text-is("Usage")').count() == 0
@@ -4328,7 +4335,7 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
       return language === 'zh' ? chinese : purpose;
     }''', language, isolated_context=False)
     assert page.locator('.project-state').is_visible()
-    assert not page.locator('.project-purpose-preview').is_visible()
+    assert in_full_memory(page, '.project-purpose-preview')
     memory_open(page)
     purpose = page.locator('.project-purpose-preview')
     assert purpose.count() == 1
@@ -4387,7 +4394,7 @@ def test_round_nine_full_purpose_and_quiet_record_disclosures(reader, tmp_path, 
           KNOWN.clear(); FACTS.clear(); render();
         }''', record, isolated_context=False)
         # All three record categories keep these disclosures inside Full memory.
-        assert not page.locator('.related-records').is_visible()
+        assert in_full_memory(page, '.related-records')
         memory_open(page)
         summaries = page.locator('.more-relations > summary:visible')
         assert page.locator('.related-records > .more-relations > summary:visible').count() == 3
@@ -5194,7 +5201,7 @@ def test_person_quotes_carry_their_source_and_open_the_original(reader):
     assert "h=src-" in cite.get_attribute("href")
     cite.click()
     expect(page.locator("#evidence-panel")).to_be_visible()
-    assert page.locator("details.deep-note").get_attribute("open") is None
+    assert page.locator("details.deep-note").get_attribute("open") is not None  # open on arrival (#3104)
 
 
 @pytest.mark.parametrize("width", [1440, 390])
