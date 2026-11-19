@@ -3119,7 +3119,9 @@
     padding: 10px 16px; border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .host-lost .lang-act { flex: none; padding: 0; border: 0; background: none; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
   .lang-progress .lang-act { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
-  @media (max-width: 640px) { .lang-progress > span:first-child { max-width: 9em; overflow: hidden; text-overflow: ellipsis; } }
+  /* On a phone the line shrinks to what fits beside the toggle; each part ellipsises, the whole is on hover. */
+  @media (max-width: 640px) { .lang-progress { min-width: 0; max-width: 46vw; overflow: hidden; }
+    .lang-progress > span { min-width: 0; max-width: 9em; overflow: hidden; text-overflow: ellipsis; } }
   main { max-width: 1160px; margin: 0 auto; padding: 4px 40px 64px; }
 
   /* sheets: settings, the palette, shortcuts */
@@ -3683,7 +3685,8 @@
   .n3-person > .tl-lead .wt .end { margin-left: auto; }
   .tl-e.tl-open { cursor: pointer; border-radius: var(--r-cell); }
   .tl-e.tl-open:hover, .tl-e.tl-open:focus-visible { background: var(--well); outline: none; }
-  .tl-e.on { background: var(--well); box-shadow: inset 2px 0 0 var(--ink); }
+  .tl-e.on { background: var(--well); }
+  .tl-e.on .x { color: var(--ink); font-weight: var(--w-bold); }
   :is(.bento, .n3-person > .r4-topics) .wt .end { margin-left: auto; }
   .bento .r4-sec { margin: 0; padding: 18px 20px; border: 0; }
   .rh-row { display: flex; align-items: flex-end; gap: 22px; }
@@ -5081,6 +5084,10 @@ function renderLangProgress() {
     stop.onclick = () => translateAllSend("stop");
     parts.push(stop);
   } else if (uiLanguage === "zh" && left) {
+    // The last night's translation failures, said here now that the body has no notice of its own (#3143).
+    const run = (REM.logs || REM.brief_logs || []).find(run => /translat/.test(run.phase || ""));
+    const failed = run?.translation_failures ?? (run?.pages || []).filter(page => page.outcome === "failed").length;
+    if (failed) parts.push(el("span", { class: "lang-failed", text: t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) }));
     parts.push(el("span", { text: t("{n} pages not in Chinese yet", { n: left }), title: t("Chinese {n} / {m}", { n: total - left, m: total }) }));
     if (liveHere()) {
       const go = el("button", { type: "button", class: "lang-act", text: t("Translate") });

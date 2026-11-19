@@ -17,6 +17,7 @@ def test_row_talk_survives_reload_redraw_and_next_turn(reload_at):
     # Run the real reload initializer a second time, as the next document does.
     initializer = page[page.index('let pendingRestore = (() => {'):page.index('\nfunction restoreView')]
     functions += '\nfunction readReloadState() { return ' + initializer.split(' = ', 1)[1] + '\n}'
+    functions += '\nfunction hostLost() {}\nfunction hostFound() {}'  # #3139's lost-Host bar, not under test here
     result = _run_reader_js(functions + '\nconst reloadAt = ' + repr(reload_at) + ';\n' + r'''
       class Node {
         constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {}; this.value = ''; }

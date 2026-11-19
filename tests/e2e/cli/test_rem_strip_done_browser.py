@@ -94,7 +94,8 @@ def test_after_a_hand_off_the_strip_still_marks_done_and_take_back_is_not_undo(l
     assert line.get_by_role("button").all_inner_texts() == ["Mark done", "Not now", "Ignore", "Stop", "Take back from Codex", "Show more"]  # closes first (#2990)
     line.get_by_text("Codex finished").wait_for(timeout=30000)
     labels = line.get_by_role("button").all_inner_texts()
-    assert labels == ["Mark done", "Not now", "Ignore", "See result", "Take back from Codex", "Show more"] and "Undo" not in labels
+    # #3138: a finished hand-off also offers to continue its session; Mark done and Take back stay, Undo never appears.
+    assert labels[:3] == ["Mark done", "Not now", "Ignore"] and "Take back from Codex" in labels and "Undo" not in labels
     line.get_by_role("button", name="Mark done", exact=True).click()
     page.get_by_text("Saved in notebook", exact=True).wait_for()
     assert [post["state"] for post in posts] == ["done"]

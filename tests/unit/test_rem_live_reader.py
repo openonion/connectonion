@@ -679,7 +679,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     row = night.listing(host.root)[0]
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in HAND)
+                          for name in HAND) + '\nfunction hostLost() {}\nfunction hostFound() {}'  # #3139's bar, not under test
     sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
