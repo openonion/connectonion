@@ -10183,9 +10183,9 @@ function personSub(r) {
 // The profile card (owner, 2026-11-18: "shouldn't the profile card be the first thing shown?"): every known fact
 // as a label over its value, right under the name, nothing to expand. Role, organisation and units are the line
 // above it, so it does not repeat them; unknown facts are one quiet count, never rows of "not found".
-const PROFILE_GROUPS = [["Contact", ["Email", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
+const PROFILE_GROUPS = [["Contact", ["Email", "Their agent", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
   ["Relationship", ["How we know them", "First contact", "Last contact", "Mail"]], ["Identity", ["Also known as", "Language", "Location", "Time zone"]]];
-Object.assign(UI.zh, { "Name unknown": "未知姓名", "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
+Object.assign(UI.zh, { "Their agent": "对方的 agent", "Name unknown": "未知姓名", "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
   "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射",
   "Last contact {when}": "最近联系 {when}", "1 mail": "1 封邮件", "{n} mails": "{n} 封邮件", "+{n} more": "还有 {n} 个", "Show less": "收起" });
 // A handle or link says its platform in words; its picture is that service's published mark (Simple Icons) or,
@@ -10217,10 +10217,16 @@ function profileCard(r) {
     .map(item => [...item.qualifier].length > 16 ? { ...item, qualifier: "", note: item.qualifier } : item);
   const units = (r.units || []).map(edge => byPath(edge.path)).filter(unit => unit && !orgHidden(unit));
   const mails = have("Email").flatMap(item => plainLine(item.value).toLowerCase().match(/[^\s<>(),;]+@[^\s<>(),;]+/g) || []);
-  const handles = have("Handles").filter(item => !mails.includes(plainLine(item.value).toLowerCase()));
+  // #3164: an agent's mailbox is the person's agent, its own row; an address on the owner's page is never theirs.
+  const ownerAddresses = new Set(((byPath(REM.owner)?.text || "").toLowerCase().match(/[^\s<>(),;:\[\]]+@[^\s<>(),;\[\]]+/g) || []));
+  const agentAddress = item => /^0x[0-9a-f]{6,}@/i.test(plainLine(item.value));
+  const notOwners = item => !ownerAddresses.has(plainLine(item.value).toLowerCase()) || r.path === REM.owner;
+  const allHandles = have("Handles").filter(item => !mails.includes(plainLine(item.value).toLowerCase()) && notOwners(item));
+  const handles = allHandles.filter(item => !agentAddress(item)), agents = allHandles.filter(agentAddress);
   const seen = [...mails, ...handles.map(item => plainLine(item.value).toLowerCase()), r.title.toLowerCase()];
   const rows = {}, add = (group, label, pic, values) => values.length && (rows[group] = rows[group] || []).push({ label, pic, values });
-  add("Contact", "Email", "mail", have("Email").map(item => ({ item, copy: true })));
+  add("Contact", "Email", "mail", have("Email").filter(notOwners).map(item => ({ item, copy: true })));
+  add("Contact", "Their agent", "", agents.map(item => ({ item, copy: true })));
   add("Contact", "Phone", "phone", have("Phone").map(item => ({ item, copy: true })));
   const places = new Map();
   for (const item of handles) {

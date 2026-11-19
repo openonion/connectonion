@@ -363,3 +363,23 @@ def test_decision_titles_carry_no_privacy_label_and_leads_no_timestamps(reader):
     assert "[personal]" not in text and "Keep Markdown" in text
     assert "2026-11-08" not in text and "T09:00" not in text and "这项选择作于" not in text
     assert "保留 Markdown 作为笔记格式" in text
+
+
+def test_an_agent_mailbox_is_the_persons_agent_and_the_owners_own_address_is_never_theirs(reader):
+    """#3164: the 账号 row listed an agent mailbox as the person's account, and an owner's own address can appear."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=1440, language="en")
+    owner_address = page.evaluate("""() => {
+      const owner = byPath(REM.owner);
+      const mine = (/[\\w.+-]+@[\\w.-]+\\.\\w+/.exec(owner?.text || '') || ['owner@self.example'])[0];
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Handles:[^\\n]*/m, '- Handles: 0xab12cd34ef@mail.openonion.ai; ' + mine);
+      KNOWN.clear(); FACTS.clear(); render();
+      return mine;
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    rows = {row.locator(".pc-k").inner_text(): row.locator(".pc-v").inner_text() for row in card.locator(".pc-row").all()}
+    assert "Their agent" in rows and "0xab12cd34ef@mail.openonion.ai" in rows["Their agent"]
+    assert not any("0xab12cd34ef" in value for key, value in rows.items() if key != "Their agent")
+    if owner_address != "owner@self.example":
+        assert owner_address not in card.inner_text()
