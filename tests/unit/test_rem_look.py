@@ -16,6 +16,11 @@ TRICKY = ["Next:     co rem open   (read your page), then co rem start (keep it 
           "Error: mailbox gmail failed [TimeoutError]", "Stopped:", "Warning: 3 messages in [brackets]"]
 
 
+def shows_host(host, text):
+    """The host appears as its own token (not inside a longer name): what a reader sees after a link is shortened."""
+    return re.search(r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", text) is not None
+
+
 def styled(markup):
     out = Console(file=io.StringIO(), theme=style.THEME, force_terminal=True, width=300, soft_wrap=True)
     out.print(markup, emoji=False)
@@ -95,7 +100,7 @@ def test_a_glance_hides_sensitive_passages_and_shortens_links():
             "Proposed: Call Ivy. Her sister is in hospital [sensitive] [3]. Prefers calls before ten [personal] [2].")
     seen = glance(text)
     assert "sister" not in seen and "hospital" not in seen and "[hidden]" in seen
-    assert "abc-defg-hij" not in seen and "pwd" not in seen and "meet.example.com" in seen
+    assert "abc-defg-hij" not in seen and "pwd" not in seen and shows_host("meet.example.com", seen)
     assert "Prefers calls before ten" in seen and "[personal]" not in seen     # personal shows, its label does not
     assert "Weekly sync" in seen and "Call Ivy." in seen                       # unlabelled words are untouched
 

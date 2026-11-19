@@ -9,6 +9,7 @@ file paths; and the CLI said "Organizations" where the reader said
 "Organisations".
 """
 
+import re
 import json
 from datetime import date, timedelta
 
@@ -18,6 +19,11 @@ from typer.testing import CliRunner
 from connectonion.cli.main import app
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, state_path, write_json
+
+
+def shows_host(host, text):
+    """The host appears as its own token (not inside a longer name): what a reader sees after a link is shortened."""
+    return re.search(r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", text) is not None
 
 
 def invoke(root, *args):
@@ -266,7 +272,7 @@ def test_status_hides_sensitive_day_plan_text_and_full_links_unless_asked(tmp_pa
     plain = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "")).plain
     assert "landlord" not in plain and "[hidden]" in plain
     assert "abc-defg-hij" not in plain and "secret-token" not in plain
-    assert "meet.example.com" in plain and "calendar.example.com" in plain and "Studio lease" in plain
+    assert shows_host("meet.example.com", plain) and shows_host("calendar.example.com", plain) and "Studio lease" in plain
     shown = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "", show_private=True)).plain
     assert "landlord" in shown and "abc-defg-hij" in shown
 

@@ -14,6 +14,11 @@ SEARCH = "https://duckduckgo.com/?q=%22Mira%20Vale%22%20%22Atlas%22"
 TEAM = "https://www.example.org/team"
 
 
+def shows_host(host, text):
+    """The host appears as its own token (not inside a longer name): what a reader sees after a link is shortened."""
+    return re.search(r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", text) is not None
+
+
 def notebook(tmp_path):
     from connectonion.rem import evidence
     from connectonion.rem.config import prepare
@@ -72,8 +77,8 @@ def test_a_web_row_names_the_page_and_its_site_never_an_encoded_query(person_pag
     assert not any(re.search(r"%[0-9A-F]{2}", title, re.I) for title in titles.values()), titles
     assert titles["1"] == "Atlas team — Example"
     assert titles["2"] == 'DuckDuckGo search: "Mira Vale" "Atlas"'
-    assert "example.org" in rows["1"].locator(".src-meta").inner_text()
-    assert "duckduckgo.com" in rows["2"].locator(".src-meta").inner_text()
+    assert shows_host("example.org", rows["1"].locator(".src-meta").inner_text())
+    assert shows_host("duckduckgo.com", rows["2"].locator(".src-meta").inner_text())
 
 
 def assert_card_on_top_and_closes(page, trigger):
@@ -96,7 +101,7 @@ def test_a_saved_web_page_opens_with_its_title_words_day_and_link(person_page, w
     panel = page.locator("#evidence-panel")
     panel.get_by_text("Mira Vale leads the Atlas project.").wait_for(timeout=5000)
     text = panel.inner_text()
-    assert "Atlas team — Example" in text and "example.org" in text and "Nov 6" in text, text
+    assert "Atlas team — Example" in text and shows_host("example.org", text) and "Nov 6" in text, text
     assert "URL:" not in text and text.count("Atlas team — Example") == 1, text  # co fetch's header is not repeated
     link = panel.get_by_role("link", name="Open the web page ↗")
     assert link.get_attribute("href") == TEAM and link.get_attribute("target") == "_blank"
