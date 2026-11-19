@@ -538,9 +538,13 @@ def _between_portions(root, cursor, config, directory):
         cursor["between"] = ["sessions", "abstract", "tag", "tag-node"]
         cursor["portions"] = cursor.get("portions", 0) + 1
     while cursor["between"]:
+        name = cursor["between"][0]
         step = {"sessions": _summary_turn, "abstract": prepare_abstract,
-                "tag": prepare_tagging, "tag-node": prepare_tag_node}[cursor["between"].pop(0)]
+                "tag": _tag_turn, "tag-node": prepare_tag_node}[name]
         task = step(root, cursor, config, directory)
+        # Tag takes its share in this break and stays first until the share is spent (`_tag_turn`).
+        if not (task and name == "tag"):
+            cursor["between"].pop(0)
         if task:
             return task
     # Translation's share is sized from its backlog (D-71: "翻译…应该安排的轮次不够多").
@@ -624,6 +628,27 @@ def _closing_tags(root, cursor, config, directory):
     if task:
         cursor["closing"] = True
     return task
+
+
+def tag_share(root):
+    """Tag turns per break: a quarter of the batches waiting, at least 3, never more than wait.
+
+    It was one turn of 20 pages a break. With four to eight breaks a night, 262 untagged pages
+    (rc34 hunt, #3165: no tag row on 104 decisions and 133 skills) took two nights or more, and a
+    night cut short tagged next to nothing. A tag turn is one cheap (level 1) call."""
+    from . import tag_stage
+    waiting = -(-len(tag_stage.candidates(root)) // tag_stage.BATCH)
+    return min(waiting, max(3, -(-waiting // 4)))
+
+
+def _tag_turn(root, cursor, config, directory):
+    cursor.setdefault("tag_left", tag_share(root))
+    task = prepare_tagging(root, cursor, config, directory) if cursor["tag_left"] > 0 else None
+    if task:
+        cursor["tag_left"] -= 1
+        return task
+    cursor.pop("tag_left")
+    return None
 
 
 def prepare_tagging(root, cursor, config, directory):

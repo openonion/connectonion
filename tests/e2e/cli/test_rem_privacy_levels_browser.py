@@ -67,7 +67,9 @@ def test_on_this_computer_sensitive_is_covered_by_default_and_lifts_one_at_a_tim
     with sync_playwright() as api:
         browser, page = _open(api, path)
         assert page.evaluate("privacyLevel", isolated_context=False) == "cover"
-        assert page.locator("#privacy-level .pl-long").inner_text() == "遮住敏感"
+        # The bar says the level in its short word; the full word is its accessible name (rc34 check: a compact bar).
+        assert page.locator("#privacy-level").inner_text().strip() == "遮敏感"
+        assert page.locator("#privacy-level").get_attribute("aria-label") == "隐私: 遮住敏感"
         assert _legible(page, PERSONAL_SAYS)                     # personal is shown at this level
         assert not _legible(page, SECRET_SAYS)                   # every sensitive passage is behind a curtain
         curtains = page.locator("#main .curtain:not(.lifted)")
@@ -117,7 +119,7 @@ def test_the_chosen_level_is_kept_on_this_device_after_a_reload(tmp_path, monkey
         page.reload()
         page.locator("#main h1").first.wait_for()
         page.wait_for_function("privacyLevel === 'all'")
-        assert page.locator("#privacy-level .pl-long").inner_text() == "全部显示"
+        assert page.locator("#privacy-level").inner_text().strip() == "全部"
         browser.close()
 
 
@@ -142,18 +144,19 @@ def test_the_control_sits_in_the_top_bar_reachable_on_a_phone_and_its_menu_is_on
     path = _reader(tmp_path, monkeypatch)
     with sync_playwright() as api:
         browser, page = _open(api, path, width=390)
-        control = page.locator("#privacy-level")
+        # On a phone the level lives in the one 显示 menu beside the search (rc34 check: four controls truncated).
+        control = page.locator("#display-menu")
         box = control.bounding_box()
         assert box["height"] >= 44 and box["x"] + box["width"] <= 390
-        assert control.evaluate("n => !!n.closest('.top-end')")                      # beside the language toggle
+        assert control.evaluate("n => !!n.closest('.top-end')")
         control.click()
-        assert page.get_by_role("menuitemradio").count() == 3
-        assert _topmost(page, ".privacy-menu")
+        assert page.locator(".display-pop [data-level]").count() == 3
+        assert _topmost(page, ".display-pop")
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         if SHOTS:
             page.screenshot(path=str(SHOTS / "privacy-menu-390.png"))
         page.keyboard.press("Escape")
-        assert page.locator(".privacy-menu").count() == 0
+        assert page.locator(".display-pop").count() == 0
         if SHOTS:
             page.screenshot(path=str(SHOTS / "privacy-cover-390.png"))
         browser.close()

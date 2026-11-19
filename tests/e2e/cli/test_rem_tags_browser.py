@@ -180,7 +180,8 @@ def test_a_tag_page_shows_what_rem_wrote_above_the_pages_that_carry_it(reader, w
     written = page.locator("#main .tag-written")
     written.wait_for()
     text = written.inner_text()
-    assert "three-seat trial" in text and "2026-08-22" in text or "8月22日" in text
+    # The date reads in its sentence's language and never as ISO (#3194): an English line says "Aug 22" in either interface.
+    assert "three-seat trial" in text and "Aug 22" in text and "2026-08-22" not in text
     assert "gmail:fixture:1" not in text and "Pages" not in text  # code's parts stay off the face
     assert written.get_by_role("link", name="打开标签页 →").get_attribute("href").endswith("knowledge%2Fpilot.md")
     box, groups = written.bounding_box(), page.locator("#main .tag-group").first.bounding_box()

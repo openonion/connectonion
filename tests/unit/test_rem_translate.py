@@ -614,3 +614,42 @@ def test_a_decisions_title_is_a_statement_and_is_translated_a_persons_name_is_no
     assert translate.checked(decision, "# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n", title_free=True)
     with pytest.raises(RemError):
         translate.checked(decision, "# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n")
+
+
+def _cache(root, record, original, translated):
+    from connectonion.rem.files import atomic_write
+    path = root / ".state" / "translations" / "zh" / record
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(path, f"<!-- co rem translation of {record} sha256:{tr.digest(original)} -->\n" + translated)
+
+
+def test_a_statement_translated_before_3142_with_its_english_title_waits_again_and_stays_shown(notebook, monkeypatch):
+    """rc34 hunt (#3165): 104 of 104 decision translations kept their English title and the queue called them
+    current, so «decision 的标题为什么是英文的呢？» could never be answered by the night."""
+    record = "decisions/notebook-format.md"
+    original = "# Keep the notebook in Markdown\n\nWe chose Markdown [1].\n"
+    (notebook / "decisions").mkdir(exist_ok=True)
+    (notebook / record).write_text(original)
+    _cache(notebook, record, original, "# Keep the notebook in Markdown\n\n我们选择了 Markdown [1]。\n")
+    # Still shown while it waits: the page stays readable in Chinese.
+    assert tr.cached(notebook, record, "zh").startswith("# Keep the notebook")
+    assert not tr.current(notebook, record, "zh")
+    assert record in tr.backlog(notebook, "zh")
+    calls = []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", model("# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n", calls))
+    assert tr.translate(notebook, record, "zh").startswith("# 笔记本保持 Markdown 格式")
+    assert len(calls) == 1 and tr.current(notebook, record, "zh")
+    assert record not in tr.backlog(notebook, "zh")
+
+
+def test_a_names_title_left_as_written_is_current_and_so_is_a_statement_titled_by_a_product_name(notebook):
+    """A person's name is meant to stay; a statement whose whole title is a code name has nothing to translate."""
+    person = "people/avery-lin.md"
+    original = (notebook / person).read_text()
+    _cache(notebook, person, original, original.replace("founder", "创始人"))
+    assert tr.current(notebook, person, "zh")
+    record = "decisions/v2.md"
+    (notebook / "decisions").mkdir(exist_ok=True)
+    (notebook / record).write_text("# co-rem-v2\n\nWe ship it [1].\n")
+    _cache(notebook, record, "# co-rem-v2\n\nWe ship it [1].\n", "# co-rem-v2\n\n我们发布它 [1]。\n")
+    assert tr.current(notebook, record, "zh")

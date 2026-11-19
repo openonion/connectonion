@@ -9,6 +9,7 @@ original quietly (D-103). The notebook is the invented one in tests/fixtures/rem
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,13 +121,22 @@ def test_a_pending_translation_is_the_top_bars_one_language_control_not_a_line_i
     page = open_page(hash_, width=width, live=True)
     assert page.locator("#main .translation-line, #main .translate-all").count() == 0
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
-    progress = page.locator("#lang-progress")
-    assert progress.is_visible() and "还没有中文版" in progress.inner_text()
-    # Beside the EN/中 toggle in the top bar, in the 13px label size.
-    toggle = _box(page.locator("#lang-toggle"))
-    assert abs(_box(progress)["y"] + _box(progress)["height"] / 2 - (toggle["y"] + toggle["height"] / 2)) < 8
-    assert progress.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
-        "getComputedStyle(document.documentElement).getPropertyValue('--s-ui').trim()", isolated_context=False)
+    # rc34 check: the bar shows a count beside 中/EN whose menu holds the line; a phone has the one 显示 menu instead.
+    badge = page.locator("#lang-progress .lang-badge")
+    assert "还没有中文版" in badge.get_attribute("title")
+    if width > 400:
+        progress = page.locator("#lang-progress")
+        assert progress.is_visible()
+        # Beside the EN/中 toggle in the top bar, in the 13px label size.
+        toggle = _box(page.locator("#lang-toggle"))
+        assert abs(_box(progress)["y"] + _box(progress)["height"] / 2 - (toggle["y"] + toggle["height"] / 2)) < 8
+        assert progress.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
+            "getComputedStyle(document.documentElement).getPropertyValue('--s-ui').trim()", isolated_context=False)
+        badge.click()
+        assert "还没有中文版" in page.locator(".lang-menu").inner_text()
+    else:
+        page.locator("#display-menu").click()
+        assert "还没有中文版" in page.locator(".display-pop").inner_text()
     assert any(path == "/rem/translation-request" for path, _ in calls)   # the opened page is still asked for at once
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -448,3 +458,81 @@ def test_a_chip_whose_page_is_not_in_the_snapshot_says_so_and_stays_put(reader):
     assert page.evaluate("location.hash", isolated_context=False) == before
     page.keyboard.press("Escape")
     assert not panel.is_visible()
+
+
+# #3131 (hunt on rc31): a person's Full memory repeated every fact the profile card shows ('资料 · 已知 15/17 项'),
+# and dates printed twice ('2026-10-29 10月29日'). One place per fact, one date per value.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_person_shows_each_fact_once_and_each_date_once(reader, width):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="zh")
+    page.evaluate("""() => { const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Last contact:[^\\n]*/m, '- Last contact: 2026-10-29 (10月29日) [3]')
+        .replace(/^- First contact:[^\\n]*/m, '- First contact: 2015-11-18 2015年11月18日 [3]');
+      KNOWN.clear(); FACTS.clear(); render(); }""", isolated_context=False)
+    assert page.locator(".person-head .pcard").count() == 1
+    assert page.locator("#main .factlist").count() == 0, "the profile card is the one place for facts"
+    text = page.locator("#main").inner_text()
+    assert "2026-10-29" not in text and "2015-11-18" not in text  # ISO forms never reach the Chinese page
+    assert text.count("2015年11月18日") <= 1 and text.count("10月29日 10月29日") == 0
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"cal-person-facts-once-{width}.png"), full_page=True)
+
+
+# rc34 hunt: a person page printed a raw "[sensitive]" label, and an organisation's tag row listed the organisation
+# itself. A label is a mark the reader turns into a curtain or a pill, never text; a page is never its own tag.
+LABEL = re.compile(r"[\[［](?:personal|sensitive)[\]］]", re.I)
+
+
+@pytest.mark.parametrize("level", ["all", "cover", "public"])
+@pytest.mark.parametrize("path", [MARA, "orgs/fernhill-labs.md", "projects/harbour.md"])
+def test_a_raw_privacy_label_never_reaches_the_page(reader, path, level):
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"), language="en")
+    page.evaluate(r"""([path, level]) => { const r = byPath(path);
+      // A label on every kind of line a record page draws: the lead, a fact, a bullet, a dated history row, a heading.
+      r.text = r.text.replace(/^(# [^\n]*\n+)([^\n#][^\n]*)/m, '$1$2 [sensitive]')
+        .replace(/^- (Role|Location|Company|Status|Stage|Owner): ([^\n]*)/gm, '- $1: $2 [sensitive]')
+        .replace(/^(## [^\n]*\n+- )([^\n]*)/gm, '$1$2 [personal]')
+        .replace(/^- (\d{4}-\d{2}-\d{2}[^\n]*)/gm, '- $1 [sensitive]');
+      r.index = {...(r.index || {}), how_known: 'Met through the pilot [sensitive]', role: 'Head of Partnerships [sensitive]'};
+      KNOWN.clear(); FACTS.clear(); setPrivacy(level, {save: false, redraw: false}); render(); }""", [path, level], isolated_context=False)
+    text = page.locator("body").inner_text()
+    found = [line for line in text.splitlines() if LABEL.search(line)]
+    assert not found, found[:5]
+
+
+def test_a_page_is_never_listed_in_its_own_tag_row(reader):
+    open_page, _ = reader
+    page = open_page("r=orgs%2Ffernhill-labs.md", language="en")
+    page.evaluate("""() => { REM.tags = {...REM.tags, 'fernhill-labs': {label: 'Fernhill Labs', kind: 'org', page: 'orgs/fernhill-labs.md', count: 2}, pilot: {label: 'Fernhill pilot', kind: 'topic', count: 2}};
+      for (const p of ['orgs/fernhill-labs.md', 'people/mara-ostrowski.md']) { const r = byPath(p); r.tags = [...new Set([...(r.tags || []), 'fernhill-labs', 'pilot'])]; }
+      render(); }""", isolated_context=False)
+    row = page.locator("#main .page-tags").first
+    row.wait_for()
+    assert row.get_by_role("link", name="Fernhill Labs").count() == 0, row.inner_text()
+    assert row.get_by_role("link", name="Fernhill pilot").count() == 1
+
+
+def test_a_citation_to_mail_rem_indexed_but_never_kept_opens_its_header(reader):
+    """rc34 hunt: person and organisation citations opened an empty card for mail REM knew the sender, subject and
+    time of. The card shows those and says, in words, that the body was not kept."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), language="en")
+    chip = page.locator("#main a.cite[href*='src-'] >> visible=true").first
+    number = chip.get_attribute("data-sources") or chip.get_attribute("href").split("h=src-")[-1]
+    page.evaluate("""n => { const r = byPath('people/mara-ostrowski.md'), src = sourceList(r).find(s => s.n === n.split(' ')[0]);
+      REM.source_context[sourceId(src.text)] = {excerpt: '', truncated: false, body_empty: true, header_only: true,
+        time: '2026-08-22T09:00:00Z', sender: 'Mara Ostrowski <mara@fernhill.example>', subject: 'Pilot kickoff notes',
+        thread: '', source: 'outlook', participants: {from: 'Mara Ostrowski <mara@fernhill.example>', to: [], cc: []}}; }""",
+                  number, isolated_context=False)
+    chip.click()
+    page.locator("#evidence-panel").wait_for(state="visible")
+    page.locator("#evidence-panel").get_by_role("button", name="Show labelled passages").click()
+    text = page.locator("#evidence-panel").inner_text()
+    assert "Pilot kickoff notes" in text and "Mara" in text
+    assert "REM kept who wrote this and when, not the message itself." in text
+    assert "did not keep a copy" not in text and "isn't in this snapshot" not in text
+    assert "Copied" not in text  # a profile-card row is quoted as its values, not its copy button (rc35 hunt)
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "today-header-only-citation-1440.png"))

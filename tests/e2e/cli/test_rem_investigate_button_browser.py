@@ -181,3 +181,35 @@ def test_a_page_that_lost_its_host_says_so_and_reconnects(live):
     bar.get_by_role("button", name="Reconnect").click()
     page.locator(".inv-go").wait_for()
     expect(page.locator("#host-lost")).to_have_count(0)
+
+
+def test_reconnect_after_an_upgrade_waits_for_the_new_build_then_reloads_onto_it(live):
+    """Mac review of rc33: after an upgrade, 重新连接 reloaded the old build's saved page. The page waits until the
+    Host's saved page is the installed release's, says so, then reloads by itself."""
+    import json
+    from patchright.sync_api import expect
+    page, root, commands = live
+    state = {"release": "1.0.0", "installed": "1.0.1"}                # the Host upgraded; its new page is building
+    page.evaluate("() => { REM.release = '1.0.0'; }", isolated_context=False)
+    page.route("**/rem/version", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(
+        {"as_of": "2026-01-01T00:00:00Z", "failed": None, "building": state["release"] != state["installed"], **state})))
+    page.evaluate("() => { window.reloads = 0; window.reloadOnto = () => { window.reloads += 1; }; hostLost(); }", isolated_context=False)
+    button = page.locator("#host-lost").get_by_role("button", name="Reconnect")
+    button.click()
+    expect(page.locator("#upgrading")).to_contain_text("Switching to the new version…")
+    page.wait_for_timeout(1500)
+    assert page.evaluate("window.reloads", isolated_context=False) == 0  # never onto the old saved page
+    state["release"] = "1.0.1"                                         # the new release has drawn its page
+    page.wait_for_function("window.reloads === 1", timeout=10000)
+    assert not commands
+
+
+def test_an_idle_page_moves_onto_the_new_build_by_itself_after_an_upgrade(live):
+    import json
+    page, root, commands = live
+    page.evaluate("() => { REM.release = '1.0.0'; window.reloads = 0; window.reloadOnto = () => { window.reloads += 1; }; }",
+                  isolated_context=False)
+    page.route("**/rem/version", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(
+        {"as_of": "2026-01-01T00:00:00Z", "failed": None, "building": False, "release": "1.0.1", "installed": "1.0.1"})))
+    page.evaluate("() => checkForNewerRender()", isolated_context=False)
+    page.wait_for_function("window.reloads === 1", timeout=5000)

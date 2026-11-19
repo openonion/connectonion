@@ -568,6 +568,9 @@
   .note :is(h2,h3,h4,h5,h6), .note [id^="src-"] { scroll-margin-top: 24px; }
 
   /* citations name the original before the reader opens it */
+  /* A raw source id in page text, drawn as its kind and date (#3165): quiet, opens the source in the side card. */
+  .src-id { display: inline; padding: 0 4px; border: 0; text-decoration: none; border-radius: var(--radius); background: var(--well); color: var(--ink); font: inherit; cursor: pointer; }
+  .src-id:hover, .src-id:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
   .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--rule); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: var(--w-regular) var(--s-meta)/16px var(--font); color: var(--grey); background: var(--rule); border-color: var(--rule); border-radius: var(--radius); }
   /* Grow the tap target without opening a gap in the prose. */
   .cite::before { content: ""; position: absolute; inset: -2px; min-width: 24px; min-height: 24px; }
@@ -2346,6 +2349,10 @@
   .cal-allday-col { border-left: var(--hair) solid var(--rule); margin: -3px 0; }
   .weekend.cal-allday-col, .weekend.cal-day, .weekend.cal-cell { background: var(--well); }
   .cal-bar { display: flex; align-items: center; min-width: 0; height: 22px; margin: 0 3px 0 4px; padding: 0 8px; border: 0; border-radius: var(--r-cell); background: var(--ink); color: var(--paper) !important; font: var(--w-bold) var(--s-meta)/22px var(--font) !important; cursor: pointer; text-align: left; position: relative; z-index: 1; }
+  /* A day's notebook dates, counted in words; the items themselves are Today's cards (#3188). */
+  .cal-due-count { align-self: center; min-width: 0; margin: 0 4px; overflow: hidden; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
+    white-space: nowrap; text-overflow: ellipsis; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; position: relative; z-index: 1; }
+  .cal-due-count.late { color: var(--red); }
   .cal-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-bar.cal-microsoft { background: var(--grey); }
   .cal-bar.cal-due, .cal-bar.cal-page { background: var(--paper); color: var(--ink) !important; box-shadow: var(--e-ring); font-weight: var(--w-regular) !important; }
@@ -3242,8 +3249,28 @@
   /* #2840 slice 1: three privacy levels, one control beside the language toggle. The word says the state. */
   .privacy-level-host { position: relative; display: inline-flex; }
   .privacy-level { min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); cursor: pointer; white-space: nowrap; }
-  .privacy-level .pl-short { display: none; }
-  @media (max-width: 640px) { .privacy-level .pl-short { display: inline; } }
+  /* rc34 check: the bar is one compact cluster. The language badge (a count) opens the translation menu; the privacy
+     level is a short word; on a phone both live in one 显示 menu. */
+  .lang-progress { position: relative; }
+  .lang-badge { min-width: 28px; height: 22px; padding: 0 7px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); font-variant-numeric: tabular-nums; cursor: pointer; }
+  .lang-badge:hover, .lang-badge[aria-expanded="true"] { box-shadow: var(--e-ring); }
+  .lang-menu, .display-pop { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: 280px; max-width: calc(100vw - 32px); padding: 12px;
+    border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); color: var(--ink); white-space: normal;
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .lang-menu { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+  .display-menu-host { position: relative; display: none; }
+  .display-menu { min-width: 44px; min-height: 44px; padding: 0 10px; border: 0; border-radius: var(--radius); background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .display-pop .dp-h { margin: 8px 0 4px; color: var(--grey); }
+  .display-pop .dp-h:first-child { margin-top: 0; }
+  .display-pop .dp-row { display: flex; gap: 8px; }
+  .display-pop .dp-lang { display: flex; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0; }
+  .display-pop button[role="menuitemradio"] { display: block; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: var(--radius); background: none; color: var(--ink);
+    font: inherit; text-align: left; cursor: pointer; }
+  .display-pop .dp-row button[role="menuitemradio"] { width: auto; flex: 1; text-align: center; }
+  .display-pop button[aria-checked="true"] { font-weight: var(--w-bold); background: var(--well); }
+  .display-pop small { display: block; color: var(--grey); font: inherit; }
+  @media (max-width: 640px) { #lang-toggle, #lang-progress, .privacy-level-host { display: none !important; } .display-menu-host { display: inline-flex; } }
   .privacy-level:hover, .privacy-level[aria-expanded="true"] { background: var(--well); color: var(--ink); }
   .privacy-menu { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: 260px; max-width: calc(100vw - 32px); margin: 0; padding: 4px; list-style: none;
     border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); }
@@ -3342,7 +3369,6 @@
     .top-end { width: auto; }
     .lang-toggle { min-width: 44px; height: 44px; }
     .privacy-level { min-height: 44px; min-width: 44px; padding: 0 6px; }
-    .privacy-level .pl-long { display: none; }
     .search { display: none; }
     body.searching .search { display: flex; position: fixed; left: 12px; right: 12px; top: 10px; z-index: 46; max-width: none; }
     body.searching .search input { font: var(--w-regular) var(--s-body)/1 var(--font); }
@@ -3445,6 +3471,25 @@
 
   /* ---- Today: the deck — one raised card ---- */
   .tgrid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); gap: var(--gap); align-items: start; margin-top: 22px; }
+  /* What is next (rc34 hunt): the side column's first block on a desk, one line above the cards on a phone. */
+  .tnext-line { display: none; }
+  .tnext ul { list-style: none; margin: 0 0 12px; padding: 0; }
+  .tnext li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 6px 0; border-top: var(--hair) solid var(--rule); }
+  .tnext li:first-child { border-top: 0; }
+  .tnext-ev { display: flex; gap: 12px; min-width: 0; flex: 1 1 auto; padding: 0; border: 0; background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-align: left; cursor: pointer; }
+  .tnext-ev:hover .tnext-title { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .tnext-time { flex: none; color: var(--grey); font-variant-numeric: tabular-nums; }
+  .tnext-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tnext-join { color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .tnext-none { margin: 0 0 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .tnext-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+  .tnext-day { display: grid; justify-items: center; gap: 0; padding: 4px 0; border: 0; border-radius: var(--r-cell); background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .tnext-day:hover, .tnext-day.today { background: var(--well); }
+  .tnext-wd { color: var(--grey); }
+  .tnext-dots { min-height: 1em; color: var(--grey); letter-spacing: 1px; }
+  .tnext .wt .end { margin-left: auto; }
+  .tnext-day.today .tnext-num { font-weight: var(--w-bold); }
+  .tnext-all { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
   .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
     background: var(--raised); box-shadow: var(--e1); }
@@ -3664,6 +3709,12 @@
     .count-line .count-words { font-size: var(--s-ui); white-space: nowrap; }
     .frow { flex: 1; justify-content: flex-start; }
     .tgrid { display: block; margin-top: 10px; }
+    .tgrid .tnext { display: none; }
+    .tnext-line { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin: 8px 0 0; padding: 0 12px; border: 0; border-radius: var(--radius);
+      background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-align: left; cursor: pointer; }
+    .tnext-line .tnext-label { flex: none; color: var(--grey); }
+    .tnext-line .tnext-title { flex: 1 1 auto; }
+    .tnext-line .tnext-join { flex: none; }
     .today-brief .qcard.focal { padding: 18px 16px 16px; }
     .qhead .org-chip { display: none; }
     .qhead-acts { opacity: 1; }
@@ -4007,7 +4058,7 @@
         <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
         <button class="kbd" type="button" aria-label="Command palette">⌘K</button>
       </div>
-      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><span class="privacy-level-host"><button id="privacy-level" class="privacy-level" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="lang-toggle" class="lang-toggle" type="button"></button><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
+      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><span class="privacy-level-host"><button id="privacy-level" class="privacy-level" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="lang-toggle" class="lang-toggle" type="button"></button><span class="display-menu-host"><button id="display-menu" class="display-menu" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
     </header>
     <main id="main" tabindex="-1"></main>
   </div>
@@ -4708,7 +4759,7 @@ const UI = {
     "Next match": "下一个匹配",
     "Sent date unknown": "发送日期未知",
     "Instruction excerpt": "指令摘录",
-    "The retained message has no body text. Its headers are available.": "留存的消息没有正文，可查看邮件头。",
+    "The retained message has no body text. Its headers are available.": "留存的消息没有正文，可查看邮件头。", "REM kept who wrote this and when, not the message itself.": "REM 只记下了谁在何时写的这封信，没有留下正文。",
     "Source-backed changes from the latest pass. Page rewrites are listed separately.": "上次更新中有来源支持的变化。页面改写单独列出。",
     "No verified claim change in this pass": "这次更新中没有已核实的陈述变化",
     "No page content changed last night": "昨夜没有页面内容改变",
@@ -5282,9 +5333,9 @@ function untranslatedPages() {
   return (REM.records || []).filter(r => r.written && ["people", "orgs", "projects", "decisions", "principles", "knowledge", "skills"].includes(r.category)
     && !hasChinese(r) && !/^zh(?:-|$)/i.test(r.written_in || ""));
 }
-function renderLangProgress() {
-  const box = document.getElementById("lang-progress");
-  if (!box) return;
+// What the language line says (the rc34 check: the top bar had grown to "369 页还没有中文版 · 翻译 · 遮住敏感 · EN"):
+// the parts live in the language badge's menu and in the phone's 显示 menu; the bar itself shows only a count.
+function langParts() {
   if (liveHere() && uiLanguage === "zh" && !translateAllAsked) { translateAllAsked = true; translateAllSend("status"); }
   const job = translateAllJob || {}, busy = ["starting", "running", "stopping"].includes(job.state);
   // The Host's count, once it has answered: it knows which pages already read in Chinese; until then, the page's own.
@@ -5309,8 +5360,71 @@ function renderLangProgress() {
       parts.push(go);
     } else parts.push(el("span", { class: "lang-when", text: t("tonight") }));
   }
-  box.replaceChildren(...parts);
-  box.hidden = !parts.length;
+  return { parts, busy, left, job };
+}
+function renderLangProgress() {
+  const box = document.getElementById("lang-progress");
+  if (!box) return;
+  const { parts, busy, left, job } = langParts();
+  // An open menu stays open while the count moves (the Host polls during a translation); only its words change.
+  const wasOpen = !!box.querySelector(".lang-menu");
+  refreshDisplayLang(parts);
+  if (!parts.length) { box.replaceChildren(); box.hidden = true; renderDisplayMenu(); return; }
+  // A small count beside the toggle; while it translates, its progress.
+  const badge = el("button", { type: "button", class: "lang-badge", "aria-haspopup": "menu", "aria-expanded": "false",
+    title: parts.map(part => part.textContent).join(" · "),
+    text: busy && job.total != null ? job.done + "/" + job.total : String(left) });
+  badge.onclick = event => { event.stopPropagation(); toggleLangMenu(); };
+  box.replaceChildren(badge);
+  box.hidden = false;
+  if (wasOpen) toggleLangMenu(true);
+  renderDisplayMenu();
+}
+function refreshDisplayLang(parts) {
+  const pop = document.querySelector(".display-pop");
+  if (!pop) return;
+  const shown = pop.querySelector(".dp-lang");
+  if (!parts.length) { shown?.remove(); return; }
+  const fresh = el("div", { class: "dp-lang" }, parts);
+  if (shown) shown.replaceWith(fresh); else pop.querySelector(".dp-row").after(fresh);
+}
+function toggleLangMenu(open) {
+  const box = document.getElementById("lang-progress"), badge = box.querySelector(".lang-badge"), shown = box.querySelector(".lang-menu");
+  if (shown || open === false) { shown?.remove(); badge?.setAttribute("aria-expanded", "false"); return; }
+  const menu = el("div", { class: "lang-menu", role: "menu", "aria-label": t("Language") }, langParts().parts);
+  box.appendChild(menu);
+  badge.setAttribute("aria-expanded", "true");
+}
+// The phone's one control (rc34 check): language, translation and privacy in one 显示 menu, nothing truncated.
+function renderDisplayMenu() {
+  const button = document.getElementById("display-menu");
+  if (!button) return;
+  button.textContent = t("Display");
+  button.setAttribute("aria-label", t("Display") + ": " + t(PRIVACY_WORDS[privacyLevel][0]));
+  button.onclick = event => { event.stopPropagation(); toggleDisplayMenu(); };
+}
+function toggleDisplayMenu(open) {
+  const button = document.getElementById("display-menu"), host = button.parentElement, shown = host.querySelector(".display-pop");
+  if (shown || open === false) { shown?.remove(); button.setAttribute("aria-expanded", "false"); return; }
+  const lang = ["zh", "en"].map(code => {
+    const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(uiLanguage === code), text: code === "zh" ? "中文" : "English" });
+    // Focus goes back to the 显示 button, where the keyboard was before the menu opened.
+    item.onclick = () => { toggleDisplayMenu(false); button.focus(); if (uiLanguage !== code) document.getElementById("lang-toggle").click(); };
+    return item;
+  });
+  const levels = PRIVACY_LEVELS.map(level => {
+    const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(level === privacyLevel), "data-level": level },
+      [el("span", { text: t(PRIVACY_WORDS[level][0]) }), el("small", { text: t(PRIVACY_WORDS[level][1]) })]);
+    item.onclick = () => { toggleDisplayMenu(false); button.focus(); setPrivacy(level); };
+    return item;
+  });
+  const { parts } = langParts();
+  const pop = el("div", { class: "display-pop", role: "menu", "aria-label": t("Display") }, [
+    el("p", { class: "dp-h", text: t("Language") }), el("div", { class: "dp-row" }, lang),
+    parts.length ? el("div", { class: "dp-lang" }, parts) : null,
+    el("p", { class: "dp-h", text: t("Privacy") }), ...levels].filter(Boolean));
+  host.appendChild(pop);
+  button.setAttribute("aria-expanded", "true");
 }
 function renderLangToggle() {
   const button = document.getElementById("lang-toggle");
@@ -5340,7 +5454,7 @@ Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏
   "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
   "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
   "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
-  "Sensitive · tap to show": "敏感 · 点一下显示", "All": "全部", "Covered": "遮挡", "Public": "公开", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+  "Sensitive · tap to show": "敏感 · 点一下显示", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
 const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
   cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
   public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
@@ -5360,6 +5474,7 @@ function setPrivacy(level, { save = true, redraw: again = true } = {}) {
   applyPrivacyClasses();
   if (save) readerStorage("co-rem-privacy", privacyLevel);
   renderPrivacyControl();
+  renderDisplayMenu();
   if (!again || !REM) return;
   if (privacyLevel !== "public" && privacyRemoved) {
     // Passages Public only took out come back only from the notebook: draw the page again.
@@ -5390,7 +5505,8 @@ function renderPrivacyControl() {
   if (!button) return;
   const [word, , short] = PRIVACY_WORDS[privacyLevel];
   // The state in words; a phone's top bar has room for its short word.
-  button.replaceChildren(el("span", { class: "pl-long", text: t(word) }), el("span", { class: "pl-short", text: t(short) }));
+  // The short word in the bar (公开 / 遮敏感 / 全部); the full word and its meaning in the title and menu (rc34 check).
+  button.replaceChildren(el("span", { class: "pl-short", text: t(short) }));
   button.title = t(PRIVACY_WORDS[privacyLevel][1]);
   button.setAttribute("aria-label", t("Privacy") + ": " + t(word));
   button.onclick = event => { event.stopPropagation(); togglePrivacyMenu(); };
@@ -5536,7 +5652,9 @@ function tagHref(slug) {
 function tagged(records, slug) { return slug ? records.filter(r => (r.tags || []).includes(slug)) : records; }
 // A page's tags as quiet links, each to its tag page; nothing when it has none.
 function tagLinks(r) {
-  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug]);
+  // A page is never its own tag (rc34 hunt: an organisation's row listed the organisation): the tag that names this
+  // page is what the page is, so the row shows only the other nodes it links to.
+  const slugs = (r.tags || []).filter(slug => REM.tags?.[slug] && REM.tags[slug].page !== r.path);
   return slugs.length ? el("span", { class: "tag-links" }, slugs.map(slug => el("a", { class: "tag-link", href: tagHref(slug), text: tagLabel(slug) }))) : null;
 }
 // One row of a page's tags under its title, on every kind (owner, 2026-11-19): the same links the person card shows,
@@ -7088,7 +7206,10 @@ function sourceSummary(r, src) {
   const context = id ? all[id] || (/^(gmail|outlook|imap):[^:]+:./.test(id) ? all[id.split(":").slice(0, 2).join(":")] : null) : null;
   const rest = (id ? src.text.slice(src.text.indexOf(id) + id.length) : src.text).replace(/^\s*[—–-]\s*/, "");
   const written = /\b(\d{4}-\d{2}-\d{2})\b/.exec(rest)?.[1] || "";
-  const note = rest.replace(/\b\d{4}-\d{2}-\d{2}\b/g, "").replace(/^[\s;·,—–-]+|[\s;·,—–-]+$/g, "");
+  // The note is a source's own words: its date is the row's date, not "observed ." left behind (rc34 hunt), and a
+  // [personal]/[sensitive] mark on the line is never printed as text.
+  const note = rest.replace(/[\[［](?:personal|sensitive)[\]］]/gi, "").replace(/\b(?:observed|seen|written)\s+\d{4}-\d{2}-\d{2}\b/gi, "")
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "").replace(/\s*([;·,])(?:\s*[;·,])+/g, "$1").replace(/^[\s;·,.—–-]+|[\s;·,.—–-]+$/g, "");
   const kind = id ? sourceKind(id, context) : "other", parts = id.split(":"), scheme = parts[0].toLowerCase();
   let title = "", who = context ? sourceIdentity(context) : "", day = context?.time ? calendarDay(context.time) : written;
   // A file's name, without its content hash ("CLAUDE.md@be1c3a…") or the folders above it.
@@ -7864,6 +7985,8 @@ function renderRail(active) {
   renderRailEnd(active);
   renderTabbar(active);
   renderLangToggle();
+  renderPrivacyControl();
+  renderDisplayMenu();
   renderSettings();
   const ownerPage = byPath(REM.owner);
   document.getElementById("brand-sub").textContent = ownerPage ? t("{name}'s memory", { name: ownerPage.title.split(/\s+/)[0] }) : (REM.root || "").split("/").filter(Boolean).slice(-1).join("");
@@ -8334,7 +8457,7 @@ function taskResult(entry) {
   const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", completed: "Completed"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
-    task.reason ? el("p", {text: task.reason}) : null, snapshotDone && task.summary ? el("p", {text: task.summary}) : null]);
+    task.reason ? el("p", {text: task.reason}) : null, snapshotDone && summaryHere(task.summary) ? el("p", {text: summaryHere(task.summary)}) : null]);
   if (snapshotDone && task.reply) {
     const reply = el("textarea", {readonly: "", "aria-label": t("Prepared reply")});
     reply.value = task.reply;
@@ -8609,7 +8732,7 @@ const HOST_LOST_WORDS = "This page lost touch with REM (it was just restarted)."
 function hostLost() {
   if (!liveHere() || document.getElementById("host-lost")) return;
   const again = el("button", { type: "button", class: "lang-act", text: t("Reconnect") });
-  again.onclick = () => reloadOnto();  // the one reload door: it keeps his place
+  again.onclick = () => reconnect();  // onto the new build when an upgrade restarted the Host
   document.body.appendChild(el("div", { id: "host-lost", class: "host-lost", role: "status" }, [el("span", { text: t(HOST_LOST_WORDS) }), again]));
 }
 function hostFound() { document.getElementById("host-lost")?.remove(); }
@@ -8832,11 +8955,17 @@ function taskFailure(task) {
   if (task.reason?.includes('Operation not permitted') && agent === 'Codex') return 'Codex 当时无法启动（已修复），可以重试';
   return task.result === 'timed-out' ? `${agent} 超时了，可以重试` : task.result === 'stopped' ? `${agent} 已停止，可以重试` : `${agent} 这次未能完成，可以重试`;
 }
+// A run's one-line summary goes on its row only in the reader's language: runs from before the language rule wrote
+// English headings ("… — written feedback preparation", rc34 check). The row already says the item in its own words;
+// the agent's heading stays inside the report.
+function summaryHere(summary) {
+  return summary && (uiLanguage !== "zh" || /[\u4e00-\u9fff]{2}/.test(summary)) ? summary : "";
+}
 function taskStatus(task) {
   const agent = AGENT_NAMES[task.agent || 'codex'];
   if (ACTIVE_TASK.includes(task.result)) return t('{agent} is working', { agent }) + ' · ' + taskElapsed(task.started_at || task.queued_at) + (taskStep(task) ? ' · ' + taskStep(task) : '');
   // State in words first (owner: words for state), then what it found in one line.
-  return task.result === 'completed' ? t('{agent} finished', { agent }) + (task.summary ? ' · ' + task.summary : '') : taskFailure(task);
+  return task.result === 'completed' ? t('{agent} finished', { agent }) + (summaryHere(task.summary) ? ' · ' + summaryHere(task.summary) : '') : taskFailure(task);
 }
 function taskStatusNode(task) {
   if (ACTIVE_TASK.includes(task.result)) startTaskClock();
@@ -9928,6 +10057,7 @@ function overview() {
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
   main.append(...whyNotes(), ...[snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
+    todayNextLine(),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
     // The calendar is part of Today, under the cards (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个
     // component，而不是单独的一个 category»); the day plan's proposals are its suggested blocks, not a list on top.
@@ -10138,7 +10268,49 @@ function nightSummary(runs, marks) {
 // The side column: what others owe and what can be approved at once, what REM did overnight. 「关于 X，有什么值得
 // 记住？」 left Today in sprint 14: it picked a page REM already knew well, gave no reason and took no answer.
 function todaySide(counts) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), nightLine()].filter(Boolean));
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine()].filter(Boolean));
+}
+// What is next, on the first screen beside the cards (rc34 hunt: the calendar sat ~989px down). The cards stay
+// first; this is the calendar's head, not a second calendar: it reuses agendaEntries and agDetail.
+function nextEvents(limit = 3) {
+  if (REM.shared) return [];
+  const now = Date.parse(REM.as_of || "") || clockNow();
+  return agendaEntries().filter(e => e.kind === "event" && !e.allDay && e.end && Date.parse(e.end) > now)
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start)).slice(0, limit);
+}
+function nextWhen(e) { return (e.first === agToday() ? "" : agFormat(e.first, { weekday: "short" }) + " ") + agTime(e.start); }
+function todayNext() {
+  const events = nextEvents();
+  if (REM.shared) return null;
+  const today = agToday(), entries = agendaEntries();
+  const rows = events.map(e => {
+    const open = el("button", { type: "button", class: "tnext-ev" }, [el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title })]);
+    open.onclick = () => agDetail(e, open);
+    const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
+    return el("li", {}, [open, join]);
+  });
+  const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": t("This week") }, Array.from({ length: 7 }, (_, i) => {
+    const day = agDay(today, i), n = agOnDay(entries, day).length;
+    const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), ...(day === today ? { "aria-current": "date" } : {}),
+      "aria-label": (day === today ? agT("Today") + agT(", ") : "") + agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")) }, [
+      el("span", { class: "tnext-wd", text: agFormat(day, { weekday: "narrow" }) }), el("span", { class: "tnext-num", text: String(Number(day.slice(8))) }),
+      el("span", { class: "tnext-dots", "aria-hidden": "true", text: "•".repeat(Math.min(3, n)) })]);
+    b.onclick = () => { todayCal.day = day; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
+    return b;
+  }));
+  const all = el("a", { class: "tnext-all", href: "#today-calendar", text: t("Full schedule ↓") });
+  all.onclick = event => { event.preventDefault(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
+  return el("section", { class: "widget tnext", "aria-label": t("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: t("Next") }), el("span", { class: "end" }, [all])]),
+    rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: t("Nothing else today") }), strip]);
+}
+// On a phone: one line above the cards, the next event, a tap to the calendar.
+function todayNextLine() {
+  const [e] = nextEvents(1);
+  if (!e) return null;
+  const line = el("button", { type: "button", class: "tnext-line" }, [el("span", { class: "tnext-label", text: t("Next") }),
+    el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title }), e.meet ? el("span", { class: "tnext-join", text: agT("Join {service}", { service: e.meet.service }) }) : null]);
+  line.onclick = () => document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  return line;
 }
 // Promises long past their date with no word since (staleEntry): triage of the past, so not in the rail above the
 // fold but one folded line under the desk, opening in place, never in red (sprint 14 #6). Mark done closes one the
@@ -10584,9 +10756,11 @@ function personHead(r) {
 function personMeta(r, late) {
   const parsed = parseFacts(r), have = label => (parsed.has(label) ? parsed.get(label) : legacyFact(r, label)).filter(item => knownValue(item.value));
   const place = have("Location")[0], last = have("Last contact")[0];
-  const lastValue = last ? plainLine(last.value) : "";
+  const lastValue = last ? plainLine(oneDate(last).value) : "";
   const lastText = /^\d{4}-\d{2}-\d{2}$/.test(lastValue) ? fmtDate(lastValue) : lastValue || (mappedContact(r) && known(r).last ? fmtDate(known(r).last) : "");
-  const parts = [place ? el("span", { text: plainLine(place.value) }) : null,
+  // The place keeps its privacy mark, so a [personal] location hides with the others (the facts panel that used to
+  // guard it is gone from person pages, #3131).
+  const parts = [place ? el("span", { class: "hero-place", html: inline(place.value, r.path) }) : null,
     lastText ? el("span", { text: t("Last contact {when}", { when: lastText }) }) : null,
     r.mail?.mails ? el("span", { title: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }),
       text: t(r.mail.mails === 1 ? "1 mail" : "{n} mails", { n: r.mail.mails }) }) : null,
@@ -11512,7 +11686,7 @@ const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Organised by {name}": "组织者：{name}",
+  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Next": "接下来", "Full schedule ↓": "完整日程 ↓", "Nothing else today": "今天没有别的安排了", "This week": "这一周", "Organised by {name}": "组织者：{name}",
   "{n} items": "{n} 项", "1 item": "1 项",
   "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
   "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
@@ -11676,10 +11850,20 @@ function agDetail(e, anchor) {
   agPlaceBeside(dialog, anchor.getBoundingClientRect());
   close.focus();
 }
+// Beside the event when there is room on its right or left; otherwise (a wide block, as in Today's one-day timeline)
+// under it, or over it, aligned to its start. Never over the rail and never over the event itself (#3188: it opened
+// at x=8, over the rail and the event's own title).
 function agPlaceBeside(dialog, at) {
-  const width = dialog.offsetWidth, height = dialog.offsetHeight, right = at.right + 8 + width <= innerWidth - 8;
-  dialog.style.left = Math.max(8, right ? at.right + 8 : at.left - 8 - width) + "px";
-  dialog.style.top = Math.max(8, Math.min(at.top, innerHeight - height - 8)) + "px";
+  const width = dialog.offsetWidth, height = dialog.offsetHeight, gap = 8;
+  const minX = Math.max(gap, document.getElementById("main")?.getBoundingClientRect().left || gap), maxX = innerWidth - gap - width;
+  const clampX = x => Math.max(minX, Math.min(x, maxX)), clampY = y => Math.max(gap, Math.min(y, innerHeight - gap - height));
+  const spots = [[at.right + gap, clampY(at.top)], [at.left - gap - width, clampY(at.top)],
+    [clampX(at.left), at.bottom + gap], [clampX(at.left), at.top - gap - height]];
+  const clear = ([x, y]) => x >= minX && x <= maxX && y >= gap && y + height <= innerHeight - gap
+    && (x >= at.right || x + width <= at.left || y >= at.bottom || y + height <= at.top);
+  const [left, top] = spots.find(clear) || [clampX(at.left), clampY(at.bottom + gap)];
+  dialog.style.left = left + "px";
+  dialog.style.top = top + "px";
 }
 // An entry as something to press: an event opens its detail, a notebook date goes to its page.
 function agPress(e, cls, children) {
@@ -11704,11 +11888,27 @@ function agBar(bar, column) {
   node.style.gridRow = String(bar.line + 1);
   return node;
 }
+// The lane is the calendar's: all-day and multi-day events as bars. The notebook's own dates (deadlines, notes) are
+// Today's cards; here a day only says how many it has, in words, and that count opens them (#3152, #3188).
 function agAllDay(entries, days, today) {
-  const bars = agBars(entries.filter(agOnStrip), days[0], days.length), lines = Math.max(1, ...bars.map(bar => bar.line + 1));
-  return el("div", { class: "cal-allday" }, [el("span", { class: "cal-axis-word", text: bars.length ? agT("All day") : "" }),
+  const bars = agBars(entries.filter(e => e.kind === "event" && agOnStrip(e)), days[0], days.length);
+  const dated = entries.filter(e => e.kind !== "event");
+  const counts = days.map((day, i) => agDueCount(dated.filter(e => e.first <= day && e.last >= day), i)).filter(Boolean);
+  const lines = Math.max(1, ...bars.map(bar => bar.line + 1)) + (counts.length ? 1 : 0);
+  counts.forEach(node => { node.style.gridRow = String(lines); });
+  return el("div", { class: "cal-allday" }, [el("span", { class: "cal-axis-word", text: bars.length || counts.length ? agT("All day") : "" }),
     ...days.map((day, i) => el("span", { class: "cal-allday-col" + agDayClass(day, today), style: `grid-column:${i + 2};grid-row:1 / span ${lines}` })),
-    ...bars.map(bar => agBar(bar, 2))]);
+    ...bars.map(bar => agBar(bar, 2)), ...counts]);
+}
+function agDueCount(items, i) {
+  if (!items.length) return null;
+  const late = items.some(e => e.late), one = items.length === 1;
+  const node = el("a", { class: "cal-due-count" + (late ? " late" : ""), href: one ? items[0].href : "#",
+    title: items.map(e => e.title + " · " + agWhen(e)).join("\n"),
+    text: agT("{n} due", { n: items.length }) });  // short enough for a phone's day column, never cut
+  node.style.gridColumn = String(i + 2);
+  if (!one) node.onclick = event => { event.preventDefault(); location.hash = ""; requestAnimationFrame(() => document.querySelector("#main .today-brief")?.scrollIntoView({ block: "start" })); };
+  return node;
 }
 function agEventBlock({ entry, day, start, end, lane, lanes }) {
   const { top, height } = agBlock(start, end), cls = "cal-ev" + (height < 34 ? " short" : height >= 56 ? " tall" : "");
@@ -11740,10 +11940,13 @@ function agendaWeek(entries, start, length = 7) {
 }
 // Where the grid opens: 07:00, so working hours to 21:00 are on screen; earlier when the week's first event or
 // now is earlier, later only when now is past what would be shown.
+// The grid opens at the earlier of the first event and now, an hour above it; an empty day opens at 07:00 or now.
+// (#3188: at 23:00 the old rule jumped to now - 10 h, 13:00, with the morning's events out of view.)
 function agFirstMinute(entries, days, now) {
   const starts = days.flatMap(day => agSegments(entries, day).filter(seg => seg.entry.first === day).map(seg => seg.start));
-  const first = Math.min(7 * 60, ...starts, ...(now == null ? [] : [now]));
-  return now != null && now > first + 13 * 60 ? now - 10 * 60 : Math.max(0, Math.floor(first / 60) * 60);
+  if (!starts.length && now == null) return 7 * 60;  // an empty week opens on working hours
+  const first = Math.min(...starts, now ?? Infinity);
+  return Math.max(0, Math.floor((first - 60) / 60) * 60);
 }
 // The grid ends at the window's foot and scrolls inside it, so the heads and the all-day strip stay in view.
 function agSizeWeek() {
@@ -14208,7 +14411,19 @@ function legacyFact(r, label) {
   }[label];
   return v ? [{ value: v, qualifier: "", citations: [], derived: true }] : [];
 }
+// A value that states one date twice ("2026-10-29 (10月29日)", "2015-11-18 2015年11月18日") keeps the ISO date only;
+// the reader prints it once in its own words (hunt on rc31).
+function oneDate(item) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})\s*[（(]?\s*(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*[)）]?$/.exec(String(item.value).trim());
+  if (!m || Number(m[5]) !== Number(m[2]) || Number(m[6]) !== Number(m[3]) || (m[4] && m[4] !== m[1])) {
+    const q = /^(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日$/.exec(String(item.qualifier || "").replace(/[（()）]/g, "").trim());
+    const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(item.value).trim());
+    return q && d && Number(q[2]) === Number(d[2]) && Number(q[3]) === Number(d[3]) ? { ...item, qualifier: "" } : item;
+  }
+  return { ...item, value: m[1] + "-" + m[2] + "-" + m[3] };
+}
 function factValue(item, from) {
+  item = oneDate(item);
   const day = /^\d{4}-\d{2}-\d{2}$/.test(item.value);
   const email = /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(item.value);
   const url = /^https?:\/\/\S+$/.test(item.value);
@@ -14350,7 +14565,10 @@ function sidePanels(r, k) {
       panels.push(panel("Source", [file]));
     }
   }
-  // People, organisations and projects open on their fact card instead.
+  // A person's facts, last contact and mail are the profile card and its header line (#3103): said there once, never
+  // again in Full memory (#3131, hunt on rc31: '资料 · 已知 15/17 项' repeated the card). Organisations and projects
+  // open on their fact card here, and so does a person whose page knows no fact yet (no profile card to say them).
+  if (r.category === "people" && profileCard(r)) return panels;
   const factsPanel = factList(r);
   if (factsPanel) panels.unshift(factsPanel); else if (glance.children.length || r.category !== "skills") panels.unshift(panel("At a glance", [glance]));
   return panels;
@@ -14956,6 +15174,118 @@ function record(path, heading) {
   if (r.category !== "orgs") graphRailAttach(main, r);
   shortenPaths(main);
 }
+// ---- One text pass over what the reader shows (#3165, rc34 hunt): every ISO date in the reader's own form, a date
+// never printed twice in a row, and a raw source id as a short named chip that opens it. The page text and the
+// Markdown keep what was written; only what is drawn changes.
+Object.assign(UI.zh, { "Record": "记录", "Its original isn't in this snapshot.": "这条来源的原文不在这份快照里。" });
+const ISO_RANGE = /\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?:\s*(?:–|—|-|to|至|到)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?![\d-]))?\b/g;
+const RAW_ID = /\b(?:(?:codex|claude-code|gmail|outlook|github|mail|session):[A-Za-z0-9][\w.:@/+=-]{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,})\b/gi;
+const TIDY_SKIP = "a, pre, code, textarea, input, select, button, script, style, .local-path, .src-id, .cite, [contenteditable]";
+function readerDate(day, locale = uiLocale()) {
+  return calendarDate(day, locale);
+}
+// One language per line (as datesInProse): a date in page text takes its sentence's language, so the page's words
+// read the same whichever interface language is on.
+function blockLocale(node) {
+  const block = node.parentElement.closest("p, li, td, th, dd, dt, h1, h2, h3, h4, blockquote, .tl-e, .row") || node.parentElement;
+  // The reader's own chips inside a sentence (citations, source ids, privacy labels) speak the interface's language.
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode())
+    if (/\p{Script=Han}/u.test(n.nodeValue.replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, "")) && !n.parentElement.closest(".cite, .src-id, .privacy-tag, .uncertain-marker, .sr-only")) return "zh-CN";
+  return "en-US";
+}
+// "2026-07-05–17" → "7月5日–17日"; "2026-07-29–08-04" → "7月29日–8月4日"; "2026-08-26–2026-08-28" likewise.
+function readerRange(start, end, locale) {
+  if (!end) return readerDate(start, locale);
+  const full = end.length === 10 ? end : end.length === 5 ? start.slice(0, 5) + end : start.slice(0, 8) + end;
+  if (isNaN(new Date(full + "T00:00:00Z"))) return readerDate(start, locale) + "–" + end;
+  if (full.slice(0, 7) === start.slice(0, 7))
+    return readerDate(start, locale) + "–" + (locale.startsWith("zh") ? Number(full.slice(8)) + "日" : String(Number(full.slice(8))));
+  return readerDate(start, locale) + "–" + readerDate(full, locale);
+}
+function localiseDates(text, locale = uiLocale()) {
+  ISO_RANGE.lastIndex = 0;
+  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale));
+}
+// "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once. Prose only: a fact's value is made single by
+// oneDate before it is drawn (#3192), and every pass here skips text that holds no ISO date, so nothing is formatted twice.
+function onceDates(text) {
+  const date = "(?:(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日|[A-Z][a-z]{2,8} \\d{1,2}(?:, \\d{4})?|\\d{1,2} [A-Z][a-z]{2,8}(?: \\d{4})?)";
+  return text.replace(new RegExp("(" + date + ")\\s*[（(]\\s*(" + date + ")\\s*[)）]", "g"), (m, one, two) => sameDay(one, two) ? one : m)
+    .replace(new RegExp("(" + date + ")(\\s+\\1)+(?![\\d日])", "g"), "$1");
+}
+// "10月29日" and "Oct 29" name the same day: month and day compared, whatever the language.
+function monthDay(text) {
+  const zh = /(\d{1,2})月(\d{1,2})日/.exec(text);
+  if (zh) return Number(zh[1]) + "-" + Number(zh[2]);
+  const d = new Date(text.replace(/,? \d{4}$/, "") + " 2000");
+  return isNaN(d) ? text : d.getMonth() + 1 + "-" + d.getDate();
+}
+function sameDay(one, two) {
+  return monthDay(one) === monthDay(two);
+}
+function rawIdLabel(id) {
+  const kind = /^(codex|claude-code|session):/i.test(id) ? "Session" : /^(gmail|outlook|mail):/i.test(id) ? "Mail" : /^github:/i.test(id) ? "GitHub" : "Record";
+  const when = REM.source_context?.[id]?.time;
+  return t(kind) + (when ? " · " + readerDate(calendarDay(when)) : "");
+}
+function rawIdChip(id) {
+  // An inline link like a citation chip, not a <button>: the phone's 44px touch box would break the line it sits in.
+  const chip = el("a", { href: "#", role: "button", class: "src-id", title: id, text: rawIdLabel(id) });
+  chip.onclick = event => { event.preventDefault(); openRawId(id, chip); };
+  return chip;
+}
+// The page's own numbered source when it lists this id; else the archived excerpt; else a card saying so.
+function openRawId(id, trigger) {
+  const path = new URLSearchParams(location.hash.slice(1)).get("r"), r = path && byPath(path);
+  const listed = r && sourceList(r).find(source => sourceId(source.text, source.plain) === id);
+  if (listed) return openEvidence(r, listed.n, trigger, { fromList: true });
+  const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close source context") });
+  close.onclick = closeEvidence;
+  const context = REM.source_context?.[id];
+  panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
+    el("div", { class: "evidence-top" }, [el("span", { text: rawIdLabel(id) }), close]),
+    context?.excerpt ? el("blockquote", { text: context.excerpt }) : el("p", { class: "evidence-unavailable", text: t("Its original isn't in this snapshot.") }),
+    el("p", { class: "evidence-meta", text: id }));
+  evidenceTrigger = trigger;
+  panel.parentElement.hidden = false;
+  document.body.classList.add("evidence-open");
+  evidenceLayout();
+  close.focus({ preventScroll: true });
+  return true;
+}
+// A row's own date label (timeline, activity) already says the day: the text after it does not repeat it.
+function rowDateLabel(node) {
+  const row = node.parentElement.closest("li, tr, .tl-e, .row");
+  const label = row && [...row.querySelectorAll(".d, .when, .date, .day, time")].find(n => !n.contains(node));
+  return label ? label.textContent.replace(/\s+/g, " ").trim() : "";
+}
+function tidyText(root) {
+  if (!root || typeof document === "undefined" || !document.createTreeWalker) return root;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: node =>
+    /\d{4}-\d{2}|\d|[0-9a-f]{8}/i.test(node.nodeValue) && !node.parentElement.closest(TIDY_SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    let text = onceDates(localiseDates(node.nodeValue, blockLocale(node)));
+    const label = rowDateLabel(node);
+    if (label && text.trimStart().startsWith(label)) text = text.trimStart().slice(label.length).replace(/^\s*[—–:：-]\s*/, "");
+    RAW_ID.lastIndex = 0;
+    if (!RAW_ID.test(text)) { if (text !== node.nodeValue) node.nodeValue = text; continue; }
+    const parts = [];
+    let last = 0;
+    RAW_ID.lastIndex = 0;
+    for (const m of text.matchAll(RAW_ID)) {
+      parts.push(document.createTextNode(text.slice(last, m.index)), rawIdChip(m[0]));
+      last = m.index + m[0].length;
+    }
+    parts.push(document.createTextNode(text.slice(last)));
+    node.replaceWith(...parts);
+  }
+  shortenPaths(root);
+  return root;
+}
+
 // A local path in page text reads as its file name; the whole path is one hover away (auto-scan, #3165).
 const LOCAL_PATH = /(?:\/Users|\/home|\/private|\/var\/folders|~)\/[^\s<>"'`，。、；）)\]]+/g;
 function shortenPaths(root) {
@@ -16391,6 +16721,7 @@ function render() {
   else if (c) { category(c); tagBarInto(c); }
   else overview();
   quietLaterPrimaries(document.getElementById("main"));
+  tidyText(document.getElementById("main"));
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :
     view === "open" ? t("Open threads") : view === "changes" ? t("Memory changes") : view === "activity" ? t("Activity") : view === "graph" || c === "all" ? label("knowledge") : c ? label(c) : t("Today")) + " · co rem";
   for (const link of document.querySelectorAll("#nav a.active")) link.setAttribute("aria-current", "page");
@@ -16490,7 +16821,8 @@ function mailMessage(context, quote) {
     ...(subject ? [el("p", { class: "msg-subject evidence-subject", text: subject })] : [])]),
     ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
       el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: t(label) }), ...people.map(personChip)])))] : []),
-    context.body_empty ? el("p", { class: "evidence-empty-body", text: t("The retained message has no body text. Its headers are available.") })
+    context.body_empty ? el("p", { class: "evidence-empty-body", text: t(context.header_only ? "REM kept who wrote this and when, not the message itself."
+      : "The retained message has no body text. Its headers are available.") })
       : el("div", { class: "msg-body" }, [quote])]);
 }
 // Match original words only; offsets keep whitespace and punctuation intact.
@@ -16523,9 +16855,15 @@ function markedSpan(text, range) {
   return range ? esc(text.slice(0, range[0])) + '<mark class="span">' + esc(text.slice(...range)) + '</mark>' + esc(text.slice(range[1])) : esc(text);
 }
 function evidenceText(range) {
-  const copy = range.cloneContents();
-  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
-  return copy.textContent.replace(/\u2060/g, "").trim();
+  return evidenceWords(range.cloneContents());
+}
+// The words a quote shows: no chips, labels or a copy button's hidden "Copied" (rc35 hunt: a profile-card row
+// quoted as "mara@…Copiedworkmara@…Copiedpersonal"), and each value and its qualifier apart.
+function evidenceWords(copy) {
+  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when, .pc-done, .pc-cites").forEach(node => node.remove());
+  copy.querySelectorAll(".pc-item + .pc-item").forEach(node => node.before(" · "));
+  copy.querySelectorAll(".pc-after, .qual").forEach(node => node.before(" "));
+  return copy.textContent.replace(/\u2060/g, "").replace(/[ \t]+/g, " ").trim();
 }
 function sentenceEnds(text) {
   const ends = [0];
@@ -16565,12 +16903,11 @@ function evidenceSentence(trigger, line) {
 function evidenceLine(trigger) {
   const line = trigger.closest("li, p, dd, blockquote") || trigger.closest(".focus-head") || trigger.parentElement;
   const copy = (line.querySelector(".focus-statement") || line).cloneNode(true);
-  copy.querySelectorAll(".cite, .privacy-tag, .dir, .age, .when").forEach(node => node.remove());
   const path = new URLSearchParams(trigger.hash.slice(1)).get("r");
   const chips = [...line.querySelectorAll("a.cite")].filter(chip => new URLSearchParams(chip.hash.slice(1)).get("r") === path);
   const numbers = chips.flatMap(chip => (chip.dataset.sources || new URLSearchParams(chip.hash.slice(1)).get("h")?.replace("src-", "") || "").split(" "));
   const sentence = evidenceSentence(trigger, line);
-  return { text: sentence || copy.textContent.replace(/\u2060/g, "").trim(), numbers: [...new Set(numbers.filter(Boolean))] };
+  return { text: sentence || evidenceWords(copy), numbers: [...new Set(numbers.filter(Boolean))] };
 }
 function scrollEvidenceSpan(panel, mark = panel.querySelector(".evidence-original mark.span")) {
   evidenceLayout();
@@ -17194,6 +17531,31 @@ function offerReload() {
   link.onclick = reloadOnto;
   document.getElementById("main").prepend(el("p", { class: "quiet-line", role: "status" }, [link]));
 }
+// After an upgrade the Host serves the old saved page until the new release has drawn its own, so a reload too
+// early shows the old build again (Mac review of rc33). The page reloads only once the saved page is the
+// installed release's; until then it says so and asks again every few seconds.
+Object.assign(UI.zh, { "Switching to the new version…": "正在换到新版本…" });
+function upgradeState(latest) {
+  if (!latest?.installed || !REM?.release || latest.installed === REM.release) return "same";
+  return latest.release === latest.installed ? "ready" : "building";
+}
+function waitForNewBuild(again = false) {
+  if (waitForNewBuild.active && !again) return;  // one waiter, whoever noticed first
+  waitForNewBuild.active = true;
+  // Its own quiet bar: the lost-Host bar leaves as soon as the Host answers, but the new build may still be drawing.
+  if (!document.getElementById("upgrading")) document.body.appendChild(el("div", { id: "upgrading", class: "host-lost", role: "status" },
+    [el("span", { text: t("Switching to the new version…") })]));
+  setTimeout(async () => {
+    const latest = await readVersion();
+    if (upgradeState(latest) === "ready") reloadOnto();
+    else waitForNewBuild(true);
+  }, 4000);
+}
+async function reconnect() {
+  const latest = await readVersion();
+  if (upgradeState(latest) === "building") waitForNewBuild();
+  else reloadOnto();
+}
 function readVersion() {
   return fetch("/rem/version").then(response => { hostFound(); return response.ok ? response.json() : null; }, () => { hostLost(); return null; });
 }
@@ -17214,6 +17576,11 @@ async function checkForNewerRender() {
   const latest = await readVersion();
   showRebuildState(latest);
   clearUpdating(latest);
+  const busy = unsavedDraft() || !!document.activeElement?.matches("input, select");
+  // An upgrade: reload onto the new build by itself once it is drawn, unless he is typing or has a draft.
+  const upgrade = upgradeState(latest);
+  if (upgrade === "ready") return busy ? offerReload() : reloadOnto();
+  if (upgrade === "building") return waitForNewBuild();
   const choice = reloadChoice({ latest, asOf: REM.as_of, unsaved: unsavedDraft(),
     typing: !!document.activeElement?.matches("input, select") });
   if (choice === "reload") reloadOnto();
@@ -17228,6 +17595,15 @@ window.addEventListener("online", () => reconcileThreads().then(redraw));
 window.addEventListener("hashchange", render);
 // The privacy levels' page-wide wiring (#2840): close the menu, curtain whatever is drawn, lift a curtain.
 document.addEventListener("click", event => { if (!event.target.closest?.(".privacy-level-host")) document.querySelector(".privacy-menu") && togglePrivacyMenu(false); });
+document.addEventListener("click", event => {
+  if (!event.target.closest?.("#lang-progress")) document.querySelector(".lang-menu") && toggleLangMenu(false);
+  if (!event.target.closest?.(".display-menu-host")) document.querySelector(".display-pop") && toggleDisplayMenu(false);
+});
+window.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  if (document.querySelector(".lang-menu")) toggleLangMenu(false);
+  if (document.querySelector(".display-pop")) toggleDisplayMenu(false);
+});
 window.addEventListener("keydown", event => { if (event.key === "Escape" && document.querySelector(".privacy-menu")) togglePrivacyMenu(false); });
 new MutationObserver(records => { for (const record of records) for (const node of record.addedNodes) applyPrivacy(node); })
   .observe(document.documentElement, { childList: true, subtree: true });

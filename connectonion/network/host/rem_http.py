@@ -28,7 +28,6 @@ page polls the same POST until it is ready or failed.
 import asyncio
 import hmac
 import json
-from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, urlsplit
 
 from ..asgi.http import read_body
@@ -57,6 +56,43 @@ def _local(scope, headers: dict) -> bool:
     return client in LOOPBACK and urlsplit("//" + headers.get("host", "")).hostname in LOOPBACK_NAMES
 
 
+def _cookie(header: str) -> str:
+    """This reader's cookie from the raw Cookie header. SimpleCookie drops every cookie when any other
+    cookie on 127.0.0.1 (any port, any app) holds a space or a JSON value, which made every open tab
+    answer 401 ("This page's session has ended") whenever such a cookie existed."""
+    for part in header.split(";"):
+        name, _, value = part.strip().partition("=")
+        if name == COOKIE:
+            return value.strip().strip('"')
+    return ""
+
+
+SESSION_ENDED = {
+    "en": ("REM · session ended", "This page lost its session with REM.",
+           "Open REM again on this computer; this tab picks up where it was.", "Try again"),
+    "zh": ("REM · 会话已结束", "这个页面和 REM 的会话断开了。",
+           "请在这台电脑上重新打开 REM；这个标签页会接着刚才的位置。", "重新打开"),
+}
+
+
+def _session_ended(headers: dict) -> str:
+    """The 401 page: styled, in the reader's language (Accept-Language), with one button that tries again."""
+    language = "zh" if headers.get("accept-language", "").lower().startswith("zh") else "en"
+    title, lead, what, again = SESSION_ENDED[language]
+    return (f'<!doctype html><html lang="{language}"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<title>{title}</title><style>'
+            ':root{color-scheme:light dark;--ink:#121512;--paper:#fff;--grey:#5f6360}'
+            '@media (prefers-color-scheme:dark){:root{--ink:#eef0ed;--paper:#121512;--grey:#a3a7a4}}'
+            'body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--paper);color:var(--ink);'
+            'font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif}'
+            'main{max-width:420px;padding:24px}h1{margin:0 0 8px;font-size:20px;font-weight:600}'
+            'p{margin:0 0 20px;color:var(--grey)}button{min-height:44px;padding:0 20px;border:0;border-radius:999px;'
+            'background:var(--ink);color:var(--paper);font:inherit;font-weight:600;cursor:pointer}</style></head>'
+            f'<body><main><h1>{lead}</h1><p>{what}</p>'
+            f'<button type="button" onclick="location.reload()">{again}</button></main></body></html>')
+
+
 def _same(given: str, token: str) -> bool:
     return bool(given) and hmac.compare_digest(given.encode(), token.encode())
 
@@ -74,13 +110,13 @@ async def handle_rem_http(scope, receive, send, routes):
     token = await asyncio.to_thread(reader_token, directory)
     given = parse_qs(scope.get("query_string", b"").decode("latin-1")).get("token", [""])[0]
     if scope["method"] == "GET" and scope["path"] == "/rem" and _same(given, token):
-        cookie = f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/rem"
+        # Kept 30 days, so a browser restart or an upgrade's Host restart finds the tab still signed in.
+        cookie = f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/rem; Max-Age=2592000"
         await _reply(send, 303, "", headers=[[b"location", b"/rem"], [b"set-cookie", cookie.encode()]])
         return
-    jar = SimpleCookie(headers.get("cookie", ""))
-    if not _same(jar[COOKIE].value if COOKIE in jar else "", token):
-        # D-60: no command here either. The page has no language of its own, so English.
-        await _reply(send, 401, "This page's session has ended. Open REM again from your computer.")
+    if not _same(_cookie(headers.get("cookie", "")), token):
+        # D-60: no command here either; the page speaks the browser's language and offers one button.
+        await _reply(send, 401, _session_ended(headers), "text/html")
         return
     if scope["method"] == "GET" and scope["path"] in ("/rem", "/rem/data.json"):
         from ...rem.reader import cached_page

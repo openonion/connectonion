@@ -68,6 +68,12 @@ DESK = re.compile(r"^(?:support|help|helpdesk|service|customer-?service|customer
                   r"tickets?|no-?reply|do-?not-?reply|orders?|sales|accounts?|bookings?|enquir(?:y|ies)|inquir(?:y|ies)|"
                   r"reservations?|notifications?|notify|alerts?|updates?|0x[0-9a-f]{6,})(?:\+[^@]*)?@", re.I)
 BARE_DOMAIN = re.compile(r"^(?:[a-z0-9-]+\.)+[a-z]{2,}$", re.I)
+# The page says it is not a person in its own Role line: an inbox, an agent's mailbox, or an AI assistant that
+# writes on someone's behalf (rc34 check). A human "executive assistant" or someone who works on agents stays a person.
+NOT_PERSON_ROLE = re.compile(r"^- Role:\s*(?:not a person\b|(?:an? |the )?(?:agent mailbox|ai (?:assistant|agent)|"
+                             r"virtual assistant|chat ?bot|bot)\b)", re.I | re.M)
+# A company's or fund's name: it ends in a legal or fund word (rc34 check: "… Ventures" listed as a person).
+COMPANY_NAME = re.compile(r"(?:^|\s)(?:Ventures|Capital|Holdings|Pty\.? Ltd\.?|Pty|Ltd\.?|Limited|Inc\.?|LLC|GmbH|Corp\.?)\s*$")
 
 
 def non_person(title: str, text: str, emails: list[str], row: dict | None, automated: set) -> bool:
@@ -77,7 +83,8 @@ def non_person(title: str, text: str, emails: list[str], row: dict | None, autom
     return bool(re.search(r'^## Domains\s*$', text, re.M)
                 or re.search(r'\bshared mailbox\b', title, re.I)
                 or BARE_DOMAIN.match(title) or (emails and all(DESK.match(address) for address in emails))
-                or institutional_name(title) or service_page(title, emails, row, automated))
+                or institutional_name(title) or service_page(title, emails, row, automated)
+                or NOT_PERSON_ROLE.search(text) or COMPANY_NAME.search(title))
 
 
 def pages(root: Path, *, records: list[dict] | None = None) -> dict:
