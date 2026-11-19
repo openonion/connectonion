@@ -204,7 +204,7 @@
   /* ---- main ---- */
   main { min-width: 0; width: 100%; overflow-wrap: anywhere; padding: 32px 40px 80px; max-width: 1180px; }
   main:focus { outline: none; }
-  .eyebrow { letter-spacing: 0; text-transform: none; color: var(--grey); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: var(--s-meta)/1.4 var(--font); margin-bottom: 8px; }
+  .eyebrow { letter-spacing: 0; text-transform: none; color: var(--grey); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: var(--s-ui)/1.4 var(--font); margin-bottom: 8px; }
   .eyebrow a { color: var(--ink); }
   .eyebrow .sep { color: var(--rule); }
   .eyebrow .when { text-transform: none; letter-spacing: 0; }
@@ -524,7 +524,7 @@
   .page-grid > .side { margin: 26px 0 0; max-width: 66ch; }
   .panel { font-size: var(--s-meta); border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
   .panel + .panel { margin-top: 12px; }
-  .panel h3 { font: var(--w-bold) var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); margin: 0 0 10px; }
+  .panel h3 { font: var(--w-bold) var(--s-ui) var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); margin: 0 0 10px; }
   .panel dl { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px 10px; margin: 0; }
   .panel dt { color: var(--grey); font-size: var(--s-meta); }
   .panel dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
@@ -544,7 +544,7 @@
   .note > h2:first-child { margin-top: 0; }
   .note h3 { font: var(--w-bold) var(--s-body)/1.3 var(--font); margin: 1.5em 0 0.4em; position: relative; }
   .note h4, .note h5, .note h6 { font: var(--w-bold) var(--s-body)/1.3 var(--font); margin: 1.3em 0 0.4em; }
-  .heading-anchor { opacity: 0; font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); text-decoration: none !important; }
+  .heading-anchor { opacity: 0; font: var(--w-regular) var(--s-ui) var(--font); color: var(--grey); text-decoration: none !important; }
   .note :is(h2,h3,h4):hover .heading-anchor, .heading-anchor:focus-visible { opacity: 1; }
   .heading-anchor:hover { color: var(--ink); }
   .note ul, .note ol { padding-left: 1.25em; margin: 0 0 1em; }
@@ -571,7 +571,7 @@
   /* A raw source id in page text, drawn as its kind and date (#3165): quiet, opens the source in the side card. */
   .src-id { display: inline; padding: 0 4px; border: 0; text-decoration: none; border-radius: var(--radius); background: var(--well); color: var(--ink); font: inherit; cursor: pointer; }
   .src-id:hover, .src-id:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
-  .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--rule); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: var(--w-regular) var(--s-meta)/16px var(--font); color: var(--grey); background: var(--rule); border-color: var(--rule); border-radius: var(--radius); }
+  .cite { display: inline-block; position: relative; vertical-align: baseline; max-width: 100%; border: 1px solid var(--rule); padding: 3px 6px; margin: 0 2px; overflow-wrap: anywhere; text-decoration: none !important; font: var(--w-regular) var(--s-ui)/16px var(--font); color: var(--grey); background: var(--rule); border-color: var(--rule); border-radius: var(--radius); }
   /* Grow the tap target without opening a gap in the prose. */
   .cite::before { content: ""; position: absolute; inset: -2px; min-width: 24px; min-height: 24px; }
   .citation-tip { position: fixed; z-index: 30; width: max-content; max-width: calc(100vw - 24px); overflow-wrap: anywhere; padding: 8px 12px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--grey); outline: var(--hair) solid var(--rule); font: var(--s-meta)/1.5 var(--font); pointer-events: none; }
@@ -688,9 +688,9 @@
   .chip { font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .chip .d { color: var(--grey); margin-left: 6px; }
   .page-foot { max-width: 66ch; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .page-foot .when { color: var(--grey); font: var(--s-meta)/1.5 var(--font); }
-  .btn-action, .eyebrow-path { font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; }
-  .eyebrow-path { font: var(--s-meta) var(--font); }
+  .page-foot .when { color: var(--grey); font: var(--s-ui)/1.5 var(--font); }
+  .btn-action, .eyebrow-path { font: var(--s-ui) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; }
+  .eyebrow-path { font: var(--s-ui) var(--font); }
   .btn-action:hover, .eyebrow-path:hover { color: var(--ink); border-color: var(--rule); }
   .btn-action.done { color: var(--ink); border-color: var(--rule); background: var(--rule); }
   details.copies { margin: 0 0 20px; font-size: var(--s-body); }
@@ -891,16 +891,16 @@
   .insight .ins-pattern .badge { background: transparent; color: var(--grey); }
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
-  .panel .fill { margin: -6px 0 10px; font-size: var(--s-meta); color: var(--grey); }
+  .panel .fill { margin: -6px 0 10px; font-size: var(--s-ui); color: var(--grey); }
   .factlist { display: grid; grid-template-columns: minmax(80px, min-content) minmax(0, 1fr); gap: 0; margin: 0; }
-  .factlist dt { font: var(--w-bold) var(--s-meta)/1.5 var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); overflow-wrap: normal; }
-  .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--rule); font-size: var(--s-meta); min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
+  .factlist dt { font: var(--w-bold) var(--s-ui)/1.5 var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); overflow-wrap: normal; }
+  .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--rule); font-size: var(--s-ui); min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
-  .factlist dd.none { color: var(--grey); font-size: var(--s-meta); }
-  .factlist .val.mono > .fact-tail, .factlist .val.mono > span:first-child { font: var(--s-meta) var(--font); }
+  .factlist dd.none { color: var(--grey); font-size: var(--s-ui); }
+  .factlist .val.mono > .fact-tail, .factlist .val.mono > span:first-child { font: var(--s-ui) var(--font); }
   .factlist .val.derived { color: var(--grey); }
-  .factlist .qual { margin-left: 6px; font: var(--s-meta) var(--font); color: var(--grey); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 4px; }
-  .factlist .copy { position: absolute; right: 0; top: 5px; font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 6px; cursor: pointer; opacity: 0; }
+  .factlist .qual { margin-left: 6px; font: var(--s-ui) var(--font); color: var(--grey); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 4px; }
+  .factlist .copy { position: absolute; right: 0; top: 5px; font: var(--s-ui) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 0 6px; cursor: pointer; opacity: 0; }
   .factlist dd:hover .copy, .factlist .copy:focus-visible { opacity: 1; }
   .factlist dd:has(.copy) .val { padding-right: 44px; }
   .cite.run { padding: 3px 6px; }
@@ -919,11 +919,11 @@
   .record-focus { max-width: 1120px; margin: 8px 0 34px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .focus-head { grid-column: 1 / -1; min-width: 0; padding: 16px 0 24px; color: var(--ink); border-bottom: 0; }
 
-  .focus-kicker { display: block; letter-spacing: 0; text-transform: none; font: var(--w-regular) var(--s-meta)/1.4 var(--font); color: var(--grey); }
+  .focus-kicker { display: block; letter-spacing: 0; text-transform: none; font: var(--w-regular) var(--s-ui)/1.4 var(--font); color: var(--grey); }
   .focus-statement { max-width: 64ch; position: relative; z-index: 1; font: var(--s-body)/1.5 var(--font); margin: 8px 0 0; }
-  .deep-note-limit { max-width: 64ch; margin: 16px 0; font: var(--s-meta)/1.5 var(--font); color: var(--grey); }
+  .deep-note-limit { max-width: 64ch; margin: 16px 0; font: var(--s-ui)/1.5 var(--font); color: var(--grey); }
   .focus-statement.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-  .focus-source { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--rule); color: var(--ink); background: var(--paper); border-radius: var(--radius); font: var(--w-regular) var(--s-meta) var(--font); }
+  .focus-source { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; padding: 0 12px; border: 1px solid var(--rule); color: var(--ink); background: var(--paper); border-radius: var(--radius); font: var(--w-regular) var(--s-ui) var(--font); }
   .focus-source:hover { background: var(--rule); text-decoration: none; }
   .focus-source:focus-visible { outline-color: var(--ink); }
   .focus-command { cursor: pointer; margin-right: 8px; }
@@ -984,17 +984,17 @@
   .contact-strip dd { display: block; }
   .contact-strip .contact-what { display: block; margin-top: 3px; font-size: var(--s-meta); color: var(--grey); }
   .contact-strip .copy { margin-left: 8px; font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 1px 6px; cursor: pointer; vertical-align: 1px; }
-  .relation-description { font: var(--s-meta)/1.5 var(--font); color: var(--grey); margin: 0 0 10px; }
+  .relation-description { font: var(--s-ui)/1.5 var(--font); color: var(--grey); margin: 0 0 10px; }
   .relation-entry { min-width: 0; display: flex; flex-direction: column; }
-  .relation-provenance { font: var(--s-meta)/1.5 var(--font); color: var(--grey); padding: 7px 0; overflow-wrap: anywhere; margin-top: auto; }
+  .relation-provenance { font: var(--s-ui)/1.5 var(--font); color: var(--grey); padding: 7px 0; overflow-wrap: anywhere; margin-top: auto; }
   .relation-provenance .cite { margin-left: 4px; }
   .relation-provenance > span:first-child .cite:first-child { margin-left: 0; }
   .relation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; align-items: start; }
   .relation-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; text-decoration: none !important; transition: border-color var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out); border: 0; border-top: 1px solid var(--rule); border-radius: var(--radius); background: transparent; padding: 16px 0; }
   .relation-card:hover, .relation-card:focus-visible { border-color: var(--ink); transform: none; }
   .relation-card strong { font: var(--w-bold) var(--s-body) var(--font); color: var(--ink); }
-  .relation-kind { font: var(--s-meta) var(--font); text-transform: none; letter-spacing: 0; color: var(--grey); }
-  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: var(--s-meta)/1.5 var(--font); color: var(--grey); }
+  .relation-kind { font: var(--s-ui) var(--font); text-transform: none; letter-spacing: 0; color: var(--grey); }
+  .relation-basis { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: var(--s-ui)/1.5 var(--font); color: var(--grey); }
   /* Only cards with snippets share desktop row height to align source dates.
      Snippet-free cards keep their natural height; phone cards stay compact. */
   @media (min-width: 821px) {
@@ -1035,7 +1035,7 @@
   .deep-head { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 15px; align-items: baseline; padding: 19px 0 0; }
   .deep-head h2 { margin: 0; font: var(--w-bold) var(--s-body)/1.3 var(--font); color: var(--ink); }
   .deep-label { display: flex; flex: 1; min-width: 0; justify-content: space-between; gap: 15px; align-items: baseline; }
-  .deep-hint { font: var(--s-meta) var(--font); color: var(--grey); }
+  .deep-hint { font: var(--s-ui) var(--font); color: var(--grey); }
   .deep-note .page-grid { padding-top: 22px; }
   /* A person's first screen is a ledger; the full note waits below it. */
   .person-head { max-width: 1120px; margin-bottom: 24px; }
@@ -1051,7 +1051,7 @@
   .set-row .translate-all { margin-left: 0; justify-content: flex-end; }
   @media (max-width: 820px), (pointer: coarse) { .translate-all .ta-go, .translate-all .ta-stop { min-height: 44px; } }
   .n3-person > .translation-line { margin: 12px 4px 0; }
-  .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-meta) var(--font); white-space: nowrap; }
+  .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-ui) var(--font); white-space: nowrap; }
   .lang-status.lead { margin: 0 6px 0 0; }
   .role-more { color: var(--grey); white-space: nowrap; }
   .contact-line .lead-meta { display: block; font: var(--s-meta)/1.5 var(--font); overflow-wrap: anywhere; }
@@ -1338,7 +1338,7 @@
     /* Leave room for the complete source action, even with a long purpose. */
     main { padding-top: 8px; }
     .night { margin-top: -16px; }
-    .eyebrow { margin-bottom: 4px; font-size: var(--s-meta); }
+    .eyebrow { margin-bottom: 4px; font-size: var(--s-ui); }
     main:has(.page-head) > .eyebrow .when { display: none; }
     h1 { margin-bottom: 4px; line-height: 1.15; }
     .mobile-back { margin-bottom: 0; }
@@ -1440,7 +1440,7 @@
   /* Inline evidence stays with the claim; dated rows retain a compact full label. */
   .cite-tether { display: inline-block; max-width: 100%; white-space: nowrap; }
   .cite-word { white-space: normal; overflow-wrap: anywhere; }
-  .cite { border: 0; border-radius: var(--radius); background: transparent; padding: 0 2px; margin: 0 0 0 2px; font: var(--w-regular) var(--s-meta)/1 var(--font); font-variant-caps: normal; color: var(--grey); position: relative; top: -.35em; vertical-align: baseline; white-space: nowrap; overflow-wrap: normal; }
+  .cite { border: 0; border-radius: var(--radius); background: transparent; padding: 0 2px; margin: 0 0 0 2px; font: var(--w-regular) var(--s-ui)/1 var(--font); font-variant-caps: normal; color: var(--grey); position: relative; top: -.35em; vertical-align: baseline; white-space: nowrap; overflow-wrap: normal; }
   .cite.run { padding: 0 2px; }
   .cite::before { inset: -8px -3px; min-width: 24px; min-height: 24px; }
   .cite.missing { border: 0; opacity: 1; }
@@ -1714,7 +1714,7 @@
   .r4 h1 .soft::before { content: " · "; }
   .r4 h2 { font: var(--w-bold) var(--s-meta)/18px var(--font); color: var(--grey); display: flex; align-items: center; gap: 8px; margin: 40px 0 12px; letter-spacing: 0; text-transform: none; border: 0; padding: 0; }
   .r4 h2 .more { margin-left: auto; font-weight: var(--w-regular); color: var(--grey); font-size: var(--s-meta); }
-  .r4 .eyebrow { font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); letter-spacing: .01em; text-transform: none; margin: 0; }
+  .r4 .eyebrow { font: var(--w-regular) var(--s-ui) var(--font); color: var(--grey); letter-spacing: .01em; text-transform: none; margin: 0; }
   .r4 .q { color: var(--grey); }
   .r4 .q::before { content: "“"; } .r4 .q::after { content: "”"; }
   .r4 sup.c { white-space: nowrap; font-size: var(--s-meta); color: var(--grey); margin-left: 3px; font-weight: var(--w-regular); }
@@ -2112,7 +2112,7 @@
   .qcard:not(.open) .qitem .words { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .qcard:not(.open) .qitem .words sup, .qcard:not(.open) .qitem .words .cite { display: none; }
   .today-threads > .qcard:first-child.open .qitem:first-child .words { font-size: var(--s-body); line-height: 27px; }
-  .qitem .words .cite { font-size: var(--s-meta); }
+  .qitem .words .cite { font-size: var(--s-ui); }
   .qmore { grid-column: 1; display: none; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
   .qcard.open .qmore { display: block; }
   .qmore > * { margin: 4px 0 0; font: inherit; color: inherit; }
@@ -2601,9 +2601,9 @@
   .ov-unsure { font-size: var(--s-meta); color: var(--grey); line-height: 20px; margin: 0; padding: 0; }
   .ov-unsure li { list-style: none; padding-left: 14px; position: relative; margin-bottom: 6px; }
   .ov-unsure li::before { content: "?"; position: absolute; left: 0; color: var(--grey); font-weight: var(--w-bold); }
-  .ov-src { font-size: var(--s-meta); color: var(--grey) !important; margin-top: 24px; display: flex; gap: 6px; align-items: center; }
+  .ov-src { font-size: var(--s-ui); color: var(--grey) !important; margin-top: 24px; display: flex; gap: 6px; align-items: center; }
   .ov-src .ov-i { width: 13px; height: 13px; }
-  .ov-head .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; font-size: var(--s-meta); color: var(--grey); }
+  .ov-head .ov-source-action { display: inline-flex; align-items: center; min-height: 44px; font-size: var(--s-ui); color: var(--grey); }
   .ov-curtain { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 28px; padding: 16px; }
   main:has(> .ov) > .deep-note { max-width: 1000px; margin-left: auto; margin-right: auto; }
   @media (max-width: 1180px) { .ov-teams { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -2650,7 +2650,7 @@
   .ov-r6 sup { font-size: var(--s-meta); color: var(--grey); vertical-align: 5px; line-height: 0; margin-left: 2px; font-weight: var(--w-regular); cursor: help; }
   /* The record sizes to its content; the timeline follows the summary and tree. */
   .ov-stage { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; grid-template-rows: auto auto auto; align-items: start; }
-  .ov-over { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px 16px; min-width: 0; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .ov-over { grid-column: 1 / -1; display: flex; align-items: center; gap: 4px 16px; min-width: 0; font-size: var(--s-ui); line-height: 18px; color: var(--grey); }
   .ov-r6 .ov-crumb { font-size: var(--s-meta); font-weight: var(--w-regular); color: var(--grey); display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; min-width: 0; margin: 0; padding: 0; }
   .ov-r6 .ov-crumb a { display: inline; padding: 0; color: var(--grey); }
   .ov-over .ov-source-action { margin-left: auto; color: var(--grey); white-space: nowrap; }
@@ -2686,7 +2686,7 @@
   .ov-tl1 > a:hover { text-decoration: underline; text-underline-offset: 3px; }
   [aria-level="1"] > .ov-trow .ov-tl1 > b, .ov-trow:has(.ov-mk.unit) .ov-tl1 > a { font-weight: var(--w-bold); }
   .ov-trow:has(.ov-mk.loose) .ov-tl1 > b { font-weight: var(--w-regular); color: var(--grey); }
-  .ov-tk { font-size: var(--s-meta); color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 0; }
+  .ov-tk { font-size: var(--s-ui); color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 0; }
   .ov-tbar { grid-column: 4; height: 4px; background: var(--rule); border-radius: var(--radius); overflow: hidden; }
   .ov-tbar i { display: block; height: 100%; background: var(--ink); }
   .ov-trow:has(.ov-mk.loose) .ov-tbar i { background: var(--pencil); }
@@ -2744,7 +2744,7 @@
   .ov-about { margin: 0; font-size: var(--s-body); line-height: 22px; }
   .ov-about a { border-bottom: 1px solid var(--rule); }
   .ov-r6 .ov-foot { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 20px; align-items: baseline; }
-  .ov-r6 .ov-src { margin: 0; font-size: var(--s-meta); display: inline; }
+  .ov-r6 .ov-src { margin: 0; font-size: var(--s-ui); display: inline; }
   .ov-unsure-d summary { cursor: pointer; border-bottom: 1px solid var(--rule); display: inline; }
   .ov-unsure-d .ov-unsure { margin-top: 8px; font-size: var(--s-body); }
   .ov-r6 > .ov-curtain { margin-top: 40px; }
@@ -2836,7 +2836,7 @@
   .ov-page .ov-milestones p, .ov-page .ov-connections p, .ov-page .ov-about { line-height: 1.7; margin: 12px 0; }
   .ov-page .ov-milestones time { color: var(--grey); }
   .ov-page .ov-about > div { margin: 12px 0; }
-  .ov-page .ov-about dt { color: var(--grey); font-size: var(--s-meta); }
+  .ov-page .ov-about dt { color: var(--grey); font-size: var(--s-ui); }
   .ov-page .ov-about dd { margin: 0; overflow-wrap: anywhere; }
   main:has(> .ov-page) .page-grid { display: block; }
   main:has(> .ov-page) .page-grid > .side { margin-top: 24px; }
@@ -3067,7 +3067,7 @@
     .entry .gx-grid, .entry .gx-grid.no-rail { grid-template-columns: minmax(0, 1fr); margin-top: var(--u4); }
   }
   .gx-rail { display: flex; flex-direction: column; gap: 0; }
-  .gx-rail h4, .gx-attach h4 { font-size: var(--s-meta); line-height: 18px; font-weight: var(--w-bold); color: var(--grey); margin: 28px 0 8px; }
+  .gx-rail h4, .gx-attach h4 { font-size: var(--s-ui); line-height: 18px; font-weight: var(--w-bold); color: var(--grey); margin: 28px 0 8px; }
   .gx-rail > :first-child h4, .gx-attach > :first-child h4 { margin-top: 0; }
   .gx-rail-list li { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--rule); }
   .gx-rail-list a { display: flex; align-items: center; gap: 8px; }
@@ -3087,7 +3087,7 @@
   .gx-local-svg text { font: var(--w-regular) var(--s-meta) var(--font); fill: var(--grey); paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
   .gx-local-svg text.centre { font-weight: var(--w-bold); fill: var(--ink); font-size: var(--s-meta); }
   .gx-local-svg a:hover > :not(title) { opacity: .6; }
-  .gx-local-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .gx-local-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-ui); line-height: 18px; color: var(--grey); }
   .gx-local-foot a { color: var(--grey) !important; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .gx-topic-line { margin-top: 10px !important; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
   .gx-topic-line a { color: var(--ink) !important; font-weight: var(--w-bold); text-decoration: none !important; }
@@ -4022,7 +4022,7 @@
   .person-sessions .wt a { color: var(--grey); }
   .rel-slot .gx-local { margin: 0; padding: 0; border: 0; }
   .rel-slot .gx-local-svg { width: 100%; height: auto; overflow: visible; }
-  .rel-slot .gx-local h4 { margin: 0 0 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
+  .rel-slot .gx-local h4 { margin: 0 0 8px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.4 var(--font); }
   .stack2 { display: grid; gap: 16px; align-content: start; }
   .row2 { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 18px; border: 0; cursor: pointer; text-align: left; color: var(--ink);
     font: var(--w-regular) var(--s-ui)/1.4 var(--font); text-decoration: none !important; transition: transform var(--t-state) var(--spring), box-shadow var(--t-state) var(--ease-out); }
@@ -5605,7 +5605,7 @@ function applyPrivacy(root) {
     const quiet = node.closest(".privacy-only") || node.classList.contains("private-entry");
     const place = node.parentElement?.closest("section, .widget, .pcard, .qcard, .deep-note, dialog, aside, li, td, #main");
     if (place && !quiet) lost.set(place, (lost.get(place) || 0) + 1);
-    if (node === root) { node.replaceChildren(); node.hidden = true; } else node.remove();
+    if (node === root) { node.replaceChildren(); node.hidden = true; } else mendAfterRemoving(node);
     privacyRemoved = true;
   }
   for (const [place, n] of lost) {
@@ -5614,6 +5614,19 @@ function applyPrivacy(root) {
     const total = Number(line.dataset.n || 0) + n;
     line.dataset.n = total;
     line.textContent = t(total === 1 ? "1 passage hidden" : "{n} passages hidden", { n: total });
+  }
+}
+// A passage taken out of a sentence leaves the text either side to read on: the space before the punctuation that
+// followed it goes, and an English sentence it opened starts with a capital ("classes. it will close", rc36).
+function mendAfterRemoving(node) {
+  const before = node.previousSibling, after = node.nextSibling;
+  node.remove();
+  if (after?.nodeType !== Node.TEXT_NODE) return;
+  const opened = !before || (before.nodeType === Node.TEXT_NODE && /(^|[.!?]["”’')]?)\s*$/.test(before.nodeValue));
+  if (opened) after.nodeValue = after.nodeValue.replace(/^(\s*)([a-z])/, (m, gap, letter) => gap + letter.toUpperCase());
+  if (before?.nodeType === Node.TEXT_NODE && /^\s*[.,;:!?。，；：！？]/.test(after.nodeValue)) {
+    before.nodeValue = before.nodeValue.trimEnd();
+    after.nodeValue = after.nodeValue.trimStart();
   }
 }
 function liftCurtain(node) {
@@ -5994,8 +6007,17 @@ function privatePassages(text, replace) {
     (passage, sentence, level) => replace(restore(passage), level.toLowerCase()));
   return restore(value);
 }
+// The text with its labelled passages taken out, mended where they stood: no space left before the punctuation that
+// followed, and an English sentence the cut left starting lowercase starts with a capital again ("…classes. it will
+// close" from "…classes. Funding ends in May [sensitive], it will close"; rc36 privacy fixer).
 function unlabelled(text) {
-  return privatePassages(text, () => "");
+  return mendCuts(privatePassages(text, () => "\u0006"));
+}
+function mendCuts(text) {
+  return String(text)
+    .replace(/(^|[.!?]["”’')]?)([ \t]*)\u0006+[ \t]*([a-z])/gm, (m, end, gap, letter) => end + (end ? " " : gap) + letter.toUpperCase())
+    .replace(/[ \t]*\u0006+[ \t]*(?=[.,;:!?。，；：！？]|$)/gm, "")
+    .replace(/([ \t]?)\u0006+[ \t]*/g, "$1");
 }
 function hasPrivacy(text) {
   return /[\[［](?:personal|sensitive)[\]］]/i.test(text);
@@ -14703,7 +14725,7 @@ function translatedRelationBasis(origin, target) {
   const line = text.split(/^## Sources\b/im)[0].split("\n").find(line =>
     [...line.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)].some(match => resolve(origin.path, match[2]) === target));
   if (!line) return "";
-  const basis = line.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\[W?\d{1,3}\]/g, "").replace(/^[- ]+/, "").trim();
+  const basis = closeStripped(line.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\[W?\d{1,3}\]/g, "")).replace(/^[- ]+/, "").trim();
   return basis.length <= 220 ? basis : basis.slice(0, 220).replace(/\s+\S*$/, "").replace(/[ ,;:]+$/, "") + "…";
 }
 function localizedRelation(link, currentPath) {
@@ -14716,8 +14738,11 @@ function localizedRelation(link, currentPath) {
     : translatedRelationBasis(origin, origin?.path === link.path ? currentPath : link.path);
   return { ...link, basis: translated || link.basis, original: !translated };
 }
+// A citation or a label taken out of a line leaves no space before the punctuation that followed it
+// ("Wren runs the venue at Fernhill ." on a related-page card, rc36 dates fixer).
+function closeStripped(text) { return String(text).replace(/[ \t]+(?=[.,;:!?。，；：！？])/g, "").replace(/[ \t]{2,}/g, " "); }
 function relationCard(link, currentPath = "") {
-  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis;
+  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis && closeStripped(link.basis);
   const labelled = link.private || hasPrivacy(basis || "");
   const labels = { linked: "Linked from this page", "linked from": "Links here",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
@@ -15295,15 +15320,37 @@ const NO_CHIP = "a, button";
 function readerDate(day, locale = uiLocale()) {
   return calendarDate(day, locale);
 }
-// One language per line (as datesInProse): a date in page text takes its sentence's language, so the page's words
-// read the same whichever interface language is on.
-function blockLocale(node) {
+// One language per sentence: a date in page text takes its own sentence's language, so the page's words read the same
+// whichever interface language is on. Per sentence, not per block: an org summary's English sentence beside a Chinese
+// one kept getting a Chinese date ("hosted the pilot (8月10日)", rc36 dates fixer).
+// The reader's own chips inside a sentence (citations, source ids, privacy labels) speak the interface's language
+// and say nothing about the sentence's.
+const LOCALE_CHIPS = ".cite, .src-id, .privacy-tag, .uncertain-marker, .sr-only";
+const HAN_WORDS = text => /\p{Script=Han}/u.test(text.replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, ""));
+const LATIN_WORDS = text => /\p{Script=Latin}{2,}/u.test(text);
+// The block's text with chips blanked out, and where this node starts in it.
+function blockText(node) {
   const block = node.parentElement.closest("p, li, td, th, dd, dt, h1, h2, h3, h4, blockquote, .tl-e, .row") || node.parentElement;
-  // The reader's own chips inside a sentence (citations, source ids, privacy labels) speak the interface's language.
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(); n; n = walker.nextNode())
-    if (/\p{Script=Han}/u.test(n.nodeValue.replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, "")) && !n.parentElement.closest(".cite, .src-id, .privacy-tag, .uncertain-marker, .sr-only")) return "zh-CN";
-  return "en-US";
+  let text = "", at = 0;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n === node) at = text.length;
+    text += n !== node && n.parentElement.closest(LOCALE_CHIPS) ? " ".repeat(n.nodeValue.length) : n.nodeValue;
+  }
+  return { text, at };
+}
+// The locale for a date at [index, index + length) of this node: its sentence's script; a sentence with no words of
+// its own (a bare date in a list item) takes the block's.
+function sentenceLocale(node) {
+  const { text, at } = blockText(node), block = HAN_WORDS(text) ? "zh-CN" : "en-US";
+  // An English full stop ends a sentence before a space; Chinese ones end it where they stand.
+  const ends = [...text.matchAll(/[.!?;](?=\s)|[。！？；\n]/g)].map(m => m.index + 1);
+  return (index, length) => {
+    const from = at + index, to = from + length;
+    const start = Math.max(0, ...ends.filter(end => end <= from)), stop = Math.min(text.length, ...ends.filter(end => end > to));
+    const words = text.slice(start, from) + " " + text.slice(to, stop);
+    return HAN_WORDS(words) ? "zh-CN" : LATIN_WORDS(words) ? "en-US" : block;
+  };
 }
 // "2026-07-05–17" → "7月5日–17日"; "2026-07-29–08-04" → "7月29日–8月4日"; "2026-08-26–2026-08-28" likewise.
 function readerRange(start, end, locale) {
@@ -15314,10 +15361,12 @@ function readerRange(start, end, locale) {
     return readerDate(start, locale) + "–" + (locale.startsWith("zh") ? Number(full.slice(8)) + "日" : String(Number(full.slice(8))));
   return readerDate(start, locale) + "–" + readerDate(full, locale);
 }
+// locale: one locale, or a function of where the date stands (sentenceLocale) giving each date its own.
 function localiseDates(text, locale = uiLocale()) {
   ISO_RANGE.lastIndex = 0;
+  const at = typeof locale === "function" ? locale : () => locale;
   // "8 月 10 日", "2026 年 8 月 10 日": the spaced form a model sometimes writes reads as the reader's own "8月10日".
-  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale))
+  return text.replace(ISO_RANGE, (m, start, end, index) => readerRange(start, end, at(index, m.length)))
     .replace(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日/g, (m, y, month, day) => (y ? y + "年" : "") + month + "月" + day + "日");
 }
 // "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once. Prose only: a fact's value is made single by
@@ -15408,7 +15457,7 @@ function tidyText(root) {
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
-    let text = onceDates(localiseDates(node.nodeValue, blockLocale(node)));
+    let text = onceDates(localiseDates(node.nodeValue, sentenceLocale(node)));
     const label = rowDateLabel(node);
     if (label && text.trimStart().startsWith(label)) text = text.trimStart().slice(label.length).replace(/^\s*[—–:：-]\s*/, "");
     const ids = rawIds(text);

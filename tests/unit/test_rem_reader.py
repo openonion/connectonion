@@ -21,7 +21,7 @@ def _run_reader_js(script):
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
-                        for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+                        for name in ["privatePassages", "unlabelled", "mendCuts", "hasPrivacy"])
     privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
     # A snapshot keeps no mark and says why on each close (#2990): snapshotWhy and markThread ask liveHere. A test
@@ -504,7 +504,7 @@ def test_copy_path_keeps_the_notebook_root(tmp_path, protocol):
     if not node:
         pytest.skip("Node is not installed; it runs the reader's JavaScript")
     privacy = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
-                        for name in ["privatePassages", "unlabelled", "hasPrivacy"])
+                        for name in ["privatePassages", "unlabelled", "mendCuts", "hasPrivacy"])
     privacy += "\n" + re.search(r"function privateTopicHidden\(.*?\}", TEMPLATE.read_text(), re.S).group(0)
     script = privacy + "\n" + script
     # A snapshot keeps no mark and says why on each close (#2990): snapshotWhy and markThread ask liveHere. A test
@@ -2132,7 +2132,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'personProject',
         'factList', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'snapshotWhy', 'translatedRelationBasis',
-        'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+        'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
@@ -2271,7 +2271,7 @@ def test_project_coverage_limit_has_chinese_copy(days, inputs, expected):
 def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['translatedRelationBasis', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', title: 'Fernhill Labs', category: 'orgs', translations: {zh:
@@ -2292,7 +2292,7 @@ def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback()
     ''')
     for direction in ['forward', 'reverse']:
         basis = result[direction]['children'][0]['children'][2]
-        assert basis['text'] == 'Theo Park — 代表试点团队确认了计划 .'
+        assert basis['text'] == 'Theo Park — 代表试点团队确认了计划.'
         assert '[2]' not in basis['text']
         assert result[direction]['children'][0]['children'][3] is None
     assert result['reverse']['children'][1]['children'][0]['children'][0] == '来自 '
@@ -2306,7 +2306,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
-                                       'connectedContext', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden'])
+                                       'connectedContext', 'closeStripped', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden'])
     result = _run_reader_js(functions + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
@@ -2325,7 +2325,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     ''')
     cards = result['children'][2]['children']
     snippets = [card['children'][0]['children'][2] for card in cards]
-    assert snippets[0]['text'] == 'Theo Park 和 Mia Chen 共同审阅了试点计划 .'
+    assert snippets[0]['text'] == 'Theo Park 和 Mia Chen 共同审阅了试点计划.'
     assert snippets[1] is None
     assert cards[1]['children'][1]['children'][1]['html'] == '[2]'
     assert '负责核对试点团队的下一步安排' not in str(cards)

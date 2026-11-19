@@ -103,7 +103,7 @@ def record_js(script, functions=()):
     return org_js(['known', 'facts', 'section', 'plainLine', 'rawSection', 'parseFacts', 'topLevelParts',
                    'swapLanguage', 'orgFact', 'orgRelation', 'firstSentence', 'orgTableRow',
                    'orgOpening', 'orgConnections', 'orgCoda', 'textCell', 'orgWebsite',
-                   'privatePassages', 'unlabelled', 'hasPrivacy', *functions],
+                   'privatePassages', 'unlabelled', 'mendCuts', 'hasPrivacy', *functions],
                   constants + DOM + r'''
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
       const splitTrailers = text => ({body:text}), youify = text => text;
