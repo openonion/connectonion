@@ -139,3 +139,17 @@ def test_uncertain_response_does_not_undo_the_click(today, agent):
     assert page.locator('.handoff [data-agent]').count() == 0
     page.wait_for_function("rowTask(testEntry)?.id === 'a'.repeat(32)")
     assert calls[-1] == ('/rem/task', {'action': 'status', 'key': page.evaluate('obligationKey(testEntry)', isolated_context=False)})
+
+
+@pytest.mark.parametrize('summary, shown', [('Richard Lai — written feedback preparation', False), ('已核对合同，等你确认。', True)])
+def test_a_finished_rows_title_reads_in_the_readers_language(today, summary, shown):
+    """rc34 check: hand-offs made before the language rule left English summaries on the row ("Richard Lai — written
+    feedback preparation"). In the zh reader the row keeps its own Chinese words; an English heading stays in the report."""
+    page, calls, answers = today
+    setup_row(page, 1440)
+    page.evaluate('(task) => { keepTask(testEntry, task); document.getElementById("main").replaceChildren(handOff(testEntry)); }',
+                  {'id': 'a' * 32, 'agent': 'codex', 'result': 'completed', 'summary': summary, 'reply': '', 'has_output': True},
+                  isolated_context=False)
+    status = page.locator('.handoff [role=status]').first.inner_text()
+    assert 'Codex 做完了' in status
+    assert (summary in status) == shown, status

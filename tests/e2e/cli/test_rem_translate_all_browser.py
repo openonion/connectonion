@@ -127,7 +127,13 @@ def test_the_top_bar_is_the_one_language_control_and_stop_leaves_the_pages_not_b
     page.locator("#main").wait_for()
     # No translate button or "not translated yet" line in the page body.
     assert page.locator("#main .translation-line, #main .translate-all").count() == 0
-    progress = page.locator("#lang-progress")
+    # rc34 check: the bar shows a count beside 中/EN (a phone: one 显示 menu); the line and its buttons are in the menu.
+    if width > 400:
+        page.locator("#lang-progress .lang-badge").click()
+        progress = page.locator(".lang-menu")
+    else:
+        page.locator("#display-menu").click()
+        progress = page.locator(".display-pop")
     expect(progress).to_contain_text("2 页还没有中文版")
     if SHOTS:
         page.screenshot(path=str(Path(SHOTS) / f"lang-progress-idle-{width}.png"))
@@ -137,8 +143,9 @@ def test_the_top_bar_is_the_one_language_control_and_stop_leaves_the_pages_not_b
     from connectonion.rem.files import Notebook
     total = len(Notebook(root).list())
     expect(progress).to_contain_text(f"中文版 {total - 2} / {total}")
-    assert page.evaluate("""() => { const n = document.getElementById('lang-progress'), b = n.getBoundingClientRect();
-      return n.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)); }""", isolated_context=False)
+    menu = ".lang-menu" if width > 400 else ".display-pop"
+    assert page.evaluate("""sel => { const n = document.querySelector(sel), b = n.getBoundingClientRect();
+      return n.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)); }""", menu, isolated_context=False)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if SHOTS:
         page.screenshot(path=str(Path(SHOTS) / f"lang-progress-running-{width}.png"))
