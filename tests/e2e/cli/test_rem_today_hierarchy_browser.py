@@ -214,10 +214,11 @@ def test_show_more_closes_on_escape_and_when_a_talk_is_chosen(today):
     row.locator(".strip-more").click()
     assert page.locator("#item-context").evaluate("node => node.open")
     page.keyboard.press("Escape")
-    assert page.locator("#item-context").count() == 0
+    page.wait_for_function("() => !document.getElementById('item-context')")
     row.locator(".strip-more").click()
     page.locator('#item-context [data-talk="codex"]').click()
-    assert page.locator("#item-context").count() == 0
+    # The dialog's close event (which removes it) is queued, so wait for it rather than reading the count at once.
+    page.wait_for_function("() => !document.getElementById('item-context')")
     row.locator(".talk").wait_for()
 
 
