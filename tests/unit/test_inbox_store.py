@@ -347,6 +347,17 @@ def test_the_pid_is_read_without_reading_the_locked_file(tmp_path, monkeypatch):
     holder.release_lock()
 
 
+def test_a_listener_from_before_listen_pid_still_shows_its_pid(tmp_path):
+    # A listener started on 1.9.6rc23 or older holds the lock but never writes
+    # listen.pid; `check` on a newer co printed "listener pid -1".
+    holder = make(tmp_path)
+    assert holder.hold_lock() is True
+    holder.pidfile.unlink()
+    holder.listener_file.write_text('{"pid": 9525, "version": "1.9.6rc12"}')
+    assert make(tmp_path).listener_pid() == 9525
+    holder.release_lock()
+
+
 def test_the_lock_is_held_by_the_kernel_not_by_the_pid_in_the_file(tmp_path):
     # Two defects with one root: the file was the lock. (a) O_EXCL created it
     # empty before the pid landed, so a second starter read "" and unlinked

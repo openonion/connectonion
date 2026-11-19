@@ -685,6 +685,13 @@ class Inbox:
         staged.write_text(json.dumps(payload), encoding="utf-8")
         staged.replace(self.listener_file)
 
+    def _listener_record(self) -> dict:
+        try:
+            record = json.loads(self.listener_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return record if isinstance(record, dict) else {}
+
     def listener_flags(self) -> list:
         """The flags the last listener was started with, whatever became of it."""
         try:
@@ -741,7 +748,11 @@ class Inbox:
         try:
             return int(self.pidfile.read_text(encoding="utf-8"))
         except (FileNotFoundError, ValueError):
-            return -1  # held, but the holder has not written its pid yet
+            pass
+        # A listener from before 1.9.6rc24 wrote its pid into listen.lock, not
+        # listen.pid; listener.json names it on every release since #1859.
+        record = self._listener_record()
+        return record["pid"] if isinstance(record.get("pid"), int) else -1  # -1: held, pid not yet written
 
     def hold_lock(self) -> bool:
         """Claim the listener role for this process. False if another
