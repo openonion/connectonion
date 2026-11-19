@@ -608,7 +608,9 @@
   .deep-sources li.src-row { grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "n title cited" "n meta cited"; gap: 0 var(--u2); align-items: center; padding: 6px 0; }
   .deep-sources li.src-row[hidden] { display: none; }
   .deep-sources .source-open { grid-area: n; min-width: 32px; min-height: 32px; justify-content: flex-start; top: 0; margin: 0; padding: 0; color: var(--grey); font: var(--s-ui) var(--mono); }
-  .deep-sources .src-title { grid-area: title; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deep-sources .src-title { grid-area: title; min-width: 0; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deep-sources .src-title:hover, .deep-sources .src-title:focus-visible { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .deep-sources .src-meta { grid-area: meta; min-width: 0; color: var(--grey); font: var(--s-ui)/var(--lh-body) var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .deep-sources .src-cited { grid-area: cited; min-height: 32px; padding: 0 var(--u2); border: 0; border-radius: var(--radius); background: transparent; color: var(--grey); font: var(--s-ui) var(--font); white-space: nowrap; cursor: pointer; }
   .deep-sources .src-cited:hover, .deep-sources .src-cited:focus-visible { color: var(--ink); background: var(--well); }
@@ -6615,8 +6617,11 @@ function sourceRow(r, s) {
   chip.textContent = s.n;
   const meta = [s.channel, s.who, s.day ? fmtDate(s.day) : ""].filter(Boolean).join(" · ");
   const cited = el("button", { type: "button", class: "src-cited", hidden: "" });
+  // The title opens the source itself in the side card (#3134: before the band every source did).
+  const title = el("button", { type: "button", class: "src-title" + (s.missing ? " src-missing" : ""), text: s.title, title: t("Open the original") });
+  title.onclick = () => openEvidence(r, s.n, title, { fromList: true });
   const li = el("li", { id: "src-" + s.n.toLowerCase(), class: "src-row", "data-kind": s.kind, title: s.id || "" }, [chip,
-    el("span", { class: "src-title" + (s.missing ? " src-missing" : ""), text: s.title }), el("span", { class: "src-meta", text: meta }), cited]);
+    title, el("span", { class: "src-meta", text: meta }), cited]);
   li.search = [s.title, s.who, s.channel, s.id, meta].join(" ").toLowerCase();
   return li;
 }
@@ -9871,7 +9876,7 @@ function personSub(r) {
 // above it, so it does not repeat them; unknown facts are one quiet count, never rows of "not found".
 const PROFILE_GROUPS = [["Contact", ["Email", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
   ["Relationship", ["How we know them", "First contact", "Last contact", "Mail"]], ["Identity", ["Also known as", "Language", "Location", "Time zone"]]];
-Object.assign(UI.zh, { "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
+Object.assign(UI.zh, { "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
   "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射",
   "Last contact {when}": "最近联系 {when}", "1 mail": "1 封邮件", "{n} mails": "{n} 封邮件", "+{n} more": "还有 {n} 个", "Show less": "收起" });
 // A handle or link says its platform in words; its picture is that service's published mark (Simple Icons) or,
@@ -15545,16 +15550,17 @@ function sourceIdentity(context) {
   const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
   return byPath(sender)?.title || sourceSender(context);
 }
-function openEvidence(r, number, trigger) {
+function openEvidence(r, number, trigger, { fromList = false } = {}) {
   const source = sourceList(r).find(item => item.n.toLowerCase() === number.toLowerCase()) || { n: number.toUpperCase(), text: "" };
-  const context = (REM.source_context || {})[sourceId(source.text, source.plain)], line = evidenceLine(trigger);
+  // From the Sources list there is no line of the page to quote: the card is the source alone (#3134).
+  const context = (REM.source_context || {})[sourceId(source.text, source.plain)], line = fromList ? { text: "", numbers: [] } : evidenceLine(trigger);
   const numbers = line.numbers.length ? line.numbers : [source.n];
   const excerpt = context?.excerpt || "", span = supportingSpan(line.text, excerpt);
   const panel = evidencePanel(), close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close source context") });
   close.onclick = closeEvidence;
   panel.replaceChildren(el("div", { class: "evidence-handle", "aria-hidden": "true" }),
-    el("div", { class: "evidence-top" }, [el("span", { text: t("Source {n} of {m} for this line", { n: numbers.indexOf(source.n) + 1, m: numbers.length }) }), close]),
-    el("div", { class: "evidence-claim" }, [el("small", { text: t("On this page") }), el("div", { html: markedSpan(line.text, span?.claim) })]));
+    el("div", { class: "evidence-top" }, [el("span", { text: fromList ? t("Source {n}", { n: source.n }) : t("Source {n} of {m} for this line", { n: numbers.indexOf(source.n) + 1, m: numbers.length }) }), close]),
+    fromList ? null : el("div", { class: "evidence-claim" }, [el("small", { text: t("On this page") }), el("div", { html: markedSpan(line.text, span?.claim) })]));
   if (numbers.length > 1) {
     const select = el("select", { class: "evidence-source-select", "aria-label": t("Source for this line") }, numbers.map(n => el("option", { value: n, text: chipLabel(r, n) })));
     select.value = source.n;

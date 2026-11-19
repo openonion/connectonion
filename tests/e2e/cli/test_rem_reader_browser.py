@@ -662,3 +662,44 @@ def test_full_memory_opens_with_a_short_named_source_band(tmp_path, monkeypatch)
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         browser.close()
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_a_source_title_opens_its_original_in_the_side_card(tmp_path, monkeypatch, width):
+    """#3134 (owner, 2026-11-19): clicking a source's title in the Sources band shows the original mail as a card,
+    as every source did before the band. From the list there is no line of the page to quote, so no 'On this page'."""
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    mail = 'gmail:18f0aa11bb22cc33'
+    text = ('# Wren Hale\n\n## Facts\n- Email: wren@example.test [1]\n\n## Who they are\nWren plans the venue [1]. '
+            'Wren sent the plan [2].\n\n## Sources\n- [1] ' + mail + '\n- [2] file:/notes/plan.md — 2026-10-02\n')
+    Notebook(root).write('people/wren-hale.md', text)
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': width, 'height': 900 if width > 400 else 844})
+        page.goto(path.as_uri() + '#r=people%2Fwren-hale.md')
+        page.evaluate("""mail => {
+          REM.source_context = REM.source_context || {};
+          REM.source_context[mail] = { source: 'gmail', subject: 'Venue contract for March', from: 'Wren Hale <wren@example.test>',
+            time: '2026-10-01T09:00:00Z', excerpt: 'Hi, the venue is booked for March. Contract attached.' };
+          KNOWN.clear(); render();
+        }""", mail, isolated_context=False)
+        title = page.locator('.deep-sources li#src-1 .src-title')
+        assert title.inner_text() == 'Venue contract for March'
+        title.click()
+        panel = page.locator('#evidence-panel')
+        panel.wait_for(state='visible')
+        assert 'the venue is booked for March' in panel.inner_text()
+        assert panel.locator('.evidence-claim').count() == 0  # nothing of the page to quote from the list
+        page.keyboard.press('Escape')
+        assert not panel.is_visible()
+        assert page.evaluate("document.activeElement.closest('li')?.id") == 'src-1'  # focus returns to the title
+        page.locator('.deep-sources li#src-2 .src-title').click()
+        panel.wait_for(state='visible')
+        assert panel.locator('.evidence-claim').count() == 0
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()
