@@ -3525,7 +3525,7 @@
   .n3-person .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; font: inherit; }
   /* One fixed action column, top right: 调查 (with ⋯), and under it the page's translation state in one quiet line. */
   .hero-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; max-width: 320px; }
-  .hero-acts .translation-line { align-self: flex-end; margin: 0; text-align: right; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-ui) var(--font); }
+  .hero-acts .translation-line { align-self: flex-end; margin: 0; text-align: right; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .hero-acts .translation-line button { margin: 0 0 0 6px; padding: 0; height: auto; border: 0; background: none; box-shadow: none; color: var(--ink);
     font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
   /* The third line: place · last contact · mail · Today, in the reader's grey, one line on a desktop. */
@@ -3609,11 +3609,11 @@
   /* Prose (how you know them) stops at two lines; the whole of it is one hover away. */
   .pc-v > .val:not(.mono) { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .pc-v a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .pc-v .qual { margin-left: 6px; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-tight) var(--font); white-space: nowrap; }
+  .pc-v .qual { margin-left: 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); white-space: nowrap; }
   .pc-inline { display: flex; flex-wrap: wrap; gap: 0 4px; }
   .pc-inline > * + *::before { content: "·"; margin-right: 4px; color: var(--grey); }
   /* Sources stay one hover away: a number after every value was the card's noise. */
-  .pcard .cite { position: relative; top: -0.5em; margin-left: 2px; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-tight) var(--font); text-decoration: none;
+  .pcard .cite { position: relative; top: -0.5em; margin-left: 2px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); text-decoration: none;
     display: inline-block; }
   /* Out of sight and out of the line's width until the row is pointed at or focused, but still in the page, so
      a keyboard reaches it and focus can come back to it from the evidence panel. */
@@ -3624,9 +3624,9 @@
   .pc-copy { position: relative; display: block; min-width: 0; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: var(--r-cell); background: none; color: inherit; font: inherit;
     text-align: left; cursor: copy; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pc-copy:hover, .pc-copy:focus-visible { background: var(--well); }
-  .pc-done { display: none; margin-left: 8px; color: var(--grey); font: var(--w-bold) var(--s-meta)/var(--lh-tight) var(--font); }
+  .pc-done { display: none; margin-left: 8px; color: var(--grey); font: var(--w-bold) var(--s-ui)/var(--lh-tight) var(--font); }
   .pc-copy.done .pc-done { display: inline; }
-  .pc-more { padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-body) var(--font); cursor: pointer;
+  .pc-more { padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); cursor: pointer;
     text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .pc-more:hover { color: var(--ink); }
   .n3-person .r4-today { display: inline-flex; align-items: center; gap: 8px; height: 44px; margin-left: 8px; padding: 0 16px; border: 0; border-radius: var(--r-pill); box-shadow: var(--e-ring);

@@ -130,7 +130,7 @@ def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width,
         assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
     # Quiet means the smallest step the place allows: a caption on people and organisations, the 13px label
     # on a project, where nothing is under 13px (#3096).
-    step = "--s-ui" if head == ".page-head" else "--s-meta"
+    step = "--s-ui" if head in (".page-head", ".person-head") else "--s-meta"
     assert line.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
         f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
     assert any(path == "/rem/translation-request" for path, _ in calls)
