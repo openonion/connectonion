@@ -566,3 +566,54 @@ def test_on_windows_an_old_host_is_reported_and_nothing_runs_ps(startup, old_hos
         notice = live_host.start("owner")
     assert isinstance(notice, live_host.Notice) and f"port {port}" in notice and process.poll() is None
     assert "did not start" not in notice and "Windows" in notice     # it may well be ours: say what is true
+
+
+def test_a_dead_recorded_host_is_replaced_though_the_relay_still_lists_the_address(startup, monkeypatch):
+    """2026-11-19 (#3112): the owner's Host was killed; for a while the relay still listed the address, so
+    `co rem open --live` and ensure_online trusted it and started nothing, and the phone reached no Host. The
+    record names our Host: when that process is gone and nothing answers locally as this address, start one."""
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    monkeypatch.setattr(reader, "host_online", lambda *a, **k: True)     # the relay's stale listing
+    monkeypatch.setattr(live_host, "_alive", lambda saved: False)        # our recorded Host is gone
+    monkeypatch.setattr(live_host, "_info", lambda port: None)           # nothing answers locally
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    spawned = []
+    process = SimpleNamespace(pid=43, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "50123"], poll=lambda: None)
+    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: spawned.append(port) or process)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: bool(spawned))
+    assert live_host.ensure_online("owner") is None
+    assert len(spawned) == 1
+    asked = []
+    monkeypatch.setattr(live_host, "answers", lambda port, address: False)  # that Host died too
+    monkeypatch.setattr(live_host, "ensure_online", lambda address, **k: asked.append(address))
+    monkeypatch.setattr(live_host, "outdated", lambda address: False)
+    reader.live_or_snapshot(startup, "owner", live=True, launch=False)
+    assert asked == ["owner"]                                            # --live asks too, not only when offline
+
+
+def test_a_live_host_that_answers_locally_is_still_reused(startup, monkeypatch):
+    """The other side: a Host the owner started by hand answers on a known port; no second Host on the address."""
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    monkeypatch.setattr(reader, "host_online", lambda *a, **k: True)
+    monkeypatch.setattr(live_host, "_alive", lambda saved: False)
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: port == live_host.DEFAULT_PORT)
+    monkeypatch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("duplicate Host"))
+    assert live_host.ensure_online("owner") is None
+
+
+def test_a_new_host_takes_the_port_it_had_when_that_port_is_free(startup, monkeypatch):
+    """#3130: every fresh start bound port 0, so the reader's local address changed on every open and an open tab
+    went dead. The recorded port is reused when it is free; a taken port falls back to a random one."""
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    ports = []
+    process = SimpleNamespace(pid=43, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "1"], poll=lambda: None)
+    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: ports.append(port) or process)
+    monkeypatch.setattr(live_host, "_alive", lambda saved: False)
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    monkeypatch.setattr(live_host, "_free", lambda port: True)
+    live_host.start("owner")
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    monkeypatch.setattr(live_host, "_free", lambda port: False)
+    live_host.start("owner")
+    assert ports == [50123, None]
