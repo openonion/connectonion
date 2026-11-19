@@ -3532,11 +3532,15 @@
   .hero-acts .translation-line button { margin: 0 0 0 6px; padding: 0; height: auto; border: 0; background: none; box-shadow: none; color: var(--ink);
     font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
   /* The third line: place · last contact · mail · Today, in the reader's grey, one line on a desktop. */
-  .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
-  .hero-meta > * + *::before { content: "·"; margin: 0 8px; color: var(--grey); }
+  /* Dotted lines that wrap: each item carries its dot in a 16px gutter on its left, and the line is shifted left
+     by that gutter and clipped, so a dot that would start a wrapped line falls outside it. */
+  .hero-meta, .n3-person .r4-sub.dek { clip-path: inset(-4px -4px -4px 16px); }
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0 -16px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .hero-meta > * { margin-left: 16px; }
+  .hero-meta > *::before, .n3-person .dek > *::before { content: "·"; display: inline-block; width: 16px; margin-left: -16px; text-align: center; color: var(--grey); }
   .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
     font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
-  .n3-person .hero-meta .r4-today.late { color: var(--red); }
+  .n3-person .hero-meta .r4-today.late { color: var(--red); box-shadow: none; padding: 0; }
   .hero-acts:empty { display: none; }
   /* 调查 (#3105): one button in a record's head, its words the page's state; ⋯ holds the levels. Green only
      while there is something to read (Investigate, Update): the one primary action of the page. */
@@ -3599,7 +3603,8 @@
   .n3-person .dek-unit { color: var(--grey) !important; }
   /* The role is the line; organisation and units follow under it, spaced rather than dotted, so a wrapped line never starts with a dot. */
   /* Role · organisation · units on one line, wrapping as words, not as a stack of rows. */
-  .n3-person .dek > * + *::before { content: "·"; margin-right: 16px; margin-left: -8px; color: var(--grey); text-decoration: none; display: inline-block; }
+  .n3-person .r4-sub.dek { gap: 4px 0; margin-left: -16px; }
+  .n3-person .dek > * { margin-left: 16px; }
   /* The profile card: a fact box of four groups under one hairline; label above value, on the 4px grid. */
   .pcard { margin-top: 20px; padding-top: 16px; border-top: var(--hair) solid var(--rule); }
   /* Each fact one row, label column then value; the rows flow into two balanced columns. */
@@ -3620,8 +3625,17 @@
     display: inline-block; }
   /* Out of sight and out of the line's width until the row is pointed at or focused, but still in the page, so
      a keyboard reaches it and focus can come back to it from the evidence panel. */
-  .pc-row:not(:hover):not(:focus-within) .cite { width: 0; margin: 0; overflow: hidden; opacity: 0; }
-  .pc-item { display: flex; align-items: baseline; min-width: 0; max-width: 100%; }
+  .pc-row:not(:hover):not(:focus-within) .cite { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; opacity: 0; }
+  /* The value keeps its line; a qualifier ("mobile", "from the sender line") wraps under it rather than squeezing it. */
+  .pc-item { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; max-width: 100%; }
+  .pc-item .qual { margin-left: 0; }
+  .pcard .pc-copy, .pcard .pc-copy * { white-space: nowrap; }
+  /* A link or code value (split by factValue so its sources stay on its last word) is one line, ellipsised;
+     its qualifier takes the line under it. */
+  .pc-v .val.mono { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc-v .val.mono :is(span, a):not(.qual) { white-space: nowrap; }
+  .pc-v .val.mono wbr { display: none; }  /* Chrome breaks at a <wbr> even under nowrap */
+  .pc-v .val.mono .qual { display: block; margin-left: 0; white-space: normal; }
   .pc-after { white-space: nowrap; flex: none; }
   /* An address or handle is one line, ellipsised; a click copies the whole of it. */
   .pc-copy { position: relative; display: block; min-width: 0; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: var(--r-cell); background: none; color: inherit; font: inherit;
@@ -3717,7 +3731,7 @@
     .hero-acts .translation-line { text-align: left; align-self: flex-start; }
     /* On a phone the role and the organisation each take their line; a dot would start the second one. */
     .n3-person .dek { flex-direction: column; gap: 2px; }
-    .n3-person .dek > * + *::before { content: none; }
+    .n3-person .dek > *::before { content: none; }
     .bento { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .bento .span2, .bento .person-sessions { grid-column: auto; }
     .rh-row { flex-direction: column; align-items: stretch; }
