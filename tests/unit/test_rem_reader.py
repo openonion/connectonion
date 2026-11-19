@@ -3566,18 +3566,18 @@ def test_the_graph_and_the_old_all_records_address_land_on_knowledge():
 # The drawings the owner could not read (#2953): a rounded square, a triangle, three linked dots, two sliders.
 RETIRED_RAIL_DRAWINGS = ['M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7', 'M12 4.5 20.5 19h-17z', 'M8.2 7.2l7.5 0.6', '<circle cx="9" cy="8" r="2.2"/>']
 # One ordered list (#3091): act | who and what | what the notebook concluded | raw material, then Settings.
-RAIL_LINKS = ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=knowledge', '#c=decisions', '#c=principles',
+RAIL_LINKS = ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=keys', '#c=knowledge', '#c=decisions', '#c=principles',
               '#c=skills', '#c=sessions', '#c=opportunities', '#c=works', '#view=changes']
-RAIL_PICTURES = ['sun', 'message-square-reply', 'calendar', 'users', 'building-2', 'folder', 'book', 'scale', 'quote', 'zap',
+RAIL_PICTURES = ['sun', 'message-square-reply', 'calendar', 'users', 'building-2', 'folder', 'key', 'book', 'scale', 'quote', 'zap',
                  'terminal', 'activity', 'doc', 'activity', 'settings']
 RAIL = {
-    'en': {'names': ['Today', 'Waiting on you', 'Agenda', 'People', 'Organisations', 'Projects', 'Knowledge', 'Decisions', 'Principles',
+    'en': {'names': ['Today', 'Waiting on you', 'Agenda', 'People', 'Organisations', 'Projects', 'Keys', 'Knowledge', 'Decisions', 'Principles',
                      'Skills', 'Agent sessions', 'Opportunities', 'Works', 'Memory changes', 'Settings'],
-           'words': ['Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Knowledge', 'Decisions', 'Principles',
+           'words': ['Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Keys', 'Knowledge', 'Decisions', 'Principles',
                      'Skills', 'Sessions', 'Opps', 'Works', 'Changes', 'Settings'],
            'you': 'You · Ada Example', 'tabs': ['Today', 'Waiting', 'People', 'Search', 'More']},
-    'zh': {'names': ['今天', '等你处理', '日程', '人物', '组织', '项目', '知识', '决定', '原则', '技能', '智能体会话', '机会', '作品', '记忆变化', '设置'],
-           'words': ['今天', '等你处理', '日程', '人物', '组织', '项目', '知识', '决定', '原则', '技能', '会话', '机会', '作品', '记忆变化', '设置'],
+    'zh': {'names': ['今天', '等你处理', '日程', '人物', '组织', '项目', '钥匙', '知识', '决定', '原则', '技能', '智能体会话', '机会', '作品', '记忆变化', '设置'],
+           'words': ['今天', '等你处理', '日程', '人物', '组织', '项目', '钥匙', '知识', '决定', '原则', '技能', '会话', '机会', '作品', '记忆变化', '设置'],
            'you': '你 · Ada Example', 'tabs': ['今天', '等你', '人物', '搜索', '更多']},
 }
 
@@ -3648,7 +3648,7 @@ def test_every_rail_entry_is_a_picture_with_its_word_under_it(language):
     assert you['title'] is None  # its name shows beside it on hover and keyboard focus (#2961), not in a title
     assert [cell['picture'] for cell in cells] == RAIL_PICTURES
     assert not [drawing for drawing in RETIRED_RAIL_DRAWINGS if drawing in rail['drawings']]
-    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 13
+    assert [cell['badge'] for cell in cells] == [None, '2'] + [None] * 14
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
@@ -3681,9 +3681,9 @@ def test_a_later_category_is_a_place_only_once_it_holds_a_page():
     """One rule (docs/cli/rem.md): the first eight and Memory changes always show, each with its own empty state;
     Decisions, Principles, Agent sessions, Opportunities and Works show once they hold a page, or while you are on one."""
     empty = [cell['href'] for cell in _rail('en', filled=False)['cells'][:-2]]
-    assert empty == ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=knowledge', '#c=skills', '#view=changes']
+    assert empty == ['#', '#view=open', '#c=agenda', '#c=people', '#c=orgs', '#c=projects', '#c=keys', '#c=knowledge', '#c=skills', '#view=changes']
     on_it = [cell['href'] for cell in _rail('en', filled=False, active='decisions')['cells'][:-2]]
-    assert on_it == empty[:7] + ['#c=decisions'] + empty[7:]
+    assert on_it == empty[:8] + ['#c=decisions'] + empty[8:]
 
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
