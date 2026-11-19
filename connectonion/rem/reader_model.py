@@ -352,6 +352,25 @@ def _budget_order(records: list[dict], ids: set[str]) -> list[str]:
                                            source.split(":", 1)[0] not in ("gmail", "outlook"), source))
 
 
+# A short citation (gmail:<12 hex>) names a message by its id's digest. Each lookup used to fetch every message
+# of the provider and hash every id again, 534k sha256 calls for one Today queue on the owner's notebook (#3106).
+# One digest index for the connection in use answers them all; connections here are short-lived and read-only,
+# and a connection takes no weak reference, so the index is kept for the latest one only (held, so its id is not reused).
+_DIGESTS: list = [None, {}]
+
+
+def _digest_index(db, provider: str) -> dict[str, list]:
+    if _DIGESTS[0] is not db:
+        _DIGESTS[:] = [db, {}]
+    per_db = _DIGESTS[1]
+    if provider not in per_db:
+        index: dict[str, list] = {}
+        for row in db.execute("select * from messages where source = ?", (provider,)):
+            index.setdefault(hashlib.sha256(row["id"].removeprefix(provider + ":").encode()).hexdigest()[:12], []).append(row)
+        per_db[provider] = index
+    return per_db[provider]
+
+
 def _cited_row(db, source: str):
     row = db.execute("select * from messages where id = ?", (source,)).fetchone()
     if row is not None:
@@ -360,10 +379,10 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ? or body_path is null)",
-                      (provider, f"mail/messages/{provider}/{digest}%.json",
-                       f"mail/observed/{provider}/{digest}%.json")).fetchall()
-    rows = [row for row in rows if hashlib.sha256(row['id'].removeprefix(provider + ':').encode()).hexdigest().startswith(digest)]
+    # Its archived body, when it has one, is named by the same digest.
+    homes = (f"mail/messages/{provider}/{digest}", f"mail/observed/{provider}/{digest}")
+    rows = [row for row in _digest_index(db, provider).get(digest, [])
+            if row["body_path"] is None or (row["body_path"].startswith(homes) and row["body_path"].endswith(".json"))]
     if len(rows) == 1:
         return rows[0]
     return None

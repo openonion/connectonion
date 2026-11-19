@@ -546,3 +546,28 @@ def test_hashed_mail_conversation_window_keeps_the_native_cited_id(tmp_path):
     conversation = cited_conversations(tmp_path, contexts)[contexts[source]['thread']]
     assert conversation['cited_ids'] == ['outlook:' + native]
     assert conversation['windows'][source] == ['outlook:' + native]
+
+
+def test_short_mail_citations_resolve_fast_on_a_real_sized_store(tmp_path):
+    """#3106: approving a Send took 8-24 s and opening a talk ~10 s. Both build Today's queue, which resolved each
+    short citation (gmail:<12 hex>) by fetching every message of that provider and hashing every id again: 1,249
+    lookups x ~430 rows = 534k sha256 calls on the owner's notebook. One index per connection answers them all."""
+    import hashlib
+    import sqlite3
+    import time
+    from connectonion.rem.reader_model import _cited_row
+    db = sqlite3.connect(tmp_path / "rem.db")
+    db.row_factory = sqlite3.Row
+    db.execute("create table messages (id text primary key, source text, thread text, sender text, recipients text, "
+               "time text, subject text, body_path text, body_line integer)")
+    ids = [f"gmail:m{n:05d}" for n in range(3000)]
+    digest = {i: hashlib.sha256(i.removeprefix("gmail:").encode()).hexdigest() for i in ids}
+    db.executemany("insert into messages (id, source, body_path) values (?, 'gmail', ?)",
+                   [(i, f"mail/messages/gmail/{digest[i]}.json" if n % 3 else None) for n, i in enumerate(ids)])
+    wanted = [f"gmail:{digest[i][:12]}" for i in ids[:1500]]
+    started = time.perf_counter()
+    found = [_cited_row(db, source) for source in wanted]
+    elapsed = time.perf_counter() - started
+    assert [row["id"] for row in found] == ids[:1500]  # the same rows the scan found
+    assert _cited_row(db, "gmail:ffffffffffff") is None and _cited_row(db, ids[7])["id"] == ids[7]
+    assert elapsed < 1.0, f"{elapsed:.2f}s for 1,500 short citations"

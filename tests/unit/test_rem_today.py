@@ -553,3 +553,26 @@ def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
       console.log(JSON.stringify(todayGroups(ranked).map(group => group.r.path)));
     ''')
     assert result == ['people/p1.md', 'people/p2.md', 'people/p3.md', 'people/p4.md', 'people/p5.md']
+
+
+def test_the_queue_is_built_once_per_notebook_change(tmp_path, monkeypatch):
+    """#3106: approving and opening a talk each rebuilt Today's queue from every page. The Host now keeps the
+    queue for the notebook as it stands: a second click is free, and any write to the notebook builds it again."""
+    from connectonion.rem import today
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    root = tmp_path / "rem"
+    prepare(root)
+    book = Notebook(root)
+    book.stub_project("projects/pilot.md", "Pilot", [])
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("## Open threads\n", "## Open threads\n- You owe Mara a pilot review.\n"))
+    built = []
+    real = today._entries
+    monkeypatch.setattr(today, "_entries", lambda *a, **k: built.append(1) or real(*a, **k))
+    first = today.queue(root)
+    second = today.queue(root)
+    assert len(built) == 1 and first == second
+    second[0]["text"] = "changed by a caller"
+    assert today.queue(root)[0]["text"] != "changed by a caller"  # callers get their own copy
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("pilot review", "pilot review and invoice"))
+    assert "invoice" in today.queue(root)[0]["text"] and len(built) == 2
