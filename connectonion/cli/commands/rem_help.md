@@ -25,7 +25,7 @@ Abstract — learn from pages
 Translate — put pages in your language
   translate     Translate every page not yet in your language, or one page.
 Tag — organise pages by tag
-  tag           Tag the people, organisation and project pages that wait, from one vocabulary.
+  tag           Tag every page, then write each tag's page from the pages that carry it.
 Run a whole day now
   catchup       Do a whole night's work now, all five stages; several nights with --nights.
 Read
@@ -562,26 +562,33 @@ Back:     co rem --help
 ## co rem tag
 
 ```
-Tag the people, organisation and project pages that wait, from one vocabulary.
-A page waits when it was never tagged or its text changed since (an investigation
-or deepen rewrote it). Reads pages, never mail or sessions.
+Tag every page, then write each tag's page from the pages that carry it.
+A tag page (knowledge/<tag>.md) says what the tag is, how its pages connect and
+when things happened, every line cited to those pages' sources. Reads pages,
+never mail or sessions. Only tags whose pages changed are written again. Together,
+the tags make the knowledge graph.
 
-Usage:    co rem tag [--pages N]
-Example:  co rem tag
-          co rem tag --pages 40
-Options:  --pages N   Tag at most N waiting pages (default 200).
-Cost:     One level-1 model turn per 20 pages on the notebook's runner.
-Output:   One line per turn, then: Tagged N of M pages (K changed); R tags refused;
-          F pages failed; W still waiting. --json returns the run record, with each
-          refused tag and its reason (no evidence, not named, not in vocabulary,
-          bad new tag, too many).
-Effects:  Writes only each page's "- Tags:" line, the last line of its Facts, with
-          the citation of the line that supports each tag; adds new tags to
-          .state/tags.json (label, kind, aliases) and marks the pages tagged in
-          .state/tag-pages.json. A tag the page does not support is dropped, never
-          written. A failed turn leaves its pages waiting. Every co rem catchup
-          round tags too, up to limits.tags_per_round pages.
-Next:     co rem status
+Usage:    co rem tag [NAME] [--pages N] [--dry-run]
+Example:  co rem tag --dry-run
+          co rem tag
+          co rem tag 3900
+Options:  NAME        Write (or refresh) the page for this one tag only.
+          --pages N   Tag at most N pages that have no tag (default 200).
+          --dry-run   Count only: pages without a tag, tag pages to write and the
+                      rough input tokens. No model, no writes.
+Cost:     One level-1 model turn per 20 pages tagged, and one per tag page written
+          (the cheap model; see co rem config).
+Output:   Tagged N pages · M tag pages written · K pages still untagged
+          --json: tagged, tag_pages_written, untagged, next (and the run ids).
+Effects:  Writes each page's "- Tags:" line with the citation that supports each
+          tag, and adds new tags to .state/tags.json. Writes knowledge/<tag>.md (or
+          the knowledge page already named for the tag) for every tag two or more
+          pages carry, and records its pages in .state/tag-nodes.json. A tag page
+          keeps every cited line it had; a reply without citations, or citing a
+          source it was not given, is refused and the tag waits. Every co rem
+          catchup round does both, up to limits.tags_per_round pages and
+          limits.tag_nodes_per_round tag pages.
+Next:     co rem open
 Back:     co rem --help
 ```
 

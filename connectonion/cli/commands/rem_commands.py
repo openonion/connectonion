@@ -1937,14 +1937,29 @@ def make_rem_app(factory):
         return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
 
     @rem.command("tag", cls=V("co rem tag"))
-    def tag_pages(ctx: typer.Context, pages: int = typer.Option(200, "--pages", min=1,
-                                                                 help="Tag at most N waiting pages")):
-        from ...rem.tag_stage import summary, tag_pages as run_tagging
+    def tag_pages(ctx: typer.Context, name: str = typer.Argument("", help="Write the page for this one tag"),
+                  pages: int = typer.Option(200, "--pages", min=1, help="Tag at most N pages that have no tag"),
+                  dry_run: bool = typer.Option(False, "--dry-run", help="Count only; no model, no writes")):
+        from ...rem import tag_nodes, tag_stage
 
         def operation(root):
             say = None if ctx.obj["json"] else typer.echo
-            report = run_tagging(root, limit=pages, say=say)
-            return (report if ctx.obj["json"] else summary(report)), ["open"], bool(report["failed"])
+            if dry_run:
+                plan = {**tag_nodes.dry_run(root), "untagged_waiting": len(tag_stage.candidates(root))}
+                text = (f"{plan['untagged_waiting']} pages wait for tags · {plan['waiting']} tag pages to write "
+                        f"(about {plan['estimated_input_tokens']:,} input tokens) · {plan['tags']} tags in use")
+                return (plan if ctx.obj["json"] else text), ["tag"]
+            tagged = {"tagged": 0, "failed": 0} if name else tag_stage.tag_pages(root, limit=pages, say=say)
+            written = tag_nodes.write_nodes(root, only=name, say=say)
+            report = {"tagged": tagged["tagged"], "tag_pages_written": len(written["written"]),
+                      "untagged": len(tag_nodes.orphans(root)), "next": "co rem open",
+                      "runs": {"tag": tagged.get("id"), "tag_pages": written["id"]},
+                      "failed": tagged["failed"] + written["failed"], "errors": tagged.get("errors", []) + written["errors"]}
+            text = (f"Tagged {report['tagged']} pages · {report['tag_pages_written']} tag pages written · "
+                    f"{report['untagged']} pages still untagged")
+            if report["failed"]:
+                text += f"\n{report['failed']} failed: " + "; ".join(report["errors"])[:400]
+            return (report if ctx.obj["json"] else text), ["open"], bool(report["failed"])
         _handle(ctx, operation, ["status"])
 
     @rem.command("list", cls=V("co rem list"))

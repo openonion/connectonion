@@ -329,7 +329,7 @@ def shares_in_words(shares, whose="tonight's"):
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
     phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation",
-              "draft": "reply-draft", "tag": "tag"}
+              "draft": "reply-draft", "tag": "tag", "tag-node": "tag"}
     return {"handler": handler, "task": task, "stage": stage, "record": record, "round": number,
             "operation": operation or handler,
             "phase": "sync" if operation == "batch" else phases.get(handler, cursor["phase"])}
@@ -428,7 +428,8 @@ def prepare_task(root, cursor, config, directory):
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
-    task = _closing_translation(root, cursor, config, directory) or _closing_tags(root, cursor, config, directory)
+    task = (_closing_translation(root, cursor, config, directory) or _closing_tags(root, cursor, config, directory)
+            or prepare_tag_node(root, cursor, config, directory))
     if task:
         return task
     from .night import listing
@@ -531,11 +532,11 @@ def _between_portions(root, cursor, config, directory):
     `portions` counts the breaks begun; whoever runs whole rounds starts the round's
     one deepen slot once the first has been served (`schedule.early_depth`)."""
     if "between" not in cursor:
-        cursor["between"] = ["sessions", "abstract", "tag"]
+        cursor["between"] = ["sessions", "abstract", "tag", "tag-node"]
         cursor["portions"] = cursor.get("portions", 0) + 1
     while cursor["between"]:
         step = {"sessions": _summary_turn, "abstract": prepare_abstract,
-                "tag": prepare_tagging}[cursor["between"].pop(0)]
+                "tag": prepare_tagging, "tag-node": prepare_tag_node}[cursor["between"].pop(0)]
         task = step(root, cursor, config, directory)
         if task:
             return task
@@ -639,6 +640,21 @@ def prepare_tagging(root, cursor, config, directory):
     attempted += records
     task = tag_stage.prepare(root, records, directory=directory, native=True)
     return _task("tag", task, cursor, stage="tag")
+
+
+def prepare_tag_node(root, cursor, config, directory):
+    """The next tag whose tag page waits (#3140; the tag stage's second step), or None: none waits, or the round wrote its
+    `limits.tag_nodes_per_round`. A tag offered once is not offered again in the same round."""
+    from . import tag_nodes
+    attempted = cursor.setdefault("tag_node_attempts", [])
+    if len(attempted) >= config["limits"].get("tag_nodes_per_round", 0):
+        return None
+    slug = next((slug for slug in tag_nodes.candidates(root) if slug not in attempted), None)
+    if not slug:
+        return None
+    attempted.append(slug)
+    task = tag_nodes.prepare(root, slug, directory=directory, native=True)
+    return _task("tag-node", task, cursor, stage="tag-node", record=task["record"])
 
 
 def finish(root, cursor):
@@ -928,6 +944,9 @@ def check_task(root, task, output):
         from . import tag_stage
         plan = tag_stage.check(root, prepared, output)
         return {"changed": tag_stage.promote(root, plan), "tagged": len(plan["pages"]), "refused_tags": plan["refused"]}
+    if handler == "tag-node":
+        from . import tag_nodes
+        return {"changed": tag_nodes.commit(root, prepared, tag_nodes.check(root, prepared, output))}
     if handler == "same-person":
         from . import same_person
         plan = same_person.prepare_verdict(prepared, output)
@@ -1197,6 +1216,8 @@ def advance(root, cursor, task, result):
             send_direct(root, row["id"])  # only a send=now reply to a partner/close person; 10-minute Undo
     elif operation == "tag":
         cursor["tagged"] = cursor.get("tagged", 0) + result.get("tagged", 0)
+    elif operation == "tag-node":
+        cursor["tag_nodes"] = cursor.get("tag_nodes", 0) + len(result.get("changed", []))
     elif operation == "translate":
         # A page the batch's review refused is set aside for this round like a parked one-page task;
         # the backlog offers it again in the next round.

@@ -3637,6 +3637,8 @@
   .tag-link { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .tag-bar { margin: 0 0 16px; }
   .tag-hit { margin: 0 0 16px; }
+  .tag-written { max-width: 720px; margin: 8px 0 24px; padding-bottom: 16px; border-bottom: var(--hair) solid var(--rule); }
+  .tag-written-open { display: inline-block; margin-top: 8px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .tag-group { margin-top: 24px; }
   .pc-inline > * + *::before { content: "·"; margin-right: 4px; color: var(--grey); }
   /* Sources stay one hover away: a number after every value was the card's noise. */
@@ -5140,14 +5142,29 @@ function tagLinks(r) {
   return slugs.length ? el("span", { class: "tag-links" }, slugs.map(slug => el("a", { class: "tag-link", href: tagHref(slug), text: tagLabel(slug) }))) : null;
 }
 // The tag page: every page carrying it, grouped by kind, each group with its count (#3093 point 2).
+// The tag's written page: knowledge/<slug>.md, or the knowledge entry named for the tag (tag_nodes.node_record).
+function tagWritten(slug) {
+  const names = new Set([slug, tagLabel(slug)].map(name => String(name).toLowerCase()));
+  return (REM.records || []).find(r => r.path === "knowledge/" + slug + ".md")
+    || (REM.records || []).find(r => r.category === "knowledge" && names.has(String(r.title || "").toLowerCase())) || null;
+}
+// Its words without what code adds: the title (the tag page has its own), the Tags line, the member list, the Sources.
+function tagProse(r) {
+  return String(r.text || "").replace(/^# [^\n]*\n/, "").replace(/^- Tags:[^\n]*\n/m, "").split(/\n## (?:Pages|Sources)[ \t]*\n/)[0].trim();
+}
 function tagPage(slug) {
   const main = document.getElementById("main");
   main.textContent = "";
   main.appendChild(el("div", { class: "eyebrow", text: t("Tag") }));
   if (!slug) { main.appendChild(el("h1", { text: t("No such tag") })); return; }
   const pages = tagged(listedRecords().concat(REM.records.filter(r => r.category === "sessions")), slug)
-    .filter((r, i, all) => all.findIndex(x => x.path === r.path) === i);
+    .filter((r, i, all) => all.findIndex(x => x.path === r.path) === i && r.path !== tagWritten(slug)?.path);
   main.appendChild(el("h1", { class: "tag-title", text: tagLabel(slug) }));
+  // The tag page REM wrote from these pages (#3140, `co rem tag`): what the tag is, how its pages connect, when.
+  const written = tagWritten(slug);
+  if (written) main.appendChild(el("article", { class: "tag-written note", "aria-label": t("Tag page") }, [
+    el("div", { html: markdown(tagProse(written), written.path) }),
+    el("a", { class: "tag-written-open", href: href(written), text: t("Open the tag page →") })]));
   main.appendChild(el("p", { class: "lede", text: pages.length ? t(pages.length === 1 ? "1 page carries this tag" : "{n} pages carry this tag", { n: pages.length })
     : t("No page carries this tag yet") }));
   const order = ["people", "orgs", "projects", "sessions", "skills", "decisions", "knowledge", "principles"];
@@ -14349,7 +14366,7 @@ function loadDetails() {
 // One layout over every real link, kept still so the owner learns where things sit; a search
 // or a click turns it into the neighbourhood of one record (art direction, knowledge round 1).
 const GRAPH_UI_ZH = {
-  "Graph": "图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
+  "Knowledge graph": "知识图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
   "Tags": "标签", "Tag": "标签", "1 tag": "1 个标签", "{n} tags": "{n} 个标签",
 
@@ -14360,9 +14377,9 @@ const GRAPH_UI_ZH = {
   "{n} links": "{n} 条连接", "Open page": "打开这一页", "Open knowledge page": "打开知识页",
   "Open person page": "打开人物页", "Open organisation page": "打开组织页", "Open project page": "打开项目页",
   "Depth": "深度", "1 hop": "1 层", "2 hops": "2 层", "Direct links only": "只看直接相连", "{n} more further out": "再远 {n} 条",
-  "{n} more": "其余 {n} 个", "Personal": "个人事项", "Knowledge entry": "知识", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
+  "{n} more": "其余 {n} 个", "Personal": "个人事项", "Person": "人物", "Organisation": "组织", "Project": "项目", "Skill · decision": "技能 · 决定", "Session": "会话", "Zoom in": "放大", "Zoom out": "缩小", "Fit": "适应窗口",
   "Last mentioned": "最近提到", "First mentioned": "首次提到", "Aliases": "别名", "About": "关于",
-  "Local graph": "局部图谱", "Open in graph →": "在图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
+  "In the knowledge graph": "知识图谱（相关部分）", "Tag page": "标签页", "Open the tag page →": "打开标签页 →", "Open in the knowledge graph →": "在知识图谱中打开 →", "{n} directly linked": "{n} 条直接相连",
   "Related knowledge": "相关知识", "{n} shared records": "{n} 条共同记录", "REM is not sure": "REM 还不确定",
   "Linked here": "链接到这里", "Where you stand": "你现在在哪", "Timeline": "时间线", "Open threads": "还没结的线",
   "Maybe related": "可能也相关", "Only the words match; REM did not count these as links.": "只是字面相同，REM 没把它们算成链接。",
@@ -14376,7 +14393,7 @@ const GRAPH_UI_ZH = {
   "{n} records": "{n} 条记录",
   "REM files knowledge from your records on its night run.": "REM 会在夜里那一轮从已有记录里整理知识。",
   "Explore linked records →": "探索相连的记录 →",
-  "Entries": "条目", "Knowledge here": "相关知识", "Not in the graph yet": "图谱里还没有它",
+  "Tag pages": "标签页", "Knowledge here": "相关知识", "Not in the knowledge graph yet": "知识图谱里还没有它",
   "Nothing links here yet": "还没有记录链接到这里", "Decisions": "决定",
   "1 knowledge entry": "1 条知识", "{n} knowledge entries": "{n} 条知识", "1 person": "1 个人", "{n} people": "{n} 个人",
   "1 organisation": "1 个组织", "{n} organisations": "{n} 个组织", "1 project": "1 个项目", "{n} projects": "{n} 个项目",
@@ -14395,7 +14412,7 @@ const GRAPH_COUNT = { knowledge: ["1 knowledge entry", "{n} knowledge entries"],
   projects: ["1 project", "{n} projects"], notes: ["1 skill or decision", "{n} skills and decisions"], sessions: ["1 session", "{n} sessions"],
   tags: ["1 tag", "{n} tags"] };
 function graphCount(k, n) { return graphT(GRAPH_COUNT[k][n === 1 ? 0 : 1], { n }); }
-const GRAPH_ONE = { knowledge: "Knowledge entry", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session", tag: "Tag", tags: "Tag" };
+const GRAPH_ONE = { knowledge: "Tag page", people: "Person", orgs: "Organisation", projects: "Project", notes: "Skill · decision", sessions: "Session", tag: "Tag", tags: "Tag" };
 const GRAPH_TABS = [["all", "All"], ["people", "People and orgs"], ["projects", "Projects"], ["knowledge", "Knowledge"], ["tags", "Tags"]];
 function graphKind(kind) { return kind === "tag" ? "tags" : GRAPH_NAME[kind] ? kind : "notes"; }
 function graphPhone() { return innerWidth < 720; }
@@ -14472,6 +14489,7 @@ function graphRadius(n) {
   const d = GRAPH.adj.get(n.id)?.size || 0;
   if (n.k === "sessions") return 1.8;
   if (n.k === "knowledge") return Math.min(17, 6 + Math.sqrt(d) * 1.25);
+  if (n.k === "tags") return Math.min(18, 5 + Math.sqrt(d) * 1.6);  // a tag grows with the pages carrying it
   return Math.max(3, Math.min(14, 2.6 + Math.sqrt(d) * 1.5));
 }
 // How far a mark's outline reaches from its centre: a diamond and a triangle reach past their radius.
@@ -14558,7 +14576,7 @@ function knowledgeGraph() {
   else topicList();
 }
 function knowledgeHead(mode) {
-  const ways = [["graph", "Graph", "#view=graph"], ["entries", "Entries", "#c=knowledge&view=entries"]];
+  const ways = [["graph", "Knowledge graph", "#view=graph"], ["entries", "Tag pages", "#c=knowledge&view=entries"]];
   return el("div", { class: "knowledge-head" }, [el("h1", { text: label("knowledge") }),
     el("nav", { class: "knowledge-switch theme-switch", "aria-label": label("knowledge") }, ways.map(([key, name, link]) =>
       el("a", { href: link, class: "theme-btn" + (mode === key ? " active" : ""), ...(mode === key ? { "aria-current": "page" } : {}), text: graphT(name) })))]);
@@ -14575,7 +14593,7 @@ function graphView() {
   // they link directly, which is the Knowledge filter; with no entry yet it draws everything.
   graphState.tab = graphPhone() && model.linked.some(n => n.k === "knowledge") ? "knowledge" : "all";
   graphFocusSets();
-  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Graph"), role: "img", tabindex: "0" }),
+  const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Knowledge graph"), role: "img", tabindex: "0" }),
     el("div", { class: "gx-tip", hidden: "" })]), el("div", { class: "gx-foot" }, [graphLegend(model), graphZoom()]), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
   main.appendChild(box);
   if (!model.linked.length) { box.querySelector(".gx-stage").replaceWith(el("p", { class: "gx-empty", text: graphT("Nothing links here yet") })); return; }
@@ -15326,7 +15344,7 @@ function entryReveal(heading) {
 // ---------- a local graph for a record's rail: one hop, kind shapes, labels for the few that matter ----------
 function graphLocal(r) {
   const model = graphModel(), centre = model.byId.get(r.path);
-  if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-local" }, [el("h4", { text: graphT("Local graph") }), el("p", { class: "gx-quiet-line", text: graphT("Not in the graph yet") })]);
+  if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-local" }, [el("h4", { text: graphT("In the knowledge graph") }), el("p", { class: "gx-quiet-line", text: graphT("Not in the knowledge graph yet") })]);
   const ring = [...model.adj.get(r.path)].map(id => model.byId.get(id))
     .sort((a, b) => GRAPH_ORDER.indexOf(a.k) - GRAPH_ORDER.indexOf(b.k) || graphTitle(a).localeCompare(graphTitle(b)));
   const W = 236, H = 200, cx = W / 2, cy = H / 2, labelled = new Set([...ring].sort((a, b) => graphDegree(b) - graphDegree(a)).slice(0, 5).map(n => n.id));
@@ -15339,10 +15357,10 @@ function graphLocal(r) {
     const text = labelled.has(n.id) && !n.private ? graphLocalLabel(graphTitle(n), x, W, Math.cos(angle) >= 0) : "";
     if (text) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(text)]));
   });
-  const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("Local graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
+  const svg = svgEl("svg", { class: "gx-local-svg", width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": graphT("In the knowledge graph") }, [svgEl("g", { class: "gx-local-lines" }, lines), ...marks,
     graphLocalMark(centre, cx, cy, 7, true), svgEl("text", { x: cx, y: cy + 21, "text-anchor": "middle", class: "centre" }, [document.createTextNode(graphShort(graphTitle(centre), 16))]), ...labels]);
-  return el("section", { class: "gx-local" }, [el("h4", { text: graphT("Local graph") }), svg,
-    el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }), el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })])]);
+  return el("section", { class: "gx-local" }, [el("h4", { text: graphT("In the knowledge graph") }), svg,
+    el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }), el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in the knowledge graph →") })])]);
 }
 // A label gets the room between its 7px offset and the card's edge (about 6.5 per letter), not a fixed 18;
 // under three letters it is only "…", so none.
@@ -15368,7 +15386,7 @@ function graphRailAttach(main, r) {
   if (r.category === "projects") {
     const body = deep?.querySelector(".body");
     if (body) body.append(block);
-    else main.append(el("details", {}, [el("summary", { text: graphT("Local graph") }), block]));
+    else main.append(el("details", {}, [el("summary", { text: graphT("In the knowledge graph") }), block]));
   } else if (rail) rail.append(block);
   else main.insertBefore(block, deep);
   block.classList.toggle("gx-inline", !rail);
@@ -15866,7 +15884,7 @@ function todayActions() {
 function paletteItems() {
   const go = link => () => { location.hash = link; };
   const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"]]
-    .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]), [[graphT("Graph"), "#view=graph"]])
+    .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]), [[graphT("Knowledge graph"), "#view=graph"]])
     .map(([title, link]) => ({ id: "page:" + link, label: t("Open {page}", { page: title }), hint: t("Page"), run: go(link) }));
   const records = listedRecords().filter(r => ["people", "orgs", "projects", "skills", "decisions", "principles"].includes(r.category))
     .map(r => ({ id: "r:" + r.path, label: r.title, hint: singular(r.category), run: go(href(r)) }));

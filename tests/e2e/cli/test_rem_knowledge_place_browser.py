@@ -101,15 +101,15 @@ def test_the_rails_knowledge_opens_on_the_graph_with_entries_second(browser, bui
     page.locator(".gx-map canvas").wait_for()
     assert page.locator(".gx-topics").count() == 0
     switch = page.locator(".knowledge-switch")
-    assert switch.locator("a").all_inner_texts() == ["Graph", "Entries"]
-    assert switch.locator('a[aria-current="page"]').all_inner_texts() == ["Graph"]
+    assert switch.locator("a").all_inner_texts() == ["Knowledge graph", "Tag pages"]
+    assert switch.locator('a[aria-current="page"]').all_inner_texts() == ["Knowledge graph"]
     assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
     assert page.title() == "Knowledge · co rem"
     # Entries is one tap away, and its address names it: reloading that address stays on the entries.
-    switch.get_by_role("link", name="Entries").click()
+    switch.get_by_role("link", name="Tag pages").click()
     page.locator(".gx-topics .gx-rows li").first.wait_for()
     assert page.evaluate("location.hash") == "#c=knowledge&view=entries"
-    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Entries"]
+    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Tag pages"]
     assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
     assert page.title() == "Knowledge · co rem"
     page.reload()
@@ -136,8 +136,8 @@ def test_with_nothing_linked_knowledge_shows_the_entries(browser, tmp_path, widt
     page.locator(".gx-topics .gx-rows li").first.wait_for()
     assert page.locator(".gx-map").count() == 0
     assert page.locator(".gx-rows li b").all_inner_texts() == ["Tide tables"]
-    assert page.locator(".knowledge-switch a").all_inner_texts() == ["Graph", "Entries"]
-    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Entries"]
+    assert page.locator(".knowledge-switch a").all_inner_texts() == ["Knowledge graph", "Tag pages"]
+    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Tag pages"]
     go(page, "#view=graph")
     page.locator(".gx-topics .gx-rows li").first.wait_for()
     assert not page.errors, page.errors
@@ -161,14 +161,14 @@ def test_knowledge_holds_its_entries_and_the_graph_that_all_records_drew(browser
     # A sparse wiki offers the existing linked records without inventing more topics.
     assert page.locator('.gx-topics > .gx-quiet-line a[href="#view=graph"]').inner_text() == "Explore linked records →"
     switch = page.locator(".knowledge-switch")
-    assert switch.locator("a").all_inner_texts() == ["Graph", "Entries"]
-    assert switch.locator('a[aria-current="page"]').inner_text() == "Entries"
-    switch.get_by_role("link", name="Graph").click()
+    assert switch.locator("a").all_inner_texts() == ["Knowledge graph", "Tag pages"]
+    assert switch.locator('a[aria-current="page"]').inner_text() == "Tag pages"
+    switch.get_by_role("link", name="Knowledge graph").click()
     page.locator(".gx-map canvas").wait_for()
     assert page.evaluate("location.hash") == "#view=graph"
     assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
     assert page.title() == "Knowledge · co rem"
-    assert page.locator('.knowledge-switch a[aria-current="page"]').inner_text() == "Graph"
+    assert page.locator('.knowledge-switch a[aria-current="page"]').inner_text() == "Knowledge graph"
     # The old All records address is a bookmark someone kept: it opens the same graph, under Knowledge.
     go(page, "#c=all")
     page.locator(".gx-map canvas").wait_for()

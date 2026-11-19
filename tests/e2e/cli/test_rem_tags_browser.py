@@ -158,3 +158,34 @@ def test_the_open_items_filter_by_a_page_tag_and_close_all_of_them(reader):
     _shot(page, "open-filtered", 1440)
     done.click()
     page.wait_for_function("() => document.querySelectorAll('#main ul.threads > li').length === 0 || document.querySelector('.done-notice, [role=status]')")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_tag_page_shows_what_rem_wrote_above_the_pages_that_carry_it(reader, width):
+    """#3140 (`co rem tag`): the tag's written page (knowledge/<tag>.md) leads its 标签页, without its member list or
+    Sources, and is not listed among its own members."""
+    open_page, _ = reader
+    page = open_page("q=tag%3Apilot", width)
+    page.evaluate("""() => {
+      REM.records.push({ path: 'knowledge/pilot.md', title: 'Fernhill pilot', category: 'knowledge', written: true, tags: ['pilot'],
+        text: '# Fernhill pilot\\n- Tags: pilot\\n\\nThe pilot is Fernhill\\'s three-seat trial of the notebook [1].\\n\\n## Timeline\\n- 2026-08-22: the pilot was agreed [1].\\n\\n## Pages\\n- [Mara](../people/mara-ostrowski.md)\\n\\n## Sources\\n- [1] gmail:fixture:1\\n' });
+      KNOWN.clear(); render();
+    }""", isolated_context=False)
+    written = page.locator("#main .tag-written")
+    written.wait_for()
+    text = written.inner_text()
+    assert "three-seat trial" in text and "2026-08-22" in text or "8月22日" in text
+    assert "gmail:fixture:1" not in text and "Pages" not in text  # code's parts stay off the face
+    assert written.get_by_role("link", name="打开标签页 →").get_attribute("href").endswith("knowledge%2Fpilot.md")
+    box, groups = written.bounding_box(), page.locator("#main .tag-group").first.bounding_box()
+    assert box["y"] < groups["y"]  # what it is, then its pages
+    assert "knowledge/pilot.md" not in [a.get_attribute("href") for a in page.locator("#main .tag-group a").all()]
+    _shot(page, "written-page", width)
+
+
+def test_the_whole_network_is_called_the_knowledge_graph(reader):
+    open_page, _ = reader
+    page = open_page("view=graph")
+    assert "知识图谱" in page.locator(".knowledge-switch").inner_text()
+    page = open_page("view=graph", language="en")
+    assert "Knowledge graph" in page.locator(".knowledge-switch").inner_text()

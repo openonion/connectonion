@@ -143,6 +143,12 @@ def status(root, config, logs, *, budget=None):
         if name == 'Tag' and count:
             rows[-1]['round_limit'] = config['limits']['tags_per_round']
             rows[-1]['text'] += f"; a round tags up to {rows[-1]['round_limit']}"
+        if name == 'Tag':
+            # The stage's second step (#3140): each tag's page, written from the pages carrying it.
+            from . import tag_nodes
+            rows[-1]['tag_pages_waiting'] = len(tag_nodes.candidates(root))
+            if rows[-1]['tag_pages_waiting']:
+                rows[-1]['text'] += f"; {rows[-1]['tag_pages_waiting']} tag pages to write"
         if name == 'Abstract':
             book = Notebook(root)
             counts = {category: len(book.list(category)) for category in ('decisions', 'knowledge', 'principles')}

@@ -6,6 +6,26 @@ So a stage of its own, `co rem tag`, reads pages and writes their tags from one
 vocabulary; open items inherit their record's tags; the graph gets a node per
 tag; search resolves `tag:9900` through aliases.
 
+Names: 知识图谱 / knowledge graph for the whole, 标签 / tag for a point, 标签页 /
+tag page for its page. See [rem-naming.md](rem-naming.md) for the principles
+every REM name follows.
+
+## Tag pages: the stage's second step (#3140)
+
+`co rem tag` tags the pages that have no tag, then writes each changed tag's
+page; `co rem tag NAME` writes one; `--dry-run` counts. A tag carried by two
+or more pages gets `knowledge/<tag>.md` (or the knowledge entry already named
+for the tag, which becomes its tag page): written by the level-1 model
+(`STAGE_LEVELS["tag-node"]`) from the head of each member page and its lines
+naming the tag (`tag_nodes.prepare`, at most 40 members, 1,200 characters
+each). Every line cites a number from one source table, so a line traces to
+the member's own source, never only to a page. Code owns the Tags line, the
+`## Pages` member list and the Sources (`tag_nodes._page`). Review refuses a
+reply with no title, no cited line, or a number it was not given. A cited line
+the page had is kept (#3105). `.state/tag-nodes.json` holds each tag's member
+hash, so only tags whose pages changed are written again. Each catchup round
+writes up to `limits.tag_nodes_per_round` (6) as part of the one tag stage.
+
 ## What exists where
 
 | Piece | Where | Status |
