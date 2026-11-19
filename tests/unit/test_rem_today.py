@@ -293,7 +293,7 @@ def _today_card_js(body):
     """A Today card built by the reader's own functions, hand-off strip included; only the data and the DOM are stubs."""
     page = TEMPLATE.read_text()
     steps_order = re.search(r'const STEPS = .*?;', page).group(0)
-    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
+    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();\n'
                           + reader_functions(*TODAY_CARD, *[name for name in HAND if name != 'snapshotWhy']) + r'''
       const REM = {live: true, owner: 'people/avery.md', as_of: '2026-11-08', today_queue: []}, location = {protocol: 'http:'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),

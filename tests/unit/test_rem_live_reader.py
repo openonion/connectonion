@@ -680,7 +680,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in HAND) + '\nfunction hostLost() {}\nfunction hostFound() {}'  # #3139's bar, not under test
-    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n' + functions + r'''
+    sent = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();\n' + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
       const doneKey = entry => entry.key, location = {protocol: 'http:'}, setTimeout = () => {}, requests = [];
@@ -691,7 +691,7 @@ def test_the_hand_to_claude_button_reaches_dispatch_with_claude(host, monkeypatc
       line.children.find(child => child['data-agent'] === 'claude').onclick().then(() =>
         console.log(JSON.stringify({request: requests[0], shown: line.children.map(child => child.text).filter(text => text && text !== '·')})));
     ''')
-    assert sent['request']['url'] == '/rem/task' and sent['shown'] == ['Claude is working', 'Stop', 'Take back from Claude']
+    assert sent['request']['url'] == '/rem/task' and sent['shown'] == ['Claude is working · 0:00', 'Stop', 'Take back from Claude']  # elapsed clock (#3147)
     started = []
     monkeypatch.setattr(tasks, 'start', lambda root, task_id, agent=None: started.append(agent) or
                         {'id': task_id, 'agent': agent, 'result': 'starting'})

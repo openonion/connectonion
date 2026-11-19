@@ -38,7 +38,7 @@ def test_row_talk_survives_reload_redraw_and_next_turn(reload_at):
         closest() { return null; }
         dispatchEvent() {}
       }
-      const body = new Node('body'), editedFields = new WeakSet(), OPEN_TALKS = new Map(), HAND_FAILED = new Map();
+      const body = new Node('body'), editedFields = new WeakSet(), OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();
       const document = {createElement: tag => new Node(tag), createTextNode: text => Object.assign(new Node('#text'), {textContent: text}),
         querySelectorAll: selector => body.querySelectorAll(selector), activeElement: null};
       const AGENT_NAMES = {codex: 'Codex', claude: 'Claude'}, ACTIVE_TASK = ['queued', 'starting', 'running'];
