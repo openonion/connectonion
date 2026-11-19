@@ -17,6 +17,14 @@ WORDS = 'Use Markdown rather than a database for inspectability.'
 DECISION = f'# Where to store pages\n\n“{WORDS}” [1]\n\n## Why\nInspectability. [1]\n\n## Sources\n- [1] {SOURCE}\n'
 
 
+@pytest.fixture(autouse=True)
+def _no_tag_turns(monkeypatch):
+    """These tests follow Abstract and the night's shares; since #3093 the decisions they write are tag candidates,
+    and the round's tag turn (tested in test_rem_tag_stage.py) would sit between their slices."""
+    from connectonion.rem import tag_stage
+    monkeypatch.setattr(tag_stage, 'candidates', lambda root, *a, **k: [])
+
+
 @pytest.fixture
 def book(tmp_path):
     prepare(tmp_path)

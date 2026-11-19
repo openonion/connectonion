@@ -19,6 +19,14 @@ from connectonion.rem.files import Notebook, read_json, state_path, write_json
 WAITING = 'investigation-waiting.json'
 
 
+@pytest.fixture(autouse=True)
+def _no_tag_turns(monkeypatch):
+    """The night's shares are walked here; since #3093 every page kind is a tag candidate, and the round's tag turn
+    (tested in test_rem_tag_stage.py) would sit among the investigations."""
+    from connectonion.rem import tag_stage
+    monkeypatch.setattr(tag_stage, 'candidates', lambda root, *a, **k: [])
+
+
 @pytest.fixture
 def notebook(tmp_path, monkeypatch, rem_clock):
     prepare(tmp_path)
