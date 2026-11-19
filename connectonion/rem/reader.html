@@ -4604,7 +4604,7 @@ const UI = {
     "Source for this line": "这条陈述的来源",
     "Original excerpts are hidden until you show labelled passages.": "原始摘录已隐藏，可选择显示已标记段落。",
     "The original isn't in this snapshot.": "此快照未包含原始内容。",
-    "Getting the original…": "正在取原文…", "REM kept this link, not a copy of the page.": "REM 只记下了这个链接，没有存网页副本。",
+    "Getting the original…": "正在取原文…", "Repository file": "代码仓库文件", "REM kept this link, not a copy of the page.": "REM 只记下了这个链接，没有存网页副本。",
     "REM did not keep a copy of this source.": "REM 没有存下这个来源的原文。", "Open the web page": "打开网页",
     "Full source ID": "完整来源 ID",
     "Find in archived source": "在存档来源中查找",
@@ -6857,7 +6857,11 @@ function sourceSummary(r, src) {
     const session = sessionForSource(id);
     title = session?.session_title || session?.title || note || t(scheme === "codex" ? "Codex session" : "Claude Code session");
     day = day || session?.session_date || "";
-  } else if (scheme === "file" || scheme === "project-source") title = fileName(id.slice(scheme.length + 1));
+  } else if (scheme === "project-source") {
+    // Named by the file it captured (context, or the snapshot's small label list when the excerpt had no room), never its hash.
+    const origin = context?.origin || REM.source_labels?.[id]?.origin || "";
+    title = origin ? fileName(origin.replace(/^(git|file):/, "").replace(/:[0-9a-f]{7,}$/, "").replace(/@[0-9a-f]{64}$/, "")) : t("Repository file");
+  } else if (scheme === "file") title = fileName(id.slice(scheme.length + 1).replace(/@[0-9a-f]{64}$/, ""));
   else if (/^https?$/.test(scheme)) title = id.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
   else if (scheme === "investigation") title = t("REM investigation") + (note ? " — " + note : "");
   else title = note || sourceLabel(id);

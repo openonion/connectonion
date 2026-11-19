@@ -32,3 +32,14 @@ def test_an_unknown_or_malformed_source_is_not_found_and_never_reads_a_file(host
     for value in ('project-source:' + 'a' * 64, '../../etc/passwd', 'file:/etc/passwd', ''):
         assert call(host.routes, 'GET', '/rem/source', cookie=cookie, query=urlencode({'id': value}).encode())[0] == 404, value
     assert call(host.routes, 'GET', '/rem/source', cookie=cookie, query=urlencode({'id': 'x'}).encode(), client='192.168.1.2')[0] == 404
+
+
+def test_a_project_source_left_out_of_the_snapshot_still_has_its_file_name(tmp_path):
+    from connectonion.rem.config import prepare
+    from connectonion.rem.reader import source_labels
+    root = tmp_path / 'rem'
+    prepare(root)
+    source = _retained(root, 'git:/repo/docs/README.md:0ec88afcc529cf76d', 'Harbour reads mail.')
+    labels = source_labels(root, [{'text': f'## Sources\n- [1] {source} — 2026-10-26\n'}], {})
+    assert labels == {source: {'origin': 'git:/repo/docs/README.md:0ec88afcc529cf76d'}}
+    assert source_labels(root, [{'text': f'- [1] {source}\n'}], {source: {'excerpt': 'x'}}) == {}  # already in the snapshot

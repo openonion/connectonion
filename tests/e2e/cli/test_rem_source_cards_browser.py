@@ -55,7 +55,9 @@ def test_a_source_the_snapshot_left_out_is_fetched_when_its_card_opens(project_p
     page, asked = project_page
     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
     page.evaluate(f"() => {{ REM.live = true; delete REM.source_context['{REPO}']; }}", isolated_context=False)
-    page.locator(".deep-sources li#src-1 .src-title").click()
+    title = page.locator(".deep-sources li#src-1 .src-title")
+    assert not __import__("re").match(r"^[0-9a-f]{16,}", title.inner_text()), title.inner_text()  # never a hash as a name
+    title.click()
     panel = page.locator("#evidence-panel")
     panel.get_by_text("Harbour reads mail and writes the notebook.").wait_for(timeout=5000)
     assert len(asked) == 1 and "isn't in this snapshot" not in panel.inner_text()
