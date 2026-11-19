@@ -200,12 +200,13 @@ def test_hand_to_codex_moves_on_at_once_and_the_work_shows_in_one_place(today):
     strip = page.locator("#work-strip")
     strip.wait_for()
     assert _focal(page) == order[2], "the next card is in front while the Host has not answered yet"
-    assert "Handing 1 thing to Codex" in strip.inner_text()
+    assert "Codex is working on 1 thing" in strip.inner_text()
     page.evaluate("releaseTask()", isolated_context=False)
     page.wait_for_function("() => document.getElementById('work-strip')?.textContent.includes('Codex is working on 1 thing')")
-    assert "started 2 min ago" in strip.inner_text()
+    assert "2:00" in strip.inner_text()
     assert _focal(page) == order[2] and page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
-    strip.locator("summary").click()
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
     row = strip.locator(".work-row")
     assert row.count() == 1 and "Q3 receipts" in row.inner_text()
     row.get_by_role("button", name="Take back from Codex").click()
@@ -507,7 +508,8 @@ def test_a_hand_off_shows_what_the_agent_is_doing_and_can_be_watched_then_contin
     page.locator(".qcard.focal [data-agent=codex]").first.click()
     strip = page.locator("#work-strip")
     page.wait_for_function("() => document.getElementById('work-strip')?.textContent.includes('Codex is working on 1 thing')")
-    strip.locator("summary").click()
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
     row = strip.locator(".work-row")
     row.get_by_text("Running the requested tests").wait_for()  # the step, in words, while it runs
     shots = os.environ.get("CO_REM_PR_SHOTS")
@@ -519,7 +521,7 @@ def test_a_hand_off_shows_what_the_agent_is_doing_and_can_be_watched_then_contin
     state["done"] = True
     page.wait_for_function("() => document.getElementById('work-strip')?.textContent.includes('Codex finished')", timeout=15000)
     strip = page.locator("#work-strip")
-    if strip.locator("summary").get_attribute("aria-expanded") != "true" and not strip.evaluate("d => d.open"):
+    if not strip.evaluate("node => node.open"):
         strip.locator("summary").click()
     strip.locator(".work-row").get_by_role("button", name="Continue in Codex").click()
     page.wait_for_function("() => true")

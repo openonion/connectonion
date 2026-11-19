@@ -91,7 +91,8 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     assert 'do not send anything to anyone; write the result and stop' in prompt
     assert saved['deliverable'] in prompt
     assert saved['session_id'] == '01a1bda7-ca66-7640-88ca-79eb9b66e649'
-    assert saved.get('prepared_reply', '').startswith('REM 已经做完：') == (expected == 'completed')
+    assert bool(saved.get('summary')) == (expected == 'completed')
+    assert not saved.get('prepared_reply')
     assert tasks.start(root, receipt['id'])['finished_at'] == saved['finished_at']
 
 
@@ -214,7 +215,7 @@ def test_night_dispatches_when_on_and_records_rem_as_the_one_who_started(task_no
     assert record['by'] == 'rem' and record['kind'] == 'task' and record['status'] == 'dispatched'
     assert record['receipt_id'] == saved['id'] and record['keys'] == night.listing(task_notebook)[0]['keys']
     task = reader.snapshot(task_notebook, local=True, today=True)['today_queue'][0]['outcome']['task']
-    assert task['by'] == 'rem' and task['prepared_reply'].startswith('REM 已经做完：')
+    assert task['by'] == 'rem' and bool(task['summary'])
     # The next round finds the receipt: no second session, no second record.
     assert tasks.auto_dispatch(task_notebook, config) == []
     assert tasks.status(task_notebook, saved['id'])['finished_at'] == saved['finished_at']
@@ -421,7 +422,7 @@ def test_reader_uses_receipt_and_does_not_trust_last_message(task_notebook, fake
     data = reader.snapshot(task_notebook, local=True, today=True)
     task = data['today_queue'][0]['outcome']['task']
     assert task['result'] == 'completed' and Path(task['deliverable']).is_file()
-    assert task['prepared_reply'].startswith('REM 已经做完：')
+    assert bool(task['summary'])
     saved = read_json(Path(receipt['receipt']), {})
     write_json(Path(receipt['receipt']), {**saved, 'result': 'failed', 'exit_code': 1})
     task = reader.snapshot(task_notebook, local=True, today=True)['today_queue'][0]['outcome']['task']
@@ -557,7 +558,7 @@ def test_claude_runs_a_task_like_codex_with_full_access_and_the_same_receipt(tas
     assert (folder / 'cwd.txt').read_text() == str(folder / 'work') == saved['cwd']
     assert 'Done means:' in argv[-1] and 'Never push' in argv[-1]
     assert saved['session_id'] == 'bf1b715f-3272-4573-b78d-359571db650a'
-    assert saved['prepared_reply'] == f"REM 已经做完：Added to the end of README.md: · 附：{saved['deliverable']}"
+    assert saved['summary'] and not saved['reply'] and not saved.get('prepared_reply')
 
 
 def test_a_claude_task_loads_the_owners_own_claude_setup(task_notebook, fake_claude):

@@ -321,7 +321,8 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     strip = page.locator("#work-strip")
     strip.get_by_text("Claude 正在做 1 件事").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
-    strip.locator("summary").click()
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
     assert strip.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]
     other = page.locator(".deal").evaluate_all(FACES)[1]

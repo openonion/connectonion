@@ -3425,13 +3425,13 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
 HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
-        'handButtons', 'handOver', 'handRefusal', 'handFailedNote', 'putOffNote', 'putOffOver', 'clockNow', 'todayStrip', 'moreButton', 'handState', 'taskStep', 'terminalButtons', 'followTask', 'seeResult', 'dotted', 'talkMenu', 'snapshotWhy', 'stripDone']
+        'handButtons', 'handOver', 'handRefusal', 'handFailedNote', 'putOffNote', 'putOffOver', 'clockNow', 'todayStrip', 'moreButton', 'handState', 'taskStep', 'terminalButtons', 'followTask', 'seeResult', 'taskPrimary', 'taskStatus', 'taskStatusNode', 'taskElapsed', 'taskFailure', 'confirmHandoff', 'refreshHandoff', 'dotted', 'talkMenu', 'snapshotWhy', 'stripDone']
 
 
 def _hand_js(body):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in HAND)
-    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
+    return _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();\n'
                           + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -3456,15 +3456,16 @@ def test_a_handed_row_says_where_the_work_is_with_stop_take_back_and_see_result(
       shown.runLine = line(handOff({key: 'run'}));
       console.log(JSON.stringify(shown));
     ''')
-    assert result['run'] == ['Codex is working', 'REM started this', 'Stop', 'Take back from Codex']
+    assert result['run'] == ['Codex is working · 0:00', 'REM started this', 'Stop', 'Take back from Codex']
+    # The strip's own closes (stripDone, stubbed here) carry Mark done after a run with no reply to draft (#3147).
     assert result['done'] == ['Claude finished', 'See result', 'Take back from Claude']
-    assert result['fail'] == ['Codex stopped before finishing', 'codex CLI not found', 'See result', 'Take back from Codex']
+    assert result['fail'] == ['Codex 这次未能完成，可以重试', 'Retry', 'Take back from Codex']
     assert result['open'] == ['Hand to Codex', 'Hand to Claude']
-    assert result['snapshot'] == ['Codex is working', 'REM started this']
+    assert result['snapshot'] == ['Codex is working · 0:00', 'REM started this']
     # One line, a dot between each action. The conversation is in the item's second level (Show more, #3072), which
     # only a row of the notebook has: these stand-in rows carry no page, so they end at the hand-offs.
     assert result['line'] == ['Hand to Codex', '·', 'Hand to Claude']
-    assert result['runLine'] == ['Codex is working', '·', 'REM started this', '·', 'Stop', '·', 'Take back from Codex']
+    assert result['runLine'] == ['Codex is working · 0:00', '·', 'REM started this', '·', 'Stop', '·', 'Take back from Codex']
 
 
 def test_take_back_puts_the_hand_buttons_back_on_the_row_in_place():
@@ -3485,6 +3486,7 @@ def test_a_queued_task_card_says_why_it_waits():
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         appendChild(child) { this.children.push(child); }, append(...items) { this.children.push(...items); }});
       const location = {protocol: 'http:'}, doneKey = entry => entry.key, copyToClipboard = () => {};
+      const PENDING_HANDOFFS = new Map(), obligationKey = entry => entry.key;
       const task = (wait, reason) => ({id: 'a', result: 'waiting', wait, reason});
       const REM = {live: true, today_queue: [
         {key: 'later', outcome: {kind: 'task', task: task('later', 'Another task is running; this one starts on a later tick tonight.')}},
@@ -4520,7 +4522,7 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
     """#2909: the private project's own page is the key; the same /rem/task run as 交给 Codex, followed in place."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in INVESTIGATE)
-    result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
+    result = _run_reader_js('const AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();\n'
                             + functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
         append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
@@ -4543,7 +4545,7 @@ def test_ask_codex_to_look_requests_a_private_project_investigation_in_place():
     ''')
     assert result['before'] == ['Ask Codex to look', 'Ask Claude to look']
     assert result['requests'] == [{'url': '/rem/task', 'body': {'action': 'run', 'key': 'projects/private-notes-ab12.md', 'agent': 'codex'}}]
-    assert result['after'] == ['Codex is working', 'Stop', 'Take back from Codex'] and result['kept'] == 'starting'
+    assert result['after'] == ['Codex is working · 0:00', 'Stop', 'Take back from Codex'] and result['kept'] == 'starting'
     assert result['reopened'] == ['Codex finished', 'See result', 'Take back from Codex']
     # A snapshot cannot start it: one sentence, never a command.
     assert result['snapshot']['class'] == 'snapshot-line' and 'co rem' not in json.dumps(result['snapshot'])
