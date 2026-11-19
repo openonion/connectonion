@@ -8,6 +8,14 @@ import os
 
 import pytest
 
+
+# #3104: the full memory opens by itself, so "folded until clicked" became "inside the full memory, below its
+# summary line": never on the first screen beside the lead, but one scroll away rather than one click.
+IN_FULL_MEMORY = """nodes => nodes.every(n => {
+  const d = n.closest('details.deep-note');
+  return !!d && d.open && n.getBoundingClientRect().top >= d.querySelector(':scope > summary').getBoundingClientRect().bottom - 1;
+})"""
+
 pytestmark = pytest.mark.skipif(
     os.environ.get("CO_REM_BROWSER_TEST") != "1",
     reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome",
@@ -102,8 +110,8 @@ def test_person_and_project_pages_carry_a_local_graph_and_their_topics(page):
     assert block.locator(".gx-local-svg a:not(.centre)").count() == 2
     assert block.locator(".gx-topic-line a").inner_text() == "Heat storage"
     page.goto(uri + "#r=projects%2Fcove.md")
-    assert not page.locator(".gx-attach").is_visible()
-    page.locator("details.deep-note > summary").click()
+    assert page.locator(".gx-attach").evaluate_all(IN_FULL_MEMORY)
+    page.locator('details.deep-note').evaluate('d => d.open = true')
     assert page.locator(".gx-attach").is_visible()
     assert page.locator(".gx-attach .gx-topic-line a").inner_text() == "Heat storage"
 
