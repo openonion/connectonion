@@ -1356,7 +1356,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
     assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
     if theirs:
-        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} waiting on others →'
+        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} you are waiting on others for →'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if theirs or mine:
         page.locator('.others .waiting-more').click()
@@ -1614,6 +1614,46 @@ def test_an_exchange_from_another_year_says_its_year(reader, language, days):
     assert page.locator('.tl-e .d').all_inner_texts() == days
     assert page.locator('.tl-e .d').evaluate_all('cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth)')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+# rc36 hunt: on a person page the Exchanges column broke "10月29日" across two lines ("10月29 / 日").
+@pytest.mark.parametrize('width', [1440, 375])
+@pytest.mark.parametrize('language', ['zh', 'en'])
+def test_an_exchange_date_never_breaks_across_lines(reader, width, language):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""language => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = ['2026-10-29', '2026-12-24', '2026-11-30', '2025-10-28'].map(day => '- ' + day + ': Confirmed the venue plan. [1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); setInterfaceLanguage(language);
+    }""", language, isolated_context=False)
+    page.locator('.tl-e .d').first.wait_for()
+    lines = page.locator('.tl-e .d').evaluate_all("""cells => cells.map(cell => { const range = document.createRange();
+      range.selectNodeContents(cell.firstChild); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; })""")
+    assert lines and all(n == 1 for n in lines), lines
+    assert page.locator('.tl-e .d').evaluate_all('cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth + 1)')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.skipif(not os.environ.get('REM_PR_SHOTS'), reason='screenshots for a PR only')
+@pytest.mark.parametrize('width', [1440, 390])
+def test_pr_shots_exchange_dates(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = ['2026-12-24', '2026-11-30', '2026-10-29', '2025-10-28'].map(day => '- ' + day + ': Confirmed the venue plan. [1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); setInterfaceLanguage('zh');
+    }""", isolated_context=False)
+    page.locator('#history-timeline').scroll_into_view_if_needed()
+    page.locator('#history-timeline').screenshot(path=os.path.join(os.environ['REM_PR_SHOTS'], f'exchange-dates-zh-{width}.png'))
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
 
 
 def test_reviewed_role_and_unknown_company_override_older_index(reader):

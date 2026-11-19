@@ -837,3 +837,56 @@ def test_pr_shots_rc35_leftovers(agenda, width):
         page.wait_for_timeout(300)
         page.screenshot(path=os.path.join(shots, "agenda-phone-390.png"))
     page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
+
+
+ONGOING = "Harbour trade fair"
+
+
+def _with_ongoing(page):
+    """A three-day fair that began two days before the frozen now and ends two days after it."""
+    page.evaluate("""title => { const now = Date.parse(REM.as_of), day = 864e5;
+      REM.calendar.events.push({ title, start: new Date(now - 2 * day).toISOString(), end: new Date(now + 2 * day).toISOString(),
+        calendar: 'google', calendar_name: 'Fixture' }); overview(); }""", ONGOING, isolated_context=False)
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_an_event_already_under_way_is_said_as_now_not_listed_as_next(agenda, width):
+    """rc36 hunt: Today's 接下来 put a multi-day event that had already started first, labelled with its past start
+    ("周日 09:00"), ahead of a 10:00 event that day. An event under way is a line of its own, "Now · until Sun", above
+    the list; the list is what starts next, in order from now."""
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    _with_ongoing(page)
+    if width > 640:
+        now = page.locator(".tnext .tnext-now li")
+        assert now.count() == 1 and ONGOING in now.inner_text()
+        assert "Now · until " in now.inner_text()
+        rows = page.locator(".tnext .tnext-list:not(.tnext-now) .tnext-title").all_inner_texts()
+        assert ONGOING not in " ".join(rows), rows
+        starts = page.evaluate("""() => nextEvents().map(e => Date.parse(e.start))""", isolated_context=False)
+        frozen = page.evaluate("() => Date.parse(REM.as_of)", isolated_context=False)
+        assert starts == sorted(starts) and all(start > frozen for start in starts)
+        assert now.bounding_box()["y"] < page.locator(".tnext .tnext-list:not(.tnext-now)").bounding_box()["y"]
+    else:
+        line = page.locator(".tnext-line")
+        assert ONGOING not in line.inner_text()   # the phone's one line is what starts next
+    page.evaluate("() => { setInterfaceLanguage('zh'); overview(); }", isolated_context=False)
+    if width > 640:
+        assert "进行中 · 至 " in page.locator(".tnext .tnext-now li").inner_text()
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
+    assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.skipif(not os.environ.get("REM_PR_SHOTS"), reason="screenshots for a PR only")
+@pytest.mark.parametrize("width", [1440, 390])
+def test_pr_shots_today_honest(agenda, width):
+    """An event under way, a night runner that hit one code error six times, and the three counts, in Chinese."""
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("""() => { setInterfaceLanguage('zh'); REM.status.schedule_failure = {code: 'blocked', failures: 6, code_error: 6, empty: 0,
+      since: REM.as_of, evidence: "'str' object has no attribute 'values'"}; }""", isolated_context=False)
+    _with_ongoing(page)
+    page.evaluate("() => scrollTo(0, 0)", isolated_context=False)
+    page.wait_for_timeout(200)
+    page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"today-honest-zh-{width}.png"))
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)

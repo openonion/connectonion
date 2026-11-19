@@ -45,16 +45,16 @@ def test_the_rails_numbers_are_worded_controls(today, size):
     page.evaluate(OUTCOMES, False, isolated_context=False)
     others = page.locator("#today-others")
     batch = others.locator("#approve-all")
-    assert batch.inner_text() == "Approve all 2"          # the two that can go; the one with a gap waits
+    assert batch.inner_text() == "Approve the 2 REM prepared"          # the two that can go; the one with a gap waits
     assert batch.evaluate("node => node.tagName") == "BUTTON"
     batch.click()
     assert page.locator("#approval-sheet").is_visible()
-    assert page.locator("#approval-title").inner_text() == "Approve all 2"   # the sheet says the button's number
+    assert page.locator("#approval-title").inner_text() == "Approve the 2 REM prepared"   # the sheet says the button's number
     page.keyboard.press("Escape")
     waiting = others.locator("a.waiting-more")
     assert waiting.get_attribute("href") == "#view=open"
     theirs = page.evaluate("threadCounts().theirs", isolated_context=False)
-    assert waiting.inner_text() == f"See the {theirs} waiting on others →"
+    assert waiting.inner_text() == f"See the {theirs} you are waiting on others for →"
     # Nothing that can go at once: no button at all, not a greyed one and not a zero.
     page.evaluate(OUTCOMES, True, isolated_context=False)
     assert page.locator("#approve-all").count() == 0
