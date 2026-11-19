@@ -287,11 +287,14 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
     assert page.locator('details.deep-note').get_attribute('open') is not None
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
-    page.locator(".settings-open").click()
-    page.get_by_role("switch", name="Hide labelled passages").click()
-    assert not private.is_visible()
-    page.get_by_role("switch", name="Show labelled passages").click()
-    assert private.is_visible()
+    # #2840: the top bar's privacy control, not a settings switch. Public only takes the passage out of the page;
+    # Show all brings it back from the notebook.
+    page.locator("#privacy-level").click()
+    page.get_by_role("menuitemradio", name="Public only").click()
+    assert page.locator(".note .private").count() == 0 and "family plan" not in page.locator(".note").inner_html()
+    page.locator("#privacy-level").click()
+    page.get_by_role("menuitemradio", name="Show all").click()
+    assert page.locator(".note .private").count() == 1 and page.locator(".note .private").is_visible()
 
 
 @pytest.mark.parametrize("width,height", [(375, 812), (768, 1024), (1440, 1000)])
