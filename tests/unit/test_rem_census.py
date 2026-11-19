@@ -304,3 +304,30 @@ def test_a_page_whose_every_address_is_a_desk_a_bot_or_an_agent_is_not_a_person(
 def test_a_person_with_their_own_address_stays_a_person(emails):
     from connectonion.rem.census import non_person
     assert not non_person("Ines Halvorsen", "# Ines Halvorsen\n", emails, None, set())
+
+
+# rc34 check (Mac session): an AI assistant writing for someone, and a fund named like a company, were still
+# listed as people. The page says so itself in its Role line, or its title is a company's name.
+@_pytest.mark.parametrize("title, role", [
+    ("Pip", "- Role: Not a person: the shared team inbox [1]"),
+    ("Pip", "- Role: AI assistant that writes on Mara's behalf [2]"),
+    ("Pip", "- Role: Agent mailbox used for order tests [3]"),
+    ("Harbour Street Ventures", "- Role: Unknown"),
+    ("Fernhill Capital", "- Role: Unknown"),
+    ("Kiln Works Pty Ltd", "- Role: Unknown"),
+])
+def test_an_assistant_agent_or_company_page_is_not_a_person(title, role):
+    from connectonion.rem.census import non_person
+    text = f"# {title}\n\n## Facts\n- Email: pip@kiln.example\n{role}\n"
+    assert non_person(title, text, ["pip@kiln.example"], None, set())
+
+
+@_pytest.mark.parametrize("title, role", [
+    ("Mara Ostrowski", "- Role: Executive assistant to the CEO [2]"),
+    ("Theo Capitalé", "- Role: Partner at Fernhill [1]"),
+    ("Ines Halvorsen", "- Role: Head of agent platforms [1]"),
+])
+def test_a_human_assistant_or_a_name_like_a_company_word_stays_a_person(title, role):
+    from connectonion.rem.census import non_person
+    text = f"# {title}\n\n## Facts\n- Email: someone@kiln.example\n{role}\n"
+    assert not non_person(title, text, ["someone@kiln.example"], None, set())
