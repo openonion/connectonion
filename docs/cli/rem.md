@@ -1410,7 +1410,11 @@ updated yet. Refresh task progress reads the status in place.
 The footer says when the page was rendered: **Updated** (更新于) and the time.
 If the newest background build failed it adds "the newest rebuild failed", with
 the log path as a detail; `co rem open` says the same. A failing build is not
-started again within 10 minutes. If the cache folder exists but is not yours
+started again within 10 minutes, unless the install changed since it failed (a
+new release or reader template): an upgrade that finished is tried at once, so a
+build that ran while the upgrade was still being written does not keep the old
+release's page up. Run by hand (`python -m connectonion.rem.reader ROOT live full`)
+while another build holds the pages, it says so instead of printing nothing. If the cache folder exists but is not yours
 alone (a shared temporary directory), the reader renders now, as before saved
 pages, and says so; a Host that `co rem open` started and that exited soon
 after is named with its log, `rem-live-host.log`, on the next open. Before this (1.9.3rc62) every open
