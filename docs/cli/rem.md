@@ -407,21 +407,40 @@ The reader calls these **skill-name matches**: invocation attempts in coding
 sessions matched by name. `Run evidence` counts retained evaluation attempts
 separately; it may show zero even when coding sessions contain name matches.
 Neither count proves that this installed version ran or that the task succeeded.
-The Skills page answers two questions at a glance. **Most used** shows up to
-eight skills as cards, ranked by their skill-name match count over the usage
-window (ties by the latest date), each with one line of what it does and "N
-matches in 180 days · last date"; the cards say what the number is, so
-the section has no caption. Everything else is an index grouped by name
-family (Lark, LinkedIn, co …; a family of fewer than three skills in all goes
-under Other) that fills the width; a strip of family names above it moves to
-each group and focuses its heading. Cards and rows keep the "last night" marker
-for a page last night's pass rewrote and "N installed copies" when the skill is
-installed in more than one place. Each skill's line is the first
-clause of its description, in the reader's language when the skill has its own
-text in it or a translation is cached; otherwise the original. A skill with no
-description at all is named once on a quiet line at the end ("1 skill has only
-a name: …") instead of being listed. The page has one filter, sized like the
-other directory filters. A skill page keeps the match details, scope
+The Skills page is one table, the same one People and Organisations use
+(#3094): a row per skill, one line high, with **Skill**, **What it does**,
+**Family**, **Last used** and **Times used · 180 days**. Headers sort,
+**Columns** hides a column, and a row opens the skill's page.
+
+- **Family tabs** sit above the table: **All** first, then each name family
+  with its count (Lark, LinkedIn, co …; a family of fewer than three skills
+  goes under **Other**), the largest first. A tab shows only that family, and
+  the choice is in the address (`#c=skills&family=Lark`), so Back and a
+  bookmark return to it.
+- **Views** beside the page's name re-order the table in one click: **Most
+  used** (the default: times used, ties by the page's latest date), **Recently
+  used** (`&v=recent`) and **By family** (`&v=family`: every family under its
+  own sub-head with its count, the busiest skill first). A header click still
+  sorts inside the view you are in.
+- **The finder** (*Find among N skills…*) filters within the current tab, on a
+  skill's name, its line and its page; Enter opens the first match.
+- **Last used** is in words (*Yesterday*, *3 weeks ago*, *2 months ago*; the
+  date is one hover away) and **Never** in grey for a skill with no match in the
+  window. **Times used** is the skill-name match count over the usage window,
+  which its header names (as People's *Messages · 90 days* does); there is no
+  caption about how the count is made.
+- There are no **most used** cards any more: with Most used as the default view
+  the first eight rows are those eight skills, and two rows of cards pushed the
+  table below the first screen at 900 px.
+
+Each skill's line is the first clause of its description, in the reader's
+language when the skill has its own text in it or a translation is cached;
+otherwise the original. A skill with no description keeps its row with that
+cell empty. A row keeps the "last night" marker for a page last night's pass
+rewrote and "N installed copies" beside the name when the skill is installed in
+more than one place. On a phone the tabs are one row that scrolls sideways and each skill
+is two lines: its name with last used and times used at the right, then its
+line. A skill page keeps the match details, scope
 explanation and usage bar, and names where the skill lives in words (Claude
 Code, Codex, shared agent skills, ConnectOnion) with an "Open SKILL.md" link.
 
@@ -537,9 +556,28 @@ The stage order above describes the day. The current native round preserves
 its trialled order: collect, new same-person checks and reply drafts, then
 investigation in portions of 2 turns. Between two portions the other stages
 take their turn: one session summary, one Abstract round, then translation's
-share (`translation_share`). After the queue come the remaining session
-summaries and Abstract rounds, the same-person checks and the closing
-translation.
+share (`translation_share`: a tenth of the pages waiting, at least 10). After
+the queue come the remaining session summaries and Abstract rounds, the
+same-person checks and the closing translation, which goes on until no page
+waits.
+
+Cheap stages are finished, not rationed (owner, 2026-11-17: "translation and
+summaries cost little; there is so little content, it should all be done").
+Measured on a real notebook: a translation turn takes 11 to 83 seconds and 9 of
+9 were accepted first try; a session summary takes 24 to 57 seconds; one
+deepen turn takes 9 to 35 minutes. The closing translation used to take one
+share (a fiftieth of the backlog) and the round took five session summaries,
+so four nights translated 9, 8, 9 and 0 of some 350 waiting pages. Now a round
+summarises up to `limits.summaries_per_round` sessions (40) and translates
+until nothing waits. What still ends it: every page is tried once a round, a
+failing translation parks only its page, two faults in a row stop the round,
+the Codex usage floor stops every model call, and a round translates at most
+`limits.translations_per_round` pages (400), so a night always ends; at the
+measured times 400 turns are about 1 to 9 hours, typically 4. When that bound
+leaves pages waiting the night's line says how many. A round with nothing to
+investigate (or with investigation held by its weekly budget) starts its
+deepen slot once the closing translation has begun and the night has produced
+something, and does not wait for the last page.
 
 Every stage produces early in a night, not only at its end (owner,
 2026-11-16). One investigation turn measured 20 to 60 minutes on a real
@@ -587,7 +625,8 @@ catchup runs). A night is the schedule's night (noon to noon) or one
 | Investigate, skill pages | 3 pages, counted on their own and served after the others | `limits.skill_pages_per_night` |
 | Abstract | 6 rounds of up to 20 decision lines: one between every two portions of investigation, the rest after the queue | `limits.abstract_rounds_per_night` |
 | Deepen | 3 pages in the round's one slot, after the first portion of investigation | `limits.depth_pages_per_slot` |
-| Translate | a share between every two portions of investigation, then the closing pass | none (D-104) |
+| Session summaries | 40 a round: one between every two portions of investigation, the rest after the queue | `limits.summaries_per_round` |
+| Translate | a tenth of the backlog (at least 10) between every two portions of investigation; after the queue, every page that waits, up to 400 a round | `limits.translations_per_round` |
 
 Only a page that was handed to the model uses the share: one that is parked,
 set aside for a stopped mailbox or found to have nothing new does not. A page
@@ -602,8 +641,12 @@ person whose new mail predates the last round) leads, so the backlog cannot
 push it back for weeks.
 The night's line and status say it in words, as work that waits and not as a
 failure: `12 of tonight's 12 investigations done; 319 wait for later nights`.
-These two shares are the only count caps on a night since D-104 retired the
-others; the weekly budgets and the Codex usage floor still apply on top.
+The two investigation shares ration expensive work. `limits.summaries_per_round`
+and `limits.translations_per_round` are not rations: their defaults are above
+what a notebook has waiting, and they exist so that a round has a stated end.
+`limits.translations_per_day`, which D-104 retired, capped a day at a few
+pages; `limits.translations_per_round` replaces it as that upper bound. The
+weekly budgets and the Codex usage floor still apply on top.
 
 A weekly budget holds its own stage and no other (owner, 2026-11-16: a catchup
 night ended at "investigation has used 35 of its 35-point weekly budget" with
@@ -626,8 +669,10 @@ by hand or scheduled. Abstract rounds are not counted against it (they were,
 while they ran inside the round, and never when run by `co rem abstract`);
 batch extract and maintain, session summaries, reply drafts and Translate
 never were. Those are bounded by the daily call cap
-(`limits.runner_calls_per_day`), `limits.abstract_rounds_per_night`, the
-round's five summaries, translation's share, and the floor.
+(`limits.runner_calls_per_day`), `limits.abstract_rounds_per_night`,
+`limits.summaries_per_round`, `limits.translations_per_round`, and the floor.
+`co rem status` and that budget hold use one number: the points counted from
+the run logs when status is asked, not the sentence a past round saved.
 
 `co rem status` keeps its existing dashboard and adds five stage lines in the
 order above. Each says what is waiting (a count) and when that stage last ran
@@ -664,7 +709,7 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem deepen --pages 2` | Deepen the highest-value thin pages, one enrich then muse round each, within a separate weekly budget. [Details](#deepen-over-time-co-rem-deepen). |
 | `co rem decisions` | Count decision and principle pages, captured lines waiting, written lines, merges, refusals, missing answers and skips. No model; no writes. |
 | `co rem abstract [--rounds N]` | Write decisions, then knowledge learned across notebook pages, then principles for recurring reasons. Continues until nothing unattempted is left, two empty rounds occur in a row, or N rounds finish. |
-| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. A spent weekly investigation budget holds only investigation: the night still reads the batch, summarises sessions, abstracts, translates and deepens, and its line says investigation is waiting and when the week resets. At the Codex usage floor before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, each cause with its count (three at most) and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. One run at a time holds a notebook: catchup, `co rem exec` and the scheduled background turn take the same lock (`.state/exec-turn.lock`) for their whole run, and the kernel releases it when the process ends, a deadline's exit 75 included. Started while another holds it, catchup prints `Another REM run holds this notebook (the scheduled background turn, co rem exec or co rem catchup), so this run started nothing. Run it again when that one has finished; co rem status shows the turn in progress. No night was counted.` and exits 1; `co rem exec` prints the same sentence and exits 0; a scheduled fire writes it to the scheduler log, exits 0 and tries again at the next fire. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round, or when another run holds the notebook. Leaves schedule times unchanged. |
+| `co rem catchup [--nights N]` | Run exec, including its single deepen slot, which runs after the night's first portion of investigation (2 turns) and that portion's Abstract round, so a night that is cut short has still abstracted, deepened and translated. `--nights` repeats the whole round back to back. Calls the configured model. A night with deepen can take an hour or more. Each night gets fresh limits; weekly budgets and the Codex usage floor still apply. Prints each night's counts, including pages deepened and why none, then totals and `co rem open`. Investigates up to `limits.investigations_per_night` pages (12) and `limits.skill_pages_per_night` skill pages (3) a night, with Abstract, Deepen and Translate taking their turns between portions of investigation; the night's line says how many pages wait for later nights. Session summaries (up to `limits.summaries_per_round`, 40) and translation (every waiting page, up to `limits.translations_per_round`, 400) are finished in the night, not rationed; the line counts both and says how many translations wait when the bound was reached. A spent weekly investigation budget holds only investigation: the night still reads the batch, summarises sessions, abstracts, translates and deepens, and its line says investigation is waiting and when the week resets. At the Codex usage floor before any night ran it still collects new mail and sessions and saves the calendar and day plan, with no model call, and says which stages wait. A page whose candidate review keeps refusing is retried with the refusal, then parked: the night goes on, and its line and the totals say how many pages were parked, each cause with its count (three at most) and where the candidates are kept. A task an earlier stopped run left pending is resumed the same way, and so is a task that cannot be settled (its worker submitted it itself, its inputs changed, its turn timed out): it is parked with the error in words and the night goes on. An error that stops the round (the runner cannot run, the lock is held elsewhere) ends that night and starts no further one, after the night's line and the totals with the reason. One run at a time holds a notebook: catchup, `co rem exec` and the scheduled background turn take the same lock (`.state/exec-turn.lock`) for their whole run, and the kernel releases it when the process ends, a deadline's exit 75 included. Started while another holds it, catchup prints `Another REM run holds this notebook (the scheduled background turn, co rem exec or co rem catchup), so this run started nothing. Run it again when that one has finished; co rem status shows the turn in progress. No night was counted.` and exits 1; `co rem exec` prints the same sentence and exits 0; a scheduled fire writes it to the scheduler log, exits 0 and tries again at the next fire. Exit 0 when it finished or a limit stopped it, including a night that parked pages; 1 on a busy or failed round, or when another run holds the notebook. Leaves schedule times unchanged. |
 | `co rem history [--archive]` | Inspect or archive older internal Codex investigation traces, keeping ordinary, pinned, active and recent chats. |
 | `co rem start` | Print the source/model/schedule summary (a diff after changes), then proceed in a terminal. First approval runs a bounded sync and installs upkeep; after `stop`, resume without a batch. Use `co rem sync` for an update now. Noninteractive runs ask nothing; new consent needs `--yes`. |
 | `co rem start --yes` | Explicit noninteractive consent for start. |
@@ -675,7 +720,7 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
-| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. When the last night used its share of investigations, the Investigate line says so and how many pages wait for later nights. |
+| `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. When the last night used its share of investigations, the Investigate line says so and how many pages wait for later nights. While pages wait for translation, the Translate line says how many a round translates at most (`limits.translations_per_round`). |
 | `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
@@ -976,9 +1021,16 @@ notebook pages from `decisions/`, `sessions/` or `projects/` under `## Drawn fro
 It keeps the same verbatim body quote, immediate `[n]`, original source ID and
 originating-page citation rule as decisions. This is learning from notebook
 experience; Investigate topic pages describe a subject from raw sources.
-Abstract may create knowledge pages or append clearly headed sections to existing
+Abstract may create knowledge pages or add clearly headed sections to existing
 ones, including Investigate pages; it must preserve all existing text exactly.
-An appended section carries its own `### Sources` with fresh citation numbers.
+**A knowledge page ends with one `## Sources`** (#3097). When the page already
+ends with its `## Sources`, the new section goes above it with its own
+`### Drawn from`, and its source definitions are added to the end of that one
+list, continuing its numbers. Only a page with text after its `## Sources` (an
+Investigate topic page with its stamp, or a page written before this rule) still
+takes the section at the end with its own `### Sources` and fresh citation
+numbers; existing pages are not rewritten, and the reader gathers both shapes
+into one list.
 Knowledge passes the same promotion/review path and joins translation discovery
 alongside decisions and principles.
 Translation includes appended experience while preserving every source definition
@@ -1063,6 +1115,60 @@ the headings still empty are named once at the foot of the page with the
 `co rem investigate '<page>'` command that fills them. Lists put pages with
 findings first, then newest last contact. The Markdown file is unchanged, and
 **Copy Markdown** at the foot copies it as written, unknowns included.
+
+### Write, append, enrich and rewrite (#3105)
+
+`co rem investigate PAGE` decides by the page. A people, organisation or
+project page that has never been investigated is written whole from its
+sources, as before. A page investigated before is **appended to**: the writer
+gets the page, only the material since the page's last investigation, and a
+note pointing at the saved mail archive and attachments, so it can search the
+older threads the new mail continues. Its task is additions and corrections in
+place that keep the old value ("Role: CEO (was CTO until 2026-10-01)"); it
+removes nothing. Append runs no whole-page synthesis, hedge-editing or quote
+round, because those rewrite lines the update did not touch. Your own page
+(`investigate me`) is still written whole from your recent work.
+
+The append rule is checked by the program, not trusted to the prompt. Before
+the page is saved, review compares the draft with the page it started from:
+every `“…”` quote, every cited source id and every cited line outside the lead,
+`History` and `Uncertainties` must still be on the page, word for word or
+extended, or be marked corrected (a line close to the old one that says "was",
+"until", "previously" or "corrected"). Facts lines keep their own guard. A draft
+that drops one is sent back for repair with "Dropped claim line the page had:";
+what the repair still drops is put back beside the new work, as dropped quotes
+and sources already are. The lead, `History` (folded by the program at sixteen
+lines) and `Uncertainties` (questions that get answered) are excluded on purpose.
+
+The options are steps, each with its own prompt:
+
+```bash
+co rem investigate people/avery-lin.md            # write or append, notebook material only
+co rem investigate people/avery-lin.md --enrich   # then follow its leads: links, attachments, the web
+co rem investigate people/avery-lin.md --rewrite  # a whole-page rewrite, kept as a draft
+co rem investigate people/avery-lin.md --accept-rewrite
+co rem investigate people/avery-lin.md --undo     # the page as it was before its last investigation
+```
+
+- `--enrich` runs the enrich prompt (`rem-enrich`) on the result, even when
+  there was nothing new to append. Enrich never removes a line either: the same
+  claim-line check guards its draft. `co rem enrich PAGE` now runs
+  `investigate PAGE --enrich` and says it moved.
+- `--quick` with a page is the default (write or append only); with `me` it is
+  still the bounded first pass.
+- `--rewrite` is the whole-page investigation an existing page had before
+  #3105. Its result is not saved over the page: the draft is kept in
+  `.state/rewrites/<page>.json` with the hash of the page it was made from, and
+  `--accept-rewrite` replaces the page only while the page is unchanged since;
+  `--discard-rewrite` deletes it.
+- Every investigation that changes a page keeps the page as it was in
+  `.state/previous/<page>.json`; `--undo` puts it back while nothing has changed
+  the page since.
+
+The reader's Investigate button runs `investigate PAGE --enrich` (the owner's
+own click, so the web step is included). The nightly batch runs the
+write-or-append step for pages with new material, and the weekly deepen slot
+keeps running enrich (then muse) at night within its allowance, as before.
 
 ### Deepen one page: enrich and muse
 
@@ -1222,6 +1328,31 @@ translation-only exec rounds skip the slot.
 
 ### What the reader shows
 
+**The Investigate button (#3105).** A person's, organisation's and project's head
+has one button whose verb never changes: **Investigate** (调查), or **Up to date**
+(已是最新), greyed, when there is nothing to do. The reason is the line under it,
+in words that say what the click will do, from `page_runs.states` (no model):
+"Not investigated yet" (还没调查过这页); "3 new mails not in this page yet · last
+6 Nov" (有 3 封新邮件还没写进这页 · 上次 11月6日), or "N new sessions" for a project,
+counting mail exchanged with the person or the organisation's domains, or project
+sessions not yet written from, since the last investigation; "5 leads not
+followed yet (uses the web) · last 6 Nov" (还有 5 条线索没查（会联网）), from the last
+enrich report; or "Last investigated 6 Nov" (上次调查 11月6日) when up to date. The
+owner could not tell what a button labelled "Update" would do (2026-11-18).
+Every state runs `co rem investigate PAGE --enrich` through the
+live Host (`POST /rem/investigate`): a detached worker runs the public CLI and
+the head follows it step by step from the run records (Append or Write, then Web
+follow-up, with the run's current stage). When it ends the head says how many
+lines it added, lists them under **What changed**, and offers **Undo** while
+nothing else has changed the page. The ⋯ beside it holds the levels: **Full
+investigation** (default), **Quick update** (write or append only, no web) and
+**Rewrite the page** (a draft, then **Replace the page** or **Discard** in the
+head). A level shows "last time about N points" only when that page has a
+measured run of it; there is no estimator, so nothing is guessed. Your own page
+has no button (it is `investigate me`). In a file snapshot the button is off,
+with the snapshot line pointing at the live reader. A name in a mail card with no
+page has no "create and investigate" yet: `co rem stub` can make the page.
+
 Opening is a file read. The reader keeps its last render outside the notebook,
 in a private per-user folder in the temporary directory (`co-rem-cache-<uid>`,
 mode 700, pages 600, a planted link refused), and serves it at once. Whether it
@@ -1375,7 +1506,7 @@ then a Chinese browser language, then English.
 Older notebooks without saved language detection read your own sent mail and
 typed sessions on opening, without writing to the notebook. Configured
 languages still take precedence. Page prose stays as written. On phones the sidebar's places sit in a floating tab bar at the bottom edge
-(Today, Waiting, People, Search, More); **More** opens every other place as a sheet. Today's Send is not
+(Today, Waiting, People, Search, More); **More** opens every place as a sheet, in the rail's order. Today's Send is not
 pinned to that edge: it comes into view with the draft.
 
 - **Home** is a morning brief, read top to bottom. A date line and one
@@ -1396,6 +1527,130 @@ pinned to that edge: it comes into view with the draft.
   everything). **Worth remembering** and **Gone quiet** sit beside the brief on
   desktop. **Pages rewritten this week** stays collapsed. The owner's page is
   pinned as **You**.
+- **Today's order, and what every action does** (since sprint 22, #3072, #3085;
+  this replaces the order described under **Your day** and **To-dos** below).
+  Today opens on what can be acted on and ends on what is only read:
+  1. the count of things waiting on you and the faces of who waits;
+  2. **work in hand**, one line, only while there is some (see below);
+  3. the deck of cards, one in front, with **Waiting on others** at its side;
+  4. **N have gone quiet for a long time · Look**;
+  5. **Finished today: N** and **Put off: N**;
+  6. **To-dos** (your Microsoft To Do tasks, which have no buttons here);
+  7. **Your day** (calendar events and the proposed half hours);
+  8. the folds (overnight changes, pages rewritten, how the last pass ran).
+
+  **Every action on a card moves on.** Mark done, Not now, Ignore, Send and
+  Hand to Codex / Claude all take the item off the deck at the click, and the
+  card that followed it comes forward. When the card still has other rows for
+  the same person it stays in front with the next row moved up; it is never
+  the first card dealt again (before sprint 22 the deck went back to its first
+  card after any close, which is what "it goes back to that thing" was). The
+  page keeps its scroll position through the click and through the save that
+  follows it. The item leaves every list at the same moment: its card, its
+  proposed half hour under **Your day**, and its row in **Waiting on you**.
+
+  **One number.** The header's count, the rail badge and the phone tab's badge
+  are the same number: the items in **Waiting on you**'s first band (you owe
+  them, not quiet, not asked about as long-silent, not answered by a reply held
+  or sent). It changes with the click. Every other number on the page says in
+  words what it counts: *See the N waiting on others*, *N have gone quiet for a
+  long time*, *Finished today: N*, *Put off: N*, *Codex is working on N things*.
+  The deck deals the most pressing few; when it holds fewer items than the
+  count, a line under it says so (*These cards are the most pressing 5 of the
+  59 waiting on you. See all 59 →*).
+
+  **Done, and undoing it.** After a close the notice says what happened, in
+  words, with **Undo** and then the list that now holds the item: *Marked done ·
+  Undo · Saved in notebook · Finished today: 3*. The notice leaves after five
+  seconds; the list stays. **Finished today: N** (今天已完成：N) is a fold under
+  the deck holding what you marked done or ignored on this calendar day (the
+  reader's local day), each row with **Bring back** (放回去), which reopens it
+  and puts its card in front. The fold empties at midnight. Nothing is deleted
+  then: an item finished earlier stays in the closed list at the foot of
+  **Waiting on you** (*Marked done · Ignored (N)*) for as long as its line is on
+  its page, and in its own page's history, and **Undo** works in both.
+
+  **Not now asks when** (暂不处理). It used to have no date: the item left
+  Today and came back only when new mail arrived on its thread, and after the
+  notice left nothing on the page said so. Now the strip turns into *Bring it
+  back: Tonight · Tomorrow · In 3 days · Next week · Cancel* (什么时候再看：今晚 ·
+  明天 · 3 天后 · 下周). Tonight is 18:00 and is not offered after it; Tomorrow and
+  In 3 days are the start of that day; Next week is the coming Monday. The
+  notice then says *Put off · back on Thu, Nov 19 · Undo* (*back tonight at
+  18:00* for Tonight). **Put off: N** (已推后：N), beside Finished today, lists
+  every item put off and not yet back, whenever it was put off, each saying
+  when it returns and each with **Bring back now** (现在放回去). New mail on the
+  thread still brings an item back sooner. When its time comes the card is back
+  in Today by itself, on a page left open and in the next night's list alike,
+  and says *You put this off on Nov 17; it is back as you asked.* (or *…new
+  mail brought it back.*). The mark is `/rem/thread` with state `skipped` and
+  `until`, an ISO moment, kept in `.state/threads.json` beside `at`, the moment
+  it was put off; `threads.listing` reports it returned once `until` has
+  passed. A draft's **Skip** and a mark without `until` behave as before
+  (*Not now · returns with new mail*). A draft set aside by a put-off is not
+  restored when the date arrives; the card returns without it.
+
+  **Work in hand** is one line above the deck, shown only while an agent holds
+  something or finished something today: *Codex is working on 1 thing · started
+  2 min ago*, *Handing 1 thing to Claude…*, *Codex finished 2 things*, *Codex
+  stopped before finishing 1 thing*. It opens to the rows: the item, what the
+  agent is doing and since when, **Stop** and **Take back from Codex** while it
+  runs, then **See result**, **Show its card** and **Take back**. It is read
+  from the same receipts the rows carry (`.state/tasks/do-<id>/receipt.json`);
+  there is no second store. The card of a row an agent is working on is out of
+  the deck until the run ends; the count still includes it, and this line says
+  so. **Hand to Codex** no longer waits for the Host before moving on: the row
+  is the agent's from the click, and if the Host refuses, the card comes back in
+  front and says why in red (*Codex did not take this: REM is not answering
+  right now. Try again in a moment.*). A page that can no longer reach REM at
+  all says *nothing was handed over. Open REM again and act from the page it
+  opens.* In a snapshot the buttons are disabled, as before, and the card says
+  *This is an offline snapshot; open REM to mark it.* with **Open the live
+  reader** when this computer has one. The page never prints a command to copy
+  (D-60), so it says *open REM* and not `co rem open`. In **Waiting on you**
+  and the folds a hand-off is still said on the row, in place. A reply inside
+  its ten-minute hold keeps its own line at the top of the deck (*Sent to … ·
+  Held until … · Undo*), not in this strip.
+
+  **Show more** (更多背景) is the last control of every row's strip, where
+  **More ▾** was: *Mark done · Not now · Ignore · Hand to Codex · Hand to
+  Claude · Show more*, the row's lead still in bold. It opens the item's second
+  level without leaving the card: a panel at the right of a wide page, a sheet
+  from the foot of a phone. It holds **Why it is here** (the whole line, its
+  due date and since when the person has waited, and the put-off note),
+  **The message** (who wrote it, when, its subject and the excerpt the page
+  already carries; a passage labelled personal or sensitive is not shown),
+  **Related** (the person, their organisation, the project, any other page
+  the item is also on, and the mail thread) and **Talk it over** (With Codex,
+  With Claude), which used to be the only thing under More. No model is
+  called. Closing it (the cross, Escape, or a tap outside) returns the focus to
+  **Show more** on the same card; a link or a talk choice closes it too.
+
+  **In Chinese.** Every label, button and sentence the reader writes on Today
+  follows the chosen language. An item's own words come from the **Open
+  threads** line of its page, written at night in English; when the page has a
+  current translation in the reader's language, the card, its proposed half
+  hour and its rows in Finished today, Put off and work in hand show that
+  line's translation. Until sprint 22 they did not: only a page opened with its
+  own language switch showed translated lines, so Today stayed English on
+  translated pages. A page with no translation yet shows its original line,
+  marked **原文**; nothing is translated in the browser. The night already
+  translates the pages behind Today's rows first (`translate.shown_today`,
+  eight a night).
+
+  **Waiting on you has filters** (#3072). A row of chips sits above the list,
+  each a tag in words with its count; one tap filters, a second tap (or **All**)
+  clears, and the filter rides the address (`#view=open&tag=…`). Pages carry no
+  tags of their own yet, so the chips come from what each row already knows:
+  two states, **I still owe a reply or an action** and **I replied, waiting on
+  them** (the night's reply state for the row: your mail is the thread's last
+  word and it reads as an answer), then places with more than one row: the
+  person's organisation, an organisation's own page, a project. With a filter
+  on, each band's heading counts the rows under it, and one line offers
+  **Mark all N done** and **Put all N off until…** for every row shown. Neither
+  asks anything more. Each row is its own mark in the notebook, and the one
+  notice (*14 marked done · Undo · Saved in notebook*) carries one **Undo** for
+  the whole batch. On a phone the chips are one row that scrolls sideways.
 - **Today is one queue**: everything that needs you, newest and due first, one card
   each, with one primary action per card and a quiet **Mark done** saved in the
   notebook. Its cards lead with what you owe; their overdue chips and the faces'
@@ -1526,7 +1781,9 @@ pinned to that edge: it comes into view with the draft.
   to `/rem/task`; a row the night did not prepare gets its task reserved on the
   spot from the row itself (its page, its text, its source), with the same
   receipt, prompt shape, Stop, Take back and status as a prepared one. The row then
-  says where the work is, in place, and follows it by itself: **Codex is
+  says where the work is, in place (on a Today card the row instead leaves the
+  deck at the click and shows under **work in hand**, see **Today's order**
+  above), and follows it by itself: **Codex is
   working · Stop · Take back from Codex**, then **Codex finished · See result ·
   Take back from Codex**; **See result** opens what the agent wrote (its
   deliverable, else its last message, `{"action": "result", "id"}`) under the
@@ -1534,13 +1791,14 @@ pinned to that edge: it comes into view with the draft.
   brings the two buttons back; it never reads **Undo**, which undoes the item.
   The strip carries the row's three ways to close it, as words on screen, never an icon, before and after a
   hand-off, in one order everywhere (Today, its folds, Waiting on you): **Mark done** · **Not now** · **Ignore** ·
-  **Hand to Codex** · **Hand to Claude** · **More**. In a saved snapshot (no Host, or a `file://` page) the
+  **Hand to Codex** · **Hand to Claude** · **Show more** (**More** until sprint 22). In a saved snapshot (no Host, or a `file://` page) the
   closes and hand-offs are still shown but disabled, since nothing would carry a snapshot's mark to the notebook:
   each button says why when pointed at, and each card, band and fold says once, in words, *This is an offline
   snapshot; open REM to mark it.* (这是离线快照，打开 REM 后才能标记), with **Open the live reader** when this
   computer has one; E does nothing there either, nor do Still open, Not done yet, a record page's Mark done and Undo, or a draft's Skip, all drawn in the second ink with the same reason. A snapshot never writes a mark to the device. **Mark done** (标为完成: handled, settled offline included; `/rem/thread` state `done`), **Not now**
-  (暂不处理: state `skipped`, the row leaves Today and returns when new mail arrives on its thread; the notice says
-  *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
+  (暂不处理: state `skipped`; since sprint 22 it asks when the row should come back and the notice says *Put off ·
+  back on …*, see **Not now asks when** above; a mark without a date still returns only when new mail arrives on its
+  thread and reads *Not now · returns with new mail*) and **Ignore** (忽略, for an ad or a notification: state `ignored`, which
   closes like `done` and never returns, but reads *Ignored* (已忽略) in its notice (*Ignored · this one will not come
   back*), its history line and the closed list's summary, which names the states it holds, e.g. *Marked done ·
   Ignored (3)*). On Today all three leave the same way, the row (or a one-row card) sliding out unless motion is
@@ -1576,9 +1834,9 @@ pinned to that edge: it comes into view with the draft.
   item is: a ready reply's **Send**, else the card's green step (**Draft now**, **Approve**, a mark of several
   handled rows), else one row's control in bold: **Hand to Codex** for a debt the night prepared as a task, or
   **Mark done**. **Open** *name* is no longer a step (the name already opens the page). On Today the row strip is
-  *Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · More ▾*, the lead among them in bold: the closes
-  and the two hand-offs stay visible words (D-100), and only **Talk it over** folds under the worded **More**
-  (更多). On a phone the three closes are the first line and the hand-offs and More the second. The card
+  *Mark done · Not now · Ignore · Hand to Codex · Hand to Claude · Show more*, the lead among them in bold: the closes
+  and the two hand-offs stay visible words (D-100), and **Talk it over** sits in the item's second level, behind
+  **Show more** (更多背景; it folded under a worded **More** from sprint 14 to sprint 22). On a phone the three closes are the first line and the hand-offs and More the second. The card
   head's **S** button is **Next card** (下一张), shown with its word beside the glyph (the multi-row tick reads
   **Mark all done**): it only deals the next card and records nothing. A snapshot keeps Mark
   done in the row's own actions and the tick on Today, since its strip cannot
@@ -1589,7 +1847,8 @@ pinned to that edge: it comes into view with the draft.
   the page's one snapshot line says why, with a link to the live reader on this
   computer when it has one. Nothing in the reader says a task is recorded but not run.
 - **Talk it over ▾** (聊一聊 ▾) ends the same line, *Hand to Codex · Hand to Claude ·
-  Talk it over ▾* (on Today it sits inside **More ▾**, since sprint 14), and opens the agent choice (**With Codex**, **With Claude**;
+  Talk it over ▾* (since sprint 22 its two choices are in the **Show more** panel of the row, on Today and in
+  Waiting on you alike), and opens the agent choice (**With Codex**, **With Claude**;
   和 Codex 聊这件事). A choice opens a conversation under the row: REM gives the
   agent the item (page, text, project folder, a work folder of its own), its
   first answer shows in the page, and the box under it sends the next message as
@@ -1602,50 +1861,138 @@ pinned to that edge: it comes into view with the draft.
   Opening it again returns the same conversation. When the live reader loads a
   newer page, the open conversation returns under its row with its context,
   replies and any unsent message; its composer continues the same agent session.
-- **The rail** (D-132) is a 72px column of places, each a picture with its
-  word under it: **Today**, **Waiting on you** (*Waiting*), **Agenda**, **People**,
-  **Organisations** (*Orgs*), **Projects**, **Skills**, **Knowledge**,
-  then **More**, and at the foot **Settings** and your face. A short word is
-  the start of the place's accessible name (*Orgs* is named "Orgs ·
-  Organisations"), so saying the word you see finds it. **More** opens beside
-  its button, wherever the rail has scrolled to, and is never taller than the
-  window: **Memory changes**, then Decisions, Principles,
-  Agent sessions, Opportunities and Works when they hold pages. Your face opens
-  your own page and shows **You · name** beside it on hover and on keyboard
-  focus. Only **Waiting on you** carries a number; a category's size is not
-  something to do. The current place is in ink, in bold, on a raised cell. In a
-  window lower than the rail (712px) the rail itself scrolls, so every place
-  stays in reach. On a phone the rail gives way to the tab bar (Today, Waiting,
-  People, Search, More); **More** opens a sheet with every place by its full
-  name, Agenda directly after Waiting on you, Skills and Knowledge among them,
-  the More list under them with its labels in the same column, and Settings and
-  you at its foot. There is
+- **The reader's pictures are two published sets, never drawn by hand**: interface icons are Lucide
+  0.468.0 (ISC) and service marks are Simple Icons 16.34.0 (CC0), copied from the published files;
+  `connectonion/_licenses/rem-reader-icons.txt` names every key, its source and both notices.
+- **The rail** (D-132, #3091) is a 72px column of places, each a picture with
+  its word under it, in ONE order that reads from what you act on, to who and
+  what it is about, to what the notebook concluded, to the raw material it was
+  built from. A short hairline parts the four groups:
+  **Today**, **Waiting on you** (*Waiting*), **Agenda** | **People**,
+  **Organisations** (*Orgs*), **Projects** | **Knowledge**, **Decisions**,
+  **Principles**, **Skills** | **Agent sessions** (*Sessions*),
+  **Opportunities** (*Opps*), **Works**, **Memory changes** (*Changes*). At
+  the foot are **Settings** and your face.
+  **The rail shows as many places as its height holds, in that order, and only
+  what does not fit goes under More**: at 1440×900 twelve cells fit (eleven
+  places and More, or all twelve places of a notebook with no Opportunities or
+  Works yet), at 720 the first eight and More, and from about 1000 px every
+  place is in the rail and **More is not there at all**. The rail never scrolls
+  and never clips a cell; it refits when the window changes height. **More**
+  opens beside its button and lists the folded places in the same order.
+  **Which places show**: the first eight every notebook has (Today to
+  Projects, Knowledge, Skills) and Memory changes always show, and their pages
+  have an empty state; Decisions, Principles, Agent sessions, Opportunities and
+  Works show once they hold a page (or while you are on one), as they did
+  under More.
+  A short word is the start of the place's accessible name (*Orgs* is named
+  "Orgs · Organisations"), so saying the word you see finds it. Tab moves
+  through the places in the order you see them, then More, Settings and you;
+  the current place is in ink, in bold, on a raised cell and is announced as
+  the current page (`aria-current`), also when it sits under More. Your face
+  opens your own page and shows **You · name** beside it on hover and on
+  keyboard focus. Only **Waiting on you** carries a number; a category's size
+  is not something to do. On a phone the rail gives way to the tab bar (Today,
+  Waiting, People, Search, More); **More** opens a sheet with every place by
+  its full name in the rail's order, the same hairlines between the groups,
+  and Settings and you at its foot. There is
   no **Questions & connections** entry any more, as with Activity;
   `#reviews=1` still opens it, and **Memory changes** carries its one quiet
   link, beside **REM activity**.
 - **Knowledge** (#2996) is the notebook's wiki and its one place for how
-  records link: there is no **All records** any more. **Entries** lists one row
-  per topic, the most linked first, each row showing the people, organisations
-  and projects it ties together as links; **Graph** is the two-way map of every
-  linked record that All records used to draw (`#view=graph`; the old `#c=all`
-  address opens it too). Every record the All records list held is still in its
-  own category (a rail place or **More**) and in search; **Graph** is also in
-  the ⌘K palette. A list with one or two entries also offers **Explore linked
-  records →** when the graph has links. With nothing linked yet, **Graph** shows
-  the entries instead.
+  records link: there is no **All records** any more. It **opens on the graph**
+  (#3085): the rail's Knowledge (`#c=knowledge`) draws the two-way map of every
+  linked record that All records used to draw, and its switch reads **Graph**,
+  selected, then **Entries**. `#view=graph` and the old `#c=all` address open
+  the same graph. **Entries** (`#c=knowledge&view=entries`) lists one row per
+  topic, the most linked first, each row showing the people, organisations and
+  projects it ties together as links; an address that names the entries always
+  opens the entries. The phone follows the same default. Every record the All
+  records list held is still in its own category (a rail place or **More**) and
+  in search; **Graph** is also in the ⌘K palette. A list with one or two entries
+  also offers **Explore linked records →** when the graph has links. With
+  nothing linked yet the graph has nothing to draw, so Knowledge shows the
+  entries instead, with **Entries** selected.
+- **The graph says what it shows** (#3085, #3095). Under the heading is one
+  sentence counted from the map, and it is also the key: each kind stands in it
+  beside its shape with its count in words (*◎ 5 knowledge entries link ● 110
+  people, ◇ 32 projects and ■ 24 organisations, with ▲ 6 skills and decisions.
+  The busiest is …, with 19 links.*); the busiest record's name focuses it.
+  There are no instructions. The map ends at the window's foot, so the sentence,
+  the map and the quiet line under it (*A bigger mark has more links*, sessions
+  folded, records that link to nothing) are on one screen at 1440×900 with
+  nothing to scroll to. **Names on the map**: every knowledge entry is named,
+  on up to two lines, then the twelve most-linked other records (your own page
+  left out); zooming in names more, in proportion to the area the zoom opens.
+  A name is cut only between words, with an ellipsis, is the translated title
+  when the page has a current translation in the interface's language, and is
+  placed right of its mark, else left, below or above, wherever it touches no
+  other name and no other mark; a record with no free place goes unnamed, and
+  the layout keeps the strip beside each named mark clear. Pointing at any mark
+  says its whole name and its link count. **The panel** beside the map is as
+  tall as its list: with nothing chosen, the knowledge entries with their whole
+  titles (wrapped, never cut) and what each ties together (*15 people · 10
+  projects · 2 organisations*), then the five busiest pages under a rule.
+  Pointing at a mark for a moment previews it there (its kind, name, first
+  sentence, counts, links and a neutral **Open … page →** button) and rings it
+  on the map without moving anything. **One click on a mark opens that
+  record's page**, as does Enter on the map while a mark is focused; the
+  browser's Back returns to the graph with that mark focused and the pan and
+  zoom you left. A row in the panel, a search result or `&focus=` focuses a
+  mark instead: the map closes in on it and what it links. No colour on the
+  page is saturated. **On a phone** the map draws only the knowledge entries
+  and the records they link directly, names the entries, and fills the screen
+  down to the tab bar with nothing under it and nothing to scroll to; an
+  entry answers a tap within 22 px of its centre (a 44 px target however small
+  it is drawn), a tap opens the record's page, one finger scrolls the page and
+  two move the map. The filters are not shown there. A focused record's card
+  (name, **Open … page →**) sits under a shorter map, above the tab bar, and
+  its lists scroll with the page. The heading and the **Graph / Entries**
+  switch are the same size at the same place in both views.
+- **A knowledge entry, a decision and a principle read as one entry** (#3097),
+  set like a reference-book article with its notes at the end. The page is
+  printed **once**: the title, the page's own first paragraph as its lead, then
+  its sections in the order the file has them. There is no summary block above
+  and no **Full memory and sources** drawer below (those stay on people,
+  organisations, projects and skills). The text is set at the body size with a
+  line-height of 1.7 (the visual system's `--lh-read`) and a measure of about 34 Chinese or 70 Latin characters;
+  a heading has clearly more room above it than below it; a line that is
+  wholly the owner's quoted words is a quiet ruled block. A date written as
+  `2026-08-27` in a sentence reads *Aug 27* (*8月27日* in a Chinese sentence);
+  quoted words, paths and links keep their characters.
+  **Sources come once and last.** Citations stay in the text as raised numbers.
+  Every `Sources` block in the file, at any heading level, is gathered into one
+  list after the last section. A file with a single `Sources` block keeps the
+  numbers it was written with; a file with several (an older page that carries
+  `### Sources` under each appended section) is renumbered continuously in
+  reading order, and a source cited by two sections is listed once. Each mark
+  links to its entry and each entry links back to every place that cites it.
+  An entry says what the source is in words (*Coding session, 27 Aug*, *Mail
+  from Mara, 3 Sep*); the raw identifier and file path are in the entry's
+  tooltip and behind **Show identifiers**. Nothing follows Sources except the
+  page's footer. **Drawn from** (the notebook pages an entry rests on) appears
+  once per section, as links in an inset block labelled *Drawn from your
+  notebook*, apart from Sources: one is where the learning came from in the
+  notebook, the other is the evidence. *Also known as* is left out when it only
+  repeats the title. The counters under a knowledge title (people,
+  organisations and projects that link to the entry, sessions that name it) show
+  only the ones above zero, and the row is absent when all are zero. The side
+  column keeps the local graph and related entries; **On this page** appears
+  from four sections up; on a phone the column folds below the text.
 - **Headings name a page, they do not explain it** (#2994): a category page
   shows its name and its count, not a sentence about its order. Skills opens
-  with its name and its finder (*Find among N skills…*) on one line, the most
-  used as cards with no **Most used** heading, then the families' buttons with
-  no caption. Today's number stands beside the faces it starts with, without
+  with its name, its view switch and its finder (*Find among N skills…*) on one
+  line, then the family tabs with no caption, then the table. Today's number stands beside the faces it starts with, without
   *Start with these N people*. The graph's heading is **Knowledge** and its
-  switch; its counts are in the legend under the map, and the panel lists the
-  entries, then the busiest pages, divided by a rule. Sessions keeps its count
+  switch; its counts are in the one sentence under the heading, each beside
+  its shape, and the panel lists the entries, then the busiest pages, divided
+  by a rule. Sessions keeps its count
   without an explanatory subtitle; Projects keeps its factual summary at body
   size and drops the sentences describing its sort order and board axes. The
   [category heading audit](rem-heading-audit.md) records each keep/drop decision
   and inventories the former All records paths.
-- **Your day** (今天的安排) opens Today above its existing rows (#3058).
+- **Your day** (今天的安排) sits on Today below the cards and the to-dos (it
+  opened the page until sprint 22; see **Today's order** above) (#3058).
   The night saves `.state/day-plan.json` immediately after `.state/calendar.json`
   in the same background function, for today and tomorrow in `schedule.timezone`.
   This is deterministic: it uses saved events and Today's existing ranked items,
@@ -1700,27 +2047,126 @@ pinned to that edge: it comes into view with the draft.
   moving other proposed times. A question from you is not labelled a promise.
   Dated promises silent and overdue for over 60 days are set aside as Today
   does; the remaining proposals keep their existing order.
-- **Agenda** is a calendar (#2998): a week starting today (‹ › move it a week,
-  **Today** returns) and a Monday-first **Month**, with no heading above them. It
-  shows your calendar events beside the notebook's own dates: promises with a
-  due date (**Due**, or **Late** in red once past) and agenda pages on the date
-  they state (**Noted**). An event links to the calendar it came from and to the
-  people pages of its guests (matched on a page's Email and Handles lines); a
-  promise or page links to its page. An event prints its location under its
-  title in the week and on a phone. A timed event is on every day it covers:
-  its start time on the first, **All day** between, **Until 17:00** (到 17:00)
-  on the last; one that ends at midnight is not on the next day. The owner's
-  own reader carries events and the plan; a page rendered for sharing
-  (`render` without `local=True`) carries neither. Open notebook items
-  dated before today sit in one line under it, whichever week or month is shown.
-  On a phone it is a day-by-day list of the next three weeks. Events come from
+- **To-dos** (待办) sit on Today in their own short section above **Your day**,
+  apart from events (#3087). The same background step that saves
+  `.state/calendar.json` reads your open Microsoft To Do tasks (every list of
+  `/me/todo/lists`, tasks whose status is not `completed`; the Microsoft login
+  from `co auth microsoft` already carries `Tasks.ReadWrite`) into
+  `.state/todos.json` beside it. Each row says in words that it is a **To-do**,
+  the list it is on, and its due date: *due 20 Nov*, *overdue since 12 Nov*, or
+  *no due date*; overdue ones come first, then by due date, and past eight the
+  section says how many more there are. Nothing here is a button: a to-do is
+  ticked off in Microsoft To Do, and the next read drops it. A read that fails
+  keeps the tasks saved before and the section says when it failed and why,
+  like a calendar; no failure stops the night. With nothing to list the
+  section says one thing (#3085): **No open to-dos.** only when every connected
+  list was read and none holds one; when a list was not read it names that list
+  and why, and of the one that was read says only *Microsoft To Do has no open
+  to-dos.* **Google Tasks are not read
+  yet.** The Google login has only the calendar scope, so the section says
+  *Google Tasks are not read: Google must be reconnected with access to tasks*;
+  REM never adds a scope or starts a login by itself. Only the owner's own
+  reader carries to-dos; a shared page has none.
+- **Agenda** is a calendar (#2998), drawn as one: no heading, then **‹ Today ›**,
+  the range in words, **Week / Month**, and under them one small line saying
+  which calendars were read. **Week** is a time grid starting today (‹ › move
+  it a week): hours down a quiet axis at 44 px an hour, hairline hour lines and
+  lighter half-hour lines, seven day columns with weekday and date heads. Today's
+  date is the one inked numeral and its head says **Today**; weekends are a shade
+  quieter. Each timed event is a block placed by its start and as tall as its
+  minutes (a 90-minute event is one and a half hour-rows), its title first, then
+  its hours, then its place when the block is tall enough; a short event keeps
+  the height of its title. Events that overlap share the column side by side;
+  back-to-back events do not. A line across today marks now, and the axis says
+  **Now 12:00**. The grid ends at the window's foot and scrolls inside it under
+  the heads; it opens at 07:00, so 07:00–21:00 is on screen at 1440×900, earlier
+  when the week's first event or now is earlier. Above the hours is the
+  **all-day strip**: an all-day event is a bar, and one that runs several days is
+  **one bar across its days**, never a card a day. A timed event that lasts a
+  day or more (an afternoon to a morning two days on) is a bar there too, as a
+  calendar draws it, saying its start and end times in words; it is never a
+  block from midnight in the hours. A shorter one past midnight (22:00 to 01:00)
+  stays a block on each of its two days. The notebook's own dates sit
+  in the strip too, as outlined bars linking to their pages: promises with a due
+  date (**Due**) and agenda pages on the date they state (**Noted**); one that
+  is past due sits on **today** in red saying *Late, due Sep 25*, so there is no
+  second list of earlier open items under the calendar (that line of links
+  is gone: the same items are on today, and undated-late pages are in search and
+  on their own dates). An empty day is empty: no placeholder. **Month** is a
+  Monday-first grid of weeks (the reader's one week-start rule): each cell has
+  its date, today marked and said, days outside the month dimmed; all-day and
+  multi-day events are bars continuing across cells, then up to three lines in
+  all of *time title*; what does not fit is counted in words (**+2 more**), and
+  that count opens the day as a week starting there. **An event opens its
+  detail** on a click: a small card beside it (a sheet from the foot on a
+  phone) with its title, its time in words (*Fri 2 Oct, 09:30 – 10:00*; *All
+  day, Mon 5 Oct – Wed 7 Oct*), place, guests (their people pages when a page's
+  Email or Handles line matches, else a count), which calendar it is in
+  (*In Google Calendar*) and **Open in Google Calendar ↗**. Which provider an
+  event is from is also in its hover title; the edge of a block (ink for
+  Google, grey for Outlook) is only a second cue. A timed event that crosses
+  midnight is a block on each day it covers: its start time on the first,
+  **All day** between, **Until 17:00** (到 17:00) on the last; one that ends at
+  midnight is not on the next day. **Keys**: ← → move the chosen day, ↑ ↓ move
+  it a week (the view follows), **T** is today, **Enter** opens the chosen
+  day's first event, Esc closes the detail. **On a phone** the week is a strip
+  of seven dates (tap one to jump to its day; a date with nothing is quiet)
+  over a day-by-day list of three weeks, each day its all-day bars then its
+  events in time order, a several-day event listed once with its range in
+  words; the month keeps its grid with a count in each cell (*3*) and the
+  tapped day's list under it. The layout is arithmetic in the page (`agBlock`,
+  `agLanes`, `agBars`: minutes into pixels, lanes for overlaps, bars for
+  spans), with no calendar library. The owner's own reader carries events and
+  the plan; a page rendered for sharing (`render` without `local=True`)
+  carries neither.
+- **Agenda shows the weather for its days.** Each day that has a forecast
+  carries a small line picture and *22° / 14°* in its column head (week) and
+  its cell (month); the condition and the chance of rain are words on hover, in
+  an event's detail and under the day's name on a phone (*Showers, 70% chance of
+  rain, 20° / 12°*), where the strip of dates shows the high only. There are
+  eight conditions (clear, partly cloudy, cloudy, fog, rain, showers, snow,
+  storm); a day with no forecast shows nothing. The small line under the header
+  says where it is for and from whom: *Weather for Sydney from Open-Meteo, read
+  Today · 06:10.* **The reader never asks for it**: the night's calendar step
+  (`weather.py`) reads the next seven days from
+  [Open-Meteo](https://open-meteo.com), which needs no key and no account, and
+  saves `.state/weather.json` (per date a condition word, high, low and chance
+  of rain, with `saved_at`, `read_at`, the place and the source). **What leaves
+  your computer, once a night**: the city's name to Open-Meteo's geocoding the
+  first time (its answer is kept), then that city's coordinates rounded to two
+  decimals to its forecast; never an address, a calendar entry or anything from
+  the notebook. The city is `weather.place` (`co rem config set weather.place
+  Sydney`); left empty it is the city of the notebook's timezone
+  (`Australia/Sydney` → Sydney; a zone with no city, such as `UTC`, asks
+  nobody); `co rem config set weather.place off` turns it off and nothing is
+  fetched. Temperatures are °C, or °F where the place reads forecasts in
+  Fahrenheit (the United States and a few others); there is no units setting.
+  A read that fails never stops the night: the earlier forecast is kept and the
+  line says when it failed, why, and when the forecast shown is from; a city
+  Open-Meteo does not know is said as *not found*; anything that is not the
+  provider's failure is a fault in REM, named with its exception and logged with
+  its traceback in `co rem logs`. Only the owner's own reader carries the
+  forecast. Open-Meteo's free API is for non-commercial use and its data is
+  CC BY 4.0, which is why the page names it. Today's *Your day* does not show
+  the weather yet.
+  Events come from
   `.state/calendar.json`, which each background round writes once (scheduled
   sync, exec and native rounds, including `codex_exec`), outside the writer
   lock, from every account co can already read (Google after `co auth google`
-  with a calendar scope: the calendars ticked in Google Calendar; Outlook after
-  `co auth microsoft` with `Calendars.*`: all its calendars, times asked in the
-  notebook's zone): three weeks from yesterday in the notebook's zone, every
-  page followed, cancelled events left out. The reader never calls a calendar.
+  with a calendar scope; Outlook after `co auth microsoft` with `Calendars.*`,
+  times asked in the notebook's zone): three weeks from yesterday in the
+  notebook's zone, every page followed, cancelled events left out. **Only your
+  own calendars are read** (#3087): in Google, a calendar ticked in Google
+  Calendar whose access is `owner` or `writer`; in Outlook, a calendar you can
+  write to (Graph's `canEdit`: true for one you created and for one shared with
+  write access). A calendar shared as free/busy or read-only is never read, so
+  another person's *Busy* entries are not in Agenda or Today, and events saved
+  from such a calendar earlier are gone after the next read. `calendar.json`
+  records, per account, how many calendars were read and how many were left
+  out by access kind (`calendars`: `read`, and `left_out` counting
+  `freeBusyReader`, `reader` and `unticked`), and Agenda says it in a small
+  sentence under its header, above the calendar: *Google Calendar: 1 own calendar read; 3 left out
+  (2 shared as free/busy, 1 shared read-only).* The reader never calls a calendar.
   No calendar failure stops the night: a calendar that fails keeps the events it
   saved before, and the page says when it failed, why, and when its events are
   from; anything that is not the provider's failure is a fault in REM, named
@@ -1763,7 +2209,8 @@ pinned to that edge: it comes into view with the draft.
   giving two letters or more, never a person's name, and only when it is the
   one such name that fits), else its people's **Company** link; it is marked
   *not yet clear what this is* only when nothing in the notebook names it.
-  Graph labels are cut by width, so a Chinese title stays inside its card.
+  Graph labels are cut by width and only between words (any glyph of a Chinese
+  title is a boundary), so a Chinese title stays inside its card.
   The graph's list of the busiest pages leaves your own page out: you are every
   page's hub by definition (the notebook's owner field, not a name).
 - **Merged threads**: the same request copied onto several pages is shown
@@ -1877,7 +2324,23 @@ pinned to that edge: it comes into view with the draft.
   **Open topics** (**还没结的话题**), what is still open with them, because it
   is what you open a person for: the top three, and **All N entries**
   (**全部 N 条**) opens the rest in place. On a phone the face stays in the
-  header beside the name and the contact buttons take the row below. The name is the page's one large mark;
+  header beside the name. Directly under the name is the **profile card**
+  (owner, 2026-11-18: "the card should be the first thing shown"): every known
+  fact as a label over its value, with nothing to expand, in four groups —
+  **Contact** (email, phone, handles with their platform named — GitHub,
+  Discord, LinkedIn —, links), **Work** (signing entity, project, a unit with no
+  page of its own), **Relationship** (how you know them, first and last
+  contact, mail) and **Identity** (also known as, language, location, time
+  zone). Role, organisation (a link to its page) and units are the line under
+  the name, and are not repeated in the card: each fact has one place. A
+  click on an email, phone or handle copies it and says so. A phone is a
+  handset; a handle on GitHub, X, WeChat, WhatsApp, Telegram or Discord carries
+  that service's published mark in the page's ink, and one with no published
+  mark (LinkedIn, Slack, Microsoft Teams) is an @, its platform named in words
+  either way. Unknown facts are
+  one quiet line, **N facts not found**, never rows of "not found"; citations
+  are small numbers after the value; a labelled ([personal]/[sensitive])
+  value hides with the labelled passages. The name is the page's one large mark;
   it carries its script as `lang` and hyphenates (where the browser has no
   hyphenation dictionary and a word would overflow, the reader adds soft
   hyphens at likely syllable joins; copying the name drops them). Under it
@@ -1947,7 +2410,7 @@ pinned to that edge: it comes into view with the draft.
   owner-held steps first), and recent sessions or dated history. **+N more**
   opens the remaining steps in **Full memory and sources**. Purpose, findings,
   facts, people, decisions, detailed sessions, tags, local graph and history stay
-  in that collapsed disclosure. Source markers beside steps still open their evidence.
+  in that disclosure, which opens by itself (#3104). Source markers beside steps still open their evidence.
   Open steps share one frame and align each item's action buttons. **Agent request**
   (给智能体的请求), **Owner unconfirmed** (待确认负责人) and **Answer available**
   (已有回答) distinguish a request from an unassigned step and a retained answer;
@@ -1960,7 +2423,7 @@ pinned to that edge: it comes into view with the draft.
   mentions make cross-page cards and backlinks; their labels distinguish a
   link from a mention. The original prose, every Facts/Contact field,
   Insight, History and Sources stay under the always-visible **Full memory and
-  sources** disclosure; decision pages also start with it collapsed. A claim
+  sources** disclosure, open by default and foldable (#3104). A claim
   number `[n]` opens its source description and, when locally archived, an
   original excerpt. Prose uses quiet raised date markers, kept beside the
   preceding word; hover or focus reveals the full source label. Adjacent
@@ -1987,6 +2450,29 @@ pinned to that edge: it comes into view with the draft.
   name their remaining gaps. Private projects retain an explicit investigation
   command. Empty Agent sessions shows queued status when background updates
   are enabled, or pending status when they are off, without import controls.
+- **Full memory and sources opens by itself** (owner, 2026-11-18, #3104). On
+  every record page the disclosure starts open and can still be folded. Its
+  **Sources** (来源) leave the prose column for a full-width band under it,
+  two rows a line on a wide screen and one on a phone. A row is one line:
+  the source's number, what it is in words, then its kind, who and its date
+  once. Mail shows its subject (and an attachment's file name), a coding
+  session its title, a file its name, a web page its host and path, an
+  investigation **REM investigation** (REM 调查); a mail missing from the
+  snapshot says so in grey. The raw id is only in the row's tooltip. Rows are ordered by how many lines cite them, then newest;
+  the first 10 show and **Show all N** (显示全部 N 项) opens the rest. Kind
+  chips (**All · Mail · Sessions · Files · Other**, each with its count) filter
+  them, and above 20 sources a filter box matches title, who and id. Each row
+  says **Cited N×** (被引 N 处); pressing it jumps to the next line that cites
+  it. A citation chip still opens the source panel, which now offers **Show in
+  sources** (在来源中查看): it reveals and lights the cited row(s). The heading's
+  anchor is always `sources`, in every language. On a Facts card an address
+  wraps only after `@`, and empty fields fold into one quiet **N not found**
+  (N 项未找到) line that names them. The standard section titles
+  (Insight, Who they are, Why they are here, Our relationship, How they
+  communicate, How you write to them, Cadence, Uncertainties and their
+  siblings) read in 中文 in the zh reader, while their anchors keep the
+  written English title (`&h=uncertainties` works in both). Quotes in the prose are no longer
+  underlined, and a citation chip underlines only on hover.
 - **Open threads** shows all supported obligations with direct record links.
   Within each direction section, rows keep their date without repeating the
   direction tag. **Memory changes** keeps cited field changes separate from

@@ -5,7 +5,7 @@ import json
 import time
 from pathlib import Path
 
-from .config import STAGE_LEVELS, level_model
+from .config import STAGE_LEVELS, level_effort, level_model
 from .files import RemError, maintenance_lock, read_json, state_path, write_json
 
 STAGES = ("plan", "extract", "synthesize", "render")
@@ -41,10 +41,12 @@ def inquiry_routed(root: Path) -> bool:
 
 
 def stage_config(root: Path, config: dict, stage: str) -> dict:
-    """The config one model call runs with: its level's model, unless route.<stage> pins it."""
+    """The config one model call runs with: its level's model and effort, unless route.<stage> pins the model."""
     value = copy.deepcopy(config)
     if "models" in config:  # A config built without levels keeps the one model it names.
         value["model"] = level_model(config, stage)
+    if "efforts" in config:
+        value["effort"] = level_effort(config, stage)
     value.update(routing(root).get(stage, {}))
     return value
 

@@ -218,14 +218,13 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     for i in range(rows.count()):
         # On Today the three closes come first, then the two hand-offs, still visible words (D-100; sprint 14).
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
+        assert names == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # Show more is the item's second level (#3072)
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
         # One order on every strip (#2990 review, D-100): Waiting's too, the talk behind its worded More.
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
-        assert " ".join(mine.nth(i).locator(".strip-more > summary").inner_text().split()) == "More ▾"
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
     assert not set(fills) & set(GREEN)
@@ -318,9 +317,12 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     answers["/rem/task"] = [(200, {"id": "a1b2", "result": "starting", "agent": "claude", "by": "owner"})]
     card.locator(".qitem").first.hover()  # the row's actions are its second level (D-120)
     _hand(card.locator(".handoff").first, "交给 Claude")
-    card.get_by_text("Claude 正在做").wait_for()
+    # On a Today card the row is the agent's from the click: it leaves the deck and the work shows in one strip (#3072).
+    strip = page.locator("#work-strip")
+    strip.get_by_text("Claude 正在做 1 件事").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
-    assert card.get_by_role("button", name="停止").is_visible()
+    strip.locator("summary").click()
+    assert strip.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]
     other = page.locator(".deal").evaluate_all(FACES)[1]
     page.locator(f'.deal[data-path="{other}"]').click()
@@ -357,7 +359,7 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
     assert page.get_by_text(SNAPSHOT_LINE, exact=True).count() == 1
     # Every strip button is disabled work in a snapshot, the three closes included (#2990 review: nothing carries a
     # snapshot's mark to the notebook); the card says why in words, never a command.
-    assert page.locator(".handoff button:not(:disabled)").count() == 0
+    assert page.locator(".handoff button:not(:disabled):not(.strip-more)").count() == 0  # Show more only reads, so it works
     assert page.locator(".handoff .strip-done:disabled").count() > 0
     assert "This is an offline snapshot; open REM to mark it." in page.locator("#main").inner_text()
     assert page.locator(".handoff-status").evaluate_all("nodes => nodes.map(n => n.textContent).join('')") == ""
@@ -437,7 +439,9 @@ def test_counts_name_their_unit(today):
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
-                                           (500, "REM 暂时没回应，过会儿再试。"), (None, "REM 暂时没回应，过会儿再试。")])
+                                           (500, "REM 暂时没回应，过会儿再试。"),
+                                           # No answer at all: the page has lost REM, and waiting will not bring it back (#3072).
+                                           (None, "这个页面已经连不上 REM，所以没有交出去。重新打开 REM，在它打开的页面里操作。")])
 def test_hand_off_failures_are_plain_words(today, status, words):
     page, _, answers = today
     page.evaluate("() => { REM.live = true; setInterfaceLanguage('zh'); render(); }", isolated_context=False)
@@ -508,7 +512,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     assert page.locator('.deal[data-path="people/ines-halvorsen.md"]').count() == 0
     assert page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
     note = page.locator(".qsent")
-    assert "Sent to Inès Halvorsen." in note.inner_text() and "undo" in note.inner_text()
+    assert "Sending to Inès Halvorsen at " in note.inner_text() and "undo" in note.inner_text()
     assert page.locator("#approval-undo").count() == 0  # one undo, beside the row it belongs to
     note.get_by_role("button", name="Undo", exact=True).click()
     page.locator('.qcard[data-path="people/ines-halvorsen.md"]').wait_for()
@@ -578,9 +582,11 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     links = page.locator("#nav a")
     assert links.first.is_visible() and page.locator('#nav a[href="#view=changes"]').is_visible()
     # Each row of the sheet writes its place's full name beside its picture; the rail's short word is not shown twice.
+    # The sheet is in the rail's one order (#3091), with the places this notebook has pages for.
     rows = page.locator("#nav > a")
     assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
-        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Skills"', '"Knowledge"']
+        '"Today"', '"Waiting on you"', '"Agenda"', '"People"', '"Organisations"', '"Projects"', '"Knowledge"',
+        '"Decisions"', '"Skills"', '"Memory changes"']
     assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.
     assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {
@@ -617,9 +623,8 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     slot.fill("Thursday afternoon")
     row = card.locator(".qitem").first
     row.hover()
-    row.locator(".strip-more > summary").click()
-    row.locator(".strip-more .talk-menu > summary").click()
-    row.locator('[data-talk="codex"]').click()
+    row.locator(".strip-more").click()  # the talk's choices are in the item's second level (#3072)
+    page.locator('#item-context [data-talk="codex"]').click()
     talk = page.get_by_role("textbox", name="Your message")
     talk.fill("Draft it short")
     talk.evaluate("node => node.setSelectionRange(6, 8)")

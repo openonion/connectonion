@@ -686,3 +686,12 @@ def _nothing_written_into_the_repos_own_project():
             "shares that directory, so it is state one test hands another. "
             "monkeypatch.chdir(tmp_path) first, or pass log=False."
         )
+
+
+@pytest.fixture(autouse=True)
+def _no_weather_request(monkeypatch):
+    """The night's calendar step also asks Open-Meteo for a forecast (rem/weather.py). No test may: the one
+    function that talks to it answers as a dead network would, and a test of the forecast replaces it."""
+    def refused(url, params):
+        raise ConnectionError("tests do not reach Open-Meteo; replace connectonion.rem.weather.get_json")
+    monkeypatch.setattr("connectonion.rem.weather.get_json", refused)

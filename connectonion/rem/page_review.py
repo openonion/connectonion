@@ -1433,10 +1433,13 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 external.update(source for source in cited_texts(root, candidate, items)
                                 if not source.startswith(("investigation:", "codex:", "claude-code:")))
             numbers = _cited_sources(candidate)
+            # A line the page already had is not this run's claim: the 2026-11-18 append A/B was refused
+            # for keeping onionwright's existing Open threads when no new session had arrived (#3105).
+            carried = {_line_key(line) for line in prose(original).splitlines()}
             for heading in ('Insight', 'Open threads'):
                 section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
                 if section and not re.fullmatch(r'-?\s*Unknown', section[1].strip(), re.I):
-                    lines = [line for line in section[1].splitlines() if line.strip()]
+                    lines = [line for line in section[1].splitlines() if line.strip() and _line_key(line) not in carried]
                     if not all(any(numbers.get(n) in external for n in CITATION.findall(line)) for line in lines):
                         errors.append(f'No assigned project session inputs: keep {heading} Unknown')
         for label in ('Sessions', 'First seen', 'Last seen'):
@@ -1484,19 +1487,70 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     return errors
 
 
+def _ends_with_sources(page: str) -> bool:
+    """Is the page's one `## Sources` its last section, with no stamp or heading after it?"""
+    _, marker, tail = page.partition('\n## Sources\n')
+    return bool(marker) and not re.search(r'(?m)^#{1,6} |^Investigation:', tail)
+
+
+def _fold_appendix(original: str, text: str) -> str:
+    """A section written after the page's closing Sources, moved above it; its definitions join that one list.
+
+    The night's writer used to append `## Section … ### Sources` after everything, so a page read text,
+    sources, text, sources (#3097). The same turn written the old way is not refused, it is put in order.
+    """
+    added = text[len(original):]
+    block = re.search(r'(?ms)^### Sources[ \t]*\n(.*?)(?=^#{2,3} |\Z)', added)
+    section = added[:block.start()] + added[block.end():] if block else added
+    head, marker, sources = original.partition('\n## Sources\n')
+    return (head.rstrip('\n') + '\n\n' + section.strip('\n') + '\n' + marker + sources.rstrip('\n') + '\n'
+            + (block[1].strip('\n') + '\n' if block else ''))
+
+
+def _added_knowledge(text: str, original: str):
+    """(the added section as a page of its own, how to put the reviewed section back, errors).
+
+    A page that ends with its one `## Sources` takes a new section above it and new definitions at the end of
+    that list (#3097). Any other existing page (an Investigate topic with its stamp, or one written before
+    that rule) keeps the older shape: the section after everything, with its own `### Sources`.
+    """
+    nest = lambda part: re.sub(r'^## (Drawn from|Sources|Uncertainties)$', r'### \1', part, flags=re.M)
+    if not original:
+        return text, lambda reviewed: reviewed, []
+    if _ends_with_sources(original):
+        if text.startswith(original):
+            text = _fold_appendix(original, text)
+        head, marker, sources = original.partition('\n## Sources\n')
+        new_head, _, new_sources = text.partition('\n## Sources\n')
+        kept = sources.rstrip('\n')
+        if not (new_head.startswith(head) and new_sources.startswith(kept) and _ends_with_sources(text)):
+            return text, None, ['Abstract knowledge is append-only; preserve all existing text: put the new section '
+                                'above ## Sources and add its definitions at the end of that list']
+        added = new_head[len(head):]
+        candidate = '# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M) + marker + new_sources[len(kept):].lstrip('\n')
+
+        def rebuild(reviewed):
+            section, _, definitions = reviewed.split('\n', 1)[1].partition('\n## Sources\n')
+            return (head.rstrip('\n') + '\n\n' + nest(section).strip('\n') + '\n' + marker + kept + '\n'
+                    + definitions.strip('\n') + '\n')
+        return candidate, rebuild, [] if re.match(r'\s*## [^\n]+\n', added) else ['Abstract knowledge must append a clearly headed section']
+    if not text.startswith(original):
+        return text, None, ['Abstract knowledge is append-only; preserve all existing text']
+    added = text[len(original):]
+    # Review an appendix on its own: its nested headings become normal sections.
+    candidate = '# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M)
+    errors = [] if re.match(r'\s*## [^\n]+\n', added) else ['Abstract knowledge must append a clearly headed section']
+    return candidate, lambda reviewed: original + nest(reviewed.split('\n', 1)[1]), errors
+
+
 def review_abstract_knowledge(notebook, record, text, original, accepted):
     """Review learning in the batch's usual page review, preserving topic text exactly."""
     from .captured_decisions import quote_errors
     from .decision_authorship import review as review_authorship
     from .reader_model import REFERENCE, SOURCE, _destination
-    if original and not text.startswith(original):
-        return text, ['Abstract knowledge is append-only; preserve all existing text']
-    added = text[len(original):] if original else text
-    if original and not re.match(r'\s*## [^\n]+\n', added):
-        return text, ['Abstract knowledge must append a clearly headed section']
-    # Review an appendix on its own: its nested headings become normal sections.
-    candidate = ('# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M)
-                 if original else text)
+    candidate, rebuild, errors = _added_knowledge(text, original)
+    if errors:
+        return text, errors
     drawn = re.search(r'(?ms)^## Drawn from\n(.*?)(?=^## |\Z)', prose(candidate))
     records = {_destination(record, raw) for _, raw in REFERENCE.findall(drawn[1])} if drawn else set()
     allowed = set(notebook.list()) | set(accepted)
@@ -1518,11 +1572,7 @@ def review_abstract_knowledge(notebook, record, text, original, accepted):
     errors += validate(record, candidate, '', items, pages=allowed, root=notebook.root, abstract=True)
     errors += size_errors(text, original)
     errors += unquoted_decisions(candidate, decision_page=True) + quote_errors(candidate, items) + authorship_errors
-    if original:
-        appendix = candidate.split('\n', 1)[1]
-        appendix = re.sub(r'^## (Drawn from|Sources|Uncertainties)$', r'### \1', appendix, flags=re.M)
-        return original + appendix, errors
-    return candidate, errors
+    return rebuild(candidate), errors
 
 
 def fact_errors(record: str, candidate: str, original: str) -> list[str]:
@@ -2123,19 +2173,74 @@ def _lost_quotes(before: str, after: str, exempt=frozenset()) -> set[str]:
     return lost
 
 
-def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
+# Sections whose lines an append may change: History is folded by the program at
+# sixteen lines, and an Uncertainties question goes once it is answered. The lead is
+# the page's summary and is rewritten with what is live; its quotes and sources stay guarded.
+CLAIM_FREE = ('History', 'Uncertainties', 'Sources')
+# A line kept with its old value says so: "CEO (was CTO until 2026-10-01)".
+CORRECTED = re.compile(r'\b(?:was|were|until|previously|formerly|earlier|corrected|superseded|no longer)\b'
+                       r'|此前|曾|原为|直到|更正', re.I)
+
+
+def _line_key(line: str) -> str:
+    """A line's words without citation numbers, links or layout: renumbering is not a change."""
+    words = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', line)
+    words = re.sub(r'\[(?:W?\d+|personal|sensitive)\](?!\()', '', words)
+    return ' '.join(words.strip().lstrip('-*').split()).rstrip(' .;').casefold()
+
+
+def claim_lines(text: str) -> dict[str, str]:
+    """{key: line} for every cited line an append must keep: outside the lead, History,
+    Uncertainties and Sources, and not a Facts field (facts keep their own guard)."""
+    section, found = '', {}
+    for line in prose(text).splitlines():
+        if line.startswith('## '):
+            section = line[3:].strip()
+            continue
+        if (not section or section in CLAIM_FREE or not CITATION.search(line)
+                or CONTACT_LINE.match(line) or not line.strip()):
+            continue
+        key = _line_key(line)
+        if len(key) >= 12:
+            found.setdefault(key, line.strip())
+    return found
+
+
+def _lost_claims(before: str, after: str) -> dict[str, str]:
+    """The cited lines `after` neither keeps (word for word, extended or lightly edited)
+    nor marks corrected. A line may move to another section."""
+    rows = [_line_key(line) for line in prose(after).partition('\n## Sources\n')[0].splitlines() if line.strip()]
+    joined = '\n'.join(rows)
+
+    def kept(key):
+        if key in joined:
+            return True
+        return any(row and (len(row) * 2 >= len(key) and _contained(key, row) >= 0.85
+                            or CORRECTED.search(row) and _contained(key, row) >= 0.5) for row in rows)
+    return {key: line for key, line in claim_lines(before).items() if not kept(key)}
+
+
+def dropped(before: str, after: str, exempt=frozenset(), *, claims=False) -> list[str]:
     """Name each loss so a resumed writer can restore it exactly.
 
     `exempt` are quotes the page had that are not in their cited source: guarding one put a broken
     quote back over the writer's correction, and the round was refused (2026-10-20).
+    `claims`: an append (#3105) also keeps every cited line, or marks it corrected.
     """
     return ([f'Dropped quote the page had: “{quote}”'
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
-               for source in sorted(_evidence_sources(before) - _listed_sources(after))])
+               for source in sorted(_evidence_sources(before) - _listed_sources(after))]
+            + (['Dropped claim line the page had: ' + _CITATION_MARKS.sub("", line).rstrip()
+                for line in _lost_claims(before, after).values()] if claims else []))
 
 
-def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
+# Citation marks such as [3] or [W2] (not a [text](link)), stripped from a dropped claim line.
+# A module constant, not inline: a backslash inside an f-string is a SyntaxError before Python 3.12.
+_CITATION_MARKS = re.compile(r"[ ]*(?:\[W?\d+\](?!\()[ ]*)+")
+
+
+def restore_dropped(before: str, after: str, exempt=frozenset(), *, claims=False) -> str:
     """Restore missing evidence beside a rewrite that keeps every non-lost quote and source.
 
     Never replace a line carrying a new source or quote. Insert the original immediately after
@@ -2154,7 +2259,8 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
         lost_quotes = _lost_quotes(before, after, exempt)
         lost_sources = _evidence_sources(before) - _listed_sources(after)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
-        if not (quotes(visible) & lost_quotes or cited & lost_sources):
+        lost_claim = claims and _line_key(visible) in _lost_claims(before, after)
+        if not (quotes(visible) & lost_quotes or cited & lost_sources or lost_claim):
             continue
         seen.add(line)
         restored, after = _restore_citations(line, after, before)

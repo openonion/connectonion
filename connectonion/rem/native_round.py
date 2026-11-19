@@ -61,7 +61,7 @@ def prepare(root, config, *, scheduled, carry=None):
     first = not any(row.get("phase") == "daily-investigation" for row in recent)
     phase = "daily-investigation" if first else "daily-update"
     cursor = {"phase": phase, "started_at": moment.isoformat(), "slot": slot.isoformat() if slot else None,
-              "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, 5),
+              "batch": batch, "batch_index": 0, "summaries": sessions._summary_candidates(root, config["limits"]["summaries_per_round"]),
               "jobs": _queue(_with_parked(root, _with_waiting(root, _jobs(root, first, logs, sources, set_aside)))),
               "job_index": 0, "current": None,
               "changed": basics_changed + topics["created"], "topics": topics, "same_left": 3, "same_new_left": 10, "translations": [], "translated": 0, "sessions": imported,
@@ -304,15 +304,18 @@ def waiting_shares(root, *, night=None):
     return {} if not saved or saved.get("held") else {name: saved[name] for name in SHARES}
 
 
-def hold_in_words(root, *, night=None):
+def hold_in_words(root, *, night=None, **now):
     """'investigation is waiting for its weekly budget (…); 40 pages wait', or '' when it is not held.
 
-    Over once the week has reset, whether or not a round has walked the queue since."""
+    Over once the week has reset, whether or not a round has walked the queue since.
+    `held=` (status) is the hold as the week's points count now, or None: the sentence a
+    round saved is that round's count. 2026-11-17: status said "38 of 35 points used"
+    here and "14.3 of 35" on its Budget line, a day after the count was corrected."""
     saved = _waiting(root, night)
-    held = saved.get("held")
+    held = now["held"] if "held" in now else saved.get("held")
     if not held or (held["until"] and held["until"] <= service.now().timestamp()):
         return ""
-    count = len(saved["jobs"])
+    count = len(saved.get("jobs", []))
     return held["reason"] + (f"; {count} {'page waits' if count == 1 else 'pages wait'}" if count else "")
 
 
@@ -325,7 +328,8 @@ def shares_in_words(shares, whose="tonight's"):
 
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
-    phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation", "draft": "reply-draft"}
+    phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation",
+              "draft": "reply-draft", "tag": "tag"}
     return {"handler": handler, "task": task, "stage": stage, "record": record, "round": number,
             "operation": operation or handler,
             "phase": "sync" if operation == "batch" else phases.get(handler, cursor["phase"])}
@@ -419,10 +423,7 @@ def prepare_task(root, cursor, config, directory):
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
-    # The closing pass takes one share, like a portion's: it used to run until the
-    # backlog was empty, and with 361 pages waiting the round never completed, so
-    # Deepen, which starts only after a completed round, never ran.
-    task = _translation_turn(root, cursor, config, directory)
+    task = _closing_translation(root, cursor, config, directory) or _closing_tags(root, cursor, config, directory)
     if task:
         return task
     from .night import listing
@@ -440,7 +441,9 @@ def prepare_task(root, cursor, config, directory):
 
 
 def _summary_turn(root, cursor, config, directory):
-    """The next session summary of the round's five, or None when none waits."""
+    """The next session summary of the round's (`limits.summaries_per_round`), or None when none waits."""
+    # A session still being written changes under its task: wait for a later round (#3099).
+    cursor["summaries"] = [row for row in cursor["summaries"] if not sessions.being_written(root, row["key"])]
     if not cursor["summaries"]:
         return None
     rows = cursor["summaries"][:1]
@@ -514,7 +517,7 @@ PORTION = 2
 
 
 def _between_portions(root, cursor, config, directory):
-    """Between two portions of investigation: one session summary, one Abstract round, then translation's share.
+    """Between two portions of investigation: one session summary, one Abstract round, one tag turn, then translation's share.
 
     Each of them used to wait for the whole night's share of investigations (12 pages
     of many turns each), so a night that was cut short had only investigated. Abstract
@@ -523,10 +526,11 @@ def _between_portions(root, cursor, config, directory):
     `portions` counts the breaks begun; whoever runs whole rounds starts the round's
     one deepen slot once the first has been served (`schedule.early_depth`)."""
     if "between" not in cursor:
-        cursor["between"] = ["sessions", "abstract"]
+        cursor["between"] = ["sessions", "abstract", "tag"]
         cursor["portions"] = cursor.get("portions", 0) + 1
     while cursor["between"]:
-        step = {"sessions": _summary_turn, "abstract": prepare_abstract}[cursor["between"].pop(0)]
+        step = {"sessions": _summary_turn, "abstract": prepare_abstract,
+                "tag": prepare_tagging}[cursor["between"].pop(0)]
         task = step(root, cursor, config, directory)
         if task:
             return task
@@ -538,12 +542,34 @@ def _between_portions(root, cursor, config, directory):
     return None
 
 
-def translation_share(root):
-    """Translation turns per portion: a fiftieth of the pages waiting, at least 4, never more than wait."""
+def translations_waiting(root):
+    """Page translations waiting, over every language but English."""
     # Only the count matters here, so Today's order is not asked for.
-    waiting = sum(len(translate.backlog(root, tag)) for tag in translate.languages(root)
-                  if tag.split("-")[0].lower() != "en")
-    return min(waiting, max(4, -(-waiting // 50)))
+    return sum(len(translate.backlog(root, tag)) for tag in translate.languages(root)
+               if tag.split("-")[0].lower() != "en")
+
+
+def translation_share(root):
+    """Translation turns per portion: a tenth of the pages waiting, at least 10, never more than wait.
+
+    It was a fiftieth, at least 4: 7 turns of under a minute beside two investigation
+    turns of 20 to 60 minutes each (owner, 2026-11-17: "schedule more of them per batch")."""
+    waiting = translations_waiting(root)
+    return min(waiting, max(10, -(-waiting // 10)))
+
+
+def _closing_translation(root, cursor, config, directory):
+    """After the queue, translation goes on until no page waits; `prepare_translation` holds the bound.
+
+    It took one share, like a portion's, because an unbounded pass over 361 pages kept
+    the round from completing and Deepen started only after a completed round. One share
+    a night was 9, 8, 9 and 0 pages of some 350 over four nights (2026-11-17), at under a
+    minute a page. Deepen no longer waits for it: `closing` is what `schedule._depth_early`
+    reads to start the slot of a round that had no portion of investigation."""
+    task = prepare_translation(root, cursor, config, directory)
+    if task:
+        cursor["closing"] = True
+    return task
 
 
 def _translation_turn(root, cursor, config, directory):
@@ -558,6 +584,11 @@ def _translation_turn(root, cursor, config, directory):
 
 def prepare_translation(root, cursor, config, directory):
     _reset_attempts(root, cursor)
+    # A round's stated end, between portions and after the queue alike: how many pages
+    # it left waiting is kept for the night's line.
+    if len(cursor.get("translations", [])) >= config["limits"]["translations_per_round"]:
+        cursor.setdefault("translations_waiting", translations_waiting(root))
+        return None
     # The owner's one-click job is translating the same pages: the night's pass stands aside.
     if translate.claimed(root):
         return None
@@ -568,12 +599,41 @@ def prepare_translation(root, cursor, config, directory):
         if language.split("-")[0].lower() == "en":
             continue
         attempted = cursor.get("translation_attempts", [])
-        for record in translate.backlog(root, language, changed=cursor["changed"], shown=cursor["shown_today"]):
-            if [language, record] in attempted:
-                continue
-            task = translate.prepare(root, record, language, directory=directory, native=True)
-            return _task("translate", task, cursor, stage="translate", record=record)
+        room = min(translate.BATCH, config["limits"]["translations_per_round"] - len(cursor.get("translations", [])))
+        records = [record for record in translate.backlog(root, language, changed=cursor["changed"],
+                                                          shown=cursor["shown_today"])
+                   if [language, record] not in attempted][:room]
+        if records:
+            task = translate.prepare_batch(root, records, language, directory=directory)
+            return _task("translate", task, cursor, stage="translate", record=records[0] if len(records) == 1 else "")
     return None
+
+
+def _closing_tags(root, cursor, config, directory):
+    """After the closing translation, tag turns go on until no page waits; `prepare_tagging` holds the bound."""
+    task = prepare_tagging(root, cursor, config, directory)
+    if task:
+        cursor["closing"] = True
+    return task
+
+
+def prepare_tagging(root, cursor, config, directory):
+    """The next batch of pages waiting for tags, or None: none waits, or the round offered its
+    `limits.tags_per_round`. A batch offered once is not offered again in the same round,
+    so a reply the review refuses cannot hold the round (docs/cli/rem-tags.md)."""
+    from . import tag_stage
+    attempted = cursor.setdefault("tag_attempts", [])
+    room = config["limits"]["tags_per_round"] - len(attempted)
+    waiting = [record for record in tag_stage.candidates(root) if record not in set(attempted)]
+    if room <= 0:
+        cursor.setdefault("tags_waiting", len(waiting))
+        return None
+    records = waiting[:min(room, tag_stage.BATCH)]
+    if not records:
+        return None
+    attempted += records
+    task = tag_stage.prepare(root, records, directory=directory, native=True)
+    return _task("tag", task, cursor, stage="tag")
 
 
 def finish(root, cursor):
@@ -752,6 +812,8 @@ def _prepare_investigation(root, cursor, job, directory):
 
 def _followup_items(book, state):
     record = state["record"]
+    if state.get("append"):
+        return None  # An append ends with its parts: no editing or quote turn rewrites lines it did not touch (#3105).
     page = state.get("draft", book.read(record))
     if not state.get("tail"):
         state["tail"] = "editing" if state["multi"] else "quotes"
@@ -851,9 +913,16 @@ def check_task(root, task, output):
     if handler == "inquiry":
         from . import inquiry
         return {"value": inquiry.check(prepared, output)}
-    if handler == "translate":
+    if handler == "translate" and "pages" in prepared:
+        result = translate.check_batch(prepared, output)
+        return {"translated_records": result["translated"], "refused_pages": result["refused"]}
+    if handler == "translate":  # a one-page task prepared before batches (#3099)
         translate.check(prepared, output)
         return {}
+    if handler == "tag":
+        from . import tag_stage
+        plan = tag_stage.check(root, prepared, output)
+        return {"changed": tag_stage.promote(root, plan), "tagged": len(plan["pages"]), "refused_tags": plan["refused"]}
     if handler == "same-person":
         from . import same_person
         plan = same_person.prepare_verdict(prepared, output)
@@ -1120,10 +1189,15 @@ def advance(root, cursor, task, result):
         if not result.get("discarded"):
             from .approvals import send_direct
             send_direct(root, row["id"])  # only a send=now reply to a partner/close person; 10-minute Undo
+    elif operation == "tag":
+        cursor["tagged"] = cursor.get("tagged", 0) + result.get("tagged", 0)
     elif operation == "translate":
-        cursor["translations"].append(task["record"])
-        cursor.setdefault("translation_attempts", []).append([task["task"]["language"], task["record"]])
+        # A page the batch's review refused is set aside for this round like a parked one-page task;
+        # the backlog offers it again in the next round.
+        records = task["task"].get("records") or [task["record"]]
+        cursor["translations"] += records
+        cursor.setdefault("translation_attempts", []).extend([task["task"]["language"], record] for record in records)
         if not result.get("discarded"):
-            cursor["translated"] += 1
+            cursor["translated"] += len(result.get("translated_records", records))
     cursor["pending"] = None
     write_json(state_path(root, "round.json"), cursor)

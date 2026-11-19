@@ -45,6 +45,10 @@ OUTLOOK = [
 ]
 
 
+# What each account listed: how many calendars were his to read, and the others by the access they were shared with.
+LISTED = {'google': {'read': 1, 'left_out': {'freeBusyReader': 2, 'reader': 1}}, 'microsoft': {'read': 2, 'left_out': {}}}
+
+
 @pytest.fixture
 def calendars(monkeypatch):
     """Both calendars connected; `answers[kind]` is a list of events or an exception to raise."""
@@ -55,7 +59,7 @@ def calendars(monkeypatch):
         asked.append((kind, start, end, zone))
         if isinstance(answers[kind], Exception):
             raise answers[kind]
-        return answers[kind]
+        return answers[kind], LISTED[kind]
 
     monkeypatch.setattr(calendar, 'calendar_events', events)
     return answers, asked
@@ -84,6 +88,23 @@ def test_the_night_saves_both_calendars_next_weeks_in_one_shape(tmp_path, calend
     # Graph's UTC has no offset in the string; it is written with one.
     assert by_id['o1']['start'] == '2026-10-03T01:00:00+00:00' and by_id['o1']['location'] == 'Harbour office'
     assert by_id['o2']['all_day'] and (by_id['o2']['start'], by_id['o2']['end']) == ('2026-10-04', '2026-10-05')
+    # #3087: which calendars were read and which were left out, as counts by access; never another person's name.
+    assert saved['calendars'] == LISTED
+    read = {row['name']: row for row in calendar.upcoming(tmp_path, [], '')['read']}
+    assert (read['Google Calendar']['calendars'], read['Google Calendar']['left_out']) == (1, {'freeBusyReader': 2, 'reader': 1})
+    assert (read['Outlook']['calendars'], read['Outlook']['left_out']) == (2, {})
+
+
+def test_events_saved_from_a_shared_calendar_are_gone_after_the_next_read(tmp_path, calendars):
+    """#3087: 15 of the owner's 20 saved events were other people's untitled Busy entries. The next read drops them."""
+    answers, _ = calendars
+    answers.pop('microsoft')
+    answers['google'] = [GOOGLE[0], _timed('theirs', visibility='private', _calendar=SHARED)]
+    calendar.save_upcoming(tmp_path, NIGHT)
+    assert {event['id'] for event in _saved(tmp_path)['events']} == {'g1', 'theirs'}
+    answers['google'] = [GOOGLE[0]]  # what _google_events returns once it reads only his own calendars
+    calendar.save_upcoming(tmp_path, NIGHT + timedelta(days=1))
+    assert [event['id'] for event in _saved(tmp_path)['events']] == ['g1']
 
 
 def _google_saved(tmp_path, calendars, items):
@@ -148,7 +169,7 @@ def test_a_cancelled_instance_is_left_out_even_without_a_title(tmp_path, calenda
 
 
 class _FakeGoogle:
-    """Google's client in its own shape: two listed calendars, each asked for its events; records every request."""
+    """Google's client in its own shape: the listed calendars, each read one asked for its events; records every request."""
 
     def __init__(self):
         self.asked = []
@@ -169,22 +190,28 @@ class _FakeGoogle:
             return {'items': [{'id': 'avery@example.test', 'summary': 'avery@example.test', 'summaryOverride': 'Avery',
                                'primary': True, 'accessRole': 'owner'},
                               {'id': 'ines@example.test', 'summary': 'Ines Calder', 'selected': True, 'accessRole': 'freeBusyReader'},
-                              {'id': 'feed@example.test', 'summary': 'Unticked feed', 'accessRole': 'reader'}]}
+                              {'id': 'tomas@example.test', 'summary': 'Tomas Reed', 'selected': True, 'accessRole': 'freeBusyReader'},
+                              {'id': 'fernhill@example.test', 'summary': 'Fernhill team', 'selected': True, 'accessRole': 'reader'},
+                              {'id': 'feed@example.test', 'summary': 'Unticked feed', 'accessRole': 'reader'},
+                              {'id': 'crew@example.test', 'summary': 'Harbour crew', 'selected': True, 'accessRole': 'writer'},
+                              {'id': 'old@example.test', 'summary': 'Old plans', 'accessRole': 'owner'}]}
         return {'items': [_timed('from-' + params['calendarId'])]}
 
 
-def test_google_is_asked_for_whole_events_and_each_carries_its_calendar(monkeypatch):
+def test_google_reads_only_his_own_ticked_calendars_and_counts_the_rest_by_access(monkeypatch):
+    """#3087: his own calendar and one he can write to are read; free/busy and read-only shares never are."""
     from connectonion.useful_tools.google_calendar import GoogleCalendar
     service = _FakeGoogle()
     monkeypatch.setattr(GoogleCalendar, '__init__', lambda self: None)
     monkeypatch.setattr(GoogleCalendar, '_get_service', lambda self: service)
-    events = calendar._google_events(NIGHT, NIGHT + timedelta(days=1), SYDNEY)
+    events, listed = calendar._google_events(NIGHT, NIGHT + timedelta(days=1), SYDNEY)
     assert [(event['id'], event['_calendar']) for event in events] == [
-        ('from-avery@example.test', OWN), ('from-ines@example.test', SHARED)]
+        ('from-avery@example.test', OWN), ('from-crew@example.test', {'name': 'Harbour crew', 'access': 'writer'})]
+    assert listed == {'read': 2, 'left_out': {'freeBusyReader': 2, 'reader': 2, 'unticked': 1}}
     # A `fields` mask that left out `summary` would empty every title; none is sent, so Google returns the whole event.
     asked = [params for params in service.asked if 'calendarId' in params]
     assert all('summary' in params.get('fields', 'summary') for params in asked) and len(asked) == 2
-    assert [calendar._google(event, SYDNEY)['label'] for event in events] == ['', 'Busy']
+    assert [calendar._google(event, SYDNEY)['label'] for event in events] == ['', '']
 
 
 def test_an_outlook_all_day_event_in_sydney_keeps_its_day(tmp_path, calendars):
@@ -227,6 +254,7 @@ def test_a_calendar_that_fails_keeps_what_it_saved_before_and_says_when_and_why(
     assert result['read'] == ['google'] and result['errors'] == {'microsoft': {'reason': reason, 'at': later.isoformat()}}
     saved = _saved(tmp_path)
     assert sorted(event['id'] for event in saved['events']) == ['g2', 'o1', 'o2']
+    assert saved['calendars'] == LISTED, 'the calendar that failed keeps the counts of the night its events are from'
     # Per calendar: Outlook's events are as of the first night, Google's as of tonight.
     assert saved['read_at'] == {'google': later.isoformat(), 'microsoft': NIGHT.isoformat()}
 
@@ -260,7 +288,7 @@ def test_available_asks_the_same_saved_scopes_the_calendar_tools_check(monkeypat
     assert calendar.available('google')
 
 
-def test_the_real_outlook_tool_reads_every_calendar_and_every_page_in_the_owners_zone(monkeypatch):
+def test_the_real_outlook_tool_reads_every_calendar_he_can_write_and_every_page_in_the_owners_zone(monkeypatch):
     from connectonion.useful_tools import microsoft_calendar
     monkeypatch.setenv('MICROSOFT_SCOPES', 'Calendars.Read')
     monkeypatch.setenv('MICROSOFT_ACCESS_TOKEN', 'fake-token')
@@ -270,7 +298,10 @@ def test_the_real_outlook_tool_reads_every_calendar_and_every_page_in_the_owners
     def answer(request):
         seen.append((request.url.path, request.headers.get('prefer'), request.headers.get('authorization')))
         if request.url.path == '/v1.0/me/calendars':
-            return httpx.Response(200, json={'value': [{'id': 'work'}, {'id': 'family'}]})
+            assert 'canEdit' in request.url.params['$select']
+            # Graph: canEdit is true for a calendar he created and for one shared with write access.
+            return httpx.Response(200, json={'value': [{'id': 'work', 'canEdit': True}, {'id': 'family', 'canEdit': True},
+                                                       {'id': 'ines', 'canEdit': False}, {'id': 'holidays', 'canEdit': False}]})
         if request.url.path.endswith('/work/calendarView') and 'skip' not in str(request.url):
             assert request.url.params['startDateTime'].startswith('2026-09-30T00:00:00')
             return httpx.Response(200, json={'value': [OUTLOOK[0]], '@odata.nextLink': graph + '/me/calendars/work/calendarView?skip=1'})
@@ -281,7 +312,8 @@ def test_the_real_outlook_tool_reads_every_calendar_and_every_page_in_the_owners
     client = httpx.Client(transport=httpx.MockTransport(answer))
     monkeypatch.setattr(microsoft_calendar.httpx, 'request', client.request)
     start = datetime(2026, 9, 30, tzinfo=SYDNEY)
-    items = calendar.calendar_events('microsoft', start, start + timedelta(days=22), SYDNEY)
+    items, listed = calendar.calendar_events('microsoft', start, start + timedelta(days=22), SYDNEY)
+    assert listed == {'read': 2, 'left_out': {'reader': 2}}
     assert [item['subject'] for item in items] == ['Quarterly receipts with Ines', 'School holiday', 'School pickup']
     assert [path for path, _, _ in seen] == ['/v1.0/me/calendars', '/v1.0/me/calendars/work/calendarView',
                                              '/v1.0/me/calendars/work/calendarView', '/v1.0/me/calendars/family/calendarView']
@@ -297,8 +329,8 @@ def test_the_real_google_tool_reads_every_shown_calendar_and_every_page(monkeypa
     monkeypatch.setenv('GOOGLE_ACCESS_TOKEN', 'fake-token')
     page = lambda body: ({'status': '200'}, json.dumps(body))  # noqa: E731
     http = HttpMockSequence([
-        page({'items': [{'id': 'primary-id', 'primary': True}], 'nextPageToken': 'p2'}),
-        page({'items': [{'id': 'team-id', 'selected': True}, {'id': 'holidays-id'}]}),
+        page({'items': [{'id': 'primary-id', 'primary': True, 'accessRole': 'owner'}], 'nextPageToken': 'p2'}),
+        page({'items': [{'id': 'team-id', 'selected': True, 'accessRole': 'writer'}, {'id': 'holidays-id', 'accessRole': 'reader'}]}),
         page({'items': [GOOGLE[0]], 'nextPageToken': 'e2'}),
         page({'items': [GOOGLE[1]]}),
         page({'items': [{**GOOGLE[0], 'id': 't1', 'summary': 'Team retro'}]}),
@@ -314,7 +346,8 @@ def test_the_real_google_tool_reads_every_shown_calendar_and_every_page(monkeypa
     # The tool's own service, built on the fake transport: a renamed _get_service fails here, not on the owner's night.
     monkeypatch.setattr(GoogleCalendar, '_get_service', lambda self: build('calendar', 'v3', http=http, static_discovery=True))
     start = datetime(2026, 9, 30, tzinfo=timezone.utc)
-    items = calendar.calendar_events('google', start, start + timedelta(days=22), timezone.utc)
+    items, listed = calendar.calendar_events('google', start, start + timedelta(days=22), timezone.utc)
+    assert listed == {'read': 2, 'left_out': {'reader': 1}}
     assert [item['summary'] for item in items] == ['Pilot renewal call with Fernhill', 'Harbour offsite', 'Team retro']
     assert asked == ['users/me/calendarList', 'users/me/calendarList', 'calendars/primary-id/events',
                      'calendars/primary-id/events', 'calendars/team-id/events'], 'an unticked calendar is not read'
@@ -329,7 +362,7 @@ def test_the_reader_gets_each_event_with_its_peoples_pages_and_none_before_a_nig
     assert calendar.upcoming(tmp_path, records, 'people/avery.md') is None
     calendar.save_upcoming(tmp_path, NIGHT)
     shown = calendar.upcoming(tmp_path, records, 'people/avery.md')
-    assert shown['read'] == [{'name': 'Google Calendar', 'at': NIGHT.isoformat()}, {'name': 'Outlook', 'at': NIGHT.isoformat()}]
+    assert [(row['name'], row['at']) for row in shown['read']] == [('Google Calendar', NIGHT.isoformat()), ('Outlook', NIGHT.isoformat())]
     by_id = {event['id']: event for event in shown['events']}
     assert by_id['g1']['people'] == ['people/mara.md'] and by_id['g1']['guests'] == 1
     # An address only quoted on someone else's page does not make the meeting theirs.
@@ -389,7 +422,7 @@ def test_the_calendars_are_read_outside_the_writer_lock(tmp_path, monkeypatch, c
 
     def events(kind, start, end, zone):
         held.append(_locked(files.state_path(tmp_path, 'maintenance.lock')))
-        return []
+        return [], {'read': 1, 'left_out': {}}
 
     monkeypatch.setattr(calendar, 'calendar_events', events)
     _round(tmp_path, monkeypatch)

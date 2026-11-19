@@ -23,7 +23,9 @@ pytestmark = pytest.mark.skipif(
 )
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "fixtures"))
 
-RAIL = ["#", "#view=open", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#c=knowledge"]
+# #3091: one ordered list; Decisions and Principles follow Knowledge, Memory changes is last.
+RAIL = ["#", "#view=open", "#c=agenda", "#c=people", "#c=orgs", "#c=projects", "#c=knowledge", "#c=decisions", "#c=principles",
+        "#c=skills", "#view=changes"]
 
 
 def notebook(root):
@@ -90,9 +92,62 @@ def test_the_rail_has_one_knowledge_place_and_no_all_records(browser, built, wid
 
 
 @pytest.mark.parametrize("width", [1440, 390])
+def test_the_rails_knowledge_opens_on_the_graph_with_entries_second(browser, built, width):
+    """Owner, 2026-11-17 (#3085): Knowledge opens on the graph, not on the entries list; the phone too."""
+    page = open_page(browser, built, width)
+    if width < 400:
+        page.locator("#tabbar .nav-toggle").click()
+    page.locator('#nav a[href="#c=knowledge"]').click()
+    page.locator(".gx-map canvas").wait_for()
+    assert page.locator(".gx-topics").count() == 0
+    switch = page.locator(".knowledge-switch")
+    assert switch.locator("a").all_inner_texts() == ["Graph", "Entries"]
+    assert switch.locator('a[aria-current="page"]').all_inner_texts() == ["Graph"]
+    assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
+    assert page.title() == "Knowledge · co rem"
+    # Entries is one tap away, and its address names it: reloading that address stays on the entries.
+    switch.get_by_role("link", name="Entries").click()
+    page.locator(".gx-topics .gx-rows li").first.wait_for()
+    assert page.evaluate("location.hash") == "#c=knowledge&view=entries"
+    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Entries"]
+    assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
+    assert page.title() == "Knowledge · co rem"
+    page.reload()
+    page.locator(".gx-topics .gx-rows li").first.wait_for()
+    assert page.locator(".gx-map").count() == 0
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert not page.errors, page.errors
+    page.close()
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_with_nothing_linked_knowledge_shows_the_entries(browser, tmp_path, width):
+    """#3085: a graph with no links has nothing to draw, so the rail's Knowledge shows the entries, and says so."""
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.reader import render
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).stub_topic("knowledge/tide-tables.md", "Tide tables", ["Tide tables"])
+    path = tmp_path / "reader.html"
+    path.write_text(render(root, local=True), encoding="utf-8")
+    page = open_page(browser, path.as_uri(), width)
+    go(page, "#c=knowledge")
+    page.locator(".gx-topics .gx-rows li").first.wait_for()
+    assert page.locator(".gx-map").count() == 0
+    assert page.locator(".gx-rows li b").all_inner_texts() == ["Tide tables"]
+    assert page.locator(".knowledge-switch a").all_inner_texts() == ["Graph", "Entries"]
+    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Entries"]
+    go(page, "#view=graph")
+    page.locator(".gx-topics .gx-rows li").first.wait_for()
+    assert not page.errors, page.errors
+    page.close()
+
+
+@pytest.mark.parametrize("width", [1440, 390])
 def test_knowledge_holds_its_entries_and_the_graph_that_all_records_drew(browser, built, width):
     page = open_page(browser, built, width)
-    go(page, "#c=knowledge")
+    go(page, "#c=knowledge&view=entries")
     page.locator(".gx-topics .gx-rows li").first.wait_for()
     entry = page.locator(".gx-rows li").first
     assert entry.locator("b").inner_text() == "Heat storage"
@@ -106,7 +161,7 @@ def test_knowledge_holds_its_entries_and_the_graph_that_all_records_drew(browser
     # A sparse wiki offers the existing linked records without inventing more topics.
     assert page.locator('.gx-topics > .gx-quiet-line a[href="#view=graph"]').inner_text() == "Explore linked records →"
     switch = page.locator(".knowledge-switch")
-    assert switch.locator("a").all_inner_texts() == ["Entries", "Graph"]
+    assert switch.locator("a").all_inner_texts() == ["Graph", "Entries"]
     assert switch.locator('a[aria-current="page"]').inner_text() == "Entries"
     switch.get_by_role("link", name="Graph").click()
     page.locator(".gx-map canvas").wait_for()
@@ -130,8 +185,7 @@ def test_what_only_all_records_reached_is_reachable_from_knowledge_or_search(bro
     page = open_page(browser, built)
     labels = page.evaluate("paletteItems().map(item => item.label)", isolated_context=False)
     assert "Open Graph" in labels and "Open Knowledge" in labels and "Open All records" not in labels
-    # The All records list was every listed record; each one still sits in a rail place or under 更多.
-    page.locator(".nav.more").click()
+    # The All records list was every listed record; each one still sits in a rail place (or under 更多 in a low window).
     unplaced = page.evaluate("""() => {
       const places = new Set([...document.querySelectorAll('#nav a[href^="#c="], #rail-more a[href^="#c="]')].map(a => a.getAttribute('href').slice(3)));
       return listedRecords().filter(r => !places.has(r.category)).map(r => r.path);
@@ -150,10 +204,10 @@ def test_what_only_all_records_reached_is_reachable_from_knowledge_or_search(bro
 @pytest.mark.parametrize("language", ["en", "zh"])
 def test_pages_lose_the_sentences_that_explained_their_order(browser, built, language):
     gone = {
-        "#c=skills": ["What your agents can do", "Most used", "Everything they can do", "Contents\n", "你的 agent 会做的事",
-                      "最常用", "全部能力", "目录"],
+        # #3094: "Most used" is no longer a heading over cards; it is the name of the table's default view, a control.
+        "#c=skills": ["What your agents can do", "Everything they can do", "Contents\n", "你的 agent 会做的事", "全部能力", "目录"],
         "#": ["Start with this", "Start with these", "先看这"],
-        "#c=knowledge": ["Subjects that tie your records together", "knowledge entr", "See them in the graph",
+        "#c=knowledge&view=entries": ["Subjects that tie your records together", "knowledge entr", "See them in the graph",
                          "把记录串起来的知识", "条知识", "在图谱里看"],
         "#view=graph": ["records linked together", "Whole map", "Click a point to see what it connects", "Most connected",
                         "条记录连在一起", "整张图", "点一个点", "连接最多", "All records", "全部记录"],
@@ -175,11 +229,12 @@ def test_pages_lose_the_sentences_that_explained_their_order(browser, built, lan
         text = page.locator("#main").inner_text()
         for sentence in sentences:
             assert sentence not in text, (hash_, sentence)
-    # Most used still leads, as cards, and the first one sits near the top of the first screen.
+    # Most used still leads (#3094: as the table's first rows), and the first one sits high on the first screen.
     go(page, "#c=skills")
-    first = page.locator(".skills-top .skill-card").first.bounding_box()
-    assert first["y"] < 200, first
-    assert page.locator(".skills-top .skill-card").count() >= 1
+    assert page.locator("#main :is(h2, h3, .section, .lede)").count() == 0  # nothing on the page is a heading or a sentence about order
+    first = page.locator(".skill-table tbody tr").first.bounding_box()
+    assert first["y"] < 300, first
+    assert page.locator(".skill-views [aria-current]").inner_text() == ("最常用" if language == "zh" else "Most used")
     # The page still names itself.
     assert page.locator("#main h1").inner_text() == ("技能" if language == "zh" else "Skills")
     assert not page.errors, page.errors

@@ -247,6 +247,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
             record.update(session_detail(record["text"], private=local))
+    if not today:
+        # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
+        from .page_runs import states
+        found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")])
+        for record in records:
+            if record["path"] in found_states:
+                record["investigation"] = found_states[record["path"]]
     owner = owner_record(root)
     organisation_members(records, owner)
     from .org_hierarchy import structure, rollups
@@ -285,9 +292,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                                'first': candidate.get('first', ''), 'last': candidate.get('last', ''),
                                'doubtful': [d for d in candidate.get('doubtful', []) if d['record'] in record_paths],
                                'mentions': topic_mentions(candidate, record_paths, owner)}
+    from .tags import page_tags, vocabulary as tag_vocabulary
+    tag_entries = tag_vocabulary(root, records)
+    for record in records:
+        record['tags'] = page_tags(record['text'])
     graph = {} if today else graph_snapshot([r for r in records if r['path'] not in unnamed], links,
                                             {r['path']: [m['path'] for m in r['topic']['mentions']]
-                                             for r in records if 'topic' in r})
+                                             for r in records if 'topic' in r}, tag_entries)
     # The owner's own reader holds every cited mail of a real notebook (960 citations, ~2.3M characters).
     context_records = [{**r, 'text': _today_text(r['text'])} for r in records
                        if r['category'] in ('people', 'orgs', 'projects')
@@ -340,6 +351,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "version": connectonion.__version__,
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
             "categories": list(CATEGORIES), "records": records, "graph": graph,
+            # The vocabulary with counts: chips, tag pages and `tag:` search (docs/cli/rem-tags.md).
+            "tags": {slug: entry for slug, entry in tag_entries.items() if entry["count"]},
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "people_coverage": current_status.get("people_coverage"),
             "drafts": reply_drafts(root, local=local, records=records),
@@ -365,6 +378,11 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # The owner's calendars as the night saved them; a shared page carries none of his meetings.
     from .calendar import upcoming
     data['calendar'] = upcoming(root, records, owner) if local else None
+    # His open to-dos as the night saved them (#3087); a shared page carries none.
+    from .todos import read as read_todos
+    data['todos'] = read_todos(root) if local else None
+    from .weather import read as read_weather
+    data['weather'] = read_weather(root) if local else None  # the forecast is for his place: his own reader only
     from .day_plan import read as read_day_plan
     data['day_plan'] = read_day_plan(root, items=data['today_queue']) if local else None
     from .night import listing as night_outcomes
@@ -392,8 +410,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             row.pop('reply', None)
             row.pop('sender', None)
     organisation_obligations(records, data['today_queue'])
-    from .service import notebook_today
+    from .service import notebook_today, notebook_zone
     rollups(records, notebook_today(root))
+    if not today:
+        # What happened on each project by week, for its activity strip and the order of the rows (#3096).
+        from .project_activity import attach
+        data['project_activity'] = attach(records, lambda path: stored(root, path), contexts,
+                                          notebook_today(root), notebook_zone(read_config(root)))
     return _today_data(data) if today else data
 
 
@@ -415,7 +438,7 @@ def _today_text(text: str) -> str:
 def _today_data(data: dict) -> dict:
     """Small, independently usable Today payload; the complete snapshot stays lazy."""
     fields = ('path', 'category', 'title', 'updated', 'written', 'last_activity', 'service',
-              'needs_review', 'catalog_parent', 'mail', 'private_project', 'private', 'written_in', 'speaks')
+              'needs_review', 'catalog_parent', 'mail', 'private_project', 'private', 'written_in', 'speaks', 'tags')
     records = [{**{key: r[key] for key in fields if key in r}, 'text': _today_text(r['text']),
                 'translations': {tag: _today_text(text) for tag, text in r.get('translations', {}).items()}}
                for r in data['records'] if r['category'] not in ('sessions', 'logs', 'notes')]

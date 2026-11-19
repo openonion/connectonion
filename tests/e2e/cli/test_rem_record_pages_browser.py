@@ -41,7 +41,11 @@ def _notebook(root, now):
     text = book.read(MARA)
     head, _, rest = text.partition("## Open threads\n")
     topics, _, tail = rest.partition("\n## ")
-    book.write(MARA, head + "## Open threads\n" + topics.rstrip("\n") + MORE_TOPICS + "\n## " + tail)
+    # A phone number and a GitHub handle, so her header carries all three contact buttons (owner, 2026-11-17).
+    text = (head + "## Open threads\n" + topics.rstrip("\n") + MORE_TOPICS + "\n## " + tail).replace(
+        "- Phone: Unknown", "- Phone: +64 21 555 0142 (mobile) [1]").replace("- Handles: mara@fernhill.example", "- Handles: mara-o (GitHub)")
+    assert "mara-o (GitHub)" in text and "+64 21 555 0142" in text
+    book.write(MARA, text)
     # The owner's own page links to everyone, as it does on a real notebook: he is every page's hub.
     owner = book.read("people/avery-lin.md").replace("## Sources", "## People\n- [Mara Ostrowski](mara-ostrowski.md)\n"
                                                     "- [Tomás Reyes](tomas-reyes.md)\n- [Inès Halvorsen](ines-halvorsen.md)\n"
@@ -120,8 +124,11 @@ def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width,
     assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
     assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
+    # Quiet means the smallest step the place allows: a caption on people and organisations, the 13px label
+    # on a project, where nothing is under 13px (#3096).
+    step = "--s-ui" if head == ".page-head" else "--s-meta"
     assert line.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
-        "getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
+        f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
     assert any(path == "/rem/translation-request" for path, _ in calls)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -156,14 +163,14 @@ def test_open_topics_lead_the_person_page_with_the_top_three(reader, width):
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-# 4. The Skills page says what its numbers are on the cards, not in a caption about name matching.
+# 4. The Skills page says what its numbers are in the column's header (#3094), not in a caption about name matching.
 def test_skills_has_no_matching_jargon(reader):
     open_page, _ = reader
     page = open_page("c=skills")
-    page.locator(".skill-card").first.wait_for()
+    page.locator(".skill-table tbody tr").first.wait_for()
     text = page.locator("#main").inner_text()
     assert "按技能名称匹配计数" not in text and "匹配" not in text
-    assert "近 180 天" in page.locator(".skill-card").first.inner_text()
+    assert "近 180 天" in page.locator(".skill-table thead th.c-uses").inner_text()
 
 
 # 5. On a phone the face belongs to the header beside the name, not in the row of contact buttons.
@@ -175,6 +182,27 @@ def test_phone_person_face_sits_with_the_name_not_the_actions(reader):
     assert face["y"] < name["y"] + name["height"] and face["y"] + face["height"] > name["y"]  # same row as the name
     assert face["y"] + face["height"] <= acts["y"]  # above the contact row, not inside it
     assert face["x"] + face["width"] <= name["x"]
+
+
+# 5b. The owner called the contact pictures "not very accurate": a phone number was a smartphone and a GitHub
+# handle a speech bubble. Each is now the published picture, the same size as its neighbours, centred in its
+# button, and its kind is said in words beside the value on hover and in its name.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_contact_rows_are_published_pictures_with_their_kind_in_words(reader, width):
+    """The round contact buttons became the profile card's Contact rows (2026-11-18); the pictures stay the published
+    sets in the page's ink, and each row says its kind in words beside its picture."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
+    rows = page.locator(".person-head .pcard .pc-row").evaluate_all("""rows => rows.filter(r => r.querySelector('.pc-k svg')).map(r => {
+      const svg = r.querySelector('.pc-k svg'), paint = getComputedStyle(svg), word = r.querySelector('.pc-k span:last-child');
+      return {word: word.textContent, hidden: r.querySelector('.pc-k .icw').getAttribute('aria-hidden'), copy: !!r.querySelector('.pc-copy'),
+        filled: paint.fill !== 'none', stroked: paint.stroke !== 'none',
+        same: paint.fill === getComputedStyle(svg.closest('.pc-k')).color || paint.stroke === getComputedStyle(svg.closest('.pc-k')).color}; })""")
+    assert [r["word"] for r in rows][:3] == ["Email", "Phone", "GitHub"]  # the word, not the picture alone
+    assert all(r["hidden"] == "true" and r["copy"] for r in rows[:3])
+    assert [(r["filled"], r["stroked"]) for r in rows[:3]] == [(False, True), (False, True), (True, False)]  # a mark is solid, in ink
+    assert all(r["same"] for r in rows[:3])
+    assert page.locator(".person-head .round").count() == 0
 
 
 # 6. Organisation records never project Today's queue, even when obligations change.
@@ -212,3 +240,41 @@ def test_open_topics_count_only_shown_rows_when_labelled_passages_are_hidden(rea
         assert topics.inner_text().startswith(expected + "\n")
         assert "全部" not in topics.inner_text() and "[personal]" not in topics.inner_text()
     assert "5" not in page.locator(".r4-person .r4-topics h2, .r4-person .r4-topics .end").all_inner_texts().__str__()
+
+
+# 7. The profile card is the first thing on the person page (owner, 2026-11-18): every known fact as a label over
+# its value under the name, nothing to expand, unknown facts one quiet line, each fact in one place.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(reader, width):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Phone:[^\\n]*/m, '- Phone: +64 21 555 0199 (mobile) [2]')
+        .replace(/^- Signing entity:[^\\n]*/m, '- Signing entity: Fernhill Labs Ltd [2]')
+        .replace(/^- Handles:[^\\n]*/m, '- Handles: mara@fernhill.example; github.com/mara-o (GitHub) [2]; mara#2041 (Discord) [3]');
+      // rem.test is not a secure origin, so the page has no clipboard of its own here.
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: text => { window.copied = text; return Promise.resolve(); } } });
+      delete r.original; delete r.translations; KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    # The card is in the header, outside Full memory: it shows whether or not Full memory is open (#3104 opens it).
+    assert card.is_visible() and card.evaluate("n => !n.closest('details')")
+    name, box = _box(page.locator(".person-head h1")), _box(card)
+    assert name["y"] + name["height"] <= box["y"] < 844, "the card is under the name, on the first screen"
+    labels = card.locator(".pc-k").all_inner_texts()
+    for label in ["Email", "Phone", "GitHub", "Discord", "Signing entity", "How we know them", "First contact", "Last contact",
+                  "Also known as", "Language", "Location"]:
+        assert label in labels, label
+    text = card.inner_text()
+    assert "+64 21 555 0199" in text and "Fernhill Labs Ltd" in text and "M. Ostrowski" in text
+    assert "not found" not in text.replace("1 fact not found", "")  # no rows of "not found"; at most one quiet line
+    assert "1 fact not found" in text and "Time zone" not in labels  # the one unknown left is a count, not a row
+    # One place per fact: role and organisation are the line under the name, not chips, rows or round buttons.
+    assert "Head of Partnerships" in page.locator(".r4-sub").inner_text() and "Head of Partnerships" not in text
+    assert page.locator(".person-head .round, .r4-sub .chip").count() == 0
+    assert labels.count("Email") == 1 and text.count("mara@fernhill.example") == 1  # the handle that is an email is not repeated
+    phone = card.locator(".pc-row", has=page.locator(".pc-k", has_text="Phone")).locator("button")
+    phone.click()
+    assert "Copied" in phone.inner_text() and page.evaluate("window.copied", isolated_context=False) == "+64 21 555 0199"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

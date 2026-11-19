@@ -69,12 +69,12 @@ def test_catchup_reports_calendar_for_each_round(book, model, monkeypatch):
     backlog(book, 40)
     calls = []
     monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
-    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: calls.append(args) or [])
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: (calls.append(args) or [], {'read': 1, 'left_out': {}}))
     result = invoke(book, '--nights', '2', json_out=True)
     assert result.exit_code == 0, result.output
     rows = json.loads(result.stdout)['data']['nights']
     assert len(calls) == len(rows) == 2
-    assert all({k: v for k, v in row['calendar'].items() if k != 'day_plan'} ==
+    assert all({k: v for k, v in row['calendar'].items() if k not in ('day_plan', 'todos', 'weather')} ==
                {'events': 0, 'read': ['google'], 'errors': {}, 'capped': []} for row in rows)
     assert all(row['day_plan'] == row['calendar']['day_plan'] for row in rows)
     assert all(row['day_plan']['dates'] == ['2026-09-07', '2026-09-08'] for row in rows)
@@ -84,7 +84,7 @@ def test_catchup_prints_calendar_result_in_each_night(book, model, monkeypatch):
     from connectonion.rem import calendar
     backlog(book, 20)
     monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
-    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: [])
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: ([], {'read': 1, 'left_out': {}}))
     result = invoke(book)
     assert result.exit_code == 0, result.output
     assert '0 calendar events saved' in next(line for line in result.stdout.splitlines() if line.startswith('Night 1:'))
@@ -493,11 +493,11 @@ def test_translation_tail_still_runs_after_daily_call_cap(book, model, monkeypat
     def run(directory, prompt, config, stage, **options):
         if stage != 'translate':
             return original(directory, prompt, config, stage, **options)
-        task = read_json(directory / 'task.json', {})
-        prepared = task['task']
-        translated.append(task['record'])
-        Path(prepared['candidate']).write_text(prepared['prose'])
-        return {'result': prepared['prose']}
+        prepared = read_json(directory / 'task.json', {})['task']
+        for page in prepared['pages']:  # a batch of pages a turn (#3099)
+            translated.append(page['record'])
+            Path(page['candidate']).write_text(page['prose'])
+        return {'result': ''}
 
     monkeypatch.setattr(runner, 'run_task', run)
     result = invoke(book)
@@ -716,7 +716,7 @@ MAIL = [{'role': 'user', 'source': 'gmail:fixture:1', 'timestamp': '2026-09-07T1
          'speaker': 'wren@example.test', 'text': 'Can we move the pilot review to Friday?'},
         {'role': 'user', 'source': 'gmail:fixture:2', 'timestamp': '2026-09-07T11:00:00Z',
          'speaker': 'wren@example.test', 'text': 'Friday at ten works for the whole team.'}]
-WAITING = ['Investigate', 'Deepen', 'Abstract', 'Translate']
+WAITING = ['Investigate', 'Deepen', 'Abstract', 'Translate', 'Tag']
 
 
 @pytest.fixture
@@ -735,7 +735,7 @@ def held(book, monkeypatch, rem_clock):
     monkeypatch.setattr(quota, 'meter', lambda *a: week)
     monkeypatch.setattr(service, 'prepare_sync', fetch)
     monkeypatch.setattr(calendar, 'available', lambda kind: kind == 'google')
-    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: events.append(args) or [])
+    monkeypatch.setattr(calendar, 'calendar_events', lambda *args: (events.append(args) or [], {'read': 1, 'left_out': {}}))
     monkeypatch.setattr(runner, 'run_task', lambda *a, **k: pytest.fail('a held catchup called the model'))
     monkeypatch.setattr(depth, 'slot', lambda *a, **k: pytest.fail('a held catchup started deepen'))
     return {'reads': reads, 'events': events, 'reason': quota.floor_block(week, read_config(book.root)['limits'])}
@@ -751,7 +751,7 @@ def test_at_the_floor_catchup_still_collects_mail_and_saves_the_calendar_and_day
     assert lines[1] == ('Collect: 2 mail collected · 0 sessions read · 0 pages updated; '
                         'reading them into pages waits for the model')
     assert lines[2] == 'Calendar: 0 calendar events saved · day plan saved for 2026-09-07 and 2026-09-08'
-    assert lines[3] == 'Waiting: Investigate, Deepen, Abstract and Translate call the model'
+    assert lines[3] == 'Waiting: Investigate, Deepen, Abstract, Translate and Tag call the model'
     assert lines[4] == f"Stopped: {held['reason']}"
     assert 'resumes when it resets' in lines[4]
     cursor = read_json(state_path(book.root, 'round.json'), {})

@@ -84,7 +84,7 @@ def test_one_codex_session_receipts_and_honest_completion(task_notebook, fake_co
     assert saved['started_at'] and saved['finished_at'] and Path(saved['last_message']).is_file()
     assert Path(saved['last_message']).read_text() == 'Hello!'  # the final answer, not the commentary before it
     thread = _codex_requests(fake_codex)['thread/start']
-    assert thread['model'] == default_config()['models']['level4'] and thread['config']['model_reasoning_effort'] == 'medium'
+    assert thread['model'] == default_config()['models']['level4'] and thread['config']['model_reasoning_effort'] == 'low'
     assert thread['sandbox'] == 'danger-full-access' and thread['approvalPolicy'] == 'never'
     prompt = _turn_prompt(fake_codex)
     assert 'Done means:' in prompt and 'Deliverable:' in prompt

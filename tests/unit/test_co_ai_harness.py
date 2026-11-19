@@ -208,7 +208,7 @@ def test_cli_effort_reaches_codex_tool_and_none_keeps_the_users_own(monkeypatch)
 @pytest.mark.parametrize("harness,effort,said", [
     ("claude-code", "medium", "--effort applies only to --harness codex"),
     ("ours", "medium", "--effort applies only to --harness codex"),
-    ("codex", "max", "Use minimal, low, medium, high or xhigh"),
+    ("codex", "ultra", "Use minimal, low, medium, high, xhigh or max"),
 ])
 def test_cli_rejects_an_effort_it_cannot_apply(harness, effort, said):
     from typer.testing import CliRunner

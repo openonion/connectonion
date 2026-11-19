@@ -347,7 +347,8 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
     ledger = _ledger_items(root, record)
     coverage_item = {"role": "coverage", "source": "investigation:coverage", "timestamp": now().isoformat(),
                      "text": "\n".join(coverage) + "\n" + _archive_note(root)}
-    items = [_page_item(root, record, page), coverage_item, *timeline, *ledger,
+    # Enrich adds and corrects; it never removes a line, and review checks that (#3105).
+    items = [{**_page_item(root, record, page), "append": True}, coverage_item, *timeline, *ledger,
              *_cited_originals(root, page, set(ledger[0]["sources"])), *_prior_runs(root, record)]
     if stage_progress:
         stage_progress("following leads")

@@ -115,7 +115,7 @@ def test_reviews_and_knowledge_offer_actions_not_commands(live):
         review.screenshot(path=str(Path(SHOTS) / "reviews-actions.png"))
     review.get_by_role("button", name="Yes").click()
     review.get_by_text("Recorded: Yes").wait_for()
-    page.goto(BASE + "/rem#c=knowledge")
+    page.goto(BASE + "/rem#c=knowledge&view=entries")
     page.get_by_text("REM files knowledge from your records on its night run.").wait_for()
     _no_command(page)
     if SHOTS:

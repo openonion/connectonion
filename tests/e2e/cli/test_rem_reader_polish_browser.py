@@ -152,14 +152,14 @@ def test_a_snapshot_has_one_plain_line_and_no_buttons(reader, language, line):
 
 
 @pytest.mark.parametrize("live", [True, False])
-@pytest.mark.parametrize("view", ["view=graph", "c=knowledge"])
+@pytest.mark.parametrize("view", ["view=graph", "c=knowledge&view=entries"])
 def test_the_graph_files_knowledge_on_the_night_run_without_a_command(reader, live, view):
     page, _, _ = reader
     page.evaluate("""([live, view]) => { REM.live = live; REM.records = REM.records.filter(r => r.category !== 'knowledge');
       setInterfaceLanguage('zh'); location.hash = view; render(); }""", [live, view], isolated_context=False)
     page.wait_for_timeout(300)
     _no_command(page)
-    if view == "c=knowledge":
+    if view == "c=knowledge&view=entries":
         assert "REM 会在夜里那一轮从已有记录里整理知识。" in page.locator("#main").inner_text()
 
 
@@ -226,7 +226,8 @@ def test_a_pending_translation_is_a_quiet_worded_line_under_the_header(reader, p
     assert line.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
     assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
     assert line.get_attribute("role") is None                       # not announced again on every render
-    meta = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
+    step = "--s-ui" if path.startswith("projects/") else "--s-meta"   # nothing in Projects is under 13px (#3096)
+    meta = page.evaluate(f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
     assert line.evaluate("n => getComputedStyle(n).fontSize") == meta
     box, header = line.bounding_box(), page.locator(f"#main {head}").first.bounding_box()
     assert box["y"] >= header["y"] + header["height"] - 1             # under the header, by the body

@@ -72,7 +72,8 @@ def test_org_tree_is_the_only_people_directory_and_local_graph_is_absent(org_rea
 def test_org_article_says_facts_in_one_reading_column(org_reader, width, language):
     page = org_reader(width, language=language)
     article = page.locator('.ov-page')
-    assert article.locator('.ov-chip, .ov-dot, .ov-mk, .ov-tbar, .ov-tc, .ov-time, svg, .updated-label, .fresh-label, .fresh-dot, .ov-stats, .ov-sq, .pill, .badge, .chip, .ov-card, .ov-unsure-d, .ov-cool, .ov-two').count() == 0
+    # The Investigate control's ⋯ is the one picture allowed in the head (#3105).
+    assert article.locator('.ov-chip, .ov-dot, .ov-mk, .ov-tbar, .ov-tc, .ov-time, svg:not(.inv svg), .updated-label, .fresh-label, .fresh-dot, .ov-stats, .ov-sq, .pill, .badge, .chip, .ov-card, .ov-unsure-d, .ov-cool, .ov-two').count() == 0
     opening = article.locator('.ov-opening').inner_text()
     facts = page.evaluate("""() => ({summary: known(orgCurrent.r).summary, n: orgCurrent.people.length,
       first: calendarDate(orgCurrent.events[0].day)})""", isolated_context=False)

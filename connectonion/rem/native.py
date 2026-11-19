@@ -103,7 +103,8 @@ def _hash(path):
 RUN_LIMITS = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
               "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
               "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
-              "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night"}
+              "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
+              "summaries_per_round", "translations_per_round", "tags_per_round"}
 # Evidence-sizing limits decide what a prepared task holds, so they are hashed.
 # A new default limit belongs in one of the two sets: unclassified it is hashed, and
 # every task the release before it prepared is parked "Task input changed" (2026-11-17,
@@ -116,7 +117,7 @@ def _config_hash(config, *, include_languages=False, include_models=False, inclu
     # Prepared material (including its language and local dates) is already saved.
     # Reader translation targets do not change page-task material.
     run_limits = RUN_LIMITS
-    ignored = {"schedule", "effort", "notify"}
+    ignored = {"schedule", "effort", "efforts", "notify"}
     if include_notify:
         ignored.remove("notify")
     if not include_languages:
@@ -594,8 +595,9 @@ def _next_round(root, cursor, *, scheduled, notices, driven=False):
     # A round still working through its jobs reads each new slot's mail; one in its
     # translation tail is about to finish, and the next round reads mail anyway.
     # Not while a page is open: new mail that edits it would restart that page's
-    # investigation. It is read at the next slot after the page.
-    elif (cursor and scheduled and not continuing and not cursor.get("done") and cursor.get("phase") != "daily-translation"
+    # investigation. It is read at the next slot after the page. A catchup night is
+    # unattended like a scheduled turn: run with scheduled=False it read 0 mail (#3099).
+    elif (cursor and (scheduled or night is not None) and not continuing and not cursor.get("done") and cursor.get("phase") != "daily-translation"
             and cursor["batch"]["done"] and cursor["job_index"] < len(cursor["jobs"])
             and not cursor.get("current") and not cursor.get("project_quote")):
         _read_slot_mail(root, cursor, config)
@@ -769,6 +771,7 @@ def _alive(pid) -> bool:
 # 2026-11-16 (#3083): workers opened task.json 134 times in a day, 180–344 KB each.
 # It holds this prompt again plus the runner's hashes; nothing in it is evidence.
 TASK_JSON_NOTE = "task.json is the runner's own record of this task, not material: do not read it.\n"
+NO_DISCOVERY_NOTE = runner.NO_DISCOVERY_NOTE
 
 
 MEMORY_CHARS = 4000
@@ -874,7 +877,7 @@ def _save(root, cursor, task):
     prompt = (
         "You are the owner's personal assistant, building their working memory.\n\n"
         f"Task workspace: {directory}. Resolve relative filenames against this directory.\n"
-        + TASK_JSON_NOTE + "\n"
+        + TASK_JSON_NOTE + NO_DISCOVERY_NOTE + "\n"
         + prompt + "\n\n"
         + (f"Before submitting, append 1–3 lines to {memory}: page · approach · result · next. "
            "Record answered and new open questions honestly; reuse tool discoveries instead of repeating them.\n\n"
@@ -979,7 +982,14 @@ def _submission_output(task):
     outputs = {candidate, Path(task["task"]["candidate"] or task["task"].get("task_root", candidate))}
     if any(path.is_symlink() or path.is_file() and path.stat().st_size > 1_000_000 for path in outputs):
         raise RemError("Output must be a regular file within the one-megabyte limit")
-    if task["handler"] in ("sessions", "translate", "same-person", "draft"):
+    if task["handler"] == "translate" and task["task"].get("pages"):
+        # One answer file a page; a missing one refuses that page alone (translate.check_batch).
+        files = {page["id"]: Path(page["candidate"]) for page in task["task"]["pages"]}
+        if any(path.is_symlink() or path.is_file() and path.stat().st_size > 1_000_000 for path in files.values()):
+            raise RemError("Output must be a regular file within the one-megabyte limit")
+        output["result"] = json.dumps({key: path.read_text(encoding="utf-8") if path.is_file() else ""
+                                       for key, path in files.items()}, ensure_ascii=False)
+    elif task["handler"] in ("sessions", "translate", "same-person", "draft", "tag"):
         if not candidate.is_file():
             raise RemError(f"Write the output file: {candidate}")
         output["result"] = (json.dumps(read_json(candidate, None), ensure_ascii=False) if candidate.suffix == ".json"
@@ -1027,8 +1037,8 @@ def _check_or_restore(root, task, output):
         return native_round.check_task(root, task, output)
     except runner.RunFailed as error:
         errors = read_json(directory / "review.json", {}).get("errors") or []
-        only_drops = errors and all(e.startswith("Dropped ") for e in errors) and str(error).endswith("; ".join(errors))
-        if not only_drops or not _park_reason([*task.get("refusals", []), str(error)]):
+        restorable = runner.restorable(errors) and str(error).endswith("; ".join(errors))
+        if not restorable or not _park_reason([*task.get("refusals", []), str(error)]):
             raise
     token = runner.RESTORE_DROPS.set(True)
     try:
@@ -1067,7 +1077,8 @@ def _repair_instructions(root, task, reason):
     if task["handler"] in ("runner", "project") and task.get("record"):
         errors = read_json(directory / "review.json", {}).get("errors") or [reason]
         corrections = runner.repair_instruction(
-            task["record"], errors, directory, Path(task["task"]["root"]), native=True)
+            task["record"], errors, directory, Path(task["task"]["root"]), native=True,
+            inline="<material>" in task["render_instructions"])
         if not submits:
             corrections = corrections.replace(runner.REPAIR_SUBMITS, runner.REPAIR_DRIVEN)
         fix = directory / "repair-instructions.md"
@@ -1395,7 +1406,7 @@ def _offer_review(root, task):
 
 
 def _source_view(root, task, *, handler):
-    if handler in ("extract", "translate", "sessions", "draft"):
+    if handler in ("extract", "translate", "sessions", "draft", "tag"):
         return None
     from .reader_model import _source_ids, cited_context, later_in_threads
     items = [*task.get("items", []), *task.get("prior_items", [])]

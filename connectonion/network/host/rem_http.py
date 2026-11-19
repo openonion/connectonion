@@ -15,6 +15,8 @@ agent about a row or an archived session (begin, say, read); POST /rem/review
 records the owner's verdict on a review in 问题与关联 (reviews.decide); POST /rem/sender
 ignores one mail sender from Today and the night's drafts, or undoes it (threads.ignore_sender);
 POST /rem/translate-all starts, follows or stops translating every page (translate.every_page).
+POST /rem/investigate runs `co rem investigate PAGE --enrich` (or its quick and rewrite levels) for the
+Investigate button, follows it step by step, and undoes it or accepts or discards a rewrite (page_runs).
 
 Only loopback clients, and only a Host header naming loopback (a rebound DNS
 name gets nothing), are answered. A translation runs in a worker thread; the
@@ -93,10 +95,21 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/investigate"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
+
+
+def _moment_or_none(value) -> bool:
+    """A put-off's `until` is absent or one ISO moment (threads.put_off_over reads it)."""
+    from datetime import datetime
+    if value is None:
+        return True
+    try:
+        return isinstance(value, str) and len(value) <= 40 and bool(datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except ValueError:
+        return False
 
 
 async def _action(scope, receive, send, root, headers):
@@ -127,6 +140,17 @@ async def _action(scope, receive, send, root, headers):
             return
         else:
             operation = lambda: getattr(tasks, action)(root, body['id'])
+    elif scope["path"] == "/rem/investigate":
+        # The Investigate button (#3105): {"page", "action": run|status|undo|accept|discard, "mode": full|quick|rewrite}.
+        from ...rem import page_runs
+        action, mode = body.get("action", "status"), body.get("mode", "full")
+        if (not isinstance(body.get("page"), str) or action not in ("run", "status", "undo", "accept", "discard")
+                or mode not in page_runs.MODES):
+            await _reply(send, 400, json.dumps({"error": "Expected a page, action run, status, undo, accept or "
+                                                         "discard, and level full, quick or rewrite"}), "application/json")
+            return
+        operation = (lambda: page_runs.start(root, body["page"], mode)) if action == "run" else (
+            lambda: getattr(page_runs, action)(root, body["page"]))
     elif scope["path"] == "/rem/review":
         from ...rem import reviews
         # Exactly the verdicts reviews.decide accepts; it then checks the verdict fits the row's kind.
@@ -162,10 +186,11 @@ async def _action(scope, receive, send, root, headers):
                 or not isinstance(body.get("keys"), (list, type(None)))
                 or any(not isinstance(key, str) for key in body.get("keys") or [])
                 or not isinstance(body.get("versions"), (dict, type(None)))
-                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())):
+                or any(not isinstance(k, str) or not isinstance(v, str) for k, v in (body.get("versions") or {}).items())
+                or not _moment_or_none(body.get("until"))):
             await _reply(send, 400, json.dumps({"error": "Expected thread key and state done, skipped, ignored or open"}), "application/json")
             return
-        operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"))
+        operation = lambda: threads.set_state(root, body["key"], body["state"], device=body.get("device"), versions=body.get("versions"), keys=body.get("keys"), until=body.get("until"))
     elif scope["path"] == "/rem/sender":
         from ...rem.files import EMAIL
         # 忽略 this sender from Today, or undo it: one address, never a pattern that could stop a whole domain.
@@ -209,7 +234,11 @@ async def _action(scope, receive, send, root, headers):
     from ...rem.reader import owner_changed
     # The owner's own change shows now, not at the reader's next rebuild interval.
     # A task status or result read changes nothing, and neither does a conversation.
+    # A page run's status changes nothing until it has ended; then the page it changed shows now.
     if not (scope["path"] == "/rem/task" and body.get("action", "status") in ("status", "result")
+            or scope["path"] == "/rem/investigate" and (body.get("action", "status") == "run"
+                                                        or body.get("action", "status") == "status"
+                                                        and (result or {}).get("result") == "running")
             or scope["path"] in ("/rem/talk", "/rem/translate-all")):
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")

@@ -259,11 +259,13 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('snapshotWhy', 'stripDone') + r'''
       const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      const setDone = (entry, done, state) => calls.push(['setDone', entry.t.text, done, state]);
+      const setDone = (entry, done, state, entries, extra, until) => calls.push(['setDone', entry.t.text, done, state, ...(until ? [until] : [])]);
       const todayRow = () => null;  // no cited mail sender, so Ignore offers nothing more
+      // Not now asks when (#3072): the chooser hands back the moment he picked, here always the same one.
+      const laterChooser = (line, choose) => choose('2026-11-20T00:00:00.000Z')('click'), press = {currentTarget: {closest: () => 'line'}};
       const entry = {r: {path: 'people/mara.md'}, t: {text: 'You owe Mara a pilot review.'}};
-      const own = stripDone(entry), slide = stripDone(entry, (event, state) => calls.push(['close', event, state]));
-      own[0].onclick(); own[2].onclick(); slide.forEach(button => button.onclick('click'));
+      const own = stripDone(entry), slide = stripDone(entry, (event, state, extra, until) => calls.push(['close', event, state, ...(until ? [until] : [])]));
+      own[0].onclick(); own[1].onclick(press); own[2].onclick(); slide[0].onclick('click'); slide[1].onclick(press); slide[2].onclick('click');
       const shown = {own: own.map(node => [node.tag, node.class, node.text]), calls,
         ask: stripDone({...entry, ask: true}).length,
         bare: stripDone({key: 'open'}).length};
@@ -276,8 +278,9 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
                              ['button', 'btn-quiet strip-ignore', 'Ignore']]
     # All three closes take the page's way out (Today slides the row), and Ignore is its own state.
     assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True, 'done'],
+                               ['setDone', 'You owe Mara a pilot review.', True, 'skipped', '2026-11-20T00:00:00.000Z'],
                                ['setDone', 'You owe Mara a pilot review.', True, 'ignored'],
-                               ['close', 'click', 'done'], ['close', 'click', 'skipped'], ['close', 'click', 'ignored']]
+                               ['close', 'click', 'done'], ['close', 'click', 'skipped', '2026-11-20T00:00:00.000Z'], ['close', 'click', 'ignored']]
     assert {key: result[key] for key in ('ask', 'bare')} == {'ask': 0, 'bare': 0}
     reason = 'This is an offline snapshot; open REM to mark it.'
     assert result['file'] == result['snapshot'] == [[word, 'disabled', reason, 'why-close'] for word in ('Mark done', 'Not now', 'Ignore')]
@@ -290,7 +293,7 @@ def _today_card_js(body):
     """A Today card built by the reader's own functions, hand-off strip included; only the data and the DOM are stubs."""
     page = TEMPLATE.read_text()
     steps_order = re.search(r'const STEPS = .*?;', page).group(0)
-    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
+    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map();\n'
                           + reader_functions(*TODAY_CARD, *[name for name in HAND if name != 'snapshotWhy']) + r'''
       const REM = {live: true, owner: 'people/avery.md', as_of: '2026-11-08', today_queue: []}, location = {protocol: 'http:'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),

@@ -92,15 +92,16 @@ def test_a_config_saved_before_the_language_setting_reads_as_english(tmp_path):
     assert read_config(tmp_path)["language"] == "en"
 
 
-def test_speed_defaults_to_fast_for_new_and_existing_notebooks(tmp_path):
+def test_speed_defaults_to_standard_for_new_and_existing_notebooks(tmp_path):
+    """#3099: unattended nights have no one waiting; fast is Codex's priority tier."""
     import yaml
     from connectonion.rem.config import default_config, read_config
-    assert read_config(tmp_path)["speed"] == "fast"
+    assert read_config(tmp_path)["speed"] == "standard"
     old = default_config()
     old.pop("speed")
     saved = yaml.safe_dump(old)
     tmp_path.joinpath("config.yaml").write_text(saved)
-    assert read_config(tmp_path)["speed"] == "fast"
+    assert read_config(tmp_path)["speed"] == "standard"
     assert tmp_path.joinpath("config.yaml").read_text() == saved
 
 
@@ -214,7 +215,7 @@ def test_config_and_status_show_model_roles(tmp_path):
     for command in ("config", "status"):
         result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), command])
         assert result.exit_code == 0, result.output
-        assert any("gpt-6-luna" in line and "sessions-summary" in line
+        assert any("gpt-6-luna" in line and "tag" in line
                    for line in result.output.splitlines()), result.output
         assert any("gpt-6.1-sol" in line and "investigate" in line
                    for line in result.output.splitlines()), result.output
@@ -245,7 +246,7 @@ def test_runner_change_resets_levels_it_was_not_told(tmp_path):
     assert set(settings["models"].values()) == {"default"} and settings["model"] == "default"
     set_config(tmp_path, ["models.summary", "claude-sonnet-5-5"])
     settings = set_config(tmp_path, ["runner", "codex", "model", "gpt-6-astra"])
-    assert settings["models"] == {**LEVEL_MODELS, "level3": "gpt-6-astra"}
+    assert settings["models"] == {**LEVEL_MODELS, "level3": "gpt-6-astra", "investigate": "gpt-6-astra"}
 
 
 def test_abstract_round_limit_defaults_for_existing_notebooks(tmp_path):

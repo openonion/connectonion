@@ -215,6 +215,17 @@ def test_project_with_no_assigned_session_input_cannot_claim_current_work():
     assert 'Project input scope is not a citable original: 1' in errors
 
 
+def test_a_project_page_with_no_new_session_keeps_the_open_threads_it_already_had():
+    """#3105: the append A/B was refused for keeping onionwright's Open threads with no new session."""
+    original = ('# Atlas\n\n## Open threads\n- Merge the branch. [1]\n'
+                '\n## Sources\n- [1] codex:session:4 — 2026-10-01\n')
+    items = [{'role': 'project-input-scope', 'source': 'investigation:project-scope', 'inputs_read': 0}]
+    kept = original.replace('[1]', '[2]').replace('- [2] codex', '- [2] codex')
+    assert not any('No assigned project session inputs' in error for error in validate('projects/atlas.md', kept, original, items))
+    added = kept.replace('- Merge the branch. [2]', '- Merge the branch. [2]\n- Ship the release. [2]')
+    assert 'No assigned project session inputs: keep Open threads Unknown' in validate('projects/atlas.md', added, original, items)
+
+
 def test_skill_cannot_cite_collector_summary_or_old_page_as_original():
     candidate = ('# abstract\n\n## Sources\n- [1] skill-runs:abstract — sampled runs\n'
                  '- [2] investigation:page — old note\n')
@@ -2278,3 +2289,88 @@ def test_restoring_what_a_rewrite_dropped_leaves_nothing_the_dropped_check_refus
     assert "Avery ran the first pilot." in restored and "gmail:aaaaaaaaaaaa" in restored
     assert dropped(before, restored) == []
     assert "gmail:bbbbbbbbbbbb" not in " ".join(dropped(before, REWRITE))
+
+
+# #3105: an append keeps every cited line it was given, or marks it corrected.
+APPEND_BEFORE = ('# Avery Lin\n\nAvery runs the Lantern pilot with the user. [1]\n\n'
+                 '## Who they are\n- Avery leads design at Lantern. [1]\n'
+                 '- Avery prefers calls on Fridays. [2]\n\n'
+                 '## History\n- 2026-09-01: Pilot started. [1]\n\n'
+                 '## Uncertainties\n- Will the pilot extend?\n\n'
+                 '## Sources\n- [1] gmail:aaaaaaaaaaaa — 2026-09-01\n- [2] gmail:bbbbbbbbbbbb — 2026-09-03\n')
+
+
+def test_claims_dropped_names_a_cited_line_an_append_removed():
+    from connectonion.rem.page_review import dropped
+    after = APPEND_BEFORE.replace('- Avery prefers calls on Fridays. [2]\n', '- Mentions calls. [2]\n')
+    assert dropped(APPEND_BEFORE, after) == []
+    assert dropped(APPEND_BEFORE, after, claims=True) == [
+        'Dropped claim line the page had: - Avery prefers calls on Fridays.']
+
+
+def test_claims_survive_renumbering_extension_moves_and_marked_corrections():
+    from connectonion.rem.page_review import dropped
+    renumbered = (APPEND_BEFORE.replace('[1]', '[9]').replace('[2]', '[8]')
+                  .replace('- [9] gmail:aaaaaaaaaaaa', '- [9] gmail:aaaaaaaaaaaa').replace(
+                      '- Avery leads design at Lantern. [9]',
+                      '- Avery leads design at Lantern, and since October its research too. [9][3]'))
+    renumbered = renumbered.replace('## Sources\n', '## Sources\n- [3] gmail:cccccccccccc — 2026-10-02\n')
+    assert dropped(APPEND_BEFORE, renumbered, claims=True) == []
+    corrected = APPEND_BEFORE.replace('- Avery prefers calls on Fridays. [2]',
+                                      '- Avery prefers calls on Mondays (was Fridays until 2026-10-02). [2][3]')
+    corrected = corrected.replace('## Sources\n', '## Sources\n- [3] gmail:cccccccccccc — 2026-10-02\n')
+    assert dropped(APPEND_BEFORE, corrected, claims=True) == []
+
+
+def test_claims_leave_the_lead_history_and_uncertainties_to_their_own_rules():
+    from connectonion.rem.page_review import dropped
+    after = (APPEND_BEFORE.replace('Avery runs the Lantern pilot with the user. [1]', 'Avery and the user run Lantern. [1]')
+             .replace('- 2026-09-01: Pilot started. [1]\n', '- 2026-09: Pilot. [1]\n')
+             .replace('- Will the pilot extend?\n', ''))
+    assert dropped(APPEND_BEFORE, after, claims=True) == []
+
+
+def test_restore_dropped_puts_a_lost_claim_line_back_beside_the_new_work():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    after = APPEND_BEFORE.replace('- Avery prefers calls on Fridays. [2]\n', '- Avery joined the board. [3]\n').replace(
+        '## Sources\n', '## Sources\n- [3] gmail:cccccccccccc — 2026-10-02\n')
+    restored = restore_dropped(APPEND_BEFORE, after, claims=True)
+    assert '- Avery joined the board. [3]' in restored
+    assert '- Avery prefers calls on Fridays. [2]' in restored
+    assert dropped(APPEND_BEFORE, restored, claims=True) == []
+    assert restore_dropped(APPEND_BEFORE, after) == after  # without claims, nothing was lost
+
+
+def test_an_append_draft_that_drops_a_cited_line_is_refused_then_restored_at_the_last_resort(tmp_path):
+    """#3105: the program, not the prompt, keeps an append's lines."""
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    original = (notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+                .replace('## What it is\n- Unknown',
+                         '## What it is\n- Atlas plans the launch calendar for the team. [1]\n'
+                         '- Atlas exports a weekly report to the board. [2]')
+                .replace('- (none yet)', '- [1] codex:first — 2026-10-01\n- [2] codex:second — 2026-10-02'))
+    path = tmp_path / 'candidate.md'
+    items = [{'source': 'codex:first', 'text': 'Atlas plans the launch calendar for the team.'},
+             {'source': 'codex:second', 'text': 'Atlas exports a weekly report to the board.'},
+             {'source': 'codex:third', 'text': 'Atlas now also tracks hiring.'}]
+    path.write_text(original)
+    runner._promote_candidate(notebook, record, path, notebook.read(record), items, tmp_path, None)
+    original = notebook.read(record)
+    draft = original.replace('- Atlas exports a weekly report to the board. [2]',
+                             '- Atlas reports. [2]\n- Atlas now also tracks hiring. [3]').replace(
+        '- [2] codex:second — 2026-10-02', '- [2] codex:second — 2026-10-02\n- [3] codex:third — 2026-10-03')
+    path.write_text(draft)
+    page = [{'role': 'page', 'record': record, 'append': True, 'source': 'investigation:page', 'text': original}]
+    with pytest.raises(runner.RunFailed, match='Dropped claim line the page had: - Atlas exports a weekly report'):
+        runner._promote_candidate(notebook, record, path, original, [*page, *items], tmp_path, None,
+                                  carried=original)
+    assert notebook.read(record) == original
+    runner._promote_candidate(notebook, record, path, original, [*page, *items], tmp_path, None,
+                              carried=original, last_resort=True)
+    saved = notebook.read(record)
+    assert 'Atlas exports a weekly report to the board.' in saved and 'Atlas now also tracks hiring.' in saved

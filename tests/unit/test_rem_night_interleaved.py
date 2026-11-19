@@ -19,16 +19,18 @@ PEOPLE = [person(name) for name in ('ivy', 'wren', 'fern', 'heron', 'lark')]
 SUMMARIES = [{'record': f'sessions/2026-09-0{n}-fixture.md', 'key': f'fixture-{n}'} for n in (1, 2)]
 
 
-def other_stages(monkeypatch, *, translations=2):
-    """Two session summaries, decision lines for any number of Abstract rounds, a translation share of 2."""
+def other_stages(monkeypatch, *, translations=2, pages=5):
+    """Two session summaries, decision lines for any number of Abstract rounds, a translation share of 2
+    and `pages` pages waiting for translation."""
     monkeypatch.setattr(sessions, 'prepare', lambda root, rows, config, **k: {'rows': rows})
     monkeypatch.setattr(Notebook, 'read', lambda book, record: '# Fixture\n')
     monkeypatch.setattr(captured_decisions, 'material',
                         lambda book, config=None, attempted=(): [{'role': 'captured-decisions', 'record': 'people/ivy.md'}])
     monkeypatch.setattr(runner, 'prepare', lambda book, items, config, **k: {'items': items})
     monkeypatch.setattr(native_round, 'translation_share', lambda root: translations)
+    waiting = [{'stage': 'translate', 'record': 'people/ivy.md'}] * pages
     monkeypatch.setattr(native_round, 'prepare_translation',
-                        lambda root, cursor, config, directory: {'stage': 'translate', 'record': 'people/ivy.md'})
+                        lambda root, cursor, config, directory: waiting.pop() if waiting else None)
 
 
 def settle(root, cursor, task):
@@ -86,8 +88,9 @@ def test_a_full_night_serves_every_share_exactly_once_and_keeps_the_leftover_que
     served = night(notebook, cursor)
     assert served == ['investigate', 'investigate', 'sessions-summary', 'abstract', 'translate', 'translate',
                       'investigate',
-                      # The share is used: what is left of the other stages, then the closing translation.
-                      'sessions-summary', 'abstract', 'abstract', 'translate', 'translate']
+                      # The share is used: what is left of the other stages, then the closing translation,
+                      # which is not a share: it takes every page that still waits (2026-11-17).
+                      'sessions-summary', 'abstract', 'abstract', 'translate', 'translate', 'translate']
     assert served.count('investigate') == 3 and served.count('abstract') == 3 and served.count('sessions-summary') == 2
     assert cursor['done'] and cursor['run']['outcome'] == 'completed'
     saved = read_json(state_path(notebook, WAITING), {})

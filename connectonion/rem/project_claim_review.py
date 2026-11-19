@@ -85,6 +85,14 @@ def packet(notebook, candidate: str, record: str | None = None, items=(), remove
     computed = [{key: row.get(key) for key in ("field", "value", "source")}
                 for item in items if item.get("role") == "facts" for row in item.get("facts") or []
                 if row.get("field") in ("First contact", "Last contact")]
+    # A page investigated before gathers recent mail only, so its facts item has no First
+    # contact (investigate.py leaves it out). The audit then refused the page's computed
+    # one as "cannot be assessed" (#3083, rc20 night, two parks): give it the whole archive's.
+    if record:
+        from .people_basics import contact_facts
+        given = {row["field"] for row in computed}
+        page = notebook.read(record) if notebook.path(record).is_file() else candidate
+        computed += [row for row in contact_facts(notebook, record, page) if row["field"] not in given]
     unverified = [line for line in prose(candidate).partition("\n## Sources\n")[0].splitlines()
                   if (numbers := set(CITATION.findall(line))) and numbers <= set(unretained)]
     return {"candidate": candidate, "sources": sources, "later_messages": later, "runner_facts": computed,

@@ -518,12 +518,36 @@ def calendar_round(root, *, native=False):
             'traceback': traceback.format_exc()}}}
     _log_calendar_faults(root, result)
     result['day_plan'] = _day_plan_round(root, moment)
+    result['todos'] = _todos_round(root, moment)
+    from .weather import night as weather_night
+    result['weather'] = weather_night(root, moment)  # the week's forecast for Agenda; never stops the round
     if native:
         with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
             current = read_json(path, {})
             if _round_identity(current) == _round_identity(cursor):
                 current['calendar'] = result
                 write_json(path, current)
+    return result
+
+
+def _todos_round(root, moment):
+    """His open to-dos, saved beside the calendar (#3087). A fault in REM is a failed run with its traceback
+    in `co rem logs`, out of the round's result; no failure stops the rest of the night."""
+    import traceback
+    from .config import read_config
+    from .daily import _reserve
+    from .files import write_json
+    from .service import notebook_zone
+    from .todos import save
+    try:
+        result = save(root, moment, notebook_zone(read_config(root)))
+    except Exception as error:  # same background isolation as the calendar snapshot
+        result = {'tasks': 0, 'error': {'reason': 'bug', 'at': moment.isoformat(), 'error': type(error).__name__},
+                  'traceback': traceback.format_exc()}
+    if 'traceback' in result:
+        record, path = _reserve(root, 'todos', 0, {})
+        record.update(outcome='failed', error='to-dos: ' + result.pop('traceback'), finished_at=moment.isoformat())
+        write_json(path, record)
     return result
 
 
@@ -543,9 +567,14 @@ def _day_plan_round(root, moment):
 
 
 def _depth_due(root, cursor):
-    from .catchup import _counts, number
     if not cursor.get('done') or cursor.get('phase') == 'daily-translation':
         return False
+    return _night_produced(root)
+
+
+def _night_produced(root):
+    """A catchup night has written, translated or drafted something; the schedule's night is not asked."""
+    from .catchup import _counts, number
     night = number(root)
     if night is None:
         return True
@@ -562,8 +591,14 @@ def _depth_early(root, cursor):
     asked here: a night that served a portion is working, and its first page may be an
     hour from written. A night with nothing to investigate has no portion and still
     meets that question after its round. Not due once the slot is claimed: only the
-    call that ran it reports it here; the completed round reports it once more."""
-    return (bool(cursor.get('portions')) and 'depth' not in cursor and not cursor.get('done')
+    call that ran it reports it here; the completed round reports it once more.
+
+    2026-11-17: the closing translation goes on until no page waits, which is hours. A
+    round with no portion (nothing to investigate, or investigation held by its weekly
+    budget) starts the slot once that pass has begun (`closing`), and there it is asked
+    `_depth_due`'s question, since no portion has shown the night to be working."""
+    started = cursor.get('portions') or (cursor.get('closing') and _night_produced(root))
+    return (bool(started) and 'depth' not in cursor and not cursor.get('done')
             and cursor.get('phase') != 'daily-translation')
 
 

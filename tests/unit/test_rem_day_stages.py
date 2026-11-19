@@ -122,27 +122,31 @@ def test_status_five_stages_match_json_and_saved_queues(stage_book, monkeypatch)
         'Investigate: 1 page waiting; last ran 2026-11-02',
         'Deepen: 2 pages waiting; last ran 2026-11-03',
         'Abstract: 1 captured decision waiting; last ran 2026-11-04; 0 decisions · 0 knowledge · 0 principles',
-        'Translate: 3 page translations waiting; last ran 2026-11-05',
+        'Translate: 3 page translations waiting; last ran 2026-11-05; a round translates up to 400',
+        # Avery's page has no Facts block yet, so nothing waits to be tagged (#3093).
+        'Tag: 0 untagged pages waiting; last ran never',
     ]
     lines = result.stdout.splitlines()
     first = lines.index(expected[0])
     # Status stays 80 columns wide: the Abstract sentence breaks after a `;`, its page counts two spaces in.
-    assert lines[first:first + 6] == [*expected[:3], 'Abstract: 1 captured decision waiting; last ran 2026-11-04;',
-                                      '  0 decisions · 0 knowledge · 0 principles', expected[4]]
+    assert lines[first:first + 8] == [*expected[:3], 'Abstract: 1 captured decision waiting; last ran 2026-11-04;',
+                                      '  0 decisions · 0 knowledge · 0 principles',
+                                      'Translate: 3 page translations waiting; last ran 2026-11-05;',
+                                      '  a round translates up to 400', expected[5]]
     assert 'Notebook' in result.stdout and 'Today' in result.stdout
     raw = cli.invoke(app, [*args, '--json', 'status'])
     assert raw.exit_code == 0, raw.output
     stages = json.loads(raw.stdout)['data']['stages']
-    assert [row['name'] for row in stages] == ['Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate']
-    assert [row['waiting'] for row in stages] == [2, 1, 2, 1, 3]
-    assert [row['last_run'] for row in stages] == [f'2026-11-0{i}' for i in range(1, 6)]
+    assert [row['name'] for row in stages] == ['Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate', 'Tag']
+    assert [row['waiting'] for row in stages] == [2, 1, 2, 1, 3, 0]
+    assert [row['last_run'] for row in stages] == [*(f'2026-11-0{i}' for i in range(1, 6)), None]
     assert [row['text'] for row in stages] == expected
 
 
 def test_status_stages_never_run_and_native_abstract_date(tmp_path):
     prepare(tmp_path)
     stages = service.status(tmp_path)['stages']
-    assert len(stages) == 5 and all(row['last_run'] is None for row in stages)
+    assert len(stages) == 6 and all(row['last_run'] is None for row in stages)
     assert all('last ran never' in row['text'] for row in stages)
     write_json(state_path(tmp_path, 'runs/run_native.json'), {'id': 'run_native',
         'phase': 'daily-update', 'stage': 'abstract', 'outcome': 'completed',
@@ -225,7 +229,7 @@ def test_status_stages_accept_owner_metadata_without_a_page(tmp_path):
     prepare(tmp_path)
     write_json(state_path(tmp_path, 'map.json'), {'owner': {'addresses': ['owner@example.test'],
                                                           'name': 'Fictional Owner'}})
-    assert len(service.status(tmp_path)['stages']) == 5
+    assert len(service.status(tmp_path)['stages']) == 6
 
 
 @pytest.mark.parametrize('phase', ['daily-investigation', 'daily-update'])

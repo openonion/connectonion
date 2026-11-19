@@ -41,7 +41,7 @@ def test_org_stage_has_no_today_projection():
     result = run_js(['orgStage'], DOM + r'''
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
       const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
-      const orgOpening = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count';
+      const orgOpening = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count', investigateControl = () => null;
       console.log(JSON.stringify(orgStage({r: {}, people: []})));
     ''')
     assert 'Today count' not in str(result)
@@ -90,7 +90,7 @@ def test_org_opening_says_summary_contacts_and_dates_as_sentences(language):
 def test_org_article_stage_has_no_state_only_elements():
     result = run_js(['orgStage'], DOM + r'''
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
-      const orgOpening = () => 'Opening sentences', orgTree = () => 'tree', translationLine = () => null;
+      const orgOpening = () => 'Opening sentences', orgTree = () => 'tree', translationLine = () => null, investigateControl = () => null;
       const updatedMarker = () => ({class: 'updated-label'}), orgSub = () => [], orgFacts = () => 'facts';
       const orgKeyPeople = () => null, orgTodayLink = () => null, orgXray = () => null;
       console.log(JSON.stringify(orgStage({r: {}, people: []})));
