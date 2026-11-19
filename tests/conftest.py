@@ -16,6 +16,7 @@ Policy fixtures (autouse, apply to every test):
 - _isolate_selected_environment: no provider selection leaks between tests
 - _never_touch_the_real_home: HOME, ~/.co and home-derived module constants are a fresh tmp dir per test
 - _never_touch_the_real_applications: the WTF Browser app `co` keeps current is looked for in a folder that does not exist
+- _no_real_tmux: a REM hand-off never opens a session on this machine's tmux server; a test that wants tmux fakes it
 - _restore_excepthook: sys.excepthook installed by a test does not outlive it
 - _no_network: any test in the default run that opens a non-loopback socket fails
 - _host_ports_do_not_depend_on_this_machine: host()'s port-in-use check says free
@@ -101,6 +102,12 @@ def rem_sydney_slot(request, monkeypatch, rem_clock):
     monkeypatch.setattr(service, "now", lambda: moment)
     monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: "Australia/Sydney")
     return moment
+
+
+@pytest.fixture(autouse=True)
+def _no_real_tmux(monkeypatch):
+    """A REM hand-off (#3138) starts its worker in tmux when tmux is installed; tests never use the real server."""
+    monkeypatch.setattr("connectonion.rem.tasks._tmux", lambda: None)
 
 
 @pytest.fixture(autouse=True)

@@ -155,7 +155,7 @@ def expand_skill(prompt: str) -> str:
 def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 600,
         sandbox: str = DEFAULT_SANDBOX, permission_mode: str = "default", speed: str = "standard",
         session_id: str = "", effort: str = "", add_dirs: tuple[str, ...] = (),
-        user_setup: bool = False, cancelled=None) -> dict:
+        user_setup: bool = False, cancelled=None, on_activity=None) -> dict:
     """Hand the task to a native coding agent; return our envelope's fields.
 
     effort (Codex only) and add_dirs, further directories the delegate may
@@ -163,6 +163,9 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
     user_setup (Claude only) runs as `co claude run` does, with the user's own
     CLAUDE.md, skills and settings instead of --safe-mode. cancelled, a
     no-argument callable, ends the run cleanly once it returns True.
+    on_activity, a one-argument callable, receives each step as the OIP
+    provider_activity event co ai's Work Room shows (core/provider_events), so
+    a caller with no Agent, such as co rem's hand-off, can follow the run live.
 
     Each delegate answers in its own JSON shape and with its own idea of what
     "finished" means — Codex reports `exit_code`, Claude Code does not, and
@@ -179,13 +182,13 @@ def run(harness: str, prompt: str, model: str, *, cwd: str = "", timeout: int = 
         # hanging on a prompt nobody will answer.
         raw = _run_codex(prompt=text, cwd=cwd, sandbox=sandbox, model=model,
                          timeout=timeout, approval="auto", speed=speed, session_id=session_id,
-                         effort=effort, writable_roots=add_dirs, cancelled=cancelled)
+                         effort=effort, writable_roots=add_dirs, cancelled=cancelled, on_activity=on_activity)
     else:
         from ...useful_tools.claude_code import _run_claude_code, run_co_claude
         claude = run_co_claude if user_setup else _run_claude_code
         raw = claude(prompt=text, cwd=cwd, model=model, timeout=timeout,
                      permission_mode=permission_mode, session_id=session_id, add_dirs=add_dirs,
-                     cancelled=cancelled)
+                     cancelled=cancelled, on_activity=on_activity)
 
     try:
         answer = json.loads(raw)

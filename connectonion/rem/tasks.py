@@ -157,12 +157,44 @@ def start(root, task_id, agent=None):
             return _project(receipt)
         receipt['agent'] = _agent(agent or receipt.get('agent', 'codex'))
         command = [sys.executable, '-m', 'connectonion.rem.tasks', '--root', str(root), '--id', task_id]
-        with (folder / 'worker.log').open('ab') as output:
-            process = subprocess.Popen(command, cwd=root, env=child_env(), stdin=subprocess.DEVNULL,
-                                       stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
-        receipt.update(result='starting', pid=process.pid, command=' '.join(command[1:]))
+        pid, session = _in_tmux(root, folder, task_id, command, child_env())
+        if pid is None:
+            with (folder / 'worker.log').open('ab') as output:
+                pid = subprocess.Popen(command, cwd=root, env=child_env(), stdin=subprocess.DEVNULL,
+                                       stdout=output, stderr=subprocess.STDOUT, start_new_session=True).pid
+        receipt.update(result='starting', pid=pid, command=' '.join(command[1:]), **({'tmux': session} if session else {}))
         write_json(folder / 'receipt.json', receipt)
         return _project(receipt)
+
+
+# #3138 (owner, 2026-11-19: «能不能在终端里直接用 tmux 之类的启动一个后台 session，这样我就可以接着做，或者能看到它
+# 的进度？»): with tmux on this computer the worker runs in a named session the owner can attach to and watch.
+# Without it, a plain detached process, as before. `env -i` hands the worker REM's own environment and then
+# execs it, so the pane's pid is the worker's and `_alive` recognises it as before.
+def _tmux():
+    return shutil.which('tmux')
+
+
+def tmux_name(task_id):
+    return 'rem-' + task_id[:12]
+
+
+def _in_tmux(root, folder, task_id, command, env):
+    """(worker pid, session name) when tmux started it, else (None, None)."""
+    tmux = _tmux()
+    if not tmux:
+        return None, None
+    name = tmux_name(task_id)
+    started = subprocess.run([tmux, 'new-session', '-d', '-s', name, '-x', '160', '-y', '48', '-c', str(root), '-P', '-F', '#{pane_pid}',
+                              'env', '-i', *[f'{key}={value}' for key, value in env.items()], *command],
+                             capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+    pid = started.stdout.strip()
+    if started.returncode != 0 or not pid.isdigit():
+        return None, None
+    # The pane is also the worker's log, as the detached process's stdout was.
+    subprocess.run([tmux, 'pipe-pane', '-o', '-t', name, f"cat >> '{folder / 'worker.log'}'"],
+                   capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
+    return int(pid), name
 
 
 def _interrupted(signum, frame):
@@ -198,7 +230,7 @@ def _delegate(receipt, folder, config, timeout):
     with _tmpdir(folder / 'tmp'):
         answer = harness.run(HARNESSES[agent], _prompt(receipt), model, cwd=receipt['cwd'],
                              timeout=math.ceil(timeout), effort=config['effort'], add_dirs=(str(folder),),
-                             user_setup=True, cancelled=_STOPPED.is_set, **FULL_ACCESS)
+                             user_setup=True, cancelled=_STOPPED.is_set, on_activity=_step_writer(folder), **FULL_ACCESS)
     if _STOPPED.is_set():
         raise InterruptedError('Task stopped by the owner')
     Path(receipt['log']).write_text(json.dumps(answer, ensure_ascii=False) + '\n')
@@ -208,6 +240,35 @@ def _delegate(receipt, folder, config, timeout):
     if answer['error']:
         receipt['reason'] = answer['error']
     return {'natural': 0, 'timeout': 124}.get(answer['outcome'], 1)
+
+
+# What the agent is doing, while it does it (#3138): each step co ai's Work Room would show (an OIP
+# provider_activity: a fixed phrase such as "Running the requested tests", never the command), one line of
+# events.jsonl. The status a page polls reads the last one; the worker's own output, the tmux pane, says it too.
+STEP_FIELDS = ('kind', 'status', 'title', 'summary', 'files')
+
+
+def _step_writer(folder):
+    path = folder / 'events.jsonl'
+
+    def write(activity):
+        step = {'at': now().isoformat(), **{key: activity[key] for key in STEP_FIELDS if key in activity}}
+        with path.open('a', encoding='utf-8') as out:
+            out.write(json.dumps(step, ensure_ascii=False) + '\n')
+        print(f"{step['at'][11:19]}  {step.get('summary', '')}", flush=True)
+    return write
+
+
+def _last_step(folder):
+    """(the latest step, how many) from events.jsonl; a half-written last line is skipped."""
+    path = folder / 'events.jsonl'
+    if not path.is_file():
+        return None, 0
+    lines = path.read_text(encoding='utf-8').splitlines()
+    for line in reversed(lines):
+        with suppress(ValueError):
+            return json.loads(line), len(lines)
+    return None, len(lines)
 
 
 def execute(root, task_id, *, timeout=None):
@@ -266,6 +327,10 @@ def _neuter(work, gitdir):
 def _project(receipt):
     value = {**receipt}
     value.pop('prepared_reply', None)
+    if value.get('last_message'):
+        step, count = _last_step(Path(value['last_message']).parent)
+        if step:
+            value.update(step=step, steps=count)
     deliverable = Path(value['deliverable'])
     if value['result'] == 'completed' and deliverable.is_file() and not deliverable.is_symlink():
         last = Path(value['last_message'])
@@ -359,6 +424,55 @@ def stop(root, task_id):
             return current
         time.sleep(0.05)
     raise RemError('Task has not confirmed stop yet; inspect co rem task status')
+
+
+# Pick it up yourself (#3138): a running task's tmux session, or the finished session in its own agent, opened in
+# Terminal on this computer. Buttons only (D-60): the command lives in a script REM writes, never on the page.
+def _open_in_terminal(script):
+    """Open a .command script in Terminal (macOS); tests replace this."""
+    if sys.platform != 'darwin':
+        raise RemError('Opening a terminal from the page works on macOS; on this computer use the agent directly')
+    subprocess.run(['open', '-a', 'Terminal', str(script)], check=True, capture_output=True, timeout=10)
+
+
+def _terminal_script(folder, name, lines):
+    script = folder / f'{name}.command'
+    script.write_text('#!/bin/sh\n' + '\n'.join(lines) + '\n', encoding='utf-8')
+    script.chmod(0o700)
+    return script
+
+
+def watch(root, task_id):
+    """Open Terminal attached to the running task's tmux session."""
+    folder = directory(root, task_id)
+    receipt = read_json(folder / 'receipt.json', {})
+    tmux = _tmux()
+    if not receipt.get('tmux') or not tmux:
+        raise RemError('This run is not in a terminal session; its progress shows on the page')
+    if subprocess.run([tmux, 'has-session', '-t', receipt['tmux']], capture_output=True, timeout=10).returncode != 0:
+        raise RemError('The run has ended, so there is no live session to watch')
+    _open_in_terminal(_terminal_script(folder, 'watch', [f"exec '{tmux}' attach -t '{receipt['tmux']}'"]))
+    return _project(receipt)
+
+
+RESUME = {'codex': ('codex', 'resume'), 'claude': ('claude', '--resume')}
+
+
+def resume(root, task_id):
+    """Open Terminal in the task's folder with its agent resuming its session, to carry on by hand."""
+    folder = directory(root, task_id)
+    receipt = read_json(folder / 'receipt.json', {})
+    agent, session = receipt.get('agent', 'codex'), receipt.get('session_id')
+    if receipt.get('result') in ACTIVE:
+        raise RemError('The agent is still working; watch it, or carry on once it finishes')
+    if not session or not re.fullmatch(r'[A-Za-z0-9-]{8,80}', session):
+        raise RemError('This run kept no session to continue')
+    program, flag = RESUME[agent]
+    cwd = receipt.get('cwd') or str(folder)
+    if "'" in cwd:
+        raise RemError('The task folder has a quote in its path; open it in the agent directly')
+    _open_in_terminal(_terminal_script(folder, 'resume', [f"cd '{cwd}' || exit 1", f"exec {program} {flag} {session}"]))
+    return _project(receipt)
 
 
 def auto_dispatch(root, config):

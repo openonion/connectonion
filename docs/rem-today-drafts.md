@@ -64,3 +64,23 @@ Each person's page carries a send policy as its `Direct send` fact (D-101):
 Not in this slice: a `partners:` list in config.yaml (config keys are validated strictly; the page line and the one-click choice cover it), and `send-routine` judged by a separate classifier (the writer's `send: now` rule is the gate).
 
 Verification and remaining browser limits: [sprint evidence](testing/rem-draft-coverage.md).
+
+## Following a hand-off to Codex or Claude Code (#3138)
+
+When a row is handed to Codex or Claude Code, the run is no longer a black box until it ends.
+
+- **What it is doing now.** The run reports each step as co ai's Work Room does. These are the OIP
+  `provider_activity` events (`core/provider_events.py`): a fixed phrase such as "Running the requested tests" or
+  "Preparing workspace file changes", never the command or file contents. The worker writes one line per step to
+  `.state/tasks/do-<id>/events.jsonl`. `POST /rem/task` status returns the latest as `step` (plus the count as
+  `steps`). The work strip and the card show it after "Codex is working · started 2 min ago" and update it every
+  few seconds without redrawing the card.
+- **Watch it.** When tmux is installed, the worker runs in a tmux session named `rem-<task id>`. Its environment is
+  handed over with `env -i`, so the pane's pid is the worker's, and the pane is piped to `worker.log`. **Watch in
+  Terminal** (action `watch`) opens Terminal attached to that session. Without tmux the worker is a plain detached
+  process, as before, and the page's step line is the progress.
+- **Carry on by hand.** When the run has finished and kept its session id, **Continue in Codex / Claude Code**
+  (action `resume`) opens Terminal in the task's folder with `codex resume <id>` or `claude --resume <id>`.
+- Both buttons are local only. `/rem/*` answers loopback clients only, and the phone's reader is a snapshot. On the
+  phone the row says "Watching and continuing happen on your computer." The commands are written into a `.command`
+  script in the task folder and are never shown to copy (D-60).

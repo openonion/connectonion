@@ -4046,6 +4046,20 @@ const UI = {
     "This is a snapshot: ask Codex to look from the live reader.": "这是快照：让 Codex 查要在实时页面里。",
     "Handing to {agent}…": "正在交给 {agent}…",
     "{agent} is working": "{agent} 正在做",
+    "Watch in Terminal": "在终端里看", "Continue in {agent}": "在 {agent} 里接着做",
+    "Watching and continuing happen on your computer.": "在终端里看、接着做，都要在你的电脑上。",
+    "Running a workspace command": "正在运行命令", "Completed a workspace command": "命令跑完了", "A workspace command failed": "命令失败了",
+    "Running the requested tests": "正在跑测试", "Completed the requested tests": "测试跑完了", "The requested tests failed": "测试没通过",
+    "Compiling and running the requested tests": "正在编译并跑测试", "Completed the requested compilation and tests": "编译和测试都完成了",
+    "The requested compilation or tests failed": "编译或测试失败了", "Running the requested program": "正在运行程序",
+    "Completed the requested program run": "程序跑完了", "The requested program run failed": "程序运行失败",
+    "Compiling the requested C program": "正在编译", "Compiled the requested C program": "编译完成", "Could not compile the requested C program": "编译失败",
+    "Compiling the requested C11 program": "正在编译", "Compiled the requested C11 program": "编译完成", "Could not compile the requested C11 program": "编译失败",
+    "Preparing workspace file changes": "正在改文件", "Workspace files updated": "文件改好了", "Workspace file change failed": "改文件失败了",
+    "Inspecting workspace context": "正在读项目", "Workspace inspection completed": "读完了项目", "Completed the workspace inspection": "读完了项目",
+    "Workspace inspection failed": "读项目失败", "The workspace inspection failed": "读项目失败",
+    "Searching for relevant context": "正在查资料", "Context search completed": "资料查完了", "Context search failed": "查资料失败",
+    "Using a provider tool": "正在用工具", "Provider tool completed": "工具用完了", "Provider tool failed": "工具失败了",
     "{agent} finished": "{agent} 做完了",
     "{agent} stopped before finishing": "{agent} 没做完就停了",
     "See result": "看结果",
@@ -8334,10 +8348,30 @@ function workSummary(rows) {
       say(count(agent, task => !ACTIVE_TASK.includes(task.result) && task.result !== "completed"), "{agent} stopped before finishing 1 thing", "{agent} stopped before finishing {n} things", agent)];
   }).filter(Boolean).join(" · ");
 }
+// What the agent is doing now (#3138): the latest step its run reported, in the Work Room's safe words.
+function taskStep(task) {
+  const step = task.step;
+  return step?.summary ? t(step.summary) : "";
+}
+// Watch the running session in Terminal, or carry on with the finished one in its agent: on this computer only.
+function terminalButtons(entry, task, active) {
+  const agent = AGENT_NAMES[task.agent || "codex"] || task.agent;
+  const want = active ? (task.tmux ? "watch" : null) : (task.session_id ? "resume" : null);
+  if (!want) return [];
+  if (!liveHere()) return [el("span", { class: "handoff-status", text: t("Watching and continuing happen on your computer.") })];
+  const button = el("button", { type: "button", class: "btn-quiet task-" + want, text: want === "watch" ? t("Watch in Terminal") : t("Continue in {agent}", { agent }) });
+  button.onclick = async () => {
+    button.disabled = true;
+    const { ok, error } = await hostPost("/rem/task", { id: task.id, action: want });
+    button.disabled = false;
+    if (!ok) button.textContent = error || t("Could not do that. Try again.");
+  };
+  return [button];
+}
 function workRow({ entry, task }) {
   const agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result), who = entry.who || entry.r;
   const at = task.finished_at ? " · " + fmtTime(task.finished_at) : "";
-  const words = task.sending ? t("Handing to {agent}…", { agent }) : active ? t("{agent} is working", { agent }) + " · " + sinceWords(task.started_at || task.queued_at)
+  const words = task.sending ? t("Handing to {agent}…", { agent }) : active ? t("{agent} is working", { agent }) + " · " + sinceWords(task.started_at || task.queued_at) + (taskStep(task) ? " · " + taskStep(task) : "")
     : t(task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing", { agent }) + at + (task.result !== "completed" && task.reason ? " · " + task.reason : "");
   const act = (action, label) => {
     const button = el("button", { type: "button", class: "btn-quiet", text: label });
@@ -8357,7 +8391,8 @@ function workRow({ entry, task }) {
   return el("li", { class: "work-row" }, [el("a", { href: href(who), text: threadWho(who) }),
     wordsLine("work-what", morningWords(entry.t.text, entry.r, entry.t).words, entry.r, []),
     el("p", { class: "work-state" }, dotted([el("span", { role: "status", text: words }),
-      ...(task.sending ? [] : active ? [act("stop", t("Stop")), act("undo", t("Take back from {agent}", { agent }))] : [see, show, act("undo", t("Take back from {agent}", { agent }))])])), output]);
+      ...(task.sending ? [] : active ? [...terminalButtons(entry, task, true), act("stop", t("Stop")), act("undo", t("Take back from {agent}", { agent }))]
+        : [see, ...terminalButtons(entry, task, false), show, act("undo", t("Take back from {agent}", { agent }))])])), output]);
 }
 function workStrip() {
   const rows = liveHere() ? workRows() : [];
@@ -8451,7 +8486,7 @@ function openContext(entry, talk) {
 function handState(entry, show, panel, mark) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
   const words = task.sending ? "Handing to {agent}…" : active ? "{agent} is working" : task.result === "completed" ? "{agent} finished" : "{agent} stopped before finishing";
-  const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) });
+  const status = el("span", { class: "handed", role: "status", text: t(words, { agent }) + (active && taskStep(task) ? " · " + taskStep(task) : "") });
   const act = (action, label) => {
     const button = el("button", { type: "button", class: "btn-quiet", text: label });
     button.onclick = async () => {
@@ -8468,7 +8503,7 @@ function handState(entry, show, panel, mark) {
   const by = task.by === "rem" ? el("span", { class: "handoff-status", text: t("REM started this") }) : null;
   const [see, output] = active || !liveHere() ? [null, null] : seeResult(task);
   // Taking the task back is not undoing the item: its own words, so it never reads like the done Undo.
-  const actions = liveHere() && !task.sending ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [];
+  const actions = task.sending ? [] : [...terminalButtons(entry, task, active), ...(liveHere() ? [active ? act("stop", t("Stop")) : see, act("undo", t("Take back from {agent}", { agent }))] : [])];
   const work = [status, reason, by, ...actions, entry.ask ? null : moreButton(entry, talkMenu(entry, panel))], closes = stripDone(entry, mark);
   return [...dotted([...closes, ...work]), output].filter(Boolean);
 }
@@ -8484,8 +8519,14 @@ function followTask(entry, task, status, show) {
   setTimeout(async () => {
     if (!status.isConnected) return;
     const { ok, code, ...latest } = await hostPost("/rem/task", { id: task.id });
-    if (ok && latest.result !== task.result) { keepTask(entry, { ...task, ...latest }); show(); }
-    else followTask(entry, task, status, show);
+    if (ok && latest.result !== task.result) { keepTask(entry, { ...task, ...latest }); show(); return; }
+    // Still working: the latest step shows in place, so the card under the owner's hand is not redrawn.
+    if (ok && latest.step?.at !== task.step?.at) {
+      task = { ...task, ...latest };
+      keepTask(entry, task);
+      status.textContent = t("{agent} is working", { agent: AGENT_NAMES[task.agent || "codex"] || task.agent }) + (taskStep(task) ? " · " + taskStep(task) : "");
+    }
+    followTask(entry, task, status, show);
   }, 4000);
 }
 // See result: what the agent wrote, read from its deliverable through the Host, shown under the row.
