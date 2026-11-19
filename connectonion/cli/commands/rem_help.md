@@ -757,7 +757,7 @@ Back:     co rem --help
 Show whether the schedule is on, when it runs next, what ran today, and what it cost.
 Read-only.
 
-Usage:    co rem status [--verbose]
+Usage:    co rem status [--verbose] [--show-private]
 Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
           today's runs, pages changed and tokens; Collect, Investigate, Deepen,
@@ -776,6 +776,11 @@ Output:   One line each: the state and next run; open threads waiting on you;
 Options:  --verbose   Show full run details, worker status, token counts and
                       coverage, schedule times and internal diagnostic fields.
                       Also explain investigation points, the weekly usage unit.
+          --show-private
+                      Print [sensitive] passages and full links. By default the
+                      day plan, calendar and run reasons hide each sensitive
+                      passage as [hidden] and show a link as its host, so the
+                      dashboard is safe to share; --json is unchanged.
 Next:     co rem logs   (details of each run)
 Back:     co rem --help
 ```

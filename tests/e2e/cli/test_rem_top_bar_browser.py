@@ -52,9 +52,11 @@ def test_desktop_top_bar_is_a_badge_on_the_language_toggle_and_a_short_privacy_w
         browser, page = _open(api, path, 1440)
         bar = page.locator(".top-end")
         text = bar.inner_text()
-        assert "还没有中文版" not in text and "翻译" not in text  # the long line moved into the menu
+        assert "还没有中文版" not in text and page.locator(".top-end .lang-act").count() == 0  # the long line and its button moved into the menu
         badge = page.locator("#lang-progress .lang-badge")
-        assert badge.is_visible() and badge.inner_text().strip().isdigit()
+        # rc35 check: a bare "373" read as nothing; the badge says what it counts.
+        assert badge.is_visible() and badge.inner_text().strip() == "12 页待翻译"
+        assert "12 页还没有中文版" in badge.get_attribute("title")
         assert page.locator("#privacy-level").inner_text().strip() in ("公开", "遮敏感", "全部")
         badge.click()
         menu = page.locator(".lang-menu")
@@ -93,4 +95,22 @@ def test_phone_top_bar_is_one_display_menu_with_language_translation_and_privacy
         pop.get_by_role("menuitemradio", name="只看公开").click()
         assert page.evaluate("privacyLevel", isolated_context=False) == "public"
         assert page.locator(".display-pop").count() == 0
+        browser.close()
+
+
+@pytest.mark.parametrize("width, words", [(1440, "12 页待翻译"), (1000, "12 待译")])
+def test_the_badge_never_shows_a_bare_number(tmp_path, monkeypatch, width, words):
+    """rc35 check (Mac session): the top bar showed a bare "373" pill beside 遮敏感 / EN, and the owner could not tell
+    what it counted. It says so in words; a narrower bar uses the short words, never the number alone."""
+    from patchright.sync_api import sync_playwright
+    path = _reader(tmp_path, monkeypatch)
+    with sync_playwright() as api:
+        browser, page = _open(api, path, width)
+        badge = page.locator("#lang-progress .lang-badge")
+        assert badge.is_visible()
+        shown = badge.inner_text().strip()
+        assert shown == words and not shown.isdigit()
+        assert badge.evaluate("n => n.scrollWidth <= n.clientWidth + 1")  # never cut
+        page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
+        assert page.locator("#lang-progress .lang-badge").count() == 0 or not page.locator("#lang-progress .lang-badge").inner_text().strip().isdigit()
         browser.close()

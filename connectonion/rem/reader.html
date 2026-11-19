@@ -2353,6 +2353,11 @@
   .cal-due-count { align-self: center; min-width: 0; margin: 0 4px; overflow: hidden; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
     white-space: nowrap; text-overflow: ellipsis; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; position: relative; z-index: 1; }
   .cal-due-count.late { color: var(--red); }
+  /* A phone's day list: the day's deadlines as one quiet line in words, opening them in place (#3188 on a phone). */
+  .cal-due-line { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
+    text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; text-align: left; }
+  .cal-due-line.late { color: var(--red); }
+  .cal-due-list:not([hidden]) { display: grid; gap: 4px; }
   .cal-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-bar.cal-microsoft { background: var(--grey); }
   .cal-bar.cal-due, .cal-bar.cal-page { background: var(--paper); color: var(--ink) !important; box-shadow: var(--e-ring); font-weight: var(--w-regular) !important; }
@@ -3255,6 +3260,9 @@
   .lang-badge { min-width: 28px; height: 22px; padding: 0 7px; border: 0; border-radius: var(--r-pill); background: var(--well); color: var(--ink);
     font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); font-variant-numeric: tabular-nums; cursor: pointer; }
   .lang-badge:hover, .lang-badge[aria-expanded="true"] { box-shadow: var(--e-ring); }
+  .lang-badge { white-space: nowrap; }
+  .lang-badge .lb-short { display: none; }
+  @media (max-width: 1100px) { .lang-badge .lb-long { display: none; } .lang-badge .lb-short { display: inline; } }
   .lang-menu, .display-pop { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: 280px; max-width: calc(100vw - 32px); padding: 12px;
     border-radius: var(--radius); background: var(--raised); box-shadow: var(--e3); color: var(--ink); white-space: normal;
     font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
@@ -3287,6 +3295,14 @@
   :root.privacy-cover .curtain:not(.lifted) * { color: transparent !important; background: none; border-color: transparent !important; pointer-events: none; }
   :root.privacy-cover .curtain:not(.lifted)::before { content: attr(data-curtain); padding: 0 6px; color: var(--grey); font-size: var(--s-ui); font-weight: var(--w-regular); white-space: nowrap; }
   :root.privacy-cover .curtain:not(.lifted):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  /* A curtain inside a sentence is one word-sized bar on the sentence's own line (rc35 hunt: the label rode in front of
+     the hidden words, the bar outgrew the passage and could not wrap, and the word before it hung at a line end). The
+     bar is as long as the passage up to a cap, so a long secret does not announce its length; it wraps like a word;
+     its label sits inside it instead of adding width. */
+  :root.privacy-cover span.curtain:not(.lifted) { display: inline-block; position: relative; max-width: min(12em, 100%); overflow: hidden;
+    white-space: nowrap; vertical-align: bottom; line-height: inherit; }
+  :root.privacy-cover span.curtain:not(.lifted)::before { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center;
+    max-width: 100%; overflow: hidden; content: attr(data-curtain-short); }
   .privacy-count { margin: 8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .lang-toggle { min-width: 36px; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); cursor: pointer; }
   .lang-toggle:hover { background: var(--well); color: var(--ink); }
@@ -3378,6 +3394,9 @@
     main, main:has(> .agenda) { padding: 4px 16px calc(62px + 14px + 24px + env(safe-area-inset-bottom, 0px)); }
     .tabbar { display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); height: 62px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2);
       justify-content: space-around; align-items: center; z-index: 30; }
+    /* An open source sheet is modal and rises from the bottom edge, so the tab bar steps aside while it is open, as a
+       native sheet covers the tab bar (rc35 check: the bar hid the sheet's last lines). */
+    body:has(#evidence-layer:not([hidden])) .tabbar { display: none; }
     .tab { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 60px; min-height: 48px; justify-content: center; color: var(--grey);
       font: var(--w-regular) var(--s-meta)/1.3 var(--font); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none !important; }
     .tab.active, .tab[aria-expanded="true"] { color: var(--ink); font-weight: var(--w-bold); }
@@ -3489,7 +3508,13 @@
   .tnext-dots { min-height: 1em; color: var(--grey); letter-spacing: 1px; }
   .tnext .wt .end { margin-left: auto; }
   .tnext-day.today .tnext-num { font-weight: var(--w-bold); }
-  .tnext-all { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
+  .tnext-all { flex: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; white-space: nowrap; }
+  /* rc35 hunt: a long event title made the Next widget 494px inside the 300px side column and the whole page scrolled
+     sideways. A side widget is never wider than its column; a title ends in an ellipsis. */
+  .tgrid > .side > * { min-width: 0; max-width: 100%; }
+  .tnext li { min-width: 0; }
+  .tnext-ev { width: 100%; overflow: hidden; }
+  .tnext .wt { min-width: 0; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
   .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
     background: var(--raised); box-shadow: var(--e1); }
@@ -3713,7 +3738,8 @@
     .tnext-line { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin: 8px 0 0; padding: 0 12px; border: 0; border-radius: var(--radius);
       background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-align: left; cursor: pointer; }
     .tnext-line .tnext-label { flex: none; color: var(--grey); }
-    .tnext-line .tnext-title { flex: 1 1 auto; }
+    .tnext-line .tnext-title { flex: 1 1 auto; min-width: 0; }
+    .tnext-line { min-width: 0; overflow: hidden; }
     .tnext-line .tnext-join { flex: none; }
     .today-brief .qcard.focal { padding: 18px 16px 16px; }
     .qhead .org-chip { display: none; }
@@ -4751,7 +4777,7 @@ const UI = {
     "Original excerpts are hidden until you show labelled passages.": "原始摘录已隐藏，可选择显示已标记段落。",
     "The original isn't in this snapshot.": "此快照未包含原始内容。",
     "Getting the original…": "正在取原文…", "Repository file": "代码仓库文件", "REM kept this link, not a copy of the page.": "REM 只记下了这个链接，没有存网页副本。",
-    "REM did not keep a copy of this source.": "REM 没有存下这个来源的原文。", "Open the web page": "打开网页",
+    "REM did not keep a copy of this source.": "REM 没有存下这个来源的原文。", "Open the web page": "打开网页", "{engine} search: {query}": "{engine} 搜索：{query}",
     "The page this source belongs to isn't in this snapshot.": "这条来源所在的页面不在这份快照里。",
     "Full source ID": "完整来源 ID",
     "Find in archived source": "在存档来源中查找",
@@ -5372,13 +5398,19 @@ function renderLangProgress() {
   if (!parts.length) { box.replaceChildren(); box.hidden = true; renderDisplayMenu(); return; }
   // A small count beside the toggle; while it translates, its progress.
   const badge = el("button", { type: "button", class: "lang-badge", "aria-haspopup": "menu", "aria-expanded": "false",
-    title: parts.map(part => part.textContent).join(" · "),
-    text: busy && job.total != null ? job.done + "/" + job.total : String(left) });
+    title: parts.map(part => part.textContent).join(" · ") }, langBadgeWords(busy && job.total != null ? job : null, left));
   badge.onclick = event => { event.stopPropagation(); toggleLangMenu(); };
   box.replaceChildren(badge);
   box.hidden = false;
   if (wasOpen) toggleLangMenu(true);
   renderDisplayMenu();
+}
+// The badge says what it counts, in words (rc35 check: a bare "373" pill beside 遮敏感 / EN read as nothing); a narrower
+// bar swaps to the short words, never to the number alone.
+Object.assign(UI.zh, { "{n} untranslated": "{n} 页待翻译", "{n} to do": "{n} 待译", "Translating {n}/{m}": "翻译中 {n}/{m}" });
+function langBadgeWords(job, left) {
+  if (job) return [el("span", { text: t("Translating {n}/{m}", { n: job.done, m: job.total }) })];
+  return [el("span", { class: "lb-long", text: t("{n} untranslated", { n: left }) }), el("span", { class: "lb-short", text: t("{n} to do", { n: left }) })];
 }
 function refreshDisplayLang(parts) {
   const pop = document.querySelector(".display-pop");
@@ -5454,7 +5486,7 @@ Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏
   "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
   "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
   "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
-  "Sensitive · tap to show": "敏感 · 点一下显示", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+  "Sensitive · tap to show": "敏感 · 点一下显示", "Sensitive": "敏感", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
 const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
   cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
   public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
@@ -5494,7 +5526,7 @@ function setPrivacy(level, { save = true, redraw: again = true } = {}) {
 function uncurtain(root) {
   for (const node of root.querySelectorAll(".curtain")) {
     node.classList.remove("curtain", "lifted");
-    for (const name of ["role", "aria-label", "tabindex", "data-curtain"]) node.removeAttribute(name);
+    for (const name of ["role", "aria-label", "tabindex", "data-curtain", "data-curtain-short", "title"]) node.removeAttribute(name);
   }
 }
 // The old switch and every "Show labelled passages" button now go through the levels.
@@ -5546,7 +5578,9 @@ function applyPrivacy(root) {
       Object.assign(node, { tabIndex: 0 });
       node.setAttribute("role", "button");
       node.setAttribute("data-curtain", t("Sensitive · tap to show"));
+      node.setAttribute("data-curtain-short", t("Sensitive"));
       node.setAttribute("aria-label", t("Sensitive · tap to show"));
+      node.title = t("Sensitive · tap to show");
     }
     return;
   }
@@ -5571,7 +5605,7 @@ function applyPrivacy(root) {
 }
 function liftCurtain(node) {
   node.classList.add("lifted");
-  node.removeAttribute("role"); node.removeAttribute("aria-label"); node.removeAttribute("tabindex");
+  for (const name of ["role", "aria-label", "tabindex", "title"]) node.removeAttribute(name);
 }
 
 function setTheme(mode) {
@@ -5802,8 +5836,29 @@ function citationId(r, n) {
   return sourceId(citationSource(r, n), r && sourceList(r).find(s => s.n === n)?.plain);
 }
 function sourceChannel(kind) {
-  return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp" })[kind]
+  // A context without a kind (a web capture from an older Host) names no channel rather than throwing: the throw
+  // left a web source's card with its header alone (rc35 hunt).
+  kind = String(kind || "");
+  if (!kind) return "";
+  return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp", web: "Web" })[kind]
     || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1)));
+}
+// A web source is named for a person, never by its URL-encoded query (rc35 hunt: "duckduckgo.com/?q=%22…"): a saved
+// page by its own title, a search as "DuckDuckGo search: "…"", anything else by its site and decoded path.
+function isWebSource(id) {
+  return /^https?:\/\//i.test(id || "") && URL.canParse(id);
+}
+function webSource(id, context) {
+  const SEARCH_ENGINES = { google: "Google", duckduckgo: "DuckDuckGo", bing: "Bing", "search.brave": "Brave", baidu: "Baidu", yandex: "Yandex" };
+  const url = new URL(id), site = url.hostname.replace(/^www\./, "");
+  if (context?.title) return { site, title: context.title };
+  const engine = Object.entries(SEARCH_ENGINES).find(([key]) => site.startsWith(key + "."))?.[1];
+  const query = ["q", "query", "wd", "text", "p"].map(key => url.searchParams.get(key)).find(Boolean) || "";
+  if (engine && query) return { site, title: t("{engine} search: {query}", { engine,
+    query: uiLanguage === "zh" ? query.replace(/"([^"]*)"/g, "“$1”") : query }) };
+  const decoded = [url.pathname, url.search].map(part => { const text = part.replace(/\+/g, " ");
+    return /%[0-9a-f]{2}/i.test(text) && !/%(?![0-9a-f]{2})/i.test(text) ? decodeURIComponent(text) : text; }).join("");
+  return { site, title: site + (decoded === "/" ? "" : decoded.replace(/\/$/, "")) };
 }
 function sourceSender(context) {
   const from = context.participants?.from;
@@ -5825,6 +5880,8 @@ function chipLabel(r, n) {
   const kind = context?.source || id.split(":")[0] || /\b(gmail|outlook|codex|claude|project-source|whatsapp)\b/i.exec(text)?.[1]?.toLowerCase() || "";
   const day = context?.time ? calendarDay(context.time) : /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
   const when = day ? fmtDate(day) : "";
+  // A link is named by its site ("duckduckgo.com, Nov 17"), never "Https".
+  if (isWebSource(id)) return [webSource(id, context).site, when].filter(Boolean).join(", ");
   const label = [context && sourceSender(context), sourceChannel(kind), when].filter(Boolean);
   return label.join(", ") || t("source {n}", { n });
 }
@@ -7233,11 +7290,11 @@ function sourceSummary(r, src) {
     const origin = context?.origin || REM.source_labels?.[id]?.origin || "";
     title = origin ? fileName(origin.replace(/^(git|file):/, "").replace(/:[0-9a-f]{7,}$/, "").replace(/@[0-9a-f]{64}$/, "")) : t("Repository file");
   } else if (scheme === "file") title = fileName(id.slice(scheme.length + 1).replace(/@[0-9a-f]{64}$/, ""));
-  else if (/^https?$/.test(scheme)) title = id.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+  else if (isWebSource(id)) title = webSource(id, context).title;
   else if (scheme === "investigation") title = t("REM investigation") + (note ? " — " + note : "");
   else title = note || sourceLabel(id);
   const channel = !id ? "" : kind === "mail" ? sourceChannel(context?.source && context.source !== "attachment" ? context.source : scheme)
-    : kind === "session" ? (scheme === "codex" ? "Codex" : "Claude Code") : kind === "file" ? t("File") : /^https?$/.test(scheme) ? t("Web") : "";
+    : kind === "session" ? (scheme === "codex" ? "Codex" : "Claude Code") : kind === "file" ? t("File") : isWebSource(id) ? webSource(id).site : "";
   return { n: src.n, id, kind, title, who, channel, day, ...(id && !context && kind === "mail" ? { missing: true } : {}) };
 }
 // Most cited first, then newest, then the page's own number.
@@ -10289,7 +10346,7 @@ function todayNext() {
     const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
     return el("li", {}, [open, join]);
   });
-  const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": t("This week") }, Array.from({ length: 7 }, (_, i) => {
+  const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": agT("This week") }, Array.from({ length: 7 }, (_, i) => {
     const day = agDay(today, i), n = agOnDay(entries, day).length;
     const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), ...(day === today ? { "aria-current": "date" } : {}),
       "aria-label": (day === today ? agT("Today") + agT(", ") : "") + agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")) }, [
@@ -10298,16 +10355,16 @@ function todayNext() {
     b.onclick = () => { todayCal.day = day; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
     return b;
   }));
-  const all = el("a", { class: "tnext-all", href: "#today-calendar", text: t("Full schedule ↓") });
+  const all = el("a", { class: "tnext-all", href: "#today-calendar", text: agT("Full schedule ↓") });
   all.onclick = event => { event.preventDefault(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
-  return el("section", { class: "widget tnext", "aria-label": t("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: t("Next") }), el("span", { class: "end" }, [all])]),
-    rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: t("Nothing else today") }), strip]);
+  return el("section", { class: "widget tnext", "aria-label": agT("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("span", { text: agT("Next") }), el("span", { class: "end" }, [all])]),
+    rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: agT("Nothing else today") }), strip]);
 }
 // On a phone: one line above the cards, the next event, a tap to the calendar.
 function todayNextLine() {
   const [e] = nextEvents(1);
   if (!e) return null;
-  const line = el("button", { type: "button", class: "tnext-line" }, [el("span", { class: "tnext-label", text: t("Next") }),
+  const line = el("button", { type: "button", class: "tnext-line" }, [el("span", { class: "tnext-label", text: agT("Next") }),
     el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title }), e.meet ? el("span", { class: "tnext-join", text: agT("Join {service}", { service: e.meet.service }) }) : null]);
   line.onclick = () => document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" });
   return line;
@@ -11254,7 +11311,8 @@ function timelineDay(day) {
   if (day.length !== 10) return [];
   const say = parts => new Date(day + "T00:00:00Z").toLocaleDateString(uiLocale(), { timeZone: "UTC", ...parts });
   const thisYear = day.slice(0, 4) === calendarDay(REM.as_of || new Date().toISOString()).slice(0, 4);
-  return [say({ month: "numeric", day: "numeric" }), thisYear ? null : el("span", { class: "y", text: say({ year: "numeric" }) })];
+  // "9月3日" / "Sep 3", never "9/3": one date form on every page (rc35 hunt).
+  return [say({ month: "short", day: "numeric" }), thisYear ? null : el("span", { class: "y", text: say({ year: "numeric" }) })];
 }
 function timelineRow(r, item) {
   const text = withoutDateClutter(youify(item.text));
@@ -12007,10 +12065,21 @@ function agRow(e, when) {
   return agPress(e, "cal-row" + (agOnStrip(e) ? " cal-row-bar" : ""), [el("span", { class: "cal-row-time", text: when }), el("span", { class: "cal-row-title", text: e.title }),
     e.where ? el("span", { class: "cal-row-where", text: e.where }) : null]);
 }
+// The calendar's events only; the notebook's deadlines that day fold into one "N 个期限" line that opens them in
+// place, the phone's form of the desk's count in the all-day lane (#3188: red late chips between real events).
 function agDayRows(entries, day, from) {
-  const bars = entries.filter(e => agOnStrip(e) && e.first <= day && e.last >= day && (e.first === day || day === from));
-  const short = e => e.kind !== "event" ? agWhen(e) : e.first === e.last ? agT("All day") : agWhen(e);
-  return [...bars.map(e => agRow(e, short(e))), ...agSegments(entries, day).map(seg => agRow(seg.entry, agHours(seg)))];
+  const events = entries.filter(e => e.kind === "event"), dated = entries.filter(e => e.kind !== "event" && e.first <= day && e.last >= day);
+  const bars = events.filter(e => agOnStrip(e) && e.first <= day && e.last >= day && (e.first === day || day === from));
+  const short = e => e.first === e.last ? agT("All day") : agWhen(e);
+  return [...bars.map(e => agRow(e, short(e))), ...agSegments(events, day).map(seg => agRow(seg.entry, agHours(seg))), agDueLine(dated)].filter(Boolean);
+}
+function agDueLine(items) {
+  if (!items.length) return null;
+  const list = el("div", { class: "cal-due-list", hidden: "" }, items.map(e => agRow(e, agWhen(e))));
+  const line = el("button", { type: "button", class: "cal-due-line" + (items.some(e => e.late) ? " late" : ""), "aria-expanded": "false",
+    title: items.map(e => e.title + " · " + agWhen(e)).join("\n") }, [el("span", { text: agT("{n} due", { n: items.length }) })]);
+  line.onclick = () => { const open = list.hidden; list.hidden = !open; line.setAttribute("aria-expanded", String(open)); };
+  return el("div", { class: "cal-due-day" }, [line, list]);
 }
 function agDaySection(entries, day, today, from) {
   const rows = agDayRows(entries, day, from), name = day === today ? agT("Today") : day === agDay(today, 1) ? agT("Tomorrow") : "";
@@ -15177,10 +15246,17 @@ function record(path, heading) {
 // ---- One text pass over what the reader shows (#3165, rc34 hunt): every ISO date in the reader's own form, a date
 // never printed twice in a row, and a raw source id as a short named chip that opens it. The page text and the
 // Markdown keep what was written; only what is drawn changes.
-Object.assign(UI.zh, { "Record": "记录", "Its original isn't in this snapshot.": "这条来源的原文不在这份快照里。" });
+Object.assign(UI.zh, { "Record": "记录", "Commit": "提交", "Its original isn't in this snapshot.": "这条来源的原文不在这份快照里。" });
 const ISO_RANGE = /\b(\d{4}-\d{2}-\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?(?:\s*(?:–|—|-|to|至|到)\s*((?:\d{4}-)?(?:\d{2}-)?\d{2})(?![\d-]))?\b/g;
 const RAW_ID = /\b(?:(?:codex|claude-code|gmail|outlook|github|mail|session):[A-Za-z0-9][\w.:@/+=-]{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,})\b/gi;
-const TIDY_SKIP = "a, pre, code, textarea, input, select, button, script, style, .local-path, .src-id, .cite, [contenteditable]";
+// A short hash (a commit, a hex record id): 7–23 hex characters with both a digit and a letter, so a plain number or
+// a word like "facade" never matches. Longer runs and prefixed ids are RAW_ID's.
+const SHORT_HEX = /\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,23}\b/gi;
+// Dates are put in the reader's form everywhere a person reads them, links and buttons included (a person's company
+// line and the sources' titles are links and buttons; rc35 hunt). What was written to be copied stays as written.
+const TIDY_SKIP = "pre, code, textarea, input, select, script, style, .local-path, .src-id, .cite, .evidence-meta, [contenteditable]";
+// Inside a link or a button a raw id cannot become a chip of its own (a control inside a control); it is named in place.
+const NO_CHIP = "a, button";
 function readerDate(day, locale = uiLocale()) {
   return calendarDate(day, locale);
 }
@@ -15205,7 +15281,9 @@ function readerRange(start, end, locale) {
 }
 function localiseDates(text, locale = uiLocale()) {
   ISO_RANGE.lastIndex = 0;
-  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale));
+  // "8 月 10 日", "2026 年 8 月 10 日": the spaced form a model sometimes writes reads as the reader's own "8月10日".
+  return text.replace(ISO_RANGE, (m, start, end) => readerRange(start, end, locale))
+    .replace(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日/g, (m, y, month, day) => (y ? y + "年" : "") + month + "月" + day + "日");
 }
 // "10月29日 (10月29日)", "10月29日 10月29日", "Oct 29 (Oct 29)": once. Prose only: a fact's value is made single by
 // oneDate before it is drawn (#3192), and every pass here skips text that holds no ISO date, so nothing is formatted twice.
@@ -15225,7 +15303,8 @@ function sameDay(one, two) {
   return monthDay(one) === monthDay(two);
 }
 function rawIdLabel(id) {
-  const kind = /^(codex|claude-code|session):/i.test(id) ? "Session" : /^(gmail|outlook|mail):/i.test(id) ? "Mail" : /^github:/i.test(id) ? "GitHub" : "Record";
+  const kind = /^(codex|claude-code|session):/i.test(id) ? "Session" : /^(gmail|outlook|mail):/i.test(id) ? "Mail" : /^github:/i.test(id) ? "GitHub"
+    : /^[0-9a-f]{7,12}$/i.test(id) ? "Commit" : "Record";
   const when = REM.source_context?.[id]?.time;
   return t(kind) + (when ? " · " + readerDate(calendarDay(when)) : "");
 }
@@ -15260,28 +15339,62 @@ function rowDateLabel(node) {
   const label = row && [...row.querySelectorAll(".d, .when, .date, .day, time")].find(n => !n.contains(node));
   return label ? label.textContent.replace(/\s+/g, " ").trim() : "";
 }
+// Every raw id in a text: a long or prefixed id (RAW_ID) or a short hash (SHORT_HEX), in order, never overlapping.
+function rawIds(text) {
+  RAW_ID.lastIndex = 0; SHORT_HEX.lastIndex = 0;
+  const found = [...text.matchAll(RAW_ID)];
+  for (const m of text.matchAll(SHORT_HEX))
+    if (!found.some(f => m.index < f.index + f[0].length && f.index < m.index + m[0].length)) found.push(m);
+  return found.sort((a, b) => a.index - b.index);
+}
+// The text right before a citation chip, even when the chip is tethered to the word before it.
+function textBefore(node) {
+  for (let at = node; at && !/^(P|LI|TD|DD|BLOCKQUOTE|H\d)$/.test(at.tagName || ""); at = at.parentElement) {
+    let prev = at.previousSibling;
+    while (prev && prev.nodeType === 1 && prev.lastChild) prev = prev.lastChild;
+    if (prev) return prev.nodeType === 3 ? prev : null;
+  }
+  return null;
+}
+// "venue (8月10日) [chip: 8月10日]": the chip already says the day, so the prose copy goes (46 on the rc35 hunt).
+function dropDatesBeforeChips(root) {
+  const date = "(?:\\d{4}年)?\\d{1,2}月\\d{1,2}日|[A-Z][a-z]{2,8} \\d{1,2}(?:, \\d{4})?|\\d{1,2} [A-Z][a-z]{2,8}(?: \\d{4})?";
+  const tail = new RegExp("\\s*[（(]\\s*(" + date + ")\\s*[)）]\\s*$");
+  for (const chip of root.querySelectorAll(".cite")) {
+    const node = textBefore(chip), said = chip.querySelector(".cite-short")?.textContent || "";
+    const m = node && tail.exec(node.nodeValue);
+    if (m && said && sameDay(m[1], said)) node.nodeValue = node.nodeValue.slice(0, m.index) + " ";
+  }
+}
 function tidyText(root) {
   if (!root || typeof document === "undefined" || !document.createTreeWalker) return root;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: node =>
-    /\d{4}-\d{2}|\d|[0-9a-f]{8}/i.test(node.nodeValue) && !node.parentElement.closest(TIDY_SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+    /\d/.test(node.nodeValue) && !node.parentElement.closest(TIDY_SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
     let text = onceDates(localiseDates(node.nodeValue, blockLocale(node)));
     const label = rowDateLabel(node);
     if (label && text.trimStart().startsWith(label)) text = text.trimStart().slice(label.length).replace(/^\s*[—–:：-]\s*/, "");
-    RAW_ID.lastIndex = 0;
-    if (!RAW_ID.test(text)) { if (text !== node.nodeValue) node.nodeValue = text; continue; }
+    const ids = rawIds(text);
+    if (!ids.length) { if (text !== node.nodeValue) node.nodeValue = text; continue; }
+    const control = node.parentElement.closest(NO_CHIP);
+    if (control) {
+      // Named in place; the whole id stays one hover away on the control itself.
+      if (!control.title) control.title = ids.map(m => m[0]).join(" ");
+      node.nodeValue = ids.reduceRight((out, m) => out.slice(0, m.index) + rawIdLabel(m[0]) + out.slice(m.index + m[0].length), text);
+      continue;
+    }
     const parts = [];
     let last = 0;
-    RAW_ID.lastIndex = 0;
-    for (const m of text.matchAll(RAW_ID)) {
+    for (const m of ids) {
       parts.push(document.createTextNode(text.slice(last, m.index)), rawIdChip(m[0]));
       last = m.index + m[0].length;
     }
     parts.push(document.createTextNode(text.slice(last)));
     node.replaceWith(...parts);
   }
+  dropDatesBeforeChips(root);
   shortenPaths(root);
   return root;
 }
@@ -16989,7 +17102,12 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
     select.onchange = () => openEvidence(r, select.value, trigger);
     panel.insertBefore(select, panel.querySelector(".evidence-claim"));
   }
-  panel.appendChild(el("div", { class: "evidence-identity" }, [
+  const sourceKey = sourceId(source.text, source.plain), web = isWebSource(sourceKey) ? webSource(sourceKey, context) : null;
+  // A web source says which page, on which site, read when (rc35 hunt: its card said nothing at all).
+  const webDay = web && (context?.captured_at || /\b\d{4}-\d{2}-\d{2}\b/.exec(source.text.slice(sourceKey.length))?.[0] || "");
+  panel.appendChild(el("div", { class: "evidence-identity" }, web ? [
+    el("p", { class: "evidence-meta", text: [t("Web"), web.site, webDay && fmtDate(webDay)].filter(Boolean).join(" · ") }),
+    el("p", { class: "evidence-subject", text: web.title })] : [
     el("p", { class: "evidence-meta", text: context
       ? [sourceIdentity(context), sourceChannel(context.source), context.time && fmtTime(context.time)].filter(Boolean).join(" · ")
       : chipLabel(r, source.n) }),
@@ -17014,11 +17132,16 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
     reveal.onclick = () => { revealLabelled(); close.focus({ preventScroll: true }); scrollEvidenceSpan(panel); };
     panel.appendChild(el("div", { class: "private-hidden-notice" }, [
       el("p", { text: t("Original excerpts are hidden until you show labelled passages.") }), reveal]));
-    const text = excerpt + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
-    panel.appendChild(evidenceOriginal(context, quote));
+    // `co fetch`'s own URL:/Title: lines repeat what the card's head already says.
+    const shown = web ? excerpt.replace(/^(?:(?:URL|Title|Status):[^\n]*\n)+\s*/, "") : excerpt;
+    const text = shown + (context.truncated ? "…" : ""), quote = el("blockquote", { html: markedSpan(text, span?.source) });
+    panel.appendChild(evidenceOriginal(web ? { ...context, source: "", captured_at: "" } : context, quote));
+    if (web) panel.appendChild(webLink(sourceKey));
   } else if (source.text && !sourceId(source.text, source.plain)) {
     panel.appendChild(el("p", { class: "evidence-description", text: source.text }));
   } else panel.append(...missingOriginal(r, number, trigger, { fromList }, sourceId(source.text, source.plain)));
+  // The card's own words (who, when, what the source is) in the reader's form; the quoted original stays as written.
+  panel.querySelectorAll(".evidence-identity, .evidence-description").forEach(tidyText);
   evidenceTrigger = trigger;
   panel.parentElement.hidden = false;
   document.body.classList.add("evidence-open");
@@ -17047,8 +17170,11 @@ function missingOriginal(r, number, trigger, options, id) {
   const web = /^https?:\/\//.test(id || "");
   parts.push(el("p", { class: "evidence-unavailable", text: t(web ? "REM kept this link, not a copy of the page." : liveHere()
     ? "REM did not keep a copy of this source." : "The original isn't in this snapshot.") }));
-  if (web) parts.push(el("a", { class: "btn-action evidence-web", href: id, target: "_blank", rel: "noopener noreferrer", text: t("Open the web page") + " ↗" }));
+  if (web) parts.push(webLink(id));
   return parts;
+}
+function webLink(id) {
+  return el("a", { class: "btn-action evidence-web", href: id, target: "_blank", rel: "noopener noreferrer", text: t("Open the web page") + " ↗" });
 }
 function evidenceControls(panel) {
   return [...panel.querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]')].filter(node =>

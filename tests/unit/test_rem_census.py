@@ -315,6 +315,9 @@ def test_a_person_with_their_own_address_stays_a_person(emails):
     ("Harbour Street Ventures", "- Role: Unknown"),
     ("Fernhill Capital", "- Role: Unknown"),
     ("Kiln Works Pty Ltd", "- Role: Unknown"),
+    # rc35 check: a mailbox described mid-line still led People as an unnamed row.
+    ("orders@kiln.example", "- Role: Automated order-intake and result mailbox for the Kiln pilot [8]"),
+    ("frontdesk@kiln.example", "- Role: Building management (shared mailbox used by successive managers) [7]"),
 ])
 def test_an_assistant_agent_or_company_page_is_not_a_person(title, role):
     from connectonion.rem.census import non_person
@@ -326,6 +329,8 @@ def test_an_assistant_agent_or_company_page_is_not_a_person(title, role):
     ("Mara Ostrowski", "- Role: Executive assistant to the CEO [2]"),
     ("Theo Capitalé", "- Role: Partner at Fernhill [1]"),
     ("Ines Halvorsen", "- Role: Head of agent platforms [1]"),
+    ("Quinn Avery", "- Role: Research Assistant, Fernhill University [2]"),
+    ("Quinn Avery", "- Role: Office manager; looks after the team's shared calendar [2]"),
 ])
 def test_a_human_assistant_or_a_name_like_a_company_word_stays_a_person(title, role):
     from connectonion.rem.census import non_person

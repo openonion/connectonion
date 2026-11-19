@@ -400,7 +400,13 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc35
+## Current Version: 1.9.6rc36
+Release candidate 1.9.6rc36 for 1.9.6: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said once in the reader's own form. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc36.md).
+
+- 1.9.6rc36 (REM: rc35 bug-hunt fixes — web source cards, Today's side column, phone agenda, worded counts, privacy polish, dates and hex).
+
+### Previous candidate: 1.9.6rc35
 Release candidate 1.9.6rc35 for 1.9.6: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
 shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
 bar, and night stages that drain. Stable remains 1.9.5. See

@@ -116,7 +116,7 @@ def test_round_nine_browser_fixture_retains_all_four_context_disclosures(tmp_pat
 ])
 def test_numbered_card_source_keeps_its_label_and_popup_text(card):
     page = TEMPLATE.read_text()
-    names = ['sourceList', 'sourceId', 'rawSection', 'listItems', 'openEvidence']
+    names = ['sourceList', 'sourceId', 'rawSection', 'listItems', 'openEvidence', 'isWebSource', 'webSource', 'webLink']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + 'const card = ' + json.dumps(card) + ';' + r'''
       const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/;
@@ -125,9 +125,10 @@ def test_numbered_card_source_keeps_its_label_and_popup_text(card):
       const sources = sourceList(r), REM = {}, evidenceLayout = () => {}, scrollEvidenceSpan = () => {};
       const evidenceLine = () => ({numbers: [], text: 'elara@example.com [1]'});
       const supportingSpan = () => null, markedSpan = text => text, chipLabel = () => 'source 1';
+      const tidyText = node => node;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, focus() {}});
       const panel = {children: [], parentElement: {}, replaceChildren(...nodes) {this.children = nodes;},
-        appendChild(node) {this.children.push(node);}};
+        appendChild(node) {this.children.push(node);}, querySelectorAll() { return []; }};
       const evidencePanel = () => panel, closeEvidence = () => {}, document = {body: {classList: {add() {}}}};
       let evidenceTrigger;
       openEvidence(r, '1', {});
@@ -834,7 +835,7 @@ def test_dynamic_reader_chrome_translates_without_changing_english():
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['age', 'dueLabel', 'threadDate', 'fmtDate', 'citationDate', 'chipLabel'])
+                          for name in ['age', 'dueLabel', 'threadDate', 'fmtDate', 'citationDate', 'chipLabel', 'isWebSource', 'webSource'])
     result = _run_reader_js('\n'.join([
         '(() => { let uiLanguage = "en";', interface, functions,
         'const REM = {as_of: "2026-10-20"}, calendarDay = day => day;',
@@ -2583,7 +2584,7 @@ def test_settings_say_nightly_updates_are_off_without_a_command():
 
 
 def test_citation_dates_share_the_notebook_local_calendar_and_reader_format():
-    names = ['calendarDay', 'fmtDate', 'fmtTime', 'shortDate', 'citationDate', 'chipLabel', 'messageMeta']
+    names = ['calendarDay', 'fmtDate', 'fmtTime', 'shortDate', 'citationDate', 'chipLabel', 'messageMeta', 'isWebSource', 'webSource']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in names)
     result = _run_reader_js(functions + r'''
       const REM = {status: {timezone: 'Australia/Sydney'}, as_of: '2026-10-28', source_context: {
@@ -4932,7 +4933,7 @@ def test_day_plan_reader_hides_closed_grouped_items_and_restores_undo():
 
 
 def _source_band_js(script):
-    names = ['sourceId', 'sourceKind', 'sessionForSource', 'sourceSummary', 'sortSources', 'sourceChannel', 'sourceLabel']
+    names = ['sourceId', 'sourceKind', 'sessionForSource', 'sourceSummary', 'sortSources', 'sourceChannel', 'sourceLabel', 'isWebSource', 'webSource']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0) for name in names)
     return _run_reader_js(functions + '\n' + script)
 
@@ -4963,7 +4964,7 @@ def test_source_rows_name_what_each_source_is_never_its_hash():
         ['7', 'session', 'Fix the reader', '', 'Codex', '2026-09-24'],
         ['9', 'file', 'plan.md', '', 'File', '2026-10-01'],
         ['10', 'other', 'REM investigation — signature block', '', '', ''],
-        ['11', 'other', 'example.com/team', '', 'Web', ''],
+        ['11', 'other', 'example.com/team', '', 'example.com', ''],  # a link's row names its site (rc35 hunt)
         ['1', 'other', 'Business card handed over at the meetup', '', '', '2026-11-01'],
         ['2', 'file', 'CLAUDE.md', '', 'File', '2026-09-04'],
         ['42', 'file', 'README.md', '', 'File', '2026-09-28']]

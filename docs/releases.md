@@ -33,7 +33,11 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc35**: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+Release candidate **1.9.6rc36**: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never
+pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy
+curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said
+once. See [1.9.6rc36 notes](releases/1.9.6rc36.md).
+Before it, release candidate **1.9.6rc35**: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
 shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
 bar, and night stages that drain. See [1.9.6rc35 notes](releases/1.9.6rc35.md).
 Before it, release candidate **1.9.6rc34**: REM's knowledge graph (a tag links pages and gets its own page), a closed item
@@ -140,7 +144,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc35'
+python -m pip install --upgrade 'connectonion==1.9.6rc36'
 ```
 
 ## Previous stable

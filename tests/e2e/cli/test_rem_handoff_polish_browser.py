@@ -78,6 +78,8 @@ def test_finished_has_summary_one_primary_and_report_in_side_card(today, width, 
     panel.get_by_text('合同附件里的证据', exact=True).wait_for()
     panel.locator('.evidence-close').click()
     page.get_by_role('button', name='看结果', exact=True).click()
+    # The report is fetched again on reopen; wait for it before counting what it carries.
+    panel.get_by_text('详细报告。', exact=True).wait_for()
     chip = panel.locator('.task-source')
     assert chip.count() == 1
     page.evaluate("REM.source_context['outlook:message-one'] = {source:'outlook', excerpt:'合同原文', subject:'合同'}", isolated_context=False)
