@@ -7983,15 +7983,23 @@ function row(r, opts) {
     el("div", { class: "t" }, [
       el("span", {}, [el("a", { href: href(r), text: r.title }), updatedMarker(r), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
       el("span", { class: "when", text: shortDate(k.last) })])]);
-  const summary = STATEMENT_CATEGORIES.includes(r.category) ? statementLead(summaryLine(k.summary)) : summaryLine(k.summary);
+  // A page's Tags line is shown by its tag row, never as its summary (#3140: tag-page members read "Tags: pilot").
+  const raw = /^\s*(?:\*\*)?(?:Tags|标签)(?:\*\*)?\s*[:：]/i.test(k.summary || "") ? "" : k.summary;
+  const summary = STATEMENT_CATEGORIES.includes(r.category) ? statementLead(summaryLine(raw)) : summaryLine(raw);
   const lead = summary.length > 220 ? summary.slice(0, 217) + "…" : summary;
-  if (lead) li.appendChild(el("div", { class: "hit", text: lead }));
+  if (lead) li.appendChild(rowLine("hit", raw, lead, r.path));
   const open = threads(r).items[0];
-  if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: displayLine(open.text) })]));
+  if (open) li.appendChild(el("div", { class: "hit open" }, [el("span", { class: "k", text: t(DIRECTION_LABEL[open.dir]) }), rowLine("", open.text, displayLine(open.text), r.path, "span")]));
   const u = r.category === "skills" ? skillUsage(r) : null;
   if (u && (u.count || !opts?.hideZeroUsage)) li.appendChild(el("div", { class: "meta usage" }, [t("{n} uses", { n: u.count }) + (u.last ? t(" · last {last}", { last: shortDate(u.last) }) : "")]));
   if (r.installations && r.installations.length > 1) li.appendChild(el("div", { class: "hit ui", text: t("{n} installed copies — open to compare sources", { n: r.installations.length }) }));
   return li;
+}
+// A list row's line: plain words, unless the line carries a privacy label. Then it goes through inline(), as on the
+// page, so the level covers or removes its passage (#2840: no sensitive fact legible at the default, in any list).
+function rowLine(cls, raw, plain, from, tag = "div") {
+  const attrs = cls ? { class: cls } : {};
+  return /[\[［](?:personal|sensitive)[\]］]/i.test(raw || "") ? el(tag, { ...attrs, html: inline(raw, from) }) : el(tag, { ...attrs, text: plain });
 }
 // A decision's lead is what was decided (#3159): not "这项选择作于 2026-11-08 的 10:20，所在会话开始于…", and a date reads once,
 // in the reader's words, never as an ISO timestamp.
@@ -15054,8 +15062,9 @@ function search(q, relatedPath = "") {
       if (sessionText(r).lower.includes(needle)) hits.push({ r, lines: [sessionExcerpt(r, [needle]).text.slice(0, 240)] });
       continue;
     }
-    const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain).map(l => l.replace(/[\[［](?:personal|sensitive)[\]］]/gi, ""))
-      .filter(l => l.toLowerCase().includes(needle)).slice(0, 3);
+    // The labels stay on the line (the snippet covers its passage, #2840); the match ignores them.
+    const lines = splitTrailers(r.text).body.replace(COMMENT, "").split("\n").map(plain)
+      .filter(l => l.replace(/[\[［](?:personal|sensitive)[\]］]/gi, "").toLowerCase().includes(needle)).slice(0, 3);
     if (lines.length || r.title.toLowerCase().includes(needle)) {
       const primary = r.catalog_parent ? byPath(r.catalog_parent) : r;
       if (!grouped.has(primary.path)) { const hit = { r: primary, lines: [] }; grouped.set(primary.path, hit); hits.push(hit); }
@@ -15116,7 +15125,10 @@ function search(q, relatedPath = "") {
       // The snippet adds what the title does not say: a line that only repeats the title is skipped.
       const line = lines.map(l => l.trim().replace(/^#+\s*/, "").replace(/^[-+]\s+/, ""))
         .find(l => !isPath(l) && l.toLowerCase() !== r.title.trim().toLowerCase());
-      if (line) li.appendChild(el("div", { class: "hit", html: highlight(searchSnippet(summaryLine(line)), needle) }));
+      // A labelled line goes through inline(), the same path as the page, so its [personal]/[sensitive] passages
+      // stay marked and the privacy level covers or removes them here too (#2840: 0 sensitive facts legible).
+      const labelledLine = line && /[\[［](?:personal|sensitive)[\]］]/i.test(line);
+      if (line) li.appendChild(el("div", { class: "hit", html: labelledLine ? inline(localDates(line), r.path) : highlight(searchSnippet(summaryLine(line)), needle) }));
       if (i >= FIRST) li.hidden = true;
       ul.appendChild(li);
     }

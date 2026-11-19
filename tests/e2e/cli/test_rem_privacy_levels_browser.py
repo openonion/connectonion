@@ -155,3 +155,60 @@ def test_the_control_sits_in_the_top_bar_reachable_on_a_phone_and_its_menu_is_on
         if SHOTS:
             page.screenshot(path=str(SHOTS / "privacy-cover-390.png"))
         browser.close()
+
+
+VISIBLE_TEXT = """() => {
+  const seen = [], walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const el = node.parentElement;
+    if (!el || !node.data.trim() || el.closest('script, style, [hidden], .curtain:not(.lifted)')) continue;
+    const style = getComputedStyle(el);
+    if (style.color === 'rgba(0, 0, 0, 0)' || style.visibility === 'hidden' || !el.getClientRects().length) continue;
+    seen.push(node.data);
+  }
+  return seen.join(' ').replace(/\\s+/g, ' ').toLowerCase();
+}"""
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_at_the_default_level_no_sensitive_text_is_legible_anywhere(tmp_path, monkeypatch, width):
+    """#2840 acceptance: 0 sensitive facts legible at the default. Every visible text node is read, on the record
+    (lead, timeline rows, full memory, profile values) and in search results, not only one passage."""
+    from patchright.sync_api import sync_playwright
+    path = _reader(tmp_path, monkeypatch)
+    with sync_playwright() as api:
+        browser, page = _open(api, path, width=width)
+        page.locator("details.deep-note").evaluate_all("nodes => nodes.forEach(d => d.open = true)")
+        assert "hospital" not in page.evaluate(VISIBLE_TEXT, isolated_context=False)
+        assert "prefers calls" in page.evaluate(VISIBLE_TEXT, isolated_context=False)  # personal still shows
+        page.goto(path.as_uri() + "#q=hospital")
+        page.wait_for_timeout(500)
+        # The search box and its header echo the query itself; every result row must keep the passage covered.
+        rows = page.locator("#main .hits").evaluate_all("lists => lists.map(l => l.innerText).join(' ')").lower()
+        shown = page.evaluate(VISIBLE_TEXT, isolated_context=False)
+        assert page.locator("#main .hits li").count() >= 1
+        assert "hospital this month" not in shown and "in hospital" not in shown, rows
+        # Lists draw a page's lead through the same row as tag pages and Today's links.
+        page.goto(path.as_uri() + "#c=people")
+        page.locator("#main").wait_for()
+        page.wait_for_timeout(300)
+        assert "in hospital" not in page.evaluate(VISIBLE_TEXT, isolated_context=False)
+        browser.close()
+
+
+def test_a_sensitive_waiting_item_is_covered_in_today_and_the_open_list(tmp_path, monkeypatch):
+    """Row-level places draw open items through their own code (Today cards, 等你处理): the default covers them too."""
+    from patchright.sync_api import sync_playwright
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    root = tmp_path / "rem"
+    prepare(root)
+    Notebook(root).write("people/wren-hale.md", PAGE.replace("## History", "## Open threads\n- You owe Wren a note about her sister in hospital [sensitive]; with you since 2026-09-29 [1].\n\n## History"))
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser, page = _open(api, path)
+        for place in ("#", "#view=open"):
+            page.goto(path.as_uri() + place)
+            page.locator("#main").wait_for()
+            page.wait_for_timeout(400)
+            assert "in hospital" not in page.evaluate(VISIBLE_TEXT, isolated_context=False), place
+        browser.close()
