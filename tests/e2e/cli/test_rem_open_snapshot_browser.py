@@ -108,8 +108,11 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             assert status.inner_text() == 'Page pending — background updates off'
             assert status.is_visible()
             assert status.evaluate('e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().bottom <= innerHeight')
-            # #3104: the full memory opens by itself, even on a page only mapped so far.
-            assert page.locator('details.deep-note').get_attribute('open') is not None
+            # #3104: the full memory opens by itself, even on a page only mapped so far; when all it held were the
+            # facts the profile card already says, it is not drawn at all (#3131).
+            note = page.locator('details.deep-note')
+            assert page.locator('.factlist').count() == 0
+            assert note.count() == 0 or note.get_attribute('open') is not None
             assert page.locator('.missing.primary .names').inner_text() == '8 sections will be written when it is investigated.'
             assert page.locator('.missing.primary button, .missing.primary code').count() == 0
 

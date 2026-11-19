@@ -2330,6 +2330,10 @@
   .cal-allday-col { border-left: var(--hair) solid var(--rule); margin: -3px 0; }
   .weekend.cal-allday-col, .weekend.cal-day, .weekend.cal-cell { background: var(--well); }
   .cal-bar { display: flex; align-items: center; min-width: 0; height: 22px; margin: 0 3px 0 4px; padding: 0 8px; border: 0; border-radius: var(--r-cell); background: var(--ink); color: var(--paper) !important; font: var(--w-bold) var(--s-meta)/22px var(--font) !important; cursor: pointer; text-align: left; position: relative; z-index: 1; }
+  /* A day's notebook dates, counted in words; the items themselves are Today's cards (#3188). */
+  .cal-due-count { align-self: center; min-width: 0; margin: 0 4px; overflow: hidden; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
+    white-space: nowrap; text-overflow: ellipsis; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; position: relative; z-index: 1; }
+  .cal-due-count.late { color: var(--red); }
   .cal-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-bar.cal-microsoft { background: var(--grey); }
   .cal-bar.cal-due, .cal-bar.cal-page { background: var(--paper); color: var(--ink) !important; box-shadow: var(--e-ring); font-weight: var(--w-regular) !important; }
@@ -10267,9 +10271,11 @@ function personHead(r) {
 function personMeta(r, late) {
   const parsed = parseFacts(r), have = label => (parsed.has(label) ? parsed.get(label) : legacyFact(r, label)).filter(item => knownValue(item.value));
   const place = have("Location")[0], last = have("Last contact")[0];
-  const lastValue = last ? plainLine(last.value) : "";
+  const lastValue = last ? plainLine(oneDate(last).value) : "";
   const lastText = /^\d{4}-\d{2}-\d{2}$/.test(lastValue) ? fmtDate(lastValue) : lastValue || (mappedContact(r) && known(r).last ? fmtDate(known(r).last) : "");
-  const parts = [place ? el("span", { text: plainLine(place.value) }) : null,
+  // The place keeps its privacy mark, so a [personal] location hides with the others (the facts panel that used to
+  // guard it is gone from person pages, #3131).
+  const parts = [place ? el("span", { class: "hero-place", html: inline(place.value, r.path) }) : null,
     lastText ? el("span", { text: t("Last contact {when}", { when: lastText }) }) : null,
     r.mail?.mails ? el("span", { title: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }),
       text: t(r.mail.mails === 1 ? "1 mail" : "{n} mails", { n: r.mail.mails }) }) : null,
@@ -11174,7 +11180,7 @@ const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Late, due {date}": "已过期，期限 {date}", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Organised by {name}": "组织者：{name}",
+  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Organised by {name}": "组织者：{name}",
   "{n} items": "{n} 项", "1 item": "1 项",
   "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
   "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
@@ -11338,10 +11344,20 @@ function agDetail(e, anchor) {
   agPlaceBeside(dialog, anchor.getBoundingClientRect());
   close.focus();
 }
+// Beside the event when there is room on its right or left; otherwise (a wide block, as in Today's one-day timeline)
+// under it, or over it, aligned to its start. Never over the rail and never over the event itself (#3188: it opened
+// at x=8, over the rail and the event's own title).
 function agPlaceBeside(dialog, at) {
-  const width = dialog.offsetWidth, height = dialog.offsetHeight, right = at.right + 8 + width <= innerWidth - 8;
-  dialog.style.left = Math.max(8, right ? at.right + 8 : at.left - 8 - width) + "px";
-  dialog.style.top = Math.max(8, Math.min(at.top, innerHeight - height - 8)) + "px";
+  const width = dialog.offsetWidth, height = dialog.offsetHeight, gap = 8;
+  const minX = Math.max(gap, document.getElementById("main")?.getBoundingClientRect().left || gap), maxX = innerWidth - gap - width;
+  const clampX = x => Math.max(minX, Math.min(x, maxX)), clampY = y => Math.max(gap, Math.min(y, innerHeight - gap - height));
+  const spots = [[at.right + gap, clampY(at.top)], [at.left - gap - width, clampY(at.top)],
+    [clampX(at.left), at.bottom + gap], [clampX(at.left), at.top - gap - height]];
+  const clear = ([x, y]) => x >= minX && x <= maxX && y >= gap && y + height <= innerHeight - gap
+    && (x >= at.right || x + width <= at.left || y >= at.bottom || y + height <= at.top);
+  const [left, top] = spots.find(clear) || [clampX(at.left), clampY(at.bottom + gap)];
+  dialog.style.left = left + "px";
+  dialog.style.top = top + "px";
 }
 // An entry as something to press: an event opens its detail, a notebook date goes to its page.
 function agPress(e, cls, children) {
@@ -11366,11 +11382,27 @@ function agBar(bar, column) {
   node.style.gridRow = String(bar.line + 1);
   return node;
 }
+// The lane is the calendar's: all-day and multi-day events as bars. The notebook's own dates (deadlines, notes) are
+// Today's cards; here a day only says how many it has, in words, and that count opens them (#3152, #3188).
 function agAllDay(entries, days, today) {
-  const bars = agBars(entries.filter(agOnStrip), days[0], days.length), lines = Math.max(1, ...bars.map(bar => bar.line + 1));
-  return el("div", { class: "cal-allday" }, [el("span", { class: "cal-axis-word", text: bars.length ? agT("All day") : "" }),
+  const bars = agBars(entries.filter(e => e.kind === "event" && agOnStrip(e)), days[0], days.length);
+  const dated = entries.filter(e => e.kind !== "event");
+  const counts = days.map((day, i) => agDueCount(dated.filter(e => e.first <= day && e.last >= day), i)).filter(Boolean);
+  const lines = Math.max(1, ...bars.map(bar => bar.line + 1)) + (counts.length ? 1 : 0);
+  counts.forEach(node => { node.style.gridRow = String(lines); });
+  return el("div", { class: "cal-allday" }, [el("span", { class: "cal-axis-word", text: bars.length || counts.length ? agT("All day") : "" }),
     ...days.map((day, i) => el("span", { class: "cal-allday-col" + agDayClass(day, today), style: `grid-column:${i + 2};grid-row:1 / span ${lines}` })),
-    ...bars.map(bar => agBar(bar, 2))]);
+    ...bars.map(bar => agBar(bar, 2)), ...counts]);
+}
+function agDueCount(items, i) {
+  if (!items.length) return null;
+  const late = items.some(e => e.late), one = items.length === 1;
+  const node = el("a", { class: "cal-due-count" + (late ? " late" : ""), href: one ? items[0].href : "#",
+    title: items.map(e => e.title + " · " + agWhen(e)).join("\n"),
+    text: agT("{n} due", { n: items.length }) });  // short enough for a phone's day column, never cut
+  node.style.gridColumn = String(i + 2);
+  if (!one) node.onclick = event => { event.preventDefault(); location.hash = ""; requestAnimationFrame(() => document.querySelector("#main .today-brief")?.scrollIntoView({ block: "start" })); };
+  return node;
 }
 function agEventBlock({ entry, day, start, end, lane, lanes }) {
   const { top, height } = agBlock(start, end), cls = "cal-ev" + (height < 34 ? " short" : height >= 56 ? " tall" : "");
@@ -11402,10 +11434,13 @@ function agendaWeek(entries, start, length = 7) {
 }
 // Where the grid opens: 07:00, so working hours to 21:00 are on screen; earlier when the week's first event or
 // now is earlier, later only when now is past what would be shown.
+// The grid opens at the earlier of the first event and now, an hour above it; an empty day opens at 07:00 or now.
+// (#3188: at 23:00 the old rule jumped to now - 10 h, 13:00, with the morning's events out of view.)
 function agFirstMinute(entries, days, now) {
   const starts = days.flatMap(day => agSegments(entries, day).filter(seg => seg.entry.first === day).map(seg => seg.start));
-  const first = Math.min(7 * 60, ...starts, ...(now == null ? [] : [now]));
-  return now != null && now > first + 13 * 60 ? now - 10 * 60 : Math.max(0, Math.floor(first / 60) * 60);
+  if (!starts.length && now == null) return 7 * 60;  // an empty week opens on working hours
+  const first = Math.min(...starts, now ?? Infinity);
+  return Math.max(0, Math.floor((first - 60) / 60) * 60);
 }
 // The grid ends at the window's foot and scrolls inside it, so the heads and the all-day strip stay in view.
 function agSizeWeek() {
@@ -13860,7 +13895,19 @@ function legacyFact(r, label) {
   }[label];
   return v ? [{ value: v, qualifier: "", citations: [], derived: true }] : [];
 }
+// A value that states one date twice ("2026-10-29 (10月29日)", "2015-11-18 2015年11月18日") keeps the ISO date only;
+// the reader prints it once in its own words (hunt on rc31).
+function oneDate(item) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})\s*[（(]?\s*(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*[)）]?$/.exec(String(item.value).trim());
+  if (!m || Number(m[5]) !== Number(m[2]) || Number(m[6]) !== Number(m[3]) || (m[4] && m[4] !== m[1])) {
+    const q = /^(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日$/.exec(String(item.qualifier || "").replace(/[（()）]/g, "").trim());
+    const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(item.value).trim());
+    return q && d && Number(q[2]) === Number(d[2]) && Number(q[3]) === Number(d[3]) ? { ...item, qualifier: "" } : item;
+  }
+  return { ...item, value: m[1] + "-" + m[2] + "-" + m[3] };
+}
 function factValue(item, from) {
+  item = oneDate(item);
   const day = /^\d{4}-\d{2}-\d{2}$/.test(item.value);
   const email = /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(item.value);
   const url = /^https?:\/\/\S+$/.test(item.value);
@@ -14002,7 +14049,10 @@ function sidePanels(r, k) {
       panels.push(panel("Source", [file]));
     }
   }
-  // People, organisations and projects open on their fact card instead.
+  // A person's facts, last contact and mail are the profile card and its header line (#3103): said there once, never
+  // again in Full memory (#3131, hunt on rc31: '资料 · 已知 15/17 项' repeated the card). Organisations and projects
+  // open on their fact card here, and so does a person whose page knows no fact yet (no profile card to say them).
+  if (r.category === "people" && profileCard(r)) return panels;
   const factsPanel = factList(r);
   if (factsPanel) panels.unshift(factsPanel); else if (glance.children.length || r.category !== "skills") panels.unshift(panel("At a glance", [glance]));
   return panels;
