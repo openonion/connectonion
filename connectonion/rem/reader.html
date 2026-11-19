@@ -15256,6 +15256,7 @@ const SHORT_HEX = /\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,23}\b/gi;
 // line and the sources' titles are links and buttons; rc35 hunt). What was written to be copied stays as written.
 const TIDY_SKIP = "pre, code, textarea, input, select, script, style, .local-path, .src-id, .cite, .evidence-meta, [contenteditable]";
 // Inside a link or a button a raw id cannot become a chip of its own (a control inside a control); it is named in place.
+// Only an id standing alone is (standaloneId): a link whose text is a URL or a page slug keeps it whole.
 const NO_CHIP = "a, button";
 function readerDate(day, locale = uiLocale()) {
   return calendarDate(day, locale);
@@ -15339,13 +15340,24 @@ function rowDateLabel(node) {
   const label = row && [...row.querySelectorAll(".d, .when, .date, .day, time")].find(n => !n.contains(node));
   return label ? label.textContent.replace(/\s+/g, " ").trim() : "";
 }
-// Every raw id in a text: a long or prefixed id (RAW_ID) or a short hash (SHORT_HEX), in order, never overlapping.
+// An id is a word of its own: "Fixed in e5f48af0." or "(gmail:…)". A hex run inside a longer token is part of that
+// token: a URL's last segment, a page slug's hash suffix, a file name, an email's local part (rc36 hunt: a profile
+// link followed by a stray 提交 on 18 of 21 pages). The token is the run of non-space text around the match, less the
+// punctuation that ends a sentence or wraps a word.
+function standaloneId(text, m) {
+  let start = m.index, end = m.index + m[0].length;
+  while (start > 0 && !/[\s（(\[「『"'“‘<，。；：、]/.test(text[start - 1])) start--;
+  while (end < text.length && !/[\s）)\]」』"'”’>，。；：、]/.test(text[end])) end++;
+  return text.slice(start, end).replace(/[.,;:!?…]+$/, "") === m[0];
+}
+// Every raw id in a text: a long or prefixed id (RAW_ID) or a short hash (SHORT_HEX), in order, never overlapping,
+// each standing alone.
 function rawIds(text) {
   RAW_ID.lastIndex = 0; SHORT_HEX.lastIndex = 0;
   const found = [...text.matchAll(RAW_ID)];
   for (const m of text.matchAll(SHORT_HEX))
     if (!found.some(f => m.index < f.index + f[0].length && f.index < m.index + m[0].length)) found.push(m);
-  return found.sort((a, b) => a.index - b.index);
+  return found.filter(m => standaloneId(text, m)).sort((a, b) => a.index - b.index);
 }
 // The text right before a citation chip, even when the chip is tethered to the word before it.
 function textBefore(node) {
