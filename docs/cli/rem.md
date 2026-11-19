@@ -1198,6 +1198,21 @@ own click, so the web step is included). The nightly batch runs the
 write-or-append step for pages with new material, and the weekly deepen slot
 keeps running enrich (then muse) at night within its allowance, as before.
 
+#### Organisations are pages, and enrich works like open-source intelligence (#3141)
+
+A person's organisations are written as links to their pages, `[Kiln Labs](../orgs/kiln-labs.md)`, in
+`Company` and in each dated career line of `Who they are`. A Company value or a career line the run wrote
+without that link is refused and goes back to the repair turn. Once the page is saved, REM creates every
+linked organisation page that does not exist yet (a stub "not investigated yet", which the nightly
+investigation picks up) and adds the person to each organisation's `People here`. "What changed" lists the
+organisations first, saying which pages were new.
+
+`Who they are` is a skeleton with detail: a framing sentence, then the career timeline newest first
+(employer, role, years, what they did there), education, public work and the people they overlap with,
+each cited, with an unknown said once. Enrich runs on investigation's level (Sol at medium effort), and
+neither its prompt nor the size note asks for brevity any more: a page past the length limit moves its
+oldest History to the archive instead.
+
 ### Deepen one page: enrich and muse
 
 `investigate` writes a page from what its gather found. Two commands go further
