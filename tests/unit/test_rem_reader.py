@@ -4637,6 +4637,8 @@ def _lang_toggle_js(body):
     return _run_reader_js(re.search(r'^let redrawSkipped = .*;$', page, re.M)[0] + '\n' + functions + r'''
       const stored = [], posted = [], order = [], marks = [], restored = [];
       const REM = {live: true, records: [{readLanguage: 'en'}]}, location = {protocol: 'http:', hash: '#today'};
+      // Choosing 中 starts the Chinese pages in the live reader (#3143); the job itself is tested in the browser.
+      const asked = [], translateAllSend = action => asked.push(action), untranslatedPages = () => [];
       globalThis.fetch = (url, options) => { posted.push([url, JSON.parse(options.body)]); };
       const readerStorage = (key, value) => stored.push([key, value]), closeEvidence = () => {};
       const button = {setAttribute(name, value) { this[name] = value; }, getAttribute(name) { return this[name]; }};

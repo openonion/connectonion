@@ -3107,6 +3107,10 @@
   .sync.off::after { background: var(--pencil); }
   .lang-toggle { min-width: 36px; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); cursor: pointer; }
   .lang-toggle:hover { background: var(--well); color: var(--ink); }
+  .lang-progress { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lang-progress[hidden] { display: none; }
+  .lang-progress .lang-act { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
+  @media (max-width: 640px) { .lang-progress > span:first-child { max-width: 9em; overflow: hidden; text-overflow: ellipsis; } }
   main { max-width: 1160px; margin: 0 auto; padding: 4px 40px 64px; }
 
   /* sheets: settings, the palette, shortcuts */
@@ -3772,7 +3776,7 @@
         <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
         <button class="kbd" type="button" aria-label="Command palette">⌘K</button>
       </div>
-      <div class="top-end"><button id="lang-toggle" class="lang-toggle" type="button"></button><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
+      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><button id="lang-toggle" class="lang-toggle" type="button"></button><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
     </header>
     <main id="main" tabindex="-1"></main>
   </div>
@@ -5014,6 +5018,41 @@ function setInterfaceLanguage(language, draw = render) {
 // field, caret included. Sections are also matched by position, because one without an id is known by its
 // summary and that changes language. Words in a field a redraw cannot put back are never wiped: the button
 // flips and the choice is saved, 有更新 shows, and the page changes language when that field is done.
+// The one language control (#3143, owner 2026-11-19: «'一键翻译整个页面'的按钮，应该跟我们前端里面的翻译按钮合并成同一个
+// 按钮…放到同一个位置»): beside the EN/中 toggle, one quiet line says how far the Chinese pages are and offers to
+// finish or stop them. Page bodies carry no translate button or "not translated yet" line.
+Object.assign(UI.zh, { "Chinese {n} / {m}": "中文版 {n} / {m}", "{n} pages not in Chinese yet": "{n} 页还没有中文版", "Translate": "翻译",
+  "tonight": "今晚翻译", "Stop": "停止" });
+function untranslatedPages() {
+  return (REM.records || []).filter(r => r.written && ["people", "orgs", "projects", "decisions", "principles", "knowledge", "skills"].includes(r.category)
+    && !hasChinese(r) && !/^zh(?:-|$)/i.test(r.written_in || ""));
+}
+function renderLangProgress() {
+  const box = document.getElementById("lang-progress");
+  if (!box) return;
+  if (liveHere() && uiLanguage === "zh" && !translateAllAsked) { translateAllAsked = true; translateAllSend("status"); }
+  const job = translateAllJob || {}, busy = ["starting", "running", "stopping"].includes(job.state);
+  // The Host's count, once it has answered: it knows which pages already read in Chinese; until then, the page's own.
+  const known = job.total != null, total = known ? job.total : (REM.records || []).filter(r => r.written).length;
+  const left = known ? Math.max(0, job.total - job.done) : untranslatedPages().length;
+  const parts = [];
+  if (uiLanguage === "zh" && busy) {
+    parts.push(el("span", { text: job.total != null ? t("Chinese {n} / {m}", { n: job.done, m: job.total }) : t("Getting the pages ready…") }));
+    const stop = el("button", { type: "button", class: "lang-act", text: t("Stop") });
+    stop.disabled = job.state === "stopping";
+    stop.onclick = () => translateAllSend("stop");
+    parts.push(stop);
+  } else if (uiLanguage === "zh" && left) {
+    parts.push(el("span", { text: t("{n} pages not in Chinese yet", { n: left }), title: t("Chinese {n} / {m}", { n: total - left, m: total }) }));
+    if (liveHere()) {
+      const go = el("button", { type: "button", class: "lang-act", text: t("Translate") });
+      go.onclick = () => translateAllSend("start");
+      parts.push(go);
+    } else parts.push(el("span", { class: "lang-when", text: t("tonight") }));
+  }
+  box.replaceChildren(...parts);
+  box.hidden = !parts.length;
+}
 function renderLangToggle() {
   const button = document.getElementById("lang-toggle");
   const to = uiLanguage === "zh" ? "en" : "zh";
@@ -5023,6 +5062,8 @@ function renderLangToggle() {
   button.title = button.getAttribute("aria-label");
   button.onmousedown = event => event.preventDefault();  // the caret stays in the field being typed in
   button.onclick = () => setInterfaceLanguage(to, () => {
+    // Choosing Chinese is asking for Chinese pages: the live reader starts translating the rest at once (#3143).
+    if (to === "zh" && liveHere()) translateAllSend(untranslatedPages().length ? "start" : "status");
     renderLangToggle();
     // A redraw that waits for typed words still owes the sections their places by position.
     if (unkeptWords()) { reopenByPosition = redrawSkipped = true; markUpdatesWaiting(); return; }
@@ -8958,6 +8999,7 @@ async function translateAllSend(action) {
   else if (response && !response.ok) translateAllJob = { ...(translateAllJob || {}), state: "refused", offline: false, retry: false };
   else if (response) { translateAllJob = await response.json(); translateAllWait = 1500; }
   for (const box of document.querySelectorAll(".translate-all")) drawTranslateAll(box);
+  renderLangProgress();
   if (translateAllJob.offline || translateAllJob.retry) {
     translateAllWait = Math.min(translateAllWait * 2, 30000);
     translateAllPoll = setTimeout(() => translateAllSend("status"), translateAllWait);
@@ -9521,7 +9563,7 @@ function todayFolds(entries, counts) {
   const recentFold = recent.length && !week.length ? el("details", { class: "week-details recent-details fold" }, [
     el("summary", { text: t("Recently active") }), el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true })))]) : null;
   const processing = el("details", { id: "processing", class: "night-details fold" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
-  return el("div", { class: "desk-more" }, [morningBrief(), connectionReview(), quietThreads(entries, true), weekPages, translationNotice(), recentFold, processing,
+  return el("div", { class: "desk-more" }, [morningBrief(), connectionReview(), quietThreads(entries, true), weekPages, recentFold, processing,
     maintenance(REM.status || {})].filter(Boolean));
 }
 
@@ -9835,7 +9877,7 @@ function personHead(r) {
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
         el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late)]),
-      el("div", { class: "hero-acts" }, [investigateControl(r), translationLine(r)])]),
+      el("div", { class: "hero-acts" }, [investigateControl(r)])]),
     profileCard(r)]);
 }
 // The third header line: where they are, how recent, how much mail, and Today when something waits there.
@@ -12181,7 +12223,7 @@ function orgStage(v) {
   const r = v.r;
   return el("section", { class: "ov-stage" }, [orgOver(r),
     el("div", { class: "ov-say" }, [el("h1", { class: "ov-name", lang: nameLang(orgName(r)), "aria-label": orgName(r), text: orgName(r) }),
-      translationLine(r), orgOpening(v), investigateControl(r)]), orgTree(v)]);
+      orgOpening(v), investigateControl(r)]), orgTree(v)]);
 }
 function orgOpening(v) {
   const summary = orgSummary(known(v.r).summary), relation = orgRelation(v.r);
@@ -13839,11 +13881,8 @@ function record(path, heading) {
     if (r.category === "projects") head.append(projectStateLine(r), investigateControl(r) || "");
     if (r.category !== "projects") head.appendChild(leadRow(r));
     main.appendChild(head);
-    // On a project the note that no translation is ready yet closes the record instead of opening it (#3096).
-    const line = translationLine(r), focus = recordFocus(r);
-    if (line && r.category !== "projects") main.appendChild(line);
-    main.appendChild(focus);
-    if (line && r.category === "projects") focus.appendChild(line);
+    // A page's translation state is the top bar's language control, not a line in the body (#3143).
+    main.appendChild(recordFocus(r));
   }
   const decisions = threadDecisionHistory(r);
   if (decisions) main.appendChild(decisions);
@@ -15161,7 +15200,7 @@ function entryHead(r, model, written) {
     unwritten ? el("p", { class: "gx-lede", text: unwritten }) : null,
     el("p", { class: "entry-meta" }, [entryT("Updated {date}", { date: fmtDate(r.updated) }),
       sources ? " · " : null, sources ? el("a", { href: href(r) + "&h=sources", text: entryT(sources === 1 ? "1 source" : "{n} sources", { n: sources }) }) : null]),
-    topic ? entryCounts(r) : null, translationLine(r)]);
+    topic ? entryCounts(r) : null]);
 }
 // The side column: this entry's place in the graph and its neighbours. An outline only from four sections up.
 function entryRail(r, text) {
@@ -15275,9 +15314,12 @@ function localiseTitles() {
 function render() {
   if (!REM) return;
   localiseTitles();
+  renderLangProgress();
   threadEntries.cached = null;
   threadEntries.cacheEnabled = true;
   const state = route();
+  // An opened page with no Chinese version is asked for at once (live reader); its state is the top bar's (#3143).
+  if (state.record && byPath(state.record)) translationQueued(byPath(state.record));
   if (!detailReady && needsDetails(state)) {
     renderRail(railActive());
     document.getElementById("main").replaceChildren(el("p", { role: "status", text: t("Loading…") }));

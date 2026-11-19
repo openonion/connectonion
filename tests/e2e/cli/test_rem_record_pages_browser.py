@@ -110,30 +110,24 @@ def test_an_english_page_with_no_translation_asked_for_carries_no_original_label
     assert page.locator("#main .translation-line").count() == 0
 
 
-# A translation genuinely on its way is one quiet worded line, never a chip above the name. On a person it sits in
-# the header's one action column under 调查 (#3131: controls have a fixed home); elsewhere it is by the body.
+# A translation genuinely on its way is said once, by the top bar's language control (#3143), never in the page.
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("hash_, head", [("r=" + MARA.replace("/", "%2F"), ".person-head"), ("r=orgs%2Ffernhill-labs.md", ".ov-say h1"),
                                          ("r=projects%2Fharbour.md", ".page-head")])
-def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width, hash_, head):
+def test_a_pending_translation_is_the_top_bars_one_language_control_not_a_line_in_the_page(reader, width, hash_, head):
+    """#3143 (owner, 2026-11-19): the page's translate button and the EN/中 switch are one control, in one place."""
     open_page, calls = reader
     page = open_page(hash_, width=width, live=True)
-    line = page.locator("#main .translation-line")
-    assert line.count() == 1
-    # The words, then the one worded button that translates every page (#2999).
-    assert line.evaluate("n => n.firstChild.textContent") == "中文版还没好，先看原文"
-    assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
+    assert page.locator("#main .translation-line, #main .translate-all").count() == 0
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
-    if head == ".person-head":
-        assert line.evaluate("n => !!n.closest('.person-head .hero-acts')")
-    else:
-        assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
-    # Quiet means the smallest step the place allows: a caption on people and organisations, the 13px label
-    # on a project, where nothing is under 13px (#3096).
-    step = "--s-ui" if head in (".page-head", ".person-head") else "--s-meta"
-    assert line.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
-        f"getComputedStyle(document.documentElement).getPropertyValue('{step}').trim()", isolated_context=False)
-    assert any(path == "/rem/translation-request" for path, _ in calls)
+    progress = page.locator("#lang-progress")
+    assert progress.is_visible() and "还没有中文版" in progress.inner_text()
+    # Beside the EN/中 toggle in the top bar, in the 13px label size.
+    toggle = _box(page.locator("#lang-toggle"))
+    assert abs(_box(progress)["y"] + _box(progress)["height"] / 2 - (toggle["y"] + toggle["height"] / 2)) < 8
+    assert progress.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
+        "getComputedStyle(document.documentElement).getPropertyValue('--s-ui').trim()", isolated_context=False)
+    assert any(path == "/rem/translation-request" for path, _ in calls)   # the opened page is still asked for at once
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
