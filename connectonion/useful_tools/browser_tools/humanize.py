@@ -356,11 +356,13 @@ def _type_ime(page, run):
             _pause(page, 0.3, 0.5)   # occasional hesitation
 
 
-def type_text(page, text):
-    """Type with human cadence. Latin text goes key-by-key (most land quickly, word
-    boundaries pause, an occasional key hesitates). CJK runs are PASTED (a trusted paste
-    event — how people usually enter Chinese, and free of the IME path's zero-keydown /
-    untrusted-compositionend tells); if the field blocks paste we fall back to the IME."""
+def type_text(page, text, human=False):
+    """Paste the whole text, one trusted event (#2901). With human=True, or when the
+    field refuses the paste, type with human cadence instead: Latin key-by-key (word
+    boundaries pause, an occasional key hesitates), CJK runs pasted, falling back to
+    the IME when the field blocks paste."""
+    if not human and _paste(page, text):
+        return
     for is_ime, run in _segments(text):
         if is_ime:
             if not _paste(page, run):

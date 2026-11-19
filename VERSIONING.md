@@ -400,7 +400,46 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc20
+## Current Version: 1.9.6rc24
+Release candidate 1.9.6rc24 for 1.9.6: three Windows fixes from the first live `co whatsapp` run on
+Windows 11. `check` and `consume` no longer crash with PermissionError while a listener runs (the pid
+moved out of the locked file into listen.pid); incoming WhatsApp messages are no longer dropped
+(timestamps arrive in milliseconds); `consume` talks UTF-8 with its command instead of cp1252.
+Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc24.md).
+
+- 1.9.6rc24 (Windows: listen.pid, millisecond WhatsApp timestamps, UTF-8 consume).
+
+### Previous candidate: 1.9.6rc23
+
+Release candidate 1.9.6rc23 for 1.9.6: `co whatsapp listen --phone <number>` prints an 8-character
+pairing code to type on the phone under Linked devices, instead of a QR that changes every ~20 s and
+has to be seen. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc23.md).
+
+- 1.9.6rc23 (co whatsapp listen --phone: link by pairing code).
+
+### Previous candidate: 1.9.6rc22
+
+Release candidate 1.9.6rc22 for 1.9.6: when `co browser keyboard_type` or `type_text_by_selector`
+cannot paste, the whole text goes in through one CDP `Input.insertText` call, which needs no OS
+clipboard (measured on rc21: headless Chrome on Windows over SSH never took the paste and typed 920
+of 1,402 characters key by key before the 120 s timeout). The result says whether the text was
+pasted, inserted or typed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc22.md).
+
+- 1.9.6rc22 (co browser: CDP insert when the paste does not land; the result says how text went in).
+
+### Previous candidate: 1.9.6rc21
+
+Release candidate 1.9.6rc21 for 1.9.6: when `co send` cannot reach the receiver directly, because
+its Host is behind a router or not running, a file of up to 10 MB waits on the server for 7 days,
+boxed to the receiver so the server never sees its name or bytes, and `co receive` there takes it
+from a trusted sender. `co browser keyboard_type` and `type_text_by_selector` paste the text in one
+event (measured: a 1,402-character post had 610 characters in when the CLI's 120 s timeout cut it
+off); `--human` types key by key. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc21.md).
+
+- 1.9.6rc21 (co send: small files wait on the server; co browser: keyboard_type pastes).
+
+### Previous candidate: 1.9.6rc20
+
 Release candidate 1.9.6rc20 for 1.9.6: the night's Codex workers run at the reasoning effort the
 notebook's config names instead of inheriting the global Codex setting (measured: every worker of
 three real nights ran at `max` against a configured `medium`). `co rem catchup` and the scheduled
