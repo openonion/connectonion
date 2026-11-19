@@ -400,7 +400,15 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc24
+## Current Version: 1.9.6rc25
+Release candidate 1.9.6rc25 for 1.9.6: a Windows PC can host. `co host` no longer publishes
+link-local 169.254.x addresses and never sends the relay more than its 10 endpoints, so a PC with
+disconnected adapters registers; `co call` runs on a Windows host through Git Bash (or `cmd /c`);
+the background listener's log is UTF-8. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc25.md).
+
+- 1.9.6rc25 (Windows hosts: announce within the relay limit, bash via Git Bash or cmd, UTF-8 listener log).
+
+### Previous candidate: 1.9.6rc24
 Release candidate 1.9.6rc24 for 1.9.6: three Windows fixes from the first live `co whatsapp` run on
 Windows 11. `check` and `consume` no longer crash with PermissionError while a listener runs (the pid
 moved out of the locked file into listen.pid); incoming WhatsApp messages are no longer dropped
