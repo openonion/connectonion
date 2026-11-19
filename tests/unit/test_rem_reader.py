@@ -125,9 +125,10 @@ def test_numbered_card_source_keeps_its_label_and_popup_text(card):
       const sources = sourceList(r), REM = {}, evidenceLayout = () => {}, scrollEvidenceSpan = () => {};
       const evidenceLine = () => ({numbers: [], text: 'elara@example.com [1]'});
       const supportingSpan = () => null, markedSpan = text => text, chipLabel = () => 'source 1';
+      const tidyText = node => node;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, focus() {}});
       const panel = {children: [], parentElement: {}, replaceChildren(...nodes) {this.children = nodes;},
-        appendChild(node) {this.children.push(node);}};
+        appendChild(node) {this.children.push(node);}, querySelectorAll() { return []; }};
       const evidencePanel = () => panel, closeEvidence = () => {}, document = {body: {classList: {add() {}}}};
       let evidenceTrigger;
       openEvidence(r, '1', {});
