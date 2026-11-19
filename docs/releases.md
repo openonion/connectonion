@@ -33,7 +33,8 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc24**: `co whatsapp` works on Windows: `check` and `consume` run beside a live listener,
+Release candidate **1.9.6rc25**: a Windows PC can run `co host` and answer `co call`. See [1.9.6rc25 notes](releases/1.9.6rc25.md).
+Before it, release candidate **1.9.6rc24**: `co whatsapp` works on Windows: `check` and `consume` run beside a live listener,
 incoming messages are kept, and `consume` replies in UTF-8. See [1.9.6rc24 notes](releases/1.9.6rc24.md).
 Before it, release candidate **1.9.6rc23**: `co whatsapp listen --phone <number>` links a device with an 8-character code
 typed on the phone, instead of a QR that has to be seen. See [1.9.6rc23 notes](releases/1.9.6rc23.md).
@@ -112,7 +113,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc24'
+python -m pip install --upgrade 'connectonion==1.9.6rc25'
 ```
 
 ## Previous stable
