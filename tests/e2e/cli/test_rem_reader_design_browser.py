@@ -624,7 +624,7 @@ def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     assert page.locator('.r4-fuse .rhythm').locator('i.l1, i.l2, i.l3').count() == 5  # one dark day per dated exchange
     assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
     # The facts sit in the profile card under the name, outside Full memory (#3103).
-    assert page.locator('.r4-person .pc-group').first.is_visible() and not page.locator('.r4-person .pc-group').first.evaluate("n => !!n.closest('.deep-note')")
+    assert page.locator('.r4-person .pc-row').first.is_visible() and not page.locator('.r4-person .pc-row').first.evaluate("n => !!n.closest('.deep-note')")
     memory_open(page)
     card = page.locator(".factlist")
     value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731

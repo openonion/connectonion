@@ -34,6 +34,9 @@ def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, mon
         assert page.locator('details.deep-note').get_attribute('open') is not None
         cite = page.locator('a.cite[href$="h=src-1"]').first
         assert cite.count() > 0
+        # A profile card's sources are one hover away (#3131): point at the row, then follow its mark.
+        if cite.evaluate("n => !!n.closest('.pc-row')"):
+            page.locator('.pc-row', has=cite).first.hover()
         assert source in cite.get_attribute('title')
         cite.click()
         panel = page.locator('#evidence-panel')

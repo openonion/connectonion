@@ -3614,8 +3614,10 @@
   .pc-inline > * + *::before { content: "·"; margin-right: 4px; color: var(--grey); }
   /* Sources stay one hover away: a number after every value was the card's noise. */
   .pcard .cite { position: relative; top: -0.5em; margin-left: 2px; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-tight) var(--font); text-decoration: none;
-    display: none; }
-  .pc-row:hover .cite, .pc-row:focus-within .cite { display: inline; }
+    display: inline-block; }
+  /* Out of sight and out of the line's width until the row is pointed at or focused, but still in the page, so
+     a keyboard reaches it and focus can come back to it from the evidence panel. */
+  .pc-row:not(:hover):not(:focus-within) .cite { width: 0; margin: 0; overflow: hidden; opacity: 0; }
   .pc-item { display: flex; align-items: baseline; min-width: 0; max-width: 100%; }
   .pc-after { white-space: nowrap; flex: none; }
   /* An address or handle is one line, ellipsised; a click copies the whole of it. */
