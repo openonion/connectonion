@@ -692,3 +692,30 @@ def test_the_day_timeline_opens_with_the_days_first_event_in_view(agenda):
         page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "cal-today-390.png"))
         counts = page.locator(".today-cal .cal-due-count").evaluate_all("ns => ns.every(n => n.scrollWidth <= n.clientWidth)")
         assert counts, "a day's count is never cut on a phone"
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_the_first_screen_shows_the_next_event_beside_the_cards(agenda, width):
+    """rc34 hunt: Today's calendar sat about 989px down. The cards stay first, but the first screen also says what is
+    next: on a desk the side column lists the next events with a Join link and a 7-day strip; on a phone one line
+    sits above the cards and takes you to the calendar."""
+    page = agenda
+    page.set_viewport_size({"width": width, "height": 900 if width > 640 else 844})
+    page.evaluate("() => { overview(); }", isolated_context=False)
+    selector = ".tnext" if width > 640 else ".tnext-line"
+    nxt = page.locator(selector)
+    nxt.wait_for()
+    box = nxt.bounding_box()
+    height = 900 if width > 640 else 844
+    assert box and box["y"] + min(box["height"], 60) <= height, box  # its first line is on the first screen
+    text = nxt.inner_text()
+    assert any(title in text for title in ("Lunch with Mara", "Dentist", "Quarterly receipts", "Standup", "Pilot renewal")), text
+    if width > 640:
+        assert page.locator(".tnext .tnext-strip button").count() == 7
+        # The cards are still the first thing in the work column.
+        assert page.locator(".tgrid .deck").bounding_box()["x"] < box["x"]
+    else:
+        assert page.locator(".today-brief").bounding_box()["y"] > box["y"]  # above the cards on a phone
+        nxt.click()
+        page.wait_for_function("() => { const c = document.getElementById('today-calendar'); const b = c.getBoundingClientRect(); return b.top < innerHeight && b.bottom > 0; }")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

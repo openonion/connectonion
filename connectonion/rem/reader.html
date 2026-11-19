@@ -3381,6 +3381,23 @@
 
   /* ---- Today: the deck — one raised card ---- */
   .tgrid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); gap: var(--gap); align-items: start; margin-top: 22px; }
+  /* What is next (rc34 hunt): the side column's first block on a desk, one line above the cards on a phone. */
+  .tnext-line { display: none; }
+  .tnext ul { list-style: none; margin: 0 0 12px; padding: 0; }
+  .tnext li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 6px 0; border-top: var(--hair) solid var(--rule); }
+  .tnext li:first-child { border-top: 0; }
+  .tnext-ev { display: flex; gap: 12px; min-width: 0; flex: 1 1 auto; padding: 0; border: 0; background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-align: left; cursor: pointer; }
+  .tnext-ev:hover .tnext-title { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .tnext-time { flex: none; color: var(--grey); font-variant-numeric: tabular-nums; }
+  .tnext-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tnext-join { color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .tnext-none { margin: 0 0 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .tnext-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+  .tnext-day { display: grid; justify-items: center; gap: 0; padding: 4px 0; border: 0; border-radius: var(--r-cell); background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .tnext-day:hover, .tnext-day.today { background: var(--well); }
+  .tnext-wd { color: var(--grey); }
+  .tnext-dots { min-height: 1em; color: var(--grey); letter-spacing: 1px; }
+  .tnext-all { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
   .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
     background: var(--raised); box-shadow: var(--e1); }
@@ -3586,6 +3603,12 @@
     .count-line .count-words { font-size: var(--s-ui); white-space: nowrap; }
     .frow { flex: 1; justify-content: flex-start; }
     .tgrid { display: block; margin-top: 10px; }
+    .tgrid .tnext { display: none; }
+    .tnext-line { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin: 8px 0 0; padding: 0 12px; border: 0; border-radius: var(--radius);
+      background: var(--well); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-align: left; cursor: pointer; }
+    .tnext-line .tnext-label { flex: none; color: var(--grey); }
+    .tnext-line .tnext-title { flex: 1 1 auto; }
+    .tnext-line .tnext-join { flex: none; }
     .today-brief .qcard.focal { padding: 18px 16px 16px; }
     .qhead .org-chip { display: none; }
     .qhead-acts { opacity: 1; }
@@ -9629,6 +9652,7 @@ function overview() {
   const ticked = groups.length < shownCount;
   shownCount = groups.length;
   main.append(...whyNotes(), ...[scheduleFailure(), snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
+    todayNextLine(),
     el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
     // The calendar is part of Today, under the cards (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个
     // component，而不是单独的一个 category»); the day plan's proposals are its suggested blocks, not a list on top.
@@ -9825,7 +9849,48 @@ function nightSummary(runs, marks) {
 // The side column: what others owe and what can be approved at once, what REM did overnight. 「关于 X，有什么值得
 // 记住？」 left Today in sprint 14: it picked a page REM already knew well, gave no reason and took no answer.
 function todaySide(counts) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [othersWidget(counts), nightLine()].filter(Boolean));
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine()].filter(Boolean));
+}
+// What is next, on the first screen beside the cards (rc34 hunt: the calendar sat ~989px down). The cards stay
+// first; this is the calendar's head, not a second calendar: it reuses agendaEntries and agDetail.
+function nextEvents(limit = 3) {
+  if (REM.shared) return [];
+  const now = Date.parse(REM.as_of || "") || clockNow();
+  return agendaEntries().filter(e => e.kind === "event" && !e.allDay && e.end && Date.parse(e.end) > now)
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start)).slice(0, limit);
+}
+function nextWhen(e) { return (e.first === agToday() ? "" : agFormat(e.first, { weekday: "short" }) + " ") + agTime(e.start); }
+function todayNext() {
+  const events = nextEvents();
+  if (REM.shared) return null;
+  const today = agToday(), entries = agendaEntries();
+  const rows = events.map(e => {
+    const open = el("button", { type: "button", class: "tnext-ev" }, [el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title })]);
+    open.onclick = () => agDetail(e, open);
+    const join = e.meet ? el("a", { class: "tnext-join", href: e.meet.url, target: "_blank", rel: "noopener", text: agT("Join {service}", { service: e.meet.service }) }) : null;
+    return el("li", {}, [open, join]);
+  });
+  const strip = el("div", { class: "tnext-strip", role: "group", "aria-label": t("This week") }, Array.from({ length: 7 }, (_, i) => {
+    const day = agDay(today, i), n = agOnDay(entries, day).length;
+    const b = el("button", { type: "button", class: "tnext-day" + (day === today ? " today" : ""), "aria-label": agDate(day) + agT(", ") + (n ? agCount(n) : agT("nothing")) }, [
+      el("span", { class: "tnext-wd", text: day === today ? agT("Today") : agFormat(day, { weekday: "narrow" }) }), el("span", { class: "tnext-num", text: String(Number(day.slice(8))) }),
+      el("span", { class: "tnext-dots", "aria-hidden": "true", text: "•".repeat(Math.min(3, n)) })]);
+    b.onclick = () => { todayCal.day = day; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
+    return b;
+  }));
+  const all = el("a", { class: "tnext-all", href: "#today-calendar", text: t("Full schedule ↓") });
+  all.onclick = event => { event.preventDefault(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" }); };
+  return el("section", { class: "widget tnext", "aria-label": t("Next") }, [el("div", { class: "wt" }, [icon("calendar"), el("h2", { text: t("Next") }), el("span", { class: "end" }, [all])]),
+    rows.length ? el("ul", { class: "tnext-list" }, rows) : el("p", { class: "tnext-none", text: t("Nothing else today") }), strip]);
+}
+// On a phone: one line above the cards, the next event, a tap to the calendar.
+function todayNextLine() {
+  const [e] = nextEvents(1);
+  if (!e) return null;
+  const line = el("button", { type: "button", class: "tnext-line" }, [el("span", { class: "tnext-label", text: t("Next") }),
+    el("span", { class: "tnext-time", text: nextWhen(e) }), el("span", { class: "tnext-title", text: e.title }), e.meet ? el("span", { class: "tnext-join", text: agT("Join {service}", { service: e.meet.service }) }) : null]);
+  line.onclick = () => document.getElementById("today-calendar")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  return line;
 }
 // Promises long past their date with no word since (staleEntry): triage of the past, so not in the rail above the
 // fold but one folded line under the desk, opening in place, never in red (sprint 14 #6). Mark done closes one the
@@ -11180,7 +11245,7 @@ const AG_ZH = {
   "Week": "周", "Month": "月", "Today": "今天", "Tomorrow": "明天", "Previous week": "上一周", "Next week": "下一周",
   "Previous month": "上个月", "Next month": "下个月", "All day": "全天", "Due": "期限", "Noted": "记下", "Late": "已过期", "No title": "无标题", "Until {time}": "到 {time}",
   "{n} more": "还有 {n} 项", "{n} guests": "{n} 位参会人", "1 guest": "1 位参会人", "Nothing in these days.": "这几天没有安排。",
-  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Organised by {name}": "组织者：{name}",
+  "Late, due {date}": "已过期，期限 {date}", "{n} due": "{n} 个期限", "Now {time}": "现在 {time}", "In {name}": "来自 {name}", "Open in {name}": "在 {name} 中打开", "Join {service}": "加入 {service}", "Next": "接下来", "Full schedule ↓": "完整日程 ↓", "Nothing else today": "今天没有别的安排了", "This week": "这一周", "Organised by {name}": "组织者：{name}",
   "{n} items": "{n} 项", "1 item": "1 项",
   "clear": "晴", "partly cloudy": "晴间多云", "cloudy": "阴", "fog": "雾", "rain": "雨", "showers": "阵雨", "snow": "雪", "storm": "雷暴",
   "{n}% chance of rain": "降雨概率 {n}%", "Weather for {place} from {source}, read {when}.": "{place} 的天气来自 {source}，{when}读取。",
