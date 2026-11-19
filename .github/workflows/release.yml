@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout the exact release commit
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2  # the parent, for a version-only release commit
 
       - name: Find a green Tests run for this exact commit
         id: gate
