@@ -7879,11 +7879,22 @@ function taskResult(entry) {
   const task = rowTask(entry);
   if (!task || (!task.result && !REM.live)) return null;
   // A run shows on the row itself (handOff): here only a task that waits, and a finished one's reply to send.
-  if (handed(task)) return null;
+  // Live, a finished run's next step is on its row (summary, 用这个回复起草, the report in the side card, #3147). A
+  // snapshot (the phone) can neither open that card nor draft, so there a finished run shows its one-line summary,
+  // and the reply it wrote, if any, to read and copy. Never a file path or a notice that REM did it.
+  const snapshotDone = !liveHere() && task.result === "completed";
+  if (handed(task) && !snapshotDone) return null;
   const labels = {ready: "Awaiting approval", waiting: task.wait === "budget" ? "Queued: budget used up" : "Queued: later tonight", completed: "Completed"};
   const result = el("section", {class: "task-result", "aria-label": t("Task result")}, [
     el("strong", {role: "status", text: t(labels[task.result || "ready"] || "Task")}),
-    task.reason ? el("p", {text: task.reason}) : null]);
+    task.reason ? el("p", {text: task.reason}) : null, snapshotDone && task.summary ? el("p", {text: task.summary}) : null]);
+  if (snapshotDone && task.reply) {
+    const reply = el("textarea", {readonly: "", "aria-label": t("Prepared reply")});
+    reply.value = task.reply;
+    const copy = el("button", {type: "button", class: "btn-quiet", text: t("Copy prepared reply")});
+    copy.onclick = () => copyToClipboard(task.reply);
+    result.append(reply, copy);
+  }
   return result;
 }
 

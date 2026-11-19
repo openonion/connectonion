@@ -4920,7 +4920,8 @@ def test_snapshot_approve_all_is_disabled_with_one_open_instruction(reader):
 @pytest.mark.parametrize('width', [1440, 390])
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypatch, rem_clock, width, theme):
-    """A real receipt supplies the Today card; model prose alone cannot finish it."""
+    """A real receipt supplies the Today card; model prose alone cannot finish it. In a snapshot the finished card
+    shows the run's one-line summary and the reply it wrote, never a file path or a 'REM did it' notice (#3147)."""
     from patchright.sync_api import sync_playwright
     from connectonion.rem import night, tasks
     from connectonion.rem.config import prepare, read_config
@@ -4935,7 +4936,7 @@ def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypa
         '## Open threads\n', '## Open threads\n- You owe Mara a pilot review.\n'))
     night.prepare(root, read_config(root))
     receipt = tasks.reserve(root, night.listing(root)[0])
-    Path(receipt['deliverable']).write_text('# Mara pilot review\nReviewed the fictional pilot.\n')
+    Path(receipt['deliverable']).write_text('# Mara pilot review\nReviewed the fictional pilot.\n\n```reply\nHi Mara, the pilot review is attached.\n```\n')
     Path(receipt['last_message']).write_text('Reviewed the Mara pilot.')
     write_json(Path(receipt['receipt']), {**receipt, 'result': 'completed', 'exit_code': 0,
                                          'started_at': '2026-09-07T10:00:00Z', 'finished_at': '2026-09-07T10:01:00Z'})
@@ -4952,8 +4953,8 @@ def test_finished_task_card_shows_deliverable_and_owner_reply(tmp_path, monkeypa
         assert result.is_visible()
         assert 'Completed' in result.inner_text()
         assert page.locator('#approve-all').count() == 0  # nothing to approve in a snapshot
-        assert receipt['deliverable'] in result.inner_text()
-        assert result.locator('textarea').input_value() == f"REM 已经做完：Reviewed the Mara pilot. · 附：{receipt['deliverable']}"
+        assert 'Mara pilot review' in result.inner_text() and receipt['deliverable'] not in result.inner_text()
+        assert result.locator('textarea').input_value() == 'Hi Mara, the pilot review is attached.'
         assert result.locator('textarea').get_attribute('readonly') is not None
         assert result.get_by_role('button', name='Copy prepared reply').is_visible()
         assert 'Send' not in result.locator('button').all_inner_texts()
