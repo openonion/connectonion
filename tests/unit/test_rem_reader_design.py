@@ -30,10 +30,10 @@ def test_both_themes_define_every_colour_token():
     # Every token whose light value is a colour; sizes, grid and motion do not change with the theme.
     colours = set(re.findall(r"(--[\w-]+): (?:#[\da-f]{6}|rgba\([^)]*\));", light))
     assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim"}
-    # N3 (D-123): the one green and its label are the same in both themes; every other colour has its dark value.
+    # #3144: the accent is ink, so it inverts at night like every other colour (it was one green in both themes, D-123).
     # The shadows are drawn in colour too (a dark hairline on paper, a light one at night), so they change with it.
-    shadows = {"--e1", "--e2", "--e3", "--e-fuse"}
-    assert blocks["dark-auto"] == colours - {"--green", "--on-green"} | shadows
+    shadows = {"--e1", "--e2", "--e3", "--e-fuse", "--e-green"}
+    assert blocks["dark-auto"] == colours | shadows
     assert blocks["dark-forced"] == blocks["dark-auto"]
 
 
@@ -217,7 +217,7 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
             a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
 
-    assert colors['--green'] == '#22d27a'
+    assert colors['--green'] == ('#121512' if theme == 'light' else '#eef0ed')  # the ink accent (#3144), light ink on dark
     for surface in ['--raised', '--well']:
         a, b = sorted([luminance(colors['--red']), luminance(colors[surface])])
         assert (b + .05) / (a + .05) >= 4.5, (theme, '--red', surface)

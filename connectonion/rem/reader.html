@@ -31,7 +31,7 @@
   /* fuse:tokens */
   /* REM · N3 "Desk" (D-123): the whole token sheet. Outside it the reader may only name these
    (tests/unit/test_rem_reader_style_sheet.py). One white canvas; depth comes from elevation only.
-   Colour meanings: green = the one primary action, red = overdue, pencil (dashed) = REM's guess.
+   Colour meanings: the accent (ink, #3144) = the one primary action, red = overdue, pencil (dashed) = REM's guess.
    Dark is the same names under the two theme selectors. */
   :root {
     color-scheme: light;
@@ -42,8 +42,10 @@
     --pencil: #a3a8a3; /* REM's inference: dashed borders, the night-chart line, never solid text */
     --rule: #e8eae7; /* hairlines and ring tracks */
     --well: #f5f6f4; /* insets inside a card: avatar discs, inputs, hover rows, segment tracks */
-    --green: #22d27a; /* the one primary action per screen */
-    --on-green: #05301b;
+    /* The one primary action per screen (#3144, owner 2026-11-19: the green felt jarring): ink on paper, so the page
+       stays one palette and red alone is a colour. The token keeps its name; it means "the accent". */
+    --green: #121512;
+    --on-green: #ffffff;
     --red: #c02a17; /* overdue only: fuse rings, N 天 labels */
     --scrim: rgba(255, 255, 255, .6); /* behind sheets */
     /* How much happened, in five steps of ink and never of hue (an activity strip, #3096): nothing, then a
@@ -106,7 +108,7 @@
     --e-ring: inset 0 0 0 1px var(--rule); /* an outlined chip or an inset panel */
     --e-ink: inset 0 0 0 1.5px var(--ink); /* a chosen chip, a hovered control */
     --e-fuse: inset 0 0 0 1.5px rgba(192, 42, 23, .25); /* a fuse pill */
-    --e-green: 0 8px 18px -8px rgba(34, 210, 122, .7); /* the one primary action lifts off the card */
+    --e-green: 0 8px 18px -8px rgba(18, 21, 18, .45); /* the one primary action lifts off the card */
 
     /* motion: it explains a change of state, never decorates */
     --t-press: 150ms; /* hover, colour */
@@ -136,6 +138,9 @@
       --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
       --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
       --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
+      --green: #eef0ed;
+      --on-green: #121512;
+      --e-green: 0 8px 18px -8px rgba(0, 0, 0, .7);
     }
   }
   :root[data-theme="dark"] {
@@ -153,6 +158,9 @@
     --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
     --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
     --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
+    --green: #eef0ed;
+    --on-green: #121512;
+    --e-green: 0 8px 18px -8px rgba(0, 0, 0, .7);
   }
 
   @media (prefers-reduced-motion: reduce) {

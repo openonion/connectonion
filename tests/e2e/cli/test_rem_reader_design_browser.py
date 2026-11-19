@@ -4974,12 +4974,12 @@ def _green_primaries(page):
     """Visible elements filled with the Fresh green: the one primary per page."""
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const box = node.getBoundingClientRect(), fill = getComputedStyle(node).backgroundColor;
-      return box.width > 0 && box.height > 0 && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(fill);
+      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(fill);
     }).map(node => node.textContent.trim())""", isolated_context=False)
 
 
 # Visible Fresh-green fills; a collapsed "Full memory" note keeps its own controls out of sight.
-GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(getComputedStyle(node).backgroundColor)).length"
+GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(getComputedStyle(node).backgroundColor)).length"
 
 
 def _org_view(page, uri, hash_, width, theme):
@@ -5234,7 +5234,7 @@ def _visible_green_buttons(page):
     page.wait_for_timeout(300)  # let the theme's colour transition settle
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const style = getComputedStyle(node), box = node.getBoundingClientRect();
-      return box.width && box.height && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(style.backgroundColor);
+      return box.width && box.height && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(style.backgroundColor);
     }).length""")
 
 
