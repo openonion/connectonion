@@ -64,7 +64,7 @@ def test_knowledge_opens_the_graph_and_search_focuses_a_knowledge_entry(page):
     page, uri = page
     page.locator('#nav a[href="#c=knowledge"]').click()  # #3085: the rail's Knowledge is the graph
     page.locator(".gx-map canvas").wait_for()
-    assert "1 knowledge entry" in page.locator(".gx-says").inner_text()  # the counts are the sentence's, each beside its shape (#3085)
+    assert "1 tag page" in page.locator(".gx-says").inner_text()  # the counts are the sentence's, each beside its shape (#3085)
     assert page.locator(".gx-panel .gx-open").count() == 0  # the whole map has no green action
     page.locator(".gx-search").fill("thermal")
     page.locator(".gx-results li").first.click()
@@ -129,7 +129,7 @@ def test_the_topic_list_and_graph_follow_the_chinese_interface(page):
     page.goto(uri + "#view=graph")
     page.locator(".gx-map canvas").wait_for()
     assert page.locator(".gx-map h1").inner_text() == "知识"
-    assert page.locator(".knowledge-switch").inner_text().split() == ["图谱", "条目"]
+    assert page.locator(".knowledge-switch").inner_text().split() == ["知识图谱", "标签页"]
 
 
 def test_with_no_topics_knowledge_says_rem_files_them_at_night(tmp_path, monkeypatch):
@@ -156,7 +156,7 @@ def test_with_no_topics_knowledge_says_rem_files_them_at_night(tmp_path, monkeyp
             # D-60 (#2910): REM files knowledge itself on its night run; no command to copy.
             assert page.locator(".gx-filed").inner_text() == "REM files knowledge from your records on its night run."
             # #3085: nothing links yet, so the rail's Knowledge shows the entries and its switch says so.
-            assert page.locator('.knowledge-switch [aria-current="page"]').all_inner_texts() == ["Entries"]
+            assert page.locator('.knowledge-switch [aria-current="page"]').all_inner_texts() == ["Tag pages"]
             assert page.locator("#main code, #main .cmd").count() == 0
             assert page.locator(".gx-topics .gx-rows").count() == 0  # no rule under an empty list
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -168,11 +168,12 @@ def test_the_rail_has_no_graph_entry_and_knowledge_follows_projects(page):
     """Owner, 2026-11-09: "我之前不是说了那个 graph，为什么要又有一个新的 graph 呢？" """
     page, uri = page
     labels = [text.split("\n")[0] for text in page.locator("#nav a").all_inner_texts()]
-    assert "Graph" not in labels and "Topics" not in labels and "All" not in labels
+    assert "Knowledge graph" not in labels and "Tag pages" not in labels and "All" not in labels
     # #2996 made Knowledge the one place that holds the graph. #3091 put every place in one ordered rail:
     # what the notebook concluded starts with Knowledge, right after Projects, and Memory changes ends it.
     hrefs = page.locator("#nav > a").evaluate_all("links => links.map(a => a.getAttribute('href'))")
-    assert hrefs[hrefs.index("#c=projects") + 1] == "#c=knowledge"
+    # Keys (#3137) sits between Projects and Knowledge; Knowledge still opens the notebook's conclusions.
+    assert hrefs[hrefs.index("#c=projects") + 1:hrefs.index("#c=projects") + 3] == ["#c=keys", "#c=knowledge"]
     # Activity was the team's invention (D-03): REM's run history is reached from Memory changes only.
     assert page.locator('.rail a[href="#view=activity"]').count() == 0
     if page.locator('.nav.more').is_visible():  # More holds only what the rail's height could not
@@ -191,11 +192,11 @@ def test_knowledge_switches_between_its_entries_and_the_graph(page):
     assert page.title() == "Knowledge · co rem"
     assert page.locator('#nav a.active').get_attribute("href") == "#c=knowledge"
     switch = page.locator(".knowledge-switch")
-    assert switch.locator('[aria-current="page"]').inner_text() == "Graph"
-    switch.get_by_role("link", name="Entries").click()
+    assert switch.locator('[aria-current="page"]').inner_text() == "Knowledge graph"
+    switch.get_by_role("link", name="Tag pages").click()
     page.locator(".gx-topics .gx-rows").wait_for()
     assert page.locator(".gx-map").count() == 0
-    assert page.locator('.knowledge-switch [aria-current="page"]').inner_text() == "Entries"
+    assert page.locator('.knowledge-switch [aria-current="page"]').inner_text() == "Tag pages"
     assert page.evaluate("location.hash") == "#c=knowledge&view=entries"
     page.goto(uri + "#view=graph&focus=knowledge%2Fheat-storage.md")
     page.locator(".gx-map canvas").wait_for()
@@ -209,7 +210,7 @@ def test_a_knowledge_entry_keeps_the_knowledge_name_in_its_crumb_and_title(page)
     assert page.locator(".gx-crumb").inner_text() == "Knowledge"
     page.goto(uri + "#c=knowledge&view=entries")
     assert page.locator(".gx-topics h1").inner_text() == "Knowledge"
-    assert page.locator(".gx-rows li").count() == 1  # the list counts itself; no "1 knowledge entry" heading
+    assert page.locator(".gx-rows li").count() == 1  # the list counts itself; no "1 tag page" heading
     assert page.title() == "Knowledge · co rem"
 
 

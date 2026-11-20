@@ -33,7 +33,24 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc30**: hand-offs you can watch and pick up, enrich that writes career timelines and
+Release candidate **1.9.6rc38**: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. See [1.9.6rc38 notes](releases/1.9.6rc38.md).
+Before it, release candidate **1.9.6rc37**: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. See [1.9.6rc37 notes](releases/1.9.6rc37.md).
+Before it, release candidate **1.9.6rc36**: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never
+pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy
+curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said
+once. See [1.9.6rc36 notes](releases/1.9.6rc36.md).
+Before it, release candidate **1.9.6rc35**: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
+bar, and night stages that drain. See [1.9.6rc35 notes](releases/1.9.6rc35.md).
+Before it, release candidate **1.9.6rc34**: REM's knowledge graph (a tag links pages and gets its own page), a closed item
+that stays closed, three privacy levels that cover every place a passage shows, and the bug hunt's fixes. See
+[1.9.6rc34 notes](releases/1.9.6rc34.md).
+Before it, release candidate **1.9.6rc33**: `co wechat` reads your own WeChat for Mac history locally (read-only) — a
+SQLCipher-4 decryption engine with `doctor`, `key`, `chats`, `decrypt` and `export`. See
+[1.9.6rc33 notes](releases/1.9.6rc33.md).
+Before it, release candidate **1.9.6rc32**: `co browser` starts headless on a Windows machine with no desktop (SSH,
+services, scheduled tasks). See [1.9.6rc32 notes](releases/1.9.6rc32.md).
+Before it, release candidate **1.9.6rc30**: hand-offs you can watch and pick up, enrich that writes career timelines and
 links organisations, one language control, and a person page that leads with what happened. See
 [1.9.6rc30 notes](releases/1.9.6rc30.md).
 Before it, release candidate **1.9.6rc29**: a source's title opens its original in the side card, a calendar event shows
@@ -129,7 +146,7 @@ Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc30'
+python -m pip install --upgrade 'connectonion==1.9.6rc36'
 ```
 
 ## Previous stable

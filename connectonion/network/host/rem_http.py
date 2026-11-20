@@ -28,7 +28,6 @@ page polls the same POST until it is ready or failed.
 import asyncio
 import hmac
 import json
-from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, urlsplit
 
 from ..asgi.http import read_body
@@ -57,6 +56,43 @@ def _local(scope, headers: dict) -> bool:
     return client in LOOPBACK and urlsplit("//" + headers.get("host", "")).hostname in LOOPBACK_NAMES
 
 
+def _cookie(header: str) -> str:
+    """This reader's cookie from the raw Cookie header. SimpleCookie drops every cookie when any other
+    cookie on 127.0.0.1 (any port, any app) holds a space or a JSON value, which made every open tab
+    answer 401 ("This page's session has ended") whenever such a cookie existed."""
+    for part in header.split(";"):
+        name, _, value = part.strip().partition("=")
+        if name == COOKIE:
+            return value.strip().strip('"')
+    return ""
+
+
+SESSION_ENDED = {
+    "en": ("REM · session ended", "This page lost its session with REM.",
+           "Open REM again on this computer; this tab picks up where it was.", "Try again"),
+    "zh": ("REM · 会话已结束", "这个页面和 REM 的会话断开了。",
+           "请在这台电脑上重新打开 REM；这个标签页会接着刚才的位置。", "重新打开"),
+}
+
+
+def _session_ended(headers: dict) -> str:
+    """The 401 page: styled, in the reader's language (Accept-Language), with one button that tries again."""
+    language = "zh" if headers.get("accept-language", "").lower().startswith("zh") else "en"
+    title, lead, what, again = SESSION_ENDED[language]
+    return (f'<!doctype html><html lang="{language}"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<title>{title}</title><style>'
+            ':root{color-scheme:light dark;--ink:#121512;--paper:#fff;--grey:#5f6360}'
+            '@media (prefers-color-scheme:dark){:root{--ink:#eef0ed;--paper:#121512;--grey:#a3a7a4}}'
+            'body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--paper);color:var(--ink);'
+            'font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif}'
+            'main{max-width:420px;padding:24px}h1{margin:0 0 8px;font-size:20px;font-weight:600}'
+            'p{margin:0 0 20px;color:var(--grey)}button{min-height:44px;padding:0 20px;border:0;border-radius:999px;'
+            'background:var(--ink);color:var(--paper);font:inherit;font-weight:600;cursor:pointer}</style></head>'
+            f'<body><main><h1>{lead}</h1><p>{what}</p>'
+            f'<button type="button" onclick="location.reload()">{again}</button></main></body></html>')
+
+
 def _same(given: str, token: str) -> bool:
     return bool(given) and hmac.compare_digest(given.encode(), token.encode())
 
@@ -74,13 +110,13 @@ async def handle_rem_http(scope, receive, send, routes):
     token = await asyncio.to_thread(reader_token, directory)
     given = parse_qs(scope.get("query_string", b"").decode("latin-1")).get("token", [""])[0]
     if scope["method"] == "GET" and scope["path"] == "/rem" and _same(given, token):
-        cookie = f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/rem"
+        # Kept 30 days, so a browser restart or an upgrade's Host restart finds the tab still signed in.
+        cookie = f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/rem; Max-Age=2592000"
         await _reply(send, 303, "", headers=[[b"location", b"/rem"], [b"set-cookie", cookie.encode()]])
         return
-    jar = SimpleCookie(headers.get("cookie", ""))
-    if not _same(jar[COOKIE].value if COOKIE in jar else "", token):
-        # D-60: no command here either. The page has no language of its own, so English.
-        await _reply(send, 401, "This page's session has ended. Open REM again from your computer.")
+    if not _same(_cookie(headers.get("cookie", "")), token):
+        # D-60: no command here either; the page speaks the browser's language and offers one button.
+        await _reply(send, 401, _session_ended(headers), "text/html")
         return
     if scope["method"] == "GET" and scope["path"] in ("/rem", "/rem/data.json"):
         from ...rem.reader import cached_page
@@ -94,15 +130,39 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
     elif scope["method"] == "GET" and scope["path"] == "/rem/task-file":
         await _task_file(scope, send, root)
+    elif scope["method"] == "GET" and scope["path"] == "/rem/source":
+        await _source(scope, send, root)
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
         await _translate(scope, receive, send, root, headers)
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/investigate", "/rem/direct-send"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import"):
+        await _keys(scope, receive, send, root, headers)
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/person", "/rem/investigate", "/rem/direct-send"):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
+
+
+async def _source(scope, send, root):
+    """One cited source's retained excerpt, for a card the snapshot had no room for (#3165).
+
+    The snapshot's excerpts share one budget across the notebook, mail first, so a project's files, sessions and
+    commits rarely fit. Only what REM itself retained is read (the same readers as the snapshot), by a source id
+    of a known kind; never a path the request names."""
+    from ...rem.reader_model import SOURCE, cited_context
+    value = parse_qs(scope.get('query_string', b'').decode('utf-8')).get('id', [''])[0]
+    match = SOURCE.search(f"- [1] {value}") if value and len(value) <= 512 and "\n" not in value else None
+    if not match or match[2] != value:
+        await _reply(send, 404, 'not found')
+        return
+    found = await asyncio.to_thread(cited_context, root, [{'text': f"- [1] {value}"}], budget=200_000, private=True)
+    context = found.get(value)
+    if not context:
+        await _reply(send, 404, 'not found')
+        return
+    await _reply(send, 200, json.dumps(context, ensure_ascii=False), 'application/json')
 
 
 async def _task_file(scope, send, root):
@@ -229,6 +289,14 @@ async def _action(scope, receive, send, root, headers):
             await _reply(send, 400, json.dumps({"error": "Expected one mail address and ignored true or false"}), "application/json")
             return
         operation = lambda: {"ignored": threads.ignore_sender(root, body["address"], ignored=body["ignored"])}
+    elif scope["path"] == "/rem/person":
+        from ...rem.files import EMAIL
+        # 不是人 / 是人 for one address, or null to let the rules decide again; never a domain.
+        if (not isinstance(body.get("address"), str) or len(body["address"]) > 254
+                or not EMAIL.fullmatch(body["address"]) or body.get("person") not in (True, False, None)):
+            await _reply(send, 400, json.dumps({"error": "Expected one mail address and person true, false or null"}), "application/json")
+            return
+        operation = lambda: {"marks": threads.mark_person(root, body["address"], person=body["person"])}
     elif scope["path"] == "/rem/direct-send":
         # 以后直接发给他 / 以后先给我看 (#3121): one person's send policy, the owner's own line on their page.
         from ...rem import direct_send
@@ -280,6 +348,37 @@ async def _action(scope, receive, send, root, headers):
             or scope["path"] in ("/rem/talk", "/rem/translate-all")):
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
+
+
+async def _keys(scope, receive, send, root, headers):
+    """Keys (#3137). Like every /rem route, only this computer reaches it (``_local``) with the page's cookie, so a
+    relayed or remote reader never can. A secret travels only in the reveal's reply and the add's body; neither is
+    logged, and the reply is never cached."""
+    from ...rem import keys
+    from ...rem.files import RemError
+    if headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        await _reply(send, 415, "application/json required")
+        return
+    try:
+        body = json.loads(await read_body(receive, 4_000_000 if scope["path"] == "/rem/keys/import" else 8192) or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
+        return
+    text = lambda name: body.get(name) if isinstance(body, dict) and isinstance(body.get(name), str) else ""  # noqa: E731
+    action = scope["path"].rsplit("/", 1)[1]
+    operations = {"add": lambda: {"page": keys.add(root, text("service"), text("account"), text("secret"),
+                                                   purpose=text("purpose"), link=text("link"))},
+                  "reveal": lambda: {"secret": keys.reveal(root, text("page"))},
+                  "import": lambda: keys.import_csv(root, text("csv"))}
+    try:
+        result = await asyncio.to_thread(operations[action])
+    except RemError as error:
+        await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
+        return
+    if action != "reveal":
+        from ...rem.reader import owner_changed
+        await asyncio.to_thread(owner_changed, root)
+    await _reply(send, 200, json.dumps(result), "application/json")  # SECURITY_HEADERS carry no-store
 
 
 def _talk(root, body):

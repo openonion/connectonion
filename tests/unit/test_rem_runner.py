@@ -467,11 +467,12 @@ def delegate(monkeypatch):
         newest = max(tasks, key=lambda path: path.stat().st_mtime_ns) if tasks else None
         kw = {**kw, 'material': json.loads(newest.read_text()) if newest else None}
         calls.append((argv, kw))
-        if argv[-1].startswith('/rem-investigate'):
+        prompt = kw.get('input') or argv[-1]  # a long prompt goes on stdin
+        if prompt.startswith('/rem-investigate'):
             import re
-            path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+            path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
             path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
-        if argv[-1].startswith('/rem-maintain'):
+        if prompt.startswith('/rem-maintain'):
             workspace = Path(kw['cwd'])
             directory = max(workspace.glob('maintain-*'), key=lambda path: path.stat().st_mtime_ns)
             items = json.loads((directory / 'material.json').read_text())
@@ -522,7 +523,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     prompts = []
 
     def stop_after_capture(argv, **kwargs):
-        prompts.append(argv[-1])
+        prompts.append(kwargs.get('input') or argv[-1])  # a long prompt goes on stdin
         raise OSError('synthetic stop')
 
     monkeypatch.setattr('connectonion.rem.runner.subprocess.run', stop_after_capture)
@@ -552,7 +553,7 @@ def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook,
     prompts = []
 
     def stop_after_capture(argv, **kwargs):
-        prompts.append(argv[-1])
+        prompts.append(kwargs.get('input') or argv[-1])  # a long prompt goes on stdin
         raise OSError('synthetic stop')
 
     monkeypatch.setattr('connectonion.rem.runner.subprocess.run', stop_after_capture)
@@ -788,7 +789,7 @@ def test_offline_maintenance_benchmark(notebook, monkeypatch, scenario, accepted
     source = "codex:synthetic:1"
 
     def simulated_agent(argv, **kw):
-        prompt = argv[-1]
+        prompt = kw.get('input') or argv[-1]  # a long prompt goes on stdin
         task = next(Path(kw['cwd']).glob('maintain-*'))
         assert 'no shell' not in prompt
         assert 'local file reads and writes' in prompt
@@ -1943,7 +1944,7 @@ def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebo
     assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
-    handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
+    handed = (options.get('input') or argv[-1]) + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
                                 if path.is_file())
     assert "Today is 2026-11-06" in handed
     assert "A past scheduled date alone does not establish occurrence or completion" in handed

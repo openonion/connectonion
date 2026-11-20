@@ -218,7 +218,7 @@ def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
     from .config import read_config
     from .runner import ready
     text = Notebook(root).read(record)
-    if (hit := cached(root, record, language)) is not None:
+    if (hit := cached(root, record, language)) is not None and not title_left(record, text, hit, language):
         return hit
     config = read_config(root)
     problem, fix = ready(config)
@@ -427,9 +427,9 @@ def translate_pages(root: Path, language: str, records, say=None, workers=1, *, 
 
 
 def quota_floor(root: Path, config: dict):
-    """The night's own guard for a one-click job: the week's floor kept for the owner's own work."""
+    """The guard for a one-click job: translation stops at the cheap stages' ceiling, past the floor (#3195)."""
     from . import quota
-    return lambda: quota.floor_block(quota.meter(root, config), config["limits"])
+    return lambda: quota.ceiling_block(quota.meter(root, config), config["limits"])
 
 
 # Held while a translate-every-page job runs (the CLI or the Host's), so a second one and the night's
@@ -539,7 +539,32 @@ def _prose_lines(text, language):
 
 def current(root: Path, record: str, language: str) -> bool:
     """The page reads in `language` now: a current translation, or written in it to begin with."""
-    return cached(root, record, language) is not None or in_language(Notebook(root).read(record), language)
+    original = Notebook(root).read(record)
+    translation = cached(root, record, language)
+    if translation is not None:
+        return not title_left(record, original, translation, language)
+    return in_language(original, language)
+
+
+def title_left(record, original: str, translation: str, language: str) -> bool:
+    """A statement's translation that kept its English `# ` title: it is shown, and waits to be made again.
+
+    #3142 made a decision, knowledge or principle title translatable but kept PROMPT_VERSION (bumping it
+    would show every page in English until retranslated). So the 113 statement translations cached before
+    it stayed current with English titles, and the queue never offered them again (rc34 hunt, #3165:
+    104 of 104 decision translations). Only the title is checked, so nothing else is redone."""
+    if not statement_title(record):
+        return False
+    title = re.search(r"^# ([^\n]+)", original, re.M)
+    theirs = re.search(r"^# ([^\n]+)", translation, re.M)
+    if not title or not theirs or title.group(1).strip() != theirs.group(1).strip():
+        return False
+    from .languages import language_of
+    words = ADDRESS.sub(" ", title.group(1))
+    base = language.split("-")[0].lower()
+    if base == "zh":
+        return not HAN_PAIR.search(words) and bool(re.search(r"[A-Za-z]{2}", words))
+    return language_of(words) not in (None, base)
 
 
 def readable(root: Path) -> list[str]:

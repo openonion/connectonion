@@ -104,8 +104,8 @@ def _hash(path):
 
 # Scheduling, concurrency and budgets govern future work, so a prepared task's digest
 # leaves them out; the retired count caps stay listed for tasks saved while they existed.
-RUN_LIMITS = {"runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
-              "investigation_quota_points", "quota_floor_percent", "depth_quota_points",
+RUN_LIMITS = {"tag_nodes_per_round", "topic_min_pages", "runner_calls_per_day", "jobs_per_round", "translations_per_day", "drafts_per_night", "tasks_per_night", "timeout_seconds", "workers",
+              "investigation_quota_points", "quota_floor_percent", "cheap_ceiling_percent", "depth_quota_points",
               "depth_workers", "depth_pages_per_slot", "depth_slot_minutes",
               "investigations_per_night", "skill_pages_per_night", "abstract_rounds_per_night",
               "summaries_per_round", "translations_per_round", "tags_per_round"}
@@ -171,11 +171,20 @@ def _input_matches(root, task, path, digest):
             and _config_hash(previous) == _input_hash(root, path))
 
 
+def _before_pages(task):
+    """A task's `before` as {record: page text}. The tag-node stage (#3140) carries its one page as a string, "" when the
+    page is new; reading that string as a dict crashed every scheduled turn that reached a tag page (rc35–rc36)."""
+    before = task.get("before") or {}
+    if isinstance(before, str):
+        return {task["record"]: before} if task.get("record") else {}
+    return before
+
+
 def _inputs(root, task, directory, *, handler):
     paths = {root / "config.yaml"}
     book = Notebook(root)
     paths.update(Path(path) for path in task.get("input_paths", []))
-    paths.update(book.path(record) for record in task.get("before", {}))
+    paths.update(book.path(record) for record in _before_pages(task))
     output = Path(task["task_root"]) if task.get("stage") == "abstract" and task.get("task_root") else None
     paths.update(path for path in directory.rglob("*") if path.is_file() and path.name not in ("candidate.md", "notes.md")
                  and not (output and path.is_relative_to(output)))
@@ -258,8 +267,10 @@ def _stop(root, config, *, phase=None):
     The weekly investigation budget is not asked here: it holds investigation alone
     (`_hold_investigation`), and the round goes on to its other stages."""
     meter = quota.meter(root, config)
-    reason = quota.floor_block(meter, config["limits"])
-    if not reason and phase != "daily-translation" and service.daily_cap(root)["remaining"] <= 0:
+    # The cheap stages (translate, tag, tag pages) stop at the ceiling, not the floor (#3195).
+    cheap = phase == "daily-translation"
+    reason = (quota.ceiling_block if cheap else quota.floor_block)(meter, config["limits"])
+    if not reason and not cheap and service.daily_cap(root)["remaining"] <= 0:
         reason = "daily cap reached"
     return reason or None, meter
 
@@ -639,8 +650,7 @@ def _next_round(root, cursor, *, scheduled, notices, driven=False):
         translation_reason, meter = _stop(root, config, phase="daily-translation")
         if translation_reason:
             return {"outcome": "done", "reason": translation_reason, "notices": notices}
-        from . import translate
-        if not any(translate.backlog(root, tag) for tag in translate.languages(root) if tag.split("-")[0].lower() != "en"):
+        if not native_round.cheap_waiting(root):
             if cursor and not cursor.get("done") and cursor.get("phase") == "daily-translation":
                 native_round.finish(root, cursor)
                 return {"outcome": "done", "reason": "round done", "notices": notices}
@@ -731,7 +741,7 @@ def _new_task(root, cursor, config, meter, notices, *, translation_only=False, m
     directory.mkdir(parents=True, mode=0o700)
     _hold_investigation(root, cursor, config, meter)
     prepared = (native_round.prepare_batch(root, cursor, config, directory) if mail_only
-                else native_round.prepare_translation(root, cursor, config, directory) if translation_only
+                else native_round.prepare_cheap(root, cursor, config, directory) if translation_only
                 else native_round.prepare_task(root, cursor, config, directory))
     # Pages set aside on a mailbox failure are said once, in this call's output.
     notices = notices + cursor.pop("set_aside", [])
@@ -881,11 +891,11 @@ def _save(root, cursor, task):
     stage_task = task["task"]
     prompt = _long_page_inputs(stage_task, directory).replace("\0", "")
     # Slash expansion normally loads the core Skill in co ai. Native receives it explicitly.
-    original = (directory / "instructions.md").read_text() if (directory / "instructions.md").is_file() else ""
+    original = (directory / "instructions.md").read_text(encoding="utf-8") if (directory / "instructions.md").is_file() else ""
     match = re.match(r"/rem-([\w-]+)\s+", prompt)
     skill = ""
     if match:
-        core = (runner.useful_skills_dir() / f"rem-{match[1]}" / "SKILL.md").read_text()
+        core = (runner.useful_skills_dir() / f"rem-{match[1]}" / "SKILL.md").read_text(encoding="utf-8")
         skill, prompt = re.sub(r"(?m)^Why these rules: .*\n+", "", core), prompt[match.end():]
     elif original and original not in prompt:
         skill = original
@@ -899,6 +909,11 @@ def _save(root, cursor, task):
     today = re.findall(r"Today is (\d{4}-\d{2}-\d{2})", skill + prompt)[-1]
     memory = state_path(root, "memory.md")
     context = _memory_lines(memory.read_text(encoding="utf-8"), task["record"]) if memory.is_file() else ""
+    # What the owner did in the day (#3174), first, so a stage never re-opens what he closed or redoes his work.
+    from .owner_today import note as owner_note
+    from .threads import closed_note
+    context = "\n\n".join(part for part in (owner_note(root, task["record"]),
+                                            closed_note(root, task["record"]) if task["record"] else "", context) if part)
     if task["record"]:
         context += "\n\n" + _prior_reports(root, task["record"])
     # The task, what to write, the Skill, then memory. Memory came first until
@@ -1332,9 +1347,9 @@ def _long_page_inputs(task, directory):
     prompt = task["prompt"]
     for name in ("page.md", "candidate.md"):
         path = directory / name
-        if path.is_file() and any(len(line) > 4000 for line in path.read_text().splitlines()):
+        if path.is_file() and any(len(line) > 4000 for line in path.read_text(encoding="utf-8").splitlines()):
             original = path.with_suffix(".json") if name == "page.md" else directory / "candidate-original.json"
-            write_json(original, path.read_text(), readable=True)
+            write_json(original, path.read_text(encoding="utf-8"), readable=True)
             path.unlink()
             if name == "page.md":
                 prompt = prompt.replace("page.md", "page.json")
@@ -1444,7 +1459,7 @@ def _source_view(root, task, *, handler):
     for item in items:
         sources.update(item.get("sources", []))
         sources.update(row["source"] for row in item.get("facts", []) if row.get("source"))
-    records = [{"text": text} for text in task.get("before", {}).values()]
+    records = [{"text": text} for text in _before_pages(task).values()]
     records.append({"text": "\n## Sources\n" + "\n".join(f"- [{n}] {source}" for n, source in enumerate(sorted(sources), 1))})
     sources.update(_source_ids(records))
     value = {"contexts": cited_context(root, records), "tails": later_in_threads(root, sources)}
@@ -1458,9 +1473,9 @@ def _source_view(root, task, *, handler):
 def _recovered_result(root, task):
     receipt = read_json(Path(task["directory"]) / "promotion.json", {})
     pages = receipt.get("pages", {}) if "pages" in receipt else {receipt["record"]: receipt["sha256"]}
-    before = task["task"].get("before", {})
+    before = _before_pages(task["task"])
     changed = sorted(record for record, digest in pages.items()
                      if record not in before or hashlib.sha256(before[record].encode()).hexdigest() != digest)
     report = Path(task["directory"]) / "report.md"
-    return {"changed": changed, "report": report.read_text() if report.is_file() else "",
+    return {"changed": changed, "report": report.read_text(encoding="utf-8") if report.is_file() else "",
             "refused": read_json(Path(task["directory"]) / "review.json", {}).get("refused", [])}

@@ -17,6 +17,14 @@ pytestmark = pytest.mark.usefixtures('rem_clock')
 SOURCE = 'codex:fixture:7'
 
 
+@pytest.fixture(autouse=True)
+def _no_tag_turns(monkeypatch):
+    """These tests follow Abstract and the night's shares; since #3093 the decisions they write are tag candidates,
+    and the round's tag turn (tested in test_rem_tag_stage.py) would sit between their slices."""
+    from connectonion.rem import tag_stage
+    monkeypatch.setattr(tag_stage, 'candidates', lambda root, *a, **k: [])
+
+
 @pytest.fixture
 def book(tmp_path, monkeypatch):
     prepare(tmp_path)
@@ -496,7 +504,11 @@ def test_translation_tail_still_runs_after_daily_call_cap(book, model, monkeypat
         prepared = read_json(directory / 'task.json', {})['task']
         for page in prepared['pages']:  # a batch of pages a turn (#3099)
             translated.append(page['record'])
-            Path(page['candidate']).write_text(page['prose'])
+            # A decision's title is a statement and is translated (#3142): one left English still waits.
+            prose = page['prose']
+            if page['record'].startswith('decisions/'):
+                prose = re.sub(r'^# (.+)$', r'# 决定：\1', prose, count=1, flags=re.M)
+            Path(page['candidate']).write_text(prose)
         return {'result': ''}
 
     monkeypatch.setattr(runner, 'run_task', run)

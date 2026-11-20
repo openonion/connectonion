@@ -23,7 +23,7 @@ from .service import now
 
 # The ⋯ menu's levels, as CLI flags: 完整调查 (default) · 快速更新 · 整页重写.
 MODES = {"full": ["--enrich"], "quick": [], "rewrite": ["--rewrite"]}
-KINDS = ("people/", "orgs/", "projects/")
+KINDS = ("people/", "orgs/", "projects/", "knowledge/")  # knowledge/: tag pages only (#3140), see _topic
 OPEN_LEAD = re.compile(r"(?m)^\s*[-*]\s*open\s*\|")
 
 
@@ -31,9 +31,15 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _topic(root, record: str) -> bool:
+    from .tag_nodes import topic_slug
+    return record.startswith("knowledge/") and bool(topic_slug(Path(root), record))
+
+
 def receipt_path(root, record: str) -> Path:
-    if not record.startswith(KINDS) or ".." in Path(record).parts:
-        raise RemError(f"{record}: the Investigate button is for people, orgs and projects pages")
+    if (not record.startswith(KINDS) or ".." in Path(record).parts
+            or (record.startswith("knowledge/") and not _topic(root, record))):
+        raise RemError(f"{record}: the Investigate button is for people, orgs, projects and tag pages")
     return state_path(Path(root), f"page-runs/{Path(record).with_suffix('.json')}")
 
 
@@ -89,7 +95,7 @@ def _work(root: Path, record: str, mode: str) -> None:
     path = receipt_path(root, record)
     from .runner import child_env
     done = subprocess.run(command(root, record, mode), cwd=str(root), env=child_env(), capture_output=True,
-                          text=True, stdin=subprocess.DEVNULL)
+                          text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
     receipt = read_json(path, {})
     reply = {}
     try:
@@ -141,6 +147,33 @@ def explain(message: str) -> dict:
     return {"reason": (message[:300] or "The investigation stopped without saying why."), "reason_kind": "other"}
 
 
+def _unlisted(reason: str) -> str:
+    """A reason an older worker stored as str(list) ("['Investigation: writing investigation']"), as its words,
+    without the progress lines; anything else as it is."""
+    text = str(reason or "").strip()
+    if text.startswith("[") and text.endswith("]"):
+        import ast
+        try:
+            items = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            return text
+        if isinstance(items, list):
+            return " ".join(str(item) for item in items if not str(item).startswith("Investigation: "))
+    return text
+
+
+def _readable(receipt: dict, progress: list[dict]) -> dict:
+    """A failed receipt's reason as a sentence and a kind (#3155): receipts written before rc28 kept the raw text.
+    The run's own recorded error is preferred when the stored reason says nothing (a progress line)."""
+    if receipt.get("result") != "failed" or receipt.get("reason_kind"):
+        return {}
+    for error in [row["error"] for row in progress if row.get("error")] + [_unlisted(receipt.get("reason"))]:
+        said = explain(error)
+        if said["reason_kind"] != "other" or (error and not error.startswith("Investigation: ")):
+            return said
+    return explain("")
+
+
 def _progress(root: Path, receipt: dict, logs: list[dict]) -> list[dict]:
     """Each step of this click, from the run records it made: write/append (or rewrite), then enrich."""
     runs = sorted((run for run in logs if run.get("record") == receipt["record"]
@@ -184,7 +217,8 @@ def status(root, record: str, *, logs=None) -> dict:
             receipt.update(result="failed", reason="The investigation stopped without saying how it ended; "
                                                    "see co rem logs", finished_at=now().isoformat())
             write_json(path, receipt)
-    value = {**receipt, "progress": _progress(root, receipt, run_logs(root) if logs is None else logs)}
+    progress = _progress(root, receipt, run_logs(root) if logs is None else logs)
+    value = {**receipt, **_readable(receipt, progress), "progress": progress}
     if receipt["result"] != "running":
         book = Notebook(root)
         after = book.read(record) if book.exists(record) else ""
@@ -262,7 +296,11 @@ def states(root, records: list[str], *, mail_days=None) -> dict[str, dict]:
     from .service import run_logs
     root, book = Path(root), Notebook(root)
     # Your own page has its own pass (investigate me), not this button.
-    records = [record for record in records if record.startswith(KINDS) and book.exists(record) and record != _owner(root)]
+    from . import tag_nodes
+    topics = tag_nodes.states(root, [record for record in records if record.startswith("knowledge/")])
+    for record in topics:
+        topics[record].update(_run_state(root, record, run_logs(root)))
+    records = [record for record in records if record.startswith(KINDS[:3]) and book.exists(record) and record != _owner(root)]
     logs = run_logs(root)
     mail_days = _mail_days(root, records, book) if mail_days is None else mail_days
     found = {}
@@ -281,7 +319,15 @@ def states(root, records: list[str], *, mail_days=None) -> dict[str, dict]:
         found[record] = {"last": last.isoformat() if last else None, "new_mails": new_mails,
                          "new_sessions": new_sessions, "leads": leads, "label": label,
                          "cost": {"quick": quick, "full": full}, **_run_state(root, record, logs)}
-    return found
+    return {**found, **topics}
+
+
+def _changed_since(root: Path, record: str, moment) -> bool:
+    from datetime import datetime
+    if not moment:
+        return False
+    page = Path(root) / record
+    return page.is_file() and page.stat().st_mtime > datetime.fromisoformat(str(moment).replace("Z", "+00:00")).timestamp()
 
 
 def _new_sessions(root: Path, record: str) -> int:
@@ -295,6 +341,9 @@ def _run_state(root: Path, record: str, logs) -> dict:
     run = None
     if receipt_path(root, record).is_file():
         run = status(root, record, logs=logs)
+        # A failed run the page has changed since (a later night, a later run) is history, not news (#3155).
+        if run["result"] == "failed" and _changed_since(root, record, run.get("finished_at")):
+            run = None
     return {"run": run, "undo": page_versions.can_undo(root, record), "rewrite": _draft(root, record)}
 
 

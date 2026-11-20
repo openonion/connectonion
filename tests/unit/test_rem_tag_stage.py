@@ -208,3 +208,49 @@ def test_a_known_course_named_in_the_facts_is_added_and_a_number_inside_another_
     _, plan = planned(book, reply([{"id": "p1", "tags": []}, {"id": "p2", "tags": []}]))
     assert {"tag": "9900", "citation": "3"} in plan["pages"]["people/mira-osei.md"]["rows"]
     assert all(row["tag"] != "990" for row in plan["pages"]["people/mira-osei.md"]["rows"])
+
+
+DECISION = """# Keep one vocabulary for every kind
+
+Tags come from one list, so a filter finds every page [1].
+
+## Why
+A second list split the counts [1].
+
+## Sources
+- [1] codex:fixture:1 — 2026-09-03
+"""
+SKILL = """# weekly-brief
+
+## What it does
+Writes the Monday brief for the COMP9900 team [1].
+
+## Sources
+- [1] skill-record:fixture — 2026-09-04
+"""
+
+
+def test_every_page_kind_waits_to_be_tagged_and_one_without_facts_takes_its_line_under_the_title(book):
+    """#3093 (owner, 2026-11-19: «所有的内容里面应该都有 tag 吧»): decisions, knowledge, principles and skills are tagged
+    too; they have no Facts, so their Tags line sits directly under the title (the contract in docs/cli/rem-tags.md)."""
+    book.write("decisions/one-vocabulary.md", DECISION)
+    book.write("skills/catalog/weekly-brief.md", SKILL)
+    waiting = tag_stage.candidates(book.root)
+    assert "decisions/one-vocabulary.md" in waiting and "skills/catalog/weekly-brief.md" in waiting
+    tagged = tags.with_tags(DECISION, [{"tag": "rem", "citation": "1"}])
+    assert tagged.splitlines()[:3] == ["# Keep one vocabulary for every kind", "", "- Tags: rem [1]"]
+    assert tags.page_tags(tagged) == ["rem"] and tags.only_tags_changed(DECISION, tagged)
+    assert tags.with_tags(tagged, [{"tag": "reader-ui", "citation": ""}]).count("- Tags:") == 1
+    assert tags.with_tags(tagged, []) == DECISION
+
+
+def test_principles_and_knowledge_wait_to_be_tagged_and_sessions_are_tagged_by_their_summary(book):
+    """Owner, 2026-11-19: confirm every kind is covered. The tag stage takes principles and knowledge too (as it does
+    decisions and skills); a session page is not its candidate, because the session summary writes its own tags
+    into the same vocabulary (docs/cli/rem-tags.md)."""
+    book.write("principles/steady.md", "# Steady pace\n\nOne change at a time [1].\n\n## Sources\n- [1] codex:fixture:2 — 2026-09-05\n")
+    book.write("knowledge/kiln-firing.md", "# Kiln firing\n\nCone 6 is the default [1].\n\n## Sources\n- [1] gmail:fixture:3 — 2026-09-06\n")
+    book.write("sessions/2026-09-06-kiln.md", "# Kiln session\n\n- Tags: kiln\n\nTuned the controller.\n")
+    waiting = tag_stage.candidates(book.root)
+    assert "principles/steady.md" in waiting and "knowledge/kiln-firing.md" in waiting
+    assert not any(record.startswith("sessions/") for record in waiting)

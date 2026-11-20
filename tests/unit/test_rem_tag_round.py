@@ -41,7 +41,7 @@ def night(root, cursor):
 def test_the_closing_pass_tags_every_waiting_page_in_batches_of_twenty(notebook):
     pages = people(notebook, 45)
     cursor = cursor_of(notebook, [])
-    assert night(notebook, cursor) == ["tag"] * 3
+    assert night(notebook, cursor) == ["tag"] * 3 + ["tag-node"]  # then the topic page for 'student' (#3140)
     assert cursor["tagged"] == 45 and cursor["done"] and "tags_waiting" not in cursor
     assert all(tags.page_tags(Notebook(notebook).read(page)) == ["student"] for page in pages)
     assert tag_stage.candidates(notebook) == []
@@ -51,7 +51,7 @@ def test_a_round_tags_at_most_its_bound_and_says_how_many_wait(notebook):
     people(notebook, 30)
     set_config(notebook, ["limits.tags_per_round", "25"])
     cursor = cursor_of(notebook, [])
-    assert night(notebook, cursor) == ["tag", "tag"]
+    assert night(notebook, cursor) == ["tag", "tag", "tag-node"]
     assert cursor["tagged"] == 25 and cursor["tags_waiting"] == 5
 
 
@@ -67,11 +67,25 @@ def test_a_refused_batch_is_not_offered_again_in_the_same_round(notebook):
     assert len(tag_stage.candidates(notebook)) == 3
 
 
-def test_one_tag_turn_comes_between_two_portions_of_investigation(notebook, monkeypatch):
+def test_a_break_between_two_portions_tags_every_batch_that_fits_its_share(notebook, monkeypatch):
     serve(monkeypatch)
     people(notebook, 25)
     cursor = cursor_of(notebook, [person(name) for name in ("ivy", "wren", "fern")])
-    assert night(notebook, cursor) == ["investigate", "investigate", "tag", "investigate", "tag"]
+    # Both batches fit one break's share; then the same stage's second step writes one topic page (#3140):
+    # 'student' is on two or more pages.
+    assert night(notebook, cursor) == ["investigate", "investigate", "tag", "tag", "tag-node", "investigate"]
+
+
+def test_a_break_tags_a_quarter_of_what_waits_so_a_long_backlog_drains_in_one_night(notebook, monkeypatch):
+    """rc34 hunt (#3165): 262 pages waited for tags at one batch a break, two nights or more."""
+    serve(monkeypatch)
+    people(notebook, 170)  # 9 batches: a share of 3 a break
+    assert native_round.tag_share(notebook) == 3
+    cursor = cursor_of(notebook, [person(name) for name in ("ivy", "wren", "fern", "moss", "reed")])
+    served = night(notebook, cursor)
+    assert served[:6] == ["investigate", "investigate", "tag", "tag", "tag", "tag-node"]
+    assert served[6:9] == ["investigate", "investigate", "tag"]
+    assert tag_stage.candidates(notebook) == []
 
 
 def test_the_bound_is_a_round_limit_with_a_high_default():
@@ -91,7 +105,8 @@ def test_status_has_a_tag_line(notebook):
     write_json(state_path(notebook, tag_stage.MARKS),
                {page: tag_stage.digest(Notebook(notebook).read(page)) for page in Notebook(notebook).list("people")})
     row = next(row for row in stages.status(notebook, read_config(notebook), [run]) if row["name"] == "Tag")
-    assert row["text"] == "Tag: 0 untagged pages waiting; last ran 2026-09-07"
+    # Three pages now share 'student', a tag no page is named for: its topic page waits (#3140).
+    assert row["text"] == "Tag: 0 untagged pages waiting; last ran 2026-09-07; 1 tag page to write"
 
 
 def test_the_nights_counts_carry_the_pages_tagged_and_what_the_bound_left(notebook):
@@ -119,21 +134,23 @@ def test_tagging_a_page_leaves_its_translation_current(notebook):
     assert translate.foreign_lines(chinese, "zh") == []
 
 
-def test_graph_tag_layer_has_a_node_per_tag_and_an_edge_per_tagged_record():
+def test_a_tag_adds_edges_to_the_page_it_links_to_and_no_point_of_its_own():
+    """#3140: the knowledge graph has one kind of point, the page; a tag is a link to its page."""
     records = [{"path": "people/mira-osei.md", "category": "people", "title": "Mira Osei",
                 "text": tags.with_tags(PERSON, [{"tag": "9900", "citation": "3"}, {"tag": "student"}])},
                {"path": "orgs/harbour-university.md", "category": "orgs", "title": "Harbour University",
                 "text": "# Harbour University\n\n## Facts\n- Tags: 9900\n"},
+               {"path": "orgs/9900.md", "category": "orgs", "title": "9900", "text": "# 9900\n\n## Facts\n- Kind: course\n"},
                {"path": "people/hidden.md", "category": "people", "title": "Hidden", "private": True,
-                "text": "# Hidden\n\n## Facts\n- Tags: secret-topic\n"}]
-    vocabulary = {"9900": {"label": "COMP9900", "kind": "course", "aliases": [], "count": 2}}
+                "text": "# Hidden\n\n## Facts\n- Tags: 9900\n"}]
+    vocabulary = {"9900": {"label": "COMP9900", "kind": "course", "aliases": [], "count": 3, "page": "orgs/9900.md"},
+                  "student": {"label": "student", "kind": "role", "aliases": [], "count": 1, "page": ""}}
     graph = graph_snapshot(records, links={}, vocabulary=vocabulary)
-    assert {node["kind"] for node in graph["nodes"]} == {"people", "orgs"}, "the current reader's nodes are unchanged"
-    assert graph["tags"]["nodes"] == [
-        {"id": "tag:9900", "kind": "tag", "label": "COMP9900", "tag_kind": "course", "count": 2},
-        {"id": "tag:student", "kind": "tag", "label": "student", "tag_kind": "topic", "count": 1}]
-    assert {"source": "orgs/harbour-university.md", "target": "tag:9900", "kind": "tagged"} in graph["tags"]["edges"]
-    assert all(edge["source"] != "people/hidden.md" for edge in graph["tags"]["edges"])
+    assert {node["kind"] for node in graph["nodes"]} == {"people", "orgs"} and graph["tags"]["nodes"] == []
+    pairs = {(edge["source"], edge["target"]) for edge in graph["tags"]["edges"]}
+    assert ("people/mira-osei.md", "orgs/9900.md") in pairs and ("orgs/harbour-university.md", "orgs/9900.md") in pairs
+    assert all("people/hidden.md" not in pair for pair in pairs)   # a private page adds no edge
+    assert not any(target.startswith("tag:") for _, target in pairs)  # a tag with no page adds nothing
 
 
 def test_open_items_in_the_today_queue_carry_their_tags(notebook):

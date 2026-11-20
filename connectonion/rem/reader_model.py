@@ -149,7 +149,8 @@ def _clip(text: str, limit: int = 220) -> str:
 
 def _relation(origin: str, target: str, line: str, kind: str) -> dict:
     basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-    basis = _clip(CITATION.sub("", basis).lstrip("- ").strip())
+    # The citation goes with the space before it: "at Fernhill [1]." reads "at Fernhill.", never "at Fernhill ." (rc36).
+    basis = _clip(re.sub(r"[ \t]*" + CITATION.pattern, "", basis).lstrip("- ").strip())
     return {"path": target, "kind": kind, "basis": basis,
             "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
 
@@ -320,19 +321,22 @@ def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict 
 
 
 def tag_layer(nodes: list[dict], paths: dict, vocabulary: dict) -> dict:
-    """Tag nodes and record→tag edges, beside the record graph (docs/cli/rem-tags.md).
+    """The knowledge graph has one kind of point, the page (#3140): a tag adds an edge from each page carrying
+    it to the page the tag links to (a person, organisation, project or tag page), never a point of its own.
 
-    Only drawn nodes: a folded session or a private record adds no edge, and a tag no
-    drawn node carries has no node."""
-    from collections import Counter
+    Only drawn pages: a folded session or a private record adds no edge, and a tag whose page is not drawn
+    adds none."""
     from .tags import page_tags
-    edges = [{'source': node['id'], 'target': 'tag:' + slug, 'kind': 'tagged'}
-             for node in nodes if not node['private'] for slug in page_tags(paths[node['id']]['text'])]
-    counted = Counter(edge['target'] for edge in edges)
-    tag_nodes = [{'id': target, 'kind': 'tag', 'label': vocabulary.get(target[4:], {}).get('label', target[4:]),
-                  'tag_kind': vocabulary.get(target[4:], {}).get('kind', 'topic'), 'count': count}
-                 for target, count in sorted(counted.items())]
-    return {'nodes': tag_nodes, 'edges': edges}
+    drawn = {node['id'] for node in nodes}
+    edges = {}
+    for node in nodes:
+        if node['private']:
+            continue
+        for slug in page_tags(paths[node['id']]['text']):
+            target = vocabulary.get(slug, {}).get('page', '')
+            if target in drawn and target != node['id']:
+                edges.setdefault(tuple(sorted((node['id'], target))), {'source': node['id'], 'target': target, 'kind': 'tagged', 'tag': slug})
+    return {'nodes': [], 'edges': list(edges.values())}
 
 
 def _source_ids(records: list[dict]) -> set[str]:
@@ -352,6 +356,25 @@ def _budget_order(records: list[dict], ids: set[str]) -> list[str]:
                                            source.split(":", 1)[0] not in ("gmail", "outlook"), source))
 
 
+# A short citation (gmail:<12 hex>) names a message by its id's digest. Each lookup used to fetch every message
+# of the provider and hash every id again, 534k sha256 calls for one Today queue on the owner's notebook (#3106).
+# One digest index for the connection in use answers them all; connections here are short-lived and read-only,
+# and a connection takes no weak reference, so the index is kept for the latest one only (held, so its id is not reused).
+_DIGESTS: list = [None, {}]
+
+
+def _digest_index(db, provider: str) -> dict[str, list]:
+    if _DIGESTS[0] is not db:
+        _DIGESTS[:] = [db, {}]
+    per_db = _DIGESTS[1]
+    if provider not in per_db:
+        index: dict[str, list] = {}
+        for row in db.execute("select * from messages where source = ?", (provider,)):
+            index.setdefault(hashlib.sha256(row["id"].removeprefix(provider + ":").encode()).hexdigest()[:12], []).append(row)
+        per_db[provider] = index
+    return per_db[provider]
+
+
 def _cited_row(db, source: str):
     row = db.execute("select * from messages where id = ?", (source,)).fetchone()
     if row is not None:
@@ -360,10 +383,10 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ? or body_path is null)",
-                      (provider, f"mail/messages/{provider}/{digest}%.json",
-                       f"mail/observed/{provider}/{digest}%.json")).fetchall()
-    rows = [row for row in rows if hashlib.sha256(row['id'].removeprefix(provider + ':').encode()).hexdigest().startswith(digest)]
+    # Its archived body, when it has one, is named by the same digest.
+    homes = (f"mail/messages/{provider}/{digest}", f"mail/observed/{provider}/{digest}")
+    rows = [row for row in _digest_index(db, provider).get(digest, [])
+            if row["body_path"] is None or (row["body_path"].startswith(homes) and row["body_path"].endswith(".json"))]
     if len(rows) == 1:
         return rows[0]
     return None
@@ -415,9 +438,18 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
             message = dict(row)
             saved = archived_message(root, message) or {}
             raw = saved.get("text" if message.get("body_line") else "body")
+            mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
+            if not isinstance(raw, str) and mail and private:
+                # Indexed, never archived (rc34 hunt: 214 of a real notebook's person and org citations). The owner's
+                # own reader still says who wrote, when and about what, rather than "REM did not keep a copy".
+                output[source] = {"excerpt": "", "truncated": False, "body_empty": True, "header_only": True,
+                                  "time": message.get("time") or "", "sender": message.get("sender") or "",
+                                  "thread": message.get("thread") or "", "source": message.get("source") or "",
+                                  "subject": message.get("subject") or "", "input_scope": "",
+                                  "participants": {"from": message.get("sender") or "", "to": [], "cc": []}}
+                continue
             if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
                 continue
-            mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
             if mail and "--- Email Body ---" in raw:
                 raw = raw.partition("--- Email Body ---")[2]
             excerpt = raw.strip()[: min(16_384 if mail else 2_048, budget)]
@@ -521,7 +553,7 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
     Labelled ([personal]/[sensitive]) mail is left out; secret shapes are removed.
     """
     from contextlib import closing
-    from .files import SECRET_SHAPES
+    from .files import KEY_SHAPES
     file = state_path(root, "rem.db")
     if not file.is_file() or file.is_symlink():
         return []
@@ -541,7 +573,7 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
         raw = saved.get("body")
         if not isinstance(raw, str) or PRIVATE.search(raw):
             continue
-        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]",
+        text = KEY_SHAPES.sub("[secret-shaped text removed by co rem]",
                                  raw.partition("--- Email Body ---")[2] or raw).strip()[:min(chars, budget)]
         if not text:
             continue

@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
 BASE = "http://rem.test/"
-GREEN = ("rgb(34, 210, 122)", "rgb(59, 227, 143)")
+GREEN = ("rgb(18, 21, 18)", "rgb(238, 240, 237)")
 LINK_ID, QUESTION_ID = "a1" * 16, "b2" * 16
 REVIEWS = r'''([live, language]) => {
   REM.live = live;
@@ -222,3 +222,18 @@ def test_a_pending_translation_is_asked_for_once_and_said_only_by_the_top_bar(re
     assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
     assert sum(1 for call in calls if call == ("/rem/translation-request", {"page": path, "language": "zh"})) == 1
     assert page.locator("#main > p[role=status]").filter(has_text="翻译中").count() == 0
+
+
+def test_a_repeated_failure_is_one_quiet_line_in_the_night_card_in_local_time(reader):
+    """#3156: the background-health line sat above Today's work, an ISO timestamp in UTC. It belongs to the night card."""
+    page, _, _ = reader
+    page.evaluate("""() => { REM.status = {...(REM.status || {}), timezone: 'Australia/Sydney',
+      schedule_failure: {code: 'repeated_failure', evidence: 'x', failures: 8, empty: 2, since: '2026-11-17T14:00:00+00:00'}};
+      setInterfaceLanguage('zh'); render(); }""", isolated_context=False)
+    line = page.locator("#main .schedule-failure")
+    assert line.count() == 1 and line.evaluate("n => !!n.closest('.night-card')")
+    text = line.inner_text()
+    assert "UTC" not in text and "2026-11-17" not in text and "T14" not in text
+    assert "01:00" in text  # 14:00 UTC is 01:00 the next morning in Sydney
+    first = page.locator("#main > *").first
+    assert "schedule-failure" not in (first.get_attribute("class") or "")

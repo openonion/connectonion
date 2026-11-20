@@ -150,7 +150,7 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, 
     boxes = """nodes => nodes.filter(n => n.getClientRects().length).map(n => { const b = n.getBoundingClientRect();
       return [b.top, b.bottom, b.width, n.getAttribute('href')]; })"""
     every = [box[3] for box in page.locator('#nav > a.nav').evaluate_all(boxes)]
-    assert len(every) == 10 and not page.locator('.nav.more').is_visible()  # room for all of them: no 更多
+    assert len(every) == 10 and not page.locator('.nav.more').is_visible()  # room for all of them: no 更多 (no Agenda, #3152)
     for height, places in ((700, 7), (540, 4)):
         page.set_viewport_size({'width': 960, 'height': height})
         page.wait_for_function(f"[...document.querySelectorAll('#nav > a.nav')].filter(n => n.getClientRects().length).length === {places}")
@@ -172,7 +172,7 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, 
       return {word: w.textContent, shown: s.opacity === '1' && s.visibility === 'visible', size: s.fontSize, height: b.height,
         inside: b.left >= cell.left && b.right <= cell.right && b.bottom <= cell.bottom, under: b.top >= picture.bottom}; })""")
     words = [w for w in words if w['height']]  # the folded places are not drawn
-    assert [w['word'] for w in words] == ['Today', 'Waiting', 'Agenda', 'People', 'More', 'Settings']
+    assert [w['word'] for w in words][:3] == ['Today', 'Waiting', 'People'] and [w['word'] for w in words][-2:] == ['More', 'Settings']  # no Agenda (#3152)
     expected = {'shown': True, 'size': '11px', 'height': 14, 'inside': True, 'under': True}
     failures = [{'word': w['word'], **{key: w[key] for key, value in expected.items() if w[key] != value}}
                 for w in words if any(w[key] != value for key, value in expected.items())]
@@ -189,25 +189,31 @@ def test_short_desktop_rail_keeps_every_place_and_the_settings_in_reach(reader, 
 
 
 def test_mobile_browse_privacy_control_remains_a_full_touch_target(reader):
+    """The privacy control moved from the settings sheet to the top bar (#2840); on a phone it is still a full touch
+    target, works from the keyboard, says its state in words and keeps focus where it was."""
     page, uri = reader
     page.set_viewport_size({'width': 375, 'height': 812})
     page.goto(uri + '#r=people%2Fmara-ostrowski.md')
-    page.locator('.nav-toggle').click()
-    page.locator('.settings-open').click()
-    page.locator('#privacy-toggle').scroll_into_view_if_needed()
-    privacy = page.get_by_role('switch', name='Hide labelled passages')
+    # On a phone the level lives in the one Display menu with the language (rc34 check: four controls truncated).
+    privacy = page.locator('#display-menu')
     box = privacy.bounding_box()
     assert box['height'] >= 44 and box['width'] >= 44
     assert box['y'] >= 0 and box['y'] + box['height'] <= 812
     privacy.focus()
     privacy.press('Enter')
-    shown = page.get_by_role('switch', name='Show labelled passages')
-    assert shown.get_attribute('aria-checked') == 'true' and shown.get_attribute('aria-pressed') is None  # a switch is checked, not pressed
-    assert shown.evaluate('(node) => node === document.activeElement')
-    shown.press('Space')
-    assert privacy.get_attribute('aria-checked') == 'false'
+    item = page.get_by_role('menuitemradio', name=re.compile('Public only'))
+    assert item.evaluate('(node) => node === document.activeElement') or page.locator('.display-pop [data-level]').count() == 3
+    item.press('Enter')
+    assert page.evaluate('privacyLevel', isolated_context=False) == 'public'
     assert privacy.evaluate('(node) => node === document.activeElement')
+    assert privacy.get_attribute('aria-label').endswith('Public only')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def lang_line(page):
+    """The top bar's language line: a count beside 中/EN that says the whole line as its title (rc34 check), or ''."""
+    badge = page.locator('#lang-progress .lang-badge')
+    return badge.get_attribute('title') if badge.count() else ''
 
 
 @pytest.fixture
@@ -626,13 +632,14 @@ def test_a_person_opens_on_the_record_with_facts_disclosed(reader):
     # The facts sit in the profile card under the name, outside Full memory (#3103).
     assert page.locator('.r4-person .pc-row').first.is_visible() and not page.locator('.r4-person .pc-row').first.evaluate("n => !!n.closest('.deep-note')")
     memory_open(page)
-    card = page.locator(".factlist")
-    value = lambda label: card.locator(f"dt:text-is('{label}') + dd")  # noqa: E731
-    assert "Head of Partnerships" in value("Role").inner_text()
-    # An unknown fact is no empty row: it is named in the one "N not found" line under the list (#3104).
-    assert value("Phone").count() == 0 and "Phone" in page.locator(".factlist ~ .fact-missing, .fact-missing").first.inner_text()
-    role_source = value('Role').locator('.cite')
-    assert role_source.inner_text() == 'Aug 22'
+    # The profile card is the one place for facts; Full memory never repeats them as a second list (#3131).
+    assert page.locator(".factlist").count() == 0
+    card = page.locator(".person-head .pcard")
+    value = lambda label: card.locator(f".pc-k:text-is('{label}') + *")  # noqa: E731
+    # An unknown fact is no empty row: it is named in the card's tooltip (#3104).
+    assert value("Phone").count() == 0 and "Phone" in card.get_attribute("title")
+    value("Links").hover()  # a row shows its sources on hover or focus
+    role_source = value('Links').locator('.cite')  # the card's chip is its number; its name is the label
     assert role_source.get_attribute('aria-label') == 'Source: Outlook, Aug 22, original not in this snapshot'
     assert 'title and company in signature' in page.locator('#src-2').inner_text()
     role_source.click()
@@ -686,7 +693,8 @@ def test_adjacent_citation_chips_show_only_the_supporting_sentence(reader, width
     for index, expected, other in ((0, first, second), (1, second, first)):
         chips.nth(index).click()
         claim = page.locator(".evidence-claim > div").inner_text()
-        assert claim == expected  # the full memory keeps the prose date the person page used to trim
+        # The full memory keeps the prose date the person page used to trim, in the reader's form (#3165).
+        assert claim == expected.replace("(2026-10-14)", "(Oct 14)")
         assert other not in claim
         page.get_by_role("button", name="Close source context").click()
 
@@ -911,9 +919,8 @@ def test_record_dates_do_not_disagree_when_the_index_is_stale(reader):
     # The quiet contact line and disclosed facts share the page date.
     assert formatted in page.locator('.r4-stats').inner_text()
     assert '2001' not in page.locator('.r4-stats').inner_text()
-    memory_open(page)
-    fact_date = page.evaluate('date => fmtDate(date)', expected, isolated_context=False)
-    assert fact_date in page.locator('.factlist dt:text-is("Last contact") + dd').inner_text()
+    # A person's facts are the profile card; no second fact list repeats the date (#3131).
+    assert page.locator('.factlist').count() == 0
 
 
 def test_empty_mail_keeps_private_header_evidence_without_inventing_a_body_excerpt(reader):
@@ -1203,7 +1210,7 @@ def test_written_project_purpose_and_source_fit_on_phone(reader):
     purpose_source = page.locator('.project-purpose-cites a.cite').first
     assert purpose_source.get_attribute('aria-label').startswith('Source: Session, Aug 2')
     assert purpose_source.get_attribute('data-tip') is None
-    sources = page.locator('.focus-source').bounding_box()
+    sources = page.locator('.page-head .rec-sources').bounding_box()
     assert sources['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -1226,7 +1233,7 @@ def test_long_project_purpose_and_source_expand_inside_full_memory_on_phone(read
     assert statement.evaluate('(node) => node.scrollHeight > node.clientHeight')
     assert statement.evaluate('(node) => getComputedStyle(node).webkitLineClamp') == '4'
     chip = page.locator('.project-purpose-cites a.cite').first
-    source = page.locator('.focus-source')
+    source = page.locator('.page-head .rec-sources')
     chip.scroll_into_view_if_needed()
     assert chip.bounding_box()['y'] + chip.bounding_box()['height'] <= 812
     assert source.is_visible()
@@ -1349,7 +1356,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
     assert page.locator('.others .waiting-more').count() == bool(theirs or mine)  # what others owe, or everything open
     if theirs:
-        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} waiting on others →'
+        assert page.locator('.others .waiting-more').inner_text() == f'See the {theirs} you are waiting on others for →'
     assert 'Gone quiet (0)' not in page.locator('body').inner_text()
     if theirs or mine:
         page.locator('.others .waiting-more').click()
@@ -1582,13 +1589,15 @@ def test_phone_activity_shows_complete_rows_with_latest_first(reader):
       r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
       KNOWN.delete(r.path); render();
     }""", isolated_context=False)
-    assert page.locator('.tl-e .d').all_inner_texts() == ['9/4', '9/3', '9/2', '9/1']  # N3: month and day on each row
+    # N3: month and day on each row, in the one date form every page uses (rc35 hunt), not "9/4".
+    assert page.locator('.tl-e .d').all_inner_texts() == ['Sep 4', 'Sep 3', 'Sep 2', 'Sep 1']
     assert all(text.count('Confirmed the venue plan') == 5 for text in page.locator('.tl-e .x').all_inner_texts())
     assert page.locator('.tl').evaluate('e => e.scrollHeight <= e.clientHeight')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-@pytest.mark.parametrize('language, days', [('en', ['9/4', '12/24\n2025', '9/4\n2025']), ('zh', ['9/4', '12/24\n2025年', '9/4\n2025年'])])
+# One date form on every page (rc35 hunt): the timeline says "Sep 4" / "9月4日", as prose and chips do, not "9/4".
+@pytest.mark.parametrize('language, days', [('en', ['Sep 4', 'Dec 24\n2025', 'Sep 4\n2025']), ('zh', ['9月4日', '12月24日\n2025年', '9月4日\n2025年'])])
 def test_an_exchange_from_another_year_says_its_year(reader, language, days):
     """Review of #2929: the timeline gave month and day only, so last September read as this one. The notebook's
     as_of year is the current one (2026 here); an older entry carries its year under the day, inside the column."""
@@ -1605,6 +1614,46 @@ def test_an_exchange_from_another_year_says_its_year(reader, language, days):
     assert page.locator('.tl-e .d').all_inner_texts() == days
     assert page.locator('.tl-e .d').evaluate_all('cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth)')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+# rc36 hunt: on a person page the Exchanges column broke "10月29日" across two lines ("10月29 / 日").
+@pytest.mark.parametrize('width', [1440, 375])
+@pytest.mark.parametrize('language', ['zh', 'en'])
+def test_an_exchange_date_never_breaks_across_lines(reader, width, language):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""language => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = ['2026-10-29', '2026-12-24', '2026-11-30', '2025-10-28'].map(day => '- ' + day + ': Confirmed the venue plan. [1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); setInterfaceLanguage(language);
+    }""", language, isolated_context=False)
+    page.locator('.tl-e .d').first.wait_for()
+    lines = page.locator('.tl-e .d').evaluate_all("""cells => cells.map(cell => { const range = document.createRange();
+      range.selectNodeContents(cell.firstChild); return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size; })""")
+    assert lines and all(n == 1 for n in lines), lines
+    assert page.locator('.tl-e .d').evaluate_all('cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth + 1)')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+@pytest.mark.skipif(not os.environ.get('REM_PR_SHOTS'), reason='screenshots for a PR only')
+@pytest.mark.parametrize('width', [1440, 390])
+def test_pr_shots_exchange_dates(reader, width):
+    page, uri = reader
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(uri + '#r=people%2Fmara-ostrowski.md')
+    page.evaluate("""() => {
+      const r = REM.records.find(r => r.path === 'people/mara-ostrowski.md');
+      const start = r.text.indexOf('## History'), end = r.text.indexOf('## ', start + 3);
+      const rows = ['2026-12-24', '2026-11-30', '2026-10-29', '2025-10-28'].map(day => '- ' + day + ': Confirmed the venue plan. [1]');
+      r.text = r.text.slice(0, start) + '## History\\n' + rows.join('\\n') + '\\n' + r.text.slice(end);
+      KNOWN.delete(r.path); setInterfaceLanguage('zh');
+    }""", isolated_context=False)
+    page.locator('#history-timeline').scroll_into_view_if_needed()
+    page.locator('#history-timeline').screenshot(path=os.path.join(os.environ['REM_PR_SHOTS'], f'exchange-dates-zh-{width}.png'))
+    page.evaluate("() => setInterfaceLanguage('en')", isolated_context=False)
 
 
 def test_reviewed_role_and_unknown_company_override_older_index(reader):
@@ -1853,8 +1902,8 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
         page.get_by_role('heading', name='Quinn Alder', exact=True).wait_for()
         assert 'Sep 16' in page.locator('.r4-stats').inner_text()
         assert page.locator('.focus-facts').count() == 0
-        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
-        assert page.locator('.deep-note .factlist').count() == 1
+        # The profile card says the facts; a full memory that would only repeat them is not drawn (#3131).
+        assert page.locator('.person-head .pcard').count() == 1 and page.locator('.factlist').count() == 0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         if width == 375:
             status = page.locator('.missing.primary .lead').bounding_box()
@@ -1879,9 +1928,9 @@ def test_mapped_person_distinguishes_map_date_from_missing_note_fact(reader):
           KNOWN.delete(r.path); FACTS.delete(r.path); render();
         }""", isolated_context=False)
         assert 'Sep 16' not in page.locator('.r4-stats').inner_text()
-        memory_open(page)
-        assert page.locator('.factlist dt:text-is("Last contact")').count() == 0
-        assert 'Last contact' in page.locator('.fact-missing').first.inner_text()  # named once, no empty row (#3104)
+        card = page.locator('.person-head .pcard')
+        assert card.locator('.pc-k:text-is("Last contact")').count() == 0
+        assert 'Last contact' in card.get_attribute('title')  # named once, in the card's tooltip, no empty row (#3104)
 
 
 def test_unknown_open_status_is_not_a_current_exchange(reader):
@@ -2122,9 +2171,8 @@ def test_fact_labels_and_addresses_never_break_mid_word(reader, width):
         .replace(/## Facts\\n/, '## Facts\\n- Handles: 0x3c3ae74550@mail.openonion.ai [1]\\n');
       KNOWN.clear(); FACTS.clear(); render();
     }""", isolated_context=False)
-    memory_open(page)
-    page.locator('.factlist dd').first.wait_for()
-    assert page.evaluate(WHOLE_WORDS, ['.factlist dd, .contact-strip dd', ['0x3c3ae74550', 'openonion', 'mail']])
+    page.locator('.pcard .pc-v').first.wait_for()  # a person's facts are the profile card (#3131)
+    assert page.evaluate(WHOLE_WORDS, ['.pcard .pc-v, .contact-strip dd', ['0x3c3ae74550', 'openonion', 'mail']])
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
@@ -2158,10 +2206,10 @@ def test_the_rail_counts_only_what_waits_on_you_and_shows_every_place_it_has_roo
     rows = page.locator('#nav > a')
     names = rows.evaluate_all("rows => rows.map(row => row.getAttribute('aria-label'))")
     # #2961: each name starts with the word you see (Orgs · Organisations)
-    assert names == ['Today', 'Waiting on you', 'Agenda', 'People', 'Orgs · Organisations', 'Projects', 'Knowledge', 'Decisions', 'Skills',
+    assert names == ['Today', 'Waiting on you', 'People', 'Orgs · Organisations', 'Projects', 'Keys', 'Knowledge', 'Decisions', 'Skills',
                      'Changes · Memory changes']
     assert [text.split('\n')[0].strip() for text in rows.all_inner_texts()] == [
-        'Today', 'Waiting', 'Agenda', 'People', 'Orgs', 'Projects', 'Knowledge', 'Decisions', 'Skills', 'Changes']
+        'Today', 'Waiting', 'People', 'Orgs', 'Projects', 'Keys', 'Knowledge', 'Decisions', 'Skills', 'Changes']
     more = [text.strip() for text in page.locator('#rail-more a').all_inner_texts()]
     assert more == [] and not page.locator('.nav.more').is_visible()  # the rail is filled before anything folds
     assert not {'Graph', 'Activity', 'Questions & connections'} & set(names + more)  # D-02, D-03
@@ -2204,7 +2252,10 @@ def test_the_settings_sheet_names_the_release_and_keeps_every_switch(reader):
     assert page.locator('#nav a[href="#view=open"]').inner_text().startswith('等你处理')
     page.locator('#foot .language-switch').get_by_role('button', name='EN', exact=True).click()
     page.wait_for_function('document.documentElement.lang === "en"')
-    assert page.get_by_role('switch', name='Hide labelled passages').is_visible()
+    # Privacy is the top bar's control now (#2840), not a settings switch: one control, not two.
+    assert page.locator('#settings').get_by_role('switch', name='Hide labelled passages').count() == 0
+    # The privacy control is the top bar's (#2840); on a phone it is inside the one Display menu (rc34 check).
+    assert page.locator('#privacy-level:visible, #display-menu:visible').count() == 1
     page.keyboard.press('Escape')
     assert not page.locator('#settings').evaluate('d => d.open')
     page.evaluate("() => localStorage.removeItem('co-rem-ui-language')")
@@ -2351,10 +2402,10 @@ def test_citation_labels_fallback_and_grouped_sources_stay_honest(reader):
         sourceChannel('claude-session'), sourceChannel('project-source'), sourceChannel('whatsapp')];
     }""", isolated_context=False)
     assert values == ['you, Outlook, Oct 14', 'Outlook, Aug 22', 'source 99', 'Session', 'Repo', 'WhatsApp']
-    memory_open(page)
-    missing = page.locator('.factlist a.cite[href$="src-1"]').first
+    missing = page.locator('.pcard a.cite[href$="src-1"]').first  # the facts' citations are in the profile card (#3131)
     assert 'missing' in missing.get_attribute('class')
     assert 'original not in this snapshot' in missing.get_attribute('aria-label')
+    missing.locator('xpath=ancestor::*[contains(@class,"pc-row")]').hover()  # the card shows a row's sources on hover
     missing.click()
     panel = page.locator('#evidence-panel')
     assert panel.locator('.evidence-unavailable').inner_text() == "The original isn't in this snapshot."
@@ -2883,7 +2934,9 @@ def test_session_project_person_and_global_search_cross_links(session_reader):
     group = page.locator("h2.group").filter(has_text="Agent sessions")
     expect(group).to_be_visible()
     expect(group.locator(".n")).to_have_text("10")
-    expect(page.locator(".hits li")).to_have_count(8)
+    # #3169: a group shows its first five, then "Show all 10 results"; the sessions link still opens all.
+    expect(page.locator(".hits li:visible")).to_have_count(5)
+    expect(group.locator("xpath=..").get_by_role("button", name="Show all 10 results")).to_be_visible()
     all_hits = page.get_by_role("link", name="10 matching sessions →", exact=True)
     expect(all_hits).to_have_attribute("href", "#c=sessions&find=seventhneedle")
     expect(page.locator(".hits .t a").first).to_have_attribute("href", re.compile(r"&find=seventhneedle$"))
@@ -2955,12 +3008,12 @@ def test_reader_settings_disclose_private_controls_and_wrap_command(reader, widt
         page.locator('.nav-toggle').click()
     settings = page.locator('.reader-settings')
     assert not settings.evaluate('node => node.open')  # the settings sheet is closed until asked for
-    assert not page.locator('#privacy-toggle').is_visible()
+    assert page.locator('#privacy-level:visible, #display-menu:visible').count() == 1  # the top bar's (#2840); a phone's Display menu
     assert 'Updated ' in page.locator('#foot').inner_text()  # the render time (2026-11-09; was "Snapshot")
     assert 'Background updates off' not in page.locator('#foot').inner_text()
     page.locator('.settings-open').click()
     assert settings.locator('code, .cmd').count() == 0  # D-60 (build 3b review): Reader settings states things in words, never a command to copy.
-    assert page.locator('#privacy-toggle').is_visible()
+    assert settings.locator('#privacy-toggle').count() == 0  # no second privacy control in the sheet
     assert 'Nightly updates are off.' in settings.inner_text()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -3258,8 +3311,8 @@ def test_mapped_guidance_explains_before_command_with_secondary_copy(reader, pat
     assert box.locator('.lead').inner_text() == 'Page queued for tonight'
     assert not page.locator('.focus-command').count()
     if path.startswith('people/'):
-        assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
-        assert page.locator('.deep-note .factlist').count() == 1
+        # The facts are the profile card's; Full memory never repeats them (#3131).
+        assert page.locator('.person-head .pcard').count() == 1 and page.locator('.factlist').count() == 0
     else:
         assert page.locator('details.deep-note').get_attribute('open') is not None  # open on arrival (#3104)
         assert page.locator('.focus-facts').count() == 0
@@ -3336,10 +3389,11 @@ def test_full_memory_keeps_unheaded_content_and_counts_it(reader, body):
       r.text = '# Mara Ostrowski\n\n' + body;
       KNOWN.clear(); FACTS.clear(); render();
     }''', body, isolated_context=False)
-    assert page.locator('.deep-hint').inner_text() == '2 sections · 0 sources'  # body and Facts
+    # The body alone: a person's facts are the profile card, not a counted section (#3131); zero sources go unsaid (#3165).
+    assert page.locator('.deep-hint').inner_text() == '1 section'
     memory_open(page)
     assert page.locator('.deep-note .note').inner_text().strip()
-    assert page.locator('.deep-note .factlist').is_visible()
+    assert page.locator('.person-head .pcard').count() == 1 and page.locator('.deep-note .factlist').count() == 0
 
 
 def test_full_memory_counts_content_without_counting_toc_navigation(reader):
@@ -3352,7 +3406,7 @@ def test_full_memory_counts_content_without_counting_toc_navigation(reader):
         '## Topic ' + i + '\nUseful content.').join('\n\n');
       KNOWN.clear(); FACTS.clear(); render();
     }''', isolated_context=False)
-    assert page.locator('.deep-hint').inner_text() == '5 sections · 0 sources'  # four topics and Facts
+    assert page.locator('.deep-hint').inner_text() == '4 sections'  # four topics; facts are the card's (#3131), zero sources unsaid (#3165)
     memory_open(page)
     assert page.locator('.deep-note .toc-panel').is_visible()
 
@@ -3562,8 +3616,9 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert 'Head of Partnerships' in role.inner_text()
     assert role.get_attribute('title') == ('昨夜变更：Partnerships lead → Head of Partnerships' if language == 'zh'
                                          else 'Changed last night: Partnerships lead → Head of Partnerships')
+    # The changed role is marked once, in the header line above; no fact list repeats it (#3131).
+    assert page.locator('.factlist .changed-value').count() == 0
     memory_open(page)
-    assert page.locator('.factlist .changed-value').filter(has_text='Head of Partnerships').is_visible()
     marker = page.locator('.note .uncertain-marker')
     assert marker.count() == 1
     assert marker.inner_text() == '◌'
@@ -3578,7 +3633,7 @@ def test_latest_pass_page_and_field_markers_and_uncertain_citations(reader, widt
     assert fresh.is_visible()
     assert fresh.inner_text() == ('昨夜' if language == 'zh' else 'last night')
     assert fresh.get_attribute('title') == ('昨夜整理时更新' if language == 'zh' else "Updated in last night's pass")
-    assert fresh.evaluate(r'''node => getComputedStyle(node).fontSize === '11px' ''')
+    assert fresh.evaluate(r'''node => getComputedStyle(node).fontSize === '13px' ''')  # list text reads at 13px (#3162)
     assert page.locator('.sheet tbody .fresh-dot').count() == 0
     assert page.locator('.sheet tbody tr').filter(has_text='Tomás Reyes').locator('.fresh-label').count() == 0
     page.goto(uri + '#c=orgs')
@@ -3878,7 +3933,8 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     page.evaluate(r'''() => { location.hash = 'c=people'; }''', isolated_context=False)
     page.evaluate(r'''() => { peopleColumns = [...peopleColumnKeys(null), 'role']; render(); }''', isolated_context=False)
     row = page.locator('.people-table tbody tr').filter(has=page.get_by_role('link', name='Mara Ostrowski', exact=True))
-    assert 'Fernhill Labs 科研团队' in row.locator('.c-org').inner_text()
+    # #3157: a page linked under a longer label goes by the organisation's own name in the People table.
+    assert row.locator('.c-org').inner_text().strip() == 'Fernhill Labs'
     assert row.locator('.c-org').is_visible()
     assert '理学院教授' in row.locator('.c-role').inner_text()
     page.evaluate(r'''() => { location.hash = 'c=orgs'; }''', isolated_context=False)
@@ -3888,7 +3944,7 @@ def test_cached_facts_translate_subtitles_and_connected_context(reader, width):
     assert '研究气候数据' in page.locator('.ov-about').inner_text()
     page.evaluate(r'''() => { location.hash = 'r=people%2Fmara-ostrowski.md'; }''', isolated_context=False)
     assert '理学院教授' in page.locator('.r4-sub').inner_text()
-    assert 'Fernhill Labs 科研团队' in page.locator('.r4-sub').inner_text()
+    assert page.locator('.r4-sub').inner_text().strip().endswith('Fernhill Labs')  # #3157: the organisation's own name
     assert page.evaluate(r'''() => {
       const r = byPath('people/mara-ostrowski.md'), first = parseFacts(r);
       if (parseFacts(r) !== first) return false;
@@ -4030,7 +4086,8 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         page.goto(html.as_uri() + '#r=people%2Fmara-ostrowski.md')
         memory_open(page)
         assert '公开历史' in page.locator('.timeline').inner_text()
-        assert page.locator('.timeline .private-entry').count() == 1
+        # Public only (a shared snapshot, #2840) takes the labelled entry out of the page rather than hiding it.
+        assert page.locator('.timeline .private-entry').count() == 0
         assert page.locator('.page-head .lang-bar').count() == 0
         assert page.locator('.page-foot .lang-bar select').is_visible()
         no_private_words()
@@ -4254,6 +4311,19 @@ def test_round_eight_fact_labels_and_phone_disclosure_alignment(reader, tmp_path
         assert toggle() == '"+"'
         summary.click()
         assert toggle() == '"−"'
+        if record.startswith('people/'):
+            # A person's facts are the profile card alone; no 资料 panel repeats them (#3131).
+            assert page.locator('.panel').filter(has=page.locator('.factlist')).count() == 0
+            card = page.locator('.person-head .pcard')
+            if language == 'zh':
+                labels = card.locator('.pc-k').all_inner_texts()
+                assert labels and all(not re.search('[A-Za-z]', label) for label in labels)
+                # An unknown field is named in the card's tooltip, in Chinese too, instead of an empty row (#3104).
+                folded = (card.get_attribute('title') or '').split('：', 1)[-1].split(': ', 1)[-1].split(' · ')
+                # Handles are named by where they live (WhatsApp, GitHub…), so 账号 is not a card label of its own.
+                assert set(labels) | set(folded) >= {'时区', '链接', '如何认识', '首次联系', '签约主体', '语言', '别名'}
+            assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
+            continue
         facts = page.locator('.panel').filter(has=page.locator('.factlist'))
         assert facts.count() == 1
         if language == 'zh':
@@ -4440,31 +4510,33 @@ def test_round_nine_fact_tails_preserve_nested_links_and_private_values(reader, 
     page.goto(path.as_uri() + '#r=people%2Fmara-ostrowski.md')
     page.evaluate(r'''language => {
       const r = byPath('people/mara-ostrowski.md');
-      r.original = (r.original || r.text).replace('- Role: Head of Partnerships [2]',
-        '- Role: Head of the [Pilot Programme](../projects/harbour.md) [2]')
+      r.original = (r.original || r.text).replace(/^- How we know them: [^\n]+$/m,
+        '- How we know them: Met through the [Pilot Programme](../projects/harbour.md) [3]')
         .replace(/^(- Location: [^\n\[]+) \[2\]$/m, '$1 [personal] [2]');
-      r.translations.zh = r.translations.zh.replace('- Role: 合作负责人 [2]',
-        '- Role: [试点项目负责人](../projects/harbour.md) [2]')
+      r.translations.zh = r.translations.zh.replace(/^- How we know them: [^\n]+$/m,
+        '- How we know them: 认识于[试点项目负责人](../projects/harbour.md) [3]')
         .replace('- Location: 新西兰惠灵顿 [2]', '- Location: 新西兰惠灵顿 [personal] [2]');
       r.text = r.shown ? r.translations[r.shown] : r.original;
       setInterfaceLanguage(language); KNOWN.clear(); FACTS.clear(); render();
     }''', language, isolated_context=False)
-    memory_open(page)
-    role = page.locator('.factlist dt:text-is("' + ('职位' if language == 'zh' else 'Role') + '") + dd')
+    # A person's facts are the profile card (#3131), whose values keep the same citation tether; the role is the
+    # header line's, so the tether is checked on a card fact that ends in a link.
+    role = page.locator('.pcard .pc-k:text-is("' + ('如何认识' if language == 'zh' else 'How we know them') + '") + *')
     tether = role.locator('.fact-tail')
     assert tether.count() == 1
     assert tether.locator('a[href*="projects%2Fharbour.md"]').count() == 1
     assert tether.locator('a.cite').count() == 1
+    role.hover()  # the card shows a row's citations on hover or focus
     assert tether.evaluate(r'''(node, word) => {
       const link = node.querySelector('a:not(.cite)'), cite = node.querySelector('a.cite');
       return getComputedStyle(node).whiteSpace === 'nowrap' && link.textContent === word
         && Math.abs(link.getBoundingClientRect().top - cite.getBoundingClientRect().top) < 12;
     }''', '人' if language == 'zh' else 'Programme')
-    location = page.locator('.factlist dt:text-is("' + ('位置' if language == 'zh' else 'Location') + '") + dd')
-    assert location.locator('.private').count() > 0
-    page.evaluate(r'''() => document.documentElement.classList.add('hide-private')''')
-    assert not location.locator('.private').first.is_visible()
-    assert ('惠灵顿' if language == 'zh' else 'Wellington') not in location.inner_text()
+    location = page.locator('.person-head .hero-place')  # the place is the header line's (one place per fact, #3131)
+    # A shared snapshot is at Public only (#2840): the labelled value is not hidden but absent from the page.
+    assert page.evaluate('privacyLevel', isolated_context=False) == 'public'
+    assert location.count() == 0 or location.locator('.private').count() == 0
+    assert ('惠灵顿' if language == 'zh' else 'Wellington') not in page.locator('.person-head').inner_html()
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 
@@ -4504,7 +4576,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     notice = page.locator('#lang-progress')
     assert page.locator('#main .desk-more > .translation-note, #main .translation-line').count() == 0
     if language == 'zh':
-        assert '页还没有中文版' in notice.inner_text()
+        assert '页还没有中文版' in lang_line(page)
         assert notice.locator('code').count() == 0
     else:
         assert notice.is_hidden()
@@ -4522,7 +4594,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     }''', isolated_context=False)
     assert page.locator('.overnight .cmd').count() == 0
     if language == 'zh':
-        assert '页还没有中文版' in notice.inner_text()
+        assert '页还没有中文版' in lang_line(page)
     page.evaluate(r'''() => {
       REM.records = [...window.cachedPages.slice(0, 2), ...REM.records.filter(r => ['people', 'orgs', 'projects'].includes(r.category) && !window.cachedPages.some(c => c.path === r.path)).slice(0, 2)];
       render();
@@ -4534,7 +4606,7 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
       for (const r of REM.records) { delete r.translations; r.shown = ''; }
       setInterfaceLanguage('zh');
     }''', isolated_context=False)
-    assert '页还没有中文版' in page.locator('#lang-progress').inner_text()
+    assert '页还没有中文版' in lang_line(page)
     assert page.locator('#main .desk-more > .translation-note, #main .translation-line').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
@@ -4747,15 +4819,15 @@ def test_round11_reader_languages_and_written_page_translation_fallback(reader, 
       delete REM.records[0].translations;
       render();
     }''', isolated_context=False)
-    assert '1 页还没有中文版' in notice.inner_text()
+    assert '1 页还没有中文版' in lang_line(page)
     page.evaluate(r'''() => {
       REM.logs = [{phase: 'init-translation', pages: [{page: 'people/avery-lin.md', outcome: 'failed'}]}];
       render();
     }''', isolated_context=False)
-    assert notice.inner_text().startswith('1 个页面未能翻译。')
+    assert lang_line(page).startswith('1 个页面未能翻译。')
     assert notice.locator('code').count() == 0
     page.evaluate("() => { REM.status.worker = {enabled: true}; render(); }", isolated_context=False)
-    assert notice.inner_text().startswith('1 个页面未能翻译。')
+    assert lang_line(page).startswith('1 个页面未能翻译。')
     assert page.evaluate(r'''() => document.documentElement.scrollWidth <= innerWidth''')
 
 
@@ -4972,12 +5044,12 @@ def _green_primaries(page):
     """Visible elements filled with the Fresh green: the one primary per page."""
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const box = node.getBoundingClientRect(), fill = getComputedStyle(node).backgroundColor;
-      return box.width > 0 && box.height > 0 && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(fill);
+      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(fill);
     }).map(node => node.textContent.trim())""", isolated_context=False)
 
 
 # Visible Fresh-green fills; a collapsed "Full memory" note keeps its own controls out of sight.
-GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(getComputedStyle(node).backgroundColor)).length"
+GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(getComputedStyle(node).backgroundColor)).length"
 
 
 def _org_view(page, uri, hash_, width, theme):
@@ -5039,7 +5111,8 @@ def test_person_page_is_a_record_drawn_as_a_fuse(reader, width, theme):
     assert "标为完成" not in main.inner_text()
     assert page.locator("#main a").filter(has_text=re.compile("今天里有")).count() == 1
     name = page.locator(".r4-person h1")
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")  # N3's one display size
+    # #3131: the page title is the head size on a reading page (it was the 44/36 display size, N3).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
     fuse = page.locator(".r4-fuse")
     dated = page.evaluate("historyItems(section(byPath('people/mara-ostrowski.md'), 'history').text).filter(i => i.day.length === 10).length",
                           isolated_context=False)
@@ -5230,7 +5303,7 @@ def _visible_green_buttons(page):
     page.wait_for_timeout(300)  # let the theme's colour transition settle
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const style = getComputedStyle(node), box = node.getBoundingClientRect();
-      return box.width && box.height && ['rgb(34, 210, 122)', 'rgb(59, 227, 143)'].includes(style.backgroundColor);
+      return box.width && box.height && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(style.backgroundColor);
     }).length""")
 
 
@@ -5735,8 +5808,8 @@ def test_org_first_screen_is_a_record_with_one_tree(org_reader, width, theme):
     page = org_reader(width, theme)
     name = page.locator(".ov-say h1.ov-name")
     assert _name(name) == "Fernhill University"
-    # The organisation's name is what the page is about: --s-display (N3: 44, 36 on a phone).
-    assert name.evaluate("node => getComputedStyle(node).fontSize") == ("44px" if width > 640 else "36px")
+    # The organisation's name is the page title: the head size on every reading page (#3131; it was 44/36, N3).
+    assert name.evaluate("node => getComputedStyle(node).fontSize") == "24px"
     facts = page.locator(".ov-opening").inner_text()
     assert f"你认识这里的 {_people_known(page)} 个人" in facts and "起有往来" in facts and "最近往来" in facts
     assert page.locator(".ov-today, .ov-key, .ov-people").count() == 0

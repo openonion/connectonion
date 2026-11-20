@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, KEY_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
 from .project_tree import identity
 from .scan import is_repository
@@ -226,7 +226,7 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
                 or item.get("role") not in ("readme", "project-file", "checkout-state", "recent-commits")
                 or not isinstance(origin, str) or not origin.startswith(("git:", "file:"))
                 or not isinstance(text, str) or not 0 < len(text) <= limit
-                or SECRET_SHAPES.search(text)
+                or KEY_SHAPES.search(text)
                 or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
             continue
         path = state_path(root, "project-sources/" + source.split(":")[1] + ".json")
@@ -316,7 +316,7 @@ def repository_context(root: Path, source: str, private: bool = False) -> dict |
     text, origin = saved.get("text"), saved.get("origin", "")
     limit = FILE_SNAPSHOT_CHARS + len("\n[truncated]") if _file_snapshot(saved.get("snapshot_kind"), origin) else REPOSITORY_EVIDENCE_CHARS
     if (saved.get("id") != source or not isinstance(text, str) or not isinstance(origin, str)
-            or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or (PRIVATE.search(text) and not private)
+            or not 0 < len(text) <= limit or KEY_SHAPES.search(text) or (PRIVATE.search(text) and not private)
             or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
         return None
     return {"excerpt": text.strip()[:REPOSITORY_EXCERPT_CHARS],
@@ -344,7 +344,7 @@ def live_file_snapshot(page: str, source: str) -> dict | None:
     # A Windows-encoded file in a real repository ("\x93", a curly quote) crashed
     # the short-term-rental-agent page twice (2026-10-15); the hash pins the bytes.
     text = raw.decode("utf-8", errors="replace")
-    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
+    if KEY_SHAPES.search(text) or PRIVATE.search(text):
         return None
     return {"id": source, "text": text, "captured_at": datetime.now(timezone.utc).isoformat(),
             "file_modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()}
@@ -367,10 +367,10 @@ def live_git_snapshot(page: str, source: str) -> dict | None:
     if content.returncode or len(content.stdout) > FILE_SNAPSHOT_CHARS or b"\0" in content.stdout:
         return None
     text = content.stdout.decode("utf-8", errors="replace")
-    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
+    if KEY_SHAPES.search(text) or PRIVATE.search(text):
         return None
     date = subprocess.run(["git", "-C", str(repo), "show", "-s", "--format=%cI", match[2]],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if date.returncode or not date.stdout.strip():
         return None
     return {"id": source, "text": text, "sha256": hashlib.sha256(content.stdout).hexdigest(),
@@ -398,7 +398,7 @@ def retain_live_source_context(root: Path, original: str, candidate: str) -> Non
 
 
 def _excerpt(value: str, limit: int) -> str:
-    clean = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", value)
+    clean = KEY_SHAPES.sub("[secret-shaped text removed by co rem]", value)
     return clean[:limit] + ("\n[truncated]" if len(clean) > limit else "")
 
 
@@ -439,7 +439,7 @@ def _repository_evidence(page: str, stamp: str, newest_session: str, *, requests
     files = [path for path in project_file_inventory(page, max_files=30)
              if Path(path).name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift")][:2]
     for item in project_file_texts(files, max_files=2, chars_per_file=1_500):
-        item["text"] = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", item["text"])
+        item["text"] = KEY_SHAPES.sub("[secret-shaped text removed by co rem]", item["text"])
         items.append(item)
     implementation = [path for path in project_file_inventory(page, max_files=IMPLEMENTATION_FILES)
                       if path not in files and not Path(path).name.lower().startswith("readme")]
@@ -572,7 +572,7 @@ def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests
         if size > FILE_SNAPSHOT_CHARS:
             continue
         content = subprocess.run(["git", "-C", folder, "show", f"{revision}:{name}"],
-                                 capture_output=True, text=True, errors="replace", check=True, timeout=10).stdout
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", check=True, timeout=10).stdout
         if content:
             items.append(_implementation_item(folder, revision, name, content, stamp))
     listing = (f"Tracked tree at {revision}; {len(tree)} entries. Contents supplied for {len(items)} of "
@@ -981,7 +981,7 @@ def github_read(args):
                       and re.fullmatch(r'If-None-Match: [^\r\n]+', args[6]))))
     if not valid:
         raise GitHubReadRefused('REM GitHub ingest is read-only; refused gh arguments')
-    run = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=20)
+    run = subprocess.run(['gh', *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
     # gh exits 1 on a 304 ("gh: HTTP 304") while printing the --include headers.
     # Treating that as failure kept the old ETag, so every later sync failed too.
     if run.returncode and not ('--include' in args and re.match(r'HTTP/\S+ 304\b', run.stdout)):
@@ -1067,7 +1067,7 @@ def _code_run(row):
 
 
 def _code_command(args, evidence, resource):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=20, check=True).stdout
+    result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20, check=True).stdout
     evidence.append({'command': args, 'ran_at': code_utc(datetime.now(timezone.utc)), 'resource': resource})
     return result
 

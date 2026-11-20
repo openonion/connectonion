@@ -14,7 +14,13 @@ from .files import WRITE_WAIT_SECONDS, CATEGORIES, RemError, atomic_write, maint
 
 def local_timezone() -> str:
     candidate = os.environ.get("TZ", "").removeprefix(":")
-    if not candidate:
+    if not candidate and os.name == "nt":
+        # Windows has no /etc/localtime; the registry names a Windows zone
+        # ("AUS Eastern Standard Time") and tzlocal maps it to IANA. co rem
+        # init stopped at "Set schedule.timezone" on every Windows PC.
+        from tzlocal import get_localzone_name
+        candidate = get_localzone_name() or ""
+    elif not candidate:
         # macOS resolves further into zoneinfo.default, so inspect the public
         # localtime link before canonicalizing its target.
         local = Path("/etc/localtime")
@@ -54,7 +60,7 @@ LEVEL_EFFORTS = {"level1": "medium", "level2": "low", "level3": "low", "level4":
 EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 STAGE_LEVELS = {
     # 1: short, structured, and every answer checked by code afterwards.
-    "tag": "level1",
+    "tag": "level1", "tag-node": "level1",
     # Abstract: finding decisions, knowledge and principles; code checks the result (at most 20 pages, three
     # folders). The owner, 2026-11-19 (#3142): «关于 decisions，你应该用 Luna 这种模型去找».
     "abstract": "level1",
@@ -158,7 +164,7 @@ def default_config() -> dict:
                        "summaries_per_round": 40, "translations_per_round": 400,
                        # Tagging is the cheapest stage: 20 pages a level-1 turn, checked
                        # by code (#3093). A round's stated end, like translation's.
-                       "tags_per_round": 400,
+                       "tags_per_round": 400, "tag_nodes_per_round": 6, "topic_min_pages": 2,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no
@@ -169,6 +175,10 @@ def default_config() -> dict:
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
                        "investigation_quota_points": 35, "quota_floor_percent": 90,
+                       # Past the floor the cheap stages (translate, tag, tag pages) go on up to here
+                       # (owner, 2026-11-19: "一次翻译消耗额度不到 1%…为什么没有搞定呢"); at 90% from
+                       # Friday the floor held 142 translations and 226 untagged pages until Tuesday.
+                       "cheap_ceiling_percent": 97,
                        # Deepening's share of the Codex week, separate from investigation's
                        # 35; the owner agreed 30% on #2533.
                        "depth_quota_points": 30,
@@ -252,8 +262,10 @@ def validate(config: dict) -> dict:
         raise RemError("Limits must be positive integers")
     if limits["workers"] > 32:
         raise RemError("workers must be 1 to 32")
-    if any(limits[key] > 100 for key in ("quota_floor_percent", "investigation_quota_points", "depth_quota_points")):
-        raise RemError("quota_floor_percent, investigation_quota_points and depth_quota_points are percents: 1 to 100")
+    if any(limits[key] > 100 for key in ("quota_floor_percent", "cheap_ceiling_percent", "investigation_quota_points",
+                                         "depth_quota_points")):
+        raise RemError("quota_floor_percent, cheap_ceiling_percent, investigation_quota_points and depth_quota_points "
+                       "are percents: 1 to 100")
     return config
 
 

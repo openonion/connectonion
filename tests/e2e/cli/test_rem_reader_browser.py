@@ -40,14 +40,15 @@ def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, mon
         assert source in cite.get_attribute('title')
         cite.click()
         panel = page.locator('#evidence-panel')
-        assert source in panel.inner_text()
+        # The card shows its description in the reader's own date form (#3201), with the angle brackets kept as text.
+        assert source.replace('2026-11-01', 'Nov 1') in panel.inner_text()
         assert not panel.locator('card').count()
         assert "The original isn't in this snapshot." not in panel.inner_text()
         page.get_by_role('button', name='Close source context').click()
         assert cite.evaluate('e => e === document.activeElement')
         page.set_viewport_size({'width': 375, 'height': 812})
         cite.click()
-        assert source in panel.inner_text()
+        assert source.replace("2026-11-01", "Nov 1") in panel.inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         browser.close()
     assert notebook.read('people/elara-finch.md') == text
@@ -287,11 +288,14 @@ def test_private_sentences_can_be_hidden_and_restored(reader_page):
     assert page.locator('details.deep-note').get_attribute('open') is not None
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
-    page.locator(".settings-open").click()
-    page.get_by_role("switch", name="Hide labelled passages").click()
-    assert not private.is_visible()
-    page.get_by_role("switch", name="Show labelled passages").click()
-    assert private.is_visible()
+    # #2840: the top bar's privacy control, not a settings switch. Public only takes the passage out of the page;
+    # Show all brings it back from the notebook.
+    page.locator("#privacy-level").click()
+    page.get_by_role("menuitemradio", name="Public only").click()
+    assert page.locator(".note .private").count() == 0 and "family plan" not in page.locator(".note").inner_html()
+    page.locator("#privacy-level").click()
+    page.get_by_role("menuitemradio", name="Show all").click()
+    assert page.locator(".note .private").count() == 1 and page.locator(".note .private").is_visible()
 
 
 @pytest.mark.parametrize("width,height", [(375, 812), (768, 1024), (1440, 1000)])
@@ -652,12 +656,12 @@ def test_full_memory_opens_with_a_short_named_source_band(tmp_path, monkeypatch)
         assert 'flash' in page.locator('#src-5').get_attribute('class')
         page.locator('#src-3 .src-cited').click()
         page.wait_for_function("document.querySelector('.note a.cite[data-sources=\"3\"]').getBoundingClientRect().top < innerHeight")
-        # Facts: empty fields fold into one line; an address breaks only after '@'.
-        facts = page.locator('.factlist')
-        assert 'not found' not in facts.inner_text()
-        missing = page.locator('.fact-missing').inner_text()
-        assert missing.startswith('13 not found: Phone · Company') and 'Location' in missing
-        assert facts.locator('a[href^="mailto:"] wbr').count() <= 1
+        # Facts are the profile card alone (#3131): empty fields are named in its tooltip, never as rows.
+        assert page.locator('.factlist').count() == 0
+        card = page.locator('.person-head .pcard')
+        assert 'Unknown' not in card.inner_text() and 'not found' not in card.inner_text()
+        missing = card.get_attribute('title')
+        assert 'not found: Phone' in missing and 'Location' in missing
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

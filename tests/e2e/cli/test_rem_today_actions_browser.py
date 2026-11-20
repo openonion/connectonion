@@ -139,10 +139,11 @@ def _numbers(page):
 
 
 def test_today_opens_on_the_cards_and_the_schedule_comes_after_them(today):
-    """#3072: «Your day» is not the first thing; what he can act on is, then to-dos, then the calendar."""
+    """#3072: what he can act on comes first. #3152: then the calendar, a component of Today, then the to-dos."""
     page, _, _ = today
-    deck, plan, todos = _top(page, ".today-brief"), _top(page, ".day-plan:not(.todos)"), _top(page, ".day-plan.todos")
-    assert deck < todos < plan, (deck, todos, plan)
+    deck, calendar, todos = _top(page, ".today-brief"), _top(page, "#today-calendar"), _top(page, ".day-plan.todos")
+    assert deck < calendar < todos, (deck, calendar, todos)
+    assert page.locator(".day-plan-proposal").count() == 0  # the day plan is suggested blocks now, not a list
     card = page.locator(".today-brief .qcard.focal")
     assert card.bounding_box()["y"] < page.viewport_size["height"], "the first card is on the first screen"
     assert card.locator(".strip-done").first.is_visible()
@@ -167,12 +168,12 @@ def test_mark_done_moves_on_to_the_next_card_and_never_back_to_the_first(today):
     page.evaluate("path => dealCard(path)", order[1], isolated_context=False)
     page.evaluate("scrollTo(0, 120)", isolated_context=False)
     before, scroll = _numbers(page), page.evaluate("scrollY", isolated_context=False)
-    proposals = page.locator(".day-plan-proposal").count()
+    proposals = page.locator("#today-calendar .cal-suggest").count()  # the day plan's suggested blocks (#3152)
     page.locator(".qcard.focal .strip-done").first.click()
     page.locator("#done-notice").wait_for()
     assert _focal(page) == order[2], "the card that followed it is in front"
     assert order[1] not in page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
-    assert page.locator(".day-plan-proposal").count() == proposals - 1, "its proposed half hour left with it"
+    assert page.locator("#today-calendar .cal-suggest").count() == proposals - 1, "its proposed half hour left with it"
     after = _numbers(page)
     assert int(after["header"]) == int(before["header"]) - 1
     assert after["badges"] and set(after["badges"]) == {after["header"]}, after
@@ -351,7 +352,7 @@ def test_in_chinese_the_item_and_its_proposal_use_the_translated_page(desk):
     card = page.locator(".qcard.focal")
     assert "她在等你发第三季度的收据" in card.locator(".words").first.inner_text()
     assert card.locator(".words .lang-status").count() == 0, "a translated row is not marked 原文"
-    proposals = page.locator(".day-plan-proposal .day-plan-text").all_inner_texts()
+    proposals = page.locator("#today-calendar .cal-suggest .cal-ev-title").all_inner_texts()
     assert any("她在等你发第三季度的收据" in text for text in proposals), proposals
     # A page with no translation shows its own words, marked 原文: nothing is made up.
     page.evaluate("dealCard('people/mara-ostrowski.md')", isolated_context=False)

@@ -400,7 +400,64 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc30
+## Current Version: 1.9.6rc38
+Release candidate 1.9.6rc38 for 1.9.6: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc38.md).
+
+- 1.9.6rc38 (REM rc36 bug-hunt fixes, #3203 #3204 #3206 #3208 #3209 #3210 #3211).
+
+### Previous candidate: 1.9.6rc37
+Release candidate 1.9.6rc37 for 1.9.6: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc37.md).
+
+### Previous candidate: 1.9.6rc36
+Release candidate 1.9.6rc36 for 1.9.6: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said once in the reader's own form. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc36.md).
+
+- 1.9.6rc36 (REM: rc35 bug-hunt fixes — web source cards, Today's side column, phone agenda, worded counts, privacy polish, dates and hex).
+
+### Previous candidate: 1.9.6rc35
+Release candidate 1.9.6rc35 for 1.9.6: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
+bar, and night stages that drain. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc35.md).
+
+- 1.9.6rc35 (REM: rc34 bug-hunt fixes — upgrade-safe tab, Today's first screen, dates and ids, compact top bar, draining stages).
+
+### Previous candidate: 1.9.6rc34
+Release candidate 1.9.6rc34 for 1.9.6: REM gets the knowledge graph (a tag links pages; tag pages; `co rem investigate tag`), a closed item
+stays closed, three privacy levels in the reader's top bar that cover every place a passage shows, sources that never
+open empty, and the hourly bug hunt's fixes. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc34.md).
+
+- 1.9.6rc34 (REM: knowledge graph, closed stays closed, privacy levels, bug-hunt fixes).
+
+### Previous candidate: 1.9.6rc33
+Release candidate 1.9.6rc33 for 1.9.6: `co wechat` reads your own WeChat for Mac history locally, read-only — a
+SQLCipher-4 decryption engine (no new dependency, tested against an independent sqlcipher-CLI oracle) with `doctor`,
+`key`, `chats`, `decrypt` and `export`. Obtaining the key stays a consented manual step; the schema is revealed, not
+assumed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc33.md).
+
+- 1.9.6rc33 (co wechat: read your own WeChat for Mac history locally).
+
+### Previous candidate: 1.9.6rc32
+Release candidate 1.9.6rc32 for 1.9.6: `co browser` starts headless on Windows in session 0 (OpenSSH logins,
+services, scheduled tasks), where a headed Chrome could never show a window and go_to waited 120 s. Together with
+rc31's Windows fixes for co rem (timezone, UTF-8, paths, long prompts) and the onionwright install, co runs on a
+Windows PC end to end. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc32.md).
+
+- 1.9.6rc32 (co browser headless in Windows session 0).
+
+### Previous candidate: 1.9.6rc31
+Release candidate 1.9.6rc31 for 1.9.6: the calendar is part of Today (a week strip over the day's timeline, under
+the cards; no separate Agenda place), record pages read in one 720 px measure with a flat header and an ink accent,
+a Keys place whose values live only in the macOS Keychain, tags on every page kind with tag pages, filters and graph
+nodes, approve and talk answering in under a second, a Host that moves itself onto a new release, done marks that
+survive the night's rewording, and a deleted mail that no longer fails an investigation. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc31.md).
+
+- 1.9.6rc31 (calendar in Today; reading measure and ink; Keys; tags everywhere; faster approve and talk).
+
+### Previous candidate: 1.9.6rc30
 Release candidate 1.9.6rc30 for 1.9.6: hand-offs to Codex and Claude you can watch and pick up (live steps, a tmux
 session, Watch in Terminal, Continue in Codex/Claude; the row turns at the click, a finished run says so with a
 summary and offers to draft its reply, failures say why with Retry), enrich that writes like OSINT (career timelines,

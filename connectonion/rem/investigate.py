@@ -22,7 +22,7 @@ from pathlib import Path
 from . import fetch_stalls
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, KEY_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
@@ -443,7 +443,7 @@ def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file:
         path = Path(name)
         with path.open(encoding="utf-8", errors="replace") as handle:
             raw = handle.read(chars_per_file + 1)
-        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
+        text = KEY_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
         truncated = len(raw) > chars_per_file or len(text) > chars_per_file
         captured = datetime.now(timezone.utc).isoformat()
         items.append({"role": "project-file", "source": "file:" + name, "file": name,
@@ -550,7 +550,7 @@ SCRUBBED = "[secret-shaped text removed by co rem]"
 
 def _mention_excerpt(text: str, pattern: re.Pattern, chars: int) -> tuple[int, str]:
     """Keep the lines around a client's name, rather than sending their whole project file."""
-    text = SECRET_SHAPES.sub(SCRUBBED, text)
+    text = KEY_SHAPES.sub(SCRUBBED, text)
     lines = text.splitlines()
     hits = [(i, len(pattern.findall(line))) for i, line in enumerate(lines) if pattern.search(line)]
     selected = sorted({n for i, _ in hits for n in range(max(0, i - 3), min(len(lines), i + 4))})
@@ -640,7 +640,7 @@ STALE_CHECKOUT_DAYS = 14
 def _git(path: str, *args: str) -> str:
     import subprocess
     try:
-        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, errors="replace", timeout=10)
+        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -851,20 +851,25 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         items.extend(local)
         attached, gone = 0, []
 
+        # A mail deleted or moved since it was listed is that mail's gap, never the page's: one Graph 404 ended
+        # 16 turns in a row on 2026-11-12, and parking the page "until it changes" could last for ever (#3101).
+        # A body REM saved is read from the archive first (_mail_body); otherwise the mail is left out and said.
         def attachment_metadata(message_id: str) -> list[dict]:
-            with _fetch_slot(kind):
-                return read_mail(partial(_patient, client.list_attachments), message_id,
-                                 provider=kind, root=archive_root, operation='attachments')
+            try:
+                with _fetch_slot(kind):
+                    return read_mail(partial(_patient, client.list_attachments), message_id,
+                                     provider=kind, root=archive_root, operation='attachments')
+            except MissingMail:
+                if message_id not in gone:
+                    gone.append(message_id)
+                return []
 
         def fetch_body(message_id: str) -> str | None:
-            # A mail deleted or moved since it was listed is that mail's gap:
-            # one Graph 404 ended 16 turns in a row on 2026-11-12.
             try:
                 return _mail_body(client, message_id, kind=kind, root=archive_root)
             except MissingMail:
-                if archive_root is not None:
-                    raise
-                gone.append(message_id)
+                if message_id not in gone:
+                    gone.append(message_id)
                 return None
 
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
@@ -1412,7 +1417,7 @@ def github_search(query: str) -> list[dict]:
     argv = (["gh", "issue", "view", number, "-R", repo, "--json", GITHUB_FIELDS + ",body"] if number else
             ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "30", "--json",
              GITHUB_FIELDS.replace("createdAt", "createdAt,repository")])
-    run = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    run = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     if run.returncode:
         return [{"role": "search-failure", "source": "", "query": query, "text": f"gh: {run.stderr.strip()[:300]}"}]
     rows = json.loads(run.stdout or "[]")
@@ -2689,9 +2694,15 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 "text": f"{ask}\n\n{normalize(record, text, owner=sent_only)}",
                 "timestamp": now, "source": "investigation:page"}
 
+    # What the owner did in the day and what he closed on this page (#3174): settled input, not material to cite.
+    from .owner_today import note as owner_note
+    from .threads import closed_note
+    owner_text = "\n\n".join(part for part in (owner_note(root, record), closed_note(root, record)) if part)
     prompt_items = [page_item(notebook.read(record))] + (
         [{"role": "round", "source": "investigation:append", "timestamp": now, "text": append_note(root, last)}]
         if append else []) + (
+        [{"role": "owner-today", "source": "investigation:owner-today", "timestamp": now, "text": owner_text}]
+        if owner_text else []) + (
         [{"role": "own-company", "source": "investigation:own-company", "timestamp": now, "text": company_note}]
         if company_note else []) + ([{"role": "project-repositories", "source": "investigation:project-repositories",
            "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]

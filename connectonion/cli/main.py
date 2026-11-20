@@ -905,7 +905,7 @@ def receive(
 
 @app.command(epilog='Example:  co ai "explain what agent.py does"  |  co ai --port 8000')
 def ai(
-    prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
+    prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits); - reads it from stdin"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: Optional[str] = typer.Option(
         None, "--model", "-m", show_default=DEFAULT_MODEL,
@@ -983,6 +983,9 @@ def ai(
         raise typer.BadParameter("--listen and --no-listen contradict each other")
     channels = [] if no_listen else ([c.strip() for c in listen.split(",") if c.strip()]
                                      if listen else None)
+    if prompt == "-":
+        # A long prompt as argv passes Windows' 32K command-line limit (WinError 206).
+        prompt = sys.stdin.read()
     handle_ai(
         prompt=prompt,
         port=port,
@@ -3119,6 +3122,10 @@ app.add_typer(gcalendar_app, name="gcalendar")
 
 from .commands.synology_cli import syno_app
 app.add_typer(syno_app, name="syno")
+
+# WeChat (#3146): read the owner's own WeChat for Mac history locally, read-only. macOS only.
+from .commands.wechat_commands import wechat_app
+app.add_typer(wechat_app, name="wechat")
 
 # Linear (#2049): our own commands on Linear's GraphQL API, with LINEAR_API_KEY.
 from .commands.linear_commands import linear_app

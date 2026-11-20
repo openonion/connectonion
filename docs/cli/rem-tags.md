@@ -6,6 +6,45 @@ So a stage of its own, `co rem tag`, reads pages and writes their tags from one
 vocabulary; open items inherit their record's tags; the graph gets a node per
 tag; search resolves `tag:9900` through aliases.
 
+Names: 知识图谱 / knowledge graph for the whole, 页面 / page for its one kind of
+point, 标签 / tag for a word that links pages, 标签页 / tag page for a tag's own
+page. See [rem-naming.md](rem-naming.md) for the principles every REM name
+follows.
+
+## Tags link pages; a shared tag gets a tag page (#3140)
+
+- **Two commands, kind first.**
+  - `co rem tag` tags every page that has no tag; `co rem tag person "X"` tags
+    one page. Each tag that names a person, organisation or project, by title,
+    alias or file name (`tag_nodes.pages_for_tags`), is a link to that page.
+  - `co rem investigate tag "AI Agent"` writes or appends that tag's page,
+    `knowledge/<tag>.md` (or the knowledge entry already named for it), from
+    every page carrying the tag. `co rem investigate tags` does every due tag
+    page.
+  - "topic" and "topics" are aliases (`named_pages.ALIASES`).
+- **Which tags get a page:** only tags shared by `limits.topic_min_pages` (2) or
+  more pages and named for no page. A tag on one page stays a plain link.
+- **How it is written:** the level-1 model (`STAGE_LEVELS["tag-node"]`) reads
+  the head of each member page and its lines naming the tag (at most 40
+  members, 1,200 characters each).
+  - Every line cites a number from one source table, so a line traces to the
+    member's own source.
+  - Code owns the Tags line, the `## Pages` member list, the `Investigation:`
+    stamp and the Sources.
+  - A reply with no title, no cited line, or a number it was not given is
+    refused. A cited line the page had is kept (#3105).
+- **Undo:** `page_versions.keep_previous` makes the investigate Undo work.
+- **Due:** `.state/tag-nodes.json` holds each tag's member hash. A tag page is
+  due when it is unwritten or its pages changed.
+- **Night:** each catchup round writes up to `limits.tag_nodes_per_round` (6)
+  due tag pages after its tag turns.
+- **Reader:**
+  - `data.tags[slug].page` is the page a tag links to; a chip opens it.
+  - The graph draws pages only. A tag adds edges between its pages and the page
+    it links to (`reader_model.tag_layer`).
+  - A tag page gets the 调查 (Investigate) button (`page_runs.KINDS` includes
+    `knowledge/` for tag pages).
+
 ## What exists where
 
 | Piece | Where | Status |
@@ -19,8 +58,8 @@ tag; search resolves `tag:9900` through aliases.
 | `Tag:` line in `co rem status` | `stages.py` | built |
 | Tags on open items (`today_queue[].tags`) | `today.py` | built |
 | Tag nodes and edges (`graph.tags`) | `reader_model.py` | built |
-| Chips, tag pages, `tag:` in search, graph drawing | `reader.html` | **not built**: the reader branch, on the contract below |
-| Tags on decisions, knowledge, principles | Abstract | **not built**: owned by Abstract, format below |
+| Tag pages (`#q=tag:SLUG`), `tag:` and a word that is a tag in search, tag rows on person pages, tag chips on every list (`&tag=`), tag chips and close-all in the open items, tag nodes and a Tags tab in the graph | `reader.html` (`tagPage`, `tagBar`, `listRows`, `openTags`, `graphModel`) | built (rc31) |
+| Tags on decisions, knowledge, principles and skills | the tag stage (`TAGGED_KINDS`), the line under the title (`with_tags`) | built (rc31) |
 
 ## Data
 
@@ -90,7 +129,8 @@ person's page name.
 ## The stage: `co rem tag`
 
 - **Reads pages, never sources** (like `rem-abstract`). Pages are people,
-  organisations and projects with a `## Facts` section.
+  organisations and projects with a `## Facts` section, and (rc31) decisions,
+  knowledge, principles and skills, whose line sits directly under the title.
 - **Waiting** = a written page (not a stub the map made alone, `census.written`) whose text, without its Tags line, has a different hash
   from the one saved in `.state/tag-pages.json` when it was last tagged. So a
   page that was never tagged waits, and a page investigation or deepen changed
@@ -164,15 +204,15 @@ Every field is new; the current reader ignores all of them.
   `tags.resolve(vocabulary, "tag:comp9900") == "9900"` and
   `tags.matching(records, vocabulary, "tag:9900")` lists the records.
 
-## Decisions, knowledge and principles: owned by Abstract
+## Decisions, knowledge, principles and skills
 
-These pages have no `## Facts`, so `co rem tag` does not read them. Abstract
-writes them and owns their tags: one line directly under the title, the same
-grammar, each tag cited from the page's own sources:
+These pages have no `## Facts`. Since rc31 the tag stage reads them too and
+writes one line directly under the title, the same grammar, each tag cited from
+the page's own sources:
 
     # Keep one vocabulary for every kind
 
     - Tags: rem [2], reader-ui [2]
 
-`tags.page_tags` already reads such a line anywhere on a page; `with_tags`
-would need a second insertion point (under the title) before Abstract can use it.
+`with_tags` puts the line there when a page has no Facts, and moves or removes
+it there on a later run; `only_tags_changed` holds as for any page.

@@ -1844,7 +1844,7 @@ def test_boot_time_reads_the_platform_source(monkeypatch, platform):
             return CompletedProcess(args, 0, f"{{ sec = {seconds}, usec = 123 }} Fri Nov 6 10:00:00 2026\n")
         monkeypatch.setattr(service.subprocess, "run", sysctl)
     else:
-        def proc_stat(path):
+        def proc_stat(path, **kwargs):
             assert str(path) == "/proc/stat"
             return f"cpu 1 2 3 4\nbtime {seconds}\nprocesses 900\n"
         monkeypatch.setattr(service.Path, "is_file", lambda path: str(path) == "/proc/stat")
@@ -1876,7 +1876,7 @@ def test_boot_time_missing_from_platform_output_is_unknown(monkeypatch, platform
     monkeypatch.setattr(service.subprocess, "run", lambda *a, **kw: CompletedProcess(a, 1, ""))
     monkeypatch.setattr(service.shutil, "which", lambda name: "/usr/sbin/sysctl")
     monkeypatch.setattr(service.Path, "is_file", lambda path: True)
-    monkeypatch.setattr(service.Path, "read_text", lambda *a: "cpu 1 2 3 4\n")
+    monkeypatch.setattr(service.Path, "read_text", lambda *a, **k: "cpu 1 2 3 4\n")
     assert service._boot_time() is None
 
 

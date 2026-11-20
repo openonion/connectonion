@@ -96,6 +96,8 @@ second spelling for it.
 For every tag give `evidence`: a short span copied **character for character**
 from that page that supports it, normally a Facts line or one sentence. Code
 checks that the span is on the page; a tag whose span is not found is dropped.
+A decision, knowledge, principle or skill page has no Facts: tag it by the
+topics, projects, courses and organisations its own sentences name, never a role.
 
 For `course`, `team`, `organisation`, `project` and `place` tags the span must
 contain the name itself (the course number or code, the team, the

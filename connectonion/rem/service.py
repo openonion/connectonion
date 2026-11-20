@@ -311,10 +311,10 @@ def seen_outcome(record: dict) -> str:
 def _boot_time() -> datetime | None:
     """The last boot in UTC, when the platform makes it available cheaply; None leaves live PIDs trusted."""
     if sys.platform == "darwin" and shutil.which("sysctl"):
-        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True)
+        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         match = re.search(r"\bsec = (\d+)", result.stdout) if result.returncode == 0 else None
     elif sys.platform.startswith("linux") and Path("/proc/stat").is_file():
-        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(), re.M)
+        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(encoding="utf-8"), re.M)
     else:
         return None
     return datetime.fromtimestamp(int(match[1]), timezone.utc) if match else None
@@ -719,6 +719,17 @@ def round_state(root: Path, config: dict) -> dict | None:
     return {"state": "stuck", "since": touched, "reason": " ".join(str(reason).split())[:240]}
 
 
+def _accepted(turn: dict) -> int:
+    """How many submissions a turn had accepted: its receipt's count, or (older receipts) its log's."""
+    if 'accepted' in turn:
+        return int(turn['accepted'] or 0)
+    log = Path(turn.get('log') or '')
+    if not turn.get('log') or not log.is_file():
+        return 0
+    return sum(1 for line in log.read_text(encoding='utf-8', errors='replace').splitlines()
+               if '"rem.submitted"' in line and '"accepted"' in line)
+
+
 def schedule_failure(root: Path) -> dict | None:
     """Surface failed turns from their receipts, without inventing scheduler state."""
     receipts = [read_json(path, {}) for path in state_path(root, 'turns').glob('*.json')]
@@ -735,7 +746,9 @@ def schedule_failure(root: Path) -> dict | None:
     for turn in reversed(receipts):
         if turn.get('result') == 'skipped':
             continue
-        if turn.get('result') not in ('failed', 'timed-out'):
+        # A turn that hit the 3-hour cap after accepting work is a normal turn: the next fire continues
+        # the round. Only a turn that errored, or ran out of time with nothing accepted, is a failure.
+        if turn.get('result') not in ('failed', 'timed-out') or (turn.get('result') == 'timed-out' and _accepted(turn)):
             break
         failures.append(turn)
     if not blocked and not failures:
@@ -744,7 +757,35 @@ def schedule_failure(root: Path) -> dict | None:
     return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence,
             # `empty`: how many of them exited 0 with no task served and nothing submitted.
             **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
-                'empty': sum(bool(turn.get('produced_nothing')) for turn in failures)} if failures else {})}
+                'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
+                'code_error': _code_error_streak(failures)} if failures else {})}
+
+
+# A bug in REM's own code, not the weather: retrying the same turn meets the same line again (rc35–rc36: six turns
+# died on one AttributeError while Today said "REM retries by itself; nothing is needed from you"). Older receipts
+# carry only the message, so the messages Python itself writes for these classes are recognised too.
+CODE_ERRORS = {'AttributeError', 'TypeError', 'NameError', 'KeyError', 'IndexError', 'UnboundLocalError',
+               'AssertionError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'RecursionError'}
+CODE_ERROR_WORDS = re.compile(r"object has no attribute|is not subscriptable|object is not iterable|is not callable"
+                              r"|unexpected keyword argument|required positional argument|unsupported operand"
+                              r"|index out of range|can only concatenate|referenced before assignment|is not defined")
+
+
+def _code_error(turn: dict) -> bool:
+    return turn.get('error_class') in CODE_ERRORS or bool(CODE_ERROR_WORDS.search(turn.get('reason') or ''))
+
+
+def _code_error_streak(failures: list[dict]) -> int:
+    """How many of the newest failures died on one and the same code error (newest first)."""
+    if not failures or not _code_error(failures[0]):
+        return 0
+    same = failures[0].get('reason')
+    return next((index for index, turn in enumerate(failures) if turn.get('reason') != same or not _code_error(turn)), len(failures))
+
+
+def _unmatched_marks(root: Path) -> int:
+    from .threads import unmatched_marks
+    return unmatched_marks(root)
 
 
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
@@ -797,6 +838,8 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
             "paused": paused(root),
             "nights": _nights(root),
             **({"schedule_failure": failure} if (failure := schedule_failure(root)) else {}),
+            # Closed items whose line the page no longer has in any form (#3174): counted, never dropped.
+            **({"closed_unmatched": unmatched} if (unmatched := _unmatched_marks(root)) else {}),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),

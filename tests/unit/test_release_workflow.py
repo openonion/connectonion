@@ -392,4 +392,5 @@ def test_a_version_only_pr_skips_the_matrix_and_tests_passed_says_so():
                  "windows-e2e", "macos-e2e"]:
         assert jobs[name]["needs"] == "scope" and jobs[name]["if"] == skip, name
     assert "scope" in jobs["tests-passed"]["needs"]
-    assert "pull_request" in str(jobs["scope"]["steps"])  # pushes always run everything
+    steps = str(jobs["scope"]["steps"])
+    assert "pull_request" in steps and "refs/heads/release/*" in steps  # main and workflow_call run everything

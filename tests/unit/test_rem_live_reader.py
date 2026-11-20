@@ -36,10 +36,12 @@ def host(tmp_path):
 
 
 def call(routes, method, path, *, query=b"", cookie="", body=b"", client="127.0.0.1",
-         host_header="127.0.0.1:8123", content_type="application/json"):
+         host_header="127.0.0.1:8123", content_type="application/json", language=""):
     headers = [[b"host", host_header.encode()], [b"content-type", content_type.encode()]]
     if cookie:
         headers.append([b"cookie", cookie.encode()])
+    if language:
+        headers.append([b"accept-language", language.encode()])
     scope = {"type": "http", "method": method, "path": path, "query_string": query,
              "headers": headers, "client": (client, 50000)}
     sent = []
@@ -73,8 +75,36 @@ def test_the_token_is_traded_for_a_strict_cookie_and_leaves_the_address_bar(host
 ])
 def test_without_the_owner_token_nothing_is_read(host, kwargs):
     status, _, body = call(host.routes, "GET", "/rem", **kwargs)
-    # D-60: the Host's own 401 page names no command either; it has no language, so English.
-    assert status == 401 and "Alice" not in body and body == "This page's session has ended. Open REM again from your computer."
+    # D-60: the Host's own 401 page names no command; it is a styled page in the browser's language with one button.
+    assert status == 401 and "Alice" not in body and "co rem" not in body
+    assert body.startswith("<!doctype html>") and "<style>" in body and "Try again</button>" in body
+
+
+def test_the_session_ended_page_speaks_chinese_with_one_reopen_button(host):
+    """Mac review of rc31: every tab died on upgrade into a bare English line in monospace on white."""
+    status, head, body = call(host.routes, "GET", "/rem", cookie="co_rem=wrong", language="zh-CN,zh;q=0.9")
+    assert status == 401 and head["content-type"].startswith("text/html")
+    assert '<html lang="zh">' in body and "会话断开了" in body and body.count("<button") == 1 and "重新打开</button>" in body
+
+
+@pytest.mark.parametrize("others", [
+    'prefs={"theme":"dark"}',          # a JSON value from another app on 127.0.0.1
+    'note=hello world',                # a space
+    'label="unterminated',             # an unbalanced quote
+])
+def test_another_apps_cookie_on_localhost_never_signs_the_reader_out(host, others):
+    """SimpleCookie dropped every cookie when any other cookie on 127.0.0.1 (any port) was malformed, so the
+    reader's own cookie went missing and the open tab answered 401."""
+    status, _, page = call(host.routes, "GET", "/rem", cookie=f"{others}; co_rem={host.token}")
+    assert status == 200 and "Alice Chen" in page
+
+
+def test_the_reader_cookie_outlives_a_browser_restart_and_a_host_restart(host):
+    _, head, _ = call(host.routes, "GET", "/rem", query=b"token=" + host.token.encode())
+    assert "Max-Age=2592000" in head["set-cookie"]
+    # A new Host on the same notebook reads the same token file, so the old tab's cookie still works.
+    status, _, page = call(dict(host.routes), "GET", "/rem", cookie=f"co_rem={host.token}")
+    assert status == 200 and "Alice Chen" in page
 
 
 @pytest.mark.parametrize("kwargs", [

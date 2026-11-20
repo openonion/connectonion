@@ -63,11 +63,11 @@ def test_one_sentence_says_what_the_map_shows_and_it_is_the_key_to_the_shapes(br
     page = open_graph(browser, built)
     says = page.locator(".gx-says")
     assert " ".join(says.inner_text().split()) == (
-        "5 knowledge entries link 110 people, 32 projects and 24 organisations, with 6 skills and decisions. "
+        "5 tag pages link 110 people, 32 projects and 24 organisations, with 6 skills and decisions. "
         f"The busiest is {BUSIEST}, with 19 links.")
     # Each shape stands beside its word and its count, so no mark on the map is a shape alone.
     keys = page.locator(".gx-says .gx-key")
-    assert keys.all_inner_texts() == ["5 knowledge entries", "110 people", "32 projects", "24 organisations", "6 skills and decisions"]
+    assert keys.all_inner_texts() == ["5 tag pages", "110 people", "32 projects", "24 organisations", "6 skills and decisions"]
     assert keys.evaluate_all("keys => keys.every(key => key.querySelector('svg.gx-glyph'))")
     # It was drawn under the fold: the map was as tall as the window but started under the top bar.
     assert js(page, "() => document.documentElement.scrollHeight <= innerHeight"), "the map fits the window; nothing to scroll to"
@@ -86,7 +86,7 @@ def test_one_sentence_says_what_the_map_shows_and_it_is_the_key_to_the_shapes(br
 def test_the_sentence_follows_the_chinese_interface_and_a_translated_title_is_the_label(browser, built):
     page = open_graph(browser, built, language="zh")
     text = page.locator(".gx-says").inner_text()
-    assert "5 条知识" in text and "110 个人" in text and "最忙的是" in text
+    assert "5 个标签页" in text and "110 个人" in text and "最忙的是" in text
     labels = js(page, "() => graphState.labels.map(label => label.text)")
     assert "寒冷山谷里离网奶牛棚的储热" in labels
     assert "寒冷山谷里离网奶牛棚的储热" in page.locator(".gx-panel .gx-item b").all_inner_texts()
@@ -163,7 +163,8 @@ def test_no_saturated_colour_is_spent_on_a_navigation_button(browser, built):
     assert link.get_attribute("href") == "#r=knowledge%2Fheat-storage.md"
     green = js(page, "() => { const probe = document.body.appendChild(document.createElement('i')); probe.style.background = 'var(--green)';"
                      " const colour = getComputedStyle(probe).backgroundColor; probe.remove(); return colour; }")
-    painted = js(page, "() => [...document.querySelectorAll('.gx-map, .gx-map *')].map(node => getComputedStyle(node).backgroundColor)")
+    # The accent is ink now (#3144), and ink also draws the map's marks and labels: what must not wear it is a control.
+    painted = js(page, "() => [...document.querySelectorAll('.gx-map :is(a, button, [role=button]), .gx-panel .gx-open')].map(node => getComputedStyle(node).backgroundColor)")
     assert green not in painted
     page.close()
 

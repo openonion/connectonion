@@ -183,7 +183,10 @@ def _jobs(root, first, logs, sources, set_aside=None):
                  for row in daily.unfinished_by_recency(root)
                  if not row["path"].startswith("people/") and row["path"] not in queued and row["path"] not in resting]
     from .refusals import due_for_retry, parked_waiting, waiting_for_material
+    from .owner_today import investigated_today
     retries, parked, spent = due_for_retry(root), parked_waiting(root), waiting_for_material(root)
+    owner_ran = investigated_today(root)  # the owner investigated it today: not again tonight (#3174)
+    rows = [row for row in rows if row["record"] not in owner_ran]
     rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked
             and (row["record"] not in spent or _newer(row.get("last_activity"), spent[row["record"]]))]
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
@@ -329,7 +332,7 @@ def shares_in_words(shares, whose="tonight's"):
 
 def _task(handler, task, cursor, *, stage, record="", number=0, operation=""):
     phases = {"sessions": "sessions-summary", "same-person": "same-person", "translate": "daily-translation",
-              "draft": "reply-draft", "tag": "tag"}
+              "draft": "reply-draft", "tag": "tag", "tag-node": "tag"}
     return {"handler": handler, "task": task, "stage": stage, "record": record, "round": number,
             "operation": operation or handler,
             "phase": "sync" if operation == "batch" else phases.get(handler, cursor["phase"])}
@@ -382,7 +385,7 @@ def prepare_task(root, cursor, config, directory):
     if task:
         return task
     if cursor["phase"] == "daily-translation":
-        task = prepare_translation(root, cursor, config, directory)
+        task = prepare_cheap(root, cursor, config, directory)
         if not task:
             finish(root, cursor)
         return task
@@ -428,7 +431,8 @@ def prepare_task(root, cursor, config, directory):
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
-    task = _closing_translation(root, cursor, config, directory) or _closing_tags(root, cursor, config, directory)
+    task = (_closing_translation(root, cursor, config, directory) or _closing_tags(root, cursor, config, directory)
+            or prepare_tag_node(root, cursor, config, directory))
     if task:
         return task
     from .night import listing
@@ -531,12 +535,16 @@ def _between_portions(root, cursor, config, directory):
     `portions` counts the breaks begun; whoever runs whole rounds starts the round's
     one deepen slot once the first has been served (`schedule.early_depth`)."""
     if "between" not in cursor:
-        cursor["between"] = ["sessions", "abstract", "tag"]
+        cursor["between"] = ["sessions", "abstract", "tag", "tag-node"]
         cursor["portions"] = cursor.get("portions", 0) + 1
     while cursor["between"]:
+        name = cursor["between"][0]
         step = {"sessions": _summary_turn, "abstract": prepare_abstract,
-                "tag": prepare_tagging}[cursor["between"].pop(0)]
+                "tag": _tag_turn, "tag-node": prepare_tag_node}[name]
         task = step(root, cursor, config, directory)
+        # Tag takes its share in this break and stays first until the share is spent (`_tag_turn`).
+        if not (task and name == "tag"):
+            cursor["between"].pop(0)
         if task:
             return task
     # Translation's share is sized from its backlog (D-71: "翻译…应该安排的轮次不够多").
@@ -614,12 +622,49 @@ def prepare_translation(root, cursor, config, directory):
     return None
 
 
+def prepare_cheap(root, cursor, config, directory):
+    """While the floor or the daily cap holds investigation: translation, then tags, then tag pages.
+
+    It was translation alone, and the floor held that too: from Friday at 90% the night
+    served nothing until Tuesday, with 142 translations, 226 untagged pages and 56 tag
+    pages waiting (Mac session, 2026-11-20). Each is a turn of a minute or so."""
+    return (prepare_translation(root, cursor, config, directory) or prepare_tagging(root, cursor, config, directory)
+            or prepare_tag_node(root, cursor, config, directory))
+
+
+def cheap_waiting(root):
+    """Whether translation, tagging or a tag page waits: what a held night can still do."""
+    from . import tag_nodes, tag_stage
+    return bool(translations_waiting(root) or tag_stage.candidates(root) or next(iter(tag_nodes.candidates(root)), None))
+
+
 def _closing_tags(root, cursor, config, directory):
     """After the closing translation, tag turns go on until no page waits; `prepare_tagging` holds the bound."""
     task = prepare_tagging(root, cursor, config, directory)
     if task:
         cursor["closing"] = True
     return task
+
+
+def tag_share(root):
+    """Tag turns per break: a quarter of the batches waiting, at least 3, never more than wait.
+
+    It was one turn of 20 pages a break. With four to eight breaks a night, 262 untagged pages
+    (rc34 hunt, #3165: no tag row on 104 decisions and 133 skills) took two nights or more, and a
+    night cut short tagged next to nothing. A tag turn is one cheap (level 1) call."""
+    from . import tag_stage
+    waiting = -(-len(tag_stage.candidates(root)) // tag_stage.BATCH)
+    return min(waiting, max(3, -(-waiting // 4)))
+
+
+def _tag_turn(root, cursor, config, directory):
+    cursor.setdefault("tag_left", tag_share(root))
+    task = prepare_tagging(root, cursor, config, directory) if cursor["tag_left"] > 0 else None
+    if task:
+        cursor["tag_left"] -= 1
+        return task
+    cursor.pop("tag_left")
+    return None
 
 
 def prepare_tagging(root, cursor, config, directory):
@@ -639,6 +684,21 @@ def prepare_tagging(root, cursor, config, directory):
     attempted += records
     task = tag_stage.prepare(root, records, directory=directory, native=True)
     return _task("tag", task, cursor, stage="tag")
+
+
+def prepare_tag_node(root, cursor, config, directory):
+    """The next tag whose tag page waits (#3140; the tag stage's second step), or None: none waits, or the round wrote its
+    `limits.tag_nodes_per_round`. A tag offered once is not offered again in the same round."""
+    from . import tag_nodes
+    attempted = cursor.setdefault("tag_node_attempts", [])
+    if len(attempted) >= config["limits"].get("tag_nodes_per_round", 0):
+        return None
+    slug = next((slug for slug in tag_nodes.candidates(root) if slug not in attempted), None)
+    if not slug:
+        return None
+    attempted.append(slug)
+    task = tag_nodes.prepare(root, slug, directory=directory, native=True)
+    return _task("tag-node", task, cursor, stage="tag-node", record=task["record"])
 
 
 def finish(root, cursor):
@@ -928,6 +988,9 @@ def check_task(root, task, output):
         from . import tag_stage
         plan = tag_stage.check(root, prepared, output)
         return {"changed": tag_stage.promote(root, plan), "tagged": len(plan["pages"]), "refused_tags": plan["refused"]}
+    if handler == "tag-node":
+        from . import tag_nodes
+        return {"changed": tag_nodes.commit(root, prepared, tag_nodes.check(root, prepared, output))}
     if handler == "same-person":
         from . import same_person
         plan = same_person.prepare_verdict(prepared, output)
@@ -935,10 +998,10 @@ def check_task(root, task, output):
     if task.get("pass") == "editing":
         before = prepared.get("draft_before", prepared["before"][task["record"]])
         candidate = Path(prepared["candidate"])
-        if candidate.is_file() and investigate._cut_too_much(before, candidate.read_text()):
+        if candidate.is_file() and investigate._cut_too_much(before, candidate.read_text(encoding="utf-8")):
             raise runner.RunFailed("Editing round cut the lead or a third of the page; fix the candidate")
         if candidate.is_file():
-            candidate.write_text(investigate.keep_editing(before, candidate.read_text()), encoding="utf-8")
+            candidate.write_text(investigate.keep_editing(before, candidate.read_text(encoding="utf-8")), encoding="utf-8")
     if handler == "project":
         result = project_pages.check(prepared, output, lock_held=True, native=True)
     else:
@@ -966,7 +1029,7 @@ def _json_text(value):
 
 
 def _summary_outputs(root, plan):
-    from .project_material import SECRET_SHAPES, REDACTED
+    from .project_material import KEY_SHAPES, REDACTED
     outputs = {state_path(root, "session-tags.json"): [_json_text(plan["tags"])]}
     for entry in plan["entries"]:
         saved, snapshot = entry["saved"], entry["snapshot"]
@@ -975,7 +1038,7 @@ def _summary_outputs(root, plan):
         for message in snapshot["messages"]:
             source = message["source"]
             path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
-            outputs[path] = [_json_text({"source": source, "text": SECRET_SHAPES.sub(REDACTED, message["text"]),
+            outputs[path] = [_json_text({"source": source, "text": KEY_SHAPES.sub(REDACTED, message["text"]),
                 "timestamp": message.get("timestamp") or "", "input_scope": message.get("input_scope") or ""})]
     return outputs
 
@@ -1197,6 +1260,8 @@ def advance(root, cursor, task, result):
             send_direct(root, row["id"])  # only a send=now reply to a partner/close person; 10-minute Undo
     elif operation == "tag":
         cursor["tagged"] = cursor.get("tagged", 0) + result.get("tagged", 0)
+    elif operation == "tag-node":
+        cursor["tag_nodes"] = cursor.get("tag_nodes", 0) + len(result.get("changed", []))
     elif operation == "translate":
         # A page the batch's review refused is set aside for this round like a parked one-page task;
         # the backlog offers it again in the next round.

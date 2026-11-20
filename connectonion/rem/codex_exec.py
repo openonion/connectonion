@@ -86,7 +86,7 @@ def _start_command(root, last):
 
 def _terminate_descendants(pid):
     """Kill deepest children first, including tools that created new sessions."""
-    table = subprocess.run(['ps', '-Ao', 'pid=,ppid='], check=True, capture_output=True, text=True)
+    table = subprocess.run(['ps', '-Ao', 'pid=,ppid='], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
     children = {}
     for row in table.stdout.splitlines():
         child, parent = map(int, row.split())
@@ -145,7 +145,7 @@ def _turn_lock(root):
     lock = state_path(root, 'exec-turn.lock')
     lock.parent.mkdir(parents=True, exist_ok=True)
     import fcntl  # POSIX-only; rem.tasks imports this module and the reader imports rem.tasks
-    with lock.open('a') as held:
+    with lock.open('a', encoding='utf-8') as held:
         try:
             fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -200,7 +200,7 @@ def _reap_orphan_maintenance(root):
     if not turn.get('finished_at') or turn.get('result') not in ('completed', 'failed', 'timed-out'):
         return []
     import fcntl
-    with state_path(root, 'maintenance.lock').open('a') as held:
+    with state_path(root, 'maintenance.lock').open('a', encoding='utf-8') as held:
         locked = True
         with suppress(BlockingIOError):
             fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -208,7 +208,7 @@ def _reap_orphan_maintenance(root):
         if not locked:
             return []
     process = subprocess.run(['ps', '-p', str(pid), '-o', 'ppid=,command='],
-                             capture_output=True, text=True).stdout.strip().split(maxsplit=1)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip().split(maxsplit=1)
     if len(process) != 2 or process[0] != '1':
         return []
     command = process[1]
@@ -240,7 +240,7 @@ def _run_locked(root, run, lock_fd):
             skipped = True
             receipt['reason'] = 'desktop automation fired in the last 10 minutes'
             return 'skipped'
-        with log.open('w') as output:
+        with log.open('w', encoding='utf-8') as output:
             startup = time.monotonic()
             command = _start_command(root, last)
             receipt['started_codex_after_s'] = round(time.monotonic() - startup, 3)
@@ -269,7 +269,8 @@ def _run_locked(root, run, lock_fd):
         # Persist failed or interrupted deepening even after Codex itself exited zero.
         failed = True
         receipt['reason'] = str(error) or type(error).__name__
-        with log.open('a') as output:
+        receipt['error_class'] = type(error).__name__
+        with log.open('a', encoding='utf-8') as output:
             output.write(json.dumps({'type': 'rem.turn_failed', 'error': receipt['reason'],
                                      'traceback': traceback.format_exc()}) + '\n')
         raise
@@ -281,6 +282,11 @@ def _run_locked(root, run, lock_fd):
         if preparation_error and not skipped:
             outcome = 'failed'
             receipt['reason'] = preparation_error
+            # The class lets status tell a bug in REM's code from the weather (service._code_error).
+            if events[-1].get('error_class'):
+                receipt['error_class'] = events[-1]['error_class']
+        # Kept on the receipt so status can tell a capped turn that did work from one that did none.
+        receipt['accepted'] = sum(1 for event in events if event['type'] == 'rem.submitted' and event.get('outcome') == 'accepted')
         nothing = _produced_nothing(events) if outcome == 'completed' else ''
         if nothing:
             # Exit 0 says Codex ended cleanly, not that the turn did anything (11-16:
@@ -293,7 +299,7 @@ def _run_locked(root, run, lock_fd):
         if code == 124 and not preparation_error:
             receipt['reason'] = 'Turn exceeded 3 hours; the next fire continues the round'
         # Only the protocol's terminal busy line is a blocker, never a recovered narrative.
-        message = last.read_text().strip() if last.is_file() else ''
+        message = last.read_text(encoding="utf-8").strip() if last.is_file() else ''
         busy = bool(re.fullmatch(
             r'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid (?:\d+|unknown): '
             r'[^\n]+\. Report this message and end the turn without retrying\.', message))
@@ -325,7 +331,7 @@ def _record(root, event):
         return
     # A separate append stream avoids racing Codex's stdout offset. The launcher
     # copies these events into the turn log after the subprocess has exited.
-    with state_path(root, f"turns/{turn['turn_id']}.preparation.jsonl").open('a') as output:
+    with state_path(root, f"turns/{turn['turn_id']}.preparation.jsonl").open('a', encoding='utf-8') as output:
         output.write(json.dumps({**event, 'at': datetime.now(timezone.utc).isoformat()}) + '\n')
 
 
@@ -333,7 +339,7 @@ def record_preparation(root, error=None, result=None):
     """What one `co rem next` came to: an error, or its outcome (task, done and why)."""
     if error:
         _record(root, {'type': 'rem.preparation_failed', 'error': str(error) or type(error).__name__,
-                       'traceback': ''.join(traceback.format_exception(error))})
+                       'error_class': type(error).__name__, 'traceback': ''.join(traceback.format_exception(error))})
         return
     said = {key: result[key] for key in ('outcome', 'reason') if result and result.get(key)}
     _record(root, {'type': 'rem.prepared', **said})
@@ -353,8 +359,8 @@ def _turn_events(root, receipt):
     path = state_path(root, f"turns/{receipt['turn_id']}.preparation.jsonl")
     if not path.is_file():
         return []
-    text = path.read_text()
-    with Path(receipt['log']).open('a') as output:
+    text = path.read_text(encoding="utf-8")
+    with Path(receipt['log']).open('a', encoding='utf-8') as output:
         output.write(text)
     return [json.loads(line) for line in text.splitlines()]
 

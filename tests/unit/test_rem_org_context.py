@@ -117,4 +117,4 @@ def test_org_prompt_distinguishes_offer_acceptance_from_setup_and_identity():
     text = instructions('investigate', page_kind='org')
     assert 'shared page or display name is a lead, not identity proof' in text
     assert 'accepted credits/tier' in text and 'distinct free-month offer' in text
-    assert 'Do not merge legal entities' in text
+    assert 'Do not merge separately registered companies' in text

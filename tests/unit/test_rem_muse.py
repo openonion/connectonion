@@ -192,7 +192,7 @@ def test_insight_packet_fetches_only_unresolved_cited_github_sources(notebook, m
                        'comments': [{'body': 'Review before renewal.'}]})
     def run(argv, **options):
         calls.append(argv)
-        assert options == {'capture_output': True, 'text': True, 'timeout': 60}
+        assert options == {'capture_output': True, 'text': True, 'encoding': 'utf-8', 'errors': 'replace', 'timeout': 60}
         return SimpleNamespace(returncode=int(fallback and argv[1] == 'issue'), stdout=body)
     monkeypatch.setattr(insight_critic.subprocess, 'run', run)
     packet = insight_critic.critic_packet(notebook, candidate, RECORD,
@@ -655,7 +655,7 @@ def project(notebook, monkeypatch):
     def run(argv, **kw):
         calls.append(argv)
         timeout = 600 if argv[:1] == ["gh"] and argv[1] != "search" else 120
-        assert kw == {"capture_output": True, "text": True, "timeout": timeout}
+        assert kw == {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace", "timeout": timeout}
         if argv[0] == "gh":
             if argv[1] == "search":
                 return SimpleNamespace(returncode=0, stdout="[]", stderr="")
@@ -1102,7 +1102,7 @@ def test_github_listing_paginates_up_to_5000_with_ten_minute_timeout(monkeypatch
     def run(argv, **kw):
         calls.append(argv)
         assert argv[argv.index("--limit") + 1] == str(feature.GITHUB_LIST_LIMIT) == "5000"
-        assert kw == {"capture_output": True, "text": True, "timeout": 600}
+        assert kw == {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace", "timeout": 600}
         return SimpleNamespace(returncode=0, stdout="[]", stderr="")
 
     monkeypatch.setattr(feature.subprocess, "run", run)
@@ -1162,7 +1162,7 @@ def test_critic_fetches_unresolved_git_originals(notebook, monkeypatch, source, 
 
     def run(argv, **options):
         calls.append(argv)
-        assert options == {'capture_output': True, 'text': True, 'timeout': 60}
+        assert options == {'capture_output': True, 'text': True, 'encoding': 'utf-8', 'errors': 'replace', 'timeout': 60}
         return SimpleNamespace(returncode=0, stdout=body)
 
     monkeypatch.setattr(insight_critic.subprocess, 'run', run)

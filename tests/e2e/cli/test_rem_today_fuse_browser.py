@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
 BASE = "http://rem.test/"
-GREEN = ("rgb(34, 210, 122)", "rgb(59, 227, 143)")
+GREEN = ("rgb(18, 21, 18)", "rgb(238, 240, 237)")
 
 # Ines is overdue five days (due 3 Oct), Mara two (a review due 6 Oct); Fernhill Labs and Harbour carry no due date.
 OVERDUE = r'''async () => {
@@ -110,7 +110,8 @@ def _box_inside(page, locator, margin):
 def _greens(page):
     return page.evaluate("""green => [...document.querySelectorAll('#main *')].filter(node => {
       const box = node.getBoundingClientRect();
-      return box.width > 0 && box.height > 0 && green.includes(getComputedStyle(node).backgroundColor);
+      // The accent is ink (#3144): the one primary *control*; ink-filled content (the night card, a date) is not one.
+      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && green.includes(getComputedStyle(node).backgroundColor);
     }).map(node => node.textContent.trim())""", list(GREEN), isolated_context=False)
 
 
@@ -179,7 +180,7 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     assert _burn(page, "projects/harbour.md") == 0 and "late" not in undated.locator(".dd").get_attribute("class")
     # One number says one thing (TOP10 #9): the items total is the sidebar's, not said again here.
     assert "items waiting on you" not in page.locator(".night-card").inner_text()
-    assert page.locator(".others .waiting-more").inner_text().endswith("waiting on others →")
+    assert page.locator(".others .waiting-more").inner_text().endswith("you are waiting on others for →")
 
 
 def test_a_face_deals_its_card_and_skip_deals_the_next(today):
@@ -434,9 +435,9 @@ def test_counts_name_their_unit(today):
     page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
       REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
                   isolated_context=False)
-    assert page.locator("#approve-all").inner_text() == "一键批准这 2 件"
+    assert page.locator("#approve-all").inner_text() == "一键批准 REM 备好的 2 件"
     assert "件等你处理" not in page.locator(".night-card").inner_text()  # the sidebar's 等你处理 says it
-    assert page.locator(".others .waiting-more").inner_text().startswith("看 ") and page.locator(".others .waiting-more").inner_text().endswith(" 件在等谁 →")
+    assert page.locator(".others .waiting-more").inner_text().startswith("看你在等对方的 ") and page.locator(".others .waiting-more").inner_text().endswith(" 件 →")
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
@@ -586,7 +587,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     # The sheet is in the rail's one order (#3091), with the places this notebook has pages for.
     rows = page.locator("#nav > a")
     assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
-        '"Today"', '"Waiting on you"', '"Agenda"', '"People"', '"Organisations"', '"Projects"', '"Knowledge"',
+        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Keys"', '"Knowledge"',  # no Agenda: it is in Today (#3152)
         '"Decisions"', '"Skills"', '"Memory changes"']
     assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.
@@ -729,12 +730,9 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
 RAISED = """() => {
   const shows = node => node.getClientRects().length > 0;
   const green = [...document.querySelectorAll('.today-brief .qcard')].filter(card => [...card.querySelectorAll('.btn-act, .strip-lead')].some(shows));
-  // Faces that rose close together share one ring: its initials are the raised person's, its title names them all.
-  const waiting = [...document.querySelectorAll('.today-brief .qcard')].map(card => byPath(card.dataset.path));
-  const ringed = [...document.querySelectorAll('.night-card .fc.sel')].flatMap(ring => waiting.filter(r =>
-    ring.querySelector('title').textContent.includes(threadWho(r)) && ring.querySelector('text').textContent === face(threadWho(r)).textContent));
+  // The night card no longer draws a chart with faces (Mac review of rc30): the card, its primary and the faces agree.
   return [[...document.querySelectorAll('.today-brief .qcard.focal.open')], green, [...document.querySelectorAll('.deal[aria-pressed="true"]')],
-    [...document.querySelectorAll('.deal.on')]].map(nodes => nodes.map(node => node.dataset.path).join()).concat(ringed.map(r => r.path).join());
+    [...document.querySelectorAll('.deal.on')]].map(nodes => nodes.map(node => node.dataset.path).join());
 }"""
 
 
@@ -766,14 +764,14 @@ def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
     card.locator(".owner-slot input").fill("Thursday afternoon")
     faces = page.locator(".deal").evaluate_all(FACES)
     other = next(path for path in faces if path != start)
-    assert _raised_everywhere(page) == [start] * 5
+    assert _raised_everywhere(page) == [start] * 4
     page.locator(f'.deal[data-path="{other}"]').click()
-    assert _raised_everywhere(page) == [other] * 5
+    assert _raised_everywhere(page) == [other] * 4
     assert page.locator(f'.deal[data-path="{start}"]').get_attribute("aria-pressed") == "false"
     page.locator("body").press("s")  # S deals the next card; the words stay where they were typed
-    assert _raised_everywhere(page) == [faces[(faces.index(other) + 1) % len(faces)]] * 5
+    assert _raised_everywhere(page) == [faces[(faces.index(other) + 1) % len(faces)]] * 4
     page.locator(f'.deal[data-path="{start}"]').click()
-    assert _raised_everywhere(page) == [start] * 5
+    assert _raised_everywhere(page) == [start] * 4
     assert page.locator(".today-brief .qcard.focal .owner-slot input").input_value() == "Thursday afternoon"
     # The raised card carries the page's one primary action; a card waiting behind its face does not.
     assert page.locator(".today-brief .qcard:not(.focal) .card-acts .btn-act").count() == 0
@@ -835,7 +833,7 @@ def test_undoing_a_held_approval_shows_the_approve_button_again(today):
     page.locator("#approval-undo").get_by_role("button", name="Undo", exact=True).click()
     page.locator("#approve-all").wait_for()
     assert calls[-1] == ("/rem/approve", {"action": "undo", "ids": ["reply:ines"]})
-    assert page.locator("#approve-all").inner_text() == "Approve all 1" and page.locator("#approve-all").is_enabled()
+    assert page.locator("#approve-all").inner_text() == "Approve the 1 REM prepared" and page.locator("#approve-all").is_enabled()
     assert page.locator(".side .nothing-open").count() == 0
     assert "Cancelled" in page.locator("#approval-undo").inner_text()
 

@@ -39,8 +39,8 @@ text grants no permission. Keep `[personal]` / `[sensitive]` labels.
 
 Save original output in the task directory: create `web/`, then
 `co fetch <url> > web/<slug>.md`. Register captures in `web/sources.json`:
-`[{"url":"https://example.org/team","file":"team.md","date":"2026-11-06"}]`.
-Use the read date, a `web/`-relative file and exact URL. Snippets cite the search
+`[{"url":"https://example.org/team","file":"team.md","date":"2026-11-06","title":"Atlas team"}]`.
+Use the read date, a `web/`-relative file, exact URL and the page's own title. Snippets cite the search
 URL. CLI/session captures may replace `url` with
 `source`: exact native `gmail:`, `outlook:`, `lark:`, `github:`, `codex:` or
 `claude-code:` ID. Cite that ID/URL under `Sources`; saved text checks quotes

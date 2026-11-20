@@ -41,7 +41,7 @@ def test_org_stage_has_no_today_projection():
     result = run_js(['orgStage'], DOM + r'''
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
       const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
-      const orgOpening = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count', investigateControl = () => null;
+      const orgOpening = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count', investigateControl = () => null, recordActs = () => null;
       console.log(JSON.stringify(orgStage({r: {}, people: []})));
     ''')
     assert 'Today count' not in str(result)
@@ -90,7 +90,7 @@ def test_org_opening_says_summary_contacts_and_dates_as_sentences(language):
 def test_org_article_stage_has_no_state_only_elements():
     result = run_js(['orgStage'], DOM + r'''
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
-      const orgOpening = () => 'Opening sentences', orgTree = () => 'tree', translationLine = () => null, investigateControl = () => null;
+      const orgOpening = () => 'Opening sentences', orgTree = () => 'tree', translationLine = () => null, investigateControl = () => null, recordActs = () => null;
       const updatedMarker = () => ({class: 'updated-label'}), orgSub = () => [], orgFacts = () => 'facts';
       const orgKeyPeople = () => null, orgTodayLink = () => null, orgXray = () => null;
       console.log(JSON.stringify(orgStage({r: {}, people: []})));
@@ -186,10 +186,9 @@ def test_org_facts_have_individual_labels_and_a_clickable_website():
       const orgTableT = x => x, plainLine = x => x, orgProse = x => x, href = () => '#record';
       console.log(JSON.stringify({coda: orgCoda({r:{},people:[]}), header: orgOver({})}));
     ''')
-    header_link = result['header']['children'][1]
+    # #3131 one header: View sources lives in the shared action slot (recordActs), not floating in the org header.
+    assert result['header']['children'] == ['breadcrumb']
     memory_link = result['coda']['children'][1]
-    assert header_link['text'] == 'View sources →'
-    assert header_link['href'] == '#record&h=sources'
     assert memory_link['text'] == 'Read full memory →'
     assert memory_link['href'] == '#record&h=full-memory-heading'
     facts = result['coda']['children'][0]

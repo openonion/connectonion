@@ -21,10 +21,12 @@ CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisa
               ("sessions", "Agent sessions"))
 
 
-def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
+def dashboard(root, value: dict, spell, *, verbose: bool = False, show_private: bool = False) -> str:
     """The status result as markup (the plain text is the same markup read without its styles).
 
     `spell` turns arguments into the command as this user types it (`_next`).
+    The notebook's own words (the calendar, the day plan, a turn's reason) are a glance: sensitive passages
+    hidden and links shortened to their host, unless `show_private` (rem_look.glance).
     A notebook consolidates overnight, so after the title it says what happened
     today before what it holds (1.9.0a9); every value starts at one column.
     """
@@ -32,10 +34,11 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     from ...rem.migrate import program
     found = pages(Path(root))
     counts = notebook(root, found)
-    lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found), *_today(root, value), "",
+    seen = (lambda text: text) if show_private else rem_look.glance
+    lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found, value), *_today(root, value), "",
              *(highlight(part) for row in value.get('stages', []) for part in _clause_rows(row['text'])), "",
-             *([highlight(value['calendar']['text']), ""] if value.get('calendar') else []),
-             *([highlight(value['day_plan']['text']), ""] if value.get('day_plan') else []),
+             *([highlight(seen(value['calendar']['text'])), ""] if value.get('calendar') else []),
+             *([highlight(seen(value['day_plan']['text'])), ""] if value.get('day_plan') else []),
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):
@@ -49,7 +52,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
         if turn.get('started_codex_after_s') is not None:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
         if turn.get('reason'):
-            lines += [rem_look.follow(highlight(turn['reason']), glyph='')]
+            lines += [rem_look.follow(highlight(seen(turn['reason'])), glyph='')]
             if turn['result'] == 'failed' and not turn.get('produced_nothing'):
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
@@ -57,7 +60,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     lines += [*_round(value), *_tonight(value), *_nights(value), *_budget(root, value, verbose), *_last_runs(root), *_parked(root)]
     if verbose:
         from .rem_output import _lines
-        lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
+        lines += ["", style.label("Details"), *(highlight(seen(line)) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
 
 
@@ -77,9 +80,15 @@ def _paused(root, value, spell):
     since = datetime.fromisoformat(found['since']).astimezone(zone)
     resets = (f"until the week resets {datetime.fromtimestamp(found['resets_at'], zone):%a %d %b %H:%M}"
               if found.get('resets_at') else "until the Codex week resets")
-    return [rem_look.section('Codex week', style.warn(f"Paused since {since:%a %d %b %H:%M}")),
-            rem_look.follow(highlight(f"This week's Codex allowance is {found['used_percent']}% used, at the "
-                                      f"{found['floor']}% floor kept for your own work."), glyph=''),
+    # Past the floor translation and tagging go on to the ceiling (#3195): the head says which stopped.
+    from ...rem.quota import cheap_go_on
+    day = f" until {datetime.fromtimestamp(found['resets_at'], zone):%a}" if found.get('resets_at') else " until the week resets"
+    held = ("investigation paused" + day + "; translation and tagging continue" if cheap_go_on(found)
+            else "investigation, translation and tagging paused" + day)
+    return [rem_look.section('Codex week', style.warn(f"Codex week at {found['used_percent']}%: {held}.")),
+            rem_look.follow(highlight(f"Paused since {since:%a %d %b %H:%M}, at the {found['floor']}% floor kept for your "
+                                      "own work" + (f"; translation and tagging stop at {found['ceiling']}%"
+                                                    if "ceiling" in found else "") + "."), glyph=''),
             rem_look.follow(highlight(f"No investigation runs {resets}; mail is still read."), glyph=''),
             rem_look.follow(style.muted("To let REM work before then, raise the floor: ")
                             + style.command(spell(['config', 'set', 'limits.quota_floor_percent', 'PERCENT']))), '']
@@ -124,12 +133,15 @@ def _tonight(value):
             *(rem_look.follow(highlight(f"{row['title']}: {row['text']} — {row['reason']}"), glyph='') for row in night['unprepared']), '']
 
 
-def _waiting(root, found: dict) -> list[str]:
+def _waiting(root, found: dict, value: dict | None = None) -> list[str]:
     """What needs the owner, first: the open threads waiting on them, counted as the reader's home counts them."""
     from ...rem.census import open_threads
     found = open_threads(Path(root), found)
+    unmatched = (value or {}).get('closed_unmatched', 0)
+    # A mark kept although its line is gone (#3174): said, so nothing the owner closed is lost quietly.
+    gone = [rem_look.follow(f"{_plural(unmatched, 'closed item')} no longer match a line on their page", glyph='')] if unmatched else []
     return [rem_look.section("Waiting on you", f"{_number(found['mine'])} of {_plural(found['open'], 'open thread')}"),
-            ""]
+            *gone, ""]
 
 
 def _budget(root, value: dict, verbose: bool) -> list[str]:

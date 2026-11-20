@@ -24,7 +24,8 @@ pytestmark = pytest.mark.skipif(
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "fixtures"))
 
 # #3091: one ordered list; Decisions and Principles follow Knowledge, Memory changes is last.
-RAIL = ["#", "#view=open", "#c=agenda", "#c=people", "#c=orgs", "#c=projects", "#c=knowledge", "#c=decisions", "#c=principles",
+RAIL = ["#", "#view=open", "#c=people",  # no Agenda: the calendar is in Today (#3152)
+        "#c=orgs", "#c=projects", "#c=keys", "#c=knowledge", "#c=decisions", "#c=principles",
         "#c=skills", "#view=changes"]
 
 
@@ -101,15 +102,15 @@ def test_the_rails_knowledge_opens_on_the_graph_with_entries_second(browser, bui
     page.locator(".gx-map canvas").wait_for()
     assert page.locator(".gx-topics").count() == 0
     switch = page.locator(".knowledge-switch")
-    assert switch.locator("a").all_inner_texts() == ["Graph", "Entries"]
-    assert switch.locator('a[aria-current="page"]').all_inner_texts() == ["Graph"]
+    assert switch.locator("a").all_inner_texts() == ["Knowledge graph", "Tag pages"]
+    assert switch.locator('a[aria-current="page"]').all_inner_texts() == ["Knowledge graph"]
     assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
     assert page.title() == "Knowledge · co rem"
     # Entries is one tap away, and its address names it: reloading that address stays on the entries.
-    switch.get_by_role("link", name="Entries").click()
+    switch.get_by_role("link", name="Tag pages").click()
     page.locator(".gx-topics .gx-rows li").first.wait_for()
     assert page.evaluate("location.hash") == "#c=knowledge&view=entries"
-    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Entries"]
+    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Tag pages"]
     assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
     assert page.title() == "Knowledge · co rem"
     page.reload()
@@ -136,8 +137,8 @@ def test_with_nothing_linked_knowledge_shows_the_entries(browser, tmp_path, widt
     page.locator(".gx-topics .gx-rows li").first.wait_for()
     assert page.locator(".gx-map").count() == 0
     assert page.locator(".gx-rows li b").all_inner_texts() == ["Tide tables"]
-    assert page.locator(".knowledge-switch a").all_inner_texts() == ["Graph", "Entries"]
-    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Entries"]
+    assert page.locator(".knowledge-switch a").all_inner_texts() == ["Knowledge graph", "Tag pages"]
+    assert page.locator('.knowledge-switch a[aria-current="page"]').all_inner_texts() == ["Tag pages"]
     go(page, "#view=graph")
     page.locator(".gx-topics .gx-rows li").first.wait_for()
     assert not page.errors, page.errors
@@ -161,14 +162,14 @@ def test_knowledge_holds_its_entries_and_the_graph_that_all_records_drew(browser
     # A sparse wiki offers the existing linked records without inventing more topics.
     assert page.locator('.gx-topics > .gx-quiet-line a[href="#view=graph"]').inner_text() == "Explore linked records →"
     switch = page.locator(".knowledge-switch")
-    assert switch.locator("a").all_inner_texts() == ["Graph", "Entries"]
-    assert switch.locator('a[aria-current="page"]').inner_text() == "Entries"
-    switch.get_by_role("link", name="Graph").click()
+    assert switch.locator("a").all_inner_texts() == ["Knowledge graph", "Tag pages"]
+    assert switch.locator('a[aria-current="page"]').inner_text() == "Tag pages"
+    switch.get_by_role("link", name="Knowledge graph").click()
     page.locator(".gx-map canvas").wait_for()
     assert page.evaluate("location.hash") == "#view=graph"
     assert page.locator("#nav a.active").get_attribute("href") == "#c=knowledge"
     assert page.title() == "Knowledge · co rem"
-    assert page.locator('.knowledge-switch a[aria-current="page"]').inner_text() == "Graph"
+    assert page.locator('.knowledge-switch a[aria-current="page"]').inner_text() == "Knowledge graph"
     # The old All records address is a bookmark someone kept: it opens the same graph, under Knowledge.
     go(page, "#c=all")
     page.locator(".gx-map canvas").wait_for()
@@ -184,7 +185,7 @@ def test_knowledge_holds_its_entries_and_the_graph_that_all_records_drew(browser
 def test_what_only_all_records_reached_is_reachable_from_knowledge_or_search(browser, built):
     page = open_page(browser, built)
     labels = page.evaluate("paletteItems().map(item => item.label)", isolated_context=False)
-    assert "Open Graph" in labels and "Open Knowledge" in labels and "Open All records" not in labels
+    assert "Open Knowledge graph" in labels and "Open Knowledge" in labels and "Open All records" not in labels
     # The All records list was every listed record; each one still sits in a rail place (or under 更多 in a low window).
     unplaced = page.evaluate("""() => {
       const places = new Set([...document.querySelectorAll('#nav a[href^="#c="], #rail-more a[href^="#c="]')].map(a => a.getAttribute('href').slice(3)));
