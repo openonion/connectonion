@@ -19,6 +19,10 @@ class HostServiceError(ValueError):
     """Actionable lifecycle failure, without launchctl environment/log contents."""
 
 
+class HostServiceUnavailable(HostServiceError):
+    """This machine has no user service manager to keep a Host running; `co init` skips the step."""
+
+
 class HostService:
     def __init__(self, project: Path, *, home: Path | None = None,
                  runner=subprocess.run, uid: int | None = None,
@@ -493,7 +497,21 @@ def host_service(project: Path, **options):
     if sys.platform == 'darwin':
         return HostService(project, **options)
     if sys.platform.startswith('linux') and shutil.which('systemctl'):
+        if not _user_systemd_ready():
+            raise HostServiceUnavailable('A background Host needs a systemd user session, and systemctl --user is not '
+                                         'reachable here (a container, CI, or SSH without linger). '
+                                         'Next: co host --serve, to run it in this terminal')
         return SystemdHostService(project, **options)
     if sys.platform == 'win32':
         return ScheduledTaskHostService(project, **options)
-    raise HostServiceError('A background Host needs macOS or Linux with systemd, or Windows. Next: co host --serve, to run it in this terminal')
+    raise HostServiceUnavailable('A background Host needs macOS or Linux with systemd, or Windows. Next: co host --serve, to run it in this terminal')
+
+
+def _user_systemd_ready() -> bool:
+    """Whether this login has a systemd user manager to talk to; the binary alone is not enough."""
+    try:
+        result = subprocess.run(['systemctl', '--user', 'show-environment'], stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
