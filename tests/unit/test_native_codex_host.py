@@ -74,13 +74,34 @@ def test_claude_code_host_resumes_its_own_session_without_an_outer_model(tmp_pat
     assert not any(item.get('type') == 'llm_call' for item in agent.current_session['trace'])
 
 
-@pytest.mark.parametrize('result', [[], {'status': 'error', 'error': 'not logged in'},
+@pytest.mark.parametrize('result', [[], {'status': 'error', 'error': 'rate limited'},
                                     {'status': 'completed', 'result': ''}, {'status': 'completed'}])
 def test_claude_code_host_refuses_a_partial_or_failed_answer(tmp_path, monkeypatch, result):
     from connectonion.cli.co_ai.native_host import NativeClaudeHostAgent
     monkeypatch.setattr(coding_agents, 'run_co_claude', lambda **kwargs: json.dumps(result))
     agent = NativeClaudeHostAgent(tmp_path, co_dir=tmp_path/'.co')
     with pytest.raises(RuntimeError):
+        agent.input('Question')
+
+
+def test_claude_code_host_says_plainly_when_claude_is_not_logged_in(tmp_path, monkeypatch):
+    """#3215: the provider already reports the login problem; the reply must carry it."""
+    from connectonion.cli.co_ai.native_host import NativeClaudeHostAgent
+    envelope = {'session_id': '', 'status': 'error', 'exit_code': 1, 'result': 'Not logged in · Please run /login',
+                'error': 'Not logged in · Please run /login Run `claude` once in a terminal to log in, then retry.'}
+    monkeypatch.setattr(coding_agents, 'run_co_claude', lambda **kwargs: json.dumps(envelope))
+    agent = NativeClaudeHostAgent(tmp_path, co_dir=tmp_path/'.co')
+    reply = agent.input('Question')
+    assert 'Claude Code is not logged in' in reply
+    assert 'claude auth login' in reply
+
+
+def test_a_failed_claude_turn_names_the_provider_error(tmp_path, monkeypatch):
+    from connectonion.cli.co_ai.native_host import NativeClaudeHostAgent
+    envelope = {'session_id': '', 'status': 'error', 'exit_code': 1, 'error': 'Claude Code timed out after 600s.'}
+    monkeypatch.setattr(coding_agents, 'run_co_claude', lambda **kwargs: json.dumps(envelope))
+    agent = NativeClaudeHostAgent(tmp_path, co_dir=tmp_path/'.co')
+    with pytest.raises(RuntimeError, match='timed out after 600s'):
         agent.input('Question')
 
 
