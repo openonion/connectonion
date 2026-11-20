@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 from connectonion.cli import mac_bootstrap
 from connectonion.cli import main as cli
 from connectonion.cli.commands import init as init_commands
-from connectonion.cli.host_service import HostServiceError
+from connectonion.cli.host_service import HostServiceError, HostServiceUnavailable
 from connectonion.cli.main import app
 
 
@@ -54,7 +54,7 @@ def test_the_old_background_flag_still_works_and_does_the_same(quiet_global_setu
 
 def test_a_platform_without_a_user_service_is_skipped_not_failed(quiet_global_setup, monkeypatch):
     def unsupported():
-        raise HostServiceError("A background Host needs macOS or Linux with systemd. Next: co host --serve")
+        raise HostServiceUnavailable("A background Host needs macOS or Linux with systemd. Next: co host --serve")
     monkeypatch.setattr(mac_bootstrap, "prepare_host", unsupported)
     result = CliRunner().invoke(app, ["init", "--no-rem"])
     assert result.exit_code == 0, result.output

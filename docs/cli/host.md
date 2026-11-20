@@ -31,7 +31,10 @@ edit the line and run `co host --background`. The frontend does not change.
 Linux (run `loginctl enable-linger` to keep it running while you are logged
 out). It restarts if it stops and comes back after login. The Host it serves
 lives in `~/.co/runtime/mac-host` on macOS and `~/.co/runtime/host` on Linux.
-`co init --no-host` skips it. On other systems, run `co host --serve`.
+`co init --no-host` skips it. A Linux login with no systemd user session (a
+container, CI, or SSH without linger) has no background service: `co init`
+says the Host was skipped and finishes normally. There, and on other systems,
+run `co host --serve`.
 
 In a project folder that has its own `.co/host.yaml`, `co host` and its options
 act on that project instead. Your own `agent.py` is the special case: it needs

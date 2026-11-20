@@ -313,11 +313,24 @@ def test_the_platform_picks_launchd_or_systemd(tmp_path, monkeypatch):
     assert type(api.host_service(tmp_path)).__name__ == 'HostService'
     monkeypatch.setattr(api.sys, 'platform', 'linux')
     monkeypatch.setattr(api.shutil, 'which', lambda name: '/usr/bin/systemctl')
+    monkeypatch.setattr(api, '_user_systemd_ready', lambda: True)
     assert type(api.host_service(tmp_path)).__name__ == 'SystemdHostService'
     monkeypatch.setattr(api.sys, 'platform', 'win32')
     assert type(api.host_service(tmp_path)).__name__ == 'ScheduledTaskHostService'
     monkeypatch.setattr(api.sys, 'platform', 'freebsd14')
-    with pytest.raises(api.HostServiceError, match='co host --serve'):
+    with pytest.raises(api.HostServiceUnavailable, match='co host --serve'):
+        api.host_service(tmp_path)
+
+
+def test_linux_without_a_systemd_user_session_has_no_background_service(tmp_path, monkeypatch):
+    """CI runners, containers and SSH logins without linger have systemctl but no user manager:
+    that is a machine without a background service, not a failed start (rc39 release gate)."""
+    api = module()
+    monkeypatch.setattr(api.sys, 'platform', 'linux')
+    monkeypatch.setattr(api.shutil, 'which', lambda name: '/usr/bin/systemctl')
+    monkeypatch.setattr(api.subprocess, 'run', lambda args, **kwargs: subprocess.CompletedProcess(
+        args, 1, '', 'Failed to connect to bus: No medium found'))
+    with pytest.raises(api.HostServiceUnavailable, match='systemctl --user is not reachable.*co host --serve'):
         api.host_service(tmp_path)
 
 

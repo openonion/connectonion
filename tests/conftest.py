@@ -118,10 +118,10 @@ def _no_real_background_host(monkeypatch):
     classes with a fake runner, as tests/unit/test_host_service.py does.
     """
     from connectonion.cli import mac_bootstrap
-    from connectonion.cli.host_service import HostServiceError
+    from connectonion.cli.host_service import HostServiceError, HostServiceUnavailable
 
     def refuse():
-        raise HostServiceError("A background Host needs macOS or Linux with systemd. "
+        raise HostServiceUnavailable("A background Host needs macOS or Linux with systemd. "
                                "Next: co host --serve, to run it in this terminal")
     monkeypatch.setattr(mac_bootstrap, "prepare_host", refuse)
 

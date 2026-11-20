@@ -222,16 +222,15 @@ def _show_help():
 
 def _start_background_host():
     """Install and start the always-on Host; None when this platform has no user service, False on failure."""
-    from .host_service import HostServiceError
+    from .host_service import HostServiceError, HostServiceUnavailable
     from .mac_bootstrap import prepare_host
     try:
         result = prepare_host()
+    except HostServiceUnavailable as error:
+        console.print(f"Background Host skipped: {error}", markup=False)
+        return None
     except HostServiceError as error:
-        message = str(error)
-        if 'needs macOS or Linux' in message:
-            console.print(f"Background Host skipped: {message}", markup=False)
-            return None
-        console.print(f"The background Host did not start: {message}", markup=False)
+        console.print(f"The background Host did not start: {error}", markup=False)
         return False
     except OSError:
         console.print('The background Host did not start: its files could not be written. Next: co host', markup=False)
