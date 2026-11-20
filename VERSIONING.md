@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc43
+## Current Version: 1.9.6rc44
+Release candidate 1.9.6rc44 for 1.9.6: global `co init` on Windows from an elevated shell starts a Host that
+can read its profile; with Claude Code logged in it serves `model: claude-code` by default. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc44.md).
+
+- 1.9.6rc44 (Windows default Host from an elevated shell).
+
+### Previous candidate: 1.9.6rc43
 Release candidate 1.9.6rc43 for 1.9.6: the Windows logon Host starts when co was set up from an elevated
 shell, checked on a real Windows 11 PC with `model: claude-code` over the relay. Stable remains 1.9.5. See
 [candidate notes](docs/releases/1.9.6rc43.md).
