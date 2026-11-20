@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc40
+## Current Version: 1.9.6rc41
+Release candidate 1.9.6rc41 for 1.9.6: rc40's code, published; rc39 and rc40 were tagged but stopped at the
+wheel check, which now runs global `co init` with `--no-host`. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc41.md).
+
+- 1.9.6rc41 (rc39 and rc40, published).
+
+### Previous candidate: 1.9.6rc40 (not published)
 Release candidate 1.9.6rc40 for 1.9.6: everything from rc39, which was tagged but never published, plus
 `co init` that skips the background Host and exits 0 on Linux without a systemd user session (containers, CI,
 SSH without linger). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc40.md).
