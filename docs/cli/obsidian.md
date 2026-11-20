@@ -56,6 +56,11 @@ Scoped note commands index and resolve links only within the selected folders.
 When a link has no target in those folders, `read --json` leaves its
 `resolved_path` as `null`.
 
+Navigation, note reads and cached rows keep the same validated vault and folder
+paths. If an ancestor is redirected after selection, the command refuses the
+changed location instead of reading another vault's notes. List again after
+intentionally moving a vault.
+
 With a folder selected, `ls` shows the 20 most recently modified notes by
 default. Use `-n` to show up to 250 notes.
 Numbered rows show filenames and add a distinguishing parent path for repeated
@@ -118,6 +123,10 @@ After `ls --folder` or `search`, `co obsidian append 1 --content 'Review complet
 can preview a note row in its saved scope. The confirmation command uses an
 explicit vault, folder and note path. A row number with `--yes` is refused;
 refresh expired rows instead of guessing their targets.
+
+Each preview or confirmed write uses the vault and folders validated for that
+command. If validation detects a redirected path, choose the path again and
+run a fresh preview.
 
 For multiline content, pipe UTF-8 input. A terminal with `--content -` but no pipe
 is refused rather than waiting for typed input:

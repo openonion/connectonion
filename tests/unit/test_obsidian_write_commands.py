@@ -17,7 +17,7 @@ POSIX_WRITE = pytest.mark.skipif(os.open not in os.supports_dir_fd, reason="POSI
 def write_cli(tmp_path, isolated_home, monkeypatch):
     from connectonion.cli.main import app
     monkeypatch.setenv("COLUMNS", "240")
-    vault = tmp_path / "Synthetic vault"
+    vault = tmp_path / "Selected" / "Synthetic vault"
     (vault / "Course").mkdir(parents=True)
     (vault / "Course/A.md").write_text("Original\n")
     runner = CliRunner()
@@ -95,6 +95,40 @@ def test_append_row_can_preview_but_confirmation_uses_path(write_cli):
     applied = runner.invoke(app, args[1:])
     assert applied.exit_code == 0, applied.output
     assert (vault / "Course/A.md").read_text() == "Original\nAdded"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlinks require privileges on Windows")
+@pytest.mark.parametrize("operation", ["create", "append"])
+def test_write_preview_rejects_a_vault_redirect_after_selection(write_cli, tmp_path, monkeypatch, operation):
+    from connectonion.cli.commands import obsidian_commands as commands
+    from connectonion.useful_tools import obsidian
+
+    vault, invoke, runner, app = write_cli
+    alternate = tmp_path / "Alternate" / vault.name / "Course"
+    alternate.mkdir(parents=True)
+    (alternate / "A.md").write_text("Unselected note\n")
+    if operation == "append":
+        listed = runner.invoke(app, ["obsidian", "ls", "--vault", str(vault), "--folder", "Course"])
+        assert listed.exit_code == 0, listed.output
+    hook = "_select_note" if operation == "append" else "_selection"
+    select = getattr(commands, hook)
+
+    def redirect_after_selection(*args, **kwargs):
+        selection = select(*args, **kwargs)
+        vault.parent.rename(tmp_path / "Retained")
+        vault.parent.symlink_to(alternate.parent.parent, target_is_directory=True)
+        return selection
+
+    monkeypatch.setattr(commands, hook, redirect_after_selection)
+    monkeypatch.setattr(obsidian, "_read_markdown", lambda *args: pytest.fail("preview must not read a redirected vault"))
+    if operation == "append":
+        result = runner.invoke(app, ["obsidian", "append", "1", "--content", "Added", "--json"])
+    else:
+        result = invoke("create", "Course/New.md", extra=["--json"])
+
+    assert result.exit_code == 2, result.output
+    assert "parent directory changed" in result.stderr
+    assert not result.stdout.strip()
 
 
 def test_stale_confirmation_has_recovery_and_no_success_stdout(write_cli):
