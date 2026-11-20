@@ -286,7 +286,7 @@ _MATERIAL_OWNER = threading.local()
 
 
 @contextmanager
-def material_lock(root: Path):
+def material_lock(root: Path, *, wait: float | None = None):
     """Read saved source material under this thread's existing notebook lock, or take one.
 
     Ordinary maintenance_lock remains non-reentrant. Only this read boundary
@@ -296,7 +296,7 @@ def material_lock(root: Path):
     if getattr(_MATERIAL_OWNER, "notebook", None) == owner:
         yield
     else:
-        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS if wait is None else wait):
             yield
 
 

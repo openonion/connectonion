@@ -874,6 +874,7 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
+            **({"registered_sources": sources} if (sources := source_hooks.statuses(root)) else {}),
             **({"people_coverage": people_coverage(root),
                 "translation_coverage": translation_coverage(root, next_run=slot)} if include_coverage else {}),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.

@@ -11,6 +11,47 @@ from connectonion.rem.files import RemError, read_json, state_path, write_json
 from tests.unit.rem_source_fixtures import citation, shared_sources
 
 
+@pytest.mark.parametrize('change,reason', [
+    ('new', 'no saved approval'), ('scope', 'selected scope changed'),
+    ('model', 'model or execution route changed'), ('route', 'model or execution route changed'),
+])
+def test_status_explains_source_approval_without_loading_provider(shared_sources, monkeypatch, change, reason):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    env = shared_sources
+    env.select('notes', approve=change != 'new')
+    if change == 'scope':
+        hooks.configure(env.root, 'notes', folders=['Private'])
+    elif change == 'model':
+        config.set_config(env.root, ['models.level2', 'different-model'])
+    elif change == 'route':
+        inquiry.set_route(env.root, 'extract', 'coai', 'different-model')
+    monkeypatch.setattr(hooks, '_load', lambda *a: pytest.fail('status imported a provider'))
+    state = service.status(env.root, include_coverage=False)
+    assert reason in state['registered_sources']['notes']['status']
+    output = CliRunner().invoke(app, ['rem', '--root', str(env.root), 'status'])
+    assert output.exit_code == 0, output.output
+    assert reason in output.output and 'co rem start' in output.output
+
+
+@pytest.mark.parametrize('allow_saved,message', [
+    (False, 'saved material blocked'), (True, 'saved material may be stale'),
+])
+def test_status_distinguishes_approval_from_acquisition_health(shared_sources, monkeypatch, allow_saved, message):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    env = shared_sources
+    env.select('notes')
+    hooks.fetch(env.root)
+    env.failures['notes'] = hooks.SourceUnavailable('service unavailable', allow_saved=allow_saved)
+    hooks.fetch(env.root)
+    monkeypatch.setattr(hooks, '_load', lambda *a: pytest.fail('status imported provider'))
+    output = CliRunner().invoke(app, ['rem', '--root', str(env.root), 'status'])
+    assert output.exit_code == 0, output.output
+    assert message in ' '.join(output.output.split())
+    assert 'collect --source notes' in ' '.join(output.output.split())
+
+
 @pytest.mark.parametrize('level', list(config.LEVEL_MODELS))
 def test_each_model_level_change_requires_fresh_source_approval(shared_sources, level):
     env = shared_sources

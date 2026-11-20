@@ -81,3 +81,22 @@ results; real-provider migration and source-team review remain separate work.
 See the [interface overview](../rem/source-interface.md),
 [contract](../rem/source-interface-contract.md) and
 [validation record](../rem/source-interface-validation.md).
+
+Asana's review of #3228 exposed a difference between a short transaction and a
+short wait. The publication body was short, but entering it could still wait ten
+minutes while holding the source's writer lock. Publication now waits at most one
+second and reports notebook contention as a retryable source failure. Catching
+only lock entry matters: an error inside publication must still expose a defect.
+
+Moving that wait alone was insufficient. Saving the acquisition receipt took
+the same notebook lock and would repeat the long wait. Receipts now use a separate
+short metadata transaction, without calling a provider or taking the notebook
+lock. Concurrent failures still win over overlapping successes, and a temporary
+busy result cannot downgrade an existing account or integrity block. Losing a
+receipt to a storage error remains an error, rather than an apparent success.
+
+The status view now distinguishes approval from acquisition health. It says when
+scope or model routes require approval again, and when approved saved material is
+blocked or stale. These explanations read saved metadata only. The contract also
+permits a per-user committed store while keeping each notebook's approval, scope,
+failure state and consumption progress independent.

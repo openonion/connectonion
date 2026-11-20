@@ -108,6 +108,12 @@ changed selection or model route rejects that confirmation. Automatic init/mail
 grants preserve registered-source approvals, including approvals that have become
 invalid; `start` checks those entries independently and requests confirmation again.
 
+`co rem status` and `co rem sources` explain whether approval is missing, the
+selection changed, or a model/route changed. This uses saved metadata only.
+Existing page text is retained; exact source reads and subsequent model requests
+remain blocked until the current settings are approved. Already sent requests
+cannot be recalled.
+
 Check it again during acquisition publication, batch consumption, investigation,
 cached citation resolution and resumed model work. A registry entry or citation
 routing record cannot grant access. Configuration, removal and commit-time
@@ -139,6 +145,21 @@ found during static review and needs team review. The synthetic interleaving tes
 models a writer waiting to publish while a reader consumes the previous snapshot.
 Each adapter must supply its own concurrency and revocation evidence.
 
+The publication guard waits at most one second for the notebook lock. Failure to
+enter a busy lock becomes `SourceUnavailable(allow_saved=True)`, allowing other
+sources to attempt acquisition. Exceptions raised inside the publication body
+are not reclassified. Adapters must preserve an existing `SourceUnavailable`
+instead of catching it as a generic integrity error.
+
+Per-user storage shared by multiple notebooks is permitted. Publication must use
+an atomic committed index or byte ranges, and validate the store's account and
+integrity. Each notebook keeps its own selection, approval, failure receipt and
+consumption progress. Every offline hook filters against that notebook's current
+approved projects/folders; publishing under notebook A's guard grants nothing to
+notebook B. The adapter must test this isolation. Sharing a store cannot widen the
+scope fetched for A or expose another account's material. Notebook-scoped stores
+remain valid too; this contract does not require moving existing provider storage.
+
 Native acquisition uses the preparation progress watcher and deadline before the
 long notebook lock. A short preflight lock checks repeated-stall holds and preserves
 the prior preparer's identity when waiting for another native task. Fresh catchup
@@ -162,8 +183,16 @@ receipt that changed after that acquisition began; it returns a blocked result
 and preserves the failure. A fresh retry started after the block can clear it.
 Overlapping failures conservatively win, including a failure published after an
 overlapping success. This requires a new retry rather than inferring recovery from
-completion order. Receipt comparison/publication uses the short notebook lock;
-no notebook lock is added around provider acquisition or network work.
+completion order. Receipt comparison/publication uses an independent short file
+lock with a one-second wait and an atomic JSON replacement. It never calls a
+provider or waits for the notebook/acquisition lock, so a long notebook operation
+does not delay a failure receipt. A temporary busy receipt cannot clear an earlier
+blocking failure. Receipt-lock or disk-write failures propagate rather than
+silently losing a blocking failure. There is no new notebook lock around network work.
+
+A newly recorded block is checked before each subsequent model attempt or retry,
+including while the caller owns the notebook lock. It cannot cancel an already
+sent model request. No receipt lock is held across a model call.
 
 `require_material` raises `SourceMaterialUnavailable` (a `RemError`) when retained
 material no longer passes the current access check. Native submit translates that

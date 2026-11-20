@@ -53,6 +53,8 @@ It binds the selected scope to the default and effective stage model routes.
 `start` displays those routes and rejects confirmation if the selection or routing
 changed while it was displayed. An older receipt without full routing needs a new
 confirmation; reconnecting email cannot grant that approval on its behalf.
+Source status explains whether the missing approval is due to a new selection,
+changed scope or changed model/route, using saved metadata only.
 
 ## Acquire, consume and retain evidence
 
@@ -63,6 +65,16 @@ atomic index. The network phase never holds the notebook lock.
 An overlapping success cannot erase a newer blocking acquisition failure. The
 shared receipt and returned result stay blocked until a fresh retry begun after
 the block succeeds.
+The guard waits at most one second for publication access. A busy notebook causes
+a retryable failure, without stopping the remaining providers. Acquisition
+receipts use their own short file lock, so recording that failure does not wait
+again for the notebook. Errors inside publication and errors saving a receipt
+still propagate; an earlier blocking failure cannot be downgraded by a busy result.
+
+Adapters may share a per-user store between notebooks. Each notebook must still
+enforce its own account/scope approval, failure receipts and consumption progress.
+Every offline hook reads only its approved scope from atomically committed state;
+one notebook's publication guard does not approve another notebook's reads.
 
 `collect`, `gather`, `pending` and `cited` run under the notebook read/commit
 boundary. They must read committed state without waiting for the acquisition

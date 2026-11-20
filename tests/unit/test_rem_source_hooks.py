@@ -330,6 +330,92 @@ def test_offline_hooks_reuse_notebook_lock_only(shared_sources, monkeypatch):
                 pytest.fail('ordinary lock became reentrant')
 
 
+@pytest.mark.parametrize('blocked', [False, True])
+def test_busy_publication_records_failure_and_continues_other_sources(shared_sources, monkeypatch, blocked):
+    from concurrent.futures import ThreadPoolExecutor
+    from connectonion.rem import files
+    env = shared_sources
+    env.select('notes', 'tasks')
+    hooks.fetch(env.root)
+    if blocked:
+        env.failures['notes'] = hooks.SourceUnavailable('account refused', allow_saved=False)
+        hooks.fetch(env.root, names={'notes'})
+        del env.failures['notes']
+    env.events.clear()
+    # Keep this contention test short even against the old implementation.
+    monkeypatch.setattr(files, 'WRITE_WAIT_SECONDS', 0.02)
+    monkeypatch.setattr(hooks, 'ACQUISITION_WAIT_SECONDS', 0.02, raising=False)
+    holding, release = Event(), Event()
+    def maintain():
+        with maintenance_lock(env.root):
+            holding.set()
+            assert release.wait(5), 'fetch waited on the long notebook transaction'
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        holder = pool.submit(maintain)
+        try:
+            assert holding.wait(2)
+            results = hooks.fetch(env.root)
+            assert results['notes']['ok'] is results['tasks']['ok'] is False
+            assert results['notes']['allow_saved'] is (not blocked)
+            assert results['tasks']['allow_saved'] is True
+            assert {event[0] for event in env.events if event[1] == 'fetch'} == {'notes', 'tasks'}
+            saved = read_json(state_path(env.root, 'source-acquisition.json'), {})
+            assert saved['notes']['allow_saved'] is (not blocked)
+            assert saved['tasks']['allow_saved'] is True
+        finally:
+            release.set()
+        holder.result(timeout=2)
+    assert (hooks.cited(env.root, citation('notes')) is None) is blocked
+
+
+def test_publication_body_busy_error_is_not_reclassified(shared_sources):
+    from connectonion.rem.files import MAINTENANCE_BUSY
+    env = shared_sources
+    env.select('notes')
+    sub = hooks.selected(env.root)['notes']
+    error = RemError(MAINTENANCE_BUSY)
+    with pytest.raises(RemError) as caught:
+        with hooks.acquisition_guard(env.root, sub)():
+            raise error
+    assert caught.value is error
+
+
+def test_blocking_receipt_is_visible_to_next_turn_inside_notebook_lock(shared_sources):
+    from concurrent.futures import ThreadPoolExecutor
+    env = shared_sources
+    env.select('notes')
+    hooks.fetch(env.root)
+    items = hooks.collect(env.root, 'notes', {}, 1, 10000).items
+    before = read_json(state_path(env.root, 'source-acquisition.json'), {})['notes']
+    sub = hooks.selected(env.root)['notes']
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with maintenance_lock(env.root):
+            assert hooks.guard_turn(env.root, items, lambda: 'first request')() == 'first request'
+            future = pool.submit(hooks._record_acquisition, env.root, 'notes', sub, before,
+                                 {'ok': False, 'allow_saved': False, 'error': 'account refused'})
+            assert future.result(timeout=2)['allow_saved'] is False
+            with pytest.raises(hooks.SourceMaterialUnavailable):
+                hooks.guard_turn(env.root, items, lambda: pytest.fail('sent after block'))()
+
+
+def test_concurrent_source_receipts_preserve_both_results(shared_sources):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    env = shared_sources
+    env.select('notes', 'tasks')
+    barrier = Barrier(2)
+    def record(name):
+        sub = hooks.selected(env.root)[name]
+        barrier.wait(timeout=2)
+        return hooks._record_acquisition(env.root, name, sub, {},
+                                         {'ok': False, 'allow_saved': False, 'error': name})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert all(not result['ok'] for result in pool.map(record, ('notes', 'tasks')))
+    saved = read_json(state_path(env.root, 'source-acquisition.json'), {})
+    assert saved['notes']['error'] == 'notes'
+    assert saved['tasks']['error'] == 'tasks'
+
+
 def test_strict_budgets_and_first_item_clipping(shared_sources):
     env = shared_sources
     env.select('notes')

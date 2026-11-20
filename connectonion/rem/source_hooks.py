@@ -17,7 +17,7 @@ from typing import Protocol, TYPE_CHECKING, cast
 from uuid import uuid4
 
 from .source_citations import read_operation
-from .files import RemError, material_lock, read_json, state_path, write_json
+from .files import MAINTENANCE_BUSY, RemError, _file_lock, material_lock, read_json, state_path, write_json
 from . import source_versions
 
 if TYPE_CHECKING:
@@ -55,6 +55,8 @@ class Source(Protocol):
 # Source-owned migrations add one registration here. Never load import paths
 # from notebook configuration. This prerequisite deliberately ships no providers.
 MODULES: dict[str, str] = {}
+ACQUISITION_WAIT_SECONDS = 1.0
+RECEIPT_WAIT_SECONDS = 1.0
 
 
 class SourceUnavailable(RemError):
@@ -125,9 +127,34 @@ def statuses(root: Path) -> dict[str, dict]:
     """Saved metadata only, also for disabled and awaiting-approval selections."""
     saved = read_json(state_path(root, "subscriptions.json"), {})
     selected(root)  # Validate before displaying any configured source.
-    return {name: {"status": ("disabled" if not sub.get("enabled") or sub.get("unsubscribed")
-                              else "approved" if approved(root, name, sub) else "awaiting approval")}
+    return {name: {"status": _source_status(root, name, sub)}
             for name, sub in saved.items() if sub.get("kind") in MODULES}
+
+
+def _source_status(root: Path, name: str, sub: dict) -> str:
+    if not sub.get("enabled") or sub.get("unsubscribed"):
+        return "disabled"
+    if not approved(root, name, sub):
+        return "awaiting approval: " + approval_reason(root, name, sub)
+    receipt = read_json(state_path(root, "source-acquisition.json"), {}).get(name, {})
+    if receipt.get("scope") == scope_value(sub) and receipt.get("ok") is False:
+        if receipt.get("allow_saved") is False:
+            return "approved; saved material blocked after acquisition failure"
+        return "approved; acquisition failed; saved material may be stale"
+    return "approved"
+
+
+def approval_reason(root: Path, name: str, subscription: dict) -> str:
+    """Explain a pending source grant from saved configuration only."""
+    receipt = read_json(state_path(root, "consent.json"), {})
+    agreed = receipt.get("source_approvals", {}).get(name, {})
+    if not agreed:
+        return "no saved approval"
+    if agreed.get("scope") != scope_value(subscription):
+        return "selected scope changed"
+    if agreed.get("execution") != execution_scope(root):
+        return "model or execution route changed"
+    return "source access needs confirmation"
 
 
 def consent_description(subscription: dict) -> str:
@@ -180,7 +207,10 @@ def fetch(root: Path, *, names=None) -> dict[str, dict]:
 
 def _record_acquisition(root, name, sub, before, result):
     """Only a retry started after a block can clear it; overlapping failures win."""
-    with material_lock(root):
+    # Receipt transactions never take the notebook or provider writer lock.
+    # A busy notebook must not prevent recording a publication failure. Errors
+    # writing this metadata propagate: dropping a blocking receipt is unsafe.
+    with _file_lock(state_path(root, "source-receipts"), RECEIPT_WAIT_SECONDS):
         if not same_selection(root, name, sub):
             return {"ok": False, "allow_saved": False,
                     "error": "Source selection changed during acquisition; run start again"}
@@ -496,11 +526,17 @@ def require_readable(root: Path, name: str, sub: dict) -> None:
 
 def acquisition_guard(root: Path, expected: dict, *, name: str | None = None):
     """Short transaction held by adapters while committing acquired snapshots."""
-    from contextlib import contextmanager
+    from contextlib import ExitStack, contextmanager
 
     @contextmanager
     def guard():
-        with material_lock(root):
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(material_lock(root, wait=ACQUISITION_WAIT_SECONDS))
+            except RemError as error:
+                if str(error) != MAINTENANCE_BUSY:
+                    raise
+                raise SourceUnavailable("Notebook is busy; retry source collection after the current update") from error
             selected_name = name or expected.get("id", expected["kind"])
             if not same_selection(root, selected_name, expected):
                 raise SourceUnavailable("Source selection changed during acquisition", allow_saved=False)

@@ -1,6 +1,30 @@
 # Shared source prerequisite: scope and validation
 
-**Current status: the author confirmed that the test rerun passed; the latest
+## Local follow-up to the Asana review, 2026-11-20
+
+The local follow-up starts at published #3228 head `aafe868f`, merges current main
+`ffe3f133`, and addresses the Asana review on #3228. The merge and fixes remain
+uncommitted in an isolated checkout; the published PR is unchanged.
+
+Publication waits at most one second for the notebook lock. Contention is a
+retryable source failure; receipts are saved under a separate short metadata
+lock. Tests cover continued dispatch, sticky blocking receipts, concurrent receipt
+writes, model retries observing new blocks, and propagation of publication-body
+errors. Source status explains pending approval and blocked/stale acquisition
+without importing providers. Per-user store isolation is an adapter obligation
+documented in the contract; Asana has not yet supplied its migrated integration.
+
+The implementation agent ran the authorized offline follow-up: **147 focused
+tests passed in 10.06s**, and **2522 selected caller regressions passed**. The
+status/CLI compatibility rerun also passed 383 tests before the final regression.
+The real-home guard reported the user's `.co` unchanged. Earlier entries below
+are historical, and these counts are not the entire repository suite.
+No live model review or external source acquisition was run; the five existing
+general-help review findings remain unresolved.
+
+## Earlier published validation and review history
+
+**At the previous check, the author confirmed that the test rerun passed; the latest
 model help reviews still report five findings.** The confirmation did not include
 fresh test counts or timings, so the earlier detailed results below remain
 historical. The pasted review output shows all ten ordinary rules passing on
@@ -35,7 +59,7 @@ and validation documentation updates remain uncommitted.
 The earlier detailed implementation results were **136 focused cases and 2238
 caller regressions**, plus all five audits in one audit run. The earlier 103/2104
 results below describe the merged candidate before those review fixes.
-The implementation agent has not run tests, `co audit` or live demonstrations,
+At that earlier stage, the implementation agent had not run tests, `co audit` or live demonstrations,
 or made commits, pushes or external comments. Runtime evidence below was supplied
 by the user, with pre-merge and merged-candidate results separated below.
 
