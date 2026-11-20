@@ -32,6 +32,9 @@ def consented(tmp_path, monkeypatch):
 
 
 def co(root, *args, env):
+    # Desktop bundles are found even with an empty PATH. Select an absent CLI
+    # explicitly so these offline failure tests cannot launch a real provider.
+    env = {**env, "CODEX_CMD": str(root.parent / "missing-codex")}
     result = subprocess.run([sys.executable, "-m", "connectonion.cli.main", "rem", "--root", str(root),
                              "--json", *args], capture_output=True, text=True, env=env, timeout=120)
     payload = json.loads(result.stdout) if result.stdout.strip() else {}
@@ -46,8 +49,10 @@ def test_no_co_on_path_still_runs_this_installation(consented, tmp_path):
     code, payload, stderr = co(consented, "sync", env=env)
     assert code == 1, stderr
     record = json.loads(next((consented / ".state" / "runs").glob("*.json")).read_text())
-    # Whichever runner a new notebook picked on this machine, its CLI is not on this PATH.
-    assert "CLI not found" in record["error"], record
+    # Missing discovery and an explicitly absent executable are both offline
+    # installation failures, never an authentication or model response.
+    error = record["error"]
+    assert "CLI not found" in error or ("missing-codex" in error and "No such file" in error), record
     assert not (consented / ".state" / "progress.json").exists()
 
 
@@ -91,5 +96,7 @@ def test_a_batch_that_fails_past_preflight_exits_nonzero_and_is_logged(consented
     record = json.loads(runs[0].read_text())
     assert len(runs) == 1 and record["outcome"] == "failed"
     # Not installed is not signed out: the fix is the install, not `codex login`.
-    assert "CLI not found" in record["error"] and "codex login" not in record["error"]
+    error = record["error"]
+    assert "CLI not found" in error or ("missing-codex" in error and "No such file" in error)
+    assert "codex login" not in error
     assert not (consented / ".state" / "progress.json").exists()

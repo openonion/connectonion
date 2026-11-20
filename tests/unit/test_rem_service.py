@@ -381,6 +381,93 @@ class FakeScheduler:
         return {"installed": root in self.installed}
 
 
+@pytest.fixture
+def granola_consent_root(tmp_path, monkeypatch):
+    """Consent inspection needs no Granola key, bodies or model (#2882)."""
+    monkeypatch.delenv("GRANOLA_API_KEY", raising=False)
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda _: False)
+    monkeypatch.setattr("connectonion.rem.service.codex_sessions_root", lambda: tmp_path / "sessions")
+    monkeypatch.setattr("connectonion.rem.service.claude_projects_root", lambda: tmp_path / "projects")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Consent inspection attempted Granola access or a model call")
+
+    for target in ("connectonion.useful_tools.granola.GranolaClient",
+                   "connectonion.rem.remote_sources.require_saved",
+                   "connectonion.rem.granola_imports.snapshot_rows",
+                   "connectonion.rem.runner.run_task"):
+        monkeypatch.setattr(target, forbidden)
+    root = tmp_path / "rem"
+    prepare(root)
+    return root
+
+
+def test_granola_consent_default_disabled(granola_consent_root):
+    from connectonion.rem.service import consent_summary
+    root = granola_consent_root
+    before = subscriptions(root)
+    assert before["granola"]["enabled"] is False
+    assert consent_summary(root)["sources"]["granola"] == {
+        "state": "unsubscribed", "root": str(root / "docs/granola"),
+        "project": None, "since": None, "selection": {}}
+    assert subscriptions(root) == before
+    assert not state_path(root, "consent.json").exists()
+
+
+def test_granola_consent_default_fingerprint(granola_consent_root):
+    from connectonion.rem.service import summary_fingerprint
+    fingerprint = summary_fingerprint(granola_consent_root)
+    assert len(fingerprint) == 64
+    assert summary_fingerprint(granola_consent_root) == fingerprint
+    assert not state_path(granola_consent_root, "consent.json").exists()
+
+
+@pytest.mark.parametrize("enabled,consented,state", [
+    (False, True, "unsubscribed"),
+    (False, False, "unsubscribed"),
+    (True, False, "configured; awaiting source/model approval"),
+])
+def test_granola_consent_keeps_configured_scope(granola_consent_root, enabled, consented, state):
+    from connectonion.rem.service import consent_summary, summary_fingerprint
+    root = granola_consent_root
+    selection = {"folder_id": "fictional-folder", "profile": "synthetic", "limit": 2,
+                 "include_children": False}
+    sources = subscriptions(root)
+    sources["granola"].update(enabled=True, consented=consented, remote={"selection": selection})
+    write_json(state_path(root, "subscriptions.json"), sources)
+    if not enabled:
+        toggle_source(root, "granola", False)
+    before = state_path(root, "subscriptions.json").read_bytes()
+    shown = consent_summary(root)["sources"]["granola"]
+    assert shown["state"] == state and shown["selection"] == selection
+    assert len(summary_fingerprint(root)) == 64
+    assert state_path(root, "subscriptions.json").read_bytes() == before
+    assert not state_path(root, "consent.json").exists()
+
+
+def test_granola_consent_init_grant_leaves_default_disabled(granola_consent_root):
+    from connectonion.rem.service import grant_init_sources, summary_fingerprint
+    root = granola_consent_root
+    grant_init_sources(root)
+    granola = subscriptions(root)["granola"]
+    assert granola["enabled"] is False and granola["consented"] is False
+    consent = read_json(state_path(root, "consent.json"), {})
+    assert consent["summary_value"]["sources"]["granola"]["state"] == "unsubscribed"
+    assert consent["summary"] == summary_fingerprint(root)
+
+
+def test_granola_consent_declined_start_has_no_side_effects(granola_consent_root):
+    from connectonion.rem.service import start
+    shown, scheduler = [], FakeScheduler()
+    result = start(granola_consent_root, confirm=lambda summary: shown.append(summary) or False,
+                   scheduler=scheduler)
+    assert result == {"started": False, "consented": False, "first_batch": None}
+    assert shown[0]["sources"]["granola"]["selection"] == {}
+    assert not scheduler.installed
+    assert not state_path(granola_consent_root, "consent.json").exists()
+    assert not state_path(granola_consent_root, "worker.json").exists()
+
+
 def _runner_recording(calls):
     def runner(notebook, items, config, kind=""):
         calls.append(items)

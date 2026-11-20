@@ -198,6 +198,16 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                    "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
 
 
+def _reader_subscriptions(root: Path) -> dict:
+    sources = subscriptions(root)
+    granola = sources.get("granola")
+    if granola is not None:
+        # Connection details are host state, not part of the Reader's view.
+        sources["granola"] = {key: value for key, value in granola.items()
+                              if key not in {"remote", "import_identity", "root"}}
+    return sources
+
+
 def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook.
 
@@ -393,7 +403,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "mail_versions": threads.observed_versions(root, records) if local else {},
             "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
-            "status": current_status, "subscriptions": subscriptions(root),
+            "status": current_status, "subscriptions": _reader_subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],

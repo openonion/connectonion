@@ -14,6 +14,30 @@ LEAVES=['login','logout','nas list','nas use','status','network status','storage
         'service list','ls','info','search','download','upload','mkdir','copy','move','share create','share list','share revoke']
 
 
+def test_synology_registration_keeps_global_version_available():
+    from connectonion import __version__
+    result = runner.invoke(app, ['--version'])
+    assert result.exit_code == 0, result.output
+    assert __version__ in result.stdout
+
+
+def test_common_options_keep_boolean_flags_and_numeric_timeout(monkeypatch):
+    fake = Mock()
+    fake.profile = {'name': 'home'}
+    fake.account = 'one'
+    fake.status.return_value = {'completeness': 'complete', 'checks': {}}
+    make = Mock(return_value=fake)
+    monkeypatch.setattr(commands, '_syno', make)
+    result = runner.invoke(app, ['syno', 'status', '--nas', 'home', '--json',
+                                 '--non-interactive', '--timeout', '2.5'])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)['ok'] is True
+    options = make.call_args.args[0]
+    assert options['nas'] == 'home'
+    assert options['json'] is True and options['non_interactive'] is True
+    assert options['timeout'] == 2.5
+
+
 @pytest.mark.parametrize('leaf',LEAVES+['get','put','shares'])
 def test_every_leaf_has_real_help_examples_and_common_options(leaf):
     result=runner.invoke(app,['syno',*leaf.split(),'--help'])
