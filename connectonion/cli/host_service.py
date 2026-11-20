@@ -483,9 +483,13 @@ class ScheduledTaskHostService(SystemdHostService):
             return False
         return info.get('address') == record['address']
 
-    def _last_error(self) -> str:
-        lines = (self.logs/'stderr.log').read_text(encoding='utf-8', errors='replace').strip().splitlines()
-        return '\n'.join(lines[-5:])
+    def _log_tails(self) -> str:
+        """The end of both logs: an exit raised in Python lands in stderr, an error the CLI prints in stdout."""
+        tails = []
+        for log in (self.logs/'stderr.log', self.logs/'stdout.log'):
+            lines = log.read_text(encoding='utf-8', errors='replace').strip().splitlines() if log.exists() else []
+            tails += [f'{log.name}: {line}' for line in lines[-5:]]
+        return '\n'.join(tails) or 'both logs are empty'
 
     def status(self) -> dict:
         configured, task_running = self._task()
@@ -512,10 +516,8 @@ class ScheduledTaskHostService(SystemdHostService):
             if state['running']:
                 return state
             time.sleep(.25)
-        if (self.logs/'stderr.log').exists():
-            raise HostServiceError(f'The task is running but its Host keeps exiting:\n{self._last_error()}\n'
-                                   f'Log: {self.logs/"stderr.log"}. Next: co host --serve, to see it in this terminal')
-        raise HostServiceError(f'Task is configured but no Host answered; inspect it. Next: schtasks /Query /TN "{self.task_name}" /V')
+        raise HostServiceError(f'The task is running but no Host answered within 30 s:\n{self._log_tails()}\n'
+                               f'Logs: {self.logs}. Next: co host --serve, to see it in this terminal')
 
     def stop(self) -> dict:
         self._schtasks('/End', '/TN', self.task_name, allowed=(0, 1))
