@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc42
+## Current Version: 1.9.6rc43
+Release candidate 1.9.6rc43 for 1.9.6: the Windows logon Host starts when co was set up from an elevated
+shell, checked on a real Windows 11 PC with `model: claude-code` over the relay. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc43.md).
+
+- 1.9.6rc43 (Windows logon Host from an elevated shell).
+
+### Previous candidate: 1.9.6rc42
 Release candidate 1.9.6rc42 for 1.9.6: rc40's code, published; rc39 to rc41 were tagged but stopped at the
 release checks that run global `co init` under a temporary HOME, which now pass `--no-host`. Stable remains 1.9.5.
 See [candidate notes](docs/releases/1.9.6rc42.md).

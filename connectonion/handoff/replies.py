@@ -180,7 +180,8 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # 1.9.6rc40: no handoff transport change; rc39 never reached PyPI, so the floor skips it.
 # 1.9.6rc41: no handoff transport change; rc40 never reached PyPI either.
 # 1.9.6rc42: no handoff transport change; rc41 never reached PyPI either.
-MIN_VERSION = "1.9.6rc42"
+# 1.9.6rc43: no handoff transport change; the recipient installs this release too.
+MIN_VERSION = "1.9.6rc43"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 
