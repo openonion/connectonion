@@ -462,8 +462,13 @@ jobs:
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           Set-Location $dir
           $globalInitOutput = co init --yes 2>&1 | Out-String
+          $globalInitExit = $LASTEXITCODE
           Write-Host $globalInitOutput
-          if ($LASTEXITCODE -ne 0 -or $globalInitOutput -match "Traceback") { Write-Error "global init failed offline"; exit 1 }
+          if ($globalInitOutput -match "Traceback") { Write-Error "global init printed a traceback offline"; exit 1 }
+          # Offline there is no OPENONION_API_KEY, so the built-in Host exits at every
+          # start. Init used to report it running anyway (#3225); now it must fail and say why.
+          $hostFailedForTheKey = $globalInitOutput -match "The background Host did not start" -and $globalInitOutput -match "OPENONION_API_KEY"
+          if ($globalInitExit -ne 0 -and -not $hostFailedForTheKey) { Write-Error "global init failed offline"; exit 1 }
           if ((Test-Path ".co") -or (Test-Path ".env")) { Write-Error "global init wrote project files"; exit 1 }
           if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys.env"))) { Write-Error "global keys.env missing"; exit 1 }
           $out = co init ./ --yes 2>&1 | Out-String
