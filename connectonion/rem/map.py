@@ -1130,6 +1130,16 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if material['created']:
         report['coverage'].append(f"{len(material['created'])} project folders found from messages typed in a "
                                   "workspace folder or after a cd; made pages")
+    onenote = subscriptions.get('onenote', {})
+    if onenote.get('enabled') and onenote.get('consented'):
+        from .onenote_imports import map_onenote
+        from .files import RemError
+        try:
+            map_onenote(root, onenote, report)
+        except (RemError, OSError, UnicodeError) as error:
+            report['errors'].append({'source': 'onenote', 'stage': 'local imports', 'error': str(error)})
+
+
     report['projects_dropped'] = dropped
     if dropped:
         report['coverage'].append(f"{len(dropped)} folder{'s' if len(dropped) > 1 else ''} with sessions not made "

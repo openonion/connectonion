@@ -830,6 +830,10 @@ def _cited_sources(text: str) -> dict[str, str]:
 
 def _source_item(root: Path, source: str, items: list[dict]) -> dict | None:
     """The cited mail or attachment as an item: from this run, else the private mail archive."""
+    from .onenote_imports import evidence_item
+    imported = evidence_item(root, source)
+    if imported is not None:
+        return imported
     given = next((item for item in items if item.get("source") == source and "text" in item), None)
     provider, _, rest = source.partition(":")
     short, _, name = rest.partition(":")
@@ -1000,6 +1004,9 @@ def archived(root: Path, source: str) -> bool:
     was refused for [27][28], real mail in .state/mail that supported the
     claim; 18 mail citations went the same way over nine pages (v192b3).
     """
+    from .onenote_imports import pinned_record
+    if source.startswith(("adapter:docs/onenote/", "docs/onenote/")):
+        return pinned_record(root, source) is not None
     import sqlite3
     from contextlib import closing
     from .files import state_path

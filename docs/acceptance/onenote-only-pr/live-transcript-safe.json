@@ -1,0 +1,89 @@
+{
+  "sample": "Live Microsoft; dedicated synthetic test content; identifiers and paths redacted",
+  "commands": [
+    {
+      "group": "discovery",
+      "command": "co onenote source verify",
+      "output": "OneNote read access verified.\nNext: co onenote source notebooks\n",
+      "exit_code": 0
+    },
+    {
+      "group": "discovery",
+      "command": "co onenote source notebooks",
+      "output": "Notebook ID: OTHER_NOTEBOOK_ID  Title: [other notebook]\nNotebook ID: NOTEBOOK_ID  Title: test\nNext: co onenote source sections 'OTHER_NOTEBOOK_ID'\n",
+      "exit_code": 0
+    },
+    {
+      "group": "discovery",
+      "command": "co onenote source sections 'NOTEBOOK_ID'",
+      "output": "Section ID: SECTION_ID  Title: ConnectOnion PR acceptance 2026-11-14\nSection ID: OTHER_SECTION_ID  Title: [other section]\nSection ID: OTHER_SECTION_ID  Title: [other section]\nNext: co onenote source pages 'NOTEBOOK_ID' 'SECTION_ID'\n",
+      "exit_code": 0
+    },
+    {
+      "group": "discovery",
+      "command": "co onenote source pages 'NOTEBOOK_ID' 'SECTION_ID'",
+      "output": "Page ID: PAGE_ID  Title: ConnectOnion acceptance – selected note\nNext: co onenote source sync 'NOTEBOOK_ID' 'SECTION_ID' 'PAGE_ID'\n",
+      "exit_code": 0
+    },
+    {
+      "group": "browsing",
+      "command": "co onenote ls",
+      "output": "[other notebook]\n  1. [other section]\ntest\n  2. ConnectOnion PR acceptance 2026-11-14\n  3. [other section]\n  4. [other section]\nListing: LISTING_ID (15 min; optional --listing ID pins these rows)\nNext: co onenote pages 1\n",
+      "exit_code": 0
+    },
+    {
+      "group": "browsing",
+      "command": "co onenote pages 'SECTION_ID' --ids",
+      "output": "1. ConnectOnion acceptance – selected note  (2026-11-14)  (page PAGE_ID)\nListing: LISTING_ID (15 min; optional --listing ID pins these rows)\nNext: co onenote read 1\n",
+      "exit_code": 0
+    },
+    {
+      "group": "browsing",
+      "command": "co onenote read 'PAGE_ID'",
+      "output": "ConnectOnion acceptance – selected note\nFictional Atlas review. Version A: a proposed review remains unapproved. Synthetic acceptance data only.\nNext: co onenote pages\n",
+      "exit_code": 0
+    },
+    {
+      "group": "browsing",
+      "command": "co onenote create 'SECTION_ID' 'ConnectOnion CLI create acceptance' 'Synthetic CLI creation only. No personal notes.'",
+      "output": "Created page CREATED_PAGE_ID in ConnectOnion PR acceptance 2026-11-14: ONENOTE_URL\nNext: co onenote pages 'SECTION_ID'\n",
+      "exit_code": 0
+    },
+    {
+      "group": "imports",
+      "command": "co onenote source sync 'NOTEBOOK_ID' 'SECTION_ID' 'PAGE_ID' --output ./acceptance/live-source",
+      "output": "OneNote import: 1 newly written; 0 skipped.\nSaved to: ./acceptance/live-source/daily/2026/11/14.jsonl\nLocal source records saved. For automatic REM intake: co rem sources connect onenote, then approve init.\nNext: co onenote source sync --help\n",
+      "exit_code": 0
+    },
+    {
+      "group": "imports",
+      "command": "co onenote source sync 'NOTEBOOK_ID' 'SECTION_ID' 'PAGE_ID' --output ./acceptance/live-source --full",
+      "output": "OneNote import: 0 newly written; 1 skipped.\nLocal source records saved. For automatic REM intake: co rem sources connect onenote, then approve init.\nNext: co onenote source sync --help\n",
+      "exit_code": 0
+    },
+    {
+      "group": "imports",
+      "command": "co onenote source sync 'NOTEBOOK_ID' 'SECTION_ID' 'PAGE_ID' --output ./acceptance/live-source --mode export --export-id live-snapshot-1",
+      "output": "OneNote import: 1 newly written; 0 skipped.\nSaved to: ./acceptance/live-source/exports/live-snapshot-1/records.jsonl\nLocal source records saved. For automatic REM intake: co rem sources connect onenote, then approve init.\nNext: co onenote source sync --help\n",
+      "exit_code": 0
+    },
+    {
+      "group": "recovery",
+      "command": "co onenote source sync 'NOTEBOOK_ID' 'SECTION_ID' 'PAGE_ID' --output ./acceptance/live-source --mode export --export-id live-snapshot-1 --json",
+      "output": "{\"error\": \"Export ID already exists. Choose another --export-id; existing exports are preserved.\", \"exit_code\": 1, \"source\": \"onenote\", \"scope\": {\"notebook\": \"NOTEBOOK_ID\", \"section\": \"SECTION_ID\", \"pages\": [\"PAGE_ID\"]}, \"error_code\": \"import_failed\", \"recovery_action\": \"co onenote source sync --help\"}\n",
+      "exit_code": 1
+    },
+    {
+      "group": "recovery",
+      "command": "co onenote source pages 'NOTEBOOK_ID' not-selected --json",
+      "output": "{\"error\": \"Unknown, inaccessible or ambiguous section. Use an ID from co onenote source notebooks/sections.\", \"exit_code\": 1, \"source\": \"onenote\", \"scope\": {\"notebook\": \"NOTEBOOK_ID\", \"section\": \"not-selected\"}, \"error_code\": \"import_failed\", \"recovery_action\": \"co onenote source pages --help\"}\n",
+      "exit_code": 1
+    },
+    {
+      "group": "recovery",
+      "command": "co onenote source pages 'NOTEBOOK_ID' 'SECTION_ID' --limit 0 --json",
+      "output": "{\"error\": \"Invalid arguments for co onenote source pages.\", \"exit_code\": 2, \"source\": \"onenote\", \"scope\": {\"command\": \"pages\"}, \"error_code\": \"invalid_input\", \"recovery_action\": \"co onenote source pages --help\"}\n",
+      "exit_code": 2
+    }
+  ]
+}

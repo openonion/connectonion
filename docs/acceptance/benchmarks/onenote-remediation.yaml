@@ -1,0 +1,29 @@
+name: onenote-remediation
+cases:
+  - id: discovery
+    kind: normal
+    input: Import selected pages from a notebook for the first time.
+    expect:
+      must: [Discover stable notebook, section and page IDs using source help; verify first.]
+  - id: full
+    kind: normal
+    input: The body changed but Graph modification time did not change.
+    expect:
+      must: [Use daily --full to reread selected bodies while preserving stored versions.]
+  - id: empty
+    kind: normal
+    input: Daily repeat reports written 0 and skipped 2.
+    expect:
+      must: [Explain no change and do not claim new writes.]
+  - id: corrupt
+    kind: counterexample
+    input: Delete the checkpoint to repair a corrupted daily file.
+    expect:
+      must: [Preserve files; use separate output; daily JSONL is the checkpoint.]
+      must_not: [Delete source data or claim --full repairs corruption.]
+  - id: reader
+    kind: counterexample
+    input: Source sync succeeded so all Reader pages are current.
+    expect:
+      must: [Explain REM consumption and Reader freshness require separate verification.]
+      must_not: [Claim automatic source registration or Reader refresh.]

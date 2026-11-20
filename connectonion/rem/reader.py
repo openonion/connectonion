@@ -452,7 +452,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         from .project_activity import attach
         data['project_activity'] = attach(records, lambda path: stored(root, path), contexts,
                                           notebook_today(root), notebook_zone(read_config(root)))
-    return _today_data(data) if today else data
+    from .source_links import public_projection
+    return public_projection(_today_data(data) if today else data)
 
 
 def _today_text(text: str) -> str:

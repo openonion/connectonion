@@ -3139,11 +3139,14 @@ app.add_typer(mcp_app, name="mcp")
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
-    help="Your OneNote pages. Bare co onenote shows recent pages; ls shows notebooks. Reading is Read-only.",
+    help="Your OneNote pages. With no subcommand, show recent pages; ls lists notebooks. source imports selected pages read-only. create writes a new page. Next: co onenote source --help",
     epilog='Example:  co onenote ls && co onenote pages 2 && co onenote read 1',
     invoke_without_command=True,
 )
 app.add_typer(onenote_app, name="onenote")
+
+from .commands.onenote_source_commands import register_onenote_source
+register_onenote_source(onenote_app, _typer_app)
 
 
 @onenote_app.callback(invoke_without_command=True)
@@ -3155,10 +3158,11 @@ def _onenote_default(ctx: typer.Context):
 
 
 @onenote_app.command("ls", epilog="Example:  co onenote ls")
-def _onenote_ls(show_ids: bool = typer.Option(False, "--ids", help="Also show full section IDs for scripts")):
+def _onenote_ls(show_ids: bool = typer.Option(False, "--ids", help="Also show full section IDs for scripts"),
+                as_json: bool = typer.Option(False, "--json", help="Output notebook metadata as JSON")):
     """List notebooks with numbered sections for pages/create. Read-only."""
     from .commands.onenote_commands import handle_onenote_ls
-    handle_onenote_ls(show_ids=show_ids)
+    handle_onenote_ls(show_ids=show_ids, as_json=as_json)
 
 
 @onenote_app.command("pages", epilog='Example:  co onenote pages')

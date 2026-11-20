@@ -70,3 +70,11 @@ credentials, refresh and throttling retries as `Outlook()`.
 | `OneNote refused this sign-in (HTTP 401)` | Run `co auth microsoft` to obtain `Notes.ReadWrite` for a personal account. |
 | `No section named …` | `co onenote ls` for the exact names and ids |
 | `Several sections are named …` | pass the section id instead |
+
+
+## Selected pages as a REM source
+
+Use [native OneNote connection](onenote-native-connection.md) for automatic intake
+after approval. [Source commands](onenote-source.md) provide read-only discovery,
+manual daily imports, exports and recovery. `co onenote ls --json` lists notebook
+metadata for scripts. Existing browsing and create behavior remain available.

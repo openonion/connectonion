@@ -7,6 +7,7 @@ LLM-Note:
   Errors: ValueError, credential and HTTP transport errors print a short recovery hint, exit 1; a failed create never suggests blind retry because the page may already exist
 """
 
+import json
 import os
 import re
 import shlex
@@ -16,13 +17,15 @@ from typing import Optional
 
 import httpx
 import typer
-from rich.console import Console
+from rich.markup import escape
+from .. import style
+from ...environment import selected_command
 
-from .command_tips import print_tip
+from .command_tips import mark_next_step_named, tips_enabled
 from .gmail_listings import resolve_reference, save_listing
 from ...environment import global_config_dir
 
-errors = Console(stderr=True)
+errors = style.console(stderr=True)
 LISTINGS = global_config_dir() / "onenote-listings"
 
 
@@ -121,6 +124,12 @@ def _onenote():
     return OneNote()
 
 
+def _failure_next(command: str) -> None:
+    mark_next_step_named()
+    if tips_enabled():
+        errors.print(style.next_line(selected_command(command)), emoji=False)
+
+
 def _run(call, next_command: str, retry_command: str, *, write: bool = False,
          lookup_command: str = "co onenote ls") -> None:
     from ...provider_credentials import ProviderCredentialError
@@ -128,35 +137,54 @@ def _run(call, next_command: str, retry_command: str, *, write: bool = False,
         output = call(_onenote())
         if isinstance(output, tuple):
             output, next_command = output
-        print(output)
+        style.console().print(escape(str(output)), emoji=False)
     except httpx.TimeoutException:
         if write:
             errors.print("OneNote timed out after the create request. The page may exist; check its section before creating it again.",
-                         style="red", markup=False)
+                         style="co.error", markup=False, emoji=False)
         else:
             errors.print(f"Microsoft OneNote took too long to respond. Try again: {retry_command}",
-                         style="red", markup=False)
+                         style="co.error", markup=False, emoji=False)
+        _failure_next(lookup_command if write else retry_command)
         sys.exit(1)
     except httpx.RequestError:
         if write:
             errors.print("Could not confirm whether OneNote created the page. Check its section before creating it again.",
-                         style="red", markup=False)
+                         style="co.error", markup=False, emoji=False)
         else:
             errors.print(f"Could not reach Microsoft OneNote. Check your connection, then retry: {retry_command}",
-                         style="red", markup=False)
+                         style="co.error", markup=False, emoji=False)
+        _failure_next(lookup_command if write else retry_command)
         sys.exit(1)
     except OSError:
-        errors.print(f"Could not save or read the OneNote row list. Check write access to ~/.co. Next: {lookup_command}",
-                     style="red", markup=False)
+        errors.print(f"Could not save or read the OneNote row list. Check write access to ~/.co.",
+                     style="co.error", markup=False, emoji=False)
+        _failure_next(lookup_command if write else retry_command)
         sys.exit(1)
     except (ValueError, ProviderCredentialError) as exc:
         text = str(exc).strip()
-        errors.print(text if "co " in text else f"{text} Next: {lookup_command}", style="red", markup=False)
+        errors.print(text.split("\nNext:", 1)[0], style="co.error", markup=False, emoji=False)
+        _failure_next(exc.next_command if isinstance(exc, ProviderCredentialError) else
+                      ("co auth microsoft" if "co auth microsoft" in text else lookup_command))
         sys.exit(1)
-    print_tip(next_command)
+    mark_next_step_named()
+    if tips_enabled():
+        command = next_command.removeprefix("Next: ")
+        style.console().print(style.next_line(selected_command(command)), emoji=False)
 
 
-def handle_onenote_ls(*, show_ids: bool = False) -> None:
+def handle_onenote_ls(*, show_ids: bool = False, as_json: bool = False) -> None:
+    if as_json:
+        try:
+            notebooks = _onenote().notebook_items()
+        except Exception:
+            print(json.dumps({
+                "error": "OneNote request failed. Check the configured account and try again.",
+                "exit_code": 1,
+            }))
+            sys.exit(1)
+        print(json.dumps({"notebooks": notebooks}))
+        return
     _run(lambda n: _listed_notebooks(n, show_ids), "Next: co onenote pages", "co onenote ls")
 
 
@@ -206,7 +234,7 @@ def handle_onenote_create(section: str, title: str, text: Optional[str] = None,
             except (typer.Abort, KeyboardInterrupt, EOFError):
                 confirmed = False
             if not confirmed:
-                errors.print("Not created. Next: co onenote ls", markup=False)
+                errors.print("Not created. Next: " + selected_command("co onenote ls"), markup=False, emoji=False)
                 raise typer.Exit(1)
         return note.create_page(selected, title, body), \
             f"Next: co onenote pages {shlex.quote(selected)}"

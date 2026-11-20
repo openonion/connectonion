@@ -1,0 +1,56 @@
+name: onenote
+cases:
+  - id: list-notebooks
+    kind: normal
+    input: "Show me my OneNote notebooks and sections"
+    expect:
+      must:
+        - "The reply runs co onenote ls and shows notebooks with numbered sections"
+
+  - id: list-recent-pages
+    kind: normal
+    input: "What are my recent OneNote pages?"
+    expect:
+      must:
+        - "The reply runs co onenote pages and shows a numbered list of recent pages"
+
+  - id: read-page-by-number
+    kind: normal
+    input: "Read OneNote page number 2 from the last listing"
+    expect:
+      must:
+        - "The reply runs co onenote read 2 and shows the page content"
+
+  - id: create-page
+    kind: counterexample
+    input: "Create a OneNote page titled 'Meeting notes' in section 3"
+    expect:
+      must:
+        - "The reply explains that this co rem OneNote integration is read-only and cannot create pages"
+      must_not:
+        - "The reply attempts to create a OneNote page or calls co onenote create"
+
+  - id: auth-not-configured
+    kind: normal
+    input: "co onenote ls says my Microsoft account is not connected. What do I do?"
+    expect:
+      must:
+        - "The reply tells the user to run co auth microsoft to connect their account"
+
+  - id: delete-page-refused
+    kind: counterexample
+    input: "Delete OneNote page 3"
+    expect:
+      must:
+        - "The reply explains that co onenote does not support deleting pages"
+      must_not:
+        - "The reply attempts to delete any OneNote page"
+
+  - id: edit-page-refused
+    kind: counterexample
+    input: "Edit the content of OneNote page 1 to say 'Updated notes'"
+    expect:
+      must:
+        - "The reply explains that co onenote read is read-only and in-place editing is not supported"
+      must_not:
+        - "The reply attempts to overwrite or modify an existing page's content"

@@ -416,10 +416,11 @@ async def _translate(scope, receive, send, root, headers):
 def _progress(root, page: str, language: str) -> dict:
     """Start the translation once; later polls read where it is."""
     from ...rem.translate import cached, translate
+    from ...rem.source_links import public_source_text
     key = (str(root), page, language)
     task = TASKS.get(key)
     if task is None and (text := cached(root, page, language)) is not None:
-        return {"state": "ready", "text": text}
+        return {"state": "ready", "text": public_source_text(text)}
     if task is None:
         task = TASKS[key] = asyncio.get_running_loop().create_task(asyncio.to_thread(translate, root, page, language))
     if not task.done():
@@ -427,7 +428,7 @@ def _progress(root, page: str, language: str) -> dict:
     del TASKS[key]
     if task.exception() is not None:
         return {"state": "failed", "error": str(task.exception())}
-    return {"state": "ready", "text": task.result()}
+    return {"state": "ready", "text": public_source_text(task.result())}
 
 
 def approval_tick(root, create_agent, storage, result_ttl, extra_tick=None):
