@@ -127,7 +127,7 @@ def _resolve_vault_reference(reference: str | None) -> Path:
             raise ValueError("Choose a non-empty vault name or path.")
         path = Path(reference).expanduser()
         if path.is_absolute() or "/" in reference or "\\" in reference or reference.startswith((".", "~")):
-            return path
+            return api._canonical_vault(path)
         if ROW.fullmatch(reference):
             raise UsageError("Choose a vault name or path for this command.", "co obsidian vaults")
     vaults = api.discover_vaults()
@@ -145,13 +145,17 @@ def _resolve_vault_reference(reference: str | None) -> Path:
         raise UsageError(f"Several vaults are named {reference!r}: " + ", ".join(vault["path"] for vault in found)
                          + ". Give the path instead.", "co obsidian vaults")
     if path.is_dir():
-        return path
+        return api._canonical_vault(path)
     raise api.ObsidianError(f"No registered vault named {reference!r}. Choose a vault path instead.", "co obsidian vaults")
 
 
 def _listing_context(vault_path: Path, folders: Sequence[str]) -> str:
     """Hash canonical selections before the shared cache's account case folding."""
-    scope = api._validate_scope(vault_path, folders)
+    return _scope_context(api._validate_scope(vault_path, folders))
+
+
+def _scope_context(scope: api._Scope) -> str:
+    """Bind rows to the same validated scope used to read their contents."""
     selection = [os.path.normcase(str(scope.vault_path)),
                  sorted(os.path.normcase(str(folder)) for folder in scope.folders)]
     return "obsidian:" + sha256(json.dumps(selection, ensure_ascii=False).encode("utf-8")).hexdigest()
@@ -282,7 +286,7 @@ def _resolve_list_vault(reference: str | None) -> tuple[Path, str | None]:
 def _resolve_list_folders(vault: Path, folders: Sequence[str]) -> tuple[Path, Sequence[str]]:
     if not any(ROW.fullmatch(folder) for folder in folders):
         return vault, folders
-    root = api.list_vault_root(vault)
+    root = api._list_canonical_vault_root(vault)
     vault = Path(root["vault"])
     relist = _scope_command("ls", vault, ())
     context = _path_key(vault)
@@ -299,8 +303,14 @@ def _resolve_list_folders(vault: Path, folders: Sequence[str]) -> tuple[Path, Se
     return vault, selected
 
 
-def _selection(vault: Path, folders: Sequence[str]) -> tuple[Path, tuple[str, ...]]:
+def _selection(vault: Path, folders: Sequence[str]) -> api._Scope:
     scope = api._validate_scope(vault, folders)
+    if scope.vault_path != vault:
+        raise api.ObsidianError("The selected vault changed location. List vaults again.", "co obsidian vaults")
+    return scope
+
+
+def _scope_parts(scope: api._Scope) -> tuple[Path, tuple[str, ...]]:
     return scope.vault_path, tuple(folder.relative_to(scope.vault_path).as_posix() for folder in scope.folders)
 
 
@@ -314,11 +324,12 @@ def _limit(last: int) -> None:
         raise ValueError("Choose --last between 1 and 250.")
 
 
-def _save_rows(vault: Path, folders: Sequence[str], rows: list[dict]) -> str | None:
+def _save_rows(scope: api._Scope, rows: list[dict]) -> str | None:
+    vault, folders = _scope_parts(scope)
     if _listings().resolve().is_relative_to(vault):
         raise api.ObsidianError("The row cache would be inside this vault. Use --json and read by path instead.",
                                 "co obsidian ls --help")
-    return _store_rows([row["path"] for row in rows], "notes", _listing_context(vault, folders),
+    return _store_rows([row["path"] for row in rows], "notes", _scope_context(scope),
                        next_step="co obsidian ls --help", scope={"vault": str(vault), "folders": folders})
 
 
@@ -364,7 +375,7 @@ def _listed_note_scope(listing: str | None) -> tuple[Path, list[str], str]:
 
 
 def _select_note(reference: str, *, vault: str | None, folders: Sequence[str], listing: str | None,
-                 help_command: str) -> tuple[Path, tuple[str, ...], str]:
+                 help_command: str) -> tuple[api._Scope, str]:
     numbered = ROW.fullmatch(reference) is not None
     if numbered and vault is None and not folders:
         vault_path, folders, listing = _listed_note_scope(listing)
@@ -372,11 +383,11 @@ def _select_note(reference: str, *, vault: str | None, folders: Sequence[str], l
         vault_path = _resolve_vault_reference(vault)
     else:
         raise UsageError("Choose --folder to set the scope, or use a note row from a listing.", help_command)
-    path, selected = _selection(vault_path, folders)
+    scope = _selection(vault_path, folders)
     if numbered:
-        reference = _resolve_row(reference, "notes", _listing_context(path, selected), listing=listing,
+        reference = _resolve_row(reference, "notes", _scope_context(scope), listing=listing,
                                  next_step="co obsidian ls --help")
-    return path, selected, reference
+    return scope, reference
 
 
 # -- output ---------------------------------------------------------------
@@ -500,7 +511,7 @@ def _print_raw_note(content: str) -> None:
 
 
 def _browse_vault(vault: Path, name: str | None, json_output: bool) -> None:
-    root = api.list_vault_root(vault)
+    root = api._list_canonical_vault_root(vault)
     path, folders, notes = Path(root["vault"]), root["folders"], root["notes"]
     numbered = 0
     help_command = "co obsidian ls --help"
@@ -537,13 +548,14 @@ def handle_obsidian_ls(*, vault: str | None = None, folders: Sequence[str] = (),
     if not folders:
         return _browse_vault(path, name, json_output)
     path, folders = _resolve_list_folders(path, folders)
-    path, selected = _selection(path, folders)
-    notes = sorted(api.list_notes(path, folders=selected), key=lambda note: (-note["mtime_ns"], note["path"]))[:last]
+    scope = _selection(path, folders)
+    path, selected = _scope_parts(scope)
+    notes = sorted(api._load_scope_notes(scope), key=lambda note: (-note["mtime_ns"], note["path"]))[:last]
     if json_output:
         _emit_json(notes)
         token = None
     else:
-        token = _save_rows(path, selected, notes)
+        token = _save_rows(scope, notes)
         _render_notes(notes, listing_token=token, ids=ids)
     if not notes:
         return _tip(_scope_command("ls", name or path, ()), json_output)
@@ -554,9 +566,10 @@ def handle_obsidian_ls(*, vault: str | None = None, folders: Sequence[str] = (),
 def handle_obsidian_read(ref: str, *, vault: str | None = None, folders: Sequence[str] = (),
                          listing: str | None = None, json_output: bool = False, raw: bool = False) -> None:
     """Format a terminal read and keep piped Markdown or JSON on stdout."""
-    path, selected, reference = _select_note(ref, vault=vault, folders=folders, listing=listing,
-                                             help_command="co obsidian read --help")
-    note = api.read_note(path, reference, folders=selected)
+    scope, reference = _select_note(ref, vault=vault, folders=folders, listing=listing,
+                                   help_command="co obsidian read --help")
+    path, selected = _scope_parts(scope)
+    note = api._read_scope_note(scope, reference)
     if json_output:
         _emit_json(note)
     elif not raw and sys.stdout.isatty():
@@ -571,13 +584,14 @@ def handle_obsidian_search(query: str, *, vault: str | None = None, folders: Seq
                            ids: bool = False, json_output: bool = False) -> None:
     """Search the same explicit scope; displayed hits become the next notes row list."""
     _limit(last)
-    path, selected = _selection(_resolve_vault_reference(vault), folders)
-    hits = api.search_notes(path, query, folders=selected)[:last]
+    scope = _selection(_resolve_vault_reference(vault), folders)
+    path, selected = _scope_parts(scope)
+    hits = api._search_scope_notes(scope, query)[:last]
     if json_output:
         _emit_json(hits)
         token = None
     else:
-        token = _save_rows(path, selected, hits)
+        token = _save_rows(scope, hits)
         _render_search(hits, ids=ids)
         _listing_note(token)
     _read_tip(hits, token, path, selected, json_output)

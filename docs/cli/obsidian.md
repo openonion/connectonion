@@ -55,6 +55,11 @@ Scoped note commands index and resolve links only within the selected folders.
 When a link has no target in those folders, `read --json` leaves its
 `resolved_path` as `null`.
 
+Navigation, note reads and cached rows keep the same validated vault and folder
+paths. If an ancestor is redirected after selection, the command refuses the
+changed location instead of reading another vault's notes. List again after
+intentionally moving a vault.
+
 With a folder selected, `ls` shows the 20 most recently modified notes by
 default. Use `-n` to show up to 250 notes.
 Numbered rows show filenames and add a distinguishing parent path for repeated
