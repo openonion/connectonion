@@ -524,6 +524,7 @@ def test_tip_shown_on_success_tty(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
     monkeypatch.setattr(bc, "send", lambda *a, **k: 0)
     monkeypatch.setattr(bc.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(bc.sys.stderr, "isatty", lambda: True)
 
     code = bc.handle_browser(["go_to", "x.com"])
     captured = capsys.readouterr()
