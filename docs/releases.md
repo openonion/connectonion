@@ -33,7 +33,9 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc39**: `co init` starts the Host on macOS, Linux and Windows, and `model: claude-code` in
+Release candidate **1.9.6rc40**: rc39's changes, published, plus `co init` that skips the background Host on Linux
+without a systemd user session. See [1.9.6rc40 notes](releases/1.9.6rc40.md).
+Before it, release candidate **1.9.6rc39** (tagged, not published): `co init` starts the Host on macOS, Linux and Windows, and `model: claude-code` in
 host.yaml answers through your logged-in Claude Code. See [1.9.6rc39 notes](releases/1.9.6rc39.md).
 Before it, release candidate **1.9.6rc38**: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. See [1.9.6rc38 notes](releases/1.9.6rc38.md).
 Before it, release candidate **1.9.6rc37**: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. See [1.9.6rc37 notes](releases/1.9.6rc37.md).
