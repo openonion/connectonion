@@ -39,7 +39,7 @@ def test_each_project_step_kind_says_what_its_owner_means(language):
 
 def test_projects_default_to_four_state_columns_and_keep_every_record():
     result = _run_reader_js(_functions('pdParams', 'projectBoardState', 'projectStateColumn') + DOM + r'''
-      const location = {hash: '#c=projects'}, PD_VIEWS = [['board'], ['list'], ['timeline']], PD_ZOOM = {quarter: []};
+      const location = {hash: '#c=projects'}, PD_VIEWS = [['board'], ['list'], ['timeline']], paOrder = all => all;
       const PD_ASKS = [['state']], PD_STATES = [['active', 'Active'], ['waiting', 'Waiting'], ['quiet', 'Quiet'], ['done', 'Done']];
       const PD_FOLD_AT = 6, pdStateOpen = new Set(PD_STATES.map(([key]) => key));
       const pdT = s => s, projectState = r => r.state, projectLast = r => r.last, projectRank = () => 0;
@@ -80,24 +80,24 @@ def test_next_steps_prioritize_overdue_then_owner_and_preserve_long_link_and_pri
     assert result['private'] == 'Review the report [personal]'
 
 
-def test_written_project_lead_puts_steps_and_recent_activity_before_folded_context():
+def test_written_project_lead_is_what_is_known_and_holds_no_steps_or_folded_context():
+    """#3096: a record is knowledge. Its lead is projectLead's parts; open steps are Today's, never rows here."""
     result = _run_reader_js(_functions('recordFocus') + DOM + r'''
       const REM = {owner: ''}, r = {category: 'projects', path: 'projects/harbour.md'};
       const known = () => ({status: 'Investigated'}), section = () => null, newestStanding = () => '';
       const plainLine = s => s, memoryStatement = () => 'A very long background story', facts = () => ({});
       const privateFallback = x => x, inline = s => s, expansionButton = () => null, sourceList = () => [];
-      const threads = () => ({items: [{text: 'Review release', dir: 'mine'}]}), projectSteps = () => [{thread: {text: 'Review release', dir: 'mine'}}];
+      const threads = () => ({items: [{text: 'Review release', dir: 'mine'}]});
       const threadRow = (r, thread) => ({step: thread.text});
-      const projectStepRow = threadRow, projectRecent = () => ({recent: 'Latest session'});
+      const projectLead = () => [{part: 'what it is'}, {part: 'activity'}];
       const recordFacts = () => ({unfolded: 'facts'}), recordContext = () => ({childNodes: [{unfolded: 'context'}]});
       const activityPanel = () => ({unfolded: 'activity'});
       console.log(JSON.stringify(recordFocus(r)));
     ''')
     text = json.dumps(result)
-    assert 'A very long background story' not in text, 'Project background precedes next steps'
-    assert 'unfolded' not in text
-    assert result['children'][0]['class'] == 'focus-section next-exchanges'
-    assert result['children'][1] == {'recent': 'Latest session'}
+    assert 'A very long background story' not in text
+    assert 'unfolded' not in text and 'Review release' not in text and 'next-exchanges' not in text
+    assert result['children'] == [{'part': 'what it is'}, {'part': 'activity'}]
 
 
 def test_project_local_graph_stays_inside_full_memory():

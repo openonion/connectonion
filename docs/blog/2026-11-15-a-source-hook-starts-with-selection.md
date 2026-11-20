@@ -1,53 +1,102 @@
 # A source hook starts with selection
 
-Design journal draft. This local proposal is based on #3055 and responds to
-#3040; it has not shipped and the interface has not been approved.
+Design journal draft, updated 2026-11-20. This shared prerequisite is based on
+#3055 and the three-team discussion in #3040. It has not shipped. The author-run
+offline checks below cover local candidates, not a published release.
 
-Three sources needed to enter REM at the same places: acquisition, batch
-reading, investigation and citations. Adding a provider-specific branch at
-each place makes every source author edit the same generic files. More
-subtly, discovering every provider before choosing one can decrypt a token or
-scan a vault for a notebook that never selected it.
+Three sources enter REM at the same places: acquisition, batch reading,
+investigation and citations. Repeating a provider branch at each place makes
+source authors edit the same generic files. Discovering every provider before
+choosing one can also decrypt a token or scan a vault for an unrelated notebook.
 
-The proposed boundary starts with saved selections. A small registry stores
-module paths, and dispatch imports only the selected kind needed for the
-operation. Metadata describes names before approval. Content operations need
-an active approved selection and pass its scope to the provider. This is an
-adapter contract, not a sandbox: provider modules must keep imports and
-metadata free of source I/O, and tests need to prove that behavior.
+The boundary starts with saved selections. Registration stores a module path,
+while passive metadata display uses saved names and scope without loading it.
+The explicit configuration action loads only the requested configuration module.
+Content operations require the current scope and model approval. This is a
+contract for trusted Python adapters, not an isolation sandbox.
 
-Acquisition and consumption have different lifetimes. A network API call or a
-vault scan produces saved snapshots. A REM batch consumes those snapshots and
-offers a checkpoint which the caller commits only after keeping the work.
-The existing Obsidian snapshot collector therefore fits the acquisition hook;
-using it as the batch hook would rescan the vault during offline processing.
+Acquisition and consumption have different lifetimes. Fetch saves snapshots
+outside the long-lived notebook lock; publication uses a short approval guard.
+Offline hooks read atomic committed state without waiting on the writer lock.
+That last constraint matters: a writer holding its storage lock while waiting
+for the notebook would deadlock with a notebook reader waiting on that writer.
+A batch proposes consumption progress; existing accepted-work paths publish it.
+A failed turn can read the same batch again.
 
-The version helpers from #3055 can accept a notebook-scoped resolver rather
-than growing a second global registry. A cited version stays exact. Record
-identity tells us two citations refer to one task or note; it does not tell us
-which version is newer. That distinction matters when version IDs are UUIDs.
+Granola exposed a second distinction. Its record identity is source-qualified,
+but the Reader target starts with `adapter:` and contains a file, record ID and
+content hash. Rewriting that target to select a provider would also change a
+working citation format. The shared layer instead retains its bytes and persists
+validated owner metadata. Ownership survives restart, while current approval
+still gates every lookup and retained model turn. A missing adapter cannot turn
+saved private evidence into uncontrolled input.
 
-The first prototype used two synthetic providers to exercise the contract. This
-local follow-up connects one real provider, Obsidian, so the lock, consent and
-model-retry boundaries can be reviewed with working call sites. Migrating every
-provider at once would entangle the interface decision with all their storage
-and acquisition behavior. Asana and legacy kinds remain separate migrations;
-#3040's full acceptance criterion is not yet met.
+We considered putting all three adapters into the same change. The teams agreed
+on a shared prerequisite followed by source-owned migration PRs instead. This
+candidate wires generic callers using synthetic providers; it contains no real
+SDK, credential handler or production source registration. That keeps interface
+review separate from account and storage behavior, but requires each team to prove
+its actual port. Synthetic compatibility is not evidence of a real-service run.
 
-See the [interface proposal](../rem/source-interface.md) for signatures,
-lock and approval responsibilities, migration steps and validation commands.
+Other concrete choices remain reviewable: explicit configuration before consent,
+strict serialized-character budgets, first-item clipping, temporary stale fallback
+and the ownership metadata schema. Unexpected errors still propagate; integrity
+and account failures block retained reads until a successful acquisition.
 
+The local adapter run exposed an additional concurrency mistake: a second Obsidian
+collector failed immediately when the first held its acquisition lock. Bounded
+waiting outside the notebook lock let both collectors finish without saving duplicate
+versions. A test now forces that contention while an offline reader checks committed
+state. Before integrating newer main, the shared suite passed 73 focused cases and 1269 caller regressions; the
+separate adapter suite passed 1337 focused cases and 1269 caller regressions. Both
+passed the five requested CLI audits. Real service access and existing-store
+migration still need evidence from each source owner.
 
-## Initial Obsidian integration
+The local merge with main `fe50d346` is uncommitted. It combines append claim
+retention with version-aware source checks,
+extends native acquisition to catchup and collection-only paths, and recognizes
+registered and opaque targets in topic mapping. A snapshot path's embedded date
+must not become the date of a claim. Source acquisition uses main's deadline and
+repeated-stall protection without holding the long notebook lock. The earlier
+passing results do not cover this merged candidate. A new author-run check of
+the merged candidate passed 103 focused cases and 2104 caller regressions. Three
+source audits passed; the script then stopped on the compatibility-only `sync`
+target, which main no longer lists in its public help tree. The corrected script
+uses `collect` instead. The author's follow-up `collect` and `start` audits both
+passed, completing the five planned public-command audits for this candidate.
 
-The single-vault worktree now exercises this proposal through public source
-configuration, consent, sync, investigation and reader citations. It also adds
-metadata-only pending counts and checks retained material on subsequent model
-attempts. The author has run the targeted tests and a live walkthrough; the broader
-regression still has unresolved failures recorded in the validation guide. These
-changes do not migrate Asana or every legacy kind, or imply agreement on #3040.
+A later static review found cases that those tests had not covered. Overlapping
+acquisitions could publish an old success after a new account failure. The local
+fix preserves a changed blocking receipt and requires a fresh retry, rather than
+holding the notebook lock during network work. Approval also needs to bind every
+effective model route, not only the default model. Per-source approval records now
+survive automatic mailbox grants without being renewed by them, and confirmation
+checks the displayed snapshot before publishing consent. Prepared tasks keep their
+execution snapshot so a newly approved model cannot legitimize a cached old one.
+The author then ran the updated checks: 136 focused cases and 2238 caller
+regressions passed, together with all five public-command audits. Both pytest
+runs reported the real `~/.co` unchanged. These are local synthetic and caller
+results; real-provider migration and source-team review remain separate work.
 
-The live investigation exposed a separate boundary: disabling other subscriptions
-did not stop the shared runner from retrieving Codex sessions and searching the web.
-Selected-source gathering and independent agent retrieval are different paths.
-The proposal does not yet enforce source-only execution for that runner.
+See the [interface overview](../rem/source-interface.md),
+[contract](../rem/source-interface-contract.md) and
+[validation record](../rem/source-interface-validation.md).
+
+Asana's review of #3228 exposed a difference between a short transaction and a
+short wait. The publication body was short, but entering it could still wait ten
+minutes while holding the source's writer lock. Publication now waits at most one
+second and reports notebook contention as a retryable source failure. Catching
+only lock entry matters: an error inside publication must still expose a defect.
+
+Moving that wait alone was insufficient. Saving the acquisition receipt took
+the same notebook lock and would repeat the long wait. Receipts now use a separate
+short metadata transaction, without calling a provider or taking the notebook
+lock. Concurrent failures still win over overlapping successes, and a temporary
+busy result cannot downgrade an existing account or integrity block. Losing a
+receipt to a storage error remains an error, rather than an apparent success.
+
+The status view now distinguishes approval from acquisition health. It says when
+scope or model routes require approval again, and when approved saved material is
+blocked or stale. These explanations read saved metadata only. The contract also
+permits a per-user committed store while keeping each notebook's approval, scope,
+failure state and consumption progress independent.

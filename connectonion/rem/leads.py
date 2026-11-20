@@ -125,7 +125,8 @@ NO_CHANGE_HOURS = 24
 
 
 def remember_no_change(root: Path, record: str, unchanged: bool) -> None:
-    path = state_path(root, NO_CHANGE)
+    from .catchup import marker
+    path = marker(root, NO_CHANGE)
     seen = read_json(path, {})
     if unchanged:
         seen[record] = datetime.now(timezone.utc).isoformat()
@@ -137,7 +138,8 @@ def remember_no_change(root: Path, record: str, unchanged: bool) -> None:
 def cooling(root: Path, records: list[str], *, now: datetime | None = None) -> list[str]:
     """The records whose last turn, within NO_CHANGE_HOURS, changed nothing."""
     cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=NO_CHANGE_HOURS)).isoformat()
-    seen = read_json(state_path(root, NO_CHANGE), {})
+    from .catchup import marker
+    seen = read_json(marker(root, NO_CHANGE), {})
     return [record for record in records if seen.get(record, "") > cutoff]
 
 
@@ -183,7 +185,7 @@ def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
     messages `co rem projects write` wrote it from. One unread message, or none
     pointing at it, and the page gets its turn.
     """
-    from .page_review import SOURCE_ID
+    from .page_review import source_id_pattern
     from .project_material import page_state, stored
     text = notebook.read(record)
     roots = project_paths(text) if record.startswith("projects/") else []
@@ -195,7 +197,7 @@ def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
                 if (item.get("project") and _under(str(item["project"]), roots))
                 or any(_named(name, str(item.get("text", ""))) for name in names)
                 for source in item.get("sources") or [item.get("source")] if source}
-    read = {source.rstrip(".,;") for source in SOURCE_ID.findall(text)}
+    read = {source.rstrip(".,;") for source in source_id_pattern().findall(text)}
     if roots:
         through = page_state(notebook.root, record).get("written_through") or ""
         read |= {m["source"] for m in stored(notebook.root, record) if m["timestamp"] <= through}

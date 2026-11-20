@@ -13,6 +13,7 @@ import sys
 import threading
 import uuid
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -80,7 +81,11 @@ def claude_projects_root() -> Path:
 DEFAULT_LOOKBACK_DAYS = 60
 MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
 # Every kind a subscription can be consented for and read.
-READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS, *source_hooks.MODULES)
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
+
+
+def readable_kinds():
+    return (*READABLE, *source_hooks.MODULES)
 
 
 def subscriptions(root: Path) -> dict:
@@ -138,22 +143,31 @@ def subscribe_read_mail(root: Path, kinds) -> list[str]:
     return changed
 
 
-def approve_sources(root: Path, *, mail=()) -> None:
+def approve_sources(root: Path, *, mail=(), expected: dict | None = None, offered=()) -> None:
     """Record approved sources and the source/schedule summary; never called by inspection."""
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         prepare(root)
         validate(read_config(root))
+        shown = consent_summary(root, mail=mail)
+        if expected is not None and shown != expected:
+            raise RemError("Source access or model configuration changed during confirmation; run co rem start again")
         sources = subscriptions(root)
+        for name in offered:
+            if name in sources and not sources[name].get("unsubscribed"):
+                sources[name]["enabled"] = True
         for source in sources.values():
             if mail and source.get("kind") in MAIL_KINDS and source["kind"] not in mail:
                 continue
-            if source.get("kind") in READABLE and source.get("enabled"):
+            if source.get("kind") in readable_kinds() and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
-        write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
-                                                      "authorized_at": now().isoformat(),
-                                                      "summary_value": consent_summary(root, mail=mail),
-                                                      "summary": summary_fingerprint(root, mail=mail)})
+        previous = read_json(state_path(root, "consent.json"), {})
+        approvals = dict(previous.get("source_approvals", {}))
+        for name, sub in source_hooks.selected(root).items():
+            approvals[name] = {"scope": source_hooks.scope_value(sub), "execution": shown["source_execution"]}
+        summary = consent_summary(root, mail=mail)
+        write_json(state_path(root, "consent.json"), {**previous, "authorized_at": now().isoformat(),
+                   "source_approvals": approvals, "summary_value": summary, "summary": _summary_fingerprint(summary)})
 
 
 def summary_fingerprint(root: Path, *, mail=()) -> str:
@@ -165,7 +179,11 @@ def summary_fingerprint(root: Path, *, mail=()) -> str:
     `start` ask again whenever the sources, runner, model, permissions or
     schedule are no longer what the user said yes to.
     """
-    shown = json.dumps(consent_summary(root, mail=mail), sort_keys=True, default=str)
+    return _summary_fingerprint(consent_summary(root, mail=mail))
+
+
+def _summary_fingerprint(summary: dict) -> str:
+    shown = json.dumps(summary, sort_keys=True, default=str)
     return hashlib.sha256(shown.encode()).hexdigest()
 
 
@@ -251,6 +269,9 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     edge and the new one is dropped unread, and no cursor brings it back -- so it takes
     `--only` to mean it and `--force` to accept the loss.
     """
+    source = source_hooks.selected(root).get(name)
+    if source is not None:
+        return source_hooks.configure(root, source["kind"], since=value, only=narrow, force=force)
     with maintenance_lock(root):
         sources = subscriptions(root)
         if name not in sources:
@@ -317,10 +338,10 @@ def seen_outcome(record: dict) -> str:
 def _boot_time() -> datetime | None:
     """The last boot in UTC, when the platform makes it available cheaply; None leaves live PIDs trusted."""
     if sys.platform == "darwin" and shutil.which("sysctl"):
-        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True)
+        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         match = re.search(r"\bsec = (\d+)", result.stdout) if result.returncode == 0 else None
     elif sys.platform.startswith("linux") and Path("/proc/stat").is_file():
-        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(), re.M)
+        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(encoding="utf-8"), re.M)
     else:
         return None
     return datetime.fromtimestamp(int(match[1]), timezone.utc) if match else None
@@ -653,6 +674,11 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
         return f"last read failed {day}{reason}{good}", ""
     missing = (f"{last['dropped_missing']} queued messages dropped as missing"
                if last and last.get("dropped_missing") else "")
+    unsaved = _progress_not_saved(logs, kind)
+    if unsaved:
+        day = timestamp(unsaved["started_at"]).astimezone(zone).date()
+        return (f"read {day}, but its progress was not saved ({unsaved['progress_not_saved']}); "
+                "the same mail is read again next round"), ""
     scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
     if scanned and now() - timestamp(scanned) > timedelta(days=2):
         if any(run.get("phase", "sync") == "sync" and timestamp(run["started_at"]) > timestamp(scanned)
@@ -665,6 +691,13 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     if last and now() - timestamp(last["at"]) > timedelta(days=1):
         return f"last read {age(now() - timestamp(last['at']))} ago", ""
     return "", ""
+
+
+def _progress_not_saved(logs: list[dict], kind: str) -> dict:
+    """The mailbox's last batch, when its round abandoned it and left the scan point where it was."""
+    batches = (run["batch"] for run in logs if isinstance(run.get("batch"), dict))
+    last = next((batch for batch in batches if kind in batch.get("items_by_source", {})), {})
+    return last if last.get("progress_not_saved") else {}
 
 
 def _nights(root: Path) -> list[dict]:
@@ -690,7 +723,8 @@ def round_state(root: Path, config: dict) -> dict | None:
     cursor = read_json(state_path(root, "round.json"), {})
     if not cursor or cursor.get("done") or not (cursor.get("slot") or cursor.get("pending")):
         return None
-    # Held by the floor, a budget or the cap: the round reads mail but its pages wait, and the reason says until when.
+    # Held by the floor or the cap: the round reads mail but its pages wait, and the reason says until when.
+    # A spent investigation budget is not a hold on the round: its other stages run (stages.status says it).
     held = read_json(state_path(root, "round-held.json"), {})
     if held and not cursor.get("pending"):
         return {"state": "stuck", "since": held["since"], "reason": held["reason"]}
@@ -712,22 +746,73 @@ def round_state(root: Path, config: dict) -> dict | None:
     return {"state": "stuck", "since": touched, "reason": " ".join(str(reason).split())[:240]}
 
 
+def _accepted(turn: dict) -> int:
+    """How many submissions a turn had accepted: its receipt's count, or (older receipts) its log's."""
+    if 'accepted' in turn:
+        return int(turn['accepted'] or 0)
+    log = Path(turn.get('log') or '')
+    if not turn.get('log') or not log.is_file():
+        return 0
+    return sum(1 for line in log.read_text(encoding='utf-8', errors='replace').splitlines()
+               if '"rem.submitted"' in line and '"accepted"' in line)
+
+
 def schedule_failure(root: Path) -> dict | None:
     """Surface failed turns from their receipts, without inventing scheduler state."""
-    receipts = [read_json(path, {}) for path in sorted(state_path(root, 'turns').glob('*.json'))[-2:]]
+    receipts = [read_json(path, {}) for path in state_path(root, 'turns').glob('*.json')]
     last = read_json(state_path(root, 'last-turn.json'), {})
-    if last and last not in receipts:
+    if last:
+        receipts = [turn for turn in receipts if turn.get('started_at') != last.get('started_at')]
         receipts.append(last)
     receipts.sort(key=lambda turn: turn.get('started_at', ''))
     if not receipts or receipts[-1].get('result') in ('running', 'skipped'):
         return None
     last = receipts[-1]
     blocked = last.get('blocked') is True
-    failed_twice = len(receipts) >= 2 and all(turn.get('result') in ('failed', 'timed-out') for turn in receipts[-2:])
-    if not blocked and not failed_twice:
+    failures = []
+    for turn in reversed(receipts):
+        if turn.get('result') == 'skipped':
+            continue
+        # A turn that hit the 3-hour cap after accepting work is a normal turn: the next fire continues
+        # the round. Only a turn that errored, or ran out of time with nothing accepted, is a failure.
+        if turn.get('result') not in ('failed', 'timed-out') or (turn.get('result') == 'timed-out' and _accepted(turn)):
+            break
+        failures.append(turn)
+    if not blocked and not failures:
         return None
     evidence = ' '.join((last.get('reason') or f"{last.get('result')} (exit {last.get('exit_code')})").split())[:240]
-    return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence}
+    return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence,
+            # `empty`: how many of them exited 0 with no task served and nothing submitted.
+            **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
+                'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
+                'code_error': _code_error_streak(failures)} if failures else {})}
+
+
+# A bug in REM's own code, not the weather: retrying the same turn meets the same line again (rc35–rc36: six turns
+# died on one AttributeError while Today said "REM retries by itself; nothing is needed from you"). Older receipts
+# carry only the message, so the messages Python itself writes for these classes are recognised too.
+CODE_ERRORS = {'AttributeError', 'TypeError', 'NameError', 'KeyError', 'IndexError', 'UnboundLocalError',
+               'AssertionError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'RecursionError'}
+CODE_ERROR_WORDS = re.compile(r"object has no attribute|is not subscriptable|object is not iterable|is not callable"
+                              r"|unexpected keyword argument|required positional argument|unsupported operand"
+                              r"|index out of range|can only concatenate|referenced before assignment|is not defined")
+
+
+def _code_error(turn: dict) -> bool:
+    return turn.get('error_class') in CODE_ERRORS or bool(CODE_ERROR_WORDS.search(turn.get('reason') or ''))
+
+
+def _code_error_streak(failures: list[dict]) -> int:
+    """How many of the newest failures died on one and the same code error (newest first)."""
+    if not failures or not _code_error(failures[0]):
+        return 0
+    same = failures[0].get('reason')
+    return next((index for index, turn in enumerate(failures) if turn.get('reason') != same or not _code_error(turn)), len(failures))
+
+
+def _unmatched_marks(root: Path) -> int:
+    from .threads import unmatched_marks
+    return unmatched_marks(root)
 
 
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
@@ -759,7 +844,14 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
         coverage[key] = {"known_runs": len(known), "model_runs": len(model_runs)}
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
+    from .stages import calendar_status, status as stage_status
+    from .day_plan import status as day_plan_status
+    # Counted once: the Budget line and the Investigate line's hold say the same number.
+    budget = _quota_status(config, logs) if include_quota else None
     return {"state": state, "tonight": night_summary(root),
+            "stages": stage_status(root, config, logs, budget=budget),
+            "calendar": calendar_status(root, config),
+            "day_plan": day_plan_status(root, str(today)),
             "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
             "models": describe_levels(config),
@@ -773,6 +865,8 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
             "paused": paused(root),
             "nights": _nights(root),
             **({"schedule_failure": failure} if (failure := schedule_failure(root)) else {}),
+            # Closed items whose line the page no longer has in any form (#3174): counted, never dropped.
+            **({"closed_unmatched": unmatched} if (unmatched := _unmatched_marks(root)) else {}),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),
@@ -780,11 +874,12 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
+            **({"registered_sources": sources} if (sources := source_hooks.statuses(root)) else {}),
             **({"people_coverage": people_coverage(root),
                 "translation_coverage": translation_coverage(root, next_run=slot)} if include_coverage else {}),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
-            **(_quota_status(config, logs) if include_quota else {})}
+            **(budget or {})}
 
 
 def _status_worker(worker: dict) -> dict:
@@ -794,7 +889,7 @@ def _status_worker(worker: dict) -> dict:
     if failure:
         failure = _safe_source_failure(failure)
         worker = {**worker, "last_scheduled_failure": failure}
-    for name in READABLE:
+    for name in readable_kinds():
         if reason.startswith(f"{name.title()} read failed"):
             return {**worker, "last_scheduled_reason": _safe_read_error(name, reason,
                     code=failure.get("code", ""), next_command=failure.get("next_command", ""))}
@@ -865,9 +960,11 @@ def daily_cap(root: Path) -> dict:
     config, state = read_config(root), status(root)
     zone = notebook_zone(config)
     midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
-    _, runs = runs_today(run_logs(root), zone)
+    from .catchup import limit_runs
+    runs = limit_runs(root, run_logs(root), zone)
     translation_attempts = sum(row.get("runner_attempts", 0) for row in runs if row.get("phase") in ("daily-translation", "translate"))
-    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"] - translation_attempts
+    limit = config["limits"]["runner_calls_per_day"]
+    used = sum(row.get("runner_attempts", 0) for row in runs) - translation_attempts
     resets = midnight.isoformat(timespec="minutes")
     return {"used": used, "limit": limit, "remaining": max(0, limit - used), "resets_at": resets,
             "note": (f"{max(0, limit - used)} of {limit} runner attempts left today; the count resets "
@@ -877,7 +974,7 @@ def daily_cap(root: Path) -> dict:
 def _quota_status(config: dict, logs: list[dict]) -> dict:
     from . import quota
     meter = next((reading for run in logs for key in ("after", "before")
-                  if "used_percent" in (reading := (run.get("quota") or {}).get(key, {}))
+                  if "used_percent" in (reading := (run.get("quota") or {}).get(key) or {})
                   and reading.get("resets_at", 0) > now().timestamp()),
                  {"unknown": "No saved quota reading for the current window"})
     if config.get("runner") != "codex":
@@ -890,7 +987,9 @@ def _quota_status(config: dict, logs: list[dict]) -> dict:
     else:
         zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
         resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
-        week = f"{meter['used_percent']}% used on {meter['plan']} (last recorded); resets {resets}"
+        # A reading need not name its plan (an older recorder, a test meter); status must still print.
+        on_plan = f" on {meter['plan']}" if meter.get("plan") else ""
+        week = f"{meter['used_percent']}% used{on_plan} (last recorded); resets {resets}"
     # Sentences first for people; the same numbers stay structured for --json.
     return {"codex_week": week,
             "investigation_this_week": (f"{spent} of {limits['investigation_quota_points']} points; "
@@ -944,7 +1043,7 @@ def consent_summary(root: Path, *, mail=()) -> dict:
         elif not source.get("enabled"):
             state = "unsubscribed"
         elif source.get("kind") in source_hooks.MODULES:
-            state = source_hooks._load(source).consent(source)
+            state = source_hooks.consent_description(source)
         elif source.get("kind") in KINDS:
             state = "will be read" if Path(source["root"]).is_dir() else "directory missing"
         elif source.get("kind") in MAIL_KINDS:
@@ -961,7 +1060,9 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             sources[name]["scope"] = source_hooks.scope_value(source)
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
-    return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
+    execution = ({"source_execution": source_hooks.execution_scope(root, config)}
+                 if source_hooks.selected(root) else {})
+    return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"], **execution,
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
             "model_permissions": CONFINEMENT[config["runner"]],
@@ -1001,6 +1102,8 @@ def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
                     source["adapter"] = "available"
         write_json(state_path(root, "subscriptions.json"), sources)
         previous = read_json(state_path(root, "consent.json"), {})
+        # Preserve source_approvals verbatim. Init authorizes sessions/mail only;
+        # refreshing that summary must never renew another source's model/scope.
         write_json(state_path(root, "consent.json"), {
             **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
             "granted_by": "init", "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
@@ -1033,32 +1136,30 @@ def _consent_changes(previous: dict, current: dict, prefix='') -> list[str]:
 def ensure_consent(root: Path, *, confirm, mail=(), report_unchanged=False) -> bool:
     """Approve init/start sources; --mail limits new approvals, never revokes prior consent."""
     refresh_init_mailboxes(root)
-    first = not state_path(root, "consent.json").is_file()
-    # A source subscribed after the first start -- a mailbox, a WhatsApp chat --
-    # has not been agreed to. Asking only the first time meant it could never be
-    # read; asking again whenever one is waiting means it is read only once shown.
-    waiting = [name for name, source in subscriptions(root).items()
-               if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE
-               and (not mail or source["kind"] not in MAIL_KINDS or source["kind"] in mail)]
-    # A connected mailbox init did not subscribe (notebooks before #1946) is
-    # offered, never switched on unasked: it is read only if this is approved.
-    offered = offered_mailboxes(root, mail=mail)
-    waiting += offered
-    # The same holds for everything else the summary shows. A consent recorded
-    # before the summary was, has no fingerprint and is asked for once more.
-    agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
-    changed = not first and (not isinstance(agreed, dict)
-                             or agreed.get("summary") != summary_fingerprint(root, mail=mail))
-    if first or waiting or changed:
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        # Defaults include a relative lookback. Freeze it before showing it so
+        # time spent confirming does not itself change the selection snapshot.
+        sources = subscriptions(root)
+        write_json(state_path(root, "subscriptions.json"), sources)
+        first = not state_path(root, "consent.json").is_file()
+        waiting = [name for name, source in sources.items()
+                   if source.get("enabled") and source.get("kind") in readable_kinds()
+                   and (not source_hooks.approved(root, name, source) if source["kind"] in source_hooks.MODULES
+                        else not source.get("consented"))
+                   and (not mail or source["kind"] not in MAIL_KINDS or source["kind"] in mail)]
+        offered = offered_mailboxes(root, mail=mail)
+        agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
         summary = consent_summary(root, mail=mail)
-        if agreed.get('summary_value'):
-            summary = {**summary, 'changes': _consent_changes(agreed['summary_value'], summary)}
-        if not confirm(summary):
+        changed = agreed.get("summary") != _summary_fingerprint(summary)
+    waiting += offered
+    if first or waiting or changed:
+        changes = _consent_changes(agreed.get('summary_value', {}), summary) if agreed.get('summary_value') else []
+        shown = {**summary, 'changes': changes} if changes else summary
+        if not confirm(deepcopy(shown)):
             return False
-        subscribe_read_mail(root, offered)
-        approve_sources(root, mail=mail)
+        approve_sources(root, mail=mail, expected=summary, offered=offered)
     elif report_unchanged:
-        return confirm(consent_summary(root, mail=mail))
+        return confirm(deepcopy(summary))
     return True
 
 
@@ -1127,7 +1228,7 @@ def _selected_sources(root: Path, selector: str) -> dict:
         if sources[selector].get("adapter") == "deferred":
             raise RemError("This source adapter is deferred to a later milestone")
     return {name: source for name, source in sources.items()
-            if source.get("enabled") and not source.get("unsubscribed") and source.get("kind") in READABLE}
+            if source.get("enabled") and not source.get("unsubscribed") and source.get("kind") in readable_kinds()}
 
 
 PAGES_PER_BATCH = 5
@@ -1258,7 +1359,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             root, source=source, with_person=with_person, all_pending=all_pending,
             runner=runner, extractor=extractor, on_batch=on_batch, say=say))
     if _acquisition is None:
-        _acquisition = source_hooks.fetch(root, names={source} if source else None)
+        _acquisition = {} if with_person else source_hooks.fetch(root, names={source} if source else None)
     if all_pending:
         records, spent = [], ""
         while True:
@@ -1474,6 +1575,8 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
+    selected = {name: sub for name, sub in selected.items()
+                if sub.get("kind") not in source_hooks.MODULES or source_hooks.approved(root, name, sub)}
     started = now()
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
     source_skips, source_failures, sources_read, dropped_missing = [], [], [], {}
@@ -1599,9 +1702,10 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
     if selected_feedback:
         feedback.synchronize(updated, selected_feedback)
+    from .runner import worker_effort
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
               "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-              "phase": "sync", "sources": list(selected), "items": len(items),
+              "effort": worker_effort(config), "phase": "sync", "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
               "extracted": not selected_feedback and len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a
@@ -1613,7 +1717,10 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
               "source_skips": source_skips, "dropped_missing": dropped_missing,
               **({"failed_source": source_failures[0]["source"], "error": source_failures[0]["error"],
                   "source_failures": source_failures} if source_failures else {}),
-              "warning": "; ".join([*(["Source read failed (" + ", ".join(row["source"] for row in source_failures)
+              "warning": "; ".join([*(warning for name, sub in selected.items()
+                                      if sub.get("kind") in source_hooks.MODULES
+                                      if (warning := source_hooks.stale_notice(root, name, sub))),
+                                    *(["Source read failed (" + ", ".join(row["source"] for row in source_failures)
                                        + "); source progress preserved; inspect co rem logs"] if source_failures else []),
                                     *(f"{name}: {count} queued messages dropped as missing"
                                       for name, count in dropped_missing.items()),

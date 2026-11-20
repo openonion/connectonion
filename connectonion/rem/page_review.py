@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from . import facts
+from .source_citations import read_operation
 from .files import Notebook, RemError
 
 
@@ -238,15 +239,16 @@ def repair_project_overview(record: str, text: str) -> tuple[str, bool]:
     return text[:heading.end()] + '\n- Unknown\n\n' + text[end:], True
 
 
-from .source_hooks import MODULES as SOURCE_MODULES
-
-SOURCE_ID = re.compile(r'\b(?:' + '|'.join(map(re.escape, (
-    'codex', 'claude-code', 'gmail', 'outlook', 'whatsapp', 'email', 'reflection',
-    'review', 'project-source', *SOURCE_MODULES))) + r')(?:-summary)?:[\w.:+-]+')
+def source_id_pattern():
+    from .source_hooks import MODULES
+    legacy = (r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
+              r'(?:-summary)?:[\w.:+-]+')
+    registered = '|'.join(map(re.escape, ('adapter', *MODULES)))
+    return re.compile(legacy + r'|\b(?:' + registered + r'):[^\s`]+')
 
 
 def _carried_over(value: str, old_sources: str) -> bool:
-    ids = [match.rstrip('.,;') for match in SOURCE_ID.findall(value)]
+    ids = [match.rstrip('.,;') for match in source_id_pattern().findall(value)]
     return bool(ids) and all(source in old_sources for source in ids)
 
 
@@ -963,7 +965,7 @@ def _known_sources(items: list[dict]) -> set:
     # the facts item even though the raw mail is absent from this turn.
     known.update(row['source'] for item in items if item.get('role') == 'facts'
                  for row in item.get('facts', []) if row.get('source'))
-    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence")
+    derived = [source for i in items if i.get("role") in ("reflection-summary", "extract", "evidence-index", "owner-work-evidence", "captured-decisions")
                for source in i.get("sources", [])]
     known.update(derived)
     # Numbered pieces are one original record. A citation to the whole record
@@ -1007,6 +1009,9 @@ def archived(root: Path, source: str) -> bool:
     from contextlib import closing
     from .files import state_path
     from .reader_model import _cited_row
+    from .source_hooks import managed_target, cited
+    if managed_target(root, source):
+        return cited(root, source) is not None
     file = state_path(root, 'rem.db')
     if file.is_file() and not file.is_symlink():
         with closing(sqlite3.connect(file.as_uri() + '?mode=ro', uri=True)) as db:
@@ -1062,6 +1067,8 @@ def _repin(record: str, source: str) -> str:
 
 def resolve_sources(root: Path, record: str, text: str) -> str:
     """Write each Sources id in the form that resolves: mail by its digest, a file by its full hash."""
+    from .source_hooks import canonical_sources
+    text = canonical_sources(text)
     head, marker, tail = text.partition('\n## Sources\n')
     if not marker:
         return text
@@ -1363,8 +1370,95 @@ def size_errors(candidate: str, original: str) -> list[str]:
     if len(candidate) <= PAGE_REFUSED or len(candidate) <= len(original):
         return []
     return [f'Page is {len(candidate):,} characters (was {len(original):,}), over the {PAGE_LIMIT:,} limit; '
-            'keep it near 15,000: fold the oldest History into dated one-line summaries with their '
-            'citations, and keep the lead and the current state']
+            'keep it near 15,000: say the lead and the current state shortly and merge repeated lines; '
+            'the program moves the oldest History to the page\'s archive, so do not drop cited lines']
+
+
+# An append (#3105) keeps every cited line, so a page already near the limit could never grow: on
+# 2026-11-19 a 22,670-character person page appended to 32,360 and was refused on every repair, each
+# asked to fold History it was also forbidden to drop. Over the limit, the program moves the oldest
+# dated History lines, word for word with the sources they cite, to an archive beside the page in
+# logs/ (run records, never read back as material), and the page says so in one linked line.
+ARCHIVE_DIR = 'logs/history'
+ARCHIVE_KEEP = 4  # the newest dated History lines always stay on the page
+ARCHIVE_LINE = re.compile(r'^- Earlier history: \d+ (?:entry|entries) moved to \[[^\]]*\]\([^)]*\)\.?[ \t]*$')
+_SOURCE_LINE = re.compile(r'^[ \t]*[-*][ \t]*\[(W?\d+)\][ \t]+(.+?)[ \t]*$')
+
+
+def archive_record(record: str) -> str:
+    """Where a page's moved History lives: logs/history/<the page's own path>."""
+    return f'{ARCHIVE_DIR}/{record}'
+
+
+def _relative(from_record: str, to_record: str) -> str:
+    return '../' * from_record.count('/') + to_record
+
+
+def _sources(text: str) -> dict[str, str]:
+    """{id: what follows it} for each definition under ## Sources."""
+    section = text.partition('\n## Sources\n')[2].split('\n## ', 1)[0]
+    return {m[1]: m[2] for line in section.splitlines() if (m := _SOURCE_LINE.match(line))}
+
+
+def _archived(archive: str) -> list[str]:
+    section = archive.partition('\n## History\n')[2].split('\n## ', 1)[0]
+    return [line for line in section.splitlines() if DATED.match(line)]
+
+
+def archive_history(record: str, text: str, archive: str = '') -> tuple[str, str, list[str]]:
+    """(page, archive, moved lines): over PAGE_LIMIT, the page's oldest dated History lines move to the
+    archive, oldest first, until the page is under the limit or only ARCHIVE_KEEP remain. A moved line
+    keeps its words; its citation numbers are the archive's own, defined in the archive's Sources by the
+    same source the page cited, so a later renumbering of the page cannot point it elsewhere. The page
+    keeps its Sources and gains one line linking the archive. Under the limit nothing changes."""
+    span = re.search(r'(?ms)^## History[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', text)
+    if len(text) <= PAGE_LIMIT or not span:
+        return text, archive, []
+    lines = span[1].split('\n')
+    dated = sorted((line for line in lines if DATED.match(line)), key=lambda line: DATED.match(line)['date'])
+    moved, size = [], len(text)
+    for line in dated[:max(0, len(dated) - ARCHIVE_KEEP)]:
+        if size <= PAGE_LIMIT:
+            break
+        moved.append(line)
+        size -= len(line) + 1
+    if not moved:
+        return text, archive, []
+    page_sources, kept_sources = _sources(text), _sources(archive)
+    number = {value: key for key, value in kept_sources.items()}
+
+    def renumber(match):
+        source = page_sources.get(match[1])
+        if source is None:
+            return match[0]
+        if source not in number:
+            number[source] = str(1 + max((int(key) for key in kept_sources if key.isdigit()), default=0))
+            kept_sources[number[source]] = source
+        return f'[{number[source]}]'
+    history = sorted([*_archived(archive), *(CITATION.sub(renumber, line) for line in moved)],
+                     key=lambda line: DATED.match(line)['date'], reverse=True)
+    title = (re.search(r'(?m)^# (.+)$', text) or [None, record])[1].strip()
+    target = archive_record(record)
+    archive = (f'# {title}: earlier history\n\n'
+               f'Moved from [{title}]({_relative(target, record)}) when the page passed {PAGE_LIMIT:,} characters. '
+               'Each line is as it was written; its numbers cite the sources below.\n\n'
+               '## History\n' + '\n'.join(history) + '\n\n## Sources\n'
+               + '\n'.join(f'- [{key}] {value}' for key, value in sorted(kept_sources.items(), key=lambda kv: int(kv[0].lstrip('W') or 0))) + '\n')
+    total = len(history)
+    note = (f'- Earlier history: {total} {"entry" if total == 1 else "entries"} moved to '
+            f'[archive]({_relative(record, target)}).')
+    body = [line for line in lines if line not in moved and not ARCHIVE_LINE.match(line)]
+    last = max((i for i, line in enumerate(body) if line.startswith('- ')), default=len(body) - 1)
+    body.insert(last + 1, note)
+    return text[:span.start(1)] + '\n'.join(body) + text[span.end(1):], archive, moved
+
+
+def with_moved(text: str, moved: list[str]) -> str:
+    """The page as the loss checks read it: lines moved to the archive count as kept, with the page's numbers."""
+    if not moved:
+        return text
+    head, sep, tail = text.partition('\n## Sources\n')
+    return head.rstrip('\n') + '\n' + '\n'.join(moved) + '\n' + sep + tail if sep else text + '\n' + '\n'.join(moved)
 
 
 def size_note(page_chars: int) -> str:
@@ -1375,19 +1469,26 @@ def size_note(page_chars: int) -> str:
     the same mail (#2026 for project pages, #2041 for the others)."""
     if page_chars <= PAGE_LIMIT * 3 // 4:
         return f"The page must stay under {PAGE_LIMIT:,} characters. "
-    return (f"The page is {page_chars:,} characters; it must end under {PAGE_LIMIT:,}, or at least not grow: "
-            "first fold the oldest History into dated one-line summaries with their citations, then add. ")
+    return (f"The page is {page_chars:,} characters; it should end under {PAGE_LIMIT:,}: keep every cited line, "
+            "write what you found in full, and leave the oldest History where it is; the program moves it to "
+            "the page's archive. ")
 
 
 def validate(record: str, candidate: str, original: str, items: list[dict], pages=frozenset(),
-             owner: bool = False, root: Path | None = None, removed_facts=frozenset()) -> list[str]:
+             owner: bool = False, root: Path | None = None, removed_facts=frozenset(),
+             abstract: bool = False) -> list[str]:
     """Structural checks only; citation existence does not prove factual entailment."""
     from .reader_model import source_definitions
     body = prose(candidate)
     errors = size_errors(candidate, original) + history_errors(candidate, original)
+    from .org_links import org_errors
+    errors += org_errors(record, candidate, original)  # a person's organisations are pages (#3141)
+    # A secret never enters a page, a keys page least of all (#3137): its value lives in the OS vault.
+    from .keys import key_shape_errors
+    errors += key_shape_errors(record, candidate)
     if len(re.findall(r'^# .+', body, re.M)) != 1:
         errors.append('Expected exactly one page title')
-    if record.startswith('knowledge/'):
+    if record.startswith('knowledge/') and not abstract:
         from .reader_model import PRIVATE, REFERENCE, _destination
         if PRIVATE.search(original.split('\n', 1)[0]) and not PRIVATE.search(candidate.split('\n', 1)[0]):
             errors.append('Preserve topic privacy on the title line')
@@ -1400,7 +1501,7 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
             errors.append('Preserve the exact skill invocation name as the page title')
     counts = Counter(re.findall(r'^## (.+)$', body, re.M))
     errors += [f'Missing section: {h}' if counts[h] == 0 else f'Section must occur once: {h}'
-               for h in headings(record, owner) if counts[h] != 1]
+               for h in (() if abstract and record.startswith('knowledge/') else headings(record, owner)) if counts[h] != 1]
     errors += [f'Duplicate section: {h}' for h, n in counts.items() if n > 1]
     if owner and re.search(rf'^## {re.escape(NOT_ON_OWNER_PAGE)}[ \t]*$', body, re.M):
         errors.append(f'Section does not belong on the owner page: {NOT_ON_OWNER_PAGE}; '
@@ -1412,6 +1513,10 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     definitions = source_definitions(sources)
     defined = Counter(key for key, _ in definitions)
     errors += [f'Missing or duplicate citation: {key}' for key in refs if defined[key] != 1]
+    if record.startswith('decisions/') and any(defined[key] != 1 for key in refs):
+        errors.append('Under ## Sources, define each [n] exactly once as '
+                      '- [1] source-id — originating page: `sessions/example.md`; '
+                      'copy the supplied original source ID. Do not add [n]: Markdown link definitions.')
     known = _known_sources(items) | _archived_sources(root, definitions)
     if record.startswith('projects/'):
         from .project_pages import live_source_snapshot
@@ -1431,10 +1536,13 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
                 external.update(source for source in cited_texts(root, candidate, items)
                                 if not source.startswith(("investigation:", "codex:", "claude-code:")))
             numbers = _cited_sources(candidate)
+            # A line the page already had is not this run's claim: the 2026-11-18 append A/B was refused
+            # for keeping onionwright's existing Open threads when no new session had arrived (#3105).
+            carried = {_line_key(line) for line in prose(original).splitlines()}
             for heading in ('Insight', 'Open threads'):
                 section = re.search(rf'(?ms)^## {heading}\n(.*?)(?=^## |\Z)', body)
                 if section and not re.fullmatch(r'-?\s*Unknown', section[1].strip(), re.I):
-                    lines = [line for line in section[1].splitlines() if line.strip()]
+                    lines = [line for line in section[1].splitlines() if line.strip() and _line_key(line) not in carried]
                     if not all(any(numbers.get(n) in external for n in CITATION.findall(line)) for line in lines):
                         errors.append(f'No assigned project session inputs: keep {heading} Unknown')
         for label in ('Sessions', 'First seen', 'Last seen'):
@@ -1482,6 +1590,94 @@ def validate(record: str, candidate: str, original: str, items: list[dict], page
     return errors
 
 
+def _ends_with_sources(page: str) -> bool:
+    """Is the page's one `## Sources` its last section, with no stamp or heading after it?"""
+    _, marker, tail = page.partition('\n## Sources\n')
+    return bool(marker) and not re.search(r'(?m)^#{1,6} |^Investigation:', tail)
+
+
+def _fold_appendix(original: str, text: str) -> str:
+    """A section written after the page's closing Sources, moved above it; its definitions join that one list.
+
+    The night's writer used to append `## Section … ### Sources` after everything, so a page read text,
+    sources, text, sources (#3097). The same turn written the old way is not refused, it is put in order.
+    """
+    added = text[len(original):]
+    block = re.search(r'(?ms)^### Sources[ \t]*\n(.*?)(?=^#{2,3} |\Z)', added)
+    section = added[:block.start()] + added[block.end():] if block else added
+    head, marker, sources = original.partition('\n## Sources\n')
+    return (head.rstrip('\n') + '\n\n' + section.strip('\n') + '\n' + marker + sources.rstrip('\n') + '\n'
+            + (block[1].strip('\n') + '\n' if block else ''))
+
+
+def _added_knowledge(text: str, original: str):
+    """(the added section as a page of its own, how to put the reviewed section back, errors).
+
+    A page that ends with its one `## Sources` takes a new section above it and new definitions at the end of
+    that list (#3097). Any other existing page (an Investigate topic with its stamp, or one written before
+    that rule) keeps the older shape: the section after everything, with its own `### Sources`.
+    """
+    nest = lambda part: re.sub(r'^## (Drawn from|Sources|Uncertainties)$', r'### \1', part, flags=re.M)
+    if not original:
+        return text, lambda reviewed: reviewed, []
+    if _ends_with_sources(original):
+        if text.startswith(original):
+            text = _fold_appendix(original, text)
+        head, marker, sources = original.partition('\n## Sources\n')
+        new_head, _, new_sources = text.partition('\n## Sources\n')
+        kept = sources.rstrip('\n')
+        if not (new_head.startswith(head) and new_sources.startswith(kept) and _ends_with_sources(text)):
+            return text, None, ['Abstract knowledge is append-only; preserve all existing text: put the new section '
+                                'above ## Sources and add its definitions at the end of that list']
+        added = new_head[len(head):]
+        candidate = '# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M) + marker + new_sources[len(kept):].lstrip('\n')
+
+        def rebuild(reviewed):
+            section, _, definitions = reviewed.split('\n', 1)[1].partition('\n## Sources\n')
+            return (head.rstrip('\n') + '\n\n' + nest(section).strip('\n') + '\n' + marker + kept + '\n'
+                    + definitions.strip('\n') + '\n')
+        return candidate, rebuild, [] if re.match(r'\s*## [^\n]+\n', added) else ['Abstract knowledge must append a clearly headed section']
+    if not text.startswith(original):
+        return text, None, ['Abstract knowledge is append-only; preserve all existing text']
+    added = text[len(original):]
+    # Review an appendix on its own: its nested headings become normal sections.
+    candidate = '# Settled experience\n' + re.sub(r'^### ', '## ', added, flags=re.M)
+    errors = [] if re.match(r'\s*## [^\n]+\n', added) else ['Abstract knowledge must append a clearly headed section']
+    return candidate, lambda reviewed: original + nest(reviewed.split('\n', 1)[1]), errors
+
+
+def review_abstract_knowledge(notebook, record, text, original, accepted):
+    """Review learning in the batch's usual page review, preserving topic text exactly."""
+    from .captured_decisions import quote_errors
+    from .decision_authorship import review as review_authorship
+    from .reader_model import REFERENCE, SOURCE, _destination
+    candidate, rebuild, errors = _added_knowledge(text, original)
+    if errors:
+        return text, errors
+    drawn = re.search(r'(?ms)^## Drawn from\n(.*?)(?=^## |\Z)', prose(candidate))
+    records = {_destination(record, raw) for _, raw in REFERENCE.findall(drawn[1])} if drawn else set()
+    allowed = set(notebook.list()) | set(accepted)
+    records = {path for path in records if path in allowed and path.startswith(('decisions/', 'sessions/', 'projects/'))}
+    errors = [] if drawn else ['Knowledge needs a Drawn from section']
+    if len(records) < 2:
+        errors.append('Knowledge must be drawn from at least two notebook pages in decisions/, sessions/ or projects/')
+    items = []
+    cited = {source for _, source in SOURCE.findall(candidate.partition('\n## Sources\n')[2])}
+    for path in sorted(records):
+        page = accepted[path] if path in accepted else notebook.read(path)
+        sources = {source for _, source in SOURCE.findall(page.partition('\n## Sources\n')[2])}
+        items.append({'role': 'captured-decisions', 'record': path, 'text': page, 'sources': list(sources)})
+        if not sources & cited:
+            errors.append(f'Knowledge must cite an original source from Drawn from page: {path}')
+    if original and set(CITATION.findall(original)) & set(CITATION.findall(candidate)):
+        errors.append('Appended knowledge must use fresh citation numbers')
+    candidate, authorship_errors = review_authorship(notebook.root, candidate)
+    errors += validate(record, candidate, '', items, pages=allowed, root=notebook.root, abstract=True)
+    errors += size_errors(text, original)
+    errors += unquoted_decisions(candidate, decision_page=True) + quote_errors(candidate, items) + authorship_errors
+    return rebuild(candidate), errors
+
+
 def fact_errors(record: str, candidate: str, original: str) -> list[str]:
     """Every Facts label present; every value cited unless the page already carried it (#2068).
 
@@ -1520,6 +1716,7 @@ def unresolved_findings(text: str, citations: list[str]) -> list[str]:
             for section, marks in found.items()]
 
 
+@read_operation
 def drop_unresolved(record: str, text: str, original: str, items: list[dict],
                     pages=frozenset(), root: Path | None = None) -> tuple[str, dict]:
     """Remove only what rests on a citation that cannot be traced, instead of refusing the page (#1974).
@@ -1532,6 +1729,8 @@ def drop_unresolved(record: str, text: str, original: str, items: list[dict],
     goes. What remains is validated as usual.
     """
     from .reader_model import source_definitions
+    from .source_hooks import canonical_sources
+    text = canonical_sources(text)
     nothing = {'citations': [], 'lines': 0}
     head, marker, tail = text.partition('\n## Sources\n')
     if not headings(record) or not marker:
@@ -2015,7 +2214,18 @@ def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
 
 
-def _lost_sources(before: str, after: str, *, root: Path | None = None) -> set[str]:
+def _evidence_sources(text: str) -> set[str]:
+    """The source ids a page had as evidence: listed, and cited by a sentence.
+
+    2026-11-17: the retention check counted every listed id. One that no sentence cites
+    (left by an older page, or cited only inside a diagram) is removed from every
+    candidate as uncited, so no repair could keep it and `restore_dropped` had no line to
+    put back: 4 lines were restored and the page was still parked for a dropped id."""
+    return _listed_sources(drop_uncited_sources(text))
+
+
+@read_operation
+def _lost_sources(old: set[str], new: set[str], *, root: Path | None = None) -> set[str]:
     """Source ids the page listed and the rewrite no longer lists.
 
     A cited version that the rewrite replaced with a newer version of the same
@@ -2023,11 +2233,10 @@ def _lost_sources(before: str, after: str, *, root: Path | None = None) -> set[s
     date back beside the new one (source_versions).
     """
     from .source_versions import superseded
-    old, new = _listed_sources(before), _listed_sources(after)
     if root is not None:
-        from .source_hooks import superseded as selected_superseded
-        legacy_old = {value for value in old if value.partition(":")[0] not in SOURCE_MODULES}
-        legacy_new = {value for value in new if value.partition(":")[0] not in SOURCE_MODULES}
+        from .source_hooks import managed_target, superseded as selected_superseded
+        legacy_old = {value for value in old if not managed_target(root, value)}
+        legacy_new = {value for value in new if not managed_target(root, value)}
         return old - new - selected_superseded(root, old, new) - superseded(legacy_old, legacy_new)
     return old - new - superseded(old, new)
 
@@ -2087,19 +2296,75 @@ def _lost_quotes(before: str, after: str, exempt=frozenset()) -> set[str]:
     return lost
 
 
-def dropped(before: str, after: str, exempt=frozenset(), *, root: Path | None = None) -> list[str]:
+# Sections whose lines an append may change: History is folded by the program at
+# sixteen lines, and an Uncertainties question goes once it is answered. The lead is
+# the page's summary and is rewritten with what is live; its quotes and sources stay guarded.
+CLAIM_FREE = ('History', 'Uncertainties', 'Sources')
+# A line kept with its old value says so: "CEO (was CTO until 2026-10-01)".
+CORRECTED = re.compile(r'\b(?:was|were|until|previously|formerly|earlier|corrected|superseded|no longer)\b'
+                       r'|此前|曾|原为|直到|更正', re.I)
+
+
+def _line_key(line: str) -> str:
+    """A line's words without citation numbers, links or layout: renumbering is not a change."""
+    words = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', line)
+    words = re.sub(r'\[(?:W?\d+|personal|sensitive)\](?!\()', '', words)
+    return ' '.join(words.strip().lstrip('-*').split()).rstrip(' .;').casefold()
+
+
+def claim_lines(text: str) -> dict[str, str]:
+    """{key: line} for every cited line an append must keep: outside the lead, History,
+    Uncertainties and Sources, and not a Facts field (facts keep their own guard)."""
+    section, found = '', {}
+    for line in prose(text).splitlines():
+        if line.startswith('## '):
+            section = line[3:].strip()
+            continue
+        if (not section or section in CLAIM_FREE or not CITATION.search(line)
+                or CONTACT_LINE.match(line) or not line.strip()):
+            continue
+        key = _line_key(line)
+        if len(key) >= 12:
+            found.setdefault(key, line.strip())
+    return found
+
+
+def _lost_claims(before: str, after: str) -> dict[str, str]:
+    """The cited lines `after` neither keeps (word for word, extended or lightly edited)
+    nor marks corrected. A line may move to another section."""
+    rows = [_line_key(line) for line in prose(after).partition('\n## Sources\n')[0].splitlines() if line.strip()]
+    joined = '\n'.join(rows)
+
+    def kept(key):
+        if key in joined:
+            return True
+        return any(row and (len(row) * 2 >= len(key) and _contained(key, row) >= 0.85
+                            or CORRECTED.search(row) and _contained(key, row) >= 0.5) for row in rows)
+    return {key: line for key, line in claim_lines(before).items() if not kept(key)}
+
+
+def dropped(before: str, after: str, exempt=frozenset(), *, claims=False, root: Path | None = None) -> list[str]:
     """Name each loss so a resumed writer can restore it exactly.
 
     `exempt` are quotes the page had that are not in their cited source: guarding one put a broken
     quote back over the writer's correction, and the round was refused (2026-10-20).
+    `claims`: an append (#3105) also keeps every cited line, or marks it corrected.
     """
     return ([f'Dropped quote the page had: “{quote}”'
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
-               for source in sorted(_lost_sources(before, after, root=root))])
+               for source in sorted(_lost_sources(_evidence_sources(before), _listed_sources(after), root=root))]
+            + (['Dropped claim line the page had: ' + _CITATION_MARKS.sub("", line).rstrip()
+                for line in _lost_claims(before, after).values()] if claims else []))
 
 
-def restore_dropped(before: str, after: str, exempt=frozenset(), *, root: Path | None = None) -> str:
+# Citation marks such as [3] or [W2] (not a [text](link)), stripped from a dropped claim line.
+# A module constant, not inline: a backslash inside an f-string is a SyntaxError before Python 3.12.
+_CITATION_MARKS = re.compile(r"[ ]*(?:\[W?\d+\](?!\()[ ]*)+")
+
+
+@read_operation
+def restore_dropped(before: str, after: str, exempt=frozenset(), *, claims=False, root: Path | None = None) -> str:
     """Restore missing evidence beside a rewrite that keeps every non-lost quote and source.
 
     Never replace a line carrying a new source or quote. Insert the original immediately after
@@ -2116,9 +2381,10 @@ def restore_dropped(before: str, after: str, exempt=frozenset(), *, root: Path |
         if section == 'Sources' or line in seen:
             continue
         lost_quotes = _lost_quotes(before, after, exempt)
-        lost_sources = _lost_sources(before, after, root=root)
+        lost_sources = _lost_sources(_evidence_sources(before), _listed_sources(after), root=root)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
-        if not (quotes(visible) & lost_quotes or cited & lost_sources):
+        lost_claim = claims and _line_key(visible) in _lost_claims(before, after)
+        if not (quotes(visible) & lost_quotes or cited & lost_sources or lost_claim):
             continue
         seen.add(line)
         restored, after = _restore_citations(line, after, before)
@@ -2193,6 +2459,7 @@ def enumeration_only(text: str) -> bool:
     return _listed_sources(text) == {'Enumeration'} and not QUOTE.search(prose(text))
 
 
+@read_operation
 def shrinkage(before: str, after: str, *, root: Path | None = None) -> str:
     """Why a maintenance rewrite lost too much of the page to be promoted, or ''."""
     if len(before) < SHRINK_FLOOR:
@@ -2200,7 +2467,7 @@ def shrinkage(before: str, after: str, *, root: Path | None = None) -> str:
     if len(after) < len(before) * KEEP_SHARE:
         return f'Maintenance shrank the page from {len(before):,} to {len(after):,} characters; kept the old page'
     old = _listed_sources(before)
-    kept = old - _lost_sources(before, after, root=root)
+    kept = old - _lost_sources(old, _listed_sources(after), root=root)
     if old and len(kept) < len(old) * KEEP_SHARE:
         return f'Maintenance kept {len(kept)} of the page\'s {len(old)} cited sources; kept the old page'
     return ''
@@ -2361,12 +2628,19 @@ def move_agent_threads(text: str) -> str:
     return text[:at] + '## Who they are\n' + '\n'.join(lines) + '\n\n' + text[at:]
 
 
-def unquoted_decisions(text: str) -> list[str]:
+def unquoted_decisions(text: str, *, decision_page=False) -> list[str]:
     """Key decisions lines that retell the owner instead of quoting them.
 
     2026-10-20 reruns: four of five handoff decisions were paraphrased though
     rem-page-project asks each to quote the sentence that carries the choice.
     """
+    body, _, sources = prose(text).partition('\n## Sources\n')
+    if decision_page and not QUOTE.search(body):
+        sources = re.split(r'^## ', sources, maxsplit=1, flags=re.M)[0]
+        if QUOTE.search(sources):
+            return ["Decision: the quote is under Sources; put it in the body beside its [n]. "
+                    "Keep the original source ID under ## Sources"]
+        return ["Decision without the owner's words -- quote the sentence that carries the choice, copied from the message it cites"]
     span = re.search(r'(?ms)^## Key decisions[ \t]*\n(.*?)(?=^## |^Investigation:|\Z)', prose(text))
     lines = [line for line in (span[1].splitlines() if span else []) if DATED.match(line) and not QUOTE.search(line)]
     return [f"Key decision without the owner's words: {line[:160]} -- quote the sentence that carries the choice, "

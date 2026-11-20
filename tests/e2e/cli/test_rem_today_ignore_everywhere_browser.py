@@ -129,7 +129,7 @@ def test_waiting_rows_say_ignore(today, size):
 
 CLOSE_WHY = "This is an offline snapshot; open REM to mark it."
 HAND_WHY = "Handing work to an agent happens in the live reader."
-STRIP = ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "More"]
+STRIP = ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]
 WRITTEN = """() => ({states: Object.keys(threadStates).length, stored: localStorage.getItem(threadStorageKey())})"""
 # A thread on Today that has gone quiet but is not a long-past promise, so it belongs to Today's Gone quiet fold.
 QUIET = """() => { REM.today_queue.find(row => row.section === 'today' && !/loan agreement|banner files/.test(JSON.stringify(row))).quiet = true;
@@ -272,10 +272,9 @@ def test_a_file_snapshots_record_page_keeps_no_mark(reader):
     page.goto(uri + "#r=projects%2Fharbour.md")
     page.locator("#main h1").first.wait_for()
     stored = page.evaluate(WRITTEN, isolated_context=False)
-    done = page.locator("#main").get_by_role("button", name="Mark done", exact=True)
-    assert done.count() >= 1
-    for button in done.all():
-        assert button.is_disabled() and button.get_attribute("title") == CLOSE_WHY
+    # A project page is a map (owner: open work and Mark done live only in Today), so it offers no Mark done at all;
+    # the mark itself is still refused in a snapshot if anything calls it.
+    assert page.locator("#main").get_by_role("button", name="Mark done", exact=True).count() == 0
     page.evaluate("(() => { const r = byPath('projects/harbour.md'); return setDone({r, t: threads(r).items[0]}, true); })()", isolated_context=False)
     assert page.evaluate(WRITTEN, isolated_context=False) == stored
     assert page.locator("#done-notice").count() == 0

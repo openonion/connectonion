@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout the exact release commit
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2  # the parent, for a version-only release commit
 
       - name: Find a green Tests run for this exact commit
         id: gate
@@ -188,7 +190,9 @@ jobs:
           echo "$reported"
           [[ "$reported" == *"$VERSION"* ]]
           "${offline[@]}" "$smoke/venv/bin/co" --help >/dev/null
-          "${offline[@]}" timeout 120 "$smoke/venv/bin/co" init --yes
+          # --no-host: under a temporary HOME the runner's systemd user manager cannot
+          # see the unit, so the Host step always fails here (rc39-rc41 stopped on it).
+          "${offline[@]}" timeout 120 "$smoke/venv/bin/co" init --yes --no-host
           test -f "$smoke/home/.co/keys.env"
           test -f "$smoke/home/.co/keys/agent.key"
 

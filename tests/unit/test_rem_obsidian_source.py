@@ -18,16 +18,9 @@ def saved(root):
 
 
 def approve(root):
-    sources = read_json(state_path(root, "subscriptions.json"), {})
-    sources["obsidian"]["consented"] = True
-    write_json(state_path(root, "subscriptions.json"), sources)
-    from connectonion.rem.config import read_config
-    from connectonion.rem.source_hooks import scope_value
-    config = read_config(root, validated=False)
-    write_json(state_path(root, "consent.json"), {"summary_value": {
-        "runner": config["runner"], "model": config["model"],
-        "sources": {"obsidian": {"scope": scope_value(sources["obsidian"])}}}})
-    return sources["obsidian"]
+    from connectonion.rem.service import approve_sources
+    approve_sources(root)
+    return saved(root)
 
 
 @pytest.fixture
@@ -66,7 +59,8 @@ def test_content_hooks_refuse_current_revocation_even_with_old_argument(configur
     sources = read_json(state_path(root, "subscriptions.json"), {})
     sources["obsidian"][field] = value
     write_json(state_path(root, "subscriptions.json"), sources)
-    with pytest.raises(store.SnapshotUnavailable):
+    from connectonion.rem.source_hooks import SourceUnavailable
+    with pytest.raises(SourceUnavailable):
         adapter.fetch(root, sub)
     with pytest.raises(store.SnapshotUnavailable):
         adapter.collect(root, sub, {}, 10, 10_000)
@@ -147,18 +141,19 @@ def test_skipped_history_does_not_report_empty_before_a_current_version(configur
 
 def test_scope_is_rechecked_after_waiting_for_storage_lock(configured, monkeypatch):
     from contextlib import contextmanager
+    from connectonion.rem.source_hooks import SourceUnavailable
 
     root, _, sub = configured
-    real_lock = store.maintenance_lock
+    real_lock = store._file_lock
     @contextmanager
-    def revoke_then_lock(root, **kwargs):
+    def revoke_then_lock(path, wait, **kwargs):
         sources = read_json(state_path(root, "subscriptions.json"), {})
         sources["obsidian"]["consented"] = False
         write_json(state_path(root, "subscriptions.json"), sources)
-        with real_lock(root, **kwargs):
+        with real_lock(path, wait, **kwargs):
             yield
-    monkeypatch.setattr(store, "maintenance_lock", revoke_then_lock)
-    with pytest.raises(store.SnapshotUnavailable):
+    monkeypatch.setattr(store, "_file_lock", revoke_then_lock)
+    with pytest.raises(SourceUnavailable):
         adapter.fetch(root, sub)
     assert not state_path(root, store.DATABASE).exists()
 
@@ -290,3 +285,72 @@ def test_stream_closes_its_lock_when_batch_stops_early(configured):
     adapter.collect(root, sub, {}, 1, 10_000)
     # A leaked generator/lock would prevent another acquisition.
     assert adapter.fetch(root, sub)["unchanged"] == 2
+
+
+@pytest.mark.parametrize("option,value", [("max_items", 0), ("max_items", -1),
+                                        ("max_items", True), ("max_chars", 0),
+                                        ("max_chars", -1), ("max_chars", True)])
+def test_gather_rejects_invalid_budgets_before_reading(configured, monkeypatch, option, value):
+    root, _, sub = configured
+    monkeypatch.setattr(store, "iter_latest", lambda *a, **kw: pytest.fail("invalid budget read storage"))
+    with pytest.raises(ValueError, match="limits"):
+        adapter.gather(root, sub, ["Atlas"], start=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                       record="projects/atlas.md", **{option: value})
+
+
+def test_gather_owner_only_does_not_read_unattributed_notes(configured, monkeypatch):
+    root, _, sub = configured
+    monkeypatch.setattr(store, "iter_latest", lambda *a, **kw: pytest.fail("owner gather read storage"))
+    items, coverage = adapter.gather(root, sub, ["Atlas"], start=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                                     record="people/owner.md", owner=True)
+    assert items == [] and "owner authorship" in " ".join(coverage)
+
+
+@pytest.mark.parametrize("end", [datetime(2025, 1, 1), datetime(1999, 1, 1, tzinfo=timezone.utc),
+                                 datetime(2000, 1, 1, tzinfo=timezone.utc)])
+def test_gather_rejects_invalid_end_before_reading(configured, monkeypatch, end):
+    root, _, sub = configured
+    monkeypatch.setattr(store, "iter_latest", lambda *a, **kw: pytest.fail("invalid window read storage"))
+    with pytest.raises(ValueError, match="end"):
+        adapter.gather(root, sub, ["Atlas"], start=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                       end=end, record="projects/atlas.md")
+
+
+@pytest.mark.parametrize("error", [ValueError("parser bug"), TypeError("reader bug")])
+def test_unexpected_reader_errors_are_not_translated_to_availability(configured, monkeypatch, error):
+    root, _, sub = configured
+    def broken(scope):
+        raise error
+    monkeypatch.setattr(obsidian.vault_reader, "_load_scope_notes", broken)
+    with pytest.raises(type(error), match=str(error)):
+        adapter.fetch(root, sub)
+
+
+@pytest.mark.parametrize("sql,parameters,error_type", [
+    ("SELECT ?", (), sqlite3.ProgrammingError),
+    ("SELEC 1", (), sqlite3.OperationalError),
+    ("SELECT * FROM table_that_does_not_exist", (), sqlite3.OperationalError),
+])
+def test_sql_programming_failures_propagate_through_shared_fetch(configured, monkeypatch, sql, parameters, error_type):
+    from connectonion.rem import source_hooks
+    root, _, _ = configured
+    before = read_json(state_path(root, "source-acquisition.json"), {})
+
+    def broken_query(connection, *args):
+        connection.execute(sql, parameters)
+
+    monkeypatch.setattr(store, "_collect", broken_query)
+    with pytest.raises(error_type):
+        source_hooks.fetch(root)
+    assert read_json(state_path(root, "source-acquisition.json"), {}) == before
+
+
+def test_actual_sqlite_corruption_blocks_saved_material(configured):
+    from connectonion.rem import source_hooks
+    root, _, _ = configured
+    state_path(root, store.DATABASE).write_bytes(b"not a SQLite database")
+
+    result = source_hooks.fetch(root)["obsidian"]
+
+    assert result["ok"] is False and result["allow_saved"] is False
+    assert state_path(root, store.DATABASE).read_bytes() == b"not a SQLite database"

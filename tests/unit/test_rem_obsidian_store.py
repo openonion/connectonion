@@ -6,10 +6,11 @@ import os
 import shutil
 import sqlite3
 import sys
+from threading import Event
 
 import pytest
 
-from connectonion.rem import obsidian, obsidian_store as store
+from connectonion.rem import files, obsidian, obsidian_store as store
 from connectonion.rem.files import RemError, read_json, state_path, write_json
 
 
@@ -258,10 +259,35 @@ def test_empty_selected_folder_commits_an_empty_collection(configured):
     assert store.collect(root)["changes"] == []
 
 
-def test_parallel_collections_do_not_duplicate_versions(configured):
+def test_parallel_collections_do_not_duplicate_versions(configured, monkeypatch):
     root, _ = configured
+    scanning, release, waiting = Event(), Event(), Event()
+    list_notes, try_lock = obsidian.list_notes, files._try_lock
+    monkeypatch.setattr(store, "WRITE_WAIT_SECONDS", 5)
+
+    def held_scan(selection):
+        scanning.set()
+        assert release.wait(10), "The test must release the first scan"
+        return list_notes(selection)
+
+    def observe_lock(fd):
+        try:
+            return try_lock(fd)
+        except BlockingIOError:
+            waiting.set()
+            raise
+
+    monkeypatch.setattr(obsidian, "list_notes", held_scan)
+    monkeypatch.setattr(files, "_try_lock", observe_lock)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(store.collect, root) for _ in range(2)]
+        futures = [pool.submit(store.collect, root)]
+        try:
+            assert scanning.wait(5), "The first collector must reach its scan"
+            futures.append(pool.submit(store.collect, root))
+            assert waiting.wait(5), "The second collector must contend for the writer lock"
+            assert store.latest_snapshots(root) == []
+        finally:
+            release.set()
         results = [future.result(timeout=10) for future in futures]
     assert sorted(result["added"] for result in results) == [0, 2]
     assert counts(root) == (2, 2, 2)

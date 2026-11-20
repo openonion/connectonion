@@ -228,9 +228,31 @@ def test_the_claim_audit_reads_later_messages_and_the_runners_contact_dates(tmp_
                                 record="people/petra.md", items=[facts_item])
     packet = json.loads(prompts[0][prompts[0].index("{\"candidate\""):])
     assert [m["source"] for m in packet["later_messages"]] == [later]
-    assert packet["runner_facts"] == [{"field": "Last contact", "value": "2026-07-02", "source": later}]
+    # First contact comes from the whole archive, under the store's id as people_basics.fill cites it.
+    assert packet["runner_facts"] == [{"field": "Last contact", "value": "2026-07-02", "source": later},
+                                      {"field": "First contact", "value": "2026-06-29", "source": "outlook:native-1"}]
     assert "not the relationship's first and last contact" in prompts[0]
     assert "left out, not failed" in prompts[0]
+
+
+def test_a_reinvestigated_persons_first_contact_reaches_the_audit_from_the_whole_archive(tmp_path):
+    """#3083 rc20 night: a page investigated before gathers only recent mail, so its facts
+    item has no First contact; the audit saw Last contact alone and refused the page's
+    code-computed First contact as "cannot be assessed" (two parks, 4.7M input)."""
+    from connectonion.rem import project_claim_review
+    prepare(tmp_path)
+    first = _mail(tmp_path, "native-1", "petra@uni.example", "2026-03-04T00:00:00Z", "Hello from Petra.")
+    later = _mail(tmp_path, "native-2", "petra@uni.example", "2026-07-02T00:00:00Z", "Thanks, settled.")
+    refresh(tmp_path)
+    notebook, _ = _person(tmp_path)
+    candidate = (f"# Petra\n\n- First contact: 2026-03-04 [1]\n- Last contact: 2026-07-02 [2]\n\n## Sources\n"
+                 f"- [1] {first} — 2026-03-04\n- [2] {later} — 2026-07-02\n")
+    facts_item = {"role": "facts", "source": "investigation:facts",
+                  "facts": [{"field": "Last contact", "value": "2026-07-02", "source": later}]}
+    audit, _ = project_claim_review.packet(notebook, candidate, "people/petra.md", [facts_item])
+    assert audit["runner_facts"] == [{"field": "Last contact", "value": "2026-07-02", "source": later},
+                                     # The store's id, as people_basics.fill cites it on the page.
+                                     {"field": "First contact", "value": "2026-03-04", "source": "outlook:native-1"}]
 
 
 # ------------------------------------------- 7. the owner's own request is the retry

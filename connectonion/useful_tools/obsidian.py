@@ -148,9 +148,16 @@ def _scope_folder(vault: Path, folder: str) -> Path:
         if current.is_symlink():
             raise ValueError("Obsidian folder scopes cannot follow symlinks.")
     selected = _directory(current)
-    if not selected.is_relative_to(vault):
+    if selected != current or not selected.is_relative_to(vault):
         raise ValueError("The selected folder must remain inside the vault.")
     return selected
+
+
+def _canonical_vault(vault_path: Path) -> Path:
+    vault_path = Path(vault_path).expanduser()
+    if vault_path.is_symlink():
+        raise ValueError("Obsidian folder scopes cannot follow a symlink vault.")
+    return _directory(vault_path)
 
 
 def _validate_scope(vault_path: Path, folders: Sequence[str]) -> _Scope:
@@ -159,10 +166,7 @@ def _validate_scope(vault_path: Path, folders: Sequence[str]) -> _Scope:
         raise ValueError("Choose an explicit Obsidian vault path.")
     if not folders or isinstance(folders, (str, bytes)):
         raise ValueError("Choose folders explicitly; use '.' for the whole vault.")
-    vault_path = Path(vault_path).expanduser()
-    if vault_path.is_symlink():
-        raise ValueError("Obsidian folder scopes cannot follow a symlink vault.")
-    vault = _directory(vault_path)
+    vault = _canonical_vault(vault_path)
     selected = {_scope_folder(vault, folder) for folder in folders}
     roots = []
     for path in sorted(selected, key=lambda p: (len(p.parts), str(p))):
@@ -220,7 +224,11 @@ def _open_directory(path: Path):
 
 def list_vault_root(vault_path: Path) -> dict:
     """List immediate folders and Markdown filenames without reading or descending."""
-    vault = _validate_scope(vault_path, (".",)).vault_path
+    return _list_canonical_vault_root(_validate_scope(vault_path, (".",)).vault_path)
+
+
+def _list_canonical_vault_root(vault: Path) -> dict:
+    """Keep a navigation row's resolved vault fixed while listing its names."""
     folders, notes = [], []
     try:
         with _open_directory(vault) as descriptor, os.scandir(vault if descriptor is None else descriptor) as entries:
@@ -573,9 +581,13 @@ def list_notes(vault_path: Path, *, folders: Sequence[str]) -> list[dict]:
 
 def read_note(vault_path: Path, ref: str, *, folders: Sequence[str]) -> dict:
     """Read a relative path or exact filename title, with backlinks from the same scope."""
+    return _read_scope_note(_validate_scope(vault_path, folders), ref)
+
+
+def _read_scope_note(scope: _Scope, ref: str) -> dict:
+    """Keep the caller's validated paths instead of resolving the vault again."""
     if not isinstance(ref, str) or not ref.strip():
         raise ValueError("Choose a note path or filename title.")
-    scope = _validate_scope(vault_path, folders)
     if "/" in ref or "\\" in ref or ref.lower().endswith(".md") or Path(ref).is_absolute():
         ref = _resolve_note_path(scope, ref)
     return _select_note(_load_scope_notes(scope), ref)
@@ -633,13 +645,18 @@ def _make_excerpt(note: dict, terms: list[str], fields: list[str]) -> str:
 
 def search_notes(vault_path: Path, query: str, *, folders: Sequence[str]) -> list[dict]:
     """Search selected notes with AND terms or quoted phrases; title matches come first."""
+    return _search_scope_notes(_validate_scope(vault_path, folders), query)
+
+
+def _search_scope_notes(scope: _Scope, query: str) -> list[dict]:
+    """Search within an already selected scope without following a new vault target."""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("Choose a non-empty search query.")
     terms = shlex.split(query)
     if not terms or any(not term for term in terms):
         raise ValueError("Choose a non-empty search query.")
     hits = []
-    for note in _load_notes(vault_path, folders=folders):
+    for note in _load_scope_notes(scope):
         fields = _match_query(note, terms)
         if fields:
             hits.append({key: note[key] for key in ("note_key", "path", "title", "modified_at")}

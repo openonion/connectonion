@@ -12,10 +12,12 @@ from datetime import datetime
 from hashlib import sha256
 import json
 from pathlib import Path
+import sqlite3
 
 from . import obsidian, obsidian_store as store
 from .files import RemError
-from .source import Batch, _fit, timestamp
+from .source import Batch, timestamp
+from .source_hooks import fit_item as _fit
 
 
 kind = "obsidian"
@@ -46,8 +48,22 @@ def fetch(root: Path, subscription: dict) -> dict:
     from .source_hooks import SourceUnavailable
     try:
         return store.collect(root, expected=subscription)
+    except SourceUnavailable:
+        raise
+    except store.SnapshotUnavailable as error:
+        raise SourceUnavailable("Obsidian scope, approval or snapshot integrity changed; review the selection and store",
+                                allow_saved=False) from error
+    except sqlite3.DatabaseError as error:
+        code = getattr(error, "sqlite_errorcode", None)
+        if code is None or code & 0xff not in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}:
+            raise
+        raise SourceUnavailable("Obsidian snapshot database is corrupt; preserve the store for diagnosis",
+                                allow_saved=False) from error
     except (OSError, obsidian.vault_reader.ObsidianError) as error:
         raise SourceUnavailable("Selected vault could not be collected; check co obsidian ls and retry sync") from error
+    except RemError as error:
+        raise SourceUnavailable("Obsidian snapshot collection could not be validated; preserve the store and retry",
+                                allow_saved=False) from error
 
 
 def _checkpoint(root: Path, subscription: dict, progress: dict) -> dict:
@@ -102,15 +118,24 @@ def collect(root: Path, subscription: dict, progress: dict, max_items: int, max_
 
 
 def gather(root: Path, subscription: dict, handles: list[str], *, start: datetime,
-           record: str) -> tuple[list[dict], list[str]]:
+           record: str, end: datetime | None = None, owner: bool = False,
+           max_items: int | None = None, max_chars: int | None = None) -> tuple[list[dict], list[str]]:
     """Literal candidate matches in current saved notes, filtered by saved mtime.
 
     start limits note modification time, not the dates of claims in the text.
     Matching a handle is evidence to inspect, not a claim of person identity.
     record is the target REM page; it does not widen the source selection.
     """
+    max_items = GATHER_MAX_ITEMS if max_items is None else max_items
+    max_chars = GATHER_MAX_CHARS if max_chars is None else max_chars
+    if type(max_items) is not int or type(max_chars) is not int or min(max_items, max_chars) <= 0:
+        raise ValueError("Investigation limits must be positive integers")
     if start.tzinfo is None or start.utcoffset() is None:
         raise ValueError("Investigation start must include a timezone")
+    if end is not None and (end.tzinfo is None or end.utcoffset() is None or end <= start):
+        raise ValueError("Investigation end must include a timezone and be after start")
+    if owner:
+        return [], ["obsidian: saved notes do not establish owner authorship; not searched"]
     if not handles or isinstance(handles, str) or any(not isinstance(h, str) or not h.strip() for h in handles):
         raise ValueError("Investigation needs nonempty handles")
     needles = list(dict.fromkeys(handle.strip().casefold() for handle in handles))
@@ -118,15 +143,15 @@ def gather(root: Path, subscription: dict, handles: list[str], *, start: datetim
     with closing(store.iter_latest(root, expected=subscription)) as snapshots:
         for snapshot in snapshots:
             item = _item(snapshot)
-            if item is None or timestamp(item["timestamp"]) < start:
+            if item is None or timestamp(item["timestamp"]) < start or (end is not None and timestamp(item["timestamp"]) >= end):
                 continue
             text = (item["subject"] + "\n" + item["text"]).casefold()
             if not any(needle in text for needle in needles):
                 continue
-            if len(items) == GATHER_MAX_ITEMS or items and used + _size(item) > GATHER_MAX_CHARS:
+            if len(items) == max_items or items and used + _size(item) > max_chars:
                 limited = True
                 break
-            fitted = _fit(item, GATHER_MAX_CHARS) if not items else item
+            fitted = _fit(item, max_chars) if not items else item
             limited = limited or fitted != item
             items.append(fitted)
             used += _size(fitted)
@@ -142,11 +167,14 @@ def cited(root: Path, subscription: dict, source_id: str) -> dict | None:
 
 def pending(root: Path, subscription: dict, progress: dict) -> dict:
     checkpoint = _checkpoint(root, subscription, progress)
-    return store.pending_metadata(root, checkpoint["sequence"], expected=subscription)
+    result = store.pending_metadata(root, checkpoint["sequence"], expected=subscription)
+    return {**result, "count": result["pending_notes"]}
 
 
-def configure(root: Path, *, vault: str, folders: list[str], replace: bool = False) -> dict:
+def configure(root: Path, *, vault: str = "", folders: list[str] = (), replace: bool = False, **options) -> dict:
     """Explicit selection command; paths are validated, note bodies are not read."""
+    from .source_hooks import reject_options
+    reject_options(options)
     if not vault or not folders:
         raise RemError("Name one vault and explicit folders: --vault <path> --folder <folder>")
     try:
@@ -156,10 +184,12 @@ def configure(root: Path, *, vault: str, folders: list[str], replace: bool = Fal
             if len(matches) != 1:
                 raise RemError("Vault name is missing or ambiguous; use its absolute path from co obsidian vaults")
             path = Path(matches[0]["path"])
-        if root.resolve().is_relative_to(path.resolve()):
+        selection = obsidian.validate_selection(path, folders)
+        if root.resolve().is_relative_to(selection.vault):
             raise RemError("The snapshot notebook must be outside the Obsidian vault")
-        selection = obsidian.save_selection(root, path, folders, replace=replace)
+        previous = obsidian.load_selection(root)
+        if previous is not None and previous.vault != selection.vault and not replace:
+            raise RemError("A different Obsidian vault is already selected; use --replace to switch vaults")
     except obsidian.vault_reader.ObsidianError as error:
         raise RemError(str(error)) from error
-    return {"subscription": kind, "enabled": True, "vault": str(selection.vault),
-            "folders": list(selection.folders), "consented": obsidian._subscriptions(root)[kind]["consented"]}
+    return {"kind": kind, "vault": str(selection.vault), "folders": list(selection.folders)}

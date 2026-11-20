@@ -189,6 +189,36 @@ def test_cli_rejects_explicit_speed_for_other_harnesses(harness, speed):
     assert "--speed applies only to --harness codex" in json.loads(result.stdout)["error"]
 
 
+def test_cli_effort_reaches_codex_tool_and_none_keeps_the_users_own(monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+
+    seen = []
+
+    def fake(**kwargs):
+        seen.append(kwargs)
+        return json.dumps({"last_message": "done", "exit_code": 0})
+
+    monkeypatch.setattr(codex_module, "_run_codex", fake)
+    assert CliRunner().invoke(app, ["ai", "--harness", "codex", "--effort", "medium", "--json", "do it"]).exit_code == 0
+    assert CliRunner().invoke(app, ["ai", "--harness", "codex", "--json", "do it"]).exit_code == 0
+    assert [call["effort"] for call in seen] == ["medium", ""]
+
+
+@pytest.mark.parametrize("harness,effort,said", [
+    ("claude-code", "medium", "--effort applies only to --harness codex"),
+    ("ours", "medium", "--effort applies only to --harness codex"),
+    ("codex", "ultra", "Use minimal, low, medium, high, xhigh or max"),
+])
+def test_cli_rejects_an_effort_it_cannot_apply(harness, effort, said):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+
+    result = CliRunner().invoke(app, ["ai", "--harness", harness, "--effort", effort, "--json", "do it"])
+    assert result.exit_code == 2
+    assert said in json.loads(result.stdout)["error"]
+
+
 def test_cli_rejects_unknown_speed(capsys):
     with pytest.raises(typer.Exit):
         ai_commands.handle_ai(prompt="do it", harness="codex", speed="turbo", json_output=True)

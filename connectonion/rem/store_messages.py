@@ -49,7 +49,7 @@ def _mail_row(root: Path, row: dict, owner: set) -> dict:
     return {"id": f"{provider}:{message_id}", "source": provider, "thread": thread,
             "sender": sender, "recipients": dumps(to + cc), "time": utc(row.get("date", "")),
             "subject": row.get("subject", ""), "body_line": None,
-            "body_path": str(path.relative_to(root / ".state")) if path.is_file() else None}
+            "body_path": path.relative_to(root / ".state").as_posix() if path.is_file() else None}
 
 
 def build_mail(db, root: Path) -> None:
@@ -72,7 +72,7 @@ def build_sessions(db, root: Path) -> None:
             rows.append({"id": message["source"], "source": message.get("tool", ""),
                          "thread": "session:" + message["source"].rsplit(":", 1)[0], "sender": owner,
                          "recipients": dumps([message.get("tool", "")]), "time": utc(message.get("timestamp", "")),
-                         "subject": record, "body_path": str(path.relative_to(root / ".state")), "body_line": number})
+                         "subject": record, "body_path": path.relative_to(root / ".state").as_posix(), "body_line": number})
     db.execute("delete from messages where thread like 'session:%'")
     insert(db, "messages", rows)
 

@@ -130,12 +130,13 @@ def hollow_investigations(root) -> set:
 
 
 def _stamped_from_nothing(page: str) -> bool:
-    from .page_review import SOURCE_ID
+    from .page_review import source_id_pattern
     status = next((line for line in page.splitlines() if line.startswith("Investigation:")), "")
     if last_investigated(status) is None:
         return False
     sources = page.partition("\n## Sources\n")[2].split("\nInvestigation:")[0]
-    return not any(SOURCE_ID.search(line) or re.search(r"https?://|`/[^`]+`", line)
+    source_ids = source_id_pattern()
+    return not any(source_ids.search(line) or re.search(r"https?://|`/[^`]+`", line)
                    for line in sources.splitlines())
 
 
@@ -186,7 +187,8 @@ def own_orgs(notebook: Notebook, owner: dict | None) -> set:
     """Own-company pages still need investigation when all their contacts were excluded."""
     from .investigate import org_domains
     from .org_map import own_company
-    page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
+    record = (owner or {}).get("record")
+    page = notebook.read(record) if record and notebook.path(record).is_file() else ""
     projects = [notebook.read(p) for p in notebook.list("projects")]
     return {record for record in notebook.list("orgs")
             if any(own_company(domain, page, projects, (owner or {}).get("addresses", []))

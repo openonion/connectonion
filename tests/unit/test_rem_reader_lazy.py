@@ -69,6 +69,7 @@ def test_offline_startup_finishes_details_without_navigation():
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
+      const PRIVACY_LEVELS = ['all', 'cover', 'public'], privacyDefault = () => 'cover', setPrivacy = () => {};  // #2840
       const peopleColumnKeys = () => [];
       const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done', keptOpenStorageKey = () => 'kept-open';
       const reconcileThreads = () => Promise.resolve();
@@ -105,13 +106,14 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
         return {tag, ...attrs, children: children.filter(x => x != null),
           innerHTML: attrs.html || '',
           classList: {add() {}, toggle() {}, contains() {return false;}}, setAttribute() {},
+          style: {}, dataset: {}, addEventListener() {}, setProperty() {},  // Today's calendar (#3152) styles its blocks
           appendChild(node) {this.children.push(node); return node;},
           append(...nodes) {this.children.push(...nodes);},
           cloneNode() {return this;},
           querySelector() {return null;}, querySelectorAll() {return [];}};
       }
       const main = el('main');
-      const document = {getElementById(id) {
+      const document = {querySelectorAll() {return [];}, querySelector() {return null;}, getElementById(id) {
         if (id === 'approval-undo') return null;
         if (id !== 'main') throw Error('Today tried to load ' + id);
         return main;

@@ -1,5 +1,6 @@
 """One page per owner conversation, with optional batched model summaries."""
 
+from functools import lru_cache
 import hashlib
 import io
 import json
@@ -14,9 +15,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import config, runner, service, source
-from .files import (SECRET_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
+from .files import (KEY_SHAPES, WRITE_WAIT_SECONDS, Notebook, RemError,
                     maintenance_lock, read_json, state_path, write_json)
-from .scan import WORKTREE_FOLDER, main_checkout, project_exclusion
+from .scan import WORKTREE_FOLDER, is_repository, main_checkout, nameable, project_exclusion
 from .project_material import REDACTED, page_folders, page_for, retain_cited_sessions
 from .project_pages import CODE_CHURN_DAYS
 from .page_review import _plain, _quoted_in
@@ -53,16 +54,25 @@ def _touched(text: str, cwd: str) -> Counter:
     text = text[:20_000]
     workdir = re.search(r'"workdir"\s*:\s*"([^"\n]+)"', text)
     here = Path(workdir[1] if workdir else cwd)
-    paths = Counter(re.findall(r"(?<![\w./:~$-])/(?:[a-zA-Z0-9._@+-]+/)*[a-zA-Z0-9._@+-]+", text))
+    # A token or a URL's tail can match either pattern; what cannot be a folder's
+    # name is never asked about as a repository (`_project_path`), which would raise
+    # `File name too long` (2026-11-16).
+    paths = Counter(path for path in re.findall(r"(?<![\w./:~$-])/(?:[a-zA-Z0-9._@+-]+/)*[a-zA-Z0-9._@+-]+", text)
+                    if nameable(path))
     for target in re.findall(r"\bcd\s+([^\s;&|)'\"]+)", text):
-        if not target.startswith(("~", "-", "$", "/")) and here.is_absolute():
+        if not target.startswith(("~", "-", "$", "/")) and here.is_absolute() and nameable(target):
             paths[str((here / target).resolve())] += 1
     return paths
 
 
+@lru_cache(maxsize=None)
 def _project_path(path: str) -> str:
+    # One import asks about the same few folders thousands of times, and each answer opens a
+    # worktree's `.git` file: 8,728 opens took 128 s on the owner's Mac and the round never
+    # started inside its ten minutes. import_sessions clears this at its start, so a run sees
+    # the disk as it is now.
     folder = WORKTREE_FOLDER.match(path)
-    if folder and (Path(folder[1]) / ".git").exists():
+    if folder and is_repository(folder[1]):
         return folder[1] + (folder[3] or "")
     return main_checkout(path) or path
 
@@ -81,7 +91,7 @@ def _project(session: dict, folders: dict) -> str | None:
 
 
 def _redact(text: str) -> str:
-    return SECRET_SHAPES.sub(REDACTED, text)
+    return KEY_SHAPES.sub(REDACTED, text)
 
 
 def _tool_text(value, limit: int = 20_000) -> str:
@@ -558,6 +568,7 @@ def _import_file(path, kind, since, notebook, folders, zone, progress, counts, s
         "printed_commits": [{"sha": c["sha"].lower(), "branch": c["branch"]} for c in session["artifacts"]["commits"]]}
     progress["sessions"][key] = record
     counts["updated" if updated else "imported"] += 1
+    counts.setdefault('changed', []).append(record)
     return ""
 
 
@@ -567,10 +578,11 @@ def import_sessions(root: Path, *, days: int = 180, now: datetime | None = None,
         raise RemError("Session import days must be positive")
     started = time.monotonic()
     now = now or (sessions.now if sessions is not None else datetime.now(timezone.utc))
+    _project_path.cache_clear()
     since = now - timedelta(days=days)
     notebook = Notebook(root)
     zone = ZoneInfo(config.read_config(root)["schedule"].get("timezone") or config.local_timezone() or "UTC")
-    counts = {"imported": 0, "updated": 0, "unchanged": 0}
+    counts = {"imported": 0, "updated": 0, "unchanged": 0, "changed": []}
     skipped = Counter()
     with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         progress = read_json(state_path(root, "sessions.json"), {"files": {}, "sessions": {}})
@@ -633,6 +645,24 @@ def _typed_messages(page: str) -> list[dict]:
     typed = _section(page, "What you typed")
     return [{"time": stamp[-5:], "text": re.sub(r"^> ?", "", text, flags=re.M).strip()}
             for stamp, text in re.findall(r"^### ([^\n]+)\n(.*?)(?=^### |\Z)", typed, re.M | re.S)]
+
+
+def being_written(root: Path, key: str) -> bool:
+    """Has one of this session's files changed since the round imported it? Then it is still open.
+
+    #3083 rc20 night: a live Claude Code session file changed 21 s into its summary task, which
+    was parked "Task input changed". Its page is the import's, so a summary now would also
+    describe a session that has moved on; the next round imports and summarises it again.
+    (A clock window of "modified in the last minutes" was the first idea; the import's own
+    size and mtime say the same thing without a clock.)"""
+    files = read_json(state_path(root, "sessions.json"), {}).get("files", {})
+    for path, entry in files.items():
+        if entry.get("session") != key or not Path(path).is_file():
+            continue
+        stat = Path(path).stat()
+        if (entry.get("size"), entry.get("mtime_ns")) != (stat.st_size, stat.st_mtime_ns):
+            return True
+    return False
 
 
 def _summary_candidates(root: Path, limit: int) -> list[dict]:
@@ -719,7 +749,7 @@ def _native_summary_prompt(rows, tags, directory, output):
         session['artifacts'] = [line for entry in session['artifacts'] for line in entry.splitlines()]
         path = material / f"{session['id']}.json"
         write_json(path, session)
-        paths.append(str(path.relative_to(directory)))
+        paths.append(path.relative_to(directory).as_posix())
     return (_summary_instructions(tags, candidate=output)
             + f'\nSessions: {len(rows)} session(s), one JSON file per session: ' + ', '.join(paths)
             + ". Read every file in pieces with sed/rg, for example "
@@ -776,7 +806,10 @@ def _summary_batch(root: Path, rows: list[dict], settings: dict, run) -> dict:
 
 
 def prepare(root, rows, settings, *, directory, native=False):
-    tags = read_json(state_path(root, "session-tags.json"), {})
+    # The shared vocabulary (#3093): its session topics, organisations, courses and roles, most used first.
+    from .tags import vocabulary
+    used = read_json(state_path(root, "session-tags.json"), {})
+    tags = {slug: max(entry["count"], used.get(slug, 0)) for slug, entry in vocabulary(root).items()}
     output = directory / "candidate.json"
     prompt = (_native_summary_prompt(rows, tags, directory, output) if native else _summary_prompt(rows, tags))
     return {"rows": rows, "prompt": prompt, "candidate": str(output)}
@@ -803,7 +836,8 @@ def _summary_run(root: Path, settings: dict) -> tuple[dict, Path]:
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": service.now().isoformat(),
               "outcome": "running", "runner_attempts": 0, "usage": None, "sources": [], "items": 0,
               "changed": [], "phase": "sessions-summary", "harness": settings["runner"],
-              "model": settings["model"], "speed": settings["speed"], **service.running_marker()}
+              "model": settings["model"], "speed": settings["speed"], "effort": runner.worker_effort(settings),
+              **service.running_marker()}
     path = state_path(root, f"runs/{record['id']}.json")
     write_json(path, record)
     return record, path

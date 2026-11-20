@@ -39,8 +39,22 @@ receipt after obtaining its lock, and every actual model attempt rechecks retain
 material, including timeout retries. Wrapping only the retry loop would miss a
 revocation between its two attempts. Already sent requests cannot be recalled.
 
-The author reports the targeted synthetic-vault tests passed. The live walkthrough
-also verified incremental collection and exact old/new citation contexts. Broader
-regression failures and the shared investigation runner's independent retrieval
-remain documented limitations. This is an initial implementation for discussion
-in #3040, not an approved API or a completed migration of all sources.
+The 2026-11-20 alignment uses the shared hooks from #3228. A scan holds a separate
+acquisition lock while reading the live vault, then takes the shared guard only
+to validate and publish its result. Offline readers do not take the acquisition
+lock. Holding both locks throughout a scan would make a reader inside the notebook
+transaction wait on a writer that itself needed that transaction to finish.
+
+Filesystem identity needs the same care as saved configuration. A folder can be
+replaced with a symlink without changing subscriptions. Resolving the saved vault
+again and accepting the new destination would silently change the authorized
+scope. The adapter now checks the saved canonical paths, reads through that
+validated scope and checks it again after scanning. Scope errors block saved
+material until successful reacquisition; a temporarily unavailable folder can
+instead retain explicitly stale, approved snapshots.
+
+The local candidate passed focused synthetic-vault and affected REM regression
+tests; [the validation record](../rem/obsidian-validation.md) separates these from
+the earlier live walkthrough and its historical failures. The runner's independent
+retrieval remains a documented limitation. This is a source-specific migration
+for shared-PR review, not a completed migration of all sources.

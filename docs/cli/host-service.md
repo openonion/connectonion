@@ -1,20 +1,25 @@
 # A Host that survives closing the terminal
 
-Candidate implementation for #2684; not yet released. The first slice adds a
-macOS user service to an existing project with an `agent.py`:
+Since #3170, `co init` installs and starts this service for you. These
+commands manage it afterwards:
 
 ```bash
-co host --background
-co host --status
+co host                 # human-readable status
+co host --status        # the same, as JSON
 co host --stop
 co host --background
 co host --uninstall
 ```
 
-Foreground `co host` keeps its existing behavior. `--background` uses the same
-co Python environment and project, installs one launchd GUI-user service and
-starts it. It restarts after process exit and loads after user login. A Mac
-that is asleep, offline or logged out is not an always-available server.
+`--background` uses the same co Python environment and project, installs one
+user service and starts it: launchd on macOS (a GUI-user agent), a systemd user
+unit on Linux. It restarts after process exit and loads after user login. A
+machine that is asleep, offline or logged out is not an always-available
+server; on Linux, `loginctl enable-linger` keeps the unit running after logout.
+
+The service runs `co host --serve` (the built-in agent, whose model is the
+`model:` line in host.yaml) or, for a project with its own `agent.py`,
+`co host --agent agent.py`.
 
 The plist contains executable/configuration paths, not tokens. Existing co
 configuration is loaded at process startup. Logs are local owner-only files
@@ -31,22 +36,26 @@ the service definition, preserving project code, identity, memory and logs.
 Only one service action can be selected per invocation. `--port` applies only
 when starting the background service. Other platforms can use foreground hosting.
 
-## Standard Mac preparation
+## What co init prepares
 
 ```bash
-co init --background
+co init                 # co init --no-host skips this step
 ```
 
-The candidate initializes a dedicated profile at `~/.co/runtime/mac-host` through
-the standard project initializer, prepares REM directories/configuration without
-mapping or investigating sources, then starts a native Codex Host user service.
+It initializes a dedicated profile at `~/.co/runtime/mac-host` (macOS) or
+`~/.co/runtime/host` (Linux) through the standard project initializer, writes
+`model:` into its host.yaml (a logged-in Codex, then Claude Code, otherwise the
+managed default; a profile from before #3170 keeps `codex`), prepares REM
+directories/configuration without mapping or investigating sources, then starts
+the Host user service.
 New profiles are strict-trust, unlisted and have no chat-channel listeners.
 Existing user configuration is kept. New REM configuration selects Codex; it
 does not silently fall back to a different runner.
 New profiles use port 8000 if free, otherwise an operating-system-assigned port;
 an existing Host is not stopped. The actual saved profile port is reused later.
 
-`co host --native-codex` runs that native profile in the foreground. It reuses the
+`co host --serve` in that profile runs it in the foreground (`--native-codex`
+is the older spelling and still forces Codex). It reuses the
 existing Codex plugin and Host session/permission boundaries, with no outer
 ConnectOnion model call. Session continuation comes from owned Host storage;
 remote text cannot choose a native thread ID, cwd or model. File/image inputs

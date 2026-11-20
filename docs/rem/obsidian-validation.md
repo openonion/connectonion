@@ -4,7 +4,39 @@ Run from the single-vault worktree with its package on `PYTHONPATH` and the exis
 project virtual environment first on `PATH`. The commands below are a reusable
 validation procedure, not a transcript of every action in the author's demo.
 
-## Recorded local validation on 2026-11-15
+## Local alignment validation on 2026-11-20
+
+The final isolated candidate prepares a merge of published #3228 (`f9d5f156`)
+into published #3064 (`01ff73fd`). That shared commit includes upstream `main`
+(`ffe3f133`) and the follow-up fixes from Asana's review. At validation time,
+`MERGE_HEAD` is the actual shared commit; completing the pending merge will record
+it as a parent. No commit or push was performed by the implementation agent.
+The original experimental checkout remains unchanged.
+
+The initial staged tree exactly matched the earlier tested alignment candidate.
+A deeper review then found a CLI path re-resolution race and an overly broad
+SQLite exception handler. The final revision keeps one validated scope through
+navigation, reads and listing caches, and lets unexpected SQLite failures propagate.
+The additional regression cases cover those boundaries explicitly.
+
+- Shared interface with the Asana-review fixes on current main: 147 tests passed.
+- Obsidian, read-only CLI and shared-interface focused suite: 655 tests passed.
+- Affected REM callers, command help, bootstrap and handoff regression suite:
+  2522 tests passed. This is a selected regression set, not all repository tests.
+- Additional configuration checks passed; the shared status/CLI compatibility
+  rerun passed 383 tests before the final regression.
+
+Tests used synthetic vaults and mocked models. The real-home guard reported no
+writes to the user's `.co` directory. No live vault, external model, scheduler
+installation or paid `co audit --review` was exercised. Independent AI static
+review covered the adapter, acquisition locks, publication checks and scope-error
+handling; it was not a human review or a rendered UI review.
+
+Regression cases cover canonical-path redirection and symlink loops, stale versus
+blocked saved material, model/scope changes during acquisition, offline readers
+during a scan, exact old-version citations, and owner/time/budget constraints.
+
+## Historical validation on 2026-11-15
 
 The author reported that the six targeted source/integration test files and the
 four CLI audits below passed. The broader REM regression initially reported
@@ -13,10 +45,11 @@ argument and one callback-identity assertion for the approval wrapper,
 `test_rem_investigate.py`, `test_rem_runner.py` and
 `test_rem_obsidian_integration.py` passed on rerun.
 
-Eight failures remain unresolved: seven Reader date-format assertions and one
+That run left eight failures unresolved: seven Reader date-format assertions and one
 fixed-date session-import fixture outside its relative lookback window. They
 appear locale/date-dependent but have not been reproduced on a clean upstream
-baseline. The full regression is not claimed to pass.
+baseline at the time. The selected 2026-11-20 run above is not a rerun of that
+entire historical set, so it does not claim to resolve all eight historical failures.
 
 The author's live walkthrough completed initial collection of 14 notes, a new-note
 sync, a no-change sync, and a subsequent sync with one modification and one addition.
@@ -40,8 +73,15 @@ python -m pytest -q \
   tests/unit/test_rem_obsidian_store.py \
   tests/unit/test_rem_obsidian_source.py \
   tests/unit/test_rem_source_hooks.py \
+  tests/unit/test_rem_source_approval.py \
+  tests/unit/test_rem_source_citations.py \
+  tests/unit/test_rem_source_integration.py \
   tests/unit/test_rem_source_versions.py \
-  tests/unit/test_rem_obsidian_integration.py
+  tests/unit/test_rem_obsidian_integration.py \
+  tests/unit/test_obsidian.py \
+  tests/unit/test_obsidian_commands.py \
+  tests/unit/test_gmail_listing_context.py \
+  tests/unit/test_gdrive_listing_context.py
 ```
 
 These use synthetic vaults and mocked model execution. Include the final summary
@@ -66,15 +106,15 @@ suite. Keep its final summary separately from the new-source result.
 
 ```bash
 co rem sources add --help
-co rem sync --help
+co rem collect --help
 co obsidian --help
 co audit co obsidian
 co audit co rem sources
 co audit co rem start
-co audit co rem sync
+co audit co rem collect
 ```
 
-Check that add shows vault/folder/replace, sync shows source/dry-run, and Obsidian
+Check that add shows vault/folder/replace, collect shows source/dry-run, and Obsidian
 still has read-only commands. The audit verifies command help, not real model
 behavior or source privacy. An optional `--review` does not replace the tests.
 No benchmark suite is introduced in this change; a full benchmark is not a substitute
@@ -115,7 +155,7 @@ active = sorted(name for name, sub in subscriptions(root).items()
 print('Active sources:', active)
 assert active == ['obsidian'], active
 PY
-co rem --root "$OBSIDIAN_REM_DEMO" sync --source obsidian --dry-run
+co rem --root "$OBSIDIAN_REM_DEMO" collect --source obsidian --dry-run
 ```
 
 Screenshot A: only Obsidian active and dry-run awaiting approval. This uses the

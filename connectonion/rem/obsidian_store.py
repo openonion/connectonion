@@ -15,7 +15,7 @@ import sqlite3
 import uuid
 
 from . import obsidian
-from .files import RemError, WRITE_WAIT_SECONDS, maintenance_lock, material_lock, state_path
+from .files import WRITE_WAIT_SECONDS, RemError, _file_lock, material_lock, state_path
 
 
 DATABASE = "obsidian-snapshots.db"
@@ -169,12 +169,27 @@ def collect(root: Path, *, expected: dict | None = None) -> dict:
     Changes, immutable versions and current heads commit together. A retry after
     rollback compares against the last committed collection.
     """
+    from .source_hooks import acquisition_guard
+
     _selection(root, expected)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        selection = _selection(root, expected)
-        if root.resolve().is_relative_to(selection.vault.resolve()):
-            raise RemError("The snapshot notebook must be outside the Obsidian vault")
+    # Wait for another scan without holding the notebook lock. Offline readers
+    # never take this writer lock and can consume the last committed state.
+    writer = state_path(root, "obsidian-acquisition")
+    with _file_lock(writer, WRITE_WAIT_SECONDS):
+        guard = acquisition_guard(root, expected)() if expected is not None else material_lock(root)
+        with guard:
+            selection = _selection(root, expected)
         notes = obsidian.list_notes(selection)
+        return _publish(root, selection, notes, expected)
+
+
+def _publish(root: Path, selection: obsidian.Selection, notes: list[dict], expected: dict | None) -> dict:
+    from .source_hooks import acquisition_guard
+
+    guard = acquisition_guard(root, expected)() if expected is not None else material_lock(root)
+    with guard:
+        if _selection(root, expected) != selection:
+            raise SnapshotUnavailable("Obsidian selection changed during the scan; acquire it again")
         with closing(_connect(root, create=True)) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             return _collect(connection, root, selection, notes)

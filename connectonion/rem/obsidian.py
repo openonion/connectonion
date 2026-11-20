@@ -17,6 +17,10 @@ from .files import RemError, WRITE_WAIT_SECONDS, maintenance_lock, read_json, st
 SOURCE_ID = re.compile(r"obsidian:([0-9a-f]{32}):([0-9a-f]{32}):([0-9a-f]{32})")
 
 
+class ScopeChanged(RemError):
+    """The live filesystem no longer represents the saved canonical selection."""
+
+
 @dataclass(frozen=True)
 class Selection:
     """One vault and an explicit set of vault-relative folders."""
@@ -97,18 +101,48 @@ def save_selection(root: Path, vault: Path, folders: Sequence[str], *, replace: 
     return selection
 
 
+def _live_scope(selection: Selection):
+    # Registration saves canonical paths. Check parents before descendants so
+    # even a newly introduced symlink loop is a scope failure, not an outage.
+    for path in (*reversed(selection.vault.parents), selection.vault):
+        if path.is_symlink():
+            raise ScopeChanged("The selected Obsidian vault path now contains a symlink")
+    try:
+        scope = vault_reader._validate_scope(selection.vault, selection.folders)
+    except ValueError as error:
+        raise ScopeChanged("The selected Obsidian paths no longer have a valid scope") from error
+    expected = tuple(selection.vault / folder for folder in selection.folders)
+    if scope.vault_path != selection.vault or scope.folders != expected:
+        raise ScopeChanged("The selected Obsidian paths resolve outside their saved scope")
+    return scope
+
+
 def list_notes(selection: Selection) -> list[dict]:
     """Read live selected notes locally; return the CLI's parsed note records.
 
     Selection represents scope, not model consent. REM callers must enforce
     approval separately when the shared source interface is connected.
     """
-    return vault_reader.list_notes(selection.vault, folders=selection.folders)
+    # Read the validated scope itself: resolving the vault again could switch
+    # to an unapproved directory after a parent is replaced by a symlink.
+    scope = _live_scope(selection)
+    try:
+        notes = vault_reader._load_scope_notes(scope)
+    except vault_reader.ObsidianError:
+        _live_scope(selection)  # Classify a concurrent scope change before retry policy.
+        raise
+    _live_scope(selection)
+    return notes
 
 
 def read_note(selection: Selection, reference: str) -> dict:
     """Read a live note by title or relative path within the explicit selection."""
-    return vault_reader.read_note(selection.vault, reference, folders=selection.folders)
+    if not isinstance(reference, str) or not reference.strip():
+        raise ValueError("Choose a note path or filename title.")
+    scope = _live_scope(selection)
+    if "/" in reference or "\\" in reference or reference.lower().endswith(".md") or Path(reference).is_absolute():
+        reference = vault_reader._resolve_note_path(scope, reference)
+    return vault_reader._select_note(list_notes(selection), reference)
 
 
 def record_of(source_id: str) -> str | None:

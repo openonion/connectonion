@@ -21,6 +21,11 @@ work, keep it on your machine, and carry it into the next task.
 
 </div>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/co-harness.webp" alt="CLI as your harness. No MCP servers, adapters or glue: a CLI's --help is the prompt, its commands are the tools, and together they are an agent. Any model runs it from Claude Code, Codex or Cursor. All you need is to install the CLI. Only simple things scale." width="100%">
+  <br><sub><a href="https://github.com/openonion/connectonion/raw/main/assets/co-harness.mp4">Watch it with sound</a> · illustrative UI</sub>
+</p>
+
 <!-- connections: generated, do not edit by hand. Refresh with
      curl -s https://www.connectonion.com/connections.md
      and paste the output between these two comments. -->

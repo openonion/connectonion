@@ -1,6 +1,7 @@
 """Selected-source integration with a synthetic vault, no model or real home."""
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
 
 import pytest
 from typer.testing import CliRunner
@@ -81,8 +82,7 @@ def test_exact_old_version_and_same_record_replacement(selected):
     assert before != after
     assert source_hooks.cited(root, before)['excerpt'] == 'Atlas first version'
     assert source_hooks.superseded(root, {before}, {after}) == {before}
-    assert page_review._lost_sources('\n## Sources\n- [1] ' + before,
-                                     '\n## Sources\n- [1] ' + after, root=root) == set()
+    assert page_review._lost_sources({before}, {after}, root=root) == set()
 
 
 def test_unselected_source_adds_no_import_or_coverage(tmp_path, monkeypatch):
@@ -271,7 +271,7 @@ def test_timeout_retry_checks_revocation_before_resending(selected):
         raise runner.RunFailed('timed out')
     retry = runner._retry_timeouts({'timeouts_retried': 0}, source_hooks.guard_turn(root, items, timeout))
     with pytest.raises(RemError, match='no longer approved'):
-        retry(root, 'read retained material', {'runner': 'codex'}, 'enrich')
+        retry(root, 'read retained material', read_config(root), 'enrich')
     assert calls == ['model']
 
 
@@ -279,16 +279,165 @@ def test_receipt_is_rechecked_after_waiting_for_acquisition_lock(selected, monke
     from contextlib import contextmanager
     root, _ = selected
     approve(root)
-    real_lock = obsidian_store.maintenance_lock
+    real_lock = obsidian_store._file_lock
     @contextmanager
-    def change_receipt_then_lock(root, **kwargs):
+    def change_receipt_then_lock(path, wait, **kwargs):
         receipt = read_json(state_path(root, 'consent.json'), {})
-        receipt['summary_value']['model'] = 'different-model'
+        receipt['source_approvals']['obsidian']['execution']['model'] = 'different-model'
         write_json(state_path(root, 'consent.json'), receipt)
-        with real_lock(root, **kwargs):
+        with real_lock(path, wait, **kwargs):
             yield
-    monkeypatch.setattr(obsidian_store, 'maintenance_lock', change_receipt_then_lock)
+    monkeypatch.setattr(obsidian_store, '_file_lock', change_receipt_then_lock)
     monkeypatch.setattr(obsidian, 'list_notes', lambda *a: pytest.fail('read after receipt changed'))
-    with pytest.raises(obsidian_store.SnapshotUnavailable, match='receipt changed'):
-        source_hooks.fetch(root)
+    result = source_hooks.fetch(root)['obsidian']
+    assert result['ok'] is False
+    assert result['allow_saved'] is False
     assert not state_path(root, obsidian_store.DATABASE).exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks require privileges on Windows")
+@pytest.mark.parametrize('redirect', ['folder', 'vault', 'ancestor', 'vault-loop', 'ancestor-loop'])
+def test_redirected_scope_blocks_saved_material_until_successful_retry(selected, monkeypatch, redirect):
+    root, vault = selected
+    base = vault.parent / 'selected-base'
+    base.mkdir()
+    vault.rename(base / 'Vault')
+    vault = base / 'Vault'
+    obsidian.save_selection(root, vault, ['Work'], replace=True)
+    approve(root)
+    source_hooks.fetch(root)
+    original = source_hooks.collect(root, 'obsidian', {}, 10, 10000).items[0]['source']
+    location = redirect.removesuffix('-loop')
+    target = {'folder': vault / 'Work', 'vault': vault, 'ancestor': base}[location]
+    alternate = base.parent / 'alternate'
+    body_dir = alternate / {'folder': '', 'vault': 'Work', 'ancestor': 'Vault/Work'}[location]
+    body_dir.mkdir(parents=True)
+    (body_dir / 'Secret.md').write_text('unselected secret', encoding='utf-8')
+    preserved = target.with_name(target.name + '-preserved')
+    target.rename(preserved)
+    target.symlink_to(target if redirect.endswith('-loop') else alternate, target_is_directory=True)
+    with monkeypatch.context() as guarded:
+        guarded.setattr(obsidian.vault_reader, '_read_markdown',
+                        lambda *a: pytest.fail('redirected acquisition read note content'))
+        result = source_hooks.fetch(root)['obsidian']
+    assert result['ok'] is False and result['allow_saved'] is False
+    assert source_hooks.cited(root, original) is None
+    with pytest.raises(source_hooks.SourceUnavailable):
+        source_hooks.collect(root, 'obsidian', {}, 10, 10000)
+    assert len(obsidian_store.latest_snapshots(root)) == 1
+    target.unlink()
+    preserved.rename(target)
+    # Restoring the path alone must not clear the saved blocking receipt.
+    assert source_hooks.cited(root, original) is None
+    assert source_hooks.fetch(root)['obsidian']['ok'] is True
+    assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'
+
+
+def test_temporary_missing_folder_keeps_explicitly_stale_saved_material(selected):
+    root, vault = selected
+    approve(root)
+    source_hooks.fetch(root)
+    original = source_hooks.collect(root, 'obsidian', {}, 10, 10000).items[0]['source']
+    folder = vault / 'Work'
+    folder.rename(vault / 'offline')
+    result = source_hooks.fetch(root)['obsidian']
+    assert result['ok'] is False and result['allow_saved'] is True
+    assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'
+    assert source_hooks.stale_notice(root, 'obsidian', service.subscriptions(root)['obsidian'])
+    (vault / 'offline').rename(folder)
+    assert source_hooks.fetch(root)['obsidian']['ok'] is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks require privileges on Windows")
+@pytest.mark.parametrize('nested', [False, True])
+def test_configuration_rejects_looped_paths_without_changing_selection(selected, nested):
+    root, vault = selected
+    before = service.subscriptions(root)['obsidian']
+    loop = vault.parent / 'loop'
+    loop.symlink_to(loop, target_is_directory=True)
+    path = loop / 'Vault' if nested else loop
+    with pytest.raises((RemError, ValueError)):
+        source_hooks.configure(root, 'obsidian', vault=str(path), folders=['Work'], replace=True)
+    assert service.subscriptions(root)['obsidian'] == before
+    assert not state_path(root, obsidian_store.DATABASE).exists()
+
+
+@pytest.mark.parametrize('change', ['scope', 'model', 'disabled'])
+def test_selection_change_during_scan_prevents_snapshot_publication(selected, monkeypatch, change):
+    from connectonion.rem import config
+    root, vault = selected
+    approve(root)
+    source_hooks.fetch(root)
+    original = obsidian_store.latest_snapshots(root)[0]['source_id']
+    (vault / 'Work' / 'Atlas.md').write_text('unpublished changed version', encoding='utf-8')
+    real_list = obsidian.list_notes
+    def scan_then_change(selection):
+        notes = real_list(selection)
+        if change == 'scope':
+            obsidian.save_selection(root, vault, ['Private'])
+        elif change == 'model':
+            config.set_config(root, ['models.level3', 'different-model'])
+        else:
+            service.toggle_source(root, 'obsidian', False)
+        return notes
+    monkeypatch.setattr(obsidian, 'list_notes', scan_then_change)
+    result = source_hooks.fetch(root)['obsidian']
+    assert result['ok'] is False and result['allow_saved'] is False
+    from contextlib import closing
+    import sqlite3
+    with closing(sqlite3.connect(state_path(root, obsidian_store.DATABASE))) as db:
+        assert db.execute('SELECT source_id FROM snapshots').fetchall() == [(original,)]
+
+
+def test_offline_hooks_do_not_wait_for_an_active_acquisition_writer(selected, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    root, _ = selected
+    approve(root)
+    source_hooks.fetch(root)
+    original = source_hooks.collect(root, 'obsidian', {}, 10, 10000).items[0]['source']
+    scanning, release = Event(), Event()
+    real_list = obsidian.list_notes
+    def held_scan(selection):
+        scanning.set()
+        assert release.wait(5), 'offline reader must complete before releasing writer'
+        return real_list(selection)
+    monkeypatch.setattr(obsidian, 'list_notes', held_scan)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(source_hooks.fetch, root)
+        try:
+            assert scanning.wait(5)
+            with maintenance_lock(root):
+                assert source_hooks.collect(root, 'obsidian', {}, 10, 10000).items
+                assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'
+        finally:
+            release.set()
+        assert pending.result(timeout=5)['obsidian']['ok'] is True
+
+
+def test_busy_notebook_keeps_obsidian_saved_material_available(selected, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from connectonion.rem import files
+    root, _ = selected
+    approve(root)
+    source_hooks.fetch(root)
+    original = source_hooks.collect(root, 'obsidian', {}, 1, 10000).items[0]['source']
+    monkeypatch.setattr(files, 'WRITE_WAIT_SECONDS', 0.02)
+    monkeypatch.setattr(source_hooks, 'ACQUISITION_WAIT_SECONDS', 0.02)
+    holding, release = Event(), Event()
+    def maintain():
+        with maintenance_lock(root):
+            holding.set()
+            assert release.wait(5), 'source waited on a busy notebook'
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        holder = pool.submit(maintain)
+        try:
+            assert holding.wait(2)
+            result = source_hooks.fetch(root)['obsidian']
+            assert result['ok'] is False and result['allow_saved'] is True
+            assert read_json(state_path(root, 'source-acquisition.json'), {})['obsidian']['allow_saved'] is True
+        finally:
+            release.set()
+        holder.result(timeout=2)
+    assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'

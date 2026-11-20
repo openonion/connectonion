@@ -748,6 +748,88 @@ def test_numbered_read_surfaces_unexpected_scope_errors(error_type, cli, monkeyp
     assert result.exception is error
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks require privileges on Windows")
+@pytest.mark.parametrize("command", ["row", "read", "ls", "search"])
+@pytest.mark.parametrize("redirect", ["folder", "vault", "ancestor"])
+def test_cli_keeps_the_validated_scope_when_paths_redirect(command, redirect, cli, vault, tmp_path, monkeypatch):
+    from connectonion.cli.commands import obsidian_commands as commands
+
+    listing = cli(["obsidian", "ls", *_scope(vault)])
+    token = _listing_token(listing.stdout)
+    alternate = _notes_vault(tmp_path / "replacement", {"Course/New.md": "UNSELECTED secret"}, name=vault.name)
+    target = {"folder": vault / "Course", "vault": vault, "ancestor": vault.parent}[redirect]
+    replacement = {"folder": alternate / "Course", "vault": alternate, "ancestor": alternate.parent}[redirect]
+    hook = "_resolve_row" if command == "row" else "_selection"
+    original = getattr(commands, hook)
+
+    def redirect_after_validation(*args, **kwargs):
+        result = original(*args, **kwargs)
+        target.rename(target.with_name(target.name + "-preserved"))
+        target.symlink_to(replacement, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(commands, hook, redirect_after_validation)
+    args = {"row": ["read", "1", "--listing", token],
+            "read": ["read", "Course/New.md", *_scope(vault)],
+            "ls": ["ls", *_scope(vault)],
+            "search": ["search", "secret", *_scope(vault)]}[command]
+    result = cli(["obsidian", *args, "--json"])
+
+    assert result.exit_code in (1, 2), result.output
+    assert result.stdout.strip() == ""
+    assert "UNSELECTED" not in result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks require privileges on Windows")
+@pytest.mark.parametrize("command", [["ls"], ["search", "note"]])
+def test_listing_cache_keeps_original_scope_if_ancestor_redirects_after_read(command, cli, vault, tmp_path, monkeypatch):
+    from connectonion.cli.commands import obsidian_commands as commands
+    alternate = _notes_vault(tmp_path / "replacement", {"Course/New.md": "UNSELECTED secret"}, name=vault.name)
+    original = commands._save_rows
+
+    def redirect_before_cache(*args, **kwargs):
+        vault.parent.rename(vault.parent.with_name("preserved-vaults"))
+        vault.parent.symlink_to(alternate.parent, target_is_directory=True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(commands, "_save_rows", redirect_before_cache)
+    listing = cli(["obsidian", *command, *_scope(vault)])
+    assert listing.exit_code == 0, listing.output
+    result = cli(["obsidian", "read", "1", "--listing", _listing_token(listing.stdout), "--json"])
+
+    _assert_safe_failure(result, 1)
+    assert "vault changed location" in result.stderr
+    assert "UNSELECTED" not in result.output
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks require privileges on Windows")
+@pytest.mark.parametrize("navigation", ["vault", "folder", "vault-root"])
+def test_navigation_rows_keep_the_validated_vault(navigation, cli, vault, registry, tmp_path, monkeypatch):
+    from connectonion.cli.commands import obsidian_commands as commands
+    registry(_entries(vault))
+    cli(["obsidian", "vaults"])
+    cli(["obsidian", "ls", "--vault", str(vault)])
+    alternate = _notes_vault(tmp_path / "replacement", {"Course/New.md": "UNSELECTED secret"}, name=vault.name)
+    hook = "_resolve_list_folders" if navigation == "folder" else "_resolve_list_vault"
+    original = getattr(commands, hook)
+
+    def redirect_after_navigation(*args, **kwargs):
+        result = original(*args, **kwargs)
+        vault.parent.rename(vault.parent.with_name("preserved-vaults"))
+        vault.parent.symlink_to(alternate.parent, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(commands, hook, redirect_after_navigation)
+    args = ["--vault", str(vault), "--folder", "1"] if navigation == "folder" else ["--vault", "1"]
+    if navigation == "vault":
+        args += ["--folder", "Course"]
+    result = cli(["obsidian", "ls", *args, "--json"])
+
+    assert result.exit_code in (1, 2), result.output
+    assert result.stdout.strip() == ""
+    assert "UNSELECTED" not in result.output
+
+
 def test_read_row_without_a_recent_list_is_a_usage_error(cli, vault):
     _assert_safe_failure(cli(["obsidian", "read", "1", *_scope(vault)]), 2)
     _assert_safe_failure(cli(["obsidian", "read", "1"]), 2)

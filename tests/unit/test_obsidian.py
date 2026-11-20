@@ -454,6 +454,22 @@ def test_vault_path_may_be_a_string(vault):
     assert obsidian._validate_scope(str(vault), ["Course"]).folders == ((vault / "Course").resolve(),)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_folder_replaced_after_symlink_check_cannot_select_a_sibling(vault, monkeypatch):
+    target = vault.resolve() / "Course"
+    original = obsidian._directory
+
+    def redirect_before_resolving(path):
+        if path == target:
+            target.rename(target.with_name("Course-preserved"))
+            target.symlink_to(vault.resolve() / "Other", target_is_directory=True)
+        return original(path)
+
+    monkeypatch.setattr(obsidian, "_directory", redirect_before_resolving)
+    with pytest.raises(ValueError, match="selected folder"):
+        obsidian._validate_scope(vault, ["Course"])
+
+
 def test_vault_path_expands_the_home_tilde(isolated_home, tmp_path):
     inside = isolated_home / "MyVault"
     (inside / "Notes").mkdir(parents=True)

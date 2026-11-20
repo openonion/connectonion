@@ -22,3 +22,10 @@ to list again or pass the note's path.
 The CLI tests use temporary vaults to check duplicate names, reads from an
 earlier list, and the scope used to resolve links. A note outside the
 selected folders does not contribute a path or make the selected folder fail.
+
+A later review found that remembering a path was not enough if the next layer
+resolved it again. An ancestor could become a symlink between navigation and the
+read, making the same path lead into another vault. Navigation, reads and row
+caches now keep one validated scope; directory handles reject a redirected path.
+Regression tests replace directories at these boundaries, including after a read
+but before the row cache is saved.

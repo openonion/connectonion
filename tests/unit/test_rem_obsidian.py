@@ -247,9 +247,9 @@ def test_selection_is_revalidated_after_folder_becomes_a_symlink(vault):
     selected = obsidian.validate_selection(vault, ["Work"])
     (vault / "Work").rename(vault / "OriginalWork")
     (vault / "Work").symlink_to(vault / "Private", target_is_directory=True)
-    with pytest.raises(ValueError, match="symlinks"):
+    with pytest.raises(obsidian.ScopeChanged, match="scope"):
         obsidian.list_notes(selected)
-    with pytest.raises(ValueError, match="symlinks"):
+    with pytest.raises(obsidian.ScopeChanged, match="scope"):
         obsidian.read_note(selected, "Diagnosis")
 
 

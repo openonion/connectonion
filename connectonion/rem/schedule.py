@@ -177,7 +177,7 @@ class Launchd:
         return plistlib.dumps(job, sort_keys=False).decode()
 
     def _launchctl(self, *args) -> bool:
-        result = self.run(["launchctl", *args], capture_output=True, text=True, timeout=30)
+        result = self.run(["launchctl", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         return result.returncode == 0
 
     def install(self, root: Path, config: dict) -> dict:
@@ -283,7 +283,7 @@ class Launchd:
     def _describe(self, path: Path, label: str) -> dict:
         info = {"scheduler": "launchd", "label": label, "installed": path.is_file()}
         result = self.run(["launchctl", "print", f"gui/{self.uid}/{label}"],
-                          capture_output=True, text=True, timeout=30)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         info["loaded"] = result.returncode == 0
         for line in (result.stdout or "").splitlines():
             line = line.strip()
@@ -407,7 +407,7 @@ class Systemd:
         return {"service": service, "timer": timer}
 
     def _systemctl(self, *args):
-        return self.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=30)
+        return self.run(["systemctl", "--user", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
 
     def _check(self, *args) -> None:
         result = self._systemctl(*args)
@@ -438,7 +438,7 @@ class Systemd:
                 "times": list(config["schedule"]["times"])}
         if shutil.which("loginctl"):
             linger = self.run(["loginctl", "show-user", str(os.getuid()), "-p", "Linger"],
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
             if linger.returncode == 0 and linger.stdout.strip() != "Linger=yes":
                 info["note"] = "Run `loginctl enable-linger` to keep the systemd user timer running while logged out."
         return info
@@ -472,25 +472,281 @@ class Systemd:
         return info
 
 
-def exec_round(root, *, scheduled=True):
+def exec_round(root, *, scheduled=True, stage=None, say=None):
+    """One round under the notebook's turn lock; `busy`, with nothing started, when another run holds it."""
+    from .catchup import resume
+    from .codex_exec import BUSY, NotebookBusy, round_lock
+    try:
+        with round_lock(root), resume(root, scheduled=scheduled):
+            result = _exec_round(root, scheduled=scheduled, stage=stage, say=say)
+            return finish_exec(root, result, stage=stage, say=say)
+    except NotebookBusy:
+        return {"outcome": "busy", "reason": BUSY}
+
+
+def deepen_round(root, *, stage=None, say=None, **choice):
+    """The one round-driven caller of the unchanged deepen slot, with run logs."""
+    from . import depth
+    from ..cli.commands.rem_commands import _depth_stage
+    return depth.slot(root, stage=stage or _depth_stage, say=say, **choice)
+
+
+def calendar_round(root, *, native=False):
+    """Save Agenda then the day plan; native tasks share one save per round."""
+    import traceback
+    from .calendar import save_upcoming
+    from .config import read_config
+    from .daily import _log_calendar_faults
+    from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    from .service import notebook_zone, now
+    path = state_path(root, 'round.json')
+    if native:
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+            cursor = read_json(path, {})
+            if not cursor:
+                return None
+            if 'calendar' in cursor:
+                return cursor['calendar']
+            cursor['calendar'] = {'stopped': 'calendar read interrupted'}
+            write_json(path, cursor)
+    moment = now()
+    try:
+        result = save_upcoming(root, moment, notebook_zone(read_config(root)))
+    except Exception as error:  # A failed snapshot must never stop the round, including a save fault.
+        result = {'events': 0, 'read': [], 'capped': [], 'errors': {'rem': {
+            'reason': 'bug', 'at': now().isoformat(), 'error': type(error).__name__,
+            'traceback': traceback.format_exc()}}}
+    _log_calendar_faults(root, result)
+    result['day_plan'] = _day_plan_round(root, moment)
+    result['todos'] = _todos_round(root, moment)
+    from .weather import night as weather_night
+    result['weather'] = weather_night(root, moment)  # the week's forecast for Agenda; never stops the round
+    if native:
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+            current = read_json(path, {})
+            if _round_identity(current) == _round_identity(cursor):
+                current['calendar'] = result
+                write_json(path, current)
+    return result
+
+
+def _todos_round(root, moment):
+    """His open to-dos, saved beside the calendar (#3087). A fault in REM is a failed run with its traceback
+    in `co rem logs`, out of the round's result; no failure stops the rest of the night."""
+    import traceback
+    from .config import read_config
+    from .daily import _reserve
+    from .files import write_json
+    from .service import notebook_zone
+    from .todos import save
+    try:
+        result = save(root, moment, notebook_zone(read_config(root)))
+    except Exception as error:  # same background isolation as the calendar snapshot
+        result = {'tasks': 0, 'error': {'reason': 'bug', 'at': moment.isoformat(), 'error': type(error).__name__},
+                  'traceback': traceback.format_exc()}
+    if 'traceback' in result:
+        record, path = _reserve(root, 'todos', 0, {})
+        record.update(outcome='failed', error='to-dos: ' + result.pop('traceback'), finished_at=moment.isoformat())
+        write_json(path, record)
+    return result
+
+
+def _day_plan_round(root, moment):
+    """A plan save fault is logged by name and never stops the rest of the night."""
+    import traceback
+    from .day_plan import save
+    from .daily import _reserve
+    from .files import write_json
+    try:
+        return save(root, moment)
+    except Exception as error:  # same background isolation as the calendar snapshot
+        record, path = _reserve(root, 'day-plan', 0, {})
+        record.update(outcome='failed', error=traceback.format_exc(), finished_at=moment.isoformat())
+        write_json(path, record)
+        return {'stopped': f'day plan save failed: {type(error).__name__}'}
+
+
+def _depth_due(root, cursor):
+    if not cursor.get('done') or cursor.get('phase') == 'daily-translation':
+        return False
+    return _night_produced(root)
+
+
+def _night_produced(root):
+    """A catchup night has written, translated or drafted something; the schedule's night is not asked."""
+    from .catchup import _counts, number
+    night = number(root)
+    if night is None:
+        return True
+    counts = _counts(root, night)
+    return any(counts[name] for name in ('written', 'translated', 'drafts'))
+
+
+def _depth_early(root, cursor):
+    """The round has served its first portion of investigation and is still going.
+
+    2026-11-16: the slot started only after a completed round, and at 20 to 60 minutes
+    an investigation turn a night was cut short long before that, so nothing was deepened.
+    `_depth_due`'s question (did the night write, translate or draft anything) is not
+    asked here: a night that served a portion is working, and its first page may be an
+    hour from written. A night with nothing to investigate has no portion and still
+    meets that question after its round. Not due once the slot is claimed: only the
+    call that ran it reports it here; the completed round reports it once more.
+
+    2026-11-17: the closing translation goes on until no page waits, which is hours. A
+    round with no portion (nothing to investigate, or investigation held by its weekly
+    budget) starts the slot once that pass has begun (`closing`), and there it is asked
+    `_depth_due`'s question, since no portion has shown the night to be working."""
+    started = cursor.get('portions') or (cursor.get('closing') and _night_produced(root))
+    return (bool(started) and 'depth' not in cursor and not cursor.get('done')
+            and cursor.get('phase') != 'daily-translation')
+
+
+def _open_pages(root, cursor):
+    """The pages the round is in the middle of: deepening one would change it under its own draft."""
+    from .files import read_json, state_path
+    jobs, index = cursor.get('jobs') or [], cursor.get('job_index', 0)
+    opened = cursor.get('current') or cursor.get('project_quote')
+    pending = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {}) if cursor.get('pending') else {}
+    records = [jobs[index]['record'] if opened and index < len(jobs) else '', pending.get('record') or '']
+    return sorted({record for record in records if record})
+
+
+def _depth_slot(root, due, *, stage=None, say=None):
+    """Claim the round's one deepen slot when `due`, run it and save it; None when it is not due.
+
+    The writer lock is not held across the worker calls. A slot that already ran, or was
+    interrupted, is not run again: its saved result is returned."""
+    from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    path = state_path(root, 'round.json')
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        cursor = read_json(path, {})
+        if not due(root, cursor):
+            return None
+        if 'depth' in cursor:
+            return cursor['depth']
+        cursor['depth'] = {'stopped': 'deepening interrupted'}
+        write_json(path, cursor)
+    skip = _open_pages(root, cursor)
+    depth = deepen_round(root, stage=stage, say=say, **({'skip': skip} if skip else {}))
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        current = read_json(path, {})
+        if _round_identity(current) == _round_identity(cursor):
+            current['depth'] = depth
+            write_json(path, current)
+    return depth
+
+
+def early_depth(root, *, stage=None, say=None):
+    """The round's deepen slot, between two tasks, once its first portion of investigation is done."""
+    return _depth_slot(root, _depth_early, stage=stage, say=say)
+
+
+def _round_identity(cursor):
+    return (cursor.get('run', {}).get('id'), cursor.get('started_at'), cursor.get('catchup_night'))
+
+
+def finish_exec(root, result, *, stage=None, say=None):
+    """Save the calendar, then give a completed round its deepen slot unless it ran early."""
+    if result.get('outcome') != 'skipped' and result.get('reason') != 'not due':
+        calendar = calendar_round(root, native=True)
+        if calendar is not None:
+            result = {**result, 'calendar': calendar}
+    if result.get('outcome') != 'done' or result.get('reason') != 'round done':
+        return result
+    depth = _depth_slot(root, _depth_due, stage=stage, say=say)
+    return result if depth is None else {**result, 'depth': depth}
+
+
+def _exec_round(root, *, scheduled, stage=None, say=None):
     from . import native, runner
     from .codex_schedule import CodexNative
     from .config import read_config
     if scheduled and CodexNative().recent_desktop_fire(root):
         return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
-    task = native.next_task(root, scheduled=scheduled)
-    while task.get("outcome") == "task":
-        if scheduled and CodexNative().recent_desktop_fire(root):
-            return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
-        from .inquiry import stage_config
-        config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
-        result = runner.run_task(Path(task["material"]), task["instructions"], config, task["stage"])
-        task = native.submit(root, task["id"], usage=result.get("usage"))
-        if task.get("outcome") == "refused":
-            return task
-        if task.get("outcome") != "task":
-            task = native.next_task(root, scheduled=scheduled)
-    return task
+    parked, refused, faults, depth = [], {}, 0, None
+    task = _prepare(root, native, scheduled=scheduled)
+    while task.get("outcome") == "task" or task.get("fault"):
+        if task["outcome"] == "task":
+            if scheduled and CodexNative().recent_desktop_fire(root):
+                return {"outcome": "skipped", "reason": "desktop automation fired in the last 10 minutes"}
+            from .inquiry import stage_config
+            config = stage_config(root, read_config(root), task["stage"].removesuffix(" (repair)"))
+            task = _run_one(root, native, runner, task, config, refused)
+        faults = faults + 1 if task.get("fault") else 0
+        if task.get("outcome") == "parked":
+            parked.append({key: task.get(key) for key in ("record", "reason", "candidate")})
+        if faults == TASK_FAULTS_IN_A_ROW:
+            task = {"outcome": "stopped", "reason": f"{faults} tasks in a row could not be run, so the round stopped; "
+                    f"the last: {task['reason'].removeprefix('parked: ')}"}
+        elif task.get("outcome") != "task":
+            # After a refusal this offers the same task again with its required
+            # corrections first, as `co rem next` does for the scheduled agent. The
+            # task a worker's own `co rem next` prepared is this round's to take too.
+            own = task.get("outcome") == "refused" or task.get("settled_by") == "worker"
+            if not own:
+                # Between two tasks, never inside one that is being repaired.
+                depth = early_depth(root, stage=stage, say=say) or depth
+            task = _prepare(root, native, scheduled=scheduled, own=own)
+    return {**task, **({"parked": parked} if parked else {}), **({"depth": depth} if depth else {})}
+
+
+def _prepare(root, native, *, scheduled, own=False):
+    """The next task; a preparation past its deadline is that one page's fault, as a turn past its own is.
+
+    2026-11-16: ten minutes "searching project documents" for one person's page
+    ended a catchup night with exit 75 and no totals. The page is parked by
+    name when the stall is raised, so the next call prepares other work; a wait
+    that was not a page's (new mail) is counted and gone past the same way."""
+    try:
+        return native.next_task(root, scheduled=scheduled, own=own, in_round=True)
+    except native.PreparationStalled as error:
+        reason = "parked: " + str(error) if error.record else str(error)
+        return {"outcome": "parked" if error.record else "stalled", "record": error.record, "reason": reason,
+                "candidate": None, "fault": True}
+
+
+# One task's fault is parked and the round goes on. Two in a row is no longer about
+# the pages (the network is down, every turn times out): stopping keeps the rest of
+# the round's pages from being parked one by one for a day each.
+TASK_FAULTS_IN_A_ROW = 2
+
+
+def _run_one(root, native, runner, task, config, refused):
+    """Run one task and settle it; what is wrong with this one task alone parks it.
+
+    2026-11-16: any error from one task's submit ended the night. Only the two kinds
+    that name one task are caught: a submit that cannot settle it (`TaskFault`: it is
+    no longer pending, or its inputs changed while the worker ran) and a turn past
+    its deadline (`TimedOut`). A runner that cannot start or does not complete, a
+    lock held elsewhere, an unreadable notebook and a refused model are about the
+    round: they are raised, and catchup reports them and starts no further night."""
+    used = None
+    try:
+        used = runner.run_task(Path(task["material"]), native.driven_prompt(task), config, task["stage"]).get("usage")
+        return _settle(root, native, task["id"], native.settle(root, task["id"], usage=used), refused)
+    except (native.TaskFault, runner.TimedOut) as error:
+        # A turn closed at its deadline is still paid for: the adapter reports what it used.
+        # So is a turn that finished and whose submit then could not settle the task
+        # (2026-11-17: "Task input changed" after 253 seconds, parked with no tokens).
+        return {**native.park(root, task["id"], native.in_words(str(error)), record=task.get("record"),
+                              usage=getattr(error, "usage", None) or used), "fault": True}
+
+
+def _settle(root, native, task_id, outcome, refused):
+    """A refusal is one more try, never the end of the round.
+
+    2026-11-16: exec returned at the first refusal, so one page that dropped a
+    source id ended a catchup night before mail, abstract or translation, and its
+    pending task refused every later catchup. Submit already parks a task refused
+    twice for one reason or three times in all; a refusal it does not count (a
+    claim audit told to continue) is bounded here by the same total."""
+    if outcome.get("outcome") != "refused":
+        return outcome
+    refused[task_id] = refused.get(task_id, 0) + 1
+    if refused[task_id] < native.PARK_TOTAL:
+        return outcome
+    return native.park(root, task_id, f"refused {refused[task_id]} times: {native.in_words(outcome.get('reason', ''))}")
 
 
 class Unsupported:

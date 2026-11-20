@@ -46,7 +46,7 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "location:", "time zone:", "links:", "how we know them:", "first contact:", "last contact:",
     "电话:", "电话：", "公司:", "公司：")
 
-CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
+CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "keys", "opportunities",
               "decisions", "principles", "works", "agenda", "sessions", "notes", "logs")
 MAX_NOTE_BYTES = 1_000_000
 # The map's default window. 90 days left out people the owner works with every
@@ -55,7 +55,7 @@ MAP_DAYS = 180
 # The maintainer has a read-only shell and this is its only write path; a key it
 # was tricked into cat-ing must not become a page. Shapes, not words: prose about
 # "the API key" is fine, the key itself is not.
-SECRET_SHAPES = re.compile(
+KEY_SHAPES = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bsk-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|"
     r"\bxox[abpr]-[A-Za-z0-9-]{8,}|\bAIza[0-9A-Za-z_-]{30,}|\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.")
 
@@ -251,7 +251,7 @@ def maintenance_busy(root: Path) -> str:
     owner = read_json(state_path(root, "maintenance-owner.json"), {})
     pid = owner.get("pid")
     command = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                             capture_output=True, text=True).stdout.strip() if pid else ""
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip() if pid else ""
     return (f"MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid {pid or 'unknown'}: "
             f"{command or owner.get('operation') or 'command unavailable'}. Report this message and end the turn without retrying.")
 
@@ -286,7 +286,7 @@ _MATERIAL_OWNER = threading.local()
 
 
 @contextmanager
-def material_lock(root: Path):
+def material_lock(root: Path, *, wait: float | None = None):
     """Read saved source material under this thread's existing notebook lock, or take one.
 
     Ordinary maintenance_lock remains non-reentrant. Only this read boundary
@@ -296,7 +296,7 @@ def material_lock(root: Path):
     if getattr(_MATERIAL_OWNER, "notebook", None) == owner:
         yield
     else:
-        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS if wait is None else wait):
             yield
 
 
@@ -728,7 +728,7 @@ class Notebook:
         path = self.path(record, writing=True)
         if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_NOTE_BYTES:
             raise RemError("Markdown exceeds the one-megabyte writing limit")
-        if SECRET_SHAPES.search(content):
+        if KEY_SHAPES.search(content):
             raise RemError("Refusing to write secret-shaped content (a key or token) into a notebook page")
         if path.exists() and self.read(record) == content:
             return False

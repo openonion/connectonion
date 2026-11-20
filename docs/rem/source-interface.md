@@ -1,97 +1,138 @@
-# Selected REM source interface — draft integration
+# Shared REM source hooks
 
-This is a proposed implementation for [#3040](https://github.com/openonion/connectonion/issues/3040),
-not an approved public API. This local single-vault branch includes the saved-version
-foundation from [#3055](https://github.com/openonion/connectonion/pull/3055)
-(`784d00a5ecddd99dd0a0f0b3cc368d337833dd50`) and the local interface prototype.
-Obsidian is the first registered provider. Asana #3060 has not been migrated here.
+This local prerequisite candidate implements the shared boundary discussed in
+[#3040](https://github.com/openonion/connectonion/issues/3040). It builds on the
+saved-version foundation in [#3055](https://github.com/openonion/connectonion/pull/3055),
+commit `784d00a5ecddd99dd0a0f0b3cc368d337833dd50`. That PR was still open when
+checked on 2026-11-20. The exact API choices remain reviewable on the shared PR.
 
-## Dispatch from selection
+The public source CLI, manual/native sync, investigation, page review, retained
+model work and Reader now call the shared boundary. No production provider is
+registered in this prerequisite. Each team adds its own implementation and one
+registration in its migration PR. Existing built-in mail/session/chat paths keep
+their current behavior.
 
-`source_hooks.MODULES` contains module paths, not imported objects. The dispatcher
-reads saved notebook subscriptions and loads only registered, enabled selections
-that are not unsubscribed. Metadata describes saved configuration. Imports,
-`status` and `consent` must not read source bodies, decrypt credentials or use the
-network. This is a provider contract enforced by tests, not a Python sandbox.
-Legacy source discovery still follows its existing path; this draft does not
-claim that all existing providers meet the new contract yet.
+- [Contract and lifecycle](source-interface-contract.md)
+- [Three-team coordination and migration ownership](source-interface-coordination.md)
+- [Validation commands and scope](source-interface-validation.md)
 
-| Hook | Responsibility |
-| --- | --- |
-| `configure(root, **options)` | Save an explicit selection; invalidate approval when scope changes. |
-| `status(subscription)` | Describe configured scope without probing it. |
-| `consent(subscription)` | Describe acquisition and model use. |
-| `pending(root, subscription, progress)` | Inspect saved counters without reading bodies. |
-| `fetch(root, subscription)` | Acquire snapshots from the selected source. |
-| `collect(root, subscription, progress, max_items, max_chars)` | Return an offline `Batch` and proposed progress. |
-| `gather(root, subscription, handles, start, record)` | Search saved material and return items and coverage. |
-| `record_of(source_id)` | Parse namespaced record identity without I/O. |
-| `cited(root, subscription, source_id)` | Return an exact saved version within current scope. |
+## Add a module, then register it
 
-The CLI routes registered source configuration through the provider. Sync acquires
-snapshots before its stage transaction, then consumes bounded offline batches.
-Native rounds acquire before opening a new round. Investigation searches snapshots;
-it does not silently refresh the live vault. A notebook with no selected Obsidian
-source gets no Obsidian import or coverage line from this dispatcher.
+`source_hooks.Source` describes ordinary module functions. `MODULES` contains
+module paths declared in code, never arbitrary paths supplied by notebook JSON.
+A fictional registration is:
 
-## Approval and transactions
+```python
+MODULES = {"notes": "connectonion.rem.notes_source"}
+```
 
-Content requires an active boolean consent flag and a matching scope, runner and
-model in REM's existing consent receipt. A flag alone grants nothing. The Obsidian
-store checks this again after acquiring its lock. Removing a source or changing
-scope invalidates retained material for subsequent model calls and citations.
-A request already sent to a model cannot be recalled by a later revocation.
+`skill` must be `rem-source-<kind>`. Prompt composition uses this conventional
+path without importing a provider merely to measure or load its instructions.
 
-This boundary controls material supplied through the source hooks; it is not a
-sandbox for the shared investigation runner. The local Obsidian walkthrough also
-produced Codex-session citations and web searches from that runner. Subscription
-selection alone therefore does not enforce source-only investigation execution.
+`configure(root, **options)` returns saved, non-secret selection metadata. The
+shared writer persists it and clears approval when scope changes. The generic
+CLI forwards explicit options, including `--project`, `--vault`, `--folder`,
+`--since`, `--only`, `--force`, `--replace`, `--config` and `connect=True`.
+Removing a selected project forwards `remove=True, project=ID`. An empty scope
+can return `enabled=False`; the shared writer disables it and clears consent.
+Configuration is saved only if the previous selection has not changed during
+validation, so a slow request cannot undo a concurrent removal.
+The adapter validates supported combinations; shared stages do not branch on
+provider names. An adapter migrating from the local #3064 candidate must stop
+saving the selection inside `configure` and return the validated selection.
 
-Acquisition owns its transaction. `collect` returns proposed progress without
-persisting it; the stage commits progress only when work is kept. Expected file
-availability failures become explicit acquisition results. Programming errors,
-invalid schemas and corrupt stores propagate instead of appearing as empty data.
-If acquisition fails, approved saved snapshots may still be consumed; the CLI
-reports that acquisition failed rather than claiming the snapshots were refreshed.
+The shared metadata display renders saved names and full scope without importing
+an adapter, even before consent. Adapter `status` and `consent` functions remain
+metadata-only functions available to source-owned callers; the shared approval
+summary deliberately uses one stable generic rendering before and after approval.
+Explicit configuration is the sole pre-approval import exception. It may validate
+connection metadata but must not acquire note/task bodies.
 
-Offline hooks can run within a stage's notebook transaction. `material_lock`
-reuses only a lock owned by the same process and thread for the exact notebook.
-Ordinary maintenance locks remain non-reentrant. Retained task items, extracted
-source IDs, original-evidence files and native prior material are rechecked before
-use. Model follow-ups, timeout retries and child citation/insight audits are guarded.
+Registered-source approval is stored independently from automatic mailbox grants.
+It binds the selected scope to the default and effective stage model routes.
+`start` displays those routes and rejects confirmation if the selection or routing
+changed while it was displayed. An older receipt without full routing needs a new
+confirmation; reconnecting email cannot grant that approval on its behalf.
+Source status explains whether the missing approval is due to a new selection,
+changed scope or changed model/route, using saved metadata only.
 
-## Exact versions and compatibility
+## Acquire, consume and retain evidence
 
-The imported #3055 revision is `784d00a5ecddd99dd0a0f0b3cc368d337833dd50`.
-Besides version routing, that dependency includes the no-change sync Next/log
-fix and project-to-agenda lead routing. Those generic fixes and their tests are
-retained as prerequisite work, not introduced as Obsidian-specific behavior.
+`fetch` runs before the long-lived notebook lock. The adapter owns acquisition
+serialization and must wrap final publication in `acquisition_guard(root, sub)`.
+It publishes complete immutable snapshots or committed byte ranges plus an
+atomic index. The network phase never holds the notebook lock.
+An overlapping success cannot erase a newer blocking acquisition failure. The
+shared receipt and returned result stay blocked until a fresh retry begun after
+the block succeeds.
+The guard waits at most one second for publication access. A busy notebook causes
+a retryable failure, without stopping the remaining providers. Acquisition
+receipts use their own short file lock, so recording that failure does not wait
+again for the notebook. Errors inside publication and errors saving a receipt
+still propagate; an earlier blocking failure cannot be downgraded by a busy result.
 
-The optional `resolve=` argument on #3055's version helpers provides notebook-scoped
-routing. Registered kinds never fall back to global callbacks when deselected.
-Explicit legacy callbacks remain for kinds not yet migrated. The import-all
-`PROVIDERS` list is removed: it would load a provider before notebook selection.
+Adapters may share a per-user store between notebooks. Each notebook must still
+enforce its own account/scope approval, failure receipts and consumption progress.
+Every offline hook reads only its approved scope from atomically committed state;
+one notebook's publication guard does not approve another notebook's reads.
 
-`cited` returns `None` for an unavailable version, never the latest version instead.
-Its context uses the reader's existing excerpt/time/sender/thread/source fields.
-Source modification time and snapshot capture time remain separate. Replacement
-matching means another version of the same record, not proof that it is newer.
-A rollback can therefore replace a citation too.
+`collect`, `gather`, `pending` and `cited` run under the notebook read/commit
+boundary. They must read committed state without waiting for the acquisition
+writer lock. Otherwise a writer holding that lock while waiting to publish could
+deadlock with a notebook reader. The contract documents this adapter obligation;
+it is not enforced by a Python sandbox.
 
-The reader and citation-preservation paths now receive notebook context. Source
-IDs also remain attached to extraction and investigation wrappers. Private-labelled
-Obsidian notes are omitted; the contract has no owner-only visibility override.
+`collect` gets copied progress and strict item/serialized-character limits.
+A first oversized item's text may be explicitly clipped; later items are deferred.
+The returned `Batch.progress` is only a proposal. Existing REM acceptance paths
+own consumption progress; failed work remains retryable. `pending` reads counters,
+not bodies; an unavailable count is `None`, not zero.
 
-## Remaining design decisions
+`gather` receives aware start/end times, owner context and remaining shared
+budgets. It reads saved material only. Unselected, disabled and unapproved
+providers produce no imports or unrelated investigation lines. This contract
+controls material supplied by hooks; it does not sandbox the runner's independent
+web or local retrieval.
 
-This draft demonstrates one provider end to end. It does not claim the full #3040
-migration is complete. Before declaring the API stable, agree the hook signatures,
-acquisition failure policy, owner-only visibility, shared investigation budgets,
-independent runner retrieval, and migration of existing source paths. Asana should move token access into fetch
-and keep metadata offline, but its implementation needs a separate coordinated
-change. CLI configuration options may also need a smaller provider-neutral shape.
+## Exact citations can have a different prefix
 
-See [Obsidian snapshots](obsidian-snapshots.md) and [validation](obsidian-validation.md).
-The author reports the targeted integration tests passed locally. The broader
-regression has unresolved failures; see the validation record. No tests were run
-by the implementation agent during the submission-scope review.
+A batch item names its immutable target in `source`; an opaque target also needs
+`source_kind`. For example, the kind `summaries` may emit:
+
+```text
+adapter:docs/summaries/daily/2026/11/19.jsonl#summaries:personal:note?version=<64-hex-sha256>
+```
+
+Before evidence is retained, the shared layer validates `record_of(target)` and
+`cited(root, current_subscription, target)`, then records its owner in
+`.state/source-citations.json`. The complete target is the key; values contain
+`kind`, `record` and `subscription`. No credentials or body text are stored there.
+This write does not consume progress or mean a page update was accepted.
+
+The routing table survives restart/removal. Reader and retained-task checks still
+require current scope/model approval and the exact saved version. Unknown
+`adapter:` ownership stays unresolved; the router never tries every provider or
+falls back to a global resolver for a managed target. Existing unique
+source-qualified targets can route without a table entry. A source-owned migration
+can register validated old targets through `remember_material` while holding the
+notebook boundary. The separate integration candidate retains a source-owned compatibility reader
+for the older local candidate's `granola:docs/...` citations. Canonical new targets
+retain Granola's `adapter:` spelling. No provider-specific alias is built into
+the shared router.
+
+Page normalization changes only Sources headings/list spelling, preserving every
+target byte. Routing and normalization are separate. Same-record replacement uses
+`(kind, record_id)` and retains #3055's rollback semantics; it does not infer time
+ordering from a hash or UUID. Lookup caches ownership only within one operation;
+authorization is never cached across Reader or model calls.
+
+## Evidence status
+
+Synthetic fixtures represent a version-qualified note, a task file/offset and an
+opaque path/hash target. The tests cover dispatch, public integration, current
+approval, restart, failure handling, strict limits and progress. They do not prove
+that any real provider has completed migration or passed its own scope tests.
+
+No tests or `co audit` were run during this extraction, at the user's request.
+No commit, push or PR creation was performed. Run the commands in the validation
+note before reporting test results for this candidate.
