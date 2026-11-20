@@ -315,5 +315,62 @@ def test_the_platform_picks_launchd_or_systemd(tmp_path, monkeypatch):
     monkeypatch.setattr(api.shutil, 'which', lambda name: '/usr/bin/systemctl')
     assert type(api.host_service(tmp_path)).__name__ == 'SystemdHostService'
     monkeypatch.setattr(api.sys, 'platform', 'win32')
+    assert type(api.host_service(tmp_path)).__name__ == 'ScheduledTaskHostService'
+    monkeypatch.setattr(api.sys, 'platform', 'freebsd14')
     with pytest.raises(api.HostServiceError, match='co host --serve'):
         api.host_service(tmp_path)
+
+
+class Schtasks:
+    def __init__(self):
+        self.calls, self.created, self.running = [], False, False
+
+    def __call__(self, args, **kwargs):
+        assert args[0] == 'schtasks' and 'shell' not in kwargs
+        action = args[1]
+        self.calls.append(tuple(args[1:]))
+        if action == '/Create':
+            self.created = True
+        elif action == '/Run':
+            self.running = True
+        elif action == '/End':
+            self.running = False
+        elif action == '/Delete':
+            self.created = False
+        elif action == '/Query':
+            if not self.created:
+                return subprocess.CompletedProcess(args, 1, '', 'ERROR: The system cannot find the file specified.')
+            state = 'Running' if self.running else 'Ready'
+            return subprocess.CompletedProcess(args, 0, f'"\\{args[3]}","N/A","{state}"\r\n', '')
+        return subprocess.CompletedProcess(args, 0, 'SUCCESS', '')
+
+
+def test_windows_runs_the_same_host_as_a_logon_task(tmp_path):
+    """On Windows co init used to stop at "needs macOS or Linux"; the Host now
+    runs as a Scheduled Task at logon, as the logged-in user, no admin."""
+    profile = tmp_path/'profile'
+    profile.mkdir()
+    control = Schtasks()
+    service = module().ScheduledTaskHostService(profile, home=tmp_path/'home', runner=control, builtin=True)
+    state = service.start()
+    assert state == {'configured': True, 'running': True, 'pid': None, 'device_ready': False}
+    script = service.unit.read_text(encoding='utf-8')
+    assert ' host --serve >> ' in script and f'cd /d "{profile.resolve()}"' in script
+    assert 'goto run' in script  # starts again after an exit, like Restart=always
+    create = next(call for call in control.calls if call[0] == '/Create')
+    assert ('/SC', 'ONLOGON') == create[2:4] and service.task_name in create and '/RU' not in create
+    assert service.stop()['running'] is False
+    service.uninstall()
+    assert not service.unit.exists() and control.created is False
+
+
+def test_windows_task_serves_agent_py_and_never_writes_secrets(tmp_path, monkeypatch):
+    project = tmp_path/'project'
+    project.mkdir()
+    (project/'agent.py').write_text('# synthetic')
+    monkeypatch.setenv('OPENAI_API_KEY', 'sk-synthetic-secret')
+    service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), port=8123)
+    service.start()
+    script = service.unit.read_text(encoding='utf-8')
+    assert ' host --agent agent.py --port 8123 >> ' in script
+    assert 'sk-synthetic-secret' not in script
