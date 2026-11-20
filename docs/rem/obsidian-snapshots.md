@@ -126,6 +126,13 @@ leave approved saved versions available with a stale-data notice. Scope changes,
 approval changes and snapshot-integrity failures block saved material through the
 shared failure receipt. Restoring a path alone does not clear that block: a fresh
 successful acquisition is required. Unexpected programming errors propagate.
+
+If another collector holds the acquisition writer lock until the wait expires,
+the attempt reports temporary unavailability and keeps approved saved versions
+readable with a stale-data notice. This does not clear an existing scope or
+integrity block. Errors after acquiring the lock keep their original handling;
+a scan or publication failure is not treated as writer contention.
+
 SQLite reports of a corrupt or non-database file block saved material. Other
 SQLite errors, including binding mistakes, invalid SQL and missing-table errors,
 propagate rather than becoming an ordinary source-unavailable result.

@@ -36,6 +36,40 @@ Regression cases cover canonical-path redirection and symlink loops, stale versu
 blocked saved material, model/scope changes during acquisition, offline readers
 during a scan, exact old-version citations, and owner/time/budget constraints.
 
+## Acquisition writer-lock follow-up after `853c97ed`
+
+A later review reproduced a missing case: acquisition writer-lock timeout was
+classified as a blocking failure, hiding intact saved citations. The local
+correction treats only a known timeout while entering that lock as temporary
+unavailability. Scan and publication failures keep their previous classification.
+The existing writer wait limit is unchanged.
+
+Validation of the uncommitted working tree based on `853c97ed`:
+
+- The initial regression run reproduced the defect: one failed and four passed.
+- All six new cases then passed in 1.41s, including another-source dispatch case
+  added during the correction. They cover intact snapshots and consumption
+  progress, exact citations, retry after releasing the lock, existing blocking
+  receipts, and failures inside the protected work.
+- The full Obsidian/read-only CLI/shared-hook focused set passed **661 tests in
+  21.69s**.
+- The same selected REM caller/CLI/bootstrap/handoff regression set passed
+  **2522 tests in 269.21s**, with **one warning**.
+
+The warning was `PytestUnhandledThreadExceptionWarning` in
+`test_handoff_accept.py::test_the_watcher_and_status_at_once_answer_a_question_once`:
+the watcher encountered `JSONDecodeError` in `handoff/replies.py::remember_peer`.
+That test, `handoff/watch.py` and `handoff/replies.py` match upstream main
+`ffe3f133` and were not modified here. One isolated run on the unchanged shared
+prerequisite `f9d5f156`, treating thread warnings as errors, passed without
+reproducing it. This does not establish that the intermittent warning is fixed;
+the original warning remains part of the validation result.
+
+All runs used synthetic data and the real-home guard reported no writes to the
+user's `.co`. Independent AI static review found no blocking issue in the lock
+entry boundary, cleanup, new tests or documentation. No real vault, paid model,
+scheduler installation or remote publication was used for this correction.
+
 ## Historical validation on 2026-11-15
 
 The author reported that the six targeted source/integration test files and the

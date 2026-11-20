@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from connectonion.rem import obsidian, obsidian_source, obsidian_store, service, source_hooks
 from connectonion.rem.config import prepare, read_config
 from connectonion.rem.files import Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from tests.unit.rem_source_fixtures import shared_sources
 
 
 @pytest.fixture
@@ -441,3 +442,90 @@ def test_busy_notebook_keeps_obsidian_saved_material_available(selected, monkeyp
             release.set()
         holder.result(timeout=2)
     assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'
+
+
+def test_busy_writer_preserves_snapshots_progress_and_citations(selected, monkeypatch):
+    root, _ = selected
+    approve(root)
+    source_hooks.fetch(root)
+    batch = source_hooks.collect(root, 'obsidian', {}, 1, 10000)
+    original = batch.items[0]['source']
+    progress = state_path(root, 'progress.json')
+    write_json(progress, {'obsidian': batch.progress})
+    before_progress, before_snapshots = progress.read_bytes(), obsidian_store.latest_snapshots(root)
+    monkeypatch.setattr(obsidian_store, 'WRITE_WAIT_SECONDS', 0.02)
+    with obsidian_store._file_lock(state_path(root, 'obsidian-acquisition'), 0):
+        with monkeypatch.context() as blocked:
+            blocked.setattr(obsidian, 'list_notes', lambda *a: pytest.fail('busy writer scanned the vault'))
+            result = source_hooks.fetch(root)['obsidian']
+        assert result['ok'] is False and result['allow_saved'] is True
+        assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'
+        assert source_hooks.stale_notice(root, 'obsidian', service.subscriptions(root)['obsidian'])
+        assert source_hooks.collect(root, 'obsidian', batch.progress, 1, 10000).items == []
+    assert progress.read_bytes() == before_progress
+    assert obsidian_store.latest_snapshots(root) == before_snapshots
+    retry = source_hooks.fetch(root)['obsidian']
+    assert retry['ok'] is True and retry['result']['unchanged'] == 1
+    assert not source_hooks.stale_notice(root, 'obsidian', service.subscriptions(root)['obsidian'])
+    assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'
+
+
+def test_busy_writer_does_not_clear_existing_integrity_block(selected, monkeypatch):
+    root, _ = selected
+    approve(root)
+    source_hooks.fetch(root)
+    original = obsidian_store.latest_snapshots(root)[0]['source_id']
+    def invalid_snapshot(*args):
+        raise RemError('Obsidian snapshot integrity check failed')
+    with monkeypatch.context() as blocked:
+        blocked.setattr(obsidian_store, '_collect', invalid_snapshot)
+        assert source_hooks.fetch(root)['obsidian']['allow_saved'] is False
+    monkeypatch.setattr(obsidian_store, 'WRITE_WAIT_SECONDS', 0.02)
+    with obsidian_store._file_lock(state_path(root, 'obsidian-acquisition'), 0):
+        result = source_hooks.fetch(root)['obsidian']
+    assert result['ok'] is False and result['allow_saved'] is False
+    assert source_hooks.cited(root, original) is None
+    with pytest.raises(source_hooks.SourceUnavailable):
+        source_hooks.collect(root, 'obsidian', {}, 1, 10000)
+    assert source_hooks.fetch(root)['obsidian']['ok'] is True
+    assert source_hooks.cited(root, original)['excerpt'] == 'Atlas first version'
+
+
+@pytest.mark.parametrize('failure_at', ['lock-entry', 'scan', 'publication'])
+def test_writer_failure_is_not_mistaken_for_entry_contention(selected, monkeypatch, failure_at):
+    from contextlib import contextmanager
+    from connectonion.rem.files import MAINTENANCE_BUSY
+    root, _ = selected
+    approve(root)
+    source_hooks.fetch(root)
+    original = obsidian_store.latest_snapshots(root)[0]['source_id']
+    def fail(*args):
+        raise RemError(MAINTENANCE_BUSY)
+    @contextmanager
+    def invalid_lock(*args):
+        raise RemError('Cannot validate acquisition lock metadata')
+        yield
+    target, replacement = {'lock-entry': ('_file_lock', invalid_lock),
+                           'scan': ('list_notes', fail), 'publication': ('_collect', fail)}[failure_at]
+    monkeypatch.setattr(obsidian if failure_at == 'scan' else obsidian_store, target, replacement)
+    result = source_hooks.fetch(root)['obsidian']
+    assert result['ok'] is False and result['allow_saved'] is False
+    assert source_hooks.cited(root, original) is None
+
+
+def test_busy_writer_does_not_stop_other_source_acquisition(shared_sources, tmp_path, monkeypatch):
+    env = shared_sources
+    vault = tmp_path / 'Vault'
+    (vault / 'Work').mkdir(parents=True)
+    (vault / 'Work' / 'Atlas.md').write_text('Atlas first version', encoding='utf-8')
+    monkeypatch.setitem(source_hooks.MODULES, 'obsidian', 'connectonion.rem.obsidian_source')
+    obsidian.save_selection(env.root, vault, ['Work'])
+    env.select('tasks')
+    assert source_hooks.fetch(env.root)['obsidian']['ok'] is True
+    env.events.clear()
+    monkeypatch.setattr(obsidian_store, 'WRITE_WAIT_SECONDS', 0.02)
+    with obsidian_store._file_lock(state_path(env.root, 'obsidian-acquisition'), 0):
+        results = source_hooks.fetch(env.root)
+    assert results['obsidian']['ok'] is False and results['obsidian']['allow_saved'] is True
+    assert results['tasks']['ok'] is True
+    assert ('tasks', 'fetch') in env.events

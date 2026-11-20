@@ -5,7 +5,7 @@ functions do not grant model consent. The selected-source dispatcher checks appr
 before collecting for a model or exposing saved material to it.
 """
 
-from contextlib import closing, contextmanager
+from contextlib import ExitStack, closing, contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -15,7 +15,7 @@ import sqlite3
 import uuid
 
 from . import obsidian
-from .files import WRITE_WAIT_SECONDS, RemError, _file_lock, material_lock, state_path
+from .files import MAINTENANCE_BUSY, WRITE_WAIT_SECONDS, RemError, _file_lock, material_lock, state_path
 
 
 DATABASE = "obsidian-snapshots.db"
@@ -169,13 +169,21 @@ def collect(root: Path, *, expected: dict | None = None) -> dict:
     Changes, immutable versions and current heads commit together. A retry after
     rollback compares against the last committed collection.
     """
-    from .source_hooks import acquisition_guard
+    from .source_hooks import SourceUnavailable, acquisition_guard
 
     _selection(root, expected)
     # Wait for another scan without holding the notebook lock. Offline readers
     # never take this writer lock and can consume the last committed state.
     writer = state_path(root, "obsidian-acquisition")
-    with _file_lock(writer, WRITE_WAIT_SECONDS):
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(_file_lock(writer, WRITE_WAIT_SECONDS))
+        except RemError as error:
+            if str(error) != MAINTENANCE_BUSY:
+                raise
+            raise SourceUnavailable("Another Obsidian collection is busy; retry after it finishes",
+                                    allow_saved=True) from error
+        # Only lock entry is retryable; scan and publication errors keep their classification.
         guard = acquisition_guard(root, expected)() if expected is not None else material_lock(root)
         with guard:
             selection = _selection(root, expected)
