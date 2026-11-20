@@ -696,6 +696,12 @@ Effects:  Reads message bodies, calls the model and saves page changes. Logs
           runs blocked by the daily cap. Ctrl-C keeps finished batches and lists
           what finished. The interrupted batch reads its input again next time.
           Reads sources in turn, starting after the source used last.
+          Registered sources acquire snapshots before the notebook maintenance
+          lock, then supply saved batches. Dry-run never acquires snapshots.
+          A temporary acquisition failure may use approved saved material and
+          reports that it may be stale. Account/scope/integrity failures block
+          that source until a successful acquisition; other sources continue.
+          --with limits acquisition as well as consumption to mail.
 
           If a page update is rejected, keeps its input for another attempt.
           Retries once a day, at most three times on the same input. Rejects a
@@ -714,22 +720,50 @@ Back:     co rem --help
 
 ```
 Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp. Showing is read-only.
+whatsapp, plus sources installed through the shared registry. Showing uses saved
+names and scope only; it does not import a provider or read its bodies.
 
 Usage:    co rem sources
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
-          co rem sources remove NAME [--chat ID]
+          co rem sources connect NAME --config FILE
+          co rem sources remove NAME [--chat ID] [--project ID]
 Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
           --chat      WhatsApp only: copy a chat ID from co whatsapp chats.
                       No chat is read unless named.
           --since     how far back to read
-          --project   coding sources: only sessions run in this directory
+          --project   add: a coding directory, or a registered source's project ID
+                      remove: a selected project ID, when that source supports it
+          Registered sources validate their own options, including --vault,
+          --folder, --replace and --config. Unsupported options are rejected.
 
-Effects:  add/remove change settings only. Bodies are read later, by sync, after start.
-          remove stops future reads; pages already written stay.
-Subcommands: co rem sources add --help, co rem sources remove --help
+Effects:  add/connect explicitly load the requested configuration implementation.
+          It may validate connection metadata, but cannot acquire source bodies.
+          Changed selections need approval through start before sync reads them.
+          remove stops future reads; pages already written stay. Saved citations
+          are read only while their source and scope remain approved.
+Subcommands:
+  add       Select a source and its scope; approve changes with start.
+  connect   Configure an installed source using a metadata file.
+  remove    Stop reading a source or remove a selected chat/project.
 Next:     co rem sync --dry-run
 Back:     co rem --help
+```
+
+## co rem sources connect
+
+```
+Configure an installed source using its own connection metadata file.
+
+Usage:    co rem sources connect NAME --config FILE
+Example:  co rem sources connect notes --config ./notes-source.json
+Inputs:   NAME must be registered by an installed source integration.
+          notes is an illustrative integration name; use an installed name.
+          FILE is validated by that source; unsupported options fail explicitly.
+Effects:  Loads only the named configuration implementation. It may validate
+          connection metadata, but never acquires note/task bodies. Saves the
+          selection; changed scope requires fresh approval through start.
+Next:     co rem start
+Back:     co rem sources
 ```
 
 ## co rem config
@@ -835,7 +869,8 @@ are read later by sync, after co rem start has recorded your approval.
 
 Usage:    co rem sources add NAME [--since 3d|2w|6m|1y] [--only] [--force]
                                    [--chat ID]... [--project DIR] [--about TEXT]
-          NAME is one of: gmail, outlook, codex, claude-code, whatsapp
+          NAME is gmail, outlook, codex, claude-code, whatsapp, or an installed source.
+          co rem sources add NAME [--vault PATH] [--folder DIR]... [--replace] [--config FILE]
 Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
           --chat     WhatsApp: one chat to read, from co whatsapp chats (repeatable).
                      No WhatsApp chat is read unless it is named here.
@@ -844,6 +879,9 @@ Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
           --since    read at least this far back; a wider window is left alone
           --only     with --since: read only that far back, narrowing the window
           --force    with --only: accept that unread older material is dropped
+          --vault, --folder, --replace, --config are validated by the named integration.
+Effects:  Installed sources validate and save selection metadata without acquiring
+          note/task bodies. Changed scope requires fresh approval through co rem start.
 Next:     co rem sync --dry-run
 Back:     co rem sources --help
 ```
@@ -853,10 +891,13 @@ Back:     co rem sources --help
 ```
 Stop reading a source from now on. Pages already written keep what they learned.
 
-Usage:    co rem sources remove NAME [--chat ID]...
+Usage:    co rem sources remove NAME [--chat ID]... [--project ID]
 Example:  co rem sources remove whatsapp --chat 120363411567190840@g.us
           --chat   WhatsApp: stop only this chat, keep the others
+          --project  Registered sources: remove only this selected project;
+                     unsupported sources reject it. Do not combine with --chat.
 Effects:  Writes settings. A removed mailbox is also skipped by investigate.
+          Changed registered scopes need approval again; an empty scope is disabled.
 Next:     co rem sources
 Back:     co rem sources --help
 ```

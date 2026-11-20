@@ -130,12 +130,13 @@ def hollow_investigations(root) -> set:
 
 
 def _stamped_from_nothing(page: str) -> bool:
-    from .page_review import SOURCE_ID
+    from .page_review import source_id_pattern
     status = next((line for line in page.splitlines() if line.startswith("Investigation:")), "")
     if last_investigated(status) is None:
         return False
     sources = page.partition("\n## Sources\n")[2].split("\nInvestigation:")[0]
-    return not any(SOURCE_ID.search(line) or re.search(r"https?://|`/[^`]+`", line)
+    source_ids = source_id_pattern()
+    return not any(source_ids.search(line) or re.search(r"https?://|`/[^`]+`", line)
                    for line in sources.splitlines())
 
 

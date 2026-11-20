@@ -1,266 +1,355 @@
-"""Selected-source contract with two fictional offline snapshot providers."""
+"""Shared lifecycle contract using three synthetic saved-source representations."""
 
 from copy import deepcopy
-from datetime import datetime, timezone
-import importlib
-import json
-import sys
-from types import ModuleType
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from connectonion.rem import source_hooks as hooks, source_versions
-from connectonion.rem.files import RemError, state_path, write_json
+from connectonion.rem import service, source_hooks as hooks, source_versions
+from connectonion.rem.files import RemError, maintenance_lock, read_json, state_path, write_json
 from connectonion.rem.source import Batch
+from tests.unit.rem_source_fixtures import citation, shared_sources
 
 
-def selection(kind, **overrides):
-    return {"kind": kind, "enabled": True, "consented": True,
-            "folders": ["Work"], **overrides}
+def gather(env, **options):
+    return hooks.gather(env.root, ['Atlas'], start=datetime.now(timezone.utc) - timedelta(days=1),
+                        record='projects/atlas.md', **options)
 
 
-def save(root, **subscriptions):
-    write_json(state_path(root, "subscriptions.json"), subscriptions)
+def test_no_selection_causes_no_provider_imports_or_coverage(shared_sources):
+    env = shared_sources
+    assert hooks.statuses(env.root) == hooks.consent_lines(env.root) == hooks.fetch(env.root) == {}
+    assert gather(env) == ([], [])
+    assert hooks.cited(env.root, citation('notes')) is None
+    assert env.loaded == env.events == []
 
 
-@pytest.fixture
-def providers(monkeypatch):
-    events, loaded, modules = [], [], {}
-    for kind in ("tasks", "notes"):
-        module = ModuleType(f"fictional_{kind}_source")
-        module.kind, module.skill = kind, f"rem-source-{kind}"
-        modules[kind] = module
-        monkeypatch.setitem(sys.modules, module.__name__, module)
-    monkeypatch.setattr(hooks, "MODULES", {kind: module.__name__ for kind, module in modules.items()})
-    original = importlib.import_module
+@pytest.mark.parametrize('state', ['unconfigured', 'disabled', 'unconsented', 'revoked-receipt'])
+def test_inactive_states_never_import_providers(shared_sources, state):
+    env = shared_sources
+    if state != 'unconfigured':
+        env.select('notes', approve=state != 'unconsented')
+        if state == 'disabled':
+            service.toggle_source(env.root, 'notes', False)
+        if state == 'revoked-receipt':
+            write_json(state_path(env.root, 'consent.json'), {})
+    env.loaded.clear()
+    env.events.clear()
+    hooks.statuses(env.root)
+    hooks.consent_lines(env.root)
+    service.consent_summary(env.root)
+    assert hooks.fetch(env.root) == {}
+    assert gather(env) == ([], [])
+    assert hooks.cited(env.root, citation('notes')) is None
+    if state != 'unconfigured' and state != 'disabled':
+        assert hooks.pending(env.root, 'notes', {})['consented'] is False
+    with pytest.raises(RemError, match='authorized'):
+        hooks.collect(env.root, 'notes', {}, 5, 10000)
+    assert env.loaded == env.events == []
 
-    def load(name):
-        loaded.append(name)
-        return original(name)
 
-    monkeypatch.setattr(hooks.importlib, "import_module", load)
-    for kind, module in modules.items():
-        install(module, kind, events)
-    return modules, events, loaded
+def test_configure_is_explicit_exception_and_consent_scope_is_stable(shared_sources):
+    env = shared_sources
+    env.select('summaries', approve=False)
+    before = service.consent_summary(env.root)
+    assert before['sources']['summaries']['scope']['folders'] == ['Work']
+    service.approve_sources(env.root)
+    assert before == service.consent_summary(env.root)
+    assert env.loaded == []
+    assert hooks.approved(env.root, 'summaries')
 
 
-def install(module, kind, events):
-    def status(sub):
-        events.append((kind, "status"))
-        return {"folders": sub["folders"]}
+def test_configure_rejects_unsupported_options_without_acquisition(shared_sources):
+    env = shared_sources
+    with pytest.raises(RemError, match='--since'):
+        hooks.configure(env.root, 'summaries', since='30d')
+    assert not hooks.selected(env.root)
+    assert all(event[1] == 'configure' for event in env.events)
 
+
+def test_slow_configuration_cannot_undo_concurrent_removal(shared_sources, monkeypatch):
+    env = shared_sources
+    env.select('notes')
+    before = hooks.selected(env.root)['notes']
+    def configure(root, **options):
+        service.toggle_source(root, 'notes', False)
+        return before
+    monkeypatch.setattr(env.modules['notes'], 'configure', configure)
+    with pytest.raises(RemError, match='configuration changed'):
+        hooks.configure(env.root, 'notes')
+    assert not hooks.selected(env.root)
+
+
+def test_configuration_can_disable_an_empty_source_scope(shared_sources, monkeypatch):
+    env = shared_sources
+    env.select('tasks')
+    monkeypatch.setattr(env.modules['tasks'], 'configure',
+                        lambda *a, **kw: {'kind': 'tasks', 'folders': [], 'enabled': False})
+    result = hooks.configure(env.root, 'tasks', remove=True, project='last-project')
+    assert result['enabled'] is False
+    saved = read_json(state_path(env.root, 'subscriptions.json'), {})['tasks']
+    assert saved['unsubscribed'] and not saved['consented']
+    assert not hooks.selected(env.root)
+
+
+def test_configuration_rejects_non_boolean_enabled(shared_sources, monkeypatch):
+    env = shared_sources
+    monkeypatch.setattr(env.modules['tasks'], 'configure',
+                        lambda *a, **kw: {'kind': 'tasks', 'enabled': 'false'})
+    with pytest.raises(RemError, match='boolean'):
+        hooks.configure(env.root, 'tasks')
+    assert not hooks.selected(env.root)
+
+
+@pytest.mark.parametrize('flag', ['enabled', 'consented', 'unsubscribed'])
+def test_bad_boolean_flags_fail_before_import(shared_sources, flag):
+    env = shared_sources
+    env.select('notes')
+    saved = read_json(state_path(env.root, 'subscriptions.json'), {})
+    saved['notes'][flag] = 'false'
+    write_json(state_path(env.root, 'subscriptions.json'), saved)
+    with pytest.raises(RemError, match='flag'):
+        hooks.fetch(env.root)
+    assert env.loaded == []
+
+
+def test_subscription_cannot_choose_module(shared_sources):
+    env = shared_sources
+    write_json(state_path(env.root, 'subscriptions.json'), {'x': {'kind': 'arbitrary.module', 'enabled': True}})
+    assert hooks.fetch(env.root) == hooks.statuses(env.root) == {}
+    assert env.loaded == []
+
+
+@pytest.mark.parametrize('kind', ['notes', 'tasks', 'summaries'])
+def test_collection_does_not_mutate_or_persist_caller_progress(shared_sources, kind):
+    env = shared_sources
+    env.select(kind)
+    hooks.fetch(env.root)
+    progress = {'nested': {'unchanged': [1]}}
+    before = deepcopy(progress)
+    batch = hooks.collect(env.root, kind, progress, 5, 10000)
+    assert progress == before and batch.progress['last'] == citation(kind)
+    assert read_json(state_path(env.root, 'progress.json'), {}) == {}
+    assert hooks.collect(env.root, kind, batch.progress, 5, 10000).items == []
+
+
+@pytest.mark.parametrize('kind', ['notes', 'tasks', 'summaries'])
+def test_old_and_new_versions_resolve_independently(shared_sources, kind):
+    env = shared_sources
+    env.select(kind)
+    hooks.fetch(env.root)
+    first = hooks.collect(env.root, kind, {}, 5, 10000)
+    env.current[kind] = 2
+    hooks.fetch(env.root)
+    second = hooks.collect(env.root, kind, first.progress, 5, 10000)
+    old, new = first.items[0]['source'], second.items[0]['source']
+    assert hooks.cited(env.root, old)['excerpt'] == 'Atlas saved version 1'
+    assert hooks.cited(env.root, new)['excerpt'] == 'Atlas saved version 2'
+    assert hooks.cited(env.root, citation(kind, 99)) is None
+    assert hooks.superseded(env.root, {old}, {new}) == {old}
+    assert hooks.superseded(env.root, {new}, {old}) == {new}
+    assert hooks.superseded(env.root, {old}, set()) == set()
+
+
+def test_opaque_routes_survive_restart_and_do_not_probe_other_providers(shared_sources, monkeypatch):
+    from connectonion.rem import source_citations
+    env = shared_sources
+    env.select('summaries', 'notes', 'tasks')
+    hooks.fetch(env.root, names={'summaries'})
+    target = hooks.collect(env.root, 'summaries', {}, 2, 10000).items[0]['source']
+    route = source_citations.lookup(env.root, target)
+    assert route == {'kind': 'summaries', 'record': 'summaries:account:note', 'subscription': 'summaries'}
+    env.loaded.clear()
+    # A newly constructed Path and lookup have no process-local routing cache.
+    from pathlib import Path
+    assert hooks.cited(Path(str(env.root)), target)['excerpt'] == 'Atlas saved version 1'
+    assert set(env.loaded) == {'synthetic_rem_summaries'}
+    service.toggle_source(env.root, 'summaries', False)
+    env.loaded.clear()
+    assert hooks.cited(env.root, target) is None
+    assert source_citations.lookup(env.root, target) == route
+    assert env.loaded == []
+
+
+def test_opaque_target_without_mapping_does_not_fall_back(shared_sources, monkeypatch):
+    env = shared_sources
+    env.select('summaries')
+    hooks.fetch(env.root)
+    monkeypatch.setitem(source_versions.KINDS, 'adapter', source_versions.Kind(
+        lambda target: 'wrong', lambda *args: pytest.fail('global fallback bypassed routing')))
+    assert hooks.version_context(env.root, citation('summaries')) is None
+    assert env.loaded == ['synthetic_rem_summaries']  # fetch only
+
+
+def test_route_conflict_preserves_original_entry(shared_sources):
+    from connectonion.rem.source_citations import lookup, remember
+    env = shared_sources
+    env.select('summaries')
+    hooks.fetch(env.root)
+    target = hooks.collect(env.root, 'summaries', {}, 2, 10000).items[0]['source']
+    original = lookup(env.root, target)
+    with pytest.raises(RemError, match='Conflicting owner'):
+        remember(env.root, {target: {**original, 'subscription': 'foreign'}})
+    assert lookup(env.root, target) == original
+
+
+def test_scope_and_model_changes_revoke_retained_material(shared_sources, monkeypatch):
+    from connectonion.rem import config
+    env = shared_sources
+    env.select('notes')
+    hooks.fetch(env.root)
+    items = hooks.collect(env.root, 'notes', {}, 2, 10000).items
+    previous = config.read_config
+    monkeypatch.setattr(config, 'read_config', lambda *a, **kw: {**previous(*a, **kw), 'model': 'different'})
+    assert not hooks.material_approved(env.root, items)
+    monkeypatch.setattr(config, 'read_config', previous)
+    hooks.configure(env.root, 'notes', folders=['Private'])
+    assert not hooks.material_approved(env.root, items)
+    service.approve_sources(env.root)
+    assert not hooks.material_approved(env.root, items)
+
+
+def test_failure_receipts_block_until_success_and_other_sources_continue(shared_sources):
+    env = shared_sources
+    env.select('notes', 'tasks')
+    hooks.fetch(env.root)
+    env.failures['notes'] = hooks.SourceUnavailable('account mismatch', allow_saved=False)
+    failed = hooks.fetch(env.root)
+    assert failed['notes']['allow_saved'] is False and failed['tasks']['ok']
+    assert hooks.cited(env.root, citation('notes')) is None
+    env.failures['notes'] = hooks.SourceUnavailable('temporary unavailable')
+    assert hooks.fetch(env.root)['notes']['allow_saved'] is False
+    with pytest.raises(hooks.SourceUnavailable):
+        hooks.collect(env.root, 'notes', {}, 2, 10000)
+    del env.failures['notes']
+    assert hooks.fetch(env.root)['notes']['ok']
+    assert hooks.cited(env.root, citation('notes')) is not None
+
+
+def test_temporary_failure_explains_stale_material(shared_sources):
+    env = shared_sources
+    env.select('notes')
+    hooks.fetch(env.root)
+    env.failures['notes'] = hooks.SourceUnavailable('temporary unavailable')
+    hooks.fetch(env.root)
+    items, lines = gather(env)
+    assert items and any('may be stale' in line for line in lines)
+
+
+def test_unexpected_fetch_errors_propagate(shared_sources):
+    env = shared_sources
+    env.select('notes')
+    env.failures['notes'] = TypeError('programming defect')
+    with pytest.raises(TypeError, match='programming defect'):
+        hooks.fetch(env.root)
+
+
+def test_fetch_runs_outside_lock_and_commit_guard_rechecks_revocation(shared_sources, monkeypatch):
+    from connectonion.rem import files
+    env = shared_sources
+    env.select('notes')
     def fetch(root, sub):
-        events.append((kind, "fetch", root, sub))
-        return {"saved": 1}
-
-    def collect(root, sub, progress, max_items, max_chars):
-        events.append((kind, "collect", root, sub))
-        progress.setdefault("cursor", {})["sequence"] = 3
-        item = {"source": f"{kind}:Work/one@3", "text": "saved revision three",
-                "timestamp": "2026-11-01T00:00:00Z", "reference": "saved:Work/one", "project": ""}
-        if len(json.dumps(item)) > max_chars:
-            raise RemError("Batch input limit is too small")
-        return Batch([item][:max_items], progress)
-
-    def gather(root, sub, handles, *, start, record):
-        events.append((kind, "gather", root, sub, handles, start, record))
-        return [{"text": "saved result", "source": f"{kind}:Work/one@3"}], [f"{kind}: searched"]
-
-    def cited(root, sub, source_id):
-        events.append((kind, "cited", root, sub))
-        path = source_id.partition(":")[2].partition("@")[0]
-        if path.split("/")[0] not in sub["folders"]:
-            return None
-        text = {f"{kind}:Work/one@1": "old words", f"{kind}:Work/one@3": "new words"}.get(source_id)
-        return {"excerpt": text, "truncated": False} if text is not None else None
-
-    module.status, module.fetch, module.collect, module.gather, module.cited = status, fetch, collect, gather, cited
-    module.consent = lambda sub: "Read " + ", ".join(sub["folders"])
-    module.record_of = lambda source_id: source_id.partition("@")[0] if "@" in source_id else None
+        # A non-reentrant notebook lock can be taken during the network phase.
+        with files.maintenance_lock(root):
+            pass
+        service.toggle_source(root, 'notes', False)
+        with hooks.acquisition_guard(root, sub)():
+            pytest.fail('revoked acquisition was allowed to publish')
+    monkeypatch.setattr(env.modules['notes'], 'fetch', fetch)
+    result = hooks.fetch(env.root)
+    assert not result['notes']['ok'] and result['notes']['allow_saved'] is False
+    assert not state_path(env.root, 'synthetic-notes.json').exists()
 
 
-def test_unselected_notebook_does_not_import_or_touch_registered_providers(tmp_path, providers):
-    _, events, loaded = providers
-    assert hooks.statuses(tmp_path) == {}
-    assert hooks.consent_lines(tmp_path) == {}
-    assert hooks.fetch(tmp_path) == {}
-    assert hooks.gather(tmp_path, [], start=datetime.now(timezone.utc), record="projects/demo.md") == ([], [])
-    assert hooks.cited(tmp_path, "notes:Work/one@1") is None
-    assert hooks.record_of(tmp_path, "tasks:Work/one@3") is None
-    assert hooks.superseded(tmp_path, {"notes:Work/one@1"}, {"notes:Work/one@3"}) == set()
-    assert events == loaded == []
-    assert not (tmp_path / ".state").exists()
+def test_offline_hooks_reuse_notebook_lock_only(shared_sources, monkeypatch):
+    from connectonion.rem import files
+    env = shared_sources
+    env.select('notes')
+    hooks.fetch(env.root)
+    original = files.maintenance_lock
+    with original(env.root):
+        monkeypatch.setattr(files, 'maintenance_lock', lambda *a, **kw: pytest.fail('recursive lock'))
+        assert hooks.collect(env.root, 'notes', {}, 2, 10000).items
+    monkeypatch.setattr(files, 'maintenance_lock', original)
+    with original(env.root):
+        with pytest.raises(RemError):
+            with original(env.root):
+                pytest.fail('ordinary lock became reentrant')
 
 
-def test_metadata_can_describe_selection_before_consent_without_acquisition(tmp_path, providers):
-    _, events, loaded = providers
-    save(tmp_path, notes=selection("notes", consented=False))
-    assert hooks.statuses(tmp_path) == {"notes": {"folders": ["Work"]}}
-    assert hooks.consent_lines(tmp_path) == {"notes": "Read Work"}
-    assert events == [("notes", "status")]
-    assert set(loaded) == {"fictional_notes_source"}
+def test_strict_budgets_and_first_item_clipping(shared_sources):
+    env = shared_sources
+    env.select('notes')
+    hooks.fetch(env.root)
+    item = hooks.collect(env.root, 'notes', {}, 1, 10000).items[0]
+    large = {**item, 'text': 'x' * 5000}
+    fitted, limited = hooks.bounded([large, item], 2, 1000)
+    assert limited and len(fitted) == 1 and hooks.material_size(fitted) <= 1000
+    assert '[truncated by co rem:' in fitted[0]['text']
+    assert fitted[0]['source'] == item['source']
+    with pytest.raises(hooks.SourceBudgetExceeded):
+        hooks.bounded([large], 1, 10)
 
 
-@pytest.mark.parametrize("flags", [{"enabled": False}, {"consented": False}, {"unsubscribed": True}])
-def test_no_content_or_import_before_approval(tmp_path, providers, flags):
-    _, events, loaded = providers
-    save(tmp_path, notes=selection("notes", **flags))
-    assert hooks.fetch(tmp_path) == {}
-    assert hooks.cited(tmp_path, "notes:Work/one@1") is None
-    assert hooks.gather(tmp_path, [], start=datetime.now(timezone.utc), record="people/demo.md") == ([], [])
-    with pytest.raises(RemError, match="authorized"):
-        hooks.collect(tmp_path, "notes", {}, 10, 1000)
-    assert events == loaded == []
+def test_adapter_cannot_commit_over_budget_result(shared_sources, monkeypatch):
+    env = shared_sources
+    env.select('notes')
+    monkeypatch.setattr(env.modules['notes'], 'collect', lambda *args: Batch([{'text': 'x' * 10000}], {'last': 'bad'}))
+    with pytest.raises(RemError, match='exceeded the batch budget'):
+        hooks.collect(env.root, 'notes', {}, 1, 100)
+    assert not state_path(env.root, 'source-citations.json').exists()
+    assert not state_path(env.root, 'progress.json').exists()
 
 
-def test_lookup_loads_only_the_matching_selected_kind(tmp_path, providers):
-    _, _, loaded = providers
-    save(tmp_path, notes=selection("notes"), tasks=selection("tasks"))
-    assert hooks.cited(tmp_path, "notes:Work/one@1")["excerpt"] == "old words"
-    assert loaded == ["fictional_notes_source"]
+def test_gather_passes_owner_end_and_aggregate_budget(shared_sources):
+    env = shared_sources
+    env.select('notes', 'tasks', 'summaries')
+    hooks.fetch(env.root)
+    end = datetime.now(timezone.utc) + timedelta(seconds=1)
+    items, lines = gather(env, end=end, owner=True, max_items=1, max_chars=10000)
+    assert len(items) == 1 and hooks.material_size(items) <= 10000
+    calls = [event for event in env.events if event[1] == 'gather']
+    assert len(calls) == 1 and calls[0][2]['owner'] is True and calls[0][2]['end'] == end
+    assert sum('budget exhausted' in line for line in lines) == 2
 
 
-def test_saved_version_scope_and_notebook_are_rechecked_on_every_call(tmp_path, providers):
-    first, other = tmp_path / "first", tmp_path / "other"
-    save(first, notes=selection("notes"))
-    save(other, notes=selection("notes", folders=["Public"]))
-    assert hooks.cited(first, "notes:Work/one@1")["excerpt"] == "old words"
-    assert hooks.cited(other, "notes:Work/one@1") is None
-    assert hooks.cited(first, "notes:Work/one@9") is None
-    save(first, notes=selection("notes", folders=["Public"]))
-    assert hooks.cited(first, "notes:Work/one@1") is None
-    save(first, notes=selection("notes", consented=False))
-    assert hooks.cited(first, "notes:Work/one@1") is None
+@pytest.mark.parametrize('limits', [(0, 10), (1, 0), (True, 100), (1, False)])
+def test_invalid_limits_fail_before_import(shared_sources, limits):
+    env = shared_sources
+    env.select('notes')
+    with pytest.raises(ValueError):
+        hooks.collect(env.root, 'notes', {}, *limits)
+    assert env.loaded == []
 
 
-def test_scoped_lookup_never_uses_a_global_registration(tmp_path, providers, monkeypatch):
-    def forbidden(*args):
-        pytest.fail("A global callback bypassed the notebook's selection")
-    monkeypatch.setitem(source_versions.KINDS, "notes", source_versions.Kind(forbidden, forbidden))
-    assert hooks.cited(tmp_path, "notes:Work/one@1") is None
-    assert hooks.record_of(tmp_path, "notes:Work/one@1") is None
+def test_naive_or_reversed_gather_window_fails(shared_sources):
+    env = shared_sources
+    env.select('notes')
+    with pytest.raises(ValueError, match='time window'):
+        hooks.gather(env.root, ['Atlas'], start=datetime.now(), record='projects/atlas.md')
+    with pytest.raises(ValueError, match='time window'):
+        gather(env, end=datetime(2000, 1, 1, tzinfo=timezone.utc))
+    assert env.loaded == []
 
 
-def test_shared_replacement_logic_keeps_unrelated_and_missing_evidence(tmp_path, providers):
-    save(tmp_path, notes=selection("notes"), tasks=selection("tasks"))
-    old = {"notes:Work/one@1", "tasks:Work/two@1", "gmail:abc"}
-    new = {"notes:Work/one@3", "tasks:Work/three@3", "gmail:def"}
-    assert hooks.superseded(tmp_path, old, new) == {"notes:Work/one@1"}
-    # Identity replacement deliberately makes no chronological claim.
-    assert hooks.superseded(tmp_path, {"notes:Work/one@3"}, {"notes:Work/one@1"}) == {"notes:Work/one@3"}
-
-
-def test_matching_local_ids_from_different_kinds_do_not_hide_lost_evidence(tmp_path, providers, monkeypatch):
-    modules, _, _ = providers
-    save(tmp_path, notes=selection("notes"), tasks=selection("tasks"))
-    for module in modules.values():
-        monkeypatch.setattr(module, "record_of", lambda source_id: "42")
-    assert hooks.superseded(tmp_path, {"tasks:42@1"}, {"notes:42@2"}) == set()
-
-
-@pytest.mark.parametrize("replacement", [None, selection("tasks"), selection("notes", consented=False)])
-def test_selection_changed_during_module_load_cannot_reach_snapshot(tmp_path, providers, monkeypatch, replacement):
-    _, events, _ = providers
-    save(tmp_path, chosen=selection("notes"))
-    original = hooks.importlib.import_module
-    def changed(name):
-        save(tmp_path, **({"chosen": replacement} if replacement is not None else {}))
-        return original(name)
-    monkeypatch.setattr(hooks.importlib, "import_module", changed)
-    assert hooks.cited(tmp_path, "notes:Work/one@1") is None
-    assert events == []
-
-
-def test_citation_checks_each_current_subscription_scope(tmp_path, providers):
-    save(tmp_path, public=selection("notes", folders=["Public"]), work=selection("notes"))
-    assert hooks.cited(tmp_path, "notes:Work/one@1")["excerpt"] == "old words"
-    save(tmp_path, public=selection("notes", folders=["Public"]), work=selection("notes", consented=False))
-    assert hooks.cited(tmp_path, "notes:Work/one@1") is None
-
-
-def test_two_sources_share_offline_batches_without_committing_checkpoints(tmp_path, providers):
-    _, events, _ = providers
-    save(tmp_path, notes=selection("notes"), tasks=selection("tasks"))
-    original = {"cursor": {"sequence": 1}}
-    before = deepcopy(original)
-    disk_before = {path.name: path.read_bytes() for path in (tmp_path / ".state").iterdir()}
-    for name in ("tasks", "notes"):
-        batch = hooks.collect(tmp_path, name, original, 1, 1000)
-        assert batch.progress == {"cursor": {"sequence": 3}}
-        assert len(batch.items) == 1
-    assert original == before
-    assert all(event[1] == "collect" and event[2] == tmp_path for event in events)
-    assert {path.name: path.read_bytes() for path in (tmp_path / ".state").iterdir()} == disk_before
-
-
-def test_failed_batch_leaves_original_progress_intact(tmp_path, providers):
-    save(tmp_path, notes=selection("notes"))
-    progress = {"cursor": {"sequence": 1}}
-    with pytest.raises(RemError, match="too small"):
-        hooks.collect(tmp_path, "notes", progress, 1, 1)
-    assert progress == {"cursor": {"sequence": 1}}
-
-
-def test_investigation_reports_only_selected_saved_sources(tmp_path, providers):
-    _, events, loaded = providers
-    save(tmp_path, notes=selection("notes"))
-    start = datetime(2026, 11, 1, tzinfo=timezone.utc)
-    items, coverage = hooks.gather(tmp_path, ["Atlas"], start=start, record="projects/atlas.md")
-    assert coverage == ["notes: searched"]
-    assert items[0]["source"] == "notes:Work/one@3"
-    assert events[0][-3:] == (["Atlas"], start, "projects/atlas.md")
-    assert loaded == ["fictional_notes_source"]
-
-
-def test_expected_fetch_failure_is_visible_and_other_sources_continue(tmp_path, providers, monkeypatch):
-    modules, events, _ = providers
-    save(tmp_path, tasks=selection("tasks"), notes=selection("notes"))
-    def unavailable(*args):
-        raise hooks.SourceUnavailable("Selected account is offline")
-    monkeypatch.setattr(modules["tasks"], "fetch", unavailable)
-    result = hooks.fetch(tmp_path)
-    assert result["tasks"] == {"ok": False, "error": "Selected account is offline"}
-    assert result["notes"] == {"ok": True, "result": {"saved": 1}}
-    assert events[0][0:2] == ("notes", "fetch")
-
-
-@pytest.mark.parametrize("error", [KeyError("schema"), TypeError("bug"), RemError("corrupt store")])
-def test_programming_and_corruption_errors_propagate(tmp_path, providers, monkeypatch, error):
-    modules, _, _ = providers
-    save(tmp_path, notes=selection("notes"))
-    def broken(*args):
-        raise error
-    monkeypatch.setattr(modules["notes"], "fetch", broken)
-    monkeypatch.setattr(modules["notes"], "cited", broken)
-    with pytest.raises(type(error)):
-        hooks.fetch(tmp_path)
-    with pytest.raises(type(error)):
-        hooks.cited(tmp_path, "notes:Work/one@1")
-
-
-def test_failed_import_can_be_retried(tmp_path, providers, monkeypatch):
-    save(tmp_path, notes=selection("notes"))
-    original = hooks.importlib.import_module
-    def missing(name):
-        raise ModuleNotFoundError(name)
-    monkeypatch.setattr(hooks.importlib, "import_module", missing)
-    with pytest.raises(ModuleNotFoundError):
-        hooks.cited(tmp_path, "notes:Work/one@1")
-    monkeypatch.setattr(hooks.importlib, "import_module", original)
-    assert hooks.cited(tmp_path, "notes:Work/one@1")["excerpt"] == "old words"
-
-
-@pytest.mark.parametrize("flag", ["enabled", "consented", "unsubscribed"])
-def test_string_flags_fail_before_import(tmp_path, providers, flag):
-    _, _, loaded = providers
-    save(tmp_path, notes=selection("notes", **{flag: "false"}))
-    with pytest.raises(RemError, match="flag"):
-        hooks.fetch(tmp_path)
-    assert loaded == []
-
-
-def test_subscription_cannot_choose_an_import_path(tmp_path, providers):
-    _, _, loaded = providers
-    save(tmp_path, unknown=selection("arbitrary.module"))
-    assert hooks.statuses(tmp_path) == {}
-    assert loaded == []
+def test_retained_native_and_followup_material_rechecks_current_scope(shared_sources):
+    env = shared_sources
+    env.select('summaries')
+    hooks.fetch(env.root)
+    items = hooks.collect(env.root, 'summaries', {}, 2, 10000).items
+    directory = state_path(env.root, 'tasks/example')
+    write_json(directory / 'material.json', [])
+    write_json(directory / 'original.json', items)
+    task = {'directory': str(directory), 'task': {'items': [], 'prior_items': items}}
+    calls = []
+    execute = hooks.guard_turn(env.root, items, lambda: calls.append('model'))
+    execute()
+    hooks.task_material(env.root, task)
+    service.toggle_source(env.root, 'summaries', False)
+    with pytest.raises(RemError, match='no longer approved'):
+        execute()
+    with pytest.raises(RemError, match='no longer approved'):
+        hooks.task_material(env.root, task)
+    with pytest.raises(RemError, match='no longer approved'):
+        hooks.require_material(env.root, [{'role': 'original_evidence', 'file': str(directory / 'original.json')}])
+    assert calls == ['model']

@@ -71,6 +71,8 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
 
 
 def prepare(items, config, kind="", *, root, directory, native=False):
+    from .source_hooks import require_material
+    require_material(root, items)
     prompt = task_prompt(directory, items, "extract", kind, native=native)
     output = directory / "notes.md"
     # A summary-tier model has no tool to write a file with (#1847): its notes are its reply.

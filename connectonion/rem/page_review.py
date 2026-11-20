@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from . import facts
+from .source_citations import read_operation
 from .files import Notebook, RemError
 
 
@@ -238,12 +239,16 @@ def repair_project_overview(record: str, text: str) -> tuple[str, bool]:
     return text[:heading.end()] + '\n- Unknown\n\n' + text[end:], True
 
 
-SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
-                       r'(?:-summary)?:[\w.:+-]+')
+def source_id_pattern():
+    from .source_hooks import MODULES
+    legacy = (r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
+              r'(?:-summary)?:[\w.:+-]+')
+    registered = '|'.join(map(re.escape, ('adapter', *MODULES)))
+    return re.compile(legacy + r'|\b(?:' + registered + r'):[^\s`]+')
 
 
 def _carried_over(value: str, old_sources: str) -> bool:
-    ids = [match.rstrip('.,;') for match in SOURCE_ID.findall(value)]
+    ids = [match.rstrip('.,;') for match in source_id_pattern().findall(value)]
     return bool(ids) and all(source in old_sources for source in ids)
 
 
@@ -1004,6 +1009,9 @@ def archived(root: Path, source: str) -> bool:
     from contextlib import closing
     from .files import state_path
     from .reader_model import _cited_row
+    from .source_hooks import managed_target, cited
+    if managed_target(root, source):
+        return cited(root, source) is not None
     file = state_path(root, 'rem.db')
     if file.is_file() and not file.is_symlink():
         with closing(sqlite3.connect(file.as_uri() + '?mode=ro', uri=True)) as db:
@@ -1059,6 +1067,8 @@ def _repin(record: str, source: str) -> str:
 
 def resolve_sources(root: Path, record: str, text: str) -> str:
     """Write each Sources id in the form that resolves: mail by its digest, a file by its full hash."""
+    from .source_hooks import canonical_sources
+    text = canonical_sources(text)
     head, marker, tail = text.partition('\n## Sources\n')
     if not marker:
         return text
@@ -1517,6 +1527,7 @@ def unresolved_findings(text: str, citations: list[str]) -> list[str]:
             for section, marks in found.items()]
 
 
+@read_operation
 def drop_unresolved(record: str, text: str, original: str, items: list[dict],
                     pages=frozenset(), root: Path | None = None) -> tuple[str, dict]:
     """Remove only what rests on a citation that cannot be traced, instead of refusing the page (#1974).
@@ -1529,6 +1540,8 @@ def drop_unresolved(record: str, text: str, original: str, items: list[dict],
     goes. What remains is validated as usual.
     """
     from .reader_model import source_definitions
+    from .source_hooks import canonical_sources
+    text = canonical_sources(text)
     nothing = {'citations': [], 'lines': 0}
     head, marker, tail = text.partition('\n## Sources\n')
     if not headings(record) or not marker:
@@ -2012,7 +2025,8 @@ def _listed_sources(text: str) -> set[str]:
     return set(re.findall(r'(?m)^\s*- \[W?\d+\]\s*:?\s*(\S+)', text.partition('\n## Sources\n')[2]))
 
 
-def _lost_sources(before: str, after: str) -> set[str]:
+@read_operation
+def _lost_sources(before: str, after: str, *, root: Path | None = None) -> set[str]:
     """Source ids the page listed and the rewrite no longer lists.
 
     A cited version that the rewrite replaced with a newer version of the same
@@ -2021,6 +2035,11 @@ def _lost_sources(before: str, after: str) -> set[str]:
     """
     from .source_versions import superseded
     old, new = _listed_sources(before), _listed_sources(after)
+    if root is not None:
+        from .source_hooks import managed_target, superseded as selected_superseded
+        legacy_old = {value for value in old if not managed_target(root, value)}
+        legacy_new = {value for value in new if not managed_target(root, value)}
+        return old - new - selected_superseded(root, old, new) - superseded(legacy_old, legacy_new)
     return old - new - superseded(old, new)
 
 
@@ -2079,7 +2098,7 @@ def _lost_quotes(before: str, after: str, exempt=frozenset()) -> set[str]:
     return lost
 
 
-def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
+def dropped(before: str, after: str, exempt=frozenset(), *, root: Path | None = None) -> list[str]:
     """Name each loss so a resumed writer can restore it exactly.
 
     `exempt` are quotes the page had that are not in their cited source: guarding one put a broken
@@ -2088,10 +2107,11 @@ def dropped(before: str, after: str, exempt=frozenset()) -> list[str]:
     return ([f'Dropped quote the page had: “{quote}”'
              for quote in sorted(_lost_quotes(before, after, exempt))]
             + [f'Dropped source id the page had: {source}'
-               for source in sorted(_lost_sources(before, after))])
+               for source in sorted(_lost_sources(before, after, root=root))])
 
 
-def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
+@read_operation
+def restore_dropped(before: str, after: str, exempt=frozenset(), *, root: Path | None = None) -> str:
     """Restore missing evidence beside a rewrite that keeps every non-lost quote and source.
 
     Never replace a line carrying a new source or quote. Insert the original immediately after
@@ -2108,7 +2128,7 @@ def restore_dropped(before: str, after: str, exempt=frozenset()) -> str:
         if section == 'Sources' or line in seen:
             continue
         lost_quotes = _lost_quotes(before, after, exempt)
-        lost_sources = _lost_sources(before, after)
+        lost_sources = _lost_sources(before, after, root=root)
         cited = {sources.get(number) for number in re.findall(r'\[(W?\d+)\](?!\()', visible)}
         if not (quotes(visible) & lost_quotes or cited & lost_sources):
             continue
@@ -2185,14 +2205,15 @@ def enumeration_only(text: str) -> bool:
     return _listed_sources(text) == {'Enumeration'} and not QUOTE.search(prose(text))
 
 
-def shrinkage(before: str, after: str) -> str:
+@read_operation
+def shrinkage(before: str, after: str, *, root: Path | None = None) -> str:
     """Why a maintenance rewrite lost too much of the page to be promoted, or ''."""
     if len(before) < SHRINK_FLOOR:
         return ''
     if len(after) < len(before) * KEEP_SHARE:
         return f'Maintenance shrank the page from {len(before):,} to {len(after):,} characters; kept the old page'
     old = _listed_sources(before)
-    kept = old - _lost_sources(before, after)
+    kept = old - _lost_sources(before, after, root=root)
     if old and len(kept) < len(old) * KEEP_SHARE:
         return f'Maintenance kept {len(kept)} of the page\'s {len(old)} cited sources; kept the old page'
     return ''

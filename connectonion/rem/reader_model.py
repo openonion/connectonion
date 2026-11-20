@@ -12,6 +12,7 @@ import re
 import sqlite3
 from pathlib import Path
 
+from .source_citations import read_operation
 from .files import ALIAS_LABELS, split_handles, state_path
 from .source import SESSION_SOURCE_PATTERN
 from .store_messages import archived_message
@@ -357,6 +358,7 @@ def input_scope(saved: dict, message: dict) -> str:
         if message.get("body_line") else "")
 
 
+@read_operation
 def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                   private: bool = False) -> dict[str, dict]:
     """Only archived, cited excerpts enter the owner-only local snapshot.
@@ -366,6 +368,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     Without it -- the claim audit's model, the O Chat view -- they are left out.
     """
     from .evidence import research_contexts
+    from .source_hooks import managed_target, version_context as cited_version
     research = research_contexts(root, records, private=private)
     ids = _source_ids(records)
     file = state_path(root, "rem.db")
@@ -379,6 +382,15 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
         for source in _budget_order(records, ids):
             if budget <= 0:
                 break
+            # A registered source must never bypass current selection via an
+            # archived row or another context resolver with the same ID.
+            if managed_target(root, source):
+                context = cited_version(root, source)
+                if context:
+                    output[source] = {**context, 'excerpt': context['excerpt'][:budget],
+                                      'truncated': context['truncated'] or len(context['excerpt']) > budget}
+                    budget -= len(output[source]['excerpt'])
+                continue
             row = _cited_row(db, source) if db is not None else None
             if row is None:
                 from .attachments import attachment_context
@@ -386,7 +398,6 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                 from .project_material import retained_session_context
                 from .project_pages import repository_context
                 from .skill_runs import instruction_context, skill_record_context
-                from .source_versions import cited as cited_version
                 context = (instruction_context(root, source) or skill_record_context(root, source)
                            or repository_context(root, source, private) or retained_session_context(root, source, private)
                            or github_context(root, source) or attachment_context(root, source)

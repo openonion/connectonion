@@ -1,143 +1,117 @@
-# Selected REM source interface — local proposal
+# Shared REM source hooks
 
-This prototype implements a module contract and dispatcher for the discussion
-in [#3040](https://github.com/openonion/connectonion/issues/3040). It is based on
-[#3055](https://github.com/openonion/connectonion/pull/3055), commit
-`784d00a5ecddd99dd0a0f0b3cc368d337833dd50`, and reuses its saved-version helpers.
-The contract is a proposal, not a maintainer-approved API.
+This local prerequisite candidate implements the shared boundary discussed in
+[#3040](https://github.com/openonion/connectonion/issues/3040). It builds on the
+saved-version foundation in [#3055](https://github.com/openonion/connectonion/pull/3055),
+commit `784d00a5ecddd99dd0a0f0b3cc368d337833dd50`. That PR was still open when
+checked on 2026-11-20. The exact API choices remain reviewable on the shared PR.
 
-No production source is registered yet. The public CLI, runner, investigation,
-daily rounds and reader have not been switched to this dispatcher. Existing
-callers of #3055's version helpers continue to work. The two fictional providers
-in `test_rem_source_hooks.py` exercise the new boundary without credentials,
-network access or a real vault.
+The public source CLI, manual/native sync, investigation, page review, retained
+model work and Reader now call the shared boundary. No production provider is
+registered in this prerequisite. Each team adds its own implementation and one
+registration in its migration PR. Existing built-in mail/session/chat paths keep
+their current behavior.
 
-## One module, one registration
+- [Contract and lifecycle](source-interface-contract.md)
+- [Three-team coordination and migration ownership](source-interface-coordination.md)
+- [Validation commands and scope](source-interface-validation.md)
 
-`connectonion.rem.source_hooks.Source` is a structural protocol: a module of
-ordinary functions can implement it. No base class or import-time registration
-is required. `MODULES` maps each kind to its module's import path. Adding a kind
-eventually adds one entry there, rather than a branch in each REM stage.
+## Add a module, then register it
 
-The dispatcher reads the notebook's saved `subscriptions.json`. It includes
-only registered, enabled subscriptions that are not unsubscribed. It never
-discovers accounts, probes vaults or fabricates defaults. Import paths come
-from code, never from notebook JSON. A citation loads only its matching kind.
-There is no global cache of notebook selection or approval. Python caches a
-successfully imported module; a failed import can be retried.
+`source_hooks.Source` describes ordinary module functions. `MODULES` contains
+module paths declared in code, never arbitrary paths supplied by notebook JSON.
+A fictional registration is:
 
-| Hook | Inputs beyond the selected subscription | Responsibility |
-| --- | --- | --- |
-| `status` | none | Describe names and configured scope only. |
-| `consent` | none | Describe what the user is being asked to approve. |
-| `fetch` | notebook root | Acquire and save snapshots; may read selected local files or call an API. |
-| `collect` | root, progress, item and character limits | Read saved material into the existing `Batch`; return proposed progress. |
-| `gather` | root, handles, start time, target record | Search saved material and return items plus coverage lines. |
-| `record_of` | source ID only, no subscription | Parse a stable, namespaced record identity without I/O. |
-| `cited` | root, exact source ID | Return the specified saved version within the supplied current scope. |
+```python
+MODULES = {"notes": "connectonion.rem.notes_source"}
+```
 
-Compared with the Asana proposal in #3040, data methods receive the notebook
-root explicitly. `cited` also receives the current subscription, so a provider
-can enforce the exact selected folders/projects, including multiple named
-subscriptions of one kind. This avoids hidden notebook globals. `record_of`
-and `cited` on an existing provider can remain small internal helpers, with a
-scope-aware wrapper implementing this contract.
+`skill` must be `rem-source-<kind>`. Prompt composition uses this conventional
+path without importing a provider merely to measure or load its instructions.
 
-Imports, `status` and `consent` must not decrypt credentials, access source
-storage or use the network. This is an adapter contract, not a Python sandbox.
-Adapter tests must enforce it with filesystem/network/credential spies.
+`configure(root, **options)` returns saved, non-secret selection metadata. The
+shared writer persists it and clears approval when scope changes. The generic
+CLI forwards explicit options, including `--project`, `--vault`, `--folder`,
+`--since`, `--only`, `--force`, `--replace`, `--config` and `connect=True`.
+Removing a selected project forwards `remove=True, project=ID`. An empty scope
+can return `enabled=False`; the shared writer disables it and clears consent.
+Configuration is saved only if the previous selection has not changed during
+validation, so a slow request cannot undo a concurrent removal.
+The adapter validates supported combinations; shared stages do not branch on
+provider names. An adapter migrating from the local #3064 candidate must stop
+saving the selection inside `configure` and return the validated selection.
 
-## Approval and storage boundaries
+The shared metadata display renders saved names and full scope without importing
+an adapter, even before consent. Adapter `status` and `consent` functions remain
+metadata-only functions available to source-owned callers; the shared approval
+summary deliberately uses one stable generic rendering before and after approval.
+Explicit configuration is the sole pre-approval import exception. It may validate
+connection metadata but must not acquire note/task bodies.
 
-Metadata is available before approval. Content dispatch requires `consented`
-to be the boolean `true` as well as an active selection; string flags are
-rejected. Configuration writers must clear consent whenever scope changes.
-Providers must revalidate the supplied scope at the actual storage boundary
-under their storage lock, especially if configuration can change concurrently.
+## Acquire, consume and retain evidence
 
-These gates do not replace REM's complete consent-summary/fingerprint protocol.
-The stage caller still needs to verify notebook approval before exposing
-material to a model. Wiring that policy, the consent UI and configuration
-writers into the shared path is a separate integration step. This prototype
-does not introduce a second approval file or grant permission itself.
+`fetch` runs before the long-lived notebook lock. The adapter owns acquisition
+serialization and must wrap final publication in `acquisition_guard(root, sub)`.
+It publishes complete immutable snapshots or committed byte ranges plus an
+atomic index. The network phase never holds the notebook lock.
 
-Call `fetch(root)` before taking a long-lived REM notebook lock. Each provider
-owns the short transactions needed to save its snapshots and recheck scope.
-An adapter may translate an expected availability failure into
-`SourceUnavailable` with a safe explanation. The dispatcher records that
-failure and continues other sources. It does not catch `KeyError`, `TypeError`,
-arbitrary `RemError` or corrupt-store failures.
+`collect`, `gather`, `pending` and `cited` run under the notebook read/commit
+boundary. They must read committed state without waiting for the acquisition
+writer lock. Otherwise a writer holding that lock while waiting to publish could
+deadlock with a notebook reader. The contract documents this adapter obligation;
+it is not enforced by a Python sandbox.
 
-`collect(root, name, progress, max_items, max_chars)` never acquires new source
-material. It passes a deep copy of progress to the provider and returns the
-provider's existing `Batch` type. Items use the existing REM `source` citation
-field and `text`, with timestamp/reference/project metadata where applicable;
-the snapshot store's internal `source_id` field is not a new batch schema.
-The provider enforces both limits and must
-not persist the caller's checkpoint. The stage persists `Batch.progress` only
-when the corresponding work is kept; failed work can consume the same batch
-again. The stage owns that transaction and must not hold it across networking.
-The dispatcher has no automatic scheduler or fetch/collect orchestration.
+`collect` gets copied progress and strict item/serialized-character limits.
+A first oversized item's text may be explicitly clipped; later items are deferred.
+The returned `Batch.progress` is only a proposal. Existing REM acceptance paths
+own consumption progress; failed work remains retryable. `pending` reads counters,
+not bodies; an unavailable count is `None`, not zero.
 
-`gather` searches only approved selections. A notebook with no selected source
-gets no source-specific coverage line. Unlike acquisition, corruption while
-reading saved evidence propagates instead of becoming "nothing found".
+`gather` receives aware start/end times, owner context and remaining shared
+budgets. It reads saved material only. Unselected, disabled and unapproved
+providers produce no imports or unrelated investigation lines. This contract
+controls material supplied by hooks; it does not sandbox the runner's independent
+web or local retrieval.
 
-## Citation compatibility with #3055
+## Exact citations can have a different prefix
 
-The new optional `resolve=` argument on `source_versions.record_of`, `cited`
-and `superseded` supplies a notebook-scoped prefix lookup. `source_hooks`
-provides that resolver. It never falls back to the old global callback
-registry when a source is unselected. #3055's global `register` API remains
-for existing callers while their notebook context is threaded through.
-The old import-all `PROVIDERS` list is removed; provider migrations must use
-`source_hooks.MODULES`, not import-time callback registration.
+A batch item names its immutable target in `source`; an opaque target also needs
+`source_kind`. For example, the kind `summaries` may emit:
 
-`cited` returns `None` for a missing or out-of-scope version. It must never
-substitute the latest version. Its context includes the reader's `excerpt`,
-`truncated`, `time`, `sender`, `thread`, `source` and `subject` fields; optional
-capture time and scope descriptions can be retained. There is no owner-only
-visibility argument yet, so providers must omit private-labelled content by
-default, as the local Obsidian adapter does.
+```text
+adapter:docs/summaries/daily/2026/11/19.jsonl#summaries:personal:note?version=<64-hex-sha256>
+```
 
-The provider's `record_of` must include notebook/vault or account and record
-identity as needed to avoid collisions within its kind. Shared replacement
-matching also includes the source prefix, so equal local IDs from different
-kinds cannot hide lost evidence. The provider parser does no I/O; the router
-reads notebook selection before dispatching it. It proves neither that a version exists nor
-that one version is newer. #3055's `superseded` means replacement by another
-version of the same record, including a rollback to an older version. A true
-chronological rule would need an explicit saved sequence, not a UUID comparison.
+Before evidence is retained, the shared layer validates `record_of(target)` and
+`cited(root, current_subscription, target)`, then records its owner in
+`.state/source-citations.json`. The complete target is the key; values contain
+`kind`, `record` and `subscription`. No credentials or body text are stored there.
+This write does not consume progress or mean a page update was accepted.
 
-## Adapting the local Obsidian work and Asana
+The routing table survives restart/removal. Reader and retained-task checks still
+require current scope/model approval and the exact saved version. Unknown
+`adapter:` ownership stays unresolved; the router never tries every provider or
+falls back to a global resolver for a managed target. Existing unique
+source-qualified targets can route without a table entry. A source-owned migration
+can register validated old targets through `remember_material` while holding the
+notebook boundary. The separate integration candidate retains a source-owned compatibility reader
+for the older local candidate's `granola:docs/...` citations. Canonical new targets
+retain Granola's `adapter:` spelling. No provider-specific alias is built into
+the shared router.
 
-Keep provider implementation commits on their own branches. The existing
-single-vault Obsidian branch has configuration, scoped reads, snapshot storage
-and version adapters, but is not copied into this interface branch.
+Page normalization changes only Sources headings/list spelling, preserving every
+target byte. Routing and normalization are separate. Same-record replacement uses
+`(kind, record_id)` and retains #3055's rollback semantics; it does not infer time
+ordering from a hash or UUID. Lookup caches ownership only within one operation;
+authorization is never cached across Reader or model calls.
 
-For Obsidian, the current `obsidian_store.collect(root)` scans the selected
-vault and stores changes. It belongs behind **fetch**, despite its current
-name. Implement the hook's **collect** separately: read saved changes after
-the checkpoint, fit the batch limits, and return proposed progress. Add an
-offline gather implementation over approved saved material. Wrap existing
-`record_of` and `cited` with the supplied-scope validation for this contract.
-Keep source timestamps distinct from capture timestamps.
+## Evidence status
 
-For Asana, move token access and remote acquisition behind **fetch**. Metadata
-uses saved names only; collect/gather/cited use retained local versions. Its
-concrete adapter must be checked against the friend's implementation before
-registration; this branch does not claim to have migrated it.
+Synthetic fixtures represent a version-qualified note, a task file/offset and an
+opaque path/hash target. The tests cover dispatch, public integration, current
+approval, restart, failure handling, strict limits and progress. They do not prove
+that any real provider has completed migration or passed its own scope tests.
 
-Next, agree the contract in #3040, adapt the two real providers, and migrate
-existing kinds plus stage callers to the shared dispatch. Only after that
-should #3040's "source module, CLI, tests and one registration line" acceptance
-criterion be claimed. Existing `page_review` functions lack notebook context;
-they still use #3055's unscoped callback path in this prototype.
-
-## Validation to run locally
-
-Run `test_rem_source_hooks.py` and `test_rem_source_versions.py` first. Then run
-`test_rem_page_review.py` and `test_rem_reader_model.py` for the existing callers.
-The first group covers selection isolation, consent gates, exact versions,
-scope changes, expected acquisition failures, checkpoint ownership, and import
-retry. These tests have been written but not run as part of this local change.
+No tests or `co audit` were run during this extraction, at the user's request.
+No commit, push or PR creation was performed. Run the commands in the validation
+note before reporting test results for this candidate.

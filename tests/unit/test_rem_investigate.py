@@ -912,6 +912,53 @@ def test_completed_extraction_chunks_are_reused_after_interruption(tmp_path):
     assert (root / '.state/extracts/investigate').is_dir()
 
 
+@pytest.mark.parametrize("mixed", [False, True])
+def test_digest_cache_tracks_source_skills_used_by_the_prompt(tmp_path, monkeypatch, mixed):
+    from connectonion.rem import runner, source_hooks
+    skills = tmp_path / "skills"
+    rules = {"rem-extract": "Extract supported facts.",
+             "rem-source-summaries": "Treat generated summaries as indirect evidence.",
+             "rem-source-notes": "Keep the note author's attribution."}
+    for name, text in rules.items():
+        path = skills / name / "SKILL.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(runner, "useful_skills_dir", lambda: skills)
+    monkeypatch.setattr(source_hooks, "MODULES", {"summaries": "unused", "notes": "unused"})
+    items = [{"source": "adapter:docs/summary.jsonl#meeting:one?version=v1",
+              "source_kind": "summaries", "timestamp": "2026-09-20", "text": "Amber"}]
+    if mixed:
+        items.append({"source": "notes:work:one:v1", "source_kind": "notes",
+                      "timestamp": "2026-09-20", "text": "Blue"})
+    config = {"runner": "codex", "model": "test-model", "limits": {
+        "extract_items_per_batch": 10, "extract_chars_per_batch": 10_000}}
+    calls = []
+
+    def extract(chunk, settings, kind):
+        directory = tmp_path / f"task-{len(calls)}"
+        directory.mkdir()
+        runner.task_prompt(directory, chunk, "extract", kind)
+        calls.append((kind, (directory / "instructions.md").read_text()))
+        return {"notes": f"Digest {len(calls)}", "usage": {"input_tokens": 1}}
+
+    root = tmp_path / "book"
+    first, _ = inv.digest_in_chunks(items, config, extract, root=root)
+    reused, usage = inv.digest_in_chunks(items, config, extract, root=root)
+    assert reused == first and usage == {} and len(calls) == 1
+    assert calls[0][0] == ("" if mixed else "summaries")
+    source_kinds = ["summaries", "notes"] if mixed else ["summaries"]
+    for kind in source_kinds:
+        assert calls[0][1].count(rules[f"rem-source-{kind}"]) == 1
+    for number, kind in enumerate(source_kinds, 2):
+        updated = rules[f"rem-source-{kind}"] + " Require an exact saved-version citation."
+        (skills / f"rem-source-{kind}/SKILL.md").write_text(updated, encoding="utf-8")
+        refreshed, _ = inv.digest_in_chunks(items, config, extract, root=root)
+        assert len(calls) == number and refreshed != first
+        assert updated in calls[-1][1]
+        cached, usage = inv.digest_in_chunks(items, config, extract, root=root)
+        assert cached == refreshed and usage == {} and len(calls) == number
+
+
 def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(tmp_path, monkeypatch):
     """#1850: summarising everything first cost the owner's page 39 digest calls
     and 75 minutes. Over the limit, the material becomes files the one turn
@@ -3017,7 +3064,7 @@ def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
 def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retried(tmp_path, monkeypatch):
     """connectonion (2026-10-15): round six left zero of round five's fifteen owner quotes."""
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), *, root=None: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/co.md'
     notebook.stub_project(record, 'co', ['/w/co'])
@@ -3044,7 +3091,7 @@ def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retri
 
 def test_a_round_repairs_its_carried_quotes_and_keeps_its_other_change(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), *, root=None: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/example.md'
     notebook.stub_project(record, 'example', ['/work/example'])
@@ -3129,7 +3176,7 @@ def test_org_gather_queries_each_distinct_server_term_once():
 
 def test_quote_loss_with_no_accepted_round_still_records_material_for_retry(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), *, root=None: after)
     root = _notebook(tmp_path, 'codex')
     notebook, record = inv.Notebook(root), 'people/rowan.md'
     full = notebook.read(record).replace('## History\n',

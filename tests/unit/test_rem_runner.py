@@ -22,17 +22,26 @@ def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, mo
     from connectonion.rem import insight_critic
     record = 'people/avery-lin.md'
     notebook.stub_person(record, 'Avery Lin')
-    calls, progress = [], []
+    calls, progress, independent_calls = [], [], []
+    independent_result = {"result": "synthetic independent audit", "usage": {}}
     bullet = '- Changed: Avery now pays for Lantern testing. [1][2]'
 
     def run(workdir, prompt, config, phase, **options):
         next(workdir.glob(f'{stage}-*/candidate.md')).write_text(f'# Avery Lin\n\n## Insight\n{bullet}\n')
         return {'session_id': 'avery-thread', 'usage': {'input_tokens': 10}}
 
+    def independent(workdir, prompt, config, phase):
+        independent_calls.append((workdir, prompt, config, phase))
+        return independent_result
+
     def judge(book, page, before, candidate, items, config, directory, independent_run, *, approved=()):
         calls.append('critic')
         assert not approved
-        assert page == record and independent_run is runner.run_claim_task
+        assert page == record
+        # Selected-source approval wraps this callback. Verify delegation to
+        # the independent runner rather than the wrapper's object identity.
+        assert independent_run(directory, 'audit retained evidence', config, 'insight-critic') is independent_result
+        assert independent_calls == [(directory, 'audit retained evidence', config, 'insight-critic')]
         assert candidate.read_text().endswith(bullet + '\n')
         candidate.write_text('# Avery Lin\n\n## Insight\n')
         return {'bullets': [{'bullet': bullet, 'verdict': 'weak', 'reason': 'One message.'}],
@@ -44,11 +53,13 @@ def test_only_muse_runs_independent_insight_critic_before_promotion(notebook, mo
         book.write(page, candidate.read_text())
 
     monkeypatch.setattr(runner, 'run_task', run)
+    monkeypatch.setattr(runner, 'run_claim_task', independent)
     monkeypatch.setattr(insight_critic, 'judge', judge)
     monkeypatch.setattr(runner, 'promote_with_repairs', promote)
     result = run_stage(notebook, [{'role': 'page', 'record': record}], default_config(),
                        stage=stage, turns=('first', 'second'), stage_progress=progress.append)
     assert calls == (['critic', 'promote'] if stage == 'muse' else ['promote'])
+    assert len(independent_calls) == (1 if stage == 'muse' else 0)
     assert ('insight critic' in progress) == (stage == 'muse')
     assert result['usage'] == {'input_tokens': 13 if stage == 'muse' else 10}
     if stage == 'muse':

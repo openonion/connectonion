@@ -752,7 +752,9 @@ def prepare_retry(root, record, entry, config):
     from .refusals import forget_refusal
     from .runner import RunFailed
     material = entry['material']
-    kind = str(material[0].get('source', '')).split(':', 1)[0]
+    from .source_hooks import require_material
+    require_material(root, material)
+    kind = material[0].get('source_kind') or str(material[0].get('source', '')).split(':', 1)[0]
     from . import feedback
     progress = read_json(state_path(root, 'progress.json'), {})
     feedback.recover(root, progress, feedback._items(root))

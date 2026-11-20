@@ -107,6 +107,8 @@ def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -
 
 
 def prepare(root, directory, items, config, stage, *, plan_path=None, native=False):
+    from .source_hooks import require_material
+    require_material(root, items)
     material = directory / 'material.json'
     known = {i['source'] for i in items if i.get('source')}
     derived = {i['source'] for i in items if i.get('source') and i.get('role') in ('page', 'coverage', 'reflection-summary')}
