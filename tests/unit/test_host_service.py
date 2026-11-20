@@ -387,3 +387,33 @@ def test_windows_task_serves_agent_py_and_never_writes_secrets(tmp_path, monkeyp
     script = service.unit.read_text(encoding='utf-8')
     assert ' host --agent agent.py --port 8123 >> ' in script
     assert 'sk-synthetic-secret' not in script
+
+
+def test_windows_task_script_has_one_cr_per_line(tmp_path, monkeypatch):
+    """The .cmd was joined with \\r\\n and then written in text mode, which on
+    Windows turned every line ending into \\r\\r\\n."""
+    project = tmp_path/'project'
+    project.mkdir()
+    real = Path.write_text
+
+    def windows_text_mode(self, data, encoding=None, errors=None, newline=None):
+        return real(self, data, encoding=encoding, errors=errors, newline='\r\n' if newline is None else newline)
+    monkeypatch.setattr(Path, 'write_text', windows_text_mode)
+    service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), builtin=True)
+    service.start()
+    raw = service.unit.read_bytes()
+    assert b'\r\r' not in raw and raw.count(b'\r\n') == raw.count(b'\n')
+
+
+def test_windows_logs_folder_is_not_owner_only(tmp_path, monkeypatch):
+    """mkdir(mode=0o700) on Windows gives an owner-only ACL. From an elevated
+    shell the owner is Administrators, so the logon task, which runs with the
+    user's limited token, could not write its log and exited at once."""
+    project = tmp_path/'project'
+    project.mkdir()
+    modes = []
+    real = Path.mkdir
+    monkeypatch.setattr(Path, 'mkdir', lambda self, *a, **k: (modes.append(k.get('mode')), real(self, *a, **k))[1])
+    service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), builtin=True)
+    service.start()
+    assert 0o700 not in modes
