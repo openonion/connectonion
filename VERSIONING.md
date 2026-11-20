@@ -400,7 +400,13 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc45
+## Current Version: 1.9.6rc46
+Release candidate 1.9.6rc46 for 1.9.6: a Windows background Host counts as running only when it answers, and a
+Host the relay refuses stops with the reason. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc46.md).
+
+- 1.9.6rc46 (Host health on Windows; refused announce stops the Host).
+
+### Previous candidate: 1.9.6rc45
 Release candidate 1.9.6rc45 for 1.9.6: on a phone, a finished hand-off's line on Today wraps instead of widening
 the page so the phone zoomed out; a claude-code Host names a missing Claude login. Stable remains 1.9.5.
 See [candidate notes](docs/releases/1.9.6rc45.md).
