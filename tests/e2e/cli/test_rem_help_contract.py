@@ -168,5 +168,7 @@ def test_stage_verbs_are_real_commands_and_decisions_has_no_write():
     assert 'co rem decisions write' not in '\n'.join(pages().values())
     assert not getattr(REM.commands['decisions'], 'commands', {})
     assert 'alias' not in help_of(['abstract'])
-    assert 'one batch, not until caught up' in help_of(['collect'])
-    assert 'Those reads are outside the extraction batch; --source scopes only that batch.' in help_of(['collect'])
+    collect_help = ' '.join(help_of(['collect']).split())
+    assert 'Each run updates pages from one batch, even if more material is waiting.' in collect_help
+    assert 'That refresh can read more than the batch limit.' in collect_help
+    assert 'The --source option does not limit these extra session or archive reads.' in collect_help

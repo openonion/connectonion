@@ -700,39 +700,44 @@ Back:     co rem --help
 ## co rem start
 
 ```
-Turn on daily upkeep. In a terminal, show the source/model/schedule summary and undo
-block, then install the schedule and run the first update without prompting.
-Consent changes print a diff instead of the full summary.
-The first update runs on the first start only; a start after stop resumes the
-schedule, and co rem sync runs an update now.
+Turn on automatic daily notebook updates from your selected sources.
+These can include mail, coding sessions and connected integrations.
+In a terminal, it shows your source, model and schedule settings and continues
+without prompting. Changed settings are shown as a diff, listing what changed.
+
+If you have not approved access before, it runs an initial update before installing
+the schedule. Starting again, including after co rem stop, does not repeat that
+initial update. Approval saved by co rem init also counts as previous approval.
+Use co rem sync to run an update now.
 
 Usage:    co rem start [--yes]
 Example:  co rem start
-          --yes approves a noninteractive first run after you have read the summary.
+          co rem start --yes
+Options:  --yes   Approve new or changed settings when running without a terminal.
+          --help  Show this message and exit.
+Scripts need --yes when approval is required. Read the displayed settings first.
+Unchanged approval can be reused without --yes.
 
-Effects:  Saves your approval, installs daily updates and runs the first update
-          on first start. Each run reads new mail bodies and coding sessions,
-          calls the model and saves page changes. runner_calls_per_day limits
-          model calls each day.
-Schedule: Updates run automatically through the OS at saved local times
-          (default: 03:00, 04:00, 06:00, 17:00, 18:00, 19:00).
-          On macOS with the Codex runner, launchd runs the native REM task loop
-          through Codex CLI (codex-exec). It saves the old desktop definition
-          as PAUSED and proceeds even while Codex's index catches up.
-          Before each exec turn, a desktop fire within ten minutes skips it.
-          Other runners use launchd; Linux uses a systemd user timer.
-          loginctl enable-linger keeps Linux upkeep running while logged out.
-          Keep this computer awake. Status shows the saved schedule and runs.
-          Unwritten pages, reply drafts and missing/stale translations are queued
-          automatically. Translations have their own daily limit (default 100);
-          reply drafts default to 30 a night, in Today order. Every leftover is named
-          in status. Missing originals are fetched from consented mailboxes; owner-last
-          answers and promised work get morning outcomes. Nothing is sent by REM.
-Access:   Background models can write only under the notebook's .state/tasks,
-          with no shell commands or network access.
-          Codex uses --sandbox workspace-write; Claude Code uses --permission-mode acceptEdits.
-Requires: co rem init; systemctl on Linux. On Windows or Linux without systemd,
-          run co rem sync yourself or schedule it with cron.
+Effects:  Installs automatic updates and saves your approval. Scheduled work reads
+          approved sources, calls models and writes notebook pages. It can also
+          prepare reply drafts and translate pages. Those replies are not sent.
+Limits:   Uses your saved model and work limits. View them with co rem config.
+Schedule: Uses saved times in your configured time zone. Use co rem status to see
+          the schedule, completed runs and work still waiting.
+          On macOS, the default setup runs Codex CLI through launchd. The Codex
+          desktop scheduler is also available when configured.
+          When switching to Codex CLI, the old desktop task is marked paused.
+          If the Codex desktop app already started an update for this notebook in the
+          last ten minutes, the scheduled command-line run is skipped.
+          Other macOS runners use launchd. Linux uses a systemd user timer;
+          loginctl enable-linger lets it keep running while you are logged out.
+          Keep this computer awake.
+Access:   Background agents can run commands and access files or the network,
+          depending on the runner and task. Scheduled Codex CLI runs have network
+          access. Research and delegated tasks can use full-access permissions.
+          Review the access summary before starting.
+Requires: Set up with co rem init. Linux scheduling needs systemctl.
+          On Windows or Linux without systemd, run co rem sync yourself or use cron.
 
 Next:     co rem status
 Undo:     co rem stop
@@ -839,31 +844,45 @@ Back:     co rem --help
 ## co rem collect
 
 ```
-Read one batch of new material from approved sources into the notebook.
-Collection only: no investigation, deepen, abstract or translation.
-Reuses the existing batch reader and its extraction/page updates for new material.
+Read one batch of new material from approved sources and update notebook pages.
+It does not run further research, draw lessons across pages or translate pages.
 
 Usage:    co rem collect [--source NAME] [--with ADDRESS] [--dry-run]
 Example:  co rem collect  |  co rem collect --source gmail
           co rem collect --dry-run
 Options:
-  --source NAME   Take the extraction batch from this approved source in co rem sources.
-  --with ADDRESS  Take only matching mail into the extraction batch (address or part).
-  --dry-run       Inspect pending metadata and daily limits; no bodies, model or writes.
+  --source NAME   Choose one approved source to refresh and read; see co rem sources.
+  --with ADDRESS  For this batch, read only mail matching this email address or part of it.
+  --dry-run       Show saved counts and daily limits; no content reads, model calls or changes.
   --help          Show this message and exit.
-One run reads one batch, not until caught up: up to limits.extract_items_per_batch
-(default 40) from one source, also bounded by the input character limit.
-Existing batch housekeeping also imports approved coding sessions and may resume
-init's stalled mail archive for up to five minutes across approved mailboxes.
-Those reads are outside the extraction batch; --source scopes only that batch.
-Sources take turns. Mail takes whole correspondents oldest first, slicing a
-correspondent larger than the batch. --with leaves other correspondents waiting.
-Output:   Items read, pages changed, known mail still waiting and the next command.
-          The waiting count covers saved listings, not mail or sessions not yet listed.
-          Mail from disabled or unapproved sources is shown separately as held.
-Effects:  Reads source bodies, may call the configured model to extract new material
-          and update its pages, and saves progress. Keeps finished work on interruption.
-Requires: co rem start (it records your approval of the sources).
+
+Each run updates pages from one batch, even if more material is waiting.
+The default batch limit is 40 items from one source. Long items may make the batch
+smaller because there is also a limit on total text length.
+Change limits.extract_items_per_batch to adjust the item limit.
+Run the command again to read the next batch.
+
+Connected integrations may refresh their saved content before the batch.
+That refresh can read more than the batch limit. The --source option limits
+which source is refreshed and used for the batch.
+
+Without --dry-run, each run also imports approved coding sessions. It may spend
+up to five minutes continuing an unfinished mail archive from co rem init.
+Only enabled and approved mailboxes are used for those archive reads.
+The --source option does not limit these extra session or archive reads.
+
+When no source is specified, sources take turns. Mail is grouped by person,
+with the oldest waiting group first. Large groups continue in later batches.
+With --with, mail for other people stays waiting.
+
+Output:   Items read, pages changed, mail still waiting and the next command.
+          Waiting counts cover only mail already listed in the notebook.
+          They exclude unlisted mail and all coding sessions.
+          Mail from disabled or unapproved sources is marked held and is not read.
+Effects:  Reads source content and may use the configured model to extract information
+          and update pages. Saves pages and progress. Completed work stays saved
+          if you stop the command.
+Requires: Run co rem start first to review and approve the sources.
 Next:     co rem collect
 Back:     co rem --help
 ```
@@ -920,32 +939,38 @@ Back:     co rem --help
 ## co rem sources
 
 ```
-Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp, plus sources installed through the shared registry. Showing uses saved
-names and scope only; it does not import a provider or read its bodies.
+Show which sources the notebook reads, or change that selection.
+Use source names such as gmail, outlook, codex, claude-code and whatsapp.
+Other source integrations must be installed before you can select them.
 
 Usage:    co rem sources
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
           co rem sources connect NAME --config FILE
           co rem sources remove NAME [--chat ID] [--project ID]
-Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
+Example:  co rem sources
+          co rem sources add gmail
+          co rem sources remove gmail
+          NAME is a source name, not a list number.
           --chat      WhatsApp only: copy a chat ID from co whatsapp chats.
                       No chat is read unless named.
           --since     how far back to read
           --project   add: a coding directory, or a registered source's project ID
                       remove: a selected project ID, when that source supports it
-          Registered sources validate their own options, including --vault,
-          --folder, --replace and --config. Unsupported options are rejected.
+          Installed sources check their own --vault, --folder, --replace and
+          --config options. Options they do not support are rejected.
+          --chat and --project do not use list numbers; use the IDs or paths above.
 
-Effects:  add/connect explicitly load the requested configuration implementation.
-          It may validate connection metadata, but cannot acquire source bodies.
-          Changed selections need approval through start before sync reads them.
-          remove stops future reads; pages already written stay. Saved citations
-          are read only while their source and scope remain approved.
+Effects:  Showing the list reads saved settings only.
+          add/connect check and save source settings without reading messages,
+          notes or tasks. Connection details may be checked with the service.
+          For installed integrations, run co rem start to approve changed
+          selections before reading content.
+          remove stops future reads; pages already written stay. Opening a saved
+          citation from an installed source still requires current approval.
 Subcommands:
-  add       Select a source and its scope; approve changes with start.
-  connect   Configure an installed source using a metadata file.
-  remove    Stop reading a source or remove a selected chat/project.
+  add       Choose a source and which parts to read.
+  connect   Set up an installed source from a settings file.
+  remove    Stop reading a source, chat or project.
 Next:     co rem sync --dry-run
 Back:     co rem --help
 ```
@@ -953,16 +978,16 @@ Back:     co rem --help
 ## co rem sources connect
 
 ```
-Configure an installed source using its own connection metadata file.
+Set up an installed source from a settings file, without reading its content.
 
 Usage:    co rem sources connect NAME --config FILE
 Example:  co rem sources connect notes --config ./notes-source.json
-Inputs:   NAME must be registered by an installed source integration.
-          notes is an illustrative integration name; use an installed name.
-          FILE is validated by that source; unsupported options fail explicitly.
-Effects:  Loads only the named configuration implementation. It may validate
-          connection metadata, but never acquires note/task bodies. Saves the
-          selection; changed scope requires fresh approval through start.
+Inputs:   NAME is the name of an installed source integration.
+          notes is an example name; it is not installed by this command.
+          FILE contains the settings required by that integration.
+Effects:  Reads FILE, checks its settings and saves which content to read.
+          It may check connection details with the service, but does not read
+          messages, notes or tasks. Run co rem start to approve changed settings.
 Next:     co rem start
 Back:     co rem sources
 ```
@@ -1082,24 +1107,29 @@ Back:     co rem config --help
 ## co rem sources add
 
 ```
-Start reading a source, or restore one you removed. Changes settings only: bodies
-are read later by sync, after co rem start has recorded your approval.
+Choose or restore a source. This saves settings without reading content.
+Run co rem start to review access before the next run.
 
 Usage:    co rem sources add NAME [--since 3d|2w|6m|1y] [--only] [--force]
                                    [--chat ID]... [--project DIR] [--about TEXT]
           NAME is gmail, outlook, codex, claude-code, whatsapp, or an installed source.
+          Use its source name, not a list number.
           co rem sources add NAME [--vault PATH] [--folder DIR]... [--replace] [--config FILE]
 Example:  co rem sources add codex --project ~/work/tide-agent --since 2w
           --chat     WhatsApp: one chat to read, from co whatsapp chats (repeatable).
                      No WhatsApp chat is read unless it is named here.
-          --project  coding sources: only sessions run in this directory
+          --project  coding sources: only sessions run in this directory;
+                     installed sources: the project selection they support
           --about    coding sources: whole sessions that mention this text
           --since    read at least this far back; a wider window is left alone
           --only     with --since: read only that far back, narrowing the window
           --force    with --only: accept that unread older material is dropped
-          --vault, --folder, --replace, --config are validated by the named integration.
-Effects:  Installed sources validate and save selection metadata without acquiring
-          note/task bodies. Changed scope requires fresh approval through co rem start.
+          --vault, --folder, --replace, --config are checked by the named integration.
+          --chat and --project do not accept list numbers from other commands.
+Effects:  Checks your options and saves which sources to read, without reading
+          messages, notes or tasks. An installed integration may check connection
+          details with its service. Changed selections for installed integrations
+          need approval again through co rem start.
 Next:     co rem sync --dry-run
 Back:     co rem sources --help
 ```
@@ -1110,12 +1140,17 @@ Back:     co rem sources --help
 Stop reading a source from now on. Pages already written keep what they learned.
 
 Usage:    co rem sources remove NAME [--chat ID]... [--project ID]
-Example:  co rem sources remove whatsapp --chat 120363411567190840@g.us
+Example:  co rem sources remove gmail
+          co rem sources remove whatsapp --chat 120363411567190840@g.us
+          NAME is a saved source name from co rem sources, not a list number.
           --chat   WhatsApp: stop only this chat, keep the others
-          --project  Registered sources: remove only this selected project;
-                     unsupported sources reject it. Do not combine with --chat.
-Effects:  Writes settings. A removed mailbox is also skipped by investigate.
-          Changed registered scopes need approval again; an empty scope is disabled.
+          --project  installed sources: remove only the project with this ID,
+                     if supported. Do not combine with --chat.
+          Use the saved chat/project ID; list numbers are not accepted.
+Effects:  Writes settings. Removed email sources are also skipped during
+          investigation. If an installed source stays on after removing a project,
+          run co rem start to approve what remains.
+          Omit --chat and --project to stop the whole source.
 Next:     co rem sources
 Back:     co rem sources --help
 ```
