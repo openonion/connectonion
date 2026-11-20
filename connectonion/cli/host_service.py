@@ -446,7 +446,7 @@ class ScheduledTaskHostService(SystemdHostService):
                 raise HostServiceError('Port must be between 1 and 65535. Next: co host --help')
             arguments.extend(['--port', str(self.port)])
         command = subprocess.list2cmdline(arguments)
-        return '\r\n'.join([
+        return '\n'.join([
             '@echo off', 'rem ConnectOnion Host, started at logon by Task Scheduler.',
             f'cd /d "{self.project}"',
             f'set "AGENT_CONFIG_PATH={self.config_root}"', 'set "PYTHONIOENCODING=utf-8"',
@@ -463,10 +463,13 @@ class ScheduledTaskHostService(SystemdHostService):
     def start(self) -> dict:
         if not self.builtin and not (self.project/'agent.py').is_file():
             raise HostServiceError('No agent.py in this project. Next: co host --background, to serve the built-in agent')
-        self.logs.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # No mode=0o700: on Windows it sets an owner-only ACL, and from an elevated
+        # shell the owner is Administrators, which the task's limited token cannot write.
+        # The folder is in the user's profile, which is already private to them.
+        self.logs.mkdir(parents=True, exist_ok=True)
         definition = self._definition()
         if not self.unit.exists() or self.unit.read_text(encoding='utf-8') != definition:
-            self.unit.write_text(definition, encoding='utf-8')
+            self.unit.write_text(definition, encoding='utf-8', newline='\r\n')
         self._schtasks('/Create', '/F', '/SC', 'ONLOGON', '/RL', 'LIMITED', '/TN', self.task_name,
                        '/TR', f'"{self.unit}"')
         if not self.status()['running']:
