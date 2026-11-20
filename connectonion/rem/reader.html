@@ -2991,7 +2991,10 @@
   .gx-link-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--rule); }
   .gx-link-row > .gx-glyph { margin-top: 4px; }
   .gx-row-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-  .gx-row-name a { font-weight: var(--w-bold); white-space: nowrap; }
+  /* A linked page's name wraps: a knowledge page is often named by a whole question, and kept on one line it
+     widened the page to 402px on a 390px phone. Its count beside it stays on one line and truncates. */
+  .gx-row-name a { font-weight: var(--w-bold); min-width: 0; overflow-wrap: anywhere; }
+  .gx-row-name { flex-wrap: wrap; }
   .gx-row-name a:hover { text-decoration: underline; text-underline-offset: 4px; }
   .gx-row-name small { color: var(--grey); font-size: var(--s-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gx-link-row p { color: var(--grey); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
