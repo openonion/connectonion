@@ -8,6 +8,7 @@ the source for tip strings and checks each named command against the register.
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -406,6 +407,17 @@ def tips_enabled() -> bool:
     return os.environ.get("CO_TIPS", "").strip().lower() not in ("0", "off", "false", "no")
 
 
+def success_tips_enabled() -> bool:
+    """Whether a tip after a command that worked may go to stderr.
+
+    Windows PowerShell 5.1 turns every captured stderr line into a red
+    NativeCommandError, so there a success tip reads as a failure (#3113).
+    On Windows it reaches only a terminal; a failure's own Next line is not a
+    success tip and still goes to stderr beside the error.
+    """
+    return tips_enabled() and (sys.platform != "win32" or sys.stderr.isatty())
+
+
 _SUPPRESSED = False
 
 
@@ -428,7 +440,7 @@ def print_next_step(path: str) -> None:
     know. A path missing from the table also prints nothing, and the test
     in tests/unit/test_every_command_has_a_next_step.py fails on it.
     """
-    if not tips_enabled():
+    if not success_tips_enabled():
         return
     try:
         tip = next_step_for(path)

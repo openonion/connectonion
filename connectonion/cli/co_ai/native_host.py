@@ -43,6 +43,7 @@ class _NativeHostAgent(Agent):
     """
     provider = ''
     tool = ''
+    login_command = ''
 
     def __init__(self, name: str, plugin, *, co_dir: Path, model: str, label: str):
         self.native_model = model
@@ -63,17 +64,29 @@ class _NativeHostAgent(Agent):
             'session_id': self._native_thread(),
         })
         if result['status'] != 'success':
-            raise RuntimeError(f'{self.name} task did not complete; inspect the provider result')
+            text = self._failure_reply(_provider_error(result['result']))
+        else:
+            text = self._completed_text(result['result'])
+        self.current_session['messages'].append({'role': 'assistant', 'content': text, 'id': self._next_trace_id()})
+        self._invoke_events('after_iteration')
+        return text, 'natural'
+
+    def _completed_text(self, raw) -> str:
         try:
-            answer = json.loads(result['result'])
+            answer = json.loads(raw)
         except (ValueError, TypeError):
             raise RuntimeError(f'{self.name} returned an invalid result') from None
         text = self._answer_text(answer) if isinstance(answer, dict) else None
         if not text:
             raise RuntimeError(f'{self.name} did not return a completed text answer')
-        self.current_session['messages'].append({'role': 'assistant', 'content': text, 'id': self._next_trace_id()})
-        self._invoke_events('after_iteration')
-        return text, 'natural'
+        return text
+
+    def _failure_reply(self, error: str) -> str:
+        """A missing login is the owner's to fix, so it is the reply; anything else is a failed turn (#3215)."""
+        if self.login_command and 'not logged in' in error.lower():
+            return (f'{self.name} is not logged in for this user. '
+                    f'Next: run `{self.login_command}` on this computer, then send your message again.')
+        raise RuntimeError(f'{self.name} task did not complete: {error or "inspect the provider result"}')
 
     def _answer_text(self, answer: dict) -> str | None:
         raise NotImplementedError
@@ -85,6 +98,16 @@ class _NativeHostAgent(Agent):
                     and isinstance(event.get('sessionId'), str) and 0 < len(event['sessionId']) <= 512):
                 return event['sessionId']
         return ''
+
+
+def _provider_error(raw) -> str:
+    """The `error` line of a provider envelope, or '' when it carries none."""
+    try:
+        envelope = json.loads(raw)
+    except (ValueError, TypeError):
+        return ''
+    error = envelope.get('error') if isinstance(envelope, dict) else None
+    return error if isinstance(error, str) else ''
 
 
 def _label(provider: str, model: str) -> str:
@@ -110,6 +133,7 @@ class NativeCodexHostAgent(_NativeHostAgent):
 class NativeClaudeHostAgent(_NativeHostAgent):
     provider = 'claude_code'
     tool = 'claude_code'
+    login_command = 'claude auth login'
 
     def __init__(self, workspace: Path, *, co_dir: Path, model: str = ''):
         super().__init__('Claude Code', ClaudeCodePlugin(workspace=workspace, use_host_permissions=True),

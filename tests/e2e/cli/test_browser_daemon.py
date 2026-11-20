@@ -532,6 +532,21 @@ def test_tip_shown_on_success_tty(tmp_path, monkeypatch, capsys):
     assert "💡" not in captured.out
 
 
+def test_tip_not_on_captured_stderr_on_windows(tmp_path, monkeypatch, capsys):
+    """#3113: PowerShell 5.1 shows every captured stderr line as a red NativeCommandError."""
+    import pathlib
+
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(bc, "send", lambda *a, **k: 0)
+    monkeypatch.setattr(bc.sys, "platform", "win32")
+    monkeypatch.setattr(bc.sys.stderr, "isatty", lambda: False)
+
+    assert bc.handle_browser(["go_to", "x.com"]) == 0
+    assert capsys.readouterr().err == ""
+
+
 def test_handle_browser_no_args_is_usage_error(capsys):
     from connectonion.cli.commands.browser_commands import handle_browser
     code = handle_browser([])
