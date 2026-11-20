@@ -405,10 +405,95 @@ class SystemdHostService:
         return self.status()
 
 
+class ScheduledTaskHostService(SystemdHostService):
+    """The Windows counterpart: one Scheduled Task per project Host, run at logon.
+
+    Same lifecycle and command line as the systemd unit. Task Scheduler has no
+    Restart=always, so the task runs a small .cmd that starts the Host again ten
+    seconds after it exits; its output goes to the same logs folder. No admin:
+    the task runs as the logged-in user, only while that user is logged on.
+    """
+
+    def __init__(self, project: Path, **options):
+        super().__init__(project, **options)
+        digest = self.unit_name.removeprefix('connectonion-host-').removesuffix('.service')
+        self.task_name = f'ConnectOnion Host {digest}'
+        self.unit = self.logs/'run-host.cmd'
+
+    def _schtasks(self, *args, allowed=(0,)):
+        try:
+            result = self.runner(['schtasks', *args], stdin=subprocess.DEVNULL,
+                                 capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            raise HostServiceError('schtasks is not available. Next: co host --serve, to run it in this terminal') from None
+        if result.returncode not in allowed:
+            raise HostServiceError(f"schtasks {args[0]} failed: {(result.stderr or result.stdout).strip()}. "
+                                   "Next: co host --serve, to run it in this terminal")
+        return result
+
+    def _definition(self) -> str:
+        arguments = [sys.executable, '-m', 'connectonion.cli.main']
+        if self.env_file:
+            arguments.extend(['--env-file', str(self.env_file)])
+        arguments.append('host')
+        arguments.extend(['--serve'] if self.builtin else ['--agent', 'agent.py'])
+        if self.port is not None:
+            if not 1 <= self.port <= 65535:
+                raise HostServiceError('Port must be between 1 and 65535. Next: co host --help')
+            arguments.extend(['--port', str(self.port)])
+        command = subprocess.list2cmdline(arguments)
+        return '\r\n'.join([
+            '@echo off', 'rem ConnectOnion Host, started at logon by Task Scheduler.',
+            f'cd /d "{self.project}"',
+            f'set "AGENT_CONFIG_PATH={self.config_root}"', 'set "PYTHONIOENCODING=utf-8"',
+            ':run', f'{command} >> "{self.logs/"stdout.log"}" 2>> "{self.logs/"stderr.log"}"',
+            'timeout /t 10 /nobreak > nul', 'goto run', '',
+        ])
+
+    def status(self) -> dict:
+        result = self._schtasks('/Query', '/TN', self.task_name, '/FO', 'CSV', '/NH', allowed=(0, 1))
+        running = result.returncode == 0 and '"Running"' in result.stdout
+        return {'configured': self.unit.exists() and result.returncode == 0, 'running': running,
+                'pid': None, 'device_ready': False}
+
+    def start(self) -> dict:
+        if not self.builtin and not (self.project/'agent.py').is_file():
+            raise HostServiceError('No agent.py in this project. Next: co host --background, to serve the built-in agent')
+        self.logs.mkdir(parents=True, exist_ok=True, mode=0o700)
+        definition = self._definition()
+        if not self.unit.exists() or self.unit.read_text(encoding='utf-8') != definition:
+            self.unit.write_text(definition, encoding='utf-8')
+        self._schtasks('/Create', '/F', '/SC', 'ONLOGON', '/RL', 'LIMITED', '/TN', self.task_name,
+                       '/TR', f'"{self.unit}"')
+        if not self.status()['running']:
+            self._schtasks('/Run', '/TN', self.task_name)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            state = self.status()
+            if state['running']:
+                return state
+            time.sleep(.25)
+        raise HostServiceError(f'Task is configured but not running; inspect it. Next: schtasks /Query /TN "{self.task_name}" /V')
+
+    def stop(self) -> dict:
+        self._schtasks('/End', '/TN', self.task_name, allowed=(0, 1))
+        self._schtasks('/Change', '/TN', self.task_name, '/DISABLE', allowed=(0, 1))
+        return self.status()
+
+    def uninstall(self) -> dict:
+        self._schtasks('/End', '/TN', self.task_name, allowed=(0, 1))
+        self._schtasks('/Delete', '/TN', self.task_name, '/F', allowed=(0, 1))
+        self.unit.unlink(missing_ok=True)
+        return self.status()
+
+
 def host_service(project: Path, **options):
-    """The background-service manager for this platform: launchd on macOS, systemd on Linux."""
+    """The background-service manager for this platform: launchd on macOS,
+    systemd on Linux, Task Scheduler on Windows."""
     if sys.platform == 'darwin':
         return HostService(project, **options)
     if sys.platform.startswith('linux') and shutil.which('systemctl'):
         return SystemdHostService(project, **options)
-    raise HostServiceError('A background Host needs macOS or Linux with systemd. Next: co host --serve, to run it in this terminal')
+    if sys.platform == 'win32':
+        return ScheduledTaskHostService(project, **options)
+    raise HostServiceError('A background Host needs macOS or Linux with systemd, or Windows. Next: co host --serve, to run it in this terminal')
