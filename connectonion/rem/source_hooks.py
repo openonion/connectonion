@@ -14,6 +14,7 @@ from pathlib import Path
 from hashlib import sha256
 import json
 from typing import Protocol, TYPE_CHECKING, cast
+from uuid import uuid4
 
 from .source_citations import read_operation
 from .files import RemError, material_lock, read_json, state_path, write_json
@@ -71,6 +72,10 @@ class SourceUnavailable(RemError):
 
 class SourceBudgetExceeded(RemError):
     """The remaining budget cannot hold even one explicitly clipped item."""
+
+
+class SourceMaterialUnavailable(RemError):
+    """Retained material no longer passes the current source access check."""
 
 
 def fit_item(item: dict, max_chars: int) -> dict:
@@ -163,24 +168,36 @@ def fetch(root: Path, *, names=None) -> dict[str, dict]:
     for name, sub in selected(root).items():
         if (names is not None and name not in names) or not approved(root, name, sub):
             continue
+        before = read_json(state_path(root, "source-acquisition.json"), {}).get(name, {})
         try:
             sub = _approved(root, name)
             results[name] = {"ok": True, "result": _load(sub).fetch(root, sub)}
         except SourceUnavailable as error:
             results[name] = {"ok": False, "error": str(error), "allow_saved": error.allow_saved}
-        with material_lock(root):
-            if not same_selection(root, name, sub):
-                results[name] = {"ok": False, "allow_saved": False,
-                                 "error": "Source selection changed during acquisition; run start again"}
-                continue
-            receipts = read_json(state_path(root, "source-acquisition.json"), {})
-            previous = receipts.get(name, {})
-            if (not results[name]["ok"] and previous.get("scope") == scope_value(sub)
-                    and previous.get("allow_saved") is False):
-                results[name]["allow_saved"] = False  # Only a successful retry clears an integrity/account block.
-            receipts[name] = {**results[name], "scope": scope_value(sub)}
-            write_json(state_path(root, "source-acquisition.json"), receipts)
+        results[name] = _record_acquisition(root, name, sub, before, results[name])
     return results
+
+
+def _record_acquisition(root, name, sub, before, result):
+    """Only a retry started after a block can clear it; overlapping failures win."""
+    with material_lock(root):
+        if not same_selection(root, name, sub):
+            return {"ok": False, "allow_saved": False,
+                    "error": "Source selection changed during acquisition; run start again"}
+        path = state_path(root, "source-acquisition.json")
+        receipts = read_json(path, {})
+        previous = receipts.get(name, {})
+        blocked = previous.get("scope") == scope_value(sub) and previous.get("allow_saved") is False
+        if blocked and result["ok"] and previous != before:
+            return {"ok": False, "allow_saved": False,
+                    "error": "Source blocked during acquisition; start a new sync to retry"}
+        if blocked and not result["ok"]:
+            result = {**result, "allow_saved": False}
+        # Distinguish repeated identical failures: a retry spanning a new block
+        # must not clear it merely because its error text and scope are the same.
+        receipts[name] = {**result, "scope": scope_value(sub), "receipt_id": uuid4().hex}
+        write_json(path, receipts)
+        return result
 
 
 def collect(root: Path, name: str, progress: dict, max_items: int, max_chars: int) -> Batch:
@@ -343,17 +360,26 @@ def same_selection(root: Path, name: str, expected: dict) -> bool:
 
 def approved(root: Path, name: str, subscription: dict | None = None) -> bool:
     """Check selection and the recorded scope/model approval without reading source storage."""
-    from .config import read_config
     sub = selected(root).get(name) if subscription is None else subscription
     if not sub or not sub.get("enabled") or not sub.get("consented") or sub.get("unsubscribed"):
         return False
     receipt = read_json(state_path(root, "consent.json"), {})
-    summary = receipt.get("summary_value", {})
-    agreed = summary.get("sources", {}).get(name, {})
+    agreed = receipt.get("source_approvals", {}).get(name, {})
     if agreed.get("scope") != scope_value(sub):
         return False
-    config = read_config(root, validated=False)
-    return all(summary.get(key) == config[key] for key in ("runner", "model"))
+    return agreed.get("execution") == execution_scope(root)
+
+
+def execution_scope(root: Path, config: dict | None = None) -> dict:
+    """Every effective model recipient, shared by display and saved approval."""
+    from .config import STAGE_LEVELS, level_model, read_config
+    from .inquiry import routing
+    config = read_config(root, validated=False) if config is None else config
+    routes = routing(root)
+    stages = {stage: {"runner": config["runner"],
+                      "model": level_model(config, stage) if "models" in config else config["model"],
+                      **routes.get(stage, {})} for stage in STAGE_LEVELS}
+    return {"runner": config["runner"], "model": config["model"], "stages": stages}
 
 
 def pending(root: Path, name: str, progress: dict) -> dict:
@@ -390,6 +416,10 @@ def material_ids(items: list[dict], *, root: Path | None = None) -> set[str]:
 @read_operation
 def material_approved(root: Path, items: list[dict]) -> bool:
     """Recheck retained material before a model turn or native-task replay."""
+    return all(cited(root, source_id) is not None for source_id in retained_source_ids(root, items))
+
+
+def retained_source_ids(root: Path, items: list[dict]) -> set[str]:
     originals = []
     for item in items:
         if item.get("role") == "original_evidence" and item.get("file"):
@@ -397,13 +427,30 @@ def material_approved(root: Path, items: list[dict]) -> bool:
             if not path.is_relative_to((root / ".state").resolve()):
                 raise RemError("Original evidence must be retained inside this notebook")
             originals.extend(read_json(path, []))
-    return all(cited(root, source_id) is not None for source_id in material_ids([*items, *originals], root=root))
+    return material_ids([*items, *originals], root=root)
+
+
+def execution_stamp(root: Path, items: list[dict]) -> dict | None:
+    return execution_scope(root) if retained_source_ids(root, items) else None
+
+
+def require_execution(root: Path, items: list[dict], config=None, *, expected=None, stage=None) -> None:
+    """Check the prepared routes and the actual recipient, not just current files."""
+    if not retained_source_ids(root, items):
+        return
+    current = execution_scope(root)
+    recipients = [{key: current[key] for key in ("runner", "model")}, *current["stages"].values()]
+    if stage is not None:
+        recipients = [current["stages"].get(stage)]
+    target = {key: config.get(key) for key in ("runner", "model")} if config is not None else None
+    if (expected is not None and expected != current) or (target is not None and target not in recipients):
+        raise SourceMaterialUnavailable("Saved source execution routes changed; prepare a new task after co rem start")
 
 
 def require_material(root: Path, items: list[dict]) -> None:
     if not material_approved(root, items):
-        raise RemError("Saved source material is no longer approved or available; "
-                       "run co rem start and prepare a new task")
+        raise SourceMaterialUnavailable("Saved source material is no longer approved or available; "
+                                        "run co rem start and prepare a new task")
 
 
 def task_material(root: Path, task: dict) -> None:
@@ -414,6 +461,10 @@ def task_material(root: Path, task: dict) -> None:
     items = [*items, *task.get("items", []), *task.get("prior_items", []),
              *payload.get("items", []), *payload.get("prior_items", [])]
     require_material(root, items)
+    for saved in (task, payload):
+        require_execution(root, items, saved.get("config"),
+                          expected=saved.get("source_execution", {} if saved.get("config") else None),
+                          stage=saved.get("source_stage"))
 
 
 def version_context(root: Path, source_id: str) -> dict | None:
@@ -423,10 +474,13 @@ def version_context(root: Path, source_id: str) -> dict | None:
     return source_versions.cited(root, source_id)
 
 
-def guard_turn(root: Path, items: list[dict], execute):
+def guard_turn(root: Path, items: list[dict], execute, *, expected_execution=None):
     """Recheck retained evidence before every retry or follow-up model call."""
+    expected = execution_stamp(root, items) if expected_execution is None else expected_execution
     def guarded(*args, **kwargs):
         require_material(root, items)
+        config = kwargs.get("config", args[2] if len(args) > 2 else None)
+        require_execution(root, items, config, expected=expected)
         return execute(*args, **kwargs)
     return guarded
 

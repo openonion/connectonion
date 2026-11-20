@@ -1485,3 +1485,78 @@ def test_what_the_user_types_on_their_phone_is_kept_but_never_queued(tmp_path, s
     assert not any(inbox.new.iterdir())                        # nothing queued for a consumer
     provider.keep_own(inbox, mine, Client())                   # the same event twice is kept once
     assert len((tmp_path / "own.jsonl").read_text().splitlines()) == 1
+
+
+class PairingSocket(Socket):
+    """An unlinked device: the socket comes up and shows QR codes until a phone links it.
+
+    `event` is an object, as neonize's is: called as a decorator for an event
+    type, and with `.qr` to replace the QR printer.
+    """
+
+    def __init__(self, code="H7J4-6CTZ", refuse=""):
+        super().__init__()
+        self.code, self.refuse = code, refuse
+        self.asked, self.answered, self.qr = [], threading.Event(), None
+        socket = self
+
+        class Events:
+            def __call__(self, kind):
+                return Socket.event(socket, kind)
+
+            def qr(self, handler):
+                socket.qr = handler
+
+        self.event = Events()
+
+    def PairPhone(self, phone, show_push_notification):
+        self.asked.append(phone)
+        self.answered.set()
+        if self.refuse:
+            raise RuntimeError(self.refuse)
+        return self.code
+
+    def connect(self):
+        for data in (b"qr-1", b"qr-2", b"qr-3"):   # it rotates while nobody scans
+            self.qr(self, data)
+        self.answered.wait(5)
+        time.sleep(0.2)   # the code thread prints after PairPhone returns
+
+
+def test_listen_with_a_phone_prints_a_code_to_type_instead_of_a_qr(sdk, monkeypatch, capsys):
+    """#2161: a QR rotating every ~20 s could not be relayed to an owner who was not at the screen."""
+    inbox = Inbox("whatsapp")
+    socket = PairingSocket()
+    monkeypatch.setattr("neonize.client.NewClient", lambda path: socket)
+
+    WhatsApp().run(inbox, phone="61412345678")
+
+    assert socket.asked == ["61412345678"]          # once, however many QRs went by
+    err = capsys.readouterr().err
+    assert "Pairing code: H7J4-6CTZ" in err
+    assert "Link with phone number instead" in err
+    assert "pairing code issued" in (inbox.root / "log").read_text(encoding="utf-8")
+
+
+def test_a_number_whatsapp_will_not_pair_stops_the_listener_with_its_reason(sdk, monkeypatch):
+    inbox = Inbox("whatsapp")
+    socket = PairingSocket(refuse="phone number is not registered")
+    monkeypatch.setattr("neonize.client.NewClient", lambda path: socket)
+
+    with pytest.raises(ListenerStopped) as stopped:
+        WhatsApp().run(inbox, phone="61412345678")
+
+    assert "phone number is not registered" in str(stopped.value)
+    assert "without --phone" in str(stopped.value)
+    assert socket.disconnected
+
+
+def test_a_millisecond_timestamp_is_the_real_time_not_now():
+    # neonize's live MessageInfo.Timestamp is milliseconds. As seconds it is
+    # out of range: ValueError on POSIX (silently "now"), OSError 22 on
+    # Windows, where every incoming message was skipped.
+    from connectonion.inbox.whatsapp import _iso
+
+    assert _iso(1756808267000) == "2025-09-02T10:17:47Z"
+    assert _iso(1756808267) == "2025-09-02T10:17:47Z"
+    assert _iso(SimpleNamespace(seconds=1756808267)) == "2025-09-02T10:17:47Z"

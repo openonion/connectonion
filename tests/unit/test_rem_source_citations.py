@@ -54,8 +54,8 @@ def test_inline_target_survives_drop_filter_and_reader_uses_exact_version(shared
     assert '\n## Sources\n- [1] ' + target in normalized
     contexts = reader_model.cited_context(env.root, [{'text': normalized}])
     assert contexts[target]['excerpt'] == 'Atlas saved version 1'
-    assert page_review._lost_sources('\n## Sources\n- [1] ' + target,
-        '\n## Sources\n- [1] ' + citation('summaries', 2), root=env.root) == set()
+    assert page_review.dropped(normalized, normalized.replace(target, citation('summaries', 2)),
+                               root=env.root) == []
 
 
 def test_removed_source_cannot_resolve_through_reader_fallback(shared_sources, monkeypatch):
@@ -108,3 +108,45 @@ def test_reader_loads_routing_table_once_but_rechecks_approval(shared_sources, m
         assert hooks.cited(env.root, targets[0]) is not None
         service.toggle_source(env.root, 'summaries', False)
         assert hooks.cited(env.root, targets[0]) is None
+
+
+@pytest.mark.parametrize('kind', ['notes', 'tasks', 'summaries'])
+def test_version_replacement_keeps_claims_and_allows_uncited_source_cleanup(shared_sources, kind):
+    from connectonion.rem.page_review import dropped, restore_dropped
+    env = shared_sources
+    env.select(kind)
+    hooks.fetch(env.root)
+    old = hooks.collect(env.root, kind, {}, 2, 10000)
+    env.current[kind] = 2
+    hooks.fetch(env.root)
+    new = hooks.collect(env.root, kind, old.progress, 2, 10000)
+    old_id, new_id = old.items[0]['source'], new.items[0]['source']
+    unused = '- [2] gmail:bbbbbbbbbbbb — never cited in the page\n'
+    before = ('# Atlas\n\n## Who they are\n- Atlas prefers calls on Fridays. [1]\n'
+              f'\n## Sources\n- [1] {old_id}\n' + unused)
+    after = before.replace(old_id, new_id).replace(unused, '')
+
+    assert dropped(before, after, root=env.root, claims=True) == []
+    assert restore_dropped(before, after, root=env.root, claims=True) == after
+    assert hooks.cited(env.root, old_id)['excerpt'] == 'Atlas saved version 1'
+    assert hooks.cited(env.root, new_id)['excerpt'] == 'Atlas saved version 2'
+
+
+@pytest.mark.parametrize('kind', ['notes', 'tasks', 'summaries'])
+def test_selected_source_claim_is_restored_even_when_its_citation_remains(shared_sources, kind):
+    from connectonion.rem.page_review import dropped, restore_dropped
+    env = shared_sources
+    env.select(kind)
+    hooks.fetch(env.root)
+    target = hooks.collect(env.root, kind, {}, 2, 10000).items[0]['source']
+    claim = '- Atlas prefers calls on Fridays. [1]\n'
+    before = ('# Atlas\n\n## Who they are\n- Atlas leads design at Lantern. [1]\n'
+              + claim + f'\n## Sources\n- [1] {target}\n')
+    after = before.replace(claim, '- Atlas joined the board. [1]\n')
+
+    assert dropped(before, after, root=env.root) == []
+    assert dropped(before, after, root=env.root, claims=True) == [
+        'Dropped claim line the page had: - Atlas prefers calls on Fridays.']
+    restored = restore_dropped(before, after, root=env.root, claims=True)
+    assert claim in restored and '- Atlas joined the board. [1]' in restored
+    assert dropped(before, restored, root=env.root, claims=True) == []

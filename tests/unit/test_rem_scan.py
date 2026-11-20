@@ -249,7 +249,7 @@ def test_under_coai_the_page_is_read_back_from_disk(tmp_path, monkeypatch):
 
     handed = []
 
-    def fake_co_ai(argv, cwd, capture_output, text, timeout, env=None):
+    def fake_co_ai(argv, cwd, capture_output, text, timeout, env=None, **kwargs):
         import types
         if argv[1] == "-c":  # the Skill check before the gather (#1974)
             return types.SimpleNamespace(stdout="", stderr="", returncode=0)

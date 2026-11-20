@@ -177,7 +177,7 @@ class CodexNative:
 
     def _app_running(self) -> bool:
         return self.run(["pgrep", "-f", r"^.+/Codex[.]app/Contents/MacOS/(ChatGPT|Codex)( |$)"],
-                        capture_output=True, text=True, timeout=10).returncode == 0
+                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10).returncode == 0
 
     def _open_desktop(self) -> None:
         app = desktop_app()
@@ -186,7 +186,7 @@ class CodexNative:
         # A running App Server does not mean the primary renderer has published
         # automations.local. Opening Scheduled wakes that native capability.
         result = self.run(["/usr/bin/open", "-a", str(app), "codex://automations"],
-                          capture_output=True, text=True, timeout=15)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         if result.returncode:
             raise RemError("Codex Scheduled could not open; run co rem status before changing timers")
 

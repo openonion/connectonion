@@ -202,6 +202,8 @@ def test_writer_waits_for_notebook_while_offline_reads_committed_snapshot(shared
 
 def test_retry_revalidates_source_before_next_model_turn(shared_sources):
     from connectonion.rem import runner
+    from connectonion.rem.config import read_config
+    from connectonion.rem.inquiry import stage_config
     env = shared_sources
     env.select('summaries')
     hooks.fetch(env.root)
@@ -213,5 +215,223 @@ def test_retry_revalidates_source_before_next_model_turn(shared_sources):
         raise runner.RunFailed('timed out')
     retry = runner._retry_timeouts({'timeouts_retried': 0}, hooks.guard_turn(env.root, items, timeout))
     with pytest.raises(RemError, match='no longer approved'):
-        retry(env.root, 'saved evidence', {'runner': 'codex'}, 'enrich')
+        retry(env.root, 'saved evidence', stage_config(env.root, read_config(env.root), 'enrich'), 'enrich')
     assert calls == ['called']
+
+
+def test_collect_displays_source_receipt_and_backlog_and_keeps_collect_next(shared_sources, monkeypatch):
+    from connectonion.cli.main import app
+    from connectonion.rem import daily
+    env = shared_sources
+    env.select('notes')
+    original = service.run_sync
+    monkeypatch.setattr(service, 'run_sync', lambda root, **options: original(
+        root, runner=lambda *a, **kw: {'changed': []}, **options))
+    monkeypatch.setattr(daily, 'run_daily', lambda *a, **kw: pytest.fail('collect investigated'))
+    command = ['rem', '--root', str(env.root), 'collect', '--source', 'notes']
+    for expected in ('added: 1', 'unchanged: 1'):
+        result = CliRunner().invoke(app, command, terminal_width=200)
+        assert result.exit_code == 0, result.output
+        assert 'Source collected' in result.output and expected in result.output
+        assert 'Still waiting' in result.output
+        assert result.output.rstrip().endswith(f'Next: co rem --root {env.root} collect --source notes')
+    assert len([event for event in env.events if event[1] == 'fetch']) == 2
+
+
+@pytest.mark.parametrize('driven', [False, True])
+def test_pending_native_task_refuses_revoked_material_before_switching_worker(shared_sources, driven):
+    from connectonion.rem import native
+    env = shared_sources
+    env.select('summaries')
+    hooks.fetch(env.root)
+    items = hooks.collect(env.root, 'summaries', {}, 2, 10000).items
+    task = {'directory': str(state_path(env.root, 'tasks/revoked')),
+            'task': {'items': items}, 'driven': not driven, 'run': {'model': 'old-worker'}}
+    service.toggle_source(env.root, 'summaries', False)
+
+    with pytest.raises(RemError, match='no longer approved'):
+        native._offer_pending(env.root, task, driven=driven, takeover=True)
+    assert task['driven'] is not driven and task['run'] == {'model': 'old-worker'}
+
+
+def test_runner_check_blocks_revoked_prior_material_before_abstract_report(shared_sources, monkeypatch):
+    from connectonion.rem import runner
+    env = shared_sources
+    env.select('summaries')
+    hooks.fetch(env.root)
+    items = hooks.collect(env.root, 'summaries', {}, 2, 10000).items
+    service.toggle_source(env.root, 'summaries', False)
+    monkeypatch.setattr(runner, '_collect_abstract_report',
+                        lambda *a: pytest.fail('revoked material reached abstract report'))
+
+    with pytest.raises(RemError, match='no longer approved'):
+        runner.check({'root': str(env.root), 'items': [], 'prior_items': items}, {})
+
+
+def test_native_source_fetch_has_a_deadline_without_holding_the_notebook_lock(shared_sources, monkeypatch):
+    from contextlib import contextmanager
+    from connectonion.rem import native
+    env = shared_sources
+    env.select('notes')
+    watching = []
+    @contextmanager
+    def watch(root):
+        watching.append('started')
+        try:
+            yield
+        finally:
+            watching.append('stopped')
+    original = env.modules['notes'].fetch
+    def fetch(root, sub):
+        assert watching == ['started']
+        assert native._WATCH['deadline'] > native.time.monotonic()
+        assert native._WATCH['step'] == 'collecting selected sources'
+        with maintenance_lock(root):
+            pass  # The network phase must allow another notebook writer.
+        return original(root, sub)
+    monkeypatch.setattr(native, '_watching', watch)
+    monkeypatch.setattr(native, '_stop', lambda *a: (None, {}))
+    monkeypatch.setattr(env.modules['notes'], 'fetch', fetch)
+
+    native._fetch_sources(env.root, scheduled=False, in_round=False)
+    assert watching == ['started', 'stopped'] and native._WATCH['deadline'] is None
+    assert hooks.collect(env.root, 'notes', {}, 2, 10000).items
+
+
+def test_interrupted_source_fetch_unwinds_and_reports_a_preparation_stall(shared_sources, monkeypatch):
+    import signal
+    from connectonion.rem import native
+    if not hasattr(signal, 'pthread_kill'):
+        pytest.skip('Native preparation interruption requires POSIX thread signals')
+    env = shared_sources
+    env.select('notes')
+    previous = signal.getsignal(signal.SIGUSR1)
+    def interrupt(root, sub):
+        assert native._WATCH['interrupt'] is not None
+        write_json(state_path(root, native.STALLED), {
+            'label': 'collecting selected sources', 'step': 'collecting selected sources'})
+        raise native._Interrupted()  # Deliver the deadline signal's exception without waiting ten minutes.
+    monkeypatch.setattr(native, '_stop', lambda *a: (None, {}))
+    monkeypatch.setattr(env.modules['notes'], 'fetch', interrupt)
+
+    with pytest.raises(native.PreparationStalled, match='collecting selected sources'):
+        native._fetch_sources(env.root, scheduled=False, in_round=True)
+    assert signal.getsignal(signal.SIGUSR1) == previous
+    assert native._WATCH['interrupt'] is None and native._WATCH['deadline'] is None
+    with maintenance_lock(env.root):
+        pass
+    assert not state_path(env.root, 'synthetic-notes.json').exists()
+
+
+def _pending_source_extract(env, monkeypatch):
+    from connectonion.rem import native, native_round
+    env.select('notes')
+    hooks.fetch(env.root)
+    items = hooks.collect(env.root, 'notes', {}, 2, 10000).items
+    task_id = 'native-' + 'a' * 32
+    directory = state_path(env.root, f'tasks/{task_id}')
+    write_json(directory / 'task.json', {
+        'id': task_id, 'status': 'pending', 'directory': str(directory), 'handler': 'extract',
+        'task': {'items': items}, 'inputs': {}, 'source_view': None})
+    write_json(state_path(env.root, 'round.json'), {'pending': task_id})
+    monkeypatch.setattr(native_round, 'recover_commit', lambda *a: None)
+    monkeypatch.setattr(native, '_promoted', lambda *a: False)
+    monkeypatch.setattr(native, '_inputs', lambda *a, **kw: {})
+    monkeypatch.setattr(native, '_check_submission', lambda *a: pytest.fail('invalid source reached promotion'))
+    return task_id
+
+
+def test_submit_classifies_revoked_source_as_a_task_fault(shared_sources, monkeypatch):
+    from connectonion.rem import native
+    env = shared_sources
+    task_id = _pending_source_extract(env, monkeypatch)
+    service.toggle_source(env.root, 'notes', False)
+
+    with pytest.raises(native.TaskFault, match='no longer approved'):
+        native._submit(env.root, task_id, usage=None)
+
+
+def test_submit_does_not_hide_notebook_io_errors_as_a_task_fault(shared_sources, monkeypatch):
+    from connectonion.rem import native
+    env = shared_sources
+    task_id = _pending_source_extract(env, monkeypatch)
+    def unreadable(*args):
+        raise RemError('Unreadable source ownership file')
+    monkeypatch.setattr(hooks, 'material_approved', unreadable)
+
+    with pytest.raises(RemError, match='Unreadable source ownership file') as error:
+        native._submit(env.root, task_id, usage=None)
+    assert not isinstance(error.value, native.TaskFault)
+
+
+@pytest.mark.parametrize('cursor,night,discard,collect_only,expected', [
+    ({'done': False, 'catchup_night': 1}, 1, False, False, False),
+    ({'done': False, 'catchup_night': 1}, 2, False, False, True),
+    ({'done': False, 'catchup_night': 1, 'pending': 'open'}, 2, False, False, False),
+    ({'done': False, 'catchup_night': 1, 'pending': 'open'}, 1, True, False, True),
+    ({'done': True}, None, False, True, True),
+    ({'done': False}, None, False, True, False),
+])
+def test_native_acquires_for_fresh_rounds_but_not_pending_work(
+        shared_sources, monkeypatch, cursor, night, discard, collect_only, expected):
+    from connectonion.rem import catchup, native
+    env = shared_sources
+    env.select('notes')
+    write_json(state_path(env.root, 'round.json'), cursor)
+    monkeypatch.setattr(catchup, 'number', lambda root: night)
+    monkeypatch.setattr(native, '_stop', lambda *a: ('model held' if collect_only else None, {}))
+
+    native._fetch_sources(env.root, scheduled=False, in_round=False,
+                          discard=discard, collect_only=collect_only)
+    assert any(event[1] == 'fetch' for event in env.events) is expected
+
+
+def test_repeated_source_stalls_hold_before_another_acquisition(shared_sources, monkeypatch):
+    from connectonion.rem import native
+    env = shared_sources
+    env.select('notes')
+    write_json(state_path(env.root, 'round.json'), {
+        'done': True, 'unnamed_stalls': native.STALL_HOLD_AFTER,
+        'unnamed_stall_step': 'collecting selected sources',
+        'unnamed_stall_at': service.now().isoformat()})
+    monkeypatch.setattr(hooks, 'fetch', lambda *a, **kw: pytest.fail('held source fetched again'))
+
+    native._fetch_sources(env.root, scheduled=False, in_round=False)
+    assert 'collecting selected sources' in read_json(state_path(env.root, 'round-held.json'), {})['reason']
+
+
+@pytest.mark.parametrize('kind', ['notes', 'tasks', 'summaries'])
+@pytest.mark.parametrize('format', ['topics', 'pages', 'legacy'])
+def test_topic_scan_preserves_registered_and_opaque_citations(shared_sources, kind, format):
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.topic_map import scan_topics
+    from tests.unit.test_rem_topic_map import topic
+    env = shared_sources
+    book = Notebook(env.root)
+    targets = [citation(kind, account=f'account{i}') for i in range(3)]
+    if format == 'pages':
+        book.write('people/mara.md', '# Mara\n## Insight\n- **Thermal storage** stores heat. [1][2]\n'
+                   f'## Sources\n- [1] {targets[0]} — 2026-01-01\n- [2] {targets[1]} — 2026-01-08\n')
+        book.write('projects/cove.md', '# Cove\n- Thermal storage for the port. [1]\n'
+                   f'## Sources\n- [1] {targets[2]} — 2026-01-15\n')
+    elif format == 'topics':
+        path = topic(book)
+        text = path.read_text(encoding='utf-8')
+        for index, target in enumerate(targets):
+            text = text.replace(f'gmail:source{index}', target)
+        path.write_text(text, encoding='utf-8')
+    else:
+        book.write('people/mara.md', '# Mara\n## Sources\n'
+                   f'- [1] {targets[0]}\n- [2] {targets[1]}\n')
+        book.write('projects/cove.md', f'# Cove\n## Sources\n- [1] {targets[2]}\n')
+        days = ['2026-01-01', '2026-01-08', '2026-01-15']
+        lines = [f'- **Thermal storage** stores heat — Mara, {day}, {target}'
+                 for day, target in zip(days, targets)]
+        path = state_path(env.root, 'extracts/legacy.md')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('## Knowledge\n' + '\n'.join(lines), encoding='utf-8')
+
+    row, = scan_topics(book)
+    assert row['qualified'] and row['source_count'] == 3
+    assert {entry['source'] for entry in row['evidence']} == set(targets)
+    assert env.loaded == []

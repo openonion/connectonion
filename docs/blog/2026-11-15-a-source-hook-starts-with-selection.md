@@ -47,10 +47,36 @@ The local adapter run exposed an additional concurrency mistake: a second Obsidi
 collector failed immediately when the first held its acquisition lock. Bounded
 waiting outside the notebook lock let both collectors finish without saving duplicate
 versions. A test now forces that contention while an offline reader checks committed
-state. The shared suite passed 73 focused cases and 1269 caller regressions; the
+state. Before integrating newer main, the shared suite passed 73 focused cases and 1269 caller regressions; the
 separate adapter suite passed 1337 focused cases and 1269 caller regressions. Both
 passed the five requested CLI audits. Real service access and existing-store
 migration still need evidence from each source owner.
+
+The local merge with main `fe50d346` is uncommitted. It combines append claim
+retention with version-aware source checks,
+extends native acquisition to catchup and collection-only paths, and recognizes
+registered and opaque targets in topic mapping. A snapshot path's embedded date
+must not become the date of a claim. Source acquisition uses main's deadline and
+repeated-stall protection without holding the long notebook lock. The earlier
+passing results do not cover this merged candidate. A new author-run check of
+the merged candidate passed 103 focused cases and 2104 caller regressions. Three
+source audits passed; the script then stopped on the compatibility-only `sync`
+target, which main no longer lists in its public help tree. The corrected script
+uses `collect` instead. The author's follow-up `collect` and `start` audits both
+passed, completing the five planned public-command audits for this candidate.
+
+A later static review found cases that those tests had not covered. Overlapping
+acquisitions could publish an old success after a new account failure. The local
+fix preserves a changed blocking receipt and requires a fresh retry, rather than
+holding the notebook lock during network work. Approval also needs to bind every
+effective model route, not only the default model. Per-source approval records now
+survive automatic mailbox grants without being renewed by them, and confirmation
+checks the displayed snapshot before publishing consent. Prepared tasks keep their
+execution snapshot so a newly approved model cannot legitimize a cached old one.
+The author then ran the updated checks: 136 focused cases and 2238 caller
+regressions passed, together with all five public-command audits. Both pytest
+runs reported the real `~/.co` unchanged. These are local synthetic and caller
+results; real-provider migration and source-team review remain separate work.
 
 See the [interface overview](../rem/source-interface.md),
 [contract](../rem/source-interface-contract.md) and

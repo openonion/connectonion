@@ -17,6 +17,37 @@ concurrency:
 # Do not restore the shared pip cache: its account egress limit stalled Python
 # setup before tests ran. Install dependencies directly; all checks stay enabled.
 jobs:
+  # A release PR changes only version strings and release notes; the code is
+  # what main just tested. On such a PR, or its release/** branch push, the matrix below is skipped and
+  # tests-passed says why (.github/scripts/version_only.py). Pushes and
+  # release re-runs always run everything.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version_only: ${{ steps.scope.outputs.version_only }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2
+
+      - name: Does this PR or release branch change only release metadata?
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        # The push to release/** ran the whole matrix next to the PR's skipped
+        # one, and a release still waited ten minutes on it (rc32). main and
+        # workflow_call (the release re-run) always run everything.
+        run: |
+          only=false
+          if [ "$EVENT_NAME" = pull_request ] || { [ "$EVENT_NAME" = push ] && [[ "$REF" == refs/heads/release/* ]]; }; then
+            only=$(python3 .github/scripts/version_only.py HEAD^1 HEAD)
+          fi
+          echo "version-only: $only"
+          echo "version_only=$only" >> "$GITHUB_OUTPUT"
+
   lockfile:
     runs-on: ubuntu-latest
     steps:
@@ -48,6 +79,8 @@ jobs:
   # (test_cli_tips_name_real_commands.py, 150 s traced) to one worker. No more
   # shards than needed: the free plan runs 20 jobs at once across the whole org.
   test:
+    needs: scope
+    if: needs.scope.outputs.version_only != 'true'
     name: test (${{ matrix.python-version }}) ${{ matrix.shard }}/${{ matrix.python-version == '3.11' && 6 || 8 }}
     runs-on: ubuntu-latest
     # A shard still running at fifteen is hung; the per-test timeout in
@@ -172,7 +205,7 @@ jobs:
   # One stable check name for every shard and the coverage gate. A shard that
   # failed, was cancelled or was skipped makes this red, never green.
   tests-passed:
-    needs: [test, coverage, cli-help-audit, cli-help-audit-tree]
+    needs: [scope, test, coverage, cli-help-audit, cli-help-audit-tree]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -183,7 +216,13 @@ jobs:
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           AUDIT_RESULT: ${{ needs.cli-help-audit.result }}
           TREE_RESULT: ${{ needs.cli-help-audit-tree.result }}
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          VERSION_ONLY: ${{ needs.scope.outputs.version_only }}
         run: |
+          if [ "$SCOPE_RESULT" = success ] && [ "$VERSION_ONLY" = true ]; then
+            echo "release metadata only: the code is main's, which ran the full matrix"
+            exit 0
+          fi
           echo "test shards: $TEST_RESULT, coverage: $COVERAGE_RESULT, help audit shards: $AUDIT_RESULT, help audit tree: $TREE_RESULT"
           [ "$TEST_RESULT" = success ] && [ "$COVERAGE_RESULT" = success ] \
             && [ "$AUDIT_RESULT" = success ] && [ "$TREE_RESULT" = success ]
@@ -193,6 +232,8 @@ jobs:
   # (see tests/unit/test_cli_help_contract.py); cli-help-audit-tree then
   # checks the whole tree once over every shard's list of pages.
   cli-help-audit:
+    needs: scope
+    if: needs.scope.outputs.version_only != 'true'
     name: cli-help-audit ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -283,6 +324,8 @@ jobs:
   # shards already run these five files on every Python (324 tests, none
   # skipped), so this job covers the other two systems.
   remote-browser-egress:
+    needs: scope
+    if: needs.scope.outputs.version_only != 'true'
     runs-on: ${{ matrix.os }}
     # Backstop for hangs outside a test (installation, shutdown); the per-test watchdog catches the rest.
     timeout-minutes: 20
@@ -322,6 +365,8 @@ jobs:
   # These tests use a StubBrowser, so no Chrome/network is needed; they exercise the
   # real cross-platform transport (multiprocessing.connection + HMAC authkey).
   windows-browser:
+    needs: scope
+    if: needs.scope.outputs.version_only != 'true'
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -359,6 +404,8 @@ jobs:
   # launch → navigate → close). This is the "it installs but co/patchright won't
   # run on my machine" class of failure, caught before release.
   windows-e2e:
+    needs: scope
+    if: needs.scope.outputs.version_only != 'true'
     runs-on: windows-latest
     timeout-minutes: 25
 
@@ -669,6 +716,8 @@ jobs:
   # bundled browser into an isolated runner directory, then drive a real page
   # through the public `co browser` CLI.
   macos-e2e:
+    needs: scope
+    if: needs.scope.outputs.version_only != 'true'
     runs-on: macos-latest
     timeout-minutes: 25
 

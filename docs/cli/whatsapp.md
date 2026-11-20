@@ -73,6 +73,23 @@ that file *is* the linked device: copy it and you have copied the device,
 delete it and the device is unlinked. It is created mode 0700 with the rest of
 the inbox.
 
+**Not at that screen?** The QR changes about every 20 seconds and has to be
+seen. Ask for a code instead, with the number of the phone that will link it:
+
+```bash
+co whatsapp listen --phone +61412345678
+```
+
+```text
+Pairing code: H7J4-6CTZ
+On the phone with +61412345678: WhatsApp > Settings > Linked devices > Link a device > Link with phone number instead, then type the code. It lasts a few minutes.
+```
+
+The code can be sent as plain text to whoever holds the phone. If WhatsApp
+refuses to issue one, for example because the number has no account, `listen`
+stops with exit 3 and WhatsApp's reason. `--phone` cannot be combined with
+`--restart`, because the code is shown in the foreground.
+
 ```bash
 co whatsapp check                # says what is missing, if anything
 ```

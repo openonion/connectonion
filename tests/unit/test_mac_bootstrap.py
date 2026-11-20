@@ -27,14 +27,18 @@ def test_bootstrap_reuses_profile_preserves_rem_and_reports_missing_connector(tm
     monkeypatch.setattr(HostService, 'start', lambda instance: {'configured': True, 'running': True, 'pid': 123})
     monkeypatch.setattr(mac_bootstrap, '_codex_readiness', lambda environment=None: {
         'codex_ready': False, 'codex_problem': 'Codex is not signed in', 'next_action': 'codex login'})
+    monkeypatch.setattr('connectonion.cli.codex_setup.claude_ready', lambda: False)
     result = mac_bootstrap.prepare_mac_host()
-    assert not result['rem_prepared'] and result['running'] and not result['codex_ready']
+    # Neither Codex nor Claude Code is signed in: the Host starts on the managed default (#3170).
+    from connectonion.core.usage import DEFAULT_MODEL
+    assert not result['rem_prepared'] and result['running'] and result['model'] == DEFAULT_MODEL
+    assert result['model_ready'] is True
     assert not (root/'rem').exists()
     assert result['watch_connector_ready'] is False
     runtime = root/'runtime'/'mac-host'
     host = yaml.safe_load((runtime/'.co'/'host.yaml').read_text())
     assert host['trust'] == 'strict' and host['directory'] == 'unlisted' and host['listen'] == []
-    assert host['port'] == 8123
+    assert host['port'] == 8123 and host['model'] == DEFAULT_MODEL
     config.prepare(root/'rem')
     rem = root/'rem'/'config.yaml'
     original = rem.read_bytes()

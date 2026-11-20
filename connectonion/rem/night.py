@@ -151,6 +151,10 @@ def _outcomes(root, rows, candidates, existing, *, attempted, errors, stop):
 def prepare(root, config, *, attempted=(), fetches=None, stop=''):
     """Persist all outcomes and return affordable drafts in Today order. Caller holds the writer lock."""
     from .store import refresh
+    from .owner_today import refresh as owner_digest
+    from .threads import migrate_marks
+    migrate_marks(root)  # marks saved before they recorded their sources (#3174)
+    owner_digest(root)   # .state/owner-today.md: what the owner did in the day, for every stage tonight
     fetches = {} if fetches is None else fetches
     if stop:
         refresh(root)

@@ -55,7 +55,7 @@ def test_install_and_rerun_use_one_service_without_secrets(service, monkeypatch)
     assert result['running'] and result['pid'] == 12345
     data = plistlib.loads(instance.plist.read_bytes())
     assert data['WorkingDirectory'] == str(instance.project)
-    assert data['ProgramArguments'][-1] == 'host'
+    assert data['ProgramArguments'][-3:] == ['host', '--agent', 'agent.py']
     assert 'synthetic-must-not-persist' not in instance.plist.read_text()
     assert data['KeepAlive'] is True and data['RunAtLoad'] is True
     instance.start()
@@ -135,6 +135,7 @@ def test_modified_service_is_preserved(service):
 def test_missing_agent_and_unsupported_platform_are_actionable(service, monkeypatch):
     instance, _ = service
     (instance.project/'agent.py').unlink()
+    instance.builtin = False
     with pytest.raises(module().HostServiceError, match='agent.py'):
         instance.start()
     monkeypatch.setattr(module().sys, 'platform', 'linux')
@@ -241,3 +242,178 @@ def test_native_health_requires_our_listener_not_a_shared_identity(service, monk
     assert instance._native_healthy(12345) is expected
     assert '-i4TCP' in calls[0]
     assert not (instance.project/'.co'/'keys').exists()
+
+
+def test_a_project_without_agent_py_serves_the_built_in_agent(service):
+    """#3170: an agent is host.yaml plus skills; no agent.py is the default, not an error."""
+    instance, control = service
+    (instance.project/'agent.py').unlink()
+    fresh = module().HostService(instance.project, home=instance.home, runner=control, uid=501)
+    fresh._native_healthy = lambda pid: True
+    fresh.start()
+    data = plistlib.loads(fresh.plist.read_bytes())
+    assert data['ProgramArguments'][-2:] == ['host', '--serve']
+
+
+class Systemctl:
+    """A fake `systemctl --user`: one unit that runs once started."""
+    def __init__(self):
+        self.calls = []
+        self.active = False
+    def __call__(self, args, **kwargs):
+        self.calls.append(tuple(args[2:]))
+        action = args[2]
+        if action in ('start', 'restart'):
+            self.active = True
+        if action == 'disable':
+            self.active = False
+        if action == 'show':
+            out = 'MainPID=4321\nActiveState=active\n' if self.active else 'MainPID=0\nActiveState=inactive\n'
+            return subprocess.CompletedProcess(args, 0, out, '')
+        return subprocess.CompletedProcess(args, 0, '', '')
+
+
+def test_linux_runs_the_same_host_as_a_systemd_user_unit(tmp_path):
+    """#3170: co init leaves a Host running on Linux too, as a user unit, no root."""
+    profile = tmp_path/'profile'
+    profile.mkdir()
+    control = Systemctl()
+    service = module().SystemdHostService(profile, home=tmp_path/'home', runner=control, builtin=True)
+    state = service.start()
+    assert state == {'configured': True, 'running': True, 'pid': 4321, 'device_ready': False}
+    unit = service.unit.read_text()
+    assert service.unit.parent == tmp_path/'home'/'.config'/'systemd'/'user'
+    assert '"host" "--serve"' in unit and f'WorkingDirectory={profile.resolve()}' in unit
+    assert 'Restart=always' in unit and 'WantedBy=default.target' in unit
+    assert ('enable', service.unit_name) in control.calls
+    # A rerun with nothing changed starts it, without rewriting or reloading.
+    control.calls.clear()
+    service.start()
+    assert ('daemon-reload',) not in control.calls and ('start', service.unit_name) in control.calls
+    assert service.stop()['running'] is False
+    service.uninstall()
+    assert not service.unit.exists()
+
+
+def test_linux_project_with_agent_py_serves_it_and_never_writes_secrets(tmp_path, monkeypatch):
+    project = tmp_path/'project'
+    project.mkdir()
+    (project/'agent.py').write_text('# synthetic')
+    monkeypatch.setenv('OPENAI_API_KEY', 'sk-synthetic-secret')
+    service = module().SystemdHostService(project, home=tmp_path/'home', runner=Systemctl(), port=8123)
+    service.start()
+    unit = service.unit.read_text()
+    assert '"host" "--agent" "agent.py" "--port" "8123"' in unit
+    assert 'sk-synthetic-secret' not in unit
+
+
+def test_the_platform_picks_launchd_or_systemd(tmp_path, monkeypatch):
+    api = module()
+    monkeypatch.setattr(api.sys, 'platform', 'darwin')
+    assert type(api.host_service(tmp_path)).__name__ == 'HostService'
+    monkeypatch.setattr(api.sys, 'platform', 'linux')
+    monkeypatch.setattr(api.shutil, 'which', lambda name: '/usr/bin/systemctl')
+    monkeypatch.setattr(api, '_user_systemd_ready', lambda: True)
+    assert type(api.host_service(tmp_path)).__name__ == 'SystemdHostService'
+    monkeypatch.setattr(api.sys, 'platform', 'win32')
+    assert type(api.host_service(tmp_path)).__name__ == 'ScheduledTaskHostService'
+    monkeypatch.setattr(api.sys, 'platform', 'freebsd14')
+    with pytest.raises(api.HostServiceUnavailable, match='co host --serve'):
+        api.host_service(tmp_path)
+
+
+def test_linux_without_a_systemd_user_session_has_no_background_service(tmp_path, monkeypatch):
+    """CI runners, containers and SSH logins without linger have systemctl but no user manager:
+    that is a machine without a background service, not a failed start (rc39 release gate)."""
+    api = module()
+    monkeypatch.setattr(api.sys, 'platform', 'linux')
+    monkeypatch.setattr(api.shutil, 'which', lambda name: '/usr/bin/systemctl')
+    monkeypatch.setattr(api.subprocess, 'run', lambda args, **kwargs: subprocess.CompletedProcess(
+        args, 1, '', 'Failed to connect to bus: No medium found'))
+    with pytest.raises(api.HostServiceUnavailable, match='systemctl --user is not reachable.*co host --serve'):
+        api.host_service(tmp_path)
+
+
+class Schtasks:
+    def __init__(self):
+        self.calls, self.created, self.running = [], False, False
+
+    def __call__(self, args, **kwargs):
+        assert args[0] == 'schtasks' and 'shell' not in kwargs
+        action = args[1]
+        self.calls.append(tuple(args[1:]))
+        if action == '/Create':
+            self.created = True
+        elif action == '/Run':
+            self.running = True
+        elif action == '/End':
+            self.running = False
+        elif action == '/Delete':
+            self.created = False
+        elif action == '/Query':
+            if not self.created:
+                return subprocess.CompletedProcess(args, 1, '', 'ERROR: The system cannot find the file specified.')
+            state = 'Running' if self.running else 'Ready'
+            return subprocess.CompletedProcess(args, 0, f'"\\{args[3]}","N/A","{state}"\r\n', '')
+        return subprocess.CompletedProcess(args, 0, 'SUCCESS', '')
+
+
+def test_windows_runs_the_same_host_as_a_logon_task(tmp_path):
+    """On Windows co init used to stop at "needs macOS or Linux"; the Host now
+    runs as a Scheduled Task at logon, as the logged-in user, no admin."""
+    profile = tmp_path/'profile'
+    profile.mkdir()
+    control = Schtasks()
+    service = module().ScheduledTaskHostService(profile, home=tmp_path/'home', runner=control, builtin=True)
+    state = service.start()
+    assert state == {'configured': True, 'running': True, 'pid': None, 'device_ready': False}
+    script = service.unit.read_text(encoding='utf-8')
+    assert ' host --serve >> ' in script and f'cd /d "{profile.resolve()}"' in script
+    assert 'goto run' in script  # starts again after an exit, like Restart=always
+    create = next(call for call in control.calls if call[0] == '/Create')
+    assert ('/SC', 'ONLOGON') == create[2:4] and service.task_name in create and '/RU' not in create
+    assert service.stop()['running'] is False
+    service.uninstall()
+    assert not service.unit.exists() and control.created is False
+
+
+def test_windows_task_serves_agent_py_and_never_writes_secrets(tmp_path, monkeypatch):
+    project = tmp_path/'project'
+    project.mkdir()
+    (project/'agent.py').write_text('# synthetic')
+    monkeypatch.setenv('OPENAI_API_KEY', 'sk-synthetic-secret')
+    service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), port=8123)
+    service.start()
+    script = service.unit.read_text(encoding='utf-8')
+    assert ' host --agent agent.py --port 8123 >> ' in script
+    assert 'sk-synthetic-secret' not in script
+
+
+def test_windows_task_script_has_one_cr_per_line(tmp_path, monkeypatch):
+    """The .cmd was joined with \\r\\n and then written in text mode, which on
+    Windows turned every line ending into \\r\\r\\n."""
+    project = tmp_path/'project'
+    project.mkdir()
+    real = Path.write_text
+
+    def windows_text_mode(self, data, encoding=None, errors=None, newline=None):
+        return real(self, data, encoding=encoding, errors=errors, newline='\r\n' if newline is None else newline)
+    monkeypatch.setattr(Path, 'write_text', windows_text_mode)
+    service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), builtin=True)
+    service.start()
+    raw = service.unit.read_bytes()
+    assert b'\r\r' not in raw and raw.count(b'\r\n') == raw.count(b'\n')
+
+
+def test_windows_logs_folder_is_not_owner_only(tmp_path, monkeypatch):
+    """mkdir(mode=0o700) on Windows gives an owner-only ACL. From an elevated
+    shell the owner is Administrators, so the logon task, which runs with the
+    user's limited token, could not write its log and exited at once."""
+    project = tmp_path/'project'
+    project.mkdir()
+    modes = []
+    real = Path.mkdir
+    monkeypatch.setattr(Path, 'mkdir', lambda self, *a, **k: (modes.append(k.get('mode')), real(self, *a, **k))[1])
+    service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), builtin=True)
+    service.start()
+    assert 0o700 not in modes

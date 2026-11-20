@@ -48,12 +48,21 @@ summary deliberately uses one stable generic rendering before and after approval
 Explicit configuration is the sole pre-approval import exception. It may validate
 connection metadata but must not acquire note/task bodies.
 
+Registered-source approval is stored independently from automatic mailbox grants.
+It binds the selected scope to the default and effective stage model routes.
+`start` displays those routes and rejects confirmation if the selection or routing
+changed while it was displayed. An older receipt without full routing needs a new
+confirmation; reconnecting email cannot grant that approval on its behalf.
+
 ## Acquire, consume and retain evidence
 
 `fetch` runs before the long-lived notebook lock. The adapter owns acquisition
 serialization and must wrap final publication in `acquisition_guard(root, sub)`.
 It publishes complete immutable snapshots or committed byte ranges plus an
 atomic index. The network phase never holds the notebook lock.
+An overlapping success cannot erase a newer blocking acquisition failure. The
+shared receipt and returned result stay blocked until a fresh retry begun after
+the block succeeds.
 
 `collect`, `gather`, `pending` and `cited` run under the notebook read/commit
 boundary. They must read committed state without waiting for the acquisition

@@ -20,7 +20,7 @@ pytestmark = pytest.mark.usefixtures("rem_clock")
     (['failed', 'completed'], '无法启动过，重试后已完成。', False, False),
     (['completed', 'completed'], 'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled.', True, True),
     (['failed', 'completed'], 'Finished the work.', False, False),
-    (['completed', 'failed'], '', False, False),
+    (['completed', 'failed'], '', False, True),
     (['failed', 'running'], '', False, False),
 ])
 def test_status_today_surfaces_receipt_failures(rem, results, last_message, blocked, visible):
@@ -42,11 +42,15 @@ def test_status_today_surfaces_receipt_failures(rem, results, last_message, bloc
     assert bool(line) == visible
     if visible:
         from rich.text import Text
-        assert line == {'code': 'blocked' if blocked else 'repeated_failure',
-                        'evidence': last_message if blocked else 'fictional timeout'}
+        assert line['code'] == ('blocked' if blocked else 'repeated_failure')
+        assert line['evidence'] == (last_message if blocked else 'fictional timeout')
         output = Text.from_markup(_today(root, value)[0]).plain
-        assert output.startswith('Last scheduled turn did not finish:')
-        assert ('run co rem start' if blocked else 'Retried automatically') in output
+        if line.get('failures'):
+            assert output.startswith(f"Background: the last {line['failures']} ")
+            assert 'co rem logs' in output
+        else:
+            assert output.startswith('Last scheduled turn did not finish:')
+            assert 'run co rem start' in output
         assert line['evidence'] in output
         assert snapshot(root)['status']['schedule_failure'] == line
 
@@ -122,7 +126,7 @@ def test_a_night_with_nothing_new_calls_no_model_and_leaves_no_run(rem):
     calls = []
     runner = lambda notebook, items, config, kind="": calls.append(items) or {"usage": {"input_tokens": 10}}
     worked = run_sync(root, runner=runner)
-    assert worked["speed"] == "fast"
+    assert worked["speed"] == "standard"
     assert worked["harness"] == read_config(root)["runner"]
     quiet = run_sync(root, runner=runner)
     assert quiet["outcome"] == "no_change" and len(calls) == 1
@@ -1840,7 +1844,7 @@ def test_boot_time_reads_the_platform_source(monkeypatch, platform):
             return CompletedProcess(args, 0, f"{{ sec = {seconds}, usec = 123 }} Fri Nov 6 10:00:00 2026\n")
         monkeypatch.setattr(service.subprocess, "run", sysctl)
     else:
-        def proc_stat(path):
+        def proc_stat(path, **kwargs):
             assert str(path) == "/proc/stat"
             return f"cpu 1 2 3 4\nbtime {seconds}\nprocesses 900\n"
         monkeypatch.setattr(service.Path, "is_file", lambda path: str(path) == "/proc/stat")
@@ -1872,7 +1876,7 @@ def test_boot_time_missing_from_platform_output_is_unknown(monkeypatch, platform
     monkeypatch.setattr(service.subprocess, "run", lambda *a, **kw: CompletedProcess(a, 1, ""))
     monkeypatch.setattr(service.shutil, "which", lambda name: "/usr/sbin/sysctl")
     monkeypatch.setattr(service.Path, "is_file", lambda path: True)
-    monkeypatch.setattr(service.Path, "read_text", lambda *a: "cpu 1 2 3 4\n")
+    monkeypatch.setattr(service.Path, "read_text", lambda *a, **k: "cpu 1 2 3 4\n")
     assert service._boot_time() is None
 
 

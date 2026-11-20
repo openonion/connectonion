@@ -450,3 +450,25 @@ def test_a_model_that_mangles_the_run_evidence_block_is_healed_after_its_turn(tm
         assert page.count(start) == page.count(end) == page.count('## Run evidence\n') == 1, page
         assert 'The model restated' not in page
         assert page.index(start) < page.index('## Run evidence') < page.index(end) < page.index('Investigation:')
+
+
+def test_finishing_a_skill_page_inside_next_does_not_wait_on_its_own_lock(tmp_path, monkeypatch):
+    """#3128: `co rem next` holds the maintenance lock while it finishes the page it investigated. A skill page
+    retained its cited instructions by taking that lock again, waited on itself for the whole 10-minute deadline,
+    and five calls in a row came back with nothing (2026-11-17 to 19, a newly mapped skill page at job 200)."""
+    import hashlib
+    from connectonion.rem import investigate, native_round, refusals, skill_runs
+    from connectonion.rem.files import maintenance_lock
+    monkeypatch.setattr(skill_runs, 'WRITE_WAIT_SECONDS', 0.5)  # the self-wait fails fast instead of in ten minutes
+    monkeypatch.setattr(investigate, 'record_result', lambda *args, **kwargs: None)
+    monkeypatch.setattr(refusals, 'forget_refusal', lambda *args, **kwargs: None)
+    text = 'Inspect the actual artifact before claiming success.'
+    source = 'skill-source:' + hashlib.sha256(text.encode()).hexdigest()[:16]
+    Notebook(tmp_path).write('skills/catalog/example.md', f'# example\n\n## Insight\nChecks its work. [1]\n\n## Sources\n- [1] {source}\n')
+    cursor = {'job_index': 3, 'current': {'record': 'skills/catalog/example.md', 'searched': [], 'changed': ['skills/catalog/example.md'],
+                                          'repository_items': [], 'session_items': [], 'refused_sources': [],
+                                          'skill_items': [{'source': source, 'text': text}]}}
+    with maintenance_lock(tmp_path, wait=1):
+        native_round._finish_investigation(tmp_path, cursor)
+    assert cursor['current'] is None and cursor['job_index'] == 4
+    assert skill_runs.instruction_context(tmp_path, source)['excerpt'] == text

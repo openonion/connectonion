@@ -170,7 +170,8 @@ def _sending_failed(exc: Exception) -> str:
     detail = str(exc) or type(exc).__name__
     if "device JID" in detail or "not logged in" in detail.lower():
         return ("this device is not linked any more — the phone unlinked it, or the QR was "
-                "never scanned. Next: co whatsapp listen and scan the QR again")
+                "never scanned. Next: co whatsapp listen and scan the QR again, or "
+                "co whatsapp listen --phone <number> for a code to type on the phone")
     return detail
 
 
@@ -517,7 +518,8 @@ class WhatsApp:
         to `whatsmeow_device` when the phone confirms the link; that row is the
         link."""
         how = ("Next: co whatsapp listen — a QR code appears, scan it from the phone "
-               "under Settings > Linked devices. Use a number dedicated to this, "
+               "under Settings > Linked devices; not at this screen? co whatsapp listen "
+               "--phone <number> prints a code to type on the phone instead. Use a number dedicated to this, "
                "never a personal or an employee's main one.")
         if not self.session_path.exists():
             return [f"No linked WhatsApp session at {self.session_path}. {how}"]
@@ -626,10 +628,12 @@ class WhatsApp:
 
     # ---- inbound -----------------------------------------------------------
 
-    def run(self, inbox: Inbox, *, raw: bool = False) -> None:
+    def run(self, inbox: Inbox, *, raw: bool = False, phone: str = "") -> None:
         """Hold the linked connection and write every message. Blocks.
 
-        Also drains the outbox, because this process owns the only socket."""
+        Also drains the outbox, because this process owns the only socket.
+        With `phone` (digits, country code first), an unlinked device asks for
+        an 8-character pairing code instead of showing a QR (#2161)."""
         _sdk()
         from neonize.client import NewClient
         from neonize.events import (ConnectedEv, ConnectFailureEv, DisconnectedEv,
@@ -654,6 +658,18 @@ class WhatsApp:
             inbox.record_connection("connected", account=self._own_user,
                                     ids=sorted(self._own_ids))
 
+        if phone:
+            asked = threading.Event()
+
+            @client.event.qr
+            def _pair_by_code(_client, _data) -> None:
+                # The first QR means the socket is up and the device is not
+                # linked; a code is asked for once, and later QRs stay unprinted.
+                if not asked.is_set():
+                    asked.set()
+                    threading.Thread(target=self._pairing_code, args=(inbox, stop, phone),
+                                     daemon=True).start()
+
         @client.event(PairStatusEv)
         def _on_paired(_client, event) -> None:
             inbox.log(f"paired {_jid_str(getattr(event, 'ID', None))}")
@@ -671,7 +687,8 @@ class WhatsApp:
                 inbox, stop,
                 f"logged out by the phone (reason {getattr(event, 'Reason', 'unknown')}). "
                 "This device was unlinked under Settings > Linked devices. "
-                "Next: co whatsapp listen — scan the QR again")
+                "Next: co whatsapp listen — scan the QR again, or add --phone <number> "
+                "for a code to type on the phone")
 
         @client.event(StreamReplacedEv)
         def _on_replaced(_client, _event) -> None:
@@ -818,6 +835,26 @@ class WhatsApp:
             self._fatal(inbox, stop, outdated_message())
             return
         inbox.log(f"connect failed: {reason} {getattr(event, 'Message', '')}".strip())
+
+    def _pairing_code(self, inbox: Inbox, stop: threading.Event, phone: str) -> None:
+        """Print the code the phone types in. A QR rotates every ~20 s and has to be
+        seen; this lasts minutes and can be sent as text (#2161).
+
+        Runs on its own thread, outside the SDK callback that started it, so a
+        refusal is caught here and ends the listener with WhatsApp's reason.
+        """
+        try:
+            code = self._client.PairPhone(phone, show_push_notification=True)
+        except Exception as exc:
+            self._fatal(inbox, stop, f"WhatsApp gave no pairing code for {phone}: {exc}. "
+                                     "Check the number has a WhatsApp account, or run "
+                                     "co whatsapp listen without --phone and scan the QR")
+            return
+        inbox.log(f"pairing code issued for {phone}")
+        print(f"Pairing code: {code}\n"
+              f"On the phone with +{phone}: WhatsApp > Settings > Linked devices > Link a device > "
+              f"Link with phone number instead, then type the code. It lasts a few minutes.",
+              file=sys.stderr, flush=True)
 
     def _fatal(self, inbox: Inbox, stop: threading.Event, reason: str) -> None:
         """Record why this listener can never receive again, and wind it down.
@@ -1619,11 +1656,16 @@ class WhatsApp:
 
 
 def _iso(timestamp) -> str:
-    """WhatsApp timestamps arrive as protobuf Timestamps or as seconds."""
+    """WhatsApp timestamps arrive as protobuf Timestamps, seconds, or
+    milliseconds: neonize's live MessageInfo.Timestamp is milliseconds. Read
+    as seconds that is the year 57000, which POSIX refuses with ValueError
+    and Windows with OSError 22; on Windows every incoming message was
+    skipped."""
     seconds = getattr(timestamp, "seconds", None)
     if seconds is None:
         seconds = timestamp
     try:
-        return iso_utc(int(seconds))
-    except (TypeError, ValueError):
+        seconds = int(seconds)
+        return iso_utc(seconds // 1000 if seconds > 10**11 else seconds)
+    except (TypeError, ValueError, OSError):
         return iso_utc()

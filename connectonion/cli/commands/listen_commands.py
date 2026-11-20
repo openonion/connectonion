@@ -288,7 +288,7 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     print_tip(f"Next: co {name} check")
 
 
-def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
+def handle_listen(name: str, raw: bool = False, restart: bool = False, phone: str = "") -> None:
     """Hold the connection and write every message to the inbox."""
     p = _configured(name)
     inbox = Inbox(name)
@@ -338,7 +338,7 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
     main = threading.current_thread() is threading.main_thread()
     previous = signal.signal(signal.SIGTERM, terminated) if main else None
     try:
-        p.run(inbox, raw=raw)
+        p.run(inbox, raw=raw, **({"phone": phone} if phone else {}))
     except KeyboardInterrupt:
         inbox.log("stopped by Ctrl-C")
     except ListenerStopped as exc:
@@ -935,6 +935,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
             CO_SENDER=message.sender,
             CO_MSG_ID=message.id,
             CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
+            PYTHONIOENCODING="utf-8",
         )
         os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
         # Before the command, not before the send. Here the command *is* the
@@ -944,7 +945,10 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # lands, which is the same as not marking at all.
         _mark_answering(p, inbox, message)
         run = subprocess.run(command, input=_with_context(inbox, message, context) + "\n",
-                             capture_output=True, text=True, env=env)
+                             capture_output=True, text=True, env=env,
+                             # UTF-8 both ways, not the locale: on Windows that is
+                             # cp1252, and Chinese replies arrived as "â€¢".
+                             encoding="utf-8", errors="replace")
         # Returning finishes the message; raising leaves it in cur/ for the
         # sweep to offer again in an hour. So a command that failed, or a
         # reply the platform refused, raises: completing it here turned every

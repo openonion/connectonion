@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 
 from connectonion.rem import direct_send
+from tests.unit.test_rem_live_reader import call, host  # noqa: F401
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, state_path, write_json
 
@@ -95,3 +96,46 @@ def test_today_lists_the_replies_rem_sent_itself(tmp_path, rem_clock):
     sent = reader.snapshot(tmp_path, local=True, today=True)['sent_by_rem']
     assert [row['title'] for row in sent] == ['Mara Quill']
     assert 'REM.sent_by_rem' in reader.TEMPLATE.read_text()  # the night card names them
+
+
+# #3121: the owner changes one person's policy in one click; it wins over REM's rule and is recorded with a reason.
+@pytest.mark.parametrize('value', ['partner', 'none', 'never'])
+def test_the_owners_choice_is_written_kept_and_recorded(tmp_path, value):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    write_json(state_path(tmp_path, 'map.json'), {'owner': {'record': 'people/me.md', 'addresses': ['me@example.test']}})
+    book.write('people/mara.md', page('Mara Quill', 'The user describes Mara as a co-founder.'))
+    assert direct_send.refresh(tmp_path, '2026-11-09') == ['people/mara.md']
+    result = direct_send.set_tier(tmp_path, 'people/mara.md', value, reason='from the reply card')
+    assert result == {'page': 'people/mara.md', 'direct_send': value}
+    text = book.read('people/mara.md')
+    assert text.count('- Direct send:') == 1 and f'- Direct send: {value} (set by you, ' in text and '(set by REM' not in text
+    assert direct_send.refresh(tmp_path, '2026-11-10') == []  # REM's rule never overwrites the owner's line
+    log = [json.loads(line) for line in state_path(tmp_path, 'direct_send.jsonl').read_text().splitlines()]
+    assert log[-1] | {'at': None} == {'at': None, 'page': 'people/mara.md', 'value': value, 'by': 'owner', 'reason': 'from the reply card'}
+    assert log[0]['by'] == 'rem' and log[0]['value'] == 'partner'  # REM's own change is recorded too
+
+
+def test_never_means_drafts_only_and_a_bad_value_or_page_is_refused(tmp_path):
+    from connectonion.rem import drafts
+    from connectonion.rem.files import RemError
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.write('people/mara.md', page('Mara Quill', 'Co-founder.', facts='- Direct send: never (set by you, 2026-11-19)\n'))
+    assert drafts._page_excerpt(tmp_path, 'people/mara.md', ('Facts',))['direct_send'] == 'never'
+    with pytest.raises(RemError):
+        direct_send.set_tier(tmp_path, 'people/mara.md', 'always')
+    with pytest.raises(RemError):
+        direct_send.set_tier(tmp_path, 'projects/x.md', 'partner')
+
+
+def test_the_reader_sets_a_persons_policy_through_the_host(host):
+    Notebook(host.root).write('people/mara.md', page('Mara Quill', 'Co-founder.'))
+    cookie = f'co_rem={host.token}'
+    payload = json.dumps({'page': 'people/mara.md', 'tier': 'partner', 'reason': 'reply card'}).encode()
+    assert call(host.routes, 'POST', '/rem/direct-send', body=payload)[0] == 401
+    status, _, body = call(host.routes, 'POST', '/rem/direct-send', cookie=cookie, body=payload)
+    assert status == 200 and json.loads(body) == {'page': 'people/mara.md', 'direct_send': 'partner'}
+    assert '- Direct send: partner (set by you, ' in Notebook(host.root).read('people/mara.md')
+    for value in ({'page': 'people/mara.md', 'tier': 'always'}, {'page': '../x.md', 'tier': 'none'}, {'tier': 'none'}, []):
+        assert call(host.routes, 'POST', '/rem/direct-send', cookie=cookie, body=json.dumps(value).encode())[0] == 400

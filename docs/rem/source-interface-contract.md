@@ -94,11 +94,33 @@ status/consent hooks. Those metadata-only functions remain available to source-o
 callers. The shared summary includes the full effective scope and stays identical
 before/after approval, avoiding repeated consent prompts caused by display changes.
 
-Keep the existing notebook consent receipt tied to scope, runner and model.
+The notebook consent receipt stores `source_approvals` separately from the
+mail/session summary. Each entry binds a source scope to the default runner/model
+and every effective stage runner/model, including level settings and explicit
+routes. The same `source_execution` map appears in the confirmation summary;
+the CLI groups stages that use the same recipient. Old registered-source approvals
+without this map require a fresh confirmation, never an automatic upgrade.
+
+Before confirmation, save default source metadata under a short lock so a relative
+lookback does not drift while the user reads it. The final approval transaction
+compares the displayed snapshot before subscribing the mailboxes it offered. A
+changed selection or model route rejects that confirmation. Automatic init/mail
+grants preserve registered-source approvals, including approvals that have become
+invalid; `start` checks those entries independently and requests confirmation again.
+
 Check it again during acquisition publication, batch consumption, investigation,
 cached citation resolution and resumed model work. A registry entry or citation
 routing record cannot grant access. Configuration, removal and commit-time
 approval checks use the same short notebook transaction.
+
+Prepared source-backed tasks retain the execution map captured at preparation,
+not a later refreshed map. Dispatch, retries and resumed tasks reject a changed
+map even if the new configuration has since been approved. Preparation also checks
+the actual stage runner/model; dispatch checks the actual recipient. An explicit
+render route is recorded as the render stage when investigation hands over to it.
+Reprepare old source-backed tasks after changing routes instead of silently
+retargeting a cached task. This check is skipped for material without registered
+source references, preserving the legacy task paths.
 
 ## Acquisition, failure and progress
 
@@ -117,6 +139,12 @@ found during static review and needs team review. The synthetic interleaving tes
 models a writer waiting to publish while a reader consumes the previous snapshot.
 Each adapter must supply its own concurrency and revocation evidence.
 
+Native acquisition uses the preparation progress watcher and deadline before the
+long notebook lock. A short preflight lock checks repeated-stall holds and preserves
+the prior preparer's identity when waiting for another native task. Fresh catchup
+nights and explicit discard acquire again; an open pending task keeps its saved
+material. The collection-only held path may acquire without spending a model call.
+
 | Result | Proposed action |
 | --- | --- |
 | Successful acquisition | Publish complete snapshots and a scope-bound success receipt, then allow offline consumption. |
@@ -128,6 +156,20 @@ Adapters translate known acquisition failures to `SourceUnavailable` and classif
 whether saved material remains usable. A later temporary failure cannot erase
 an existing account/integrity block. Expected source failures remain visible
 while other eligible sources continue. Messages expose no credentials or bodies.
+
+Every acquisition receipt has a unique ID. A success cannot clear a blocking
+receipt that changed after that acquisition began; it returns a blocked result
+and preserves the failure. A fresh retry started after the block can clear it.
+Overlapping failures conservatively win, including a failure published after an
+overlapping success. This requires a new retry rather than inferring recovery from
+completion order. Receipt comparison/publication uses the short notebook lock;
+no notebook lock is added around provider acquisition or network work.
+
+`require_material` raises `SourceMaterialUnavailable` (a `RemError`) when retained
+material no longer passes the current access check. Native submit translates that
+specific failure into its existing `TaskFault`, so the driver can park the stale
+task. Other notebook I/O or ownership-data errors propagate as round errors.
+
 Granola partial refreshes need an explicit adapter decision about atomic
 publication. The local candidate publishes only a complete selected acquisition.
 

@@ -30,7 +30,7 @@ def load_summary(path: Path) -> dict:
     """One co eval summary, or ValueError when it is not one."""
     if path.stat().st_size > MAX_BYTES:
         raise ValueError('oversized')
-    data = yaml.safe_load(path.read_text())
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get('turns'), list):
         raise ValueError('unsupported shape')
     return data
@@ -281,13 +281,13 @@ def _ledgered(root: Path, record: str, items: list[dict], turn) -> dict:
 def skill_record_snapshots(items: list[dict], stamp: str) -> list[dict]:
     """Identify exact bounded run material before temporary evidence is laid out."""
     from .evidence import FILE_CHARS
-    from .files import SECRET_SHAPES
+    from .files import KEY_SHAPES
     output = []
     for item in items:
         kind = item['source'].split(':')[0]
         if kind not in ('skill-session', 'skill-eval', 'skill-runs'):
             continue
-        text = SECRET_SHAPES.sub('[secret-shaped text removed by co rem]', item['text'])
+        text = KEY_SHAPES.sub('[secret-shaped text removed by co rem]', item['text'])
         count = (len(text) + FILE_CHARS - 1) // FILE_CHARS
         for offset in range(0, len(text), FILE_CHARS):
             number = offset // FILE_CHARS + 1
@@ -325,13 +325,13 @@ def retain_skill_records(root: Path, items: list[dict], cited: set[str]) -> int:
 
 def _valid_skill_record(item: dict) -> bool:
     from .evidence import FILE_CHARS
-    from .files import SECRET_SHAPES
+    from .files import KEY_SHAPES
     from .reader_model import PRIVATE
     source, origin, text = item.get('source', ''), item.get('origin', ''), item.get('text')
     return (isinstance(source, str) and re.fullmatch(r'skill-record:[0-9a-f]{64}', source) is not None
             and isinstance(origin, str) and re.fullmatch(r'skill-(?:session|eval|runs):.+:part-[1-9]\d*', origin) is not None
             and isinstance(text, str) and 0 < len(text) <= FILE_CHARS
-            and not SECRET_SHAPES.search(text) and not PRIVATE.search(text)
+            and not KEY_SHAPES.search(text) and not PRIVATE.search(text)
             and source == 'skill-record:' + hashlib.sha256((origin + '\0' + text).encode()).hexdigest())
 
 
@@ -349,10 +349,13 @@ def skill_record_context(root: Path, source: str) -> dict | None:
             'origin': saved['origin'], 'sender': '', 'thread': '', 'input_scope': saved['input_scope']}
 
 
-def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -> int:
-    """Keep only cited, bounded instruction excerpts whose content matches their ID."""
+def retain_instruction_context(root: Path, items: list[dict], cited: set[str], *, lock_held=False) -> int:
+    """Keep only cited, bounded instruction excerpts whose content matches their ID.
+
+    `lock_held`: the caller already holds the maintenance lock (`co rem next` finishing the page it
+    investigated). Taking it again waited on itself for the whole deadline (#3128)."""
     from .evidence import FILE_CHARS
-    from .files import SECRET_SHAPES
+    from .files import KEY_SHAPES
     from .reader_model import PRIVATE
     retained = 0
     for item in items:
@@ -361,7 +364,7 @@ def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -
         digest = hashlib.sha256(text.encode()).hexdigest() if isinstance(text, str) else ''
         if (kind not in ('skill-source', 'skill-reference') or not isinstance(text, str)
                 or source != kind + ':' + digest[:16]
-                or SECRET_SHAPES.search(text) or PRIVATE.search(text)):
+                or KEY_SHAPES.search(text) or PRIVATE.search(text)):
             continue
         for identifier in sorted(cited):
             part = re.fullmatch(re.escape(source) + r':part-([1-9]\d*)', identifier)
@@ -378,15 +381,16 @@ def retain_instruction_context(root: Path, items: list[dict], cited: set[str]) -
                      'source': kind, 'time': item.get('timestamp') or '', 'sender': '', 'thread': '',
                      'input_scope': scope, 'content_sha256': digest, 'part': int(part[1]) if part else None,
                      'recovered_at': datetime.now(timezone.utc).isoformat() if item.get('recovered') else ''}
-            _save_instruction_context(root, value)
+            _save_instruction_context(root, value, lock_held=lock_held)
             retained += 1
     return retained
 
 
-def _save_instruction_context(root: Path, value: dict) -> None:
+def _save_instruction_context(root: Path, value: dict, *, lock_held=False) -> None:
+    from contextlib import nullcontext
     from .files import read_json, state_path, write_json
     path = state_path(root, 'skill-sources/' + hashlib.sha256(value['id'].encode()).hexdigest() + '.json')
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         previous = read_json(path, {})
         if previous:
             if previous.get('content_sha256') != value['content_sha256']:
@@ -399,7 +403,7 @@ def _save_instruction_context(root: Path, value: dict) -> None:
 
 def instruction_context(root: Path, source: str) -> dict | None:
     """Read retained excerpts, never today's installed files or session transcripts."""
-    from .files import SECRET_SHAPES, read_json, state_path
+    from .files import KEY_SHAPES, read_json, state_path
     from .reader_model import PRIVATE
     if not re.fullmatch(r'skill-(?:source|reference):[0-9a-f]{16}(?::part-[1-9]\d*)?', source):
         return None
@@ -408,7 +412,7 @@ def instruction_context(root: Path, source: str) -> dict | None:
     digest = row.get('content_sha256', '')
     if (row.get('id') != source or not isinstance(text, str) or not 0 < len(text) <= 16_384
             or not re.fullmatch(r'[0-9a-f]{64}', digest) or digest[:16] != source.split(':')[1]
-            or SECRET_SHAPES.search(text) or PRIVATE.search(text)):
+            or KEY_SHAPES.search(text) or PRIVATE.search(text)):
         return None
     return row
 
@@ -455,7 +459,7 @@ def _record_index(directory: Path, records: list[dict], samples: dict, stamp: st
                     f"Large records are split losslessly into numbered parts; inspect all relevant parts. "
                     f"Session sample: {len(samples['items'])} of {samples['matched_invocations']} indexed invocations, "
                     f"latest first, limit {samples['sample_limit']}; missing: {samples['missing']}. "
-                    "Reported outcomes do not independently verify artifacts.\n\n" + laid_out['index'].read_text()}
+                    "Reported outcomes do not independently verify artifacts.\n\n" + laid_out['index'].read_text(encoding="utf-8")}
 
 
 def _report(name: str, result: dict) -> str:

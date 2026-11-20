@@ -431,6 +431,23 @@ def test_consume_pipes_the_message_through_a_command_and_replies_with_its_stdout
     assert (box.root / "chats" / "oc_s").is_dir()
 
 
+def test_consume_speaks_utf8_with_its_command_whatever_the_locale(box, fake, monkeypatch):
+    # On Windows the locale encoding is cp1252: a UTF-8 reply came back as
+    # "â€¢", and a Chinese message could not even be written to stdin.
+    import locale
+
+    monkeypatch.setattr(locale, "getencoding", lambda: "cp1252")
+    monkeypatch.setattr(Inbox, "ensure_listener", lambda self, **_: 1)
+    deliver(box, i="om_u", chat="oc_u", text="你好")
+    command = [sys.executable, "-c",
+               "import json,sys; m=json.loads(sys.stdin.buffer.read().decode('utf-8')); "
+               "sys.stdout.buffer.write(('• ' + m['text']).encode('utf-8'))"]
+
+    listen_commands.handle_consume("feishu", command, once=True)
+
+    assert fake.sent == [("oc_u", "• 你好", "om_u")]
+
+
 def test_consume_marks_before_running_the_command_not_after(box, fake, monkeypatch):
     # In `consume` the command *is* the answering, and it can take minutes.
     # Marking after it would light up for the instant before the reply lands,

@@ -202,7 +202,7 @@ def test_model_denial_stops_first_run_before_writing_pages(first_run, monkeypatc
     from connectonion.rem.service import run_logs
     assert run_logs(root)[0]["phase"] == "model access"
     assert run_logs(root)[0]["outcome"] == "failed"
-    assert run_logs(root)[0]["speed"] == "fast"
+    assert run_logs(root)[0]["speed"] == "standard"
     assert run_logs(root)[0]["harness"] == "codex"
 
 

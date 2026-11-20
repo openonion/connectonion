@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from threading import Event, Thread, current_thread
 
 import pytest
 
@@ -234,6 +235,58 @@ def test_temporary_failure_explains_stale_material(shared_sources):
     hooks.fetch(env.root)
     items, lines = gather(env)
     assert items and any('may be stale' in line for line in lines)
+
+
+@pytest.mark.parametrize('order', ['success-before-block', 'retry-before-new-block', 'failure-after-success'])
+def test_overlapping_acquisition_cannot_clear_a_block_without_a_fresh_retry(shared_sources, monkeypatch, order):
+    env = shared_sources
+    env.select('notes')
+    hooks.fetch(env.root)
+    if order == 'retry-before-new-block':
+        env.failures['notes'] = hooks.SourceUnavailable('account mismatch', allow_saved=False)
+        hooks.fetch(env.root)
+        del env.failures['notes']
+    original = env.modules['notes'].fetch
+    paused, resume = Event(), Event()
+    results, errors = [], []
+
+    def fetch(root, sub):
+        if current_thread() is worker:
+            result = original(root, sub)
+            paused.set()
+            assert resume.wait(5), 'foreground did not release the overlapping fetch'
+            if order == 'failure-after-success':
+                raise hooks.SourceUnavailable('account mismatch', allow_saved=False)
+            return result
+        if order != 'failure-after-success':
+            raise hooks.SourceUnavailable('account mismatch', allow_saved=False)
+        return original(root, sub)
+
+    def background():
+        try:
+            results.append(hooks.fetch(env.root))
+        except Exception as error:
+            errors.append(error)
+
+    monkeypatch.setattr(env.modules['notes'], 'fetch', fetch)
+    worker = Thread(target=background, daemon=True)
+    worker.start()
+    try:
+        assert paused.wait(5), 'background fetch did not reach publication boundary'
+        foreground = hooks.fetch(env.root)
+        assert foreground['notes']['ok'] is (order == 'failure-after-success')
+    finally:
+        resume.set()
+        worker.join(5)
+    assert not worker.is_alive() and not errors
+    assert results[0]['notes']['ok'] is False and results[0]['notes']['allow_saved'] is False
+    assert hooks.cited(env.root, citation('notes')) is None
+    with pytest.raises(hooks.SourceUnavailable):
+        hooks.collect(env.root, 'notes', {}, 2, 10000)
+    assert gather(env)[0] == []
+    monkeypatch.setattr(env.modules['notes'], 'fetch', original)
+    assert hooks.fetch(env.root)['notes']['ok']
+    assert hooks.cited(env.root, citation('notes')) is not None
 
 
 def test_unexpected_fetch_errors_propagate(shared_sources):

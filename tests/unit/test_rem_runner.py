@@ -478,11 +478,12 @@ def delegate(monkeypatch):
         newest = max(tasks, key=lambda path: path.stat().st_mtime_ns) if tasks else None
         kw = {**kw, 'material': json.loads(newest.read_text()) if newest else None}
         calls.append((argv, kw))
-        if argv[-1].startswith('/rem-investigate'):
+        prompt = kw.get('input') or argv[-1]  # a long prompt goes on stdin
+        if prompt.startswith('/rem-investigate'):
             import re
-            path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+            path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
             path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
-        if argv[-1].startswith('/rem-maintain'):
+        if prompt.startswith('/rem-maintain'):
             workspace = Path(kw['cwd'])
             directory = max(workspace.glob('maintain-*'), key=lambda path: path.stat().st_mtime_ns)
             items = json.loads((directory / 'material.json').read_text())
@@ -501,8 +502,18 @@ def test_run_task_drops_null_bytes_from_prompt(tmp_path, delegate):
     result = runner.run_task(tmp_path, "Continue\0 investigating\0.", default_config(), "investigate")
     argv = delegate[0][0]
     assert all("\0" not in argument for argument in argv)
-    assert argv[-1] == "Continue investigating."
+    assert argv[-1] == "Continue investigating.\n\n" + runner.NO_DISCOVERY_NOTE
     assert result["outcome"] == "natural"
+
+
+def test_every_runner_turn_is_told_not_to_explore_co(tmp_path, delegate):
+    """#3099 A/B trial: manual investigations, which run here and not as native task packets,
+    ran 63 `co commands` and 24 help calls on the global co rule; the note follows any /skill."""
+    runner.run_task(tmp_path, "/rem-tag Tag the pages.", default_config(), "tag")
+    prompt = delegate[0][0][-1]
+    assert prompt.startswith("/rem-tag") and prompt.endswith(runner.NO_DISCOVERY_NOTE)
+    runner.run_task(tmp_path, prompt, default_config(), "tag")
+    assert delegate[1][0][-1].count("do not run `co commands`") == 1
 
 
 def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebook, monkeypatch):
@@ -523,7 +534,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     prompts = []
 
     def stop_after_capture(argv, **kwargs):
-        prompts.append(argv[-1])
+        prompts.append(kwargs.get('input') or argv[-1])  # a long prompt goes on stdin
         raise OSError('synthetic stop')
 
     monkeypatch.setattr('connectonion.rem.runner.subprocess.run', stop_after_capture)
@@ -553,7 +564,7 @@ def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook,
     prompts = []
 
     def stop_after_capture(argv, **kwargs):
-        prompts.append(argv[-1])
+        prompts.append(kwargs.get('input') or argv[-1])  # a long prompt goes on stdin
         raise OSError('synthetic stop')
 
     monkeypatch.setattr('connectonion.rem.runner.subprocess.run', stop_after_capture)
@@ -561,8 +572,9 @@ def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook,
         run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     size = len(notebook.read(record))
-    assert f'The page is {size:,} characters; it must end under 20,000' in prompts[0]
-    assert 'fold the oldest History' in prompts[0]
+    assert f'The page is {size:,} characters; it should end under 20,000' in prompts[0]
+    # An append may drop no cited line (#3105): the program archives the oldest History, the turn keeps it.
+    assert "keep every cited line" in prompts[0] and "the program moves it to the page's archive" in prompts[0]
 
 
 def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
@@ -613,7 +625,8 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert len(argv[-1]) < 8000  # Large material must not go through argv.
     assert options["cwd"] == str(notebook.root / ".state/tasks")
     seconds = config["limits"]["timeout_seconds"]
-    assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
+    # Longer than the adapter's own cleanup at its deadline: interrupt, archive, kill.
+    assert options["timeout"] == seconds + (0 if harness == "coai" else 30)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
     investigating = stage in ("init", "investigate")
@@ -623,7 +636,7 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     else:
         assert "--permission-mode" not in argv
     if harness == "codex":
-        assert argv[argv.index("--speed") + 1] == "fast"
+        assert argv[argv.index("--speed") + 1] == "standard"
         assert argv[argv.index("--sandbox") + 1] == (
             "danger-full-access" if investigating else "workspace-write")
     else:
@@ -632,7 +645,7 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["material"] == [item]
     assert not list((notebook.root / ".state/tasks").glob("*/material.json")), "no private copy is left"
     metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
-    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "fast")
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "standard")
     assert result["usage"] == {"input_tokens": 13}
     assert result["changed"] == []
 
@@ -644,6 +657,22 @@ def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
     assert argv[argv.index("--speed") + 1] == "standard"
     metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
     assert metrics["speed"] == "standard"
+
+
+def test_a_codex_worker_is_started_at_the_notebooks_effort_and_its_record_says_so(notebook, delegate):
+    """2026-11-17: no effort was passed, so all 81 worker turns of a night ran at the owner's
+    own ~/.codex setting (max) while config.yaml said medium. Maintain is level 3: low (#3099)."""
+    run_stage(notebook, [], default_config())
+    argv = delegate[0][0]
+    assert argv[argv.index("--effort") + 1] == "low"
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert metrics["effort"] == "low"
+    high = runner.harness_flags({**default_config(), "effort": "high"}, "maintain")
+    assert high[high.index("--effort") + 1] == "high"
+    # Claude Code and co's own loop take no effort from us: nothing is passed or claimed.
+    for other in ("claude-code", "coai"):
+        config = {**default_config(), "runner": other}
+        assert "--effort" not in runner.harness_flags(config, "maintain") and runner.worker_effort(config) == ""
 
 
 def test_claude_rem_does_not_inherit_an_api_billing_key(notebook, delegate, monkeypatch):
@@ -675,12 +704,13 @@ def test_abstract_writes_disposable_copy_then_promotes(notebook, monkeypatch, de
         workspace = Path(kw["cwd"])
         working = next(workspace.glob("abstract-*/notebook"))
         assert working != notebook.root
-        Notebook(working).write("decisions/example.md", "# Why use Markdown\n\n## Why\nReadable pages.\n")
+        Notebook(working).write("decisions/example.md", '# Why use Markdown\n\n“Use Markdown for readable pages.” [1]\n\n## Why\nReadable pages. [1]\n\n## Sources\n- [1] codex:fixture:7\n')
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 2}}), stderr="")
 
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", write_decision)
-    result = run_stage(notebook, [], default_config(), stage="abstract")
+    result = run_stage(notebook, [{"source": "codex:fixture:7", "text": "Use Markdown for readable pages."}],
+                       default_config(), stage="abstract")
     assert result["changed"] == ["decisions/example.md"]
     assert notebook.read("decisions/example.md").startswith("# Why use Markdown")
 
@@ -694,6 +724,17 @@ def test_timeout_reports_partial_changes(notebook, monkeypatch, delegate):
     with pytest.raises(RunFailed, match="timed out") as caught:
         run_stage(notebook, [], default_config())
     assert caught.value.changed == ["notes/new.md"]
+
+
+def test_a_turn_the_adapter_timed_out_is_a_timed_out_task_with_its_usage(tmp_path, monkeypatch, delegate):
+    """2026-11-17: the adapter always beats the outer deadline, so its timeout left as a
+    plain RunFailed, exec did not park the task and one slow page ended the whole night."""
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", lambda *a, **kw: SimpleNamespace(
+        returncode=1, stderr="", stdout=json.dumps({"outcome": "timeout", "error": "turn timed out after 900s",
+                                                    "usage": {"input_tokens": 40}, "session_id": "fictional"})))
+    with pytest.raises(runner.TimedOut, match="co ai timed out after 1200s") as caught:
+        runner.run_task(tmp_path, "Continue.", default_config(), "investigate")
+    assert caught.value.usage == {"input_tokens": 40}
 
 
 @pytest.mark.parametrize("payload", ['[]', '42', '{}', '{"outcome":"natural","usage":"oops"}'])
@@ -759,7 +800,7 @@ def test_offline_maintenance_benchmark(notebook, monkeypatch, scenario, accepted
     source = "codex:synthetic:1"
 
     def simulated_agent(argv, **kw):
-        prompt = argv[-1]
+        prompt = kw.get('input') or argv[-1]  # a long prompt goes on stdin
         task = next(Path(kw['cwd']).glob('maintain-*'))
         assert 'no shell' not in prompt
         assert 'local file reads and writes' in prompt
@@ -1914,7 +1955,7 @@ def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebo
     assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
-    handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
+    handed = (options.get('input') or argv[-1]) + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
                                 if path.is_file())
     assert "Today is 2026-11-06" in handed
     assert "A past scheduled date alone does not establish occurrence or completion" in handed

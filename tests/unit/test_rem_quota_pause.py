@@ -55,8 +55,9 @@ def test_a_turn_stopped_by_the_floor_is_a_pause_status_names_with_its_start_and_
     paused = service.status(notebook)["paused"]
     assert paused["reason"] == "quota" and paused["since"].startswith("2026-09-07T17:00"), paused
     text = dashboard(notebook)
-    assert "Paused since Mon 07 Sep 17:00" in text, text
-    assert "90% used" in text and "Wed 09 Sep 17:46" in text, text
+    # Past the floor translation and tagging go on (#3195): the head says which stopped.
+    assert "Codex week at 90%: investigation paused until Wed; translation and tagging continue." in text, text
+    assert "Paused since Mon 07 Sep 17:00" in text and "Wed 09 Sep 17:46" in text, text
     assert "co rem config set limits.quota_floor_percent" in text, text
 
 
@@ -91,8 +92,8 @@ def test_a_night_with_no_pause_carries_no_pause(notebook, monkeypatch):
 
 
 @pytest.mark.parametrize("language, line", [
-    ("en", "REM paused: this week's Codex allowance is 90% used. It resumes Wed 17:46."),
-    ("zh", "REM 暂停中：本周 Codex 额度已用 90%，周三 17:46 恢复。")])
+    ("en", "Codex week at 90%: investigation paused until Wed; translation and tagging continue."),
+    ("zh", "额度到 90%：调查暂停到 周三；翻译和标签照常。")])
 def test_the_morning_note_says_rem_is_paused_instead_of_saying_nothing(notebook, monkeypatch, language, line):
     set_config(notebook, ["notify.channel", "telegram", "notify.target", "fictional-owner", "languages", language])
     week(monkeypatch, 90)

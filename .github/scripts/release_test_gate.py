@@ -18,6 +18,12 @@ Verdicts:
   blocked   every finished run on this commit is red. Publication stops; we
             do not re-run the matrix until a flake goes green. Re-run the red
             Tests run, then retry the release with workflow_dispatch.
+
+A release commit changes only version strings and release notes
+(version_only.py). Its own main-push run is the parent's code tested again, so
+when the commit itself has no green run yet the parent's green run is the
+evidence. That took the gate from waiting out a full matrix to answering at
+once.
 """
 
 from __future__ import annotations
@@ -69,6 +75,18 @@ def decide(sha: str, runs: dict, jobs_for: Callable[[int], dict]) -> Decision:
     return Decision(BLOCKED, "every Tests run on this commit is red: " + " | ".join(red))
 
 
+def decide_release(sha: str, parent: str, version_only: bool, runs_for: Callable[[str], dict],
+                   jobs_for: Callable[[int], dict]) -> Decision:
+    """The commit's own runs first; for a version-only commit, its parent's."""
+    own = decide(sha, runs_for(sha), jobs_for)
+    if own.verdict in (TESTED, BLOCKED) or not version_only:
+        return own  # a red run on the commit itself still stops the release
+    inherited = decide(parent, runs_for(parent), jobs_for)
+    if inherited.verdict == TESTED:
+        return Decision(TESTED, f"{sha} changes only release metadata; {inherited.reason}")
+    return own
+
+
 def _gh(path: str) -> dict:
     return json.loads(subprocess.check_output(["gh", "api", path], text=True))
 
@@ -81,12 +99,19 @@ def main() -> int:
     parser.add_argument("--poll-seconds", type=float, default=20)
     args = parser.parse_args()
 
-    runs_path = (f"repos/{args.repo}/actions/workflows/tests.yml/runs"
-                 f"?head_sha={args.sha}&event=push&per_page=100")
+    parent = subprocess.check_output(["git", "rev-parse", f"{args.sha}^"], text=True).strip()
+    only = subprocess.check_output(
+        [sys.executable, os.path.join(os.path.dirname(__file__), "version_only.py"), parent, args.sha],
+        text=True).strip() == "true"
+    print(f"{args.sha} changes only release metadata: {only}", flush=True)
     deadline = time.monotonic() + args.wait_minutes * 60
     while True:
-        decision = decide(args.sha, _gh(runs_path), lambda run_id: _gh(
-            f"repos/{args.repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100"))
+        decision = decide_release(
+            args.sha, parent, only,
+            lambda sha: _gh(f"repos/{args.repo}/actions/workflows/tests.yml/runs"
+                            f"?head_sha={sha}&event=push&per_page=100"),
+            lambda run_id: _gh(
+                f"repos/{args.repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100"))
         print(f"{decision.verdict}: {decision.reason}", flush=True)
         if decision.verdict != WAIT:
             break

@@ -323,6 +323,17 @@ def _consent_source(name: str, source: dict) -> str:
     return f'  {label}: {state}{scope}'
 
 
+def _source_model_lines(value: dict) -> list[str]:
+    """Show every approved stage recipient, grouping stages sharing a model."""
+    grouped = {}
+    for stage, route in value.get('source_execution', {}).get('stages', {}).items():
+        grouped.setdefault((route['runner'], route['model']), []).append(stage)
+    if not grouped:
+        return []
+    return ['Source models by stage:',
+            *(f"  {', '.join(stages)}: {runner} · {model}" for (runner, model), stages in grouped.items())]
+
+
 def _consent_text(value: dict) -> str:
     """Keep the approval decision on screen; config and JSON retain the details."""
     if 'changes' in value:
@@ -341,6 +352,7 @@ def _consent_text(value: dict) -> str:
     lines = ['co rem start — source access and schedule', '', 'Sources:',
              *(_consent_source(name, source) for name, source in value['sources'].items()),
              f"Model: {value['runner']} · {value['model']} · through {route}",
+             *_source_model_lines(value),
              f'Permissions: {permissions}',
              f"Schedule: {', '.join(schedule['times'])} ({schedule['timezone']})",
              f"Daily cap: {limits['runner_calls_per_day']} runner calls/day; "
@@ -513,6 +525,12 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
         for source, left in batch.get('material_remaining', {}).items():
             material += f" · {left} left in {source} for next time"
     lines = [rem_look.section('New material', said(material))]
+    if 'collection' in value:
+        backlog = value['collection']
+        waiting = f"{backlog['waiting']} listed mail waiting; unlisted mail and sessions are not counted"
+        if backlog['held']:
+            waiting += f" · {backlog['held']} held (source disabled or unapproved)"
+        lines.append(rem_look.section('Still waiting', said(waiting)))
     for name, acquisition in batch.get('acquisition', {}).items():
         if acquisition['ok']:
             result = acquisition['result']
