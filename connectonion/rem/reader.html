@@ -3767,7 +3767,10 @@
     :is(.qcard, .stale, .quiet-list) .handoff-line { gap: 0; margin-left: -8px; }
     :is(.qcard, .stale, .quiet-list) .handoff-line > .sep { display: none; }
     :is(.qcard, .stale, .quiet-list) .handoff-line > .sep:has(+ :is([data-agent="codex"], .handed)) { display: block; flex-basis: 100%; height: 0; overflow: hidden; }
-    :is(.qcard, .stale, .quiet-list) .handoff-line :is(.btn-quiet, .talk-menu > summary, .handed) { padding: 0 8px; white-space: nowrap; }
+    :is(.qcard, .stale, .quiet-list) .handoff-line :is(.btn-quiet, .talk-menu > summary) { padding: 0 8px; white-space: nowrap; }
+    /* The finished line is a sentence ("Codex 做完了 · …summary"), not a button: it wraps. Kept on one line it widened
+       Today to 1174px on a 390px phone, and the phone zoomed the whole page out. */
+    :is(.qcard, .stale, .quiet-list) .handoff-line .handed { padding: 0 8px; flex: 1 1 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
     /* The closes and the hand-offs are full touch targets on a phone, disabled in a snapshot or not (#2990); .qkind
        outranks the card's compact 28px strip above. */
     :is(.qcard .qkind, .stale, .quiet-list, .threads) .handoff-line :is(.strip-done, .strip-later, .strip-ignore, .strip-more, .later-choice, .later-cancel, [data-agent]) { min-height: 44px; }

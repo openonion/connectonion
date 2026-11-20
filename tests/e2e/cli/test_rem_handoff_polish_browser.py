@@ -155,3 +155,28 @@ def test_a_finished_rows_title_reads_in_the_readers_language(today, summary, sho
     status = page.locator('.handoff [role=status]').first.inner_text()
     assert 'Codex 做完了' in status
     assert (summary in status) == shown, status
+
+
+def test_a_long_finished_line_wraps_inside_a_today_card_on_a_phone(today):
+    """A finished hand-off's line is a sentence: on a 390px phone, inside a Today card, it wraps.
+
+    Kept on one line (white-space: nowrap, meant for the buttons beside it) it widened Today to
+    1174px, and a phone zoomed the whole page out to fit it."""
+    page, calls, answers = today
+    setup_row(page, 390)
+    task = {'id': 'b' * 32, 'agent': 'codex', 'result': 'completed', 'has_output': True, 'reply': '',
+            'summary': '已备妥案件的证据底稿、时间线和三份附件的核对清单，等你确认后再回复对方，并附上需要补充的材料说明。'}
+    page.evaluate('''(task) => {
+      keepTask(testEntry, task);
+      const card = document.createElement('div'); card.className = 'qcard';
+      const item = document.createElement('div'); item.className = 'qitem';
+      item.append(handOff(testEntry)); card.append(item);
+      document.getElementById('main').replaceChildren(card);
+    }''', task, isolated_context=False)
+    line = page.locator('.qcard .handed')
+    line.wait_for()
+    assert task['summary'][:10] in line.inner_text()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    box = line.bounding_box()
+    assert box['x'] + box['width'] <= 390 + 1
+    assert box['height'] > 30  # it wrapped onto more than one line
