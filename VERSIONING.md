@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc38
+## Current Version: 1.9.6rc39
+Release candidate 1.9.6rc39 for 1.9.6: `co init` starts the Host and leaves it running (launchd on macOS,
+systemd on Linux, a Scheduled Task at logon on Windows); `co host` shows it; the model is one line in
+host.yaml (`codex`, `claude-code` or a model name), so a logged-in Claude Code answers through the Host and
+O Chat with no API key. The WTF engine requires onionwright 0.0.16, the first with Windows support.
+Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc39.md).
+
+- 1.9.6rc39 (co init starts the Host on every OS; model: claude-code; onionwright 0.0.16).
+
+### Previous candidate: 1.9.6rc38
 Release candidate 1.9.6rc38 for 1.9.6: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. Stable remains 1.9.5. See
 [candidate notes](docs/releases/1.9.6rc38.md).
 
