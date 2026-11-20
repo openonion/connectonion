@@ -33,7 +33,8 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc45**: on a phone, Today no longer zooms out when a finished hand-off has a long summary; a `claude-code` Host names a missing Claude login. See [1.9.6rc45 notes](releases/1.9.6rc45.md).
+Release candidate **1.9.6rc46**: a Windows background Host counts as running only when it answers, and a Host the relay refuses stops with the reason. See [1.9.6rc46 notes](releases/1.9.6rc46.md).
+Before it, release candidate **1.9.6rc45**: on a phone, Today no longer zooms out when a finished hand-off has a long summary; a `claude-code` Host names a missing Claude login. See [1.9.6rc45 notes](releases/1.9.6rc45.md).
 Before it, release candidate **1.9.6rc44**: global `co init` on Windows from an elevated shell starts a working Host, `claude-code` by default when it is logged in. See [1.9.6rc44 notes](releases/1.9.6rc44.md).
 Before it, release candidate **1.9.6rc43**: the Windows logon Host starts when co was set up from an elevated shell. See [1.9.6rc43 notes](releases/1.9.6rc43.md).
 Before it, release candidate **1.9.6rc42**: rc39 to rc41, published. See [1.9.6rc42 notes](releases/1.9.6rc42.md).
