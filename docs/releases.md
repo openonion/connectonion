@@ -33,7 +33,8 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc40**: rc39's changes, published, plus `co init` that skips the background Host on Linux
+Release candidate **1.9.6rc41**: rc39 and rc40, published. See [1.9.6rc41 notes](releases/1.9.6rc41.md).
+Before it, release candidate **1.9.6rc40** (tagged, not published): rc39's changes, published, plus `co init` that skips the background Host on Linux
 without a systemd user session. See [1.9.6rc40 notes](releases/1.9.6rc40.md).
 Before it, release candidate **1.9.6rc39** (tagged, not published): `co init` starts the Host on macOS, Linux and Windows, and `model: claude-code` in
 host.yaml answers through your logged-in Claude Code. See [1.9.6rc39 notes](releases/1.9.6rc39.md).
