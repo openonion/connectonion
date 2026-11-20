@@ -235,3 +235,30 @@ def test_the_map_never_draws_over_its_own_heading_tabs_or_legend(page):
         assert page.evaluate("""() => GRAPH.linked.filter(graphVisible).every(n => {
           const x = graphState.T.applyX(n.x), y = graphState.T.applyY(n.y);
           return x >= 0 && x <= graphState.W && y >= 0 && y <= graphState.H; })""", isolated_context=False)
+
+
+def test_a_long_linked_page_name_wraps_on_a_phone(tmp_path, monkeypatch):
+    """A linked page named by a whole question wraps in the topic's link rows on a 390px phone.
+
+    `.gx-row-name a` was `white-space: nowrap`; a knowledge page named by a long question widened the
+    page to 402px on a phone, so the phone could scroll sideways."""
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem.reader import render
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    root = notebook(tmp_path / "rem")
+    from connectonion.rem.files import Notebook
+    long_title = "Where should a bare setup command keep its keys: the global keys file or the project's own environment file"
+    Notebook(root).write("projects/keys-question.md", f"# {long_title}\n## What it is\n- It decides where heat storage settings live. [1]\n\n## Sources\n- [1] gmail:k1 — 2026-01-11 — Cove\n")
+    path = tmp_path / "reader.html"
+    path.write_text(render(root, local=True), encoding="utf-8")
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel="chrome", headless=True)
+        page = browser.new_page(viewport={"width": 390, "height": 844}, locale="en-US")
+        page.route("http*://**/*", lambda route: route.abort())
+        page.goto(path.as_uri() + "#r=knowledge%2Fheat-storage.md")
+        name = page.locator(".gx-row-name a", has_text="Where should a bare setup command")
+        name.first.wait_for()
+        box = name.first.bounding_box()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert box["x"] + box["width"] <= 390 + 1
+        browser.close()
