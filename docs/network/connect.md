@@ -162,7 +162,7 @@ const agent = connect("agent-name", {
 ### Discovery & Smart Routing (Recommended for Custom Clients)
 
 The relay stores agent-provided endpoints and can return them for direct connections.
-The SDKs do **not** automatically probe endpoints yet; they use relay by default (Python) or `directUrl` when provided (TypeScript).
+The Python SDK already does this: `connect()` looks up the agent's endpoints, tries each direct one whose `/info` answers with the agent's address, and falls back to the relay. TypeScript uses the relay by default, or `directUrl` when provided.
 
 To implement smarter routing:
 1. **Lookup endpoints** for the agent via relay:

@@ -358,13 +358,30 @@ class Schtasks:
         return subprocess.CompletedProcess(args, 0, 'SUCCESS', '')
 
 
-def test_windows_runs_the_same_host_as_a_logon_task(tmp_path):
+def host_answers(monkeypatch, service, *, project, port=8000, address='0x'+'a'*64):
+    """What a Host leaves once it holds its port: the claim on its key, and /info there."""
+    import httpx
+    import json
+    service.config_root.mkdir(parents=True, exist_ok=True)
+    (service.config_root/'served_by.json').write_text(json.dumps(
+        {'name': 'synthetic', 'project': str(project), 'address': address, 'pid': 1, 'port': port}))
+
+    def response(request):
+        if request.url.port != port:
+            raise httpx.ConnectError('refused', request=request)
+        return httpx.Response(200, json={'address': address})
+    client = httpx.Client
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: client(transport=httpx.MockTransport(response), **kwargs))
+
+
+def test_windows_runs_the_same_host_as_a_logon_task(tmp_path, monkeypatch):
     """On Windows co init used to stop at "needs macOS or Linux"; the Host now
     runs as a Scheduled Task at logon, as the logged-in user, no admin."""
     profile = tmp_path/'profile'
     profile.mkdir()
     control = Schtasks()
     service = module().ScheduledTaskHostService(profile, home=tmp_path/'home', runner=control, builtin=True)
+    host_answers(monkeypatch, service, project=profile.resolve())
     state = service.start()
     assert state == {'configured': True, 'running': True, 'pid': None, 'device_ready': False}
     script = service.unit.read_text(encoding='utf-8')
@@ -383,6 +400,7 @@ def test_windows_task_serves_agent_py_and_never_writes_secrets(tmp_path, monkeyp
     (project/'agent.py').write_text('# synthetic')
     monkeypatch.setenv('OPENAI_API_KEY', 'sk-synthetic-secret')
     service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), port=8123)
+    host_answers(monkeypatch, service, project=project.resolve(), port=8123)
     service.start()
     script = service.unit.read_text(encoding='utf-8')
     assert ' host --agent agent.py --port 8123 >> ' in script
@@ -400,6 +418,7 @@ def test_windows_task_script_has_one_cr_per_line(tmp_path, monkeypatch):
         return real(self, data, encoding=encoding, errors=errors, newline='\r\n' if newline is None else newline)
     monkeypatch.setattr(Path, 'write_text', windows_text_mode)
     service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), builtin=True)
+    host_answers(monkeypatch, service, project=project.resolve())
     service.start()
     raw = service.unit.read_bytes()
     assert b'\r\r' not in raw and raw.count(b'\r\n') == raw.count(b'\n')
@@ -415,5 +434,29 @@ def test_windows_logs_folder_is_not_owner_only(tmp_path, monkeypatch):
     real = Path.mkdir
     monkeypatch.setattr(Path, 'mkdir', lambda self, *a, **k: (modes.append(k.get('mode')), real(self, *a, **k))[1])
     service = module().ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), builtin=True)
+    host_answers(monkeypatch, service, project=project.resolve())
     service.start()
     assert 0o700 not in modes
+
+
+def test_a_running_task_whose_host_keeps_exiting_is_not_running(tmp_path, monkeypatch):
+    """#3225: run-host.cmd starts the Host again every ten seconds, so the task
+    stays Running while every start exits. Here the always-on Host, with the same
+    global key, holds port 8000: /info there answers with this address, but the
+    claim on the key names the other folder. Say why, from stderr.log."""
+    import itertools
+    api = module()
+    monkeypatch.delenv('AGENT_CONFIG_PATH', raising=False)
+    project = tmp_path/'project'
+    project.mkdir()
+    service = api.ScheduledTaskHostService(project, home=tmp_path/'home', runner=Schtasks(), builtin=True)
+    host_answers(monkeypatch, service, project=tmp_path/'home'/'.co'/'runtime'/'host')
+    service.logs.mkdir(parents=True)
+    (service.logs/'stderr.log').write_text('[host] Port 8000 is already in use — another agent, or an earlier '
+                                           '`co host` still running?\n', encoding='utf-8')
+    clock = itertools.count()
+    monkeypatch.setattr(api.time, 'monotonic', lambda: next(clock))
+    monkeypatch.setattr(api.time, 'sleep', lambda seconds: None)
+    with pytest.raises(api.HostServiceError, match='Port 8000 is already in use'):
+        service.start()
+    assert service.status()['running'] is False

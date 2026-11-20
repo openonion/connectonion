@@ -328,6 +328,14 @@ async def serve_loop(
         try:
             msg = await recv_relay_msg(websocket, timeout=heartbeat_interval)
 
+            if msg.get("type") == "ERROR" and msg.get("original_type") == "ANNOUNCE":
+                # The relay keeps no registration for a refused announce, and the
+                # heartbeat would resend the same one: unreachable while it looks
+                # healthy (#3125). SystemExit passes host()'s reconnect loop,
+                # which retries only Exception, and stops the process.
+                raise SystemExit(f"[host] The relay rejected this agent's announce: {msg.get('error')}. "
+                                 f"Nobody can reach it through {relay_url or 'the relay'} until that is fixed.")
+
             if msg.get("type") == "ERROR":
                 console.print(f"{prefix} [red]Relay error: {msg.get('error')}[/red]")
                 continue

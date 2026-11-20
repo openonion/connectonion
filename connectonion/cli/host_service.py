@@ -454,10 +454,42 @@ class ScheduledTaskHostService(SystemdHostService):
             'timeout /t 10 /nobreak > nul', 'goto run', '',
         ])
 
-    def status(self) -> dict:
+    def _task(self) -> tuple[bool, bool]:
+        """(configured, running) as Task Scheduler sees it: the loop in run-host.cmd, not the Host."""
         result = self._schtasks('/Query', '/TN', self.task_name, '/FO', 'CSV', '/NH', allowed=(0, 1))
-        running = result.returncode == 0 and '"Running"' in result.stdout
-        return {'configured': self.unit.exists() and result.returncode == 0, 'running': running,
+        return self.unit.exists() and result.returncode == 0, result.returncode == 0 and '"Running"' in result.stdout
+
+    def _serving(self) -> bool:
+        """Whether this project's Host holds its port, like macOS's matching healthy Host.
+
+        run-host.cmd starts the Host again every ten seconds, so the task stays
+        Running while every start exits (#3225). /info alone cannot tell: projects
+        share the global key, so the always-on Host answers with the same address.
+        A Host records which folder serves its key, and on which port, only once
+        that port was free and no live Host held the key.
+        """
+        keys = self.project/'.co'/'keys'
+        claim = (keys.parent if (keys/'agent.key').exists() else self.config_root)/'served_by.json'
+        if not claim.exists():
+            return False
+        record = json.loads(claim.read_text(encoding='utf-8'))
+        if Path(record.get('project', '')).resolve() != self.project:
+            return False
+        import httpx
+        try:
+            with httpx.Client(timeout=1, trust_env=False) as client:
+                info = client.get(f"http://127.0.0.1:{record['port']}/info").json()
+        except (httpx.HTTPError, ValueError):
+            return False
+        return info.get('address') == record['address']
+
+    def _last_error(self) -> str:
+        lines = (self.logs/'stderr.log').read_text(encoding='utf-8', errors='replace').strip().splitlines()
+        return '\n'.join(lines[-5:])
+
+    def status(self) -> dict:
+        configured, task_running = self._task()
+        return {'configured': configured, 'running': task_running and self._serving(),
                 'pid': None, 'device_ready': False}
 
     def start(self) -> dict:
@@ -472,7 +504,7 @@ class ScheduledTaskHostService(SystemdHostService):
             self.unit.write_text(definition, encoding='utf-8', newline='\r\n')
         self._schtasks('/Create', '/F', '/SC', 'ONLOGON', '/RL', 'LIMITED', '/TN', self.task_name,
                        '/TR', f'"{self.unit}"')
-        if not self.status()['running']:
+        if not self._task()[1]:
             self._schtasks('/Run', '/TN', self.task_name)
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
@@ -480,7 +512,10 @@ class ScheduledTaskHostService(SystemdHostService):
             if state['running']:
                 return state
             time.sleep(.25)
-        raise HostServiceError(f'Task is configured but not running; inspect it. Next: schtasks /Query /TN "{self.task_name}" /V')
+        if (self.logs/'stderr.log').exists():
+            raise HostServiceError(f'The task is running but its Host keeps exiting:\n{self._last_error()}\n'
+                                   f'Log: {self.logs/"stderr.log"}. Next: co host --serve, to see it in this terminal')
+        raise HostServiceError(f'Task is configured but no Host answered; inspect it. Next: schtasks /Query /TN "{self.task_name}" /V')
 
     def stop(self) -> dict:
         self._schtasks('/End', '/TN', self.task_name, allowed=(0, 1))
