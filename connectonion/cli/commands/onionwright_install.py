@@ -31,7 +31,7 @@ from ..._version import __version__
 # The floor, not a pin. A newer client is expected to keep working against the
 # catalogue: oo-api records `minimum_client_version` per artifact and refuses a
 # client below it, which is the check that actually protects a paid download.
-ONIONWRIGHT_VERSION = "0.0.15"
+ONIONWRIGHT_VERSION = "0.0.16"
 ONIONWRIGHT_REQUIREMENT = f"onionwright>={ONIONWRIGHT_VERSION}"
 
 
