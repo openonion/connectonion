@@ -1,14 +1,44 @@
 # co host
 
-Serve the agent in this directory.
+`co init` already started your Host. `co host` shows it and manages it.
 
 ```bash
-co create my-agent && cd my-agent
-co host                 # until you stop it
-co host --port 8001     # another port for this run
+co host                     # status: running?, model, port, how to stop it
+co host --stop              # stop it (and keep it stopped across login)
+co host --background        # start it again
+co host --serve             # run it in this terminal instead
+co host --agent agent.py    # run your own agent.py as the Host
 ```
 
-`co host` runs `./agent.py` with the Python that co itself runs on. That is the
+## Nothing to write: host.yaml and skills
+
+An agent is a folder: `.co/host.yaml` and `.co/skills/`. There is no code to
+write. Which model answers is one line in `host.yaml`:
+
+```yaml
+model: codex                  # native Codex, the account you are logged into
+model: claude-code            # native Claude Code, the account you are logged into
+model: co/gemini-4-hydrogen   # the built-in agent on that model (the default)
+```
+
+`co init` fills it with what works on the machine: a logged-in Codex, then
+Claude Code, otherwise the managed default with its free credit. To change it,
+edit the line and run `co host --background`. The frontend does not change.
+
+## Where it runs
+
+`co init` installs one user service: launchd on macOS, a systemd user unit on
+Linux (run `loginctl enable-linger` to keep it running while you are logged
+out). It restarts if it stops and comes back after login. The Host it serves
+lives in `~/.co/runtime/mac-host` on macOS and `~/.co/runtime/host` on Linux.
+`co init --no-host` skips it. On other systems, run `co host --serve`.
+
+In a project folder that has its own `.co/host.yaml`, `co host` and its options
+act on that project instead. Your own `agent.py` is the special case: it needs
+`--agent`. A service installed before 1.9.6 that runs a bare `co host` in a
+project with `agent.py` keeps serving it.
+
+`--agent` runs the file with the Python that co itself runs on. That is the
 whole difference from `python agent.py`, and it matters on a machine where co
 came from the one-line installer: co then lives in its own environment, and the
 system `python` cannot import `connectonion` (#2438).
@@ -20,8 +50,8 @@ One host serves everything, from one process and one port:
 - **channels**, the chats in `.co/host.yaml`'s `listen:`;
 - **the schedule**, the jobs in `.co/schedule.yaml`.
 
-`python agent.py`, `co deploy` and `co ai` go through the same `host()`, so they
-serve the same things. See [host()](../network/host.md#what-one-host-serves)
+`co host --serve`, `python agent.py`, `co deploy` and `co ai` go through the same
+`host()`, so they serve the same things. See [host()](../network/host.md#what-one-host-serves)
 and [host.yaml](../network/host-config.md).
 
 ## "Discover" in co

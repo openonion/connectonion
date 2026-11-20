@@ -709,7 +709,7 @@ def _port_taken_message(port: int, co_dir: Path) -> str:
     return (f"[host] Port {port} is already in use — another agent, or an earlier "
             f"`co host` still running?\n"
             f"       {where}, "
-            f"or for one run: co host --port {port + 1}")
+            f"or for one run: co host --serve --port {port + 1}")
 
 
 def _print_host_banner(
