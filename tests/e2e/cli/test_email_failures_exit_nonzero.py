@@ -97,7 +97,8 @@ def test_inbox_rejects_more_than_one_backend_page_before_calling_it():
     assert result.exit_code == 2
     output = strip_ansi(result.output)
     assert "--last" in output
-    assert "1<=x<=1000" in output
+    # Typer 0.29 describes the violated bound instead of the whole interval.
+    assert "1<=x<=1000" in output or "less than or equal to" in output and "1000" in output
     get_emails.assert_not_called()
 
 

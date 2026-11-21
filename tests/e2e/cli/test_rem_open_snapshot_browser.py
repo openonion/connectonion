@@ -57,7 +57,7 @@ def test_default_open_page_loads_navigates_and_goes_back(tmp_path, monkeypatch):
     with sync_playwright() as api:
         browser = _chrome(api)
         try:
-            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            page = browser.new_page(viewport={"width": 1280, "height": 900}, locale="en-US")
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.on("console", lambda msg: console.append(msg.text) if msg.type == "error" else None)
             page.route("http://**/*", lambda route: route.abort())
@@ -99,7 +99,7 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
     with sync_playwright() as api:
         browser = _chrome(api)
         try:
-            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            page = browser.new_page(viewport={"width": 1280, "height": 900}, locale="en-US")
             page.goto(link + "#r=people/quiet.md")
             page.get_by_role("heading", name="Quiet Person").wait_for()
             text = page.locator("#main").inner_text()

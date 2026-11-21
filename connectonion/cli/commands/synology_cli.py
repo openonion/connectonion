@@ -14,10 +14,20 @@ COMMON={'nas','json','non_interactive','timeout'}
 
 
 def common_params():
-    return [typer.core.TyperOption(param_decls=['--nas'],type=str,default=None,help='Select a saved NAS for this invocation.'),
-            typer.core.TyperOption(param_decls=['--json'],is_flag=True,default=False,help='Emit one JSON result; never prompt.'),
-            typer.core.TyperOption(param_decls=['--non-interactive'],is_flag=True,default=False,help='Never prompt.'),
-            typer.core.TyperOption(param_decls=['--timeout'],type=float,default=60,help='Command waiting budget in seconds (0 < seconds <= 3600).')]
+    # Let the installed Typer build its own parameter types. Its internal
+    # TyperOption constructors differ between 0.20 and 0.29; ordinary
+    # declarations work with both versions.
+    def options(
+        nas: Optional[str] = typer.Option(None, '--nas', show_default=False, help='Select a saved NAS for this invocation.'),
+        json: bool = typer.Option(False, '--json', show_default=False, help='Emit one JSON result; never prompt.'),
+        non_interactive: bool = typer.Option(False, '--non-interactive', show_default=False, help='Never prompt.'),
+        timeout: float = typer.Option(60, '--timeout', show_default=False, help='Command waiting budget in seconds (0 < seconds <= 3600).'),
+    ):
+        """Declare shared options without executing a NAS command."""
+
+    schema = typer.Typer(add_completion=False)
+    schema.command()(options)
+    return typer.main.get_command(schema).params
 
 
 class SynologyCommand(typer.core.TyperCommand):

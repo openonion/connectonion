@@ -79,7 +79,7 @@ def claude_projects_root() -> Path:
 DEFAULT_LOOKBACK_DAYS = 60
 MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
 # Every kind a subscription can be consented for and read.
-READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS, "granola")
 
 
 def subscriptions(root: Path) -> dict:
@@ -109,6 +109,10 @@ def subscriptions(root: Path) -> dict:
                      else "waiting for co whatsapp listen"},
     }
     defaults.update(saved)
+    defaults.setdefault("granola", {
+        "id": "granola", "kind": "granola", "root": str(root.resolve() / "docs/granola"),
+        "enabled": False, "consented": False, "adapter": "available", "since": None,
+    })
     return defaults
 
 
@@ -149,6 +153,7 @@ def approve_sources(root: Path, *, mail=()) -> None:
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
                                                       "authorized_at": now().isoformat(),
+                                                      "summary_mail": list(mail),
                                                       "summary_value": consent_summary(root, mail=mail),
                                                       "summary": summary_fingerprint(root, mail=mail)})
 
@@ -178,6 +183,11 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
+        if name == "granola" and enabled:
+            from .granola_imports import identity
+            declared = identity(root)
+            if declared != sources[name].get("import_identity"):
+                sources[name].update(import_identity=declared, consented=False)
         if project or about:
             if name not in KINDS:
                 raise RemError(f"A scope narrows a coding source ({', '.join(KINDS)}), not {name}")
@@ -247,6 +257,8 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
+        if name == "granola":
+            raise RemError("Granola reads selected local imports with version deduplication; --since/--only do not apply")
         if name not in sources:
             raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
@@ -1022,12 +1034,17 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             chats = source.get("chats") or []
             state = (f"will read {len(chats)} chat(s), both sides, the agent's own replies left out"
                      if source.get("adapter") == "available" else source["adapter"])
+        elif source.get("kind") == "granola":
+            state = ("will read approved generated summaries only" if source.get("consented")
+                     else "configured; awaiting source/model approval")
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
+        if source.get("kind") == "granola":
+            sources[name]["selection"] = (source.get("remote") or {}).get("selection") or {}
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
@@ -1070,7 +1087,7 @@ def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
         previous = read_json(state_path(root, "consent.json"), {})
         write_json(state_path(root, "consent.json"), {
             **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
-            "granted_by": "init", "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
+            "granted_by": "init", "summary_mail": [], "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
 
 
 def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
@@ -1312,7 +1329,10 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
                    else {"chats": sub.get("chats") or [], "body_reads": False,
                          "source_available": sub.get("adapter") == "available"}
-                   if sub.get("kind") in CHAT_KINDS else {"candidate_files": None, "message_count": None, "body_reads": False,
+                   if sub.get("kind") in CHAT_KINDS else {"body_reads": False, "remote_polling": False,
+                         "remote_collection_configured": bool(sub.get("remote")),
+                         "import_identity": sub.get("import_identity")}
+                   if sub.get("kind") == "granola" else {"candidate_files": None, "message_count": None, "body_reads": False,
                          "source_available": mail_available(sub["kind"]),
                          "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
             for name, sub in _selected_sources(root, source).items()},
@@ -1604,7 +1624,11 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
             break
         if len(items) >= max_items or remaining <= 0:
             break
+        if with_person and subscription.get("kind") not in MAIL_KINDS:
+            continue
         try:
+            from .remote_sources import refresh
+            refresh(root, subscription)
             if subscription.get("kind") in MAIL_KINDS:
                 try:
                     client = mail_client(subscription["kind"])
@@ -1615,6 +1639,9 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                     raise RemError(f"Mailbox configuration could not be loaded; run `co auth {provider}`") from error
                 batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
                                      remaining, client, only=with_person)
+            elif subscription.get("kind") == "granola":
+                from .granola_imports import collect_granola
+                batch = collect_granola(root, subscription, progress.get(name, {}), 1, remaining)
             elif with_person:
                 continue  # a person is a mail concept; a coding session has no correspondent
             elif subscription.get("kind") in CHAT_KINDS:
