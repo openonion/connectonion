@@ -63,7 +63,7 @@ def test_seed_chat_people_adds_new_two_way_contacts_only(tmp_path, monkeypatch):
     subs = {"wechat": {"kind": "wechat", "enabled": True}}
     created = chat.seed_chat_people(tmp_path / "rem", subs)
     paths = [p["path"] for p in nb.people()]
-    assert created == 2  # Mara already a handle (skip); Quinn and the vendor (who wrote to you) are new
+    assert len(created) == 2  # Mara already a handle (skip); Quinn and the vendor (who wrote to you) are new
     assert any("quinn" in p for p in paths) and not any("mara" in p and "known" not in p for p in paths)
     # Idempotent: a second night adds nothing.
-    assert chat.seed_chat_people(tmp_path / "rem", subs) == 0
+    assert chat.seed_chat_people(tmp_path / "rem", subs) == []

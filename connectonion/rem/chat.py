@@ -195,7 +195,7 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
     return people
 
 
-def seed_chat_people(root, subscriptions: dict) -> int:
+def seed_chat_people(root, subscriptions: dict) -> list[str]:
     """Nightly: create a people page for each new two-way chat contact (WeChat) not already on the notebook.
 
     Additive and local, no model and no network. The id is the handle, so the night's investigation then
@@ -209,10 +209,10 @@ def seed_chat_people(root, subscriptions: dict) -> int:
         if sub.get("kind") == "wechat" and sub.get("enabled"):
             rows += wechat_people()
     if not rows:
-        return 0
+        return []
     notebook = Notebook(root)
     known_handles = {alias.casefold() for person in notebook.people() for alias in person.get("aliases", [])}
-    created = 0
+    created = []
     for group in rem_map._people_groups(rows):
         first = group[0]
         sent = sum(r.get("sent", 0) for r in group)
@@ -224,5 +224,5 @@ def seed_chat_people(root, subscriptions: dict) -> int:
         record = rem_map._record("people", name, handle)
         if notebook.stub_person(record, name, [handle]):
             known_handles.add(handle.casefold())
-            created += 1
+            created.append(record)
     return created
