@@ -163,6 +163,16 @@ memory.search_memory(r"\w+@\w+\.\w+")  # Find email addresses
 memory.search_memory(r"Project [A-Z]")  # Find project names
 ```
 
+A pattern that is not valid regex is reported, not raised:
+
+```python
+memory.search_memory("(unclosed")
+# Returns: "Invalid regex pattern: (unclosed\nmissing ), unterminated subpattern at position 0"
+```
+
+That matters when the pattern comes from a model: a malformed pattern ends the
+tool call with an error message instead of raising out of the agent loop.
+
 ## Examples
 
 ### Example 1: Customer Notes
