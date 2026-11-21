@@ -2719,16 +2719,27 @@ def gmail_read(
     handle_gmail_read(email_id, mark_read=mark_read, listing=listing)
 
 
-@gmail_app.command("reply", epilog="Example:  co gmail reply <message-id> \"Sounds good\"  |  "
-                                    "co gmail reply 3 \"Sounds good\" --listing <listing-id>")
+@gmail_app.command("reply", epilog="Examples:  co gmail reply <message-id> \"Sounds good\"  |  "
+                                    "co gmail reply 3 \"Sounds good\" --listing <listing-id>  |  "
+                                    "co gmail reply <message-id> \"Signed copy attached\" --cc sam@example.com --attach signed.pdf  |  "
+                                    "co gmail reply <message-id> \"Thanks both\" --all  |  "
+                                    "co gmail reply <message-id> \"Draft for review\" --draft")
 def gmail_reply(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body, or '-' to read stdin"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail inbox, sent or search; needed with a row number"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated); the reply stays in its thread"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+    attach: list[str] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for several)"),
+    reply_all: bool = typer.Option(False, "--all", help="Reply to everyone on the email (original To and Cc), not only the sender"),
+    draft: bool = typer.Option(False, "--draft", help="Save the reply as a draft in the same thread instead of sending; "
+                                                       "finish it with co gmail draft attach, review and send. Gmail has no "
+                                                       "scheduled send, so this is the way to hold a reply before it goes"),
 ):
-    """Reply to an email from the last listing. Sends immediately, without a preview."""
+    """Reply to an email in its thread. Sends immediately, without a preview, unless --draft saves it for review first."""
     from .commands.gmail_commands import handle_gmail_reply
-    handle_gmail_reply(email_id, message, listing=listing)
+    handle_gmail_reply(email_id, message, listing=listing, cc=cc, bcc=bcc, attachments=attach,
+                       reply_all=reply_all, draft=draft)
 
 
 @gmail_app.command("send", epilog="Examples:  co gmail send a@b.com \"Hi\" \"Quick note\"  |  "

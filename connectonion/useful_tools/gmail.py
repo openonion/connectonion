@@ -677,10 +677,15 @@ class Gmail(GmailMailbox):
         self._require_draft_write_scope()
         result = self._draft_dict(draft_id, message)
         validate_message(self, message)
+        payload = {"raw": self._encode_message(message)}
+        # An update without the draft's threadId can take a reply draft out of
+        # its thread, so a file staged later reached the recipient as new mail (#3260).
+        thread_id = self._get_service().users().drafts().get(
+            userId="me", id=draft_id, format="minimal").execute().get("message", {}).get("threadId")
+        if thread_id:
+            payload["threadId"] = thread_id
         self._get_service().users().drafts().update(
-            userId="me",
-            id=draft_id,
-            body={"message": {"raw": self._encode_message(message)}},
+            userId="me", id=draft_id, body={"message": payload},
         ).execute()
         return result
 
@@ -958,27 +963,63 @@ class Gmail(GmailMailbox):
 
         return f"Email sent successfully to {to}. Message ID: {sent_message['id']}"
 
-    def reply(self, email_id: str, body: str) -> str:
-        """Reply to an email via Gmail API.
+    def reply(self, email_id: str, body: str, cc: str = None, bcc: str = None,
+              attachments: list = None, reply_all: bool = False, draft: bool = False) -> str | dict:
+        """Reply to an email in its thread, optionally with CC, BCC, files, everyone, or as a draft.
 
         Args:
             email_id: Gmail message ID to reply to
             body: Reply message body (plain text)
+            cc: Optional CC recipients (comma-separated), added to the thread's reply
+            bcc: Optional BCC recipients (comma-separated)
+            attachments: Optional list of file paths to attach
+            reply_all: Also keep the original To and Cc recipients (yourself left out)
+            draft: Save the reply as an unsent draft in the same thread instead of sending
 
         Returns:
-            Confirmation message with sent message ID
+            Confirmation message with the sent message ID, or the draft dict when draft=True
         """
+        from contextlib import ExitStack
         from email.mime.text import MIMEText
+
+        recipient, subject, cc, threading, thread_id = self._reply_envelope(email_id, cc, reply_all)
+        if draft:
+            created = self.create_draft(recipient, subject, body, cc=cc, bcc=bcc, in_reply_to=email_id)
+            for path in attachments or []:
+                created = self.add_draft_attachment(created["id"], path)
+            return created
+
+        if attachments:
+            with ExitStack() as stack:
+                message = self._multipart_with(body, self._open_attachments(attachments, stack))
+        else:
+            message = MIMEText(body)
+        message['To'] = recipient
+        message['Subject'] = subject
+        if cc:
+            message['Cc'] = cc
+        if bcc:
+            message['Bcc'] = bcc
+        for name, value in threading.items():
+            message[name] = value
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+        sent_message = self._get_service().users().messages().send(
+            userId='me',
+            body={'raw': raw_message, 'threadId': thread_id}
+        ).execute()
+
+        return f"Reply sent successfully. Message ID: {sent_message['id']}"
+
+    def _reply_envelope(self, email_id: str, cc: str | None, reply_all: bool):
+        """Who a reply goes to, its subject, its Cc, its threading headers and its thread."""
         from email.utils import getaddresses
 
-        service = self._get_service()
-
-        # Get original message to extract headers
-        original = service.users().messages().get(
+        original = self._get_service().users().messages().get(
             userId='me',
             id=email_id,
             format='metadata',
-            metadataHeaders=['From', 'Reply-To', 'To', 'Subject', 'Message-ID', 'References']
+            metadataHeaders=['From', 'Reply-To', 'To', 'Cc', 'Subject', 'Message-ID', 'References']
         ).execute()
 
         # Header names are case-insensitive; senders write "Message-Id" as often
@@ -986,37 +1027,41 @@ class Gmail(GmailMailbox):
         headers = {h['name'].lower(): h['value'] for h in original['payload']['headers']}
         original_subject = headers.get('subject', '')
         original_message_id = headers.get('message-id', '')
-        thread_id = original.get('threadId', '')
 
         # Reply-To is where the sender asked replies to go: web forms, booking
         # sites and lists send From a noreply and put the person there (#1755).
         recipient = headers.get('reply-to') or headers.get('from', '')
         # Replying to my own sent mail means following up with its recipients,
         # not writing to myself.
+        mine = self.my_addresses()
         addresses = [address.lower() for _, address in getaddresses([recipient]) if address]
-        if addresses and set(addresses) <= self.my_addresses() and headers.get('to'):
+        own_mail = bool(addresses) and set(addresses) <= mine and bool(headers.get('to'))
+        if own_mail:
             recipient = headers['to']
 
-        # Create reply
-        message = MIMEText(body)
-        message['To'] = recipient
-        message['Subject'] = original_subject if original_subject.startswith('Re: ') else f"Re: {original_subject}"
+        if reply_all:
+            cc = self._reply_all_cc(headers, recipient, cc, mine, own_mail)
 
+        subject = original_subject if original_subject.startswith('Re: ') else f"Re: {original_subject}"
+        threading = {}
         if original_message_id:
-            message['In-Reply-To'] = original_message_id
-            references = headers.get('references', '')
-            message['References'] = f"{references} {original_message_id}".strip()
+            threading['In-Reply-To'] = original_message_id
+            threading['References'] = f"{headers.get('references', '')} {original_message_id}".strip()
+        return recipient, subject, cc, threading, original.get('threadId', '')
 
-        # Encode message
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+    @staticmethod
+    def _reply_all_cc(headers: dict, recipient: str, cc: str | None, mine: set, own_mail: bool) -> str | None:
+        """Everyone else on the original (To and Cc), plus the given Cc, without me or the To."""
+        from email.utils import formataddr, getaddresses
 
-        # Send as reply in same thread
-        sent_message = service.users().messages().send(
-            userId='me',
-            body={'raw': raw_message, 'threadId': thread_id}
-        ).execute()
-
-        return f"Reply sent successfully. Message ID: {sent_message['id']}"
+        fields = [headers.get('cc', '')] if own_mail else [headers.get('to', ''), headers.get('cc', '')]
+        taken = {address.lower() for _, address in getaddresses([recipient]) if address} | mine
+        kept = []
+        for name, address in getaddresses([*fields, cc or '']):
+            if address and address.lower() not in taken:
+                taken.add(address.lower())
+                kept.append(formataddr((name, address)))
+        return ', '.join(kept) or None
 
     # === Actions ===
 

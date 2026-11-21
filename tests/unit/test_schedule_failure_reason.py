@@ -100,8 +100,13 @@ def test_the_tick_records_what_the_run_raised(tmp_path, monkeypatch):
     )
 
     async def one_tick():
+        # Wait for the tick to land rather than a fixed 0.4s: a loaded CI runner
+        # read the state while the run was still "running".
         await startup()
-        await asyncio.sleep(0.4)
+        for _ in range(200):
+            await asyncio.sleep(0.05)
+            if (sched.load_state(tmp_path).get("nightly") or {}).get("status") == "failed":
+                break
         await shutdown()
 
     asyncio.run(one_tick())
