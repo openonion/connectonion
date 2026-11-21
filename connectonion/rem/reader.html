@@ -13081,9 +13081,12 @@ function projectLiveLate(r) {
 }
 function projectTodayCount(r) { return (REM.today_queue || []).filter(row => row.record === r.path && !row.closed && !row.quiet).length; }
 function projectTodayLink(r, words) {
-  const link = el("a", { class: "project-today-link", href: "#", text: words });
-  link.onclick = () => { todayLead = r.path; };
-  return link;
+  // A project's open items live in Today under their correspondents, never as one project card in the reply deck,
+  // so this opens the Waiting view filtered to the project — the very place and filter id ("project:" + title)
+  // that project's own chip uses there (openTags/openChips) — instead of the deck. todayLead could only reorder
+  // the deck, which holds no card keyed to a project, so a project page's "N open items are in Today" line used to
+  // land on an unrelated card or an empty, off-screen panel (#3165). One shared filter, same as every chip.
+  return el("a", { class: "project-today-link", href: "#view=open&tag=" + encodeURIComponent("project:" + r.title), text: words });
 }
 
 // ---- the head: the page's name and its three views ----
