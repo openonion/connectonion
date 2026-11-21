@@ -180,7 +180,8 @@ def key_help(ctx: typer.Context):
 
 
 @key_app.command("capture", epilog="Example:  co wechat key capture  |  co wechat key capture --yes")
-def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question; for a script you started yourself")):
+def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question; for a script you started yourself"),
+                keep_copy: bool = typer.Option(False, "--keep-copy", help="Keep the 1.4 GB re-signed copy for the next capture")):
     """Writes the key of every WeChat database on this Mac to ~/.co/wechat/keys.json (0600), after one question. Quits and reopens WeChat."""
     _require_macos()
     status, account = _container_status()
@@ -194,7 +195,7 @@ def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question
         raise typer.Exit(1)
     from ...useful_tools import wechat as engine
     total = len(engine.message_dbs(account / "db_storage"))
-    done = capture_keys(account / "db_storage")
+    done = capture_keys(account / "db_storage", keep_copy=keep_copy)
     console.print(f"[green]Saved keys for {done} of {total} databases[/green] in {KEY_MAP}.")
     # The copy took WeChat's one Mac session, so the real app asks to log in once more; reading never does.
     console.print("WeChat has reopened: log in one last time. After this, co wechat only reads files on this Mac.")
@@ -359,7 +360,7 @@ def _quit_wechat() -> None:
     time.sleep(1)
 
 
-def capture_keys(db_storage: Path, wait_seconds: int = 600) -> int:
+def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = False) -> int:
     """Quit WeChat, open the re-signed copy under lldb, record each database's key by salt, restore WeChat.
 
     Returns how many of this account's databases now have a key. Only OS tools: codesign, lldb, python3.
@@ -412,6 +413,10 @@ def capture_keys(db_storage: Path, wait_seconds: int = 600) -> int:
         for leftover in work.iterdir():
             leftover.unlink()
         work.rmdir()
+        # The 1.4 GB re-signed copy is only needed while capturing; a later capture makes it again.
+        if not keep_copy and DEBUG_COPY.is_dir():
+            import shutil
+            shutil.rmtree(DEBUG_COPY, ignore_errors=True)
     _save_key_map(keys)
     if not found:
         console.print("[yellow]No keys appeared.[/yellow] The copy has to log in for WeChat to open its databases. "
@@ -550,63 +555,6 @@ def search(words: str = typer.Argument(..., help="Text to look for in messages")
         console.print(f"{_clock(when):>5}  [bold]{chat[:18]}[/bold]  {text[:90]}")
     if not hits:
         console.print(f"No messages contain {words}.")
-
-
-def _own_username(account: Path) -> str:
-    """The account's own WeChat id: its folder is the id plus a short suffix (wxid_xxx_ab12)."""
-    name = account.name
-    return name.rsplit("_", 1)[0] if name.startswith("wxid_") and name.count("_") >= 2 else name
-
-
-@wechat_app.command("sync", epilog="Example:  co wechat sync  |  co wechat sync --quiet")
-def sync(quiet: bool = typer.Option(False, "--quiet", help="Print only problems")):
-    """Writes your WeChat messages as inbox files (received.jsonl, own.jsonl) under ~/.co/inbox/wechat, for co rem. Reads WeChat only."""
-    import json
-    import re as _re
-    from datetime import datetime, timezone
-    from ...inbox.store import default_home
-    from ...useful_tools import wechat as engine
-    db_storage = _setup(interactive=False)
-    account = db_storage.parent
-    own = _own_username(account)
-    known = _contacts(db_storage)
-    home = default_home("wechat")
-    home.mkdir(parents=True, exist_ok=True)
-    os.chmod(home, 0o700)
-    received, mine, chats = [], [], {}
-    for conn in _message_dbs(db_storage):
-        users = [r[0] for r in conn.execute("SELECT user_name FROM Name2Id")]
-        by_table = {engine.message_table(u): u for u in users}
-        for (table,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'"):
-            chat = by_table.get(table) if _re.fullmatch(r"Msg_[0-9a-f]{32}", table) else None
-            if not chat:
-                continue
-            chats[chat] = known.get(chat, chat)
-            sender_of = {r[0]: r[1] for r in conn.execute("SELECT rowid, user_name FROM Name2Id")}
-            for r in conn.execute(f'SELECT local_id, local_type, create_time, real_sender_id, message_content, '
-                                  f'WCDB_CT_message_content FROM "{table}" ORDER BY sort_seq'):
-                kind = r[1] & 0xFFFF
-                text = engine.text_of(r[4], r[5]) if kind in (1, 10000) else engine.KINDS.get(kind, "[其他]")
-                sender = sender_of.get(r[3], "")
-                if chat.endswith("@chatroom") and ":\n" in text[:80]:
-                    sender, text = text.split(":\n", 1)
-                row = {"id": str(r[0]), "chat": chat, "chat_name": chats[chat],
-                       "at": datetime.fromtimestamp(r[2], timezone.utc).isoformat(),
-                       "text": text.strip(), "sender": sender, "sender_name": known.get(sender, sender),
-                       "kind": "text" if kind == 1 else "system" if kind == 10000 else "media"}
-                (mine if sender == own else received).append(row)
-    for name, rows in (("received.jsonl", received), ("own.jsonl", mine)):
-        target, part = home / name, home / (name + ".part")
-        part.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-        os.chmod(part, 0o600)
-        part.replace(target)
-    (home / "chats.json").write_text(json.dumps(chats, ensure_ascii=False, indent=1))
-    os.chmod(home / "chats.json", 0o600)
-    if not quiet:
-        people = sum(1 for c in chats if not c.endswith("@chatroom") and not c.startswith("gh_"))
-        console.print(f"[green]Wrote[/green] {len(received) + len(mine)} messages from {len(chats)} chats "
-                      f"({people} with one person) to {home}.")
-        console.print("Next: co rem sources add wechat  (reads every one-to-one chat; add a group with --chat <id>)")
 
 
 @wechat_app.command("tables", epilog="Example:  co wechat tables")

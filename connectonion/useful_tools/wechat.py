@@ -190,3 +190,75 @@ def messages(conn: sqlite3.Connection, username: str, known: dict[str, str], lim
             sender, text = text.split(":\n", 1)
         out.append({"time": r["create_time"], "sender": known.get(sender, sender), "text": text.strip()})
     return out
+
+
+# ---------- reading straight from WeChat for Mac, for co rem (no intermediate files) ----------
+import json as _json
+import re as _re
+
+WECHAT_CONTAINER = Path.home() / "Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"
+KEY_MAP = Path.home() / ".co" / "wechat" / "keys.json"
+
+
+def db_storage_in_use() -> Path | None:
+    """The db_storage of the account WeChat wrote last, or None when WeChat's data isn't here/readable."""
+    try:
+        accounts = [a for a in WECHAT_CONTAINER.iterdir() if (a / "db_storage").is_dir()]
+    except OSError:
+        return None
+    if not accounts:
+        return None
+    latest = lambda a: max((p.stat().st_mtime for p in (a / "db_storage" / "session").glob("session.db*")), default=0)
+    return max(accounts, key=latest) / "db_storage"
+
+
+def owner_username(db_storage: Path) -> str:
+    """The account's own WeChat id; its folder is the id plus a short suffix (wxid_xxx_ab12)."""
+    name = db_storage.parent.name
+    return name.rsplit("_", 1)[0] if name.startswith("wxid_") and name.count("_") >= 2 else name
+
+
+def key_for(path: Path) -> str | None:
+    """The saved key for one database, by its salt (co wechat key capture writes the map)."""
+    try:
+        keys = _json.loads(KEY_MAP.read_text())
+    except (OSError, ValueError):
+        return None
+    return keys.get(db_salt(path))
+
+
+def all_messages(db_storage: Path, known: dict) -> list[dict]:
+    """Every message in every readable chat database, as plain rows. Read-only, in memory.
+
+    A row: {id, chat, chat_name, at (ISO), text, sender, sender_name, kind}. The caller decides which
+    chats to keep and which side is the owner's.
+    """
+    import sqlite3
+    from datetime import datetime, timezone
+    rows = []
+    for path in sorted((db_storage / "message").glob("*message_[0-9]*.db")):
+        key = key_for(path)
+        if not key:
+            continue
+        try:
+            conn = open_readonly(decrypt_db(path, key))
+        except (WrongKeyError, sqlite3.DatabaseError):
+            continue
+        sender_of = {r[0]: r[1] for r in conn.execute("SELECT rowid, user_name FROM Name2Id")}
+        by_table = {message_table(u): u for u in sender_of.values()}
+        for (table,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'"):
+            chat = by_table.get(table) if _re.fullmatch(r"Msg_[0-9a-f]{32}", table) else None
+            if not chat:
+                continue
+            for r in conn.execute(f'SELECT local_id, local_type, create_time, real_sender_id, message_content, '
+                                  f'WCDB_CT_message_content FROM "{table}" ORDER BY sort_seq'):
+                kind = r[1] & 0xFFFF
+                text = text_of(r[4], r[5]) if kind in (1, 10000) else KINDS.get(kind, "[其他]")
+                sender = sender_of.get(r[3], "")
+                if chat.endswith("@chatroom") and ":\n" in text[:80]:
+                    sender, text = text.split(":\n", 1)
+                rows.append({"id": str(r[0]), "chat": chat, "chat_name": known.get(chat, chat),
+                             "at": datetime.fromtimestamp(r[2], timezone.utc).isoformat(),
+                             "text": text.strip(), "sender": sender, "sender_name": known.get(sender, sender),
+                             "kind": "text" if kind == 1 else "system" if kind == 10000 else "media"})
+    return rows

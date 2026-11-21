@@ -141,13 +141,12 @@ are surfaced by the tool rather than hidden:
 
 ## WeChat in co rem (people from your chats)
 
-`co wechat sync` writes your WeChat messages as inbox files under `~/.co/inbox/wechat/` (`received.jsonl`,
-`own.jsonl`, `chats.json`, all 0600), in the same shape as `co whatsapp`. co rem reads them like WhatsApp and runs
-`co wechat sync` itself before each read, so it always sees what WeChat for Mac has now.
+co rem reads WeChat straight from WeChat for Mac's own databases (read-only), at read time. Nothing is copied to
+`~/.co/inbox`; the databases are the only copy. It uses the keys from `co wechat key capture`.
 
 ```bash
 co rem sources add wechat                 # every one-to-one chat: the people you talk to
-co rem sources add wechat --chat <id>@chatroom   # a group too, by its id (ids in ~/.co/inbox/wechat/chats.json)
+co rem sources add wechat --chat <id>@chatroom   # a group too, by its id
 co rem start                              # shows what will be read and asks before anything is
 ```
 
