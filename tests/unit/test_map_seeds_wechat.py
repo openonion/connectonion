@@ -29,3 +29,21 @@ def test_wechat_people_keeps_named_one_to_one_chats_only(monkeypatch):
         {"chat": "wxid_noname", "chat_name": "wxid_noname", "sender": "wxid_noname"}])  # no real name, out
     people = chat.wechat_people()
     assert [(p["address"], p["name"], p["mails"], p["sent"], p["received"]) for p in people] == [("wxid_mara", "Mara", 2, 1, 1)]
+
+
+def test_wechat_is_on_by_default_once_keys_are_captured(tmp_path, monkeypatch):
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare
+    import connectonion.rem.service as svc
+    prepare(tmp_path / "rem")
+    # No keys yet: offered, off.
+    monkeypatch.setattr(svc.Path, "home", staticmethod(lambda: tmp_path / "nokeys"))
+    off = service.subscriptions(tmp_path / "rem")["wechat"]
+    assert off["enabled"] is False and off["adapter"] == "waiting for co wechat"
+    # Keys captured: on by default, no prompt (context over control).
+    home = tmp_path / "haskeys"
+    (home / ".co" / "wechat").mkdir(parents=True)
+    (home / ".co" / "wechat" / "keys.json").write_text("{}")
+    monkeypatch.setattr(svc.Path, "home", staticmethod(lambda: home))
+    on = service.subscriptions(tmp_path / "rem")["wechat"]
+    assert on["enabled"] is True and on["consented"] is True and on["chats"] == ["*"]
