@@ -21,17 +21,34 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current release
 
-Stable **1.9.5** is the default production channel. A fresh install works again (typer 0.29.0
+Stable **1.9.6** is the default production channel. `co init` starts the Host and leaves it running on
+macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through
+your logged-in Claude Code with no API key. REM gets the new desk, a knowledge graph, three privacy
+levels and hand-offs you can watch; `co send` / `co receive` move files between agents; `co wechat`
+reads your own WeChat for Mac history locally. See [1.9.6 notes](releases/1.9.6.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.6).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.6'
+```
+
+## Previous stable
+
+Stable **1.9.5**: A fresh install works again (typer 0.29.0
 broke every `co` command; it is capped below 0.29); REM reads each slot's mail while the Codex weekly
 floor holds investigation work; nothing in the reader asks you to copy a command. See
 [1.9.5 notes](releases/1.9.5.md) and the
 [GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.5).
 
-```bash
-python -m pip install --upgrade 'connectonion==1.9.5'
-```
+Stable **1.9.4** was a hotfix on 1.9.3, in which the first
+`co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
+waits on a build; a saved page opens at once marked "Updating…". See
+[1.9.4 notes](releases/1.9.4.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
 
-## Current preview
+## Previous previews
+
+The candidates for 1.9.6:
 
 Release candidate **1.9.6rc48**: REM related cards drop the writer's prefix; the page foot says Copy the file path. See [1.9.6rc48 notes](releases/1.9.6rc48.md).
 Before it, release candidate **1.9.6rc47**: on a phone, a linked page named by a long question wraps instead of widening the page. See [1.9.6rc47 notes](releases/1.9.6rc47.md).
@@ -156,20 +173,6 @@ knows. Lists and the other records keep their old layouts until phases 2 and 3. 
 **1.9.6rc1** made Today's open reply show whole lines on a desktop and start on screen on a phone.
 Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc36'
-```
-
-## Previous stable
-
-Stable **1.9.4** was a hotfix on 1.9.3, in which the first
-`co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
-waits on a build; a saved page opens at once marked "Updating…". See
-[1.9.4 notes](releases/1.9.4.md) and the
-[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
-
-## Previous previews
 
 Release candidate **1.9.5rc1**: nothing in the reader asks you to copy a command any more; a page that
 waited while you typed says "Updates waiting" and keeps your words; a headless `co claude run`
