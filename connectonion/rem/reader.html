@@ -17126,8 +17126,8 @@ const LOCAL_GLYPH = {
 const LOCAL = { mark: 16, far: 10, face: 36, width: 280, rings: 4, second: 8 };
 function graphRings(r) {
   const model = graphModel(), centre = model.byId.get(r.path);
-  const head = () => el("h4", { text: graphT("Local graph") });
-  if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-rings" }, [head(), el("p", { class: "gx-quiet-line", text: graphT("Not in the graph yet") })]);
+  const head = () => el("h4", { text: graphT("In the knowledge graph") });
+  if (!centre || !model.adj.has(r.path)) return el("section", { class: "gx-rings" }, [head(), el("p", { class: "gx-quiet-line", text: graphT("Not in the knowledge graph yet") })]);
   const ring = [...model.adj.get(r.path)].map(id => model.byId.get(id))
     .sort((a, b) => GRAPH_ORDER.indexOf(a.k) - GRAPH_ORDER.indexOf(b.k) || graphTitle(a).localeCompare(graphTitle(b)));
   const far = ring.length <= LOCAL.rings ? localReach(model, r, ring).slice(0, LOCAL.second) : [];
@@ -17138,11 +17138,11 @@ function graphRings(r) {
   const says = n => localSays(localWhy(r, n, far));
   const marks = [...far.map(({ n }) => localMark(n, pos.get(n.id), LOCAL.far, true, says(n), placed.get(n.id))),
     ...ring.map(n => localMark(n, pos.get(n.id), LOCAL.mark, false, says(n), placed.get(n.id)))];
-  const svg = svgEl("svg", { class: "gx-rings-svg", width: W, ...localBox(pos, W, H), role: "img", "aria-label": graphT("Local graph") },
+  const svg = svgEl("svg", { class: "gx-rings-svg", width: W, ...localBox(pos, W, H), role: "img", "aria-label": graphT("In the knowledge graph") },
     [svgEl("g", { class: "gx-rings-lines" }, lines), ...marks, localCentre(centre, pos.get(centre.id))]);
   const section = el("section", { class: "gx-rings" }, [head(), svg,
     el("div", { class: "gx-local-foot" }, [el("span", { text: graphT("{n} directly linked", { n: ring.length }) }),
-      el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in graph →") })]), el("div", { class: "gx-rings-card" })]);
+      el("a", { href: "#view=graph&focus=" + encodeURIComponent(r.path), text: graphT("Open in the knowledge graph →") })]), el("div", { class: "gx-rings-card" })]);
   // Drawn once, in viewBox units: CSS scales the picture, marks and names together, to the width it is shown at.
   localWire(section, r, ring, far);
   return section;

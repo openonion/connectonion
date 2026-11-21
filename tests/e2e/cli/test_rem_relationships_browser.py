@@ -92,13 +92,13 @@ def test_a_person_has_two_rings_and_one_with_many_links_keeps_to_one(reader):
     assert page.locator(".gx-rings-svg g.far").get_attribute("aria-label") == "Sol Marek. Person. Yard manager · Through Tern Yard"
     assert page.locator(".gx-rings .gx-local-foot > span").first.inner_text() == "2 directly linked"
     # The widget adds a ring, not words or controls: upstream's heading and foot, and the outer ring is not a row of links.
-    assert page.locator(".gx-rings h4").inner_text() == "Local graph"
+    assert page.locator(".gx-rings h4").inner_text() == "In the knowledge graph"
     assert page.locator(".gx-rings-svg g.far").evaluate("g => g.tagName") == "g"
-    assert page.locator(".gx-rings a[href], .gx-rings button").count() == 4  # Tern Yard, Depot, Ida in the middle, Open in graph
+    assert page.locator(".gx-rings a[href], .gx-rings button").count() == 4  # Tern Yard, Depot, Ida in the middle, Open in the knowledge graph
     # Nothing is lit and no card is up until a mark is pointed at; the outer ring keeps its names to itself.
     assert page.locator(".gx-rings-svg.lit, .gx-rings-card.on").count() == 0
     assert page.locator(".gx-rings-svg g.far text").evaluate("text => getComputedStyle(text).opacity") == "0"
-    assert page.locator(".gx-rings button", has_text="ring").count() == 0  # no depth switch: Open in graph has one
+    assert page.locator(".gx-rings button", has_text="ring").count() == 0  # no depth switch: Open in the knowledge graph has one
     # Seven direct links are a ring of their own; an organisation's ring is its people.
     page.goto(page.url.split("#")[0] + "#r=people%2Fmax-hale.md")
     page.locator(".gx-rings-svg a.near").nth(6).wait_for()
