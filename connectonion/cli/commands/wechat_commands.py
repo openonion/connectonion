@@ -194,6 +194,8 @@ def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question
     total = len(engine.message_dbs(account / "db_storage"))
     done = capture_keys(account / "db_storage")
     console.print(f"[green]Saved keys for {done} of {total} databases[/green] in {KEY_MAP}.")
+    # The copy took WeChat's one Mac session, so the real app asks to log in once more; reading never does.
+    console.print("WeChat has reopened: log in one last time. After this, co wechat only reads files on this Mac.")
     console.print("Next: co wechat")
     raise typer.Exit(0 if done else 1)
 
@@ -439,7 +441,7 @@ def _setup(interactive: bool) -> Path:
         if not typer.confirm("Continue?", default=True):
             raise typer.Exit(1)
         done = capture_keys(db_storage)
-        console.print(f"[green]Saved keys for {done} databases.[/green]")
+        console.print(f"[green]Saved keys for {done} databases.[/green] WeChat has reopened: log in one last time.")
     return db_storage
 
 
