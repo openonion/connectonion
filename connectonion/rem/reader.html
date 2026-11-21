@@ -3107,7 +3107,6 @@
   /* Marks are N3's record icons, filled in the second ink; the outer ring is lighter and nameless until lit. */
   .gx-rings-svg .hit { fill: transparent; }
   .gx-rings-svg .g { fill: var(--grey); }
-  .gx-rings-svg .g.rnd { stroke: var(--grey); stroke-width: 2; stroke-linejoin: round; }
   .gx-rings-svg .g.private { fill: none; stroke: var(--grey); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
   .gx-rings-svg .slash { stroke: var(--grey); stroke-width: 1.2; }
   .gx-rings-svg .far .g { opacity: .45; }
@@ -3121,7 +3120,6 @@
   .gx-rings-svg.lit .gx-rings-lines line:not(.on) { opacity: .12; }
   .gx-rings-svg.lit .gx-rings-lines line.on { stroke: var(--grey); stroke-width: 1.25; }
   .gx-rings-svg.lit [data-id].on:not(.centre) .g { fill: var(--ink); opacity: 1; }
-  .gx-rings-svg.lit [data-id].on .g.rnd { stroke: var(--ink); }
   .gx-rings-svg.lit [data-id].on text { opacity: 1; }
   .gx-rings-svg.lit [data-id].me:not(.centre) text { fill: var(--ink); font-weight: var(--w-bold); }
   .gx-rings-svg a.centre circle { fill: var(--well); stroke: var(--rule); stroke-width: 1; }
@@ -17115,7 +17113,7 @@ function graphLocalMark(n, x, y, r, centre = false) {
 const LOCAL_GLYPH = {
   people: { d: "M16 8a4 4 0 1 1-8 0a4 4 0 1 1 8 0zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1z", s: 1, c: .5 },
   orgs: { d: "M8.5 4h7A4.5 4.5 0 0 1 20 8.5v7a4.5 4.5 0 0 1-4.5 4.5h-7A4.5 4.5 0 0 1 4 15.5v-7A4.5 4.5 0 0 1 8.5 4z", s: .86, c: 0 },
-  projects: { d: "M12 4.5 20.5 19h-17z", s: 1.04, c: 1.2, round: true },
+  projects: { d: /d="([^"]+)"/.exec(ICONS.folder)[1], s: .86, c: -.5 },  // the rail's Projects folder, as everywhere (no triangle)
   knowledge: { d: "M12 5a7 7 0 1 1 0 14a7 7 0 1 1 0-14z", s: 1, c: 0 },
   other: { d: "M12 8.5a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0-7z", s: 1, c: 0 },  // skills, decisions, sessions
 };
@@ -17180,7 +17178,7 @@ function localLayout(centre, ring, far, W, H) {
 }
 function localGlyph(n, x, y, size) {
   const g = LOCAL_GLYPH[n.k] || LOCAL_GLYPH.other, s = size / 17 * g.s;
-  const path = svgEl("path", { class: "g" + (g.round ? " rnd" : ""), d: g.d,
+  const path = svgEl("path", { class: "g", d: g.d,
     transform: `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${s.toFixed(4)}) translate(-12 ${(-12 - g.c).toFixed(2)})` });
   if (!n.private) return path;
   // A private record keeps its kind's shape as an outline, struck through, as on the whole map.
