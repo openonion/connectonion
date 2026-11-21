@@ -474,3 +474,18 @@ def test_a_week_old_proposal_is_asked_again_and_a_dry_run_keeps_no_cache(tmp_pat
     assert calls == ['fictional-summary'] and report['qualified'] == 1
     assert not notebook.list('knowledge')
     assert read_json(state_path(tmp_path, 'topic-proposals.json'), {})['date'] == '2020-01-01'
+
+
+def test_the_link_review_question_names_the_page_not_its_file_path(tmp_path):
+    # The owner reads this question in the reader; a raw record path (people/…-fb3e61a907.md) is for the
+    # machine, not for him. It should name the page by its title.
+    from connectonion.rem.topic_map import map_topics
+    from connectonion.rem.reviews import listing
+    notebook = Notebook(tmp_path)
+    path = topic(notebook)
+    path.write_text(path.read_text() + '\n- Heat batteries | heat storage | projects/cove.md | user, 2026-01-20, gmail:source4 | Heat batteries store energy.\n')
+    notebook.write('people/ellis.md', '# Ellis\nHeat storage was mentioned.\n')
+    map_topics(notebook)
+    review, = listing(tmp_path)
+    assert 'people/ellis.md' not in review['question']
+    assert 'Ellis' in review['question']
