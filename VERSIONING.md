@@ -400,7 +400,13 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc5
+## Current Version: 1.9.7rc6
+Release candidate 1.9.7rc6 for 1.9.7: WeChat is a co rem source that seeds people into the map and the night,
+on by default once its keys are captured. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc6.md).
+
+- 1.9.7rc6 (WeChat seeds people into co rem).
+
+### Previous candidate: 1.9.7rc5
 Release candidate 1.9.7rc5 for 1.9.7: the Control Center has an admin section (who joined, Remove/Block, rotate
 the invite without a restart, activity, health, log), shown only to admins. Stable is 1.9.6. See
 [candidate notes](docs/releases/1.9.7rc5.md).
