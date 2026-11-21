@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from click import unstyle
 
 from connectonion.useful_tools import obsidian as api
 from connectonion.useful_tools import obsidian_changes as source
@@ -220,7 +221,7 @@ def test_scope_is_required_even_with_one_registered_vault(cli, registry, tmp_pat
     registry(_entries(vault))
     result = cli(["obsidian", command, *words, "--json"])
     assert result.exit_code == 2
-    assert "--folder" in result.stderr
+    assert "--folder" in unstyle(result.stderr)
 
 
 def test_identity_binds_vault_and_path_but_not_file_content(cli, tmp_path):
@@ -402,5 +403,6 @@ def test_help_is_reachable_without_registry_or_notes(cli, monkeypatch, command):
     monkeypatch.setattr(api, "discover_vaults", lambda: pytest.fail("help must not read sources"))
     result = cli(["obsidian", command, "--help"])
     assert result.exit_code == 0, result.output
-    assert "Read-only" in result.stdout and "--folder" in result.stdout
-    assert "Example:" in result.stdout and "Back:" in result.stdout
+    page = unstyle(result.stdout)
+    assert "Read-only" in page and "--folder" in page
+    assert "Example:" in page and "Back:" in page
