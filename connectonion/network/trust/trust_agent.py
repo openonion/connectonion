@@ -328,7 +328,7 @@ justify admitting them, it is not enough."""
         from .fast_rules import _resolve_codes
         valid_codes = _resolve_codes(self._config.get('onboard', {}).get('invite_code', []))
         if invite_code in valid_codes:
-            self.promote_to_contact(client_id)
+            self.promote_to_contact(client_id, reason="invite code")
             return True
         return False
 
@@ -370,7 +370,7 @@ justify admitting them, it is not enough."""
 
         # Call oo-api to verify transfer
         if self._verify_transfer_via_api(client_id, self_addr, min_amount):
-            self.promote_to_contact(client_id)
+            self.promote_to_contact(client_id, reason="payment")
             return True
         return False
 
@@ -446,9 +446,9 @@ justify admitting them, it is not enough."""
 
     # === Promotion ===
 
-    def promote_to_contact(self, client_id: str) -> str:
-        """Stranger -> Contact"""
-        return _promote_to_contact(client_id, self._co_dir)
+    def promote_to_contact(self, client_id: str, reason: str = None) -> str:
+        """Stranger -> Contact. `reason` (how they got in) goes into the record."""
+        return _promote_to_contact(client_id, self._co_dir, reason)
 
     def promote_to_whitelist(self, client_id: str) -> str:
         """Contact -> Whitelist"""
