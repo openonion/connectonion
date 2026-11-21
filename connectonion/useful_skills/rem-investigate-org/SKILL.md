@@ -16,10 +16,10 @@ LinkedIn prohibition and saved captures. Establish what the organisation does, w
   page shares a canonical contact candidate, their dated primary correspondence.
   A shared page or display name is a lead, not identity proof. Verify the person
   and company from the messages before drawing cross-domain conclusions; keep
-  uncertain address/domain ownership explicit. Do not merge legal entities.
+  uncertain address/domain ownership explicit. Do not merge separately registered companies.
   Existing notebook pages are context, not independent evidence.
 - Read the material for what is
-  agreed with the **entity**: terms, dates, signed or unsigned documents, who
+  agreed with the **organisation**: terms, dates, signed or unsigned documents, who
   decides. What is true of one person belongs on that person's page.
 - `People here` links existing people pages; never copy their contents. A person
   who writes from the domain but has no page: name them, do not create a page.

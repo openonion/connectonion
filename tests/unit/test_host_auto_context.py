@@ -47,8 +47,8 @@ def test_auto_notice_once_but_every_provider_run_is_recorded(tmp_path, monkeypat
     after_first = capsys.readouterr().out
     assert "Host Auto" in after_first and ADDRESS in after_first
     assert f"co trust block {ADDRESS}" in after_first
-    assert "requester's next message (frame)" in after_first
-    assert "a running turn is stopped then" in after_first
+    assert "before its next tool or model step, connected or not" in after_first
+    assert "a running turn is stopped then" not in after_first
     assert installed.provider in after_first and "completed" in after_first
     assert "co approvals" in after_first
 
@@ -123,9 +123,6 @@ def test_client_cannot_suppress_or_reset_the_once_per_session_notice():
     key = "_host_auto_notice_sent"
     assert key not in session_with_durable_policy({key: True}, {})
     assert session_with_durable_policy({key: False}, {key: True})[key] is True
-    run_key = "_host_auto_run_turn"
-    assert run_key not in session_with_durable_policy({run_key: 1}, {})
-    assert session_with_durable_policy({run_key: 2}, {run_key: 1})[run_key] == 1
 
 
 def test_co_approvals_displays_auto_task_and_mode():
@@ -272,7 +269,7 @@ def test_full_access_provider_records_actual_mode(tmp_path, monkeypatch, capsys,
 
 
 @pytest.mark.parametrize("mode", ["auto", "full-access"])
-def test_writes_record_and_notify_once_per_requester_turn(tmp_path, monkeypatch, capsys, mode):
+def test_writes_record_and_notify_every_automatic_run(tmp_path, monkeypatch, capsys, mode):
     monkeypatch.chdir(tmp_path)
     def write(path: str, content: str) -> str:
         """Write a workspace file."""
@@ -287,24 +284,46 @@ def test_writes_record_and_notify_once_per_requester_turn(tmp_path, monkeypatch,
         assert result["status"] == "success"
     records = approvals.read(tmp_path / ".co")
     assert len([e for e in records if e["path"] == "turn"]) == 3
-    assert len([e for e in records if e["path"] == "auto"]) == 1
-    assert capsys.readouterr().out.count("Host Auto:") == 1
+    assert len([e for e in records if e["path"] == "auto"]) == 3
+    assert capsys.readouterr().out.count("Host Auto:") == 3
     agent.current_session["turn"] += 1
     execute_single_tool("write", {"path": "next.txt", "content": "next"},
                         "write-next", agent.tools, agent, agent.logger)
-    assert len([e for e in approvals.read(tmp_path / ".co") if e["path"] == "auto"]) == 2
+    assert len([e for e in approvals.read(tmp_path / ".co") if e["path"] == "auto"]) == 4
     assert capsys.readouterr().out.count("Host Auto:") == 1
     assert len([e for e in agent.current_session["trace"] if e["type"] == "host_notice"]) == 1
 
 
-def test_multiple_provider_calls_share_requester_turn_context(tmp_path, monkeypatch, capsys):
+def test_every_automatic_run_of_one_turn_is_recorded_with_its_own_outcome(tmp_path, monkeypatch, capsys):
+    """#3025: an edit, then two Codex runs in one requester turn, the last one failing."""
+    monkeypatch.chdir(tmp_path)
+    def write(path: str, content: str) -> str:
+        """Write a workspace file."""
+        (tmp_path / path).write_text(content)
+        return "Written"
     agent = host_agent(tmp_path)
-    monkeypatch.setattr(coding_agents, "_run_codex", lambda **kw: json.dumps({"exit_code": 0}))
+    agent.add_tool(write)
+    execute_single_tool("write", {"path": "note.txt", "content": "hello"},
+                        "write-1", agent.tools, agent, agent.logger)
+    outcomes = iter([json.dumps({"exit_code": 0}), RuntimeError("provider stopped")])
+    def run(**kwargs):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    monkeypatch.setattr(coding_agents, "_run_codex", run)
     plugin = CodexPlugin(workspace=tmp_path, use_host_permissions=True)
-    for prompt in ("fix it", "test it"):
-        plugin.codex(prompt, agent=agent)
-    assert len(approvals.read(tmp_path / ".co")) == 1
-    assert capsys.readouterr().out.count("Host Auto:") == 1
+    plugin.codex("fix it", agent=agent)
+    with pytest.raises(RuntimeError, match="provider stopped"):
+        plugin.codex("test it", agent=agent)
+    records = [e for e in approvals.read(tmp_path / ".co") if e["path"] == "auto"]
+    assert [(e["tool"], e["outcome"]) for e in records] == [
+        ("write", "success"), ("codex", "completed"), ("codex", "failed")]
+    assert [e["task_summary"] for e in records[1:]] == ["fix it", "test it"]
+    out = capsys.readouterr().out
+    assert out.count("Host Auto:") == 3
+    # The requester is still told only once per session.
+    assert len([e for e in agent.current_session["trace"] if e["type"] == "host_notice"]) == 1
 
 
 @pytest.mark.parametrize("prompt,selected", [("", None), ("inspect it", "codex:read-only"), ("fix it", "codex:workspace-ask")])

@@ -91,8 +91,8 @@ class SourceInventory:
         lines += [f"- {entry.get('source', 'unknown')}: {entry.get('stage', 'unknown')} "
                   f"({entry.get('error', 'error')})" for entry in report.get("errors", [])]
         atomic_write(summary, "\n".join(lines) + "\n")
-        return {"summary": str(summary.relative_to(self.root)),
-                "records": str(records.relative_to(self.root)),
+        return {"summary": summary.relative_to(self.root).as_posix(),
+                "records": records.relative_to(self.root).as_posix(),
                 "mail_observed": mail_count, "sessions_observed": session_count,
                 "capped_mail_windows": capped, "split_mail_windows": subdivided,
                 "incomplete_mail_windows": incomplete,

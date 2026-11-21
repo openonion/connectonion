@@ -11,7 +11,7 @@ from test_rem_reader import _run_reader_js
 def search_result(query, selected="", *, hidden=True, unique=False, no_details=False,
                   first_title='Aster Vale', second_title='Aster Vale', second_alias='', extra_titles=()):
     page = TEMPLATE.read_text()
-    names = ["search", "listedRecords", "identityChoices", "identityDetails", "nameMatches", "recordedNames"]
+    names = ["search", "searchSnippet", "localDates", "listedRecords", "identityChoices", "identityDetails", "nameMatches", "recordedNames", "tagNorm", "tagResolve", "tagged"]
     functions = "\n".join(match.group(0) for name in names
                           if (match := re.search(r"function " + name + r"\(.*?\n\}", page, re.S)))
     script = r'''
@@ -33,7 +33,7 @@ def search_result(query, selected="", *, hidden=True, unique=False, no_details=F
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children,
         appendChild(x) {this.children.push(x);}});
       const href = r => '#r=' + encodeURIComponent(r.path), label = c => c;
-      const recordFocus = r => ({querySelector: () => ({relatedFor: r.path})});
+      const connectedContext = r => ({relatedFor: r.path});
       const emptyState = text => ({text}), skillReport = () => false;
       const splitTrailers = text => ({body:text}), COMMENT = /<!--.*?-->/g;
       const FACT_LABELS = {people:1}, bestMatch = r => ({bestFor:r.path});

@@ -45,16 +45,16 @@ def test_the_rails_numbers_are_worded_controls(today, size):
     page.evaluate(OUTCOMES, False, isolated_context=False)
     others = page.locator("#today-others")
     batch = others.locator("#approve-all")
-    assert batch.inner_text() == "Approve all 2"          # the two that can go; the one with a gap waits
+    assert batch.inner_text() == "Approve the 2 REM prepared"          # the two that can go; the one with a gap waits
     assert batch.evaluate("node => node.tagName") == "BUTTON"
     batch.click()
     assert page.locator("#approval-sheet").is_visible()
-    assert page.locator("#approval-title").inner_text() == "Approve all 2"   # the sheet says the button's number
+    assert page.locator("#approval-title").inner_text() == "Approve the 2 REM prepared"   # the sheet says the button's number
     page.keyboard.press("Escape")
     waiting = others.locator("a.waiting-more")
     assert waiting.get_attribute("href") == "#view=open"
     theirs = page.evaluate("threadCounts().theirs", isolated_context=False)
-    assert waiting.inner_text() == f"See the {theirs} waiting on others →"
+    assert waiting.inner_text() == f"See the {theirs} you are waiting on others for →"
     # Nothing that can go at once: no button at all, not a greyed one and not a zero.
     page.evaluate(OUTCOMES, True, isolated_context=False)
     assert page.locator("#approve-all").count() == 0
@@ -73,8 +73,7 @@ def test_the_header_and_the_badge_say_the_same_number_and_the_people_are_a_subse
     line = page.locator(".night-card .count-line")
     assert line.locator(".count-words").inner_text() == "things waiting on you"
     assert line.locator(".count-words").is_visible()       # a phone says what the number counts, too
-    if size[0] > 640:
-        assert line.locator(".count-of").inner_text() == f"Start with these {people} people"
+    assert "Start with" not in line.inner_text()  # the faces say where to start (#2994)
 
 
 def _primaries(card):
@@ -103,7 +102,7 @@ def test_every_card_has_one_primary_and_the_three_closes_are_words_without_a_hov
         # The hand-offs stay visible words (D-100); only the talk folds under a worded More, never a bare glyph.
         for word in ("Hand to Codex", "Hand to Claude"):
             assert line.get_by_role("button", name=word, exact=True).is_visible(), (i, word)
-        assert line.locator(":scope > .strip-more > summary").inner_text().startswith("More")
+        assert line.locator(":scope > .strip-more").inner_text() == "Show more"
 
 
 def test_the_reply_card_leads_with_send(today):
@@ -162,7 +161,7 @@ def test_long_quiet_promises_are_one_folded_line_below_the_desk_with_close_all_a
     assert stale.bounding_box()["y"] >= desk["y"] + desk["height"]           # under the desk and its rail
     stale.locator(":scope > summary").click()
     for row in stale.locator("li").all():
-        assert row.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]  # the Today strip (#2990)
+        assert row.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # the Today strip (#2990)
     assert stale.get_attribute("aria-label") is None                         # its words are on screen
     stale.get_by_role("button", name="Mark all 2 done", exact=True).click()
     assert page.locator("#today-stale").count() == 0
@@ -206,19 +205,21 @@ def test_a_refused_mark_in_close_all_keeps_undo_for_the_saved_ones_and_never_say
     assert "Saved in notebook" not in notice.inner_text()
 
 
-def test_more_closes_on_escape_and_when_a_talk_is_chosen(today):
+def test_show_more_closes_on_escape_and_when_a_talk_is_chosen(today):
+    """Since #3072 the worded More is Show more: the item's second level, with the talk's two choices in it."""
     page, _, answers = today
     answers["/rem/talk"] = [(200, {"id": "a" * 32, "agent": "codex", "state": "idle", "about": {"key": "x"}, "turns": []})] * 3
     page.evaluate(LIVE, isolated_context=False)
-    more = page.locator(".today-brief .qcard.focal .qitem").first.locator(".strip-more")
-    more.locator(":scope > summary").click()
-    assert more.get_attribute("open") is not None
+    row = page.locator(".today-brief .qcard.focal .qitem").first
+    row.locator(".strip-more").click()
+    assert page.locator("#item-context").evaluate("node => node.open")
     page.keyboard.press("Escape")
-    assert more.get_attribute("open") is None
-    more.locator(":scope > summary").click()
-    more.locator(".talk-menu > summary").click()
-    more.locator('[data-talk="codex"]').click()
-    assert more.get_attribute("open") is None
+    page.wait_for_function("() => !document.getElementById('item-context')")
+    row.locator(".strip-more").click()
+    page.locator('#item-context [data-talk="codex"]').click()
+    # The dialog's close event (which removes it) is queued, so wait for it rather than reading the count at once.
+    page.wait_for_function("() => !document.getElementById('item-context')")
+    row.locator(".talk").wait_for()
 
 
 def test_with_nothing_waiting_on_you_the_header_never_names_people(today):
@@ -228,4 +229,4 @@ def test_with_nothing_waiting_on_you_the_header_never_names_people(today):
     assert page.locator(".deal").count() > 0
     line = page.locator(".night-card .count-line")
     assert line.inner_text().split("\n") == ["0", "Nobody is waiting on you today."]
-    assert line.locator(".count-of").count() == 0
+    assert "Start with" not in line.inner_text()

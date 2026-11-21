@@ -134,7 +134,7 @@ def test_right_click_uses_right_button():
 
 def test_type_text_is_per_character():
     page = FakePage()
-    humanize.type_text(page, "hello")
+    humanize.type_text(page, "hello", human=True)
     typed = [e[1] for e in page.log if e[0] == "type"]
     assert typed == ["h", "e", "l", "l", "o"], "typed one char at a time, not in bulk"
 
@@ -178,9 +178,9 @@ def test_segments_all_latin_is_one_run():
 
 
 def test_type_text_latin_still_per_character_keystroke():
-    # Latin text must still go key-by-key through the keyboard (not the IME path).
+    # Asked to type as a person would, Latin goes key-by-key (not the IME path).
     page = FakePage()
-    humanize.type_text(page, "hi")
+    humanize.type_text(page, "hi", human=True)
     assert [e[1] for e in page.log if e[0] == "type"] == ["h", "i"]
 
 

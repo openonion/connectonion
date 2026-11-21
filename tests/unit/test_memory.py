@@ -173,3 +173,44 @@ def test_search_memory_empty(test_memory):
     """Test search with no memories."""
     result = test_memory.search_memory("anything")
     assert "no memories" in result.lower()
+
+
+def test_single_file_preserves_header(tmp_path):
+    """Writing to a single-file memory must not drop the leading header."""
+    memory_file = tmp_path / "memory.md"
+    memory_file.write_text(
+        "# My private notes\n\nSome preamble text\n\n## existing-note\n\nOld content\n",
+        encoding="utf-8",
+    )
+
+    memory = Memory(memory_file=str(memory_file))
+    memory.write_memory("new-note", "New content")
+
+    content = memory_file.read_text(encoding="utf-8")
+    assert "# My private notes" in content
+    assert "Some preamble text" in content
+    assert "## existing-note" in content
+    assert "Old content" in content
+    assert "## new-note" in content
+    assert "New content" in content
+
+
+def test_single_file_round_trip(tmp_path):
+    """Read-modify-write on a single file keeps the header and every section."""
+    memory_file = tmp_path / "memory.md"
+    memory_file.write_text(
+        "# Title\n\nIntro\n\n## a\n\ncontent a\n\n## b\n\ncontent b\n",
+        encoding="utf-8",
+    )
+
+    memory = Memory(memory_file=str(memory_file))
+    memory.write_memory("a", "updated a")
+
+    content = memory_file.read_text(encoding="utf-8")
+    assert "# Title" in content
+    assert "Intro" in content
+    assert "## b" in content
+    assert "content b" in content
+
+    assert memory.read_memory("a") == "Memory: a\n\nupdated a"
+    assert memory.read_memory("b") == "Memory: b\n\ncontent b"

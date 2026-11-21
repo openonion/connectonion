@@ -30,10 +30,10 @@ def test_both_themes_define_every_colour_token():
     # Every token whose light value is a colour; sizes, grid and motion do not change with the theme.
     colours = set(re.findall(r"(--[\w-]+): (?:#[\da-f]{6}|rgba\([^)]*\));", light))
     assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim"}
-    # N3 (D-123): the one green and its label are the same in both themes; every other colour has its dark value.
+    # #3144: the accent is ink, so it inverts at night like every other colour (it was one green in both themes, D-123).
     # The shadows are drawn in colour too (a dark hairline on paper, a light one at night), so they change with it.
-    shadows = {"--e1", "--e2", "--e3", "--e-fuse"}
-    assert blocks["dark-auto"] == colours - {"--green", "--on-green"} | shadows
+    shadows = {"--e1", "--e2", "--e3", "--e-fuse", "--e-green"}
+    assert blocks["dark-auto"] == colours | shadows
     assert blocks["dark-forced"] == blocks["dark-auto"]
 
 
@@ -46,6 +46,18 @@ def test_the_template_names_no_remote_host_and_loads_no_font():
     assert "@font-face" not in page and "@import" not in page
     # The one <link> is the tab icon, a data: drawing; a stylesheet or a font would be a fetch.
     assert page.count("<link") == 1 and re.findall(r'<link\b[^>]*?\bhref="([^",]*)', page) == ["data:image/svg+xml"]
+
+
+def test_rail_folds_before_its_places_push_settings_out_of_a_short_desktop():
+    """The rail once scrolled under 712px. Since #3091 it folds its last places under More instead, so Settings and the
+    owner's face stay in view at any height that holds them; the fold is browser-tested (test_rem_rail_browser.py)."""
+    page = TEMPLATE.read_text(encoding='utf-8')
+    # The places' column may be shorter than its content, or there is nothing to measure the overflow against.
+    assert re.search(r'\.rail-menu \{[^}]*min-height: 0;', page)
+    assert 'window.addEventListener("resize", fitRail);' in page  # and it refits when the window changes
+    scrolling = re.search(r'@media \(max-height: (\d+)px\) and \(min-width: 641px\) \{ \.rail \{ overflow-y: auto;', page)
+    # Scrolling is only the last resort, for a window too low for More, Settings and the face (about 270px).
+    assert scrolling and 260 <= int(scrolling[1]) < 400
 
 
 def test_mail_facts_sum_a_person_seen_under_two_addresses(tmp_path):
@@ -205,7 +217,7 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
             a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
 
-    assert colors['--green'] == '#22d27a'
+    assert colors['--green'] == ('#121512' if theme == 'light' else '#eef0ed')  # the ink accent (#3144), light ink on dark
     for surface in ['--raised', '--well']:
         a, b = sorted([luminance(colors['--red']), luminance(colors[surface])])
         assert (b + .05) / (a + .05) >= 4.5, (theme, '--red', surface)
@@ -221,7 +233,9 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
     # Hover must change something: N3's primary lifts (D-123); the older views' keys still turn over.
     lift = _rule(css, '.btn-act:hover')
     assert lift and 'translateY' in lift
-    for selector in ['.projects-view .btn-act:hover, .sessions-view.r4 .btn-act:hover', '.gx-open:hover']:
+    # The graph's Open page is navigation, not the one primary action: it is neutral since #3085.
+    assert 'var(--green)' not in _rule(css, '.gx-open:hover') and 'var(--green)' not in re.search(r'\.gx-open \{([^}]+)\}', css).group(1)
+    for selector in ['.sessions-view.r4 .btn-act:hover']:
         hover = _rule(css, selector)
         assert hover and 'background: var(--on-green)' in hover and 'color: var(--green)' in hover, selector
     a, b = sorted([luminance(colors['--green']), luminance(colors['--on-green'])])

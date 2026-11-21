@@ -74,9 +74,12 @@ change the core OIP 0.1 lifecycle unless both peers negotiate the extension.
 The Host re-reads the requester's trust lists before dispatching each frame on
 an authenticated connection, including INPUT and approval responses. A block
 or a downgrade from admin, whitelist, or contact ends the connection's logical
-session and interrupts every running turn owned by that requester. Revocation
-waits for the requester's next frame; until it arrives, a running turn can
-continue. Interruption is cooperative and cannot undo completed external effects.
+session and interrupts every running turn owned by that requester. Independently
+of any frame, the Host re-checks trust before every tool or model step of a
+requester's turn and stops it at the first step after revocation, so a
+disconnected requester's turn stops too; a step already running finishes unless
+the requester is still connected. Interruption is cooperative and cannot undo
+completed external effects.
 The reply is:
 
 ```json
@@ -978,7 +981,7 @@ puts it in the public directory, and it is built separately by
 `/info`, different code path, different size limits, enforced by the relay rather than
 by the agent. If an agent starts cleanly but reads as offline, that is the surface to
 look at: the relay rejects the whole ANNOUNCE when the profile fails validation, and
-`host()` prints the reason as `Relay error: <reason>` and keeps heartbeating. The
+`host()` exits with the reason: `The relay rejected this agent's announce: <reason>`. The
 contract is documented in `oo-api/docs/relay-announce-profile.md`.
 
 #### DASHBOARD_SNAPSHOT

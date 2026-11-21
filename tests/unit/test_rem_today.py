@@ -153,6 +153,38 @@ def reader_functions(*names):
     return '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
 
 
+@pytest.mark.parametrize('timing', ['due 2026-11-01', 'since 2026-11-08'])
+def test_counterparty_debt_never_takes_an_owner_today_slot(tmp_path, timing):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.write('people/tariq.md', '# Tariq Bell\n\n## Open threads\n'
+               f'- The user asked Tariq to arrange a call; {timing}.\n'
+               '- Tariq asked the user to review the proposal.\n')
+    rows = today.queue(tmp_path, as_of=date(2026, 11, 8))
+    assert rows[0]['dir'] == 'mine'
+    assert rows[0]['section'] == 'morning'
+    theirs = next(row for row in rows if row['dir'] == 'theirs')
+    assert theirs['section'] == ''
+    assert theirs['rank'] > rows[0]['rank']
+
+
+def test_waiting_cards_and_overdue_counts_ignore_counterparty_rows_in_old_snapshots():
+    result = _run_reader_js(reader_functions('todayGroups', 'personGroups', 'todayEntries', 'groupLate') + r'''
+      const mine = {r: {path: 'people/tariq.md'}, t: {key: 'mine', dir: 'mine', due: 2}};
+      const theirs = {r: mine.r, t: {key: 'theirs', dir: 'theirs', due: 15}};
+      const onlyTheirs = {r: {path: 'people/fern.md'}, t: {key: 'fern', dir: 'theirs', due: 20}};
+      const entries = [theirs, onlyTheirs, mine], REM = {owner: '', today_queue: entries.map(entry =>
+        ({key: entry.t.key, section: 'today'}))};
+      const doneKey = entry => entry.t.key, waitingOnYou = entry => entry.t.dir === 'mine';
+      const isDone = () => false, answered = () => false, staleEntry = () => false;
+      const overdueDays = thread => thread.due, morningEntries = entries => todayEntries(entries, 'morning');
+      const groups = todayGroups(entries);
+      console.log(JSON.stringify({cards: groups.map(group => group.r.path),
+        lead: groups[0].entries[0].t.key, late: groupLate({entries})}));
+    ''')
+    assert result == {'cards': ['people/tariq.md'], 'lead': 'mine', 'late': 2}
+
+
 @pytest.mark.parametrize('language', ['en', 'zh'])
 @pytest.mark.parametrize('status', [None, 'pending'])
 def test_replied_card_offers_completion_first_and_localized_explanation(language, status):
@@ -227,11 +259,13 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('snapshotWhy', 'stripDone') + r'''
       const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      const setDone = (entry, done, state) => calls.push(['setDone', entry.t.text, done, state]);
+      const setDone = (entry, done, state, entries, extra, until) => calls.push(['setDone', entry.t.text, done, state, ...(until ? [until] : [])]);
       const todayRow = () => null;  // no cited mail sender, so Ignore offers nothing more
+      // Not now asks when (#3072): the chooser hands back the moment he picked, here always the same one.
+      const laterChooser = (line, choose) => choose('2026-11-20T00:00:00.000Z')('click'), press = {currentTarget: {closest: () => 'line'}};
       const entry = {r: {path: 'people/mara.md'}, t: {text: 'You owe Mara a pilot review.'}};
-      const own = stripDone(entry), slide = stripDone(entry, (event, state) => calls.push(['close', event, state]));
-      own[0].onclick(); own[2].onclick(); slide.forEach(button => button.onclick('click'));
+      const own = stripDone(entry), slide = stripDone(entry, (event, state, extra, until) => calls.push(['close', event, state, ...(until ? [until] : [])]));
+      own[0].onclick(); own[1].onclick(press); own[2].onclick(); slide[0].onclick('click'); slide[1].onclick(press); slide[2].onclick('click');
       const shown = {own: own.map(node => [node.tag, node.class, node.text]), calls,
         ask: stripDone({...entry, ask: true}).length,
         bare: stripDone({key: 'open'}).length};
@@ -244,8 +278,9 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
                              ['button', 'btn-quiet strip-ignore', 'Ignore']]
     # All three closes take the page's way out (Today slides the row), and Ignore is its own state.
     assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True, 'done'],
+                               ['setDone', 'You owe Mara a pilot review.', True, 'skipped', '2026-11-20T00:00:00.000Z'],
                                ['setDone', 'You owe Mara a pilot review.', True, 'ignored'],
-                               ['close', 'click', 'done'], ['close', 'click', 'skipped'], ['close', 'click', 'ignored']]
+                               ['close', 'click', 'done'], ['close', 'click', 'skipped', '2026-11-20T00:00:00.000Z'], ['close', 'click', 'ignored']]
     assert {key: result[key] for key in ('ask', 'bare')} == {'ask': 0, 'bare': 0}
     reason = 'This is an offline snapshot; open REM to mark it.'
     assert result['file'] == result['snapshot'] == [[word, 'disabled', reason, 'why-close'] for word in ('Mark done', 'Not now', 'Ignore')]
@@ -258,7 +293,7 @@ def _today_card_js(body):
     """A Today card built by the reader's own functions, hand-off strip included; only the data and the DOM are stubs."""
     page = TEMPLATE.read_text()
     steps_order = re.search(r'const STEPS = .*?;', page).group(0)
-    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
+    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();\n'
                           + reader_functions(*TODAY_CARD, *[name for name in HAND if name != 'snapshotWhy']) + r'''
       const REM = {live: true, owner: 'people/avery.md', as_of: '2026-11-08', today_queue: []}, location = {protocol: 'http:'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
@@ -518,3 +553,26 @@ def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
       console.log(JSON.stringify(todayGroups(ranked).map(group => group.r.path)));
     ''')
     assert result == ['people/p1.md', 'people/p2.md', 'people/p3.md', 'people/p4.md', 'people/p5.md']
+
+
+def test_the_queue_is_built_once_per_notebook_change(tmp_path, monkeypatch):
+    """#3106: approving and opening a talk each rebuilt Today's queue from every page. The Host now keeps the
+    queue for the notebook as it stands: a second click is free, and any write to the notebook builds it again."""
+    from connectonion.rem import today
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    root = tmp_path / "rem"
+    prepare(root)
+    book = Notebook(root)
+    book.stub_project("projects/pilot.md", "Pilot", [])
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("## Open threads\n", "## Open threads\n- You owe Mara a pilot review.\n"))
+    built = []
+    real = today._entries
+    monkeypatch.setattr(today, "_entries", lambda *a, **k: built.append(1) or real(*a, **k))
+    first = today.queue(root)
+    second = today.queue(root)
+    assert len(built) == 1 and first == second
+    second[0]["text"] = "changed by a caller"
+    assert today.queue(root)[0]["text"] != "changed by a caller"  # callers get their own copy
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("pilot review", "pilot review and invoice"))
+    assert "invoice" in today.queue(root)[0]["text"] and len(built) == 2

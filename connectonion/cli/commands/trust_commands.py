@@ -182,11 +182,21 @@ def _print_trust_files(co_dir):
         console.print(str(list_file(name, co_dir)), markup=False, soft_wrap=True)
 
 
+def _resolved(co_dir):
+    return Path(co_dir or project_co_dir()).expanduser().resolve()
+
+
+def _print_updated(co_dir, *names):
+    """Name each list an edit wrote, so a wrong target is visible at once (#2819)."""
+    for name in names:
+        console.print(f"Updated: {list_file(name, co_dir)}", markup=False, soft_wrap=True)
+
+
 def handle_trust_level(address: str, co_dir=None):
     """Check trust level of an address."""
     _require_address(address)
     explicit_directory = co_dir is not None
-    co_dir = Path(co_dir or project_co_dir()).expanduser().resolve()
+    co_dir = _resolved(co_dir)
     target = f" --co-dir {shlex.quote(str(co_dir))}" if explicit_directory else ""
     level = get_level(address, co_dir)
     if level != "blocked" and is_admin(address, co_dir):
@@ -225,23 +235,19 @@ def handle_trust_level(address: str, co_dir=None):
 def handle_trust_add(address: str, whitelist: bool = False, co_dir=None):
     """Add address to contacts or whitelist."""
     _require_address(address)
-    if whitelist:
-        result = promote_to_whitelist(address, co_dir)
-        console.print(f"\n[green]✓[/green] {result}\n")
-    else:
-        result = promote_to_contact(address, co_dir)
-        console.print(f"\n[green]✓[/green] {result}\n")
+    resolved = _resolved(co_dir)
+    promote = promote_to_whitelist if whitelist else promote_to_contact
+    console.print(f"\n[green]✓[/green] {promote(address, resolved)}\n")
+    _print_updated(resolved, "whitelist" if whitelist else "contacts")
 
     _print_targeted_tip("See every list: co trust list", co_dir)
 
 
 def handle_trust_remove(address: str, co_dir=None):
     """Remove address from all lists (demote to stranger)."""
-    co_dir = Path(co_dir or project_co_dir()).expanduser().resolve()
-    result = demote_to_stranger(address, co_dir)
-    console.print(f"\n[yellow]✓[/yellow] {result}\n")
-    for name in ("contacts", "whitelist"):
-        console.print(f"Updated: {list_file(name, co_dir)}", markup=False, soft_wrap=True)
+    resolved = _resolved(co_dir)
+    console.print(f"\n[yellow]✓[/yellow] {demote_to_stranger(address, resolved)}\n")
+    _print_updated(resolved, "contacts", "whitelist")
 
     _print_targeted_tip("See every list: co trust list", co_dir)
 
@@ -249,18 +255,18 @@ def handle_trust_remove(address: str, co_dir=None):
 def handle_trust_block(address: str, reason: str = "", co_dir=None):
     """Block an address."""
     _require_address(address)
-    co_dir = Path(co_dir or project_co_dir()).expanduser().resolve()
-    result = block(address, reason, co_dir)
-    console.print(f"\n[red]✓[/red] {result}\n")
-    console.print(f"Updated: {list_file('blocklist', co_dir)}", markup=False, soft_wrap=True)
+    resolved = _resolved(co_dir)
+    console.print(f"\n[red]✓[/red] {block(address, reason, resolved)}\n")
+    _print_updated(resolved, "blocklist")
 
     _print_targeted_tip("See every list: co trust list", co_dir)
 
 
 def handle_trust_unblock(address: str, co_dir=None):
     """Unblock an address."""
-    result = unblock(address, co_dir)
-    console.print(f"\n[green]✓[/green] {result}\n")
+    resolved = _resolved(co_dir)
+    console.print(f"\n[green]✓[/green] {unblock(address, resolved)}\n")
+    _print_updated(resolved, "blocklist")
 
     _print_targeted_tip("See every list: co trust list", co_dir)
 
@@ -268,14 +274,16 @@ def handle_trust_unblock(address: str, co_dir=None):
 def handle_admin_add(address: str, co_dir=None):
     """Add an admin."""
     _require_address(address)
-    result = add_admin(address, co_dir)
-    console.print(f"\n[green]✓[/green] {result}\n")
+    resolved = _resolved(co_dir)
+    console.print(f"\n[green]✓[/green] {add_admin(address, resolved)}\n")
+    _print_updated(resolved, "admins")
 
     _print_targeted_tip("See every list: co trust list", co_dir)
 
 
 def handle_admin_remove(address: str, co_dir=None):
     """Remove an admin."""
-    result = remove_admin(address, co_dir)
-    console.print(f"\n[yellow]✓[/yellow] {result}\n")
+    resolved = _resolved(co_dir)
+    console.print(f"\n[yellow]✓[/yellow] {remove_admin(address, resolved)}\n")
+    _print_updated(resolved, "admins")
     _print_targeted_tip("See every list: co trust list", co_dir)

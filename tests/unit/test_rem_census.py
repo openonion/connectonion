@@ -284,3 +284,59 @@ def test_a_support_desk_that_replies_is_a_service_and_its_engineer_a_person(tmp_
     found = pages(tmp_path)
     assert found["people/acmecloud.md"]["service"] and found["people/acme-help.md"]["service"]
     assert not found["people/mia.md"]["service"] and listed(found["people/mia.md"])
+
+
+# #3157 (bug hunt on the owner's notebook): People listed a shop's ordering inbox, a notifications sender, and an
+# agent's own mailbox as people. A page whose every address is a desk, a bot or an agent is not a person.
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("emails", [["orders@fine-wines.example"], ["notifications@app.example"],
+                                      ["0xab12cd34ef@mail.openonion.ai"], ["bookings@harbour-hotel.example"],
+                                      ["enquiries@council.example", "alerts@council.example"],
+                                      # rc35 hunt: a desk word after one prefix is still a desk.
+                                      ["kiln.orders@mail.fernhill.example"], ["team-notifications@app.example"]])
+def test_a_page_whose_every_address_is_a_desk_a_bot_or_an_agent_is_not_a_person(emails):
+    from connectonion.rem.census import non_person
+    text = "# Somebody\n\n## Facts\n- Email: " + "; ".join(emails) + "\n"
+    assert non_person("Somebody", text, emails, None, set())
+
+
+@_pytest.mark.parametrize("emails", [["ines.halvorsen@fernhill.example"], ["ody@gmail.com", "0xab12cd34ef@mail.openonion.ai"],
+                                      # Only one prefix, and only before a whole desk word: a person stays a person.
+                                      ["mara.ostrowski@fernhill.example"], ["theo.salesky@fernhill.example"]])
+def test_a_person_with_their_own_address_stays_a_person(emails):
+    from connectonion.rem.census import non_person
+    assert not non_person("Ines Halvorsen", "# Ines Halvorsen\n", emails, None, set())
+
+
+# rc34 check (Mac session): an AI assistant writing for someone, and a fund named like a company, were still
+# listed as people. The page says so itself in its Role line, or its title is a company's name.
+@_pytest.mark.parametrize("title, role", [
+    ("Pip", "- Role: Not a person: the shared team inbox [1]"),
+    ("Pip", "- Role: AI assistant that writes on Mara's behalf [2]"),
+    ("Pip", "- Role: Agent mailbox used for order tests [3]"),
+    ("Harbour Street Ventures", "- Role: Unknown"),
+    ("Fernhill Capital", "- Role: Unknown"),
+    ("Kiln Works Pty Ltd", "- Role: Unknown"),
+    # rc35 check: a mailbox described mid-line still led People as an unnamed row.
+    ("orders@kiln.example", "- Role: Automated order-intake and result mailbox for the Kiln pilot [8]"),
+    ("frontdesk@kiln.example", "- Role: Building management (shared mailbox used by successive managers) [7]"),
+])
+def test_an_assistant_agent_or_company_page_is_not_a_person(title, role):
+    from connectonion.rem.census import non_person
+    text = f"# {title}\n\n## Facts\n- Email: pip@kiln.example\n{role}\n"
+    assert non_person(title, text, ["pip@kiln.example"], None, set())
+
+
+@_pytest.mark.parametrize("title, role", [
+    ("Mara Ostrowski", "- Role: Executive assistant to the CEO [2]"),
+    ("Theo Capitalé", "- Role: Partner at Fernhill [1]"),
+    ("Ines Halvorsen", "- Role: Head of agent platforms [1]"),
+    ("Quinn Avery", "- Role: Research Assistant, Fernhill University [2]"),
+    ("Quinn Avery", "- Role: Office manager; looks after the team's shared calendar [2]"),
+])
+def test_a_human_assistant_or_a_name_like_a_company_word_stays_a_person(title, role):
+    from connectonion.rem.census import non_person
+    text = f"# {title}\n\n## Facts\n- Email: someone@kiln.example\n{role}\n"
+    assert not non_person(title, text, ["someone@kiln.example"], None, set())

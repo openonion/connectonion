@@ -23,9 +23,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import read_config
-from .files import WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
+from .files import WRITE_WAIT_SECONDS, KEY_SHAPES, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
 from .project_material import RECENT_DAYS, mark_refused, mark_written, page_state, stored, timestamp
 from .project_tree import identity
+from .scan import is_repository
 
 # Projects active in the last RECENT_DAYS (14, from project_material) are written first.
 # Characters of messages one write carries. The owner's busiest folder held
@@ -225,7 +226,7 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
                 or item.get("role") not in ("readme", "project-file", "checkout-state", "recent-commits")
                 or not isinstance(origin, str) or not origin.startswith(("git:", "file:"))
                 or not isinstance(text, str) or not 0 < len(text) <= limit
-                or SECRET_SHAPES.search(text)
+                or KEY_SHAPES.search(text)
                 or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
             continue
         path = state_path(root, "project-sources/" + source.split(":")[1] + ".json")
@@ -242,44 +243,31 @@ def retain_repository_context(root: Path, items: list[dict], cited: set[str]) ->
     return count
 
 
-# Sources whose date is something someone did on the project: a session message,
-# a mail, a chat, the commit history. A snapshot's date is when it was read and a
-# file's is when it was saved, so neither is activity (their items say so).
-ACTIVITY_SOURCES = ("codex:", "claude-code:", "gmail:", "outlook:", "email:", "whatsapp:")
+# The page's dated sources define activity consistently across all project kinds.
 DATED_SOURCE = re.compile(r"^[ \t]*- \[(\d+)\][ \t]+([a-z][\w-]*:\S+) — (\d{4}-\d{2}-\d{2})", re.M)
 LAST_ACTIVITY = re.compile(r"^- Last activity:[ \t]*(.*)$", re.M)
 
 
-def _activity(root: Path, source: str, given: dict) -> bool:
-    if source.startswith(ACTIVITY_SOURCES):
-        return True
-    if not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
-        return False
-    kept = given.get(source) or read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {})
-    return str(kept.get("origin", "")).endswith(":recent-commits")
-
-
 def settle_last_activity(root: Path, text: str, items=()) -> str:
-    """Last activity is at least the newest dated activity in the page's own Sources (#2952).
-
-    The model cited one source of its choosing, so a page said "quiet since
-    1 October" above a session of 20 October. A later model-chosen day stays, and
-    an `Unknown` stays for the reader, which then dates the project by its newest source."""
+    """Compute Last activity from the newest dated source, independent of the model."""
     from .facts import _bounds
+    from .project_obligations import iso_day
     span = _bounds(text, "Facts")
     line = LAST_ACTIVITY.search(text, *span) if span else None
     if not line:
         return text
-    given = {item["source"]: item for item in items if item.get("source")}
     sources = text.partition("\n## Sources\n")[2]
-    dated = [(day, number) for number, source, day in DATED_SOURCE.findall(sources) if _activity(root, source, given)]
+    dated = [(day, number) for number, source, day in DATED_SOURCE.findall(sources) if iso_day(day)]
     if not dated:
         return text
     day, number = max(dated)
-    written = re.match(r"\d{4}-\d{2}-\d{2}", line[1])
-    if not written or written[0] >= day:
-        return text
-    return text[:line.start()] + f"- Last activity: {day} [{number}]" + text[line.end():]
+    after = text[:line.start()] + f"- Last activity: {day} [{number}]" + text[line.end():]
+    # A model's old "quiet since" claim contradicts newer evidence; do not infer
+    # another status from a date alone. Only touch this narrowly dated claim.
+    span = _bounds(after, "Facts")
+    body = re.sub(r"(?m)^- Status: quiet since (\d{4}-\d{2}-\d{2})[^\n]*$",
+                  lambda match: "- Status: Unknown" if match[1] < day else match[0], after[span[0]:span[1]])
+    return after[:span[0]] + body + after[span[1]:]
 
 
 def refresh_last_activity(root: Path) -> list[str]:
@@ -328,7 +316,7 @@ def repository_context(root: Path, source: str, private: bool = False) -> dict |
     text, origin = saved.get("text"), saved.get("origin", "")
     limit = FILE_SNAPSHOT_CHARS + len("\n[truncated]") if _file_snapshot(saved.get("snapshot_kind"), origin) else REPOSITORY_EVIDENCE_CHARS
     if (saved.get("id") != source or not isinstance(text, str) or not isinstance(origin, str)
-            or not 0 < len(text) <= limit or SECRET_SHAPES.search(text) or (PRIVATE.search(text) and not private)
+            or not 0 < len(text) <= limit or KEY_SHAPES.search(text) or (PRIVATE.search(text) and not private)
             or source != "project-source:" + hashlib.sha256((origin + "\0" + text).encode()).hexdigest()):
         return None
     return {"excerpt": text.strip()[:REPOSITORY_EXCERPT_CHARS],
@@ -356,7 +344,7 @@ def live_file_snapshot(page: str, source: str) -> dict | None:
     # A Windows-encoded file in a real repository ("\x93", a curly quote) crashed
     # the short-term-rental-agent page twice (2026-10-15); the hash pins the bytes.
     text = raw.decode("utf-8", errors="replace")
-    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
+    if KEY_SHAPES.search(text) or PRIVATE.search(text):
         return None
     return {"id": source, "text": text, "captured_at": datetime.now(timezone.utc).isoformat(),
             "file_modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()}
@@ -379,10 +367,10 @@ def live_git_snapshot(page: str, source: str) -> dict | None:
     if content.returncode or len(content.stdout) > FILE_SNAPSHOT_CHARS or b"\0" in content.stdout:
         return None
     text = content.stdout.decode("utf-8", errors="replace")
-    if SECRET_SHAPES.search(text) or PRIVATE.search(text):
+    if KEY_SHAPES.search(text) or PRIVATE.search(text):
         return None
     date = subprocess.run(["git", "-C", str(repo), "show", "-s", "--format=%cI", match[2]],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if date.returncode or not date.stdout.strip():
         return None
     return {"id": source, "text": text, "sha256": hashlib.sha256(content.stdout).hexdigest(),
@@ -410,7 +398,7 @@ def retain_live_source_context(root: Path, original: str, candidate: str) -> Non
 
 
 def _excerpt(value: str, limit: int) -> str:
-    clean = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", value)
+    clean = KEY_SHAPES.sub("[secret-shaped text removed by co rem]", value)
     return clean[:limit] + ("\n[truncated]" if len(clean) > limit else "")
 
 
@@ -451,7 +439,7 @@ def _repository_evidence(page: str, stamp: str, newest_session: str, *, requests
     files = [path for path in project_file_inventory(page, max_files=30)
              if Path(path).name in ("pyproject.toml", "package.json", "Cargo.toml", "Package.swift")][:2]
     for item in project_file_texts(files, max_files=2, chars_per_file=1_500):
-        item["text"] = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", item["text"])
+        item["text"] = KEY_SHAPES.sub("[secret-shaped text removed by co rem]", item["text"])
         items.append(item)
     implementation = [path for path in project_file_inventory(page, max_files=IMPLEMENTATION_FILES)
                       if path not in files and not Path(path).name.lower().startswith("readme")]
@@ -463,7 +451,7 @@ def current_line(page: str) -> tuple[str, str, str] | None:
     """(repository, ref, full revision) of the first mapped Git checkout's current line, or None."""
     from .investigate import CURRENT_REFS, _git, collapse_worktree_paths, project_paths
     for folder in project_paths(collapse_worktree_paths(page))[:2]:
-        if not (Path(folder) / ".git").exists():
+        if not is_repository(folder):
             continue
         ref = next((name for name in CURRENT_REFS if _git(folder, "rev-parse", "--verify", "--quiet",
                                                          name + "^{commit}")), "HEAD")
@@ -584,7 +572,7 @@ def _implementation_evidence(folder: str, revision: str, stamp: str, *, requests
         if size > FILE_SNAPSHOT_CHARS:
             continue
         content = subprocess.run(["git", "-C", folder, "show", f"{revision}:{name}"],
-                                 capture_output=True, text=True, errors="replace", check=True, timeout=10).stdout
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", check=True, timeout=10).stdout
         if content:
             items.append(_implementation_item(folder, revision, name, content, stamp))
     listing = (f"Tracked tree at {revision}; {len(tree)} entries. Contents supplied for {len(items)} of "
@@ -850,8 +838,9 @@ def write_page(root: Path, record: str, *, config: dict | None = None, run=None,
     if progress:
         progress("writing page")
     started, result = time.monotonic(), {}
+    from .runner import worker_effort
     metrics = {"stage": "projects", "record": record, "harness": config["runner"], "model": config["model"],
-               "speed": config["speed"],
+               "speed": config["speed"], "effort": worker_effort(config),
                "input_items": len(items), "prompt_chars": len(text)}
     try:
         result = run(workdir, text, config, "investigate")
@@ -992,7 +981,7 @@ def github_read(args):
                       and re.fullmatch(r'If-None-Match: [^\r\n]+', args[6]))))
     if not valid:
         raise GitHubReadRefused('REM GitHub ingest is read-only; refused gh arguments')
-    run = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=20)
+    run = subprocess.run(['gh', *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
     # gh exits 1 on a 304 ("gh: HTTP 304") while printing the --include headers.
     # Treating that as failure kept the old ETag, so every later sync failed too.
     if run.returncode and not ('--include' in args and re.match(r'HTTP/\S+ 304\b', run.stdout)):
@@ -1078,7 +1067,7 @@ def _code_run(row):
 
 
 def _code_command(args, evidence, resource):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=20, check=True).stdout
+    result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20, check=True).stdout
     evidence.append({'command': args, 'ran_at': code_utc(datetime.now(timezone.utc)), 'resource': resource})
     return result
 
@@ -1086,7 +1075,7 @@ def _code_command(args, evidence, resource):
 
 def _code_matches(repo_path, repo, evidence):
     folder = str(Path(repo_path).resolve())
-    if not (Path(folder) / '.git').exists():
+    if not is_repository(folder):
         return False
     root = _code_command(['git', '-C', folder, 'rev-parse', '--show-toplevel'], evidence, 'local_identity').strip()
     if str(Path(root).resolve()) != folder:

@@ -83,33 +83,57 @@ def _fill_domains(book, text, addresses, rows, zone):
 def fill(book: Notebook, record: str, text: str, *, addresses=None) -> str:
     """After promotion, fill four Facts using indexed mail. Populated company/zone wins.
 
-    First and Last contact count mail the person or the owner sent, and someone
-    else's mail to at most BROADCAST recipients; the company and time zone still
-    read any mail that carries the address."""
+    First and Last contact count mail the person or the owner sent; company
+    and time zone still read any mail that carries the address."""
     if not record.startswith("people/"):
         return text
     addresses = own_addresses(book, record, text).get(record, set()) if addresses is None else addresses
     if not addresses:
         return text
-    clauses = " or ".join(["lower(sender) = ? or exists (select 1 from json_each(recipients) "
-                           "where lower(value) = ?)"] * len(addresses))
-    rows = store._rows(book.root, "select * from messages where thread like 'mail:%' and time != '' "
-                       f"and ({clauses}) order by time, id", [a for a in sorted(addresses) for _ in range(2)])
+    rows = _mail_rows(book, addresses)
     text = facts.upgrade(record, text)
     from .config import read_config
     from .service import notebook_zone
     zone = notebook_zone(read_config(book.root, validated=False))
-    # A third party's notice to forty addresses moved every recipient's Last contact
-    # past their own timeline (#2951): someone else's broadcast is not contact.
-    from .fact_extract import BROADCAST
-    from .store_messages import owner_addresses
-    writers = addresses | owner_addresses(book.root)
-    contact = [row for row in rows if row["sender"].casefold() in writers or len(row["recipients"]) <= BROADCAST]
+    contact = _contact(book, rows, addresses)
     for label, message in zip(("First contact", "Last contact"), (contact[0], contact[-1]) if contact else ()):
         day = datetime.fromisoformat(message["time"]).astimezone(zone).date().isoformat()
         text = _set(text, label, day, message, zone)
+    if rows and not contact:
+        span = facts._bounds(text, "Facts")
+        body = re.sub(r"(?m)^- (First contact|Last contact):[^\n]*$",
+                      r"- \1: Unknown", text[span[0]:span[1]])
+        text = text[:span[0]] + body + text[span[1]:]
     text = timezone_from_location(record, text)
     return _fill_domains(book, text, addresses, rows, zone)
+
+
+def _mail_rows(book: Notebook, addresses) -> list:
+    clauses = " or ".join(["lower(sender) = ? or exists (select 1 from json_each(recipients) "
+                           "where lower(value) = ?)"] * len(addresses))
+    return store._rows(book.root, "select * from messages where thread like 'mail:%' and time != '' "
+                       f"and ({clauses}) order by time, id", [a for a in sorted(addresses) for _ in range(2)])
+
+
+def _contact(book: Notebook, rows, addresses) -> list:
+    """Mail the person or the owner sent. A third party's notice to forty addresses moved
+    every recipient's Last contact past their own timeline (#2951): not contact."""
+    from .store_messages import owner_addresses
+    writers = addresses | owner_addresses(book.root)
+    return [row for row in rows if row["sender"].casefold() in writers]
+
+
+def contact_facts(book: Notebook, record: str, text: str) -> list[dict]:
+    """First and Last contact as `fill` computes them from the whole archive, for the claim audit."""
+    addresses = own_addresses(book, record, text).get(record, set()) if record.startswith("people/") else set()
+    contact = _contact(book, _mail_rows(book, addresses), addresses) if addresses else []
+    if not contact:
+        return []
+    from .config import read_config
+    from .service import notebook_zone
+    zone = notebook_zone(read_config(book.root, validated=False))
+    return [{"field": label, "value": datetime.fromisoformat(message["time"]).astimezone(zone).date().isoformat(),
+             "source": message["id"]} for label, message in (("First contact", contact[0]), ("Last contact", contact[-1]))]
 
 
 def refresh(root) -> list[str]:
