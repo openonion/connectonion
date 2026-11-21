@@ -151,7 +151,7 @@ def doctor():
 
 key_app = typer.Typer(
     cls=_OneSuggestion,
-    help="WeChat database keys: capture gets them after one question; set saves one you already have.",
+    help="WeChat database keys. Read-only unless you run capture or set: capture gets them after one question; set saves one you already have.",
     no_args_is_help=False,
     invoke_without_command=True,
     epilog="Example:  co wechat key capture  |  co wechat key",
@@ -181,7 +181,7 @@ def key_help(ctx: typer.Context):
 
 @key_app.command("capture", epilog="Example:  co wechat key capture  |  co wechat key capture --yes")
 def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question; for a script you started yourself")):
-    """Get the key of every WeChat database on this Mac, after one question. Quits and reopens WeChat; saves keys to ~/.co/wechat/keys.json (0600)."""
+    """Writes the key of every WeChat database on this Mac to ~/.co/wechat/keys.json (0600), after one question. Quits and reopens WeChat."""
     _require_macos()
     status, account = _container_status()
     if status == "blocked":
@@ -206,7 +206,7 @@ def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question
 def key_set(
     key: str = typer.Argument(..., help="The SQLCipher raw key as x'<64 hex chars>', obtained per co wechat key --help"),
 ):
-    """Save one database key you already have into ~/.co/keys.env (owner-only). Most people want: co wechat key capture."""
+    """Writes one database key you already have into ~/.co/keys.env (owner-only). Most people want: co wechat key capture."""
     _require_macos()
     if not RAW_KEY_RE.match(key.strip()):
         console.print("[bold red]Not a valid key.[/bold red] Expected a SQLCipher raw key: x'<64 hex characters>'.")
@@ -571,17 +571,11 @@ def tables():
         raise typer.Exit(2)
 
 
-@wechat_app.command("chats", hidden=True)
-def chats():
-    """Old name for co wechat tables."""
-    tables()
-
-
 @wechat_app.command("decrypt", epilog="Example:  co wechat decrypt --out ~/wechat-plain")
 def decrypt(
     out: Path = typer.Option(Path("wechat-plain"), "--out", help="Directory to write plaintext SQLite copies into"),
 ):
-    """Write a plaintext SQLite copy of each WeChat database into --out, openable by any SQLite tool. Local only."""
+    """Writes a plaintext SQLite copy of each WeChat database into --out, openable by any SQLite tool. Local only."""
     from ...useful_tools import wechat as engine
 
     db_storage = _ready()
@@ -611,7 +605,7 @@ def export(
     fmt: str = typer.Option("json", "--format", help="json or md"),
     out: Path = typer.Option(None, "--out", help="Write here instead of printing"),
 ):
-    """Write one table from a WeChat database as JSON or Markdown to --out, or print it. Read-only."""
+    """Writes one table from a WeChat database as JSON or Markdown to --out, or prints it. Reads WeChat only."""
     import json
     import sqlite3
     from ...useful_tools import wechat as engine

@@ -96,7 +96,7 @@ def ready(macos, keys_env, tmp_path):
 
 
 def test_chats_lists_tables(ready):
-    result = runner.invoke(app, ["wechat", "chats"])
+    result = runner.invoke(app, ["wechat", "tables"])
     assert result.exit_code == 0
     assert "message_0.db" in result.output and "Msg" in result.output
 
@@ -120,7 +120,7 @@ def test_export_table_as_json(ready):
 def test_commands_block_without_key(macos, keys_env, tmp_path):
     account = tmp_path / "account"
     with patch.object(wc, "_container_status", return_value=("ok", account)):
-        result = runner.invoke(app, ["wechat", "chats"])
+        result = runner.invoke(app, ["wechat", "tables"])
     assert result.exit_code == 2
     assert "key" in result.output.lower()
 
