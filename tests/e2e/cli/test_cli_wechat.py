@@ -30,6 +30,10 @@ def keys_env(tmp_path, monkeypatch):
     """Point WECHAT_DB_KEY storage at an isolated keys.env, and clear the env var."""
     path = tmp_path / "keys.env"
     monkeypatch.setattr(wc, "KEYS_ENV", path)
+    # The per-database key map and the last chat list live in ~/.co/wechat; never the real one in a test.
+    monkeypatch.setattr(wc, "KEY_DIR", tmp_path / "wechat")
+    monkeypatch.setattr(wc, "KEY_MAP", tmp_path / "wechat" / "keys.json")
+    monkeypatch.setattr(wc, "LISTING", tmp_path / "wechat" / "last-list.json")
     monkeypatch.delenv(wc.KEY_NAME, raising=False)
     return path
 

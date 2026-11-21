@@ -39,42 +39,70 @@ def key_bytes(key_hex: str) -> bytes:
     return raw
 
 
-def decrypt_db(path: Path, key_hex: str) -> bytes:
-    """Decrypt a SQLCipher 4 database file to plaintext SQLite bytes, using a raw key.
+def _decrypt_page(page: bytes, number: int, key: bytes, hmac_key: bytes) -> bytes:
+    """One SQLCipher 4 page, numbered from 1, to its plaintext page (page 1 gets the SQLite header back)."""
+    start = 16 if number == 1 else 0
+    end = PAGE - RESERVE
+    iv = page[end:end + IV_LEN]
+    stored = page[end + IV_LEN:end + IV_LEN + HMAC_LEN]
+    mac = hmaclib.new(hmac_key, page[start:end + IV_LEN] + number.to_bytes(4, "little"), hashlib.sha512).digest()
+    if not hmaclib.compare_digest(mac, stored):
+        raise WrongKeyError(f"wrong key, or not a SQLCipher 4 database (HMAC mismatch on page {number})")
+    decryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+    plain = decryptor.update(page[start:end]) + decryptor.finalize()
+    # Keep the page size; the trailer bytes are reserved per the header.
+    return (SQLITE_HEADER + plain if number == 1 else plain) + b"\x00" * RESERVE
 
-    Validated against an independent sqlcipher-CLI oracle. Raises WrongKeyError on the
-    first page if the key is wrong or the file is not a SQLCipher 4 database.
+
+def _wal_pages(path: Path) -> list[tuple[int, bytes]]:
+    """The committed frames of a database's -wal file, as (page number, encrypted page), oldest first.
+
+    WeChat 4.x keeps its databases in WAL mode, so the newest messages sit in `<db>-wal` until WeChat
+    checkpoints. A frame counts when its salts match the WAL header's and a later frame commits it.
+    """
+    wal = Path(str(path) + "-wal")
+    if not wal.is_file() or wal.stat().st_size < 32 + 24 + PAGE:
+        return []
+    data = wal.read_bytes()
+    salts = data[16:24]
+    frames, committed, offset = [], [], 32
+    while offset + 24 + PAGE <= len(data):
+        header = data[offset:offset + 24]
+        if header[8:16] != salts:
+            break
+        frames.append((int.from_bytes(header[:4], "big"), data[offset + 24:offset + 24 + PAGE]))
+        if int.from_bytes(header[4:8], "big"):  # a commit frame: everything up to here is in the database
+            committed = list(frames)
+        offset += 24 + PAGE
+    return committed
+
+
+def decrypt_db(path: Path, key_hex: str) -> bytes:
+    """Decrypt a SQLCipher 4 database file, with its committed -wal frames applied, to plaintext SQLite bytes.
+
+    Validated against an independent sqlcipher-CLI oracle. Raises WrongKeyError on the first page if the key
+    is wrong or the file is not a SQLCipher 4 database. The result is marked as a rollback-journal database
+    (header bytes 18-19), because an in-memory copy of a WAL database cannot be opened as one.
     """
     key = key_bytes(key_hex)
     data = Path(path).read_bytes()
     if len(data) < PAGE or len(data) % PAGE != 0:
         raise WrongKeyError(f"{path} is not a whole number of {PAGE}-byte pages")
-
-    salt = data[:16]
-    hmac_salt = bytes(b ^ HMAC_SALT_MASK for b in salt)
-    hmac_key = hashlib.pbkdf2_hmac("sha512", key, hmac_salt, 2, dklen=32)
-
-    out = bytearray()
-    for index in range(len(data) // PAGE):
-        page = data[index * PAGE:(index + 1) * PAGE]
-        start = 16 if index == 0 else 0
-        end = PAGE - RESERVE
-        iv = page[end:end + IV_LEN]
-        stored = page[end + IV_LEN:end + IV_LEN + HMAC_LEN]
-        mac = hmaclib.new(
-            hmac_key,
-            page[start:end + IV_LEN] + (index + 1).to_bytes(4, "little"),
-            hashlib.sha512,
-        ).digest()
-        if not hmaclib.compare_digest(mac, stored):
-            raise WrongKeyError(
-                f"wrong key, or not a SQLCipher 4 database (HMAC mismatch on page {index + 1})"
-            )
-        decryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
-        plain = decryptor.update(page[start:end]) + decryptor.finalize()
-        out += (SQLITE_HEADER + plain) if index == 0 else plain
-        out += b"\x00" * RESERVE  # keep page size; these bytes are reserved per the header
+    hmac_key = hashlib.pbkdf2_hmac("sha512", key, bytes(b ^ HMAC_SALT_MASK for b in data[:16]), 2, dklen=32)
+    pages = [_decrypt_page(data[i * PAGE:(i + 1) * PAGE], i + 1, key, hmac_key) for i in range(len(data) // PAGE)]
+    for number, page in _wal_pages(path):
+        while len(pages) < number:
+            pages.append(b"\x00" * PAGE)
+        pages[number - 1] = _decrypt_page(page, number, key, hmac_key)
+    out = bytearray(b"".join(pages))
+    out[18] = out[19] = 1
     return bytes(out)
+
+
+def db_salt(path: Path) -> str:
+    """A database's salt (its first 16 bytes) as hex: each WeChat 4.1 database has its own key, found by salt."""
+    with open(path, "rb") as handle:
+        return handle.read(16).hex()
 
 
 def open_readonly(db_bytes: bytes) -> sqlite3.Connection:
@@ -106,3 +134,58 @@ def tables(conn: sqlite3.Connection) -> list[tuple[str, int]]:
 def message_dbs(db_storage: Path) -> list[Path]:
     """Every *.db file under a WeChat db_storage directory, sorted."""
     return sorted(Path(db_storage).rglob("*.db"))
+
+
+# ---------- reading chats (WeChat 4.1 for Mac schema, seen 2026-11-21) ----------
+# session/session.db SessionTable: one row per conversation. contact/contact.db contact: names.
+# message/message_<n>.db holds one table per conversation, Msg_<md5(username)>.
+KINDS = {1: "", 3: "[图片]", 34: "[语音]", 42: "[名片]", 43: "[视频]", 47: "[表情]", 48: "[位置]",
+         49: "[链接或文件]", 50: "[通话]", 10000: "[系统消息]"}
+
+
+def text_of(content, compressed) -> str:
+    """A message's text: WeChat stores some bodies zstd-compressed (WCDB_CT_message_content = 4)."""
+    if isinstance(content, bytes):
+        if compressed == 4 or content[:4] == b"\x28\xb5\x2f\xfd":
+            import zstandard
+            content = zstandard.ZstdDecompressor().decompress(content, max_output_size=1 << 22)
+        content = content.decode("utf-8", "replace")
+    return content or ""
+
+
+def names(contact_conn: sqlite3.Connection) -> dict[str, str]:
+    """username -> the name the owner sees: their remark, else the nickname, else the username."""
+    return {row["username"]: (row["remark"] or row["nick_name"] or row["username"])
+            for row in contact_conn.execute("SELECT username, remark, nick_name FROM contact")}
+
+
+def sessions(session_conn: sqlite3.Connection, known: dict[str, str], limit: int = 30) -> list[dict]:
+    """Recent conversations, newest first: who, the last message's summary, its time and the unread count."""
+    rows = session_conn.execute(
+        "SELECT username, summary, last_timestamp, unread_count FROM SessionTable "
+        "WHERE is_hidden = 0 ORDER BY sort_timestamp DESC LIMIT ?", (limit,))
+    return [{"username": r["username"], "name": known.get(r["username"], r["username"]),
+             "summary": text_of(r["summary"], 0), "time": r["last_timestamp"], "unread": r["unread_count"]}
+            for r in rows]
+
+
+def message_table(username: str) -> str:
+    return "Msg_" + hashlib.md5(username.encode()).hexdigest()
+
+
+def messages(conn: sqlite3.Connection, username: str, known: dict[str, str], limit: int = 30) -> list[dict]:
+    """A conversation's last messages, oldest first. Group messages carry the sender as "wxid:\\n" before the text."""
+    table = message_table(username)
+    sender_of = {r[0]: r[1] for r in conn.execute("SELECT rowid, user_name FROM Name2Id")}
+    rows = conn.execute(
+        f'SELECT local_type, create_time, real_sender_id, message_content, WCDB_CT_message_content '
+        f'FROM "{table}" ORDER BY sort_seq DESC LIMIT ?', (limit,)).fetchall()
+    out = []
+    for r in reversed(rows):
+        kind = r["local_type"] & 0xFFFF
+        text = text_of(r["message_content"], r["WCDB_CT_message_content"]) if kind in (1, 10000) else KINDS.get(kind, "[其他]")
+        sender = sender_of.get(r["real_sender_id"], "")
+        if username.endswith("@chatroom") and ":\n" in text[:80]:
+            sender, text = text.split(":\n", 1)
+        out.append({"time": r["create_time"], "sender": known.get(sender, sender), "text": text.strip()})
+    return out
