@@ -3650,6 +3650,14 @@ the same, without colour. A long investigation off a terminal prints a stage
 once when it starts (`Investigation: gathering codex sessions`), not once per
 40 files scanned.
 
+**When there is nothing new.** A sync or collect that read no new material runs
+no model and keeps no run record. Its summary then has no `Full record` line,
+and `--json` carries `"record_kept": false`. The next step stays one that
+works: `co rem sync --source …` or `--with …` (a single batch) names
+`co rem status`, not `co rem logs RUN`, which would only say the run does not
+exist; `co rem collect` keeps its own (collect again); plain `co rem sync`, the
+daily round, keeps `co rem logs`, the list of runs.
+
 `co rem logs --usage` puts every model run under a stage, so the stage totals
 add up to the total: `extract` and `maintain` for sync batches,
 `investigate` for people, organisation and owner investigations (by hand or in
