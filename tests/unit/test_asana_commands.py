@@ -94,7 +94,7 @@ def test_check_rejects_json_option(cli, mock_http):
     result = cli([*CHECK, '--json'])
 
     assert result.exit_code == 2, result.output
-    assert '--json' in result.output
+    assert '--json' in unstyle(result.output)
     assert mock_http.requests == []
 
 
@@ -338,7 +338,7 @@ def test_list_help_without_token_does_not_request(command, flags, cli, mock_http
 
     assert result.exit_code == 0, result.output
     for flag in flags:
-        assert flag in result.stdout
+        assert flag in unstyle(result.stdout)
     assert mock_http.requests == []
 
 
@@ -905,7 +905,7 @@ def test_detail_help_without_token_never_requests(command, cli, mock_http, monke
     result = cli(['asana', command, '--help'])
 
     assert result.exit_code == 0, result.output
-    assert '--listing' in result.stdout and '--json' in result.stdout
+    assert '--listing' in unstyle(result.stdout) and '--json' in unstyle(result.stdout)
     assert mock_http.requests == []
 
 
@@ -1561,7 +1561,7 @@ def test_write_help_without_credentials_never_connects(command, flags, write_cli
     result = write_cli(['asana', command, '--help'])
 
     assert result.exit_code == 0, result.output
-    assert all(flag in result.stdout for flag in flags)
+    assert all(flag in unstyle(result.stdout) for flag in flags)
     assert mock_http.requests == []
 
 
