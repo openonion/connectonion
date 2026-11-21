@@ -170,7 +170,8 @@ def sessions(session_conn: sqlite3.Connection, known: dict[str, str], limit: int
 
 
 def message_table(username: str) -> str:
-    return "Msg_" + hashlib.md5(username.encode()).hexdigest()
+    # WeChat's own naming, not a secret: each chat's table is Msg_<md5 of the username>.
+    return "Msg_" + hashlib.md5(username.encode(), usedforsecurity=False).hexdigest()
 
 
 def messages(conn: sqlite3.Connection, username: str, known: dict[str, str], limit: int = 30) -> list[dict]:
