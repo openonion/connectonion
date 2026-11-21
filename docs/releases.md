@@ -19,6 +19,15 @@ no `AsyncClient`, and every remote agent call crashed.
   overflow the OIP frame limit. If a target read fails, the command says
   "nothing was written" and stops before loading any cookies ([#2887](https://github.com/openonion/connectonion/issues/2887)).
 
+## Current preview
+
+Release candidate **1.9.7rc1**: a restricted claude-code Host from host.yaml, no silent co/ model, `co obsidian`
+and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.7rc1'
+```
+
 ## Current release
 
 Stable **1.9.6** is the default production channel. `co init` starts the Host and leaves it running on

@@ -538,6 +538,23 @@ See [linear.md](linear.md).
 
 ---
 
+#### `co asana` - Asana tasks
+
+Your Asana projects, tasks and their comments with a personal access token;
+move a due date, mark a task done or open, or comment, with a preview first.
+Rows from the last list stand in for long IDs for 15 minutes.
+
+```bash
+co env set ASANA_ACCESS_TOKEN <pat> --secret
+co asana projects
+co asana tasks 1 --assignee me --due-to 2026-11-09
+co asana update 1209876543210987 --due-on 2026-11-14 --yes
+```
+
+See [asana.md](asana.md).
+
+---
+
 #### `co onenote` - Browse OneNote by number
 
 After `co auth microsoft`, run `co onenote ls` to see numbered sections,
@@ -546,6 +563,15 @@ After `co auth microsoft`, run `co onenote ls` to see numbered sections,
 The row list lasts 15 minutes; page and section IDs remain available for
 scripts through `co onenote ls --ids` and `co onenote pages --ids`. See
 [onenote.md](onenote.md) for creation and listing rules.
+
+---
+
+#### `co obsidian` - Browse local Obsidian notes
+
+Run `co obsidian` to list registered vaults and `co obsidian ls --vault 1` to
+see the folders in the first vault. Choose a folder with `--folder`, then
+list, read or search its Markdown notes. See the [Obsidian command guide](obsidian.md)
+for examples.
 
 ---
 
@@ -1484,6 +1510,7 @@ See [server.md](server.md).
 | `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
 | `co mcp` | The MCP servers and connectors Codex already has: list, list tools, call one — [mcp.md](mcp.md) | No | ✅ Yes (non-read-only tools only with `--yes`) |
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
+| `co asana` | Asana tasks: projects, tasks, one task's comments and activity; move a due date, mark done, comment — [asana.md](asana.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co asr` | Transcribe an audio file; Codex default or configured ConnectOnion provider — [ASR](../asr.md) | Audio upload | Yes, explicit invocation |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |

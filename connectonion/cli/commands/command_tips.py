@@ -281,6 +281,10 @@ NEXT = {
     "co schedule run": "co schedule list",
     "co schedule pause": HANDLER,  # names the resume for this entry
     "co schedule resume": "co schedule list",
+    "co obsidian vaults": HANDLER,
+    "co obsidian ls": HANDLER,
+    "co obsidian read": HANDLER,
+    "co obsidian search": HANDLER,
     "co onenote ls": HANDLER,        # each handler names the next onenote command (#1887)
     "co onenote pages": HANDLER,
     "co onenote read": HANDLER,
@@ -305,6 +309,13 @@ NEXT = {
     "co linear create": HANDLER,
     "co linear update": HANDLER,
     "co linear comment": HANDLER,
+    "co asana check": HANDLER,
+    "co asana projects": HANDLER,     # names the first row, or what to widen when nothing is listed
+    "co asana tasks": HANDLER,
+    "co asana task": HANDLER,         # the task's stories
+    "co asana stories": HANDLER,
+    "co asana update": HANDLER,       # preview → the same change with --yes; done → co asana task
+    "co asana comment": HANDLER,
     # Every co rem command already ends by naming one next command, chosen from what
     # it found: `list` points at the first page, `search` at the first hit, a failed
     # `show` back at the category. A static line here would contradict that.

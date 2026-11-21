@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6
+## Current Version: 1.9.7rc1
+Release candidate 1.9.7rc1 for 1.9.7: a restricted claude-code Host from host.yaml, a Host that refuses a silent
+co/ model, provider/model names in /info, and `co obsidian` / `co asana`. Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc1.md).
+
+- 1.9.7rc1 (restricted claude-code Host; no silent co/ model; co obsidian and co asana).
+
+### Previous: stable 1.9.6
 
 Stable 1.9.6, released by the owner's decision: 1.9.6rc48's code. `co init` starts the Host and leaves it
 running on macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through a
