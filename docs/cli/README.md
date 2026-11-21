@@ -566,6 +566,15 @@ scripts through `co onenote ls --ids` and `co onenote pages --ids`. See
 
 ---
 
+#### `co obsidian` - Browse local Obsidian notes
+
+Run `co obsidian` to list registered vaults and `co obsidian ls --vault 1` to
+see the folders in the first vault. Choose a folder with `--folder`, then
+list, read or search its Markdown notes. See the [Obsidian command guide](obsidian.md)
+for examples.
+
+---
+
 #### `co outlook` - Manage Outlook Email & Contacts
 
 Your personal Outlook account from the terminal, via Microsoft Graph.
