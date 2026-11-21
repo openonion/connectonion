@@ -98,7 +98,8 @@ def test_gmail_reply_routes_id_and_message():
         result = runner.invoke(app, ["gmail", "reply", "2", "Sounds good"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", "Sounds good", listing=None)
+    handler.assert_called_once_with("2", "Sounds good", listing=None, cc=None, bcc=None, attachments=None,
+                                    reply_all=False, draft=False)
 
 
 def test_gmail_reply_routes_stdin_marker():
@@ -106,7 +107,18 @@ def test_gmail_reply_routes_stdin_marker():
         result = runner.invoke(app, ["gmail", "reply", "2", "-"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("2", "-", listing=None)
+    handler.assert_called_once_with("2", "-", listing=None, cc=None, bcc=None, attachments=None,
+                                    reply_all=False, draft=False)
+
+
+def test_gmail_reply_routes_cc_files_everyone_and_draft():
+    with patch("connectonion.cli.commands.gmail_commands.handle_gmail_reply") as handler:
+        result = runner.invoke(app, ["gmail", "reply", "2", "Signed copy attached", "--cc", "sam@example.com",
+                                     "-a", "signed.pdf", "--attach", "notes.pdf", "--all", "--draft"])
+
+    assert result.exit_code == 0, result.output
+    handler.assert_called_once_with("2", "Signed copy attached", listing=None, cc="sam@example.com", bcc=None,
+                                    attachments=["signed.pdf", "notes.pdf"], reply_all=True, draft=True)
 
 
 def test_gmail_send_routes_bcc():
