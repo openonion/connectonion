@@ -2451,7 +2451,17 @@ pinned to that edge: it comes into view with the draft.
   header, so these are what it judges by. Each carries its channel and source
   mark; and
   the dated exchanges. Contact, organisation, what REM is not sure of (dashed,
-  REM's pencil) and the local graph sit in the rail. On Today, a card REM
+  REM's pencil) and the local graph sit in the rail. On a person's page that
+  graph, **In the knowledge graph**, draws two rings (#3033): the records the
+  page links to round the face, and, for someone with four direct links or
+  fewer, an outer ring of up to eight more reached only through them. A
+  pointer resting on a mark, or a tap, lights it, its lines and the marks at
+  their other ends, and a small card says why it is there, worded as Related
+  pages words it, or *Through* the records it is reached by. A first-ring mark
+  opens its page; an outer mark takes no tab stop, the keyboard lights it from
+  the first-ring mark it comes through. The foot is the one every local graph
+  has: *N directly linked* and **Open in the knowledge graph →**. Organisation
+  and project pages keep the one-ring local graph. On Today, a card REM
   thinks your reply already handled offers **Not done yet** (**还没办完**)
   beside **Mark done**; it is kept on this device, and the item stays in
   Today and on the People list. Project and organisation pages show each date once,
