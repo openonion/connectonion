@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import tarfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +16,10 @@ from typing import Callable
 
 MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
 PYPI_HOST = "files.pythonhosted.org"
+# Match finalize's pip-install wait: PyPI's JSON metadata can 404 for a
+# minute after upload even though publish already succeeded (#2467).
+METADATA_ATTEMPTS = 12
+METADATA_WAIT_SECONDS = 10
 
 
 class ArtifactError(RuntimeError):
@@ -97,22 +102,68 @@ def assert_same_archive_contents(local: Path, published: Path) -> None:
     )
 
 
+def _metadata_missing(exc: BaseException) -> bool:
+    """True when PyPI has not listed the version yet (JSON 404)."""
+    return isinstance(exc, urllib.error.HTTPError) and exc.code == 404
+
+
+def _read_pypi_metadata(
+    version: str,
+    *,
+    opener: Callable[..., object] = urllib.request.urlopen,
+    sleeper: Callable[[float], object] = time.sleep,
+    attempts: int = METADATA_ATTEMPTS,
+    wait_seconds: float = METADATA_WAIT_SECONDS,
+) -> dict:
+    """Load /pypi/connectonion/<version>/json, waiting through post-publish lag.
+
+    Publish can succeed while the JSON API still answers 404 for a minute
+    (#2467, same class of lag #2457 handled in install.sh). Other errors fail
+    immediately so a bad digest or host is not masked by waiting.
+    """
+    metadata_url = f"https://pypi.org/pypi/connectonion/{version}/json"
+    last_error: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return json.loads(_read_url(metadata_url, opener=opener))
+        except (json.JSONDecodeError, urllib.error.URLError) as exc:
+            last_error = exc
+            if not _metadata_missing(exc) or attempt >= attempts:
+                raise ArtifactError(
+                    f"cannot read PyPI metadata for {version}: {exc}"
+                ) from exc
+            print(
+                f"{version} is not on PyPI's JSON API yet; "
+                f"trying again in {wait_seconds:g}s ({attempt}/{attempts - 1})...",
+                flush=True,
+            )
+            sleeper(wait_seconds)
+    raise ArtifactError(
+        f"cannot read PyPI metadata for {version}: {last_error}"
+    ) from last_error
+
+
 def recover_published_artifacts(
     version: str,
     local_dir: Path,
     output_dir: Path,
     *,
     opener: Callable[..., object] = urllib.request.urlopen,
+    sleeper: Callable[[float], object] = time.sleep,
+    metadata_attempts: int = METADATA_ATTEMPTS,
+    metadata_wait_seconds: float = METADATA_WAIT_SECONDS,
 ) -> list[Path]:
     wheel = f"connectonion-{version}-py3-none-any.whl"
     sdist = f"connectonion-{version}.tar.gz"
     expected = {wheel, sdist}
 
-    metadata_url = f"https://pypi.org/pypi/connectonion/{version}/json"
-    try:
-        metadata = json.loads(_read_url(metadata_url, opener=opener))
-    except (json.JSONDecodeError, urllib.error.URLError) as exc:
-        raise ArtifactError(f"cannot read PyPI metadata for {version}: {exc}") from exc
+    metadata = _read_pypi_metadata(
+        version,
+        opener=opener,
+        sleeper=sleeper,
+        attempts=metadata_attempts,
+        wait_seconds=metadata_wait_seconds,
+    )
 
     entries = {entry.get("filename"): entry for entry in metadata.get("urls", [])}
     available = {name for name in entries if isinstance(name, str)}
