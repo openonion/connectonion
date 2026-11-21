@@ -17,7 +17,7 @@ HEALTH = re.compile(r'\b(?:health|asthma|illness|medication|therapy|diabetes|can
 PERSONAL = re.compile(r'\b(?:family|personal|visa|immigration|legal|lawsuit|divorce)\b|家庭|家人|签证|移民|法律|私人|个人财务', re.I)
 REQUEST = re.compile(r'\b(?:remember|learn)\s+(.+?)(?:[.!?。\n]|$)|(?:记住|记下|学习)\s*(.+?)(?:[。！？\n]|$)', re.I)
 DAY = re.compile(r'\b\d{4}-\d{2}-\d{2}\b')
-SOURCE_ID = re.compile(r'\b(?:gmail|outlook|codex|claude-code|telegram|feishu|lark|discord|slack|whatsapp|file|manual):[^\s,;，；)\]]+')
+SOURCE_ID = re.compile(r'\b(?:gmail|outlook|codex|claude-code|telegram|feishu|lark|discord|slack|whatsapp|wechat|file|manual):[^\s,;，；)\]]+')
 
 
 def _plain(text):

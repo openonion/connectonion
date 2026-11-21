@@ -138,3 +138,19 @@ are surfaced by the tool rather than hidden:
   stores a key you obtained but does not extract one for you.
 - **WeChat 4.1.15's table schema** is unknown to us; `co wechat chats` reveals it,
   and `export` is schema-agnostic, so neither depends on a guess.
+
+## WeChat in co rem (people from your chats)
+
+`co wechat sync` writes your WeChat messages as inbox files under `~/.co/inbox/wechat/` (`received.jsonl`,
+`own.jsonl`, `chats.json`, all 0600), in the same shape as `co whatsapp`. co rem reads them like WhatsApp and runs
+`co wechat sync` itself before each read, so it always sees what WeChat for Mac has now.
+
+```bash
+co rem sources add wechat                 # every one-to-one chat: the people you talk to
+co rem sources add wechat --chat <id>@chatroom   # a group too, by its id (ids in ~/.co/inbox/wechat/chats.json)
+co rem start                              # shows what will be read and asks before anything is
+```
+
+`*` (the default) means every chat with one person; groups and official accounts are read only when named, so
+one community's group never feeds another person's page. Only what WeChat for Mac stores locally is there:
+messages since this Mac logged in, plus any history migrated from the phone.

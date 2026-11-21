@@ -238,7 +238,7 @@ def repair_project_overview(record: str, text: str) -> tuple[str, bool]:
     return text[:heading.end()] + '\n- Unknown\n\n' + text[end:], True
 
 
-SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
+SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|wechat|email|reflection|review|project-source)'
                        r'(?:-summary)?:[\w.:+-]+')
 
 

@@ -27,7 +27,10 @@ from pathlib import Path
 from .files import RemError
 from .source import MAX_MESSAGE_CHARS, TRUNCATION_NOTE, Batch, timestamp
 
-CHAT_KINDS = ("whatsapp",)
+CHAT_KINDS = ("whatsapp", "wechat")
+# WeChat: `co wechat sync` writes the same files from WeChat for Mac's local databases (read-only), and
+# "*" stands for every one-to-one chat: people, never groups (@chatroom) or official accounts (gh_).
+EVERY_PERSON = "*"
 # Records that are not someone saying something: an emoji on a message, a
 # group changing its subject. They stay in the inbox; they are not material.
 NOT_SAID = {"reaction", "revoke", "protocol", "group", "senderkeydistribution"}
@@ -77,13 +80,16 @@ def collect_chat(subscription: dict, progress: dict, max_items: int, max_chars: 
     if not chats:
         return Batch([], updated)
     home = Path(subscription["root"])
+    if kind == "wechat":
+        _sync_wechat()
+    wanted = (lambda chat: chat in chats or (EVERY_PERSON in chats and _one_to_one(chat)))
     since = timestamp(subscription["since"])
     agent = {row.get("id") for row in _records(home / "sent.jsonl") if row.get("id")}
     pending = defaultdict(list)
     for role, name in (("other", "received.jsonl"), ("user", "own.jsonl")):
         for row in _records(home / name):
             chat = row["chat"]
-            if chat not in chats or (role == "user" and row["id"] in agent):
+            if not wanted(chat) or (role == "user" and row["id"] in agent):
                 continue
             if (row.get("kind") or "text") in NOT_SAID:
                 continue
@@ -123,3 +129,19 @@ def collect_chat(subscription: dict, progress: dict, max_items: int, max_chars: 
             else:
                 updated[chat] = {"cursor": when.isoformat(), "seen": [message_id]}
     return Batch(items, updated)
+
+
+def _one_to_one(chat: str) -> bool:
+    """A chat with one person: not a group, not an official account, not WeChat's own service chats."""
+    return not (chat.endswith("@chatroom") or chat.startswith("gh_") or chat in ("filehelper", "weixin", "newsapp", "fmessage"))
+
+
+def _sync_wechat() -> None:
+    """Bring the files up to date from WeChat's local databases before reading them (`co wechat sync`)."""
+    import subprocess
+    import sys
+    done = subprocess.run([sys.executable, "-m", "connectonion.cli.main", "wechat", "sync", "--quiet"],
+                          capture_output=True, text=True, timeout=600)
+    if done.returncode:
+        said = (done.stdout + done.stderr).strip().splitlines()
+        raise RemError("WeChat could not be read: " + (said[-1] if said else "run co wechat to see why"))
