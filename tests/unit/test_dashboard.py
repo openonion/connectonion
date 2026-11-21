@@ -1,5 +1,6 @@
 """Unit tests for the Host-side dashboard delivery (network/host/ws_router/dashboard.py)."""
 
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -113,7 +114,7 @@ def test_every_published_skill_is_reachable():
 def test_a_short_list_is_not_hidden_behind_a_disclosure():
     skills = [{"name": f"skill-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Few", "skills": skills})
-    assert '<details class="card capabilities">' in html
+    assert '<details class="fold skills" id="skills" open>' in html
     assert '<details class="more">' not in html
 
 
@@ -192,15 +193,12 @@ def test_control_center_semantic_golden_layout_is_present():
     })
 
     for landmark in (
-        "Control Center", 'id="workspace-title"', "Capabilities",
-        "Recent", "Diagnostics", "Host details",
+        "Control Center", 'class="bar"', 'class="live-dot"', 'id="agent-name"',
+        'id="skills"', "Skills", "Diagnostics", 'href="#details"',
     ):
-        # Recent is allowed to be absent without history; all other day-zero
-        # landmarks are stable. Test the explicit activity implementation name
-        # separately rather than rendering a dishonest empty card.
-        if landmark != "Recent":
-            assert landmark in html
-    assert '<co-filter target="#capability-list"' in html
+        # Recent is allowed to be absent without history, so it is not a
+        # day-zero landmark; the activity tests cover it.
+        assert landmark in html
     assert 'id="capability-list"' in html
     assert "co/example" in html and "careful" in html and ADDRESS in html
 
@@ -212,7 +210,7 @@ def test_control_center_never_claims_a_static_runtime_state():
 
     assert "Available for a new task" not in html
     assert "<strong>Ready</strong>" not in html
-    assert "Use Chat for live status" in html
+    assert "Ready" not in re.sub(r"<!--FRAGMENTS.*", "", html, flags=re.S)
 
 
 def test_quick_actions_cannot_set_the_iframe_minimum_width():
@@ -226,6 +224,9 @@ def test_quick_actions_cannot_set_the_iframe_minimum_width():
 def test_control_center_accessibility_contract_is_in_the_shipped_template():
     template = (Path(dashboard_module.__file__).parent / "starter.html").read_text()
     assert "min-height: 44px" in template
+    # Offline: the headline font is the system serif, not a web font.
+    assert '"New York", ui-serif, Georgia, serif' in template
+    assert "@import" not in template and "<link" not in template
     assert "prefers-reduced-motion: reduce" in template
     assert ":focus-visible" in template
     assert "@media (max-width: 520px)" in template
@@ -245,12 +246,16 @@ def _contrast(hex_a, hex_b):
 
 def test_control_center_text_tokens_meet_wcag_aa_in_light_and_dark():
     for foreground, background in (
-        ("#171a17", "#f7f8f6"),
-        ("#505650", "#f7f8f6"),
-        ("#626962", "#ffffff"),
-        ("#f1f5f1", "#111411"),
-        ("#bbc4bb", "#111411"),
-        ("#aeb7ae", "#191d19"),
+        ("#122019", "#f8faf9"),   # text on the ground
+        ("#4f5f56", "#f8faf9"),   # muted
+        ("#5f6f66", "#f1f5f2"),   # subtle on the raised surface
+        ("#ffffff", "#146c43"),   # the primary action
+        ("#146c43", "#f8faf9"),   # accent text
+        ("#e9f0eb", "#0b100d"),
+        ("#a4b3aa", "#0b100d"),
+        ("#8a9990", "#17201a"),
+        ("#06150d", "#3fbf7f"),
+        ("#7fd6a8", "#16281e"),
     ):
         assert _contrast(foreground, background) >= 4.5
 
@@ -686,6 +691,10 @@ def test_an_operator_override_without_the_new_field_still_renders(tmp_path,
         "<html><body><h1>$name</h1><p>$subtitle</p>$body</body></html>",
         encoding="utf-8")
     monkeypatch.setattr(Path, "home", lambda: home)
+    # The suite's fixture points STARTER_OVERRIDE away from any real file, so
+    # point it at this one — without this the bundled page rendered and the
+    # assertion passed only because it too once said <h1>$name</h1>.
+    monkeypatch.setattr(dashboard, "STARTER_OVERRIDE", home / ".co" / "starter.html")
     dashboard._starter_templates.cache_clear()
     try:
         html = render_starter({"name": "A", "address": ADDRESS, "skills": []})
@@ -722,15 +731,58 @@ async def test_failed_delivery_can_retry_unchanged_dashboard(in_tmp):
 
 def test_the_page_opens_on_a_card_not_on_skills():
     """Owner, 2026-09-29: "默认显示 skills 信息干嘛". The page opens on the
-    agent's name, address and one line; every skill is folded under
-    Capabilities and nothing about skills or tools sits in the header."""
-    import re
+    agent's name, one line and its address; every skill is in the one SKILLS
+    fold and nothing about skills or tools sits in the intro."""
     skills = [{"name": f"s-{i}", "description": "", "location": "project"} for i in range(5)]
     html = render_starter({"name": "Ops", "address": ADDRESS, "tagline": "Answers guests.",
                            "skills": skills, "tools": ["read"], "model": "co/gemini-3.8-flash"})
-    header = html.split('<header class="masthead">', 1)[1].split("</header>", 1)[0]
-    assert "Ops" in header and ADDRESS in header and "Answers guests." in header
-    assert "skill" not in header and "tool" not in header and "gemini" not in header
-    folded = html.split('<details class="card capabilities">', 1)[1].split("</details>", 1)[0]
+    intro = html.split('<section class="intro"', 1)[1].split("</section>", 1)[0]
+    assert "Ops" in intro and ADDRESS in intro and "Answers guests." in intro
+    assert "skill" not in intro and "tool" not in intro and "gemini" not in intro
+    folded = html.split('<details class="fold skills"', 1)[1].split("</details>\n", 1)[0]
     assert html.count('data-ochat-skill="') == folded.count('data-ochat-skill="') == 5
     assert 'id="quick-title"' not in re.sub(r"<!--FRAGMENTS.*", "", html, flags=re.S)
+
+
+def test_skills_are_one_fold_that_says_how_many():
+    """O Chat v12: SKILLS n, a details/summary the reader can fold, replacing the
+    Capabilities card. Hairline rows, the name then what it does."""
+    skills = [{"name": n, "description": d, "location": "project"}
+              for n, d in [("deploy", "Ship it."), ("summarise", "Summarise a doc.")]]
+    html = render_starter({"name": "S", "skills": skills})
+    page = re.sub(r"<!--FRAGMENTS.*", "", html, flags=re.S)
+
+    fold = re.search(r'<details class="fold skills"[^>]*>\s*<summary>(.*?)</summary>', page, re.S)
+    assert fold, "SKILLS is a details/summary, so it folds without a script"
+    assert "Skills" in fold.group(1) and '<span class="n">2</span>' in fold.group(1)
+    assert "Capabilities" not in page and 'class="card' not in page
+    assert '<span class="name">deploy</span><span class="desc">Ship it.</span>' in page
+
+
+def test_a_short_list_has_no_search_box():
+    few = [{"name": f"s-{i}", "description": "", "location": "project"} for i in range(6)]
+    many = few + [{"name": "s-6", "description": "", "location": "project"}]
+    assert "<co-filter" not in render_starter({"name": "F", "skills": few}).split("<!--FRAGMENTS")[0]
+    assert '<co-filter target="#capability-list"' in render_starter({"name": "M", "skills": many})
+
+
+def test_the_invite_code_is_shown_to_the_owner_only(monkeypatch):
+    """#1940 printed the owner's invite in their terminal. Home shows it too, as
+    a quiet mono row — but only on a page rendered for a verified admin. A
+    contact, a stranger, and in-process rendering never see it."""
+    from connectonion.network.host.ws_router.dashboard import viewer_for, EVERYONE
+    monkeypatch.setenv("CO_INVITE_CODE", "ONION-7K2Q-XR4M")
+    meta = {"name": "A", "address": ADDRESS, "skills": []}
+
+    owner = render_starter(meta, viewer=viewer_for("0xowner", is_admin=True))
+    assert '<dt>Invite</dt><dd class="code"' in owner and "ONION-7K2Q-XR4M" in owner
+
+    for viewer in (viewer_for("0xcontact"), viewer_for(None), EVERYONE):
+        assert "ONION-7K2Q-XR4M" not in render_starter(meta, viewer=viewer)
+
+
+def test_an_owner_without_an_invite_gets_no_empty_row(monkeypatch):
+    from connectonion.network.host.ws_router.dashboard import viewer_for
+    monkeypatch.delenv("CO_INVITE_CODE", raising=False)
+    html = render_starter({"name": "A", "skills": []}, viewer=viewer_for("0xo", is_admin=True))
+    assert "<dt>Invite</dt>" not in html and 'class="ids"' not in html

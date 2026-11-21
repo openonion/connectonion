@@ -13,6 +13,9 @@ const skillFilter = document.querySelector('#skill-filter')
 const searchEmpty = document.querySelector('#search-empty')
 const agentAddress = document.querySelector('#agent-address')
 const cardAddress = document.querySelector('#card-address')
+const cardIds = document.querySelector('#card-ids')
+const skillsFold = document.querySelector('#skills')
+const historyNote = document.querySelector('#history-note')
 const diagnosticSkills = document.querySelector('#diagnostic-skills')
 const diagnosticConversation = document.querySelector('#diagnostic-conversation')
 const appRevision = document.querySelector('#app-revision')
@@ -55,7 +58,12 @@ function skillButton(skill) {
   const description = document.createElement('span')
   description.className = 'desc'
   description.textContent = firstSentence(skill.description)
-  button.append(name, description)
+  const use = document.createElement('span')
+  use.className = 'use'
+  use.setAttribute('aria-hidden', 'true')
+  use.textContent = 'Use →'
+  button.dataset.search = `${skill.name} ${description.textContent}`.toLocaleLowerCase()
+  button.append(name, description, use)
 
   button.addEventListener('click', () => {
     button.disabled = true
@@ -67,20 +75,19 @@ function skillButton(skill) {
 }
 
 function emptyCapabilities() {
-  const empty = document.createElement('section')
+  const empty = document.createElement('p')
   empty.className = 'empty'
-  const copy = document.createElement('p')
-  copy.append('No published skills yet. Add one to ')
+  empty.append('None yet — add one to ')
   const path = document.createElement('code')
   path.textContent = '.co/skills/'
-  copy.append(path, ' and it appears here.')
-  empty.append(copy)
+  empty.append(path, '.')
   return empty
 }
 
 function renderSkills(skills = []) {
   const ordered = [...skills].sort((left, right) => left.name.localeCompare(right.name))
-  // The page opens on the agent's card; skills stay folded under Capabilities.
+  // One SKILLS fold of hairline rows, open on a wide pane and folded on a
+  // narrow one (see the bottom of this file).
 
   capabilityList.replaceChildren()
   if (ordered.length) {
@@ -89,9 +96,7 @@ function renderSkills(skills = []) {
     capabilityList.append(emptyCapabilities())
   }
 
-  capabilityCount.textContent = ordered.length
-    ? `${ordered.length} skill${ordered.length === 1 ? '' : 's'}`
-    : 'None published'
+  capabilityCount.textContent = String(ordered.length)
   diagnosticSkills.textContent = ordered.length
     ? `${ordered.length} published skill${ordered.length === 1 ? '' : 's'}`
     : 'None published'
@@ -104,7 +109,7 @@ function filterSkills() {
   const query = skillFilter.value.trim().toLocaleLowerCase()
   let visible = 0
   for (const button of capabilityList.querySelectorAll('.skill')) {
-    const matches = !query || button.textContent.toLocaleLowerCase().includes(query)
+    const matches = !query || button.dataset.search.includes(query)
     button.hidden = !matches
     if (matches) visible += 1
   }
@@ -118,7 +123,7 @@ function renderSnapshot(snapshot) {
   const ready = snapshot.connectionState === 'connected'
   agentAddress.textContent = snapshot.agentAddress
   cardAddress.textContent = snapshot.agentAddress || ''
-  cardAddress.hidden = !snapshot.agentAddress
+  cardIds.hidden = !snapshot.agentAddress
   diagnosticConversation.textContent = snapshot.sessionId || 'Created by the first action'
   connectionLabel.textContent = ready ? (snapshot.status === 'idle' ? 'Connected' : 'Agent ' + snapshot.status) : snapshot.connectionState
   connection.classList.toggle('connected', ready)
@@ -132,17 +137,18 @@ function renderSnapshot(snapshot) {
     return row
   })
   transcript.replaceChildren(...items)
-  document.querySelector('#history-note').textContent = snapshot.truncated ? 'Recent conversation; older items were omitted.' : 'Live conversation from O Chat.'
+  historyNote.textContent = snapshot.truncated ? 'Older items were omitted.' : ''
+  historyNote.hidden = !snapshot.truncated
 }
 
 const parameters = new URLSearchParams(location.hash.slice(1))
 appRevision.textContent = parameters.get('co-revision') || 'Local preview'
 if (parameters.get('co-parent') && parameters.get('co-revision')) {
   connectControlCenter({parentOrigin:parameters.get('co-parent'), revision:parameters.get('co-revision')})
-    .then(connection => { client=connection; client.subscribe(renderSnapshot); setStatus('Connected to Chat.','success') })
+    .then(connection => { client=connection; client.subscribe(renderSnapshot); setStatus('') })
     .catch(error => setStatus(error.message,'error'))
 } else {
-  setStatus('Preview only. Open this app through an approved O Chat session for Agent actions.')
+  setStatus('Preview — open through O Chat to send.')
 }
 
 form.addEventListener('submit', event => {
@@ -172,3 +178,23 @@ input.addEventListener('input', () => {
 })
 
 skillFilter.addEventListener('input', filterSkills)
+
+// Open on a wide pane, folded on a narrow one: on a phone the composer is the
+// page, and a list of skills above it pushes it out of reach.
+skillsFold.open = matchMedia('(min-width: 640px)').matches
+
+// Copy, with a fallback: clipboard-write is a declared capability, and without
+// it the browser refuses. Selecting the value still leaves one keystroke.
+for (const button of document.querySelectorAll('[data-copy]')) {
+  button.addEventListener('click', async () => {
+    const target = document.querySelector(button.dataset.copy)
+    try {
+      await navigator.clipboard.writeText(target.textContent)
+      button.textContent = 'Copied'
+    } catch {
+      getSelection().selectAllChildren(target)
+      button.textContent = 'Selected'
+    }
+    setTimeout(() => { button.textContent = 'Copy' }, 1600)
+  })
+}

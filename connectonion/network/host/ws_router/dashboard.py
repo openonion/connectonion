@@ -13,6 +13,7 @@ changed since this connection last saw it.
 
 import asyncio
 import json
+import os
 import re
 from functools import lru_cache
 from html import escape
@@ -222,6 +223,10 @@ FLAT_MAX = 12
 # so the page never offers "1 more skill" behind a click.
 PREVIEW_ROWS = 8
 
+# Past this many skills the fold carries a search box; at or under it, the
+# rows are the search.
+FILTER_MIN = 6
+
 
 def _parse_starter(path):
     """``(page, fragments)`` from a starter file.
@@ -411,9 +416,40 @@ def _address_line(agent_metadata):
     return '<p class="addr">' + escape(str(address)) + '</p>'
 
 
+def _identity_rows(agent_metadata, viewer):
+    """The address, and for the owner the invite code: quiet rows under the name.
+
+    The address is public — it is how anyone reaches the agent — so everyone
+    sees it. The invite code is a password: it turns a stranger into a contact.
+    It is shown only on a snapshot rendered for a verified admin socket, never
+    for EVERYONE (tests, tooling) and never for a contact. #1940 put it in the
+    owner's terminal; an owner who opens Home on their phone has no terminal.
+
+    ``CO_INVITE_CODE`` is where ``co create`` and ``co ai`` keep the owner's
+    invite. A code written as a literal in a trust policy is not repeated here —
+    the banner in server.py says where it lives instead.
+    """
+    _, fragments = _starter_templates()
+    rows = []
+    address = agent_metadata.get("address")
+    if address:
+        rows.append(("Address", address, "addr"))
+    owner = viewer is not EVERYONE and bool(viewer.get("is_admin"))
+    invite = os.environ.get("CO_INVITE_CODE", "").strip() if owner else ""
+    if invite:
+        rows.append(("Invite", invite, "code"))
+    if not rows:
+        return ""
+    body = "\n".join("        " + fragments["id"].safe_substitute(
+        label=label, value=escape(str(value)), **{"class": cls}).strip()
+        for label, value, cls in rows)
+    return "      " + fragments["ids"].safe_substitute(rows=body).strip()
+
+
 def render_starter(agent_metadata, viewer=EVERYONE):
-    """Build the day-zero dashboard HTML: who this agent is (name, address, one
-    line), with every skill it publishes folded under Capabilities.
+    """Build the day-zero dashboard HTML: who this agent is (name, one line, the
+    address — and for the owner the invite code), with every skill it publishes
+    in one SKILLS fold of hairline rows.
 
     Written once, then owned by the agent — so it has to be worth keeping, and it
     has to hold up at both ends of the range. The pane it renders into is ~440px
@@ -425,9 +461,21 @@ def render_starter(agent_metadata, viewer=EVERYONE):
     goes in them. Design notes are in those files, next to the rules they explain.
     """
     skills = published_skills(agent_metadata.get("skills") or [])
-    page, _ = _starter_templates()
+    page, fragments = _starter_templates()
     name = str(agent_metadata.get("name") or "Agent")
+    diagnostics = _diagnostics(agent_metadata, len(skills))
     return page.safe_substitute(
+        # O Chat v12 (owner, 2026-09-30): a bar with the live dot and the name,
+        # the name again as a serif headline, one line, then SKILLS folded as
+        # hairline rows. The bar's one quiet action jumps to the host facts,
+        # and exists only when there are some.
+        bar_actions=(fragments["details-link"].template.strip() if diagnostics else ""),
+        identity=_identity_rows(agent_metadata, viewer),
+        skill_count=str(len(skills)),
+        # A search box over three rows is noise. The Control Center's bridge
+        # shows its filter past six skills; this page does the same.
+        filter=("      " + fragments["filter"].template.strip()
+                if len(skills) > FILTER_MIN else ""),
         name=escape(name),
         initial=escape(name.strip()[:1] or "A"),
         tagline=_tagline(agent_metadata),
@@ -443,7 +491,7 @@ def render_starter(agent_metadata, viewer=EVERYONE):
         quick_actions=_quick_actions(skills),
         capability_count=(f"{len(skills)} skill{'s' if len(skills) != 1 else ''}"
                           if skills else "None published"),
-        diagnostics=_diagnostics(agent_metadata, len(skills)),
+        diagnostics=diagnostics,
         body=_skill_sections(skills),
     )
 
