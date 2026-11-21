@@ -35,7 +35,7 @@ from ..core.provider_permissions import (
     provider_permission_state,
     selected_provider_permission_option,
 )
-from ..useful_tools.claude_code import run_co_claude
+from ..useful_tools.claude_code import ClaudeRestriction, run_co_claude
 from ..useful_tools.codex import codex as _run_codex
 
 
@@ -299,8 +299,12 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
         workspace: str | Path | None = None,
         use_host_permissions: bool = False,
         ask_owner: bool = False,
+        restriction: ClaudeRestriction | None = None,
     ) -> None:
         self.use_host_permissions = use_host_permissions
+        # restriction pins Claude to `dontAsk` with only the operator's listed
+        # tools and skills; no caller choice in the Work Room widens it.
+        self.restriction = restriction
         # ask_owner pins Claude to its manual mode, so every action that needs
         # permission reaches our PermissionRequest Hook (owner approval for a
         # workspace edit, refusal for shell and anything unknown). Native
@@ -334,12 +338,15 @@ class ClaudeCodePlugin(_CodingAgentPlugin):
                 timeout=timeout,
                 agent=agent,
                 workspace=self.workspace,
+                restriction=self.restriction,
             ),
             permission_mode=effective_mode,
             automatic=provider_mode in {"auto", "acceptEdits", "bypassPermissions"},
         )
 
     def _policy(self, agent) -> tuple[str, PermissionMode]:
+        if self.restriction is not None:
+            return "dontAsk", self.permission_mode
         if self.ask_owner:
             return "default", self.permission_mode
         if not self.use_host_permissions:
@@ -448,6 +455,9 @@ def _provider_permission_for_event(
         # Station pins the native mode to default for owner approval. Its
         # selectable profile catalog would claim that Auto can take effect.
         return None
+    if provider == "claude_code" and _restricted(agent):
+        # The same holds for a restricted Host: its mode is fixed at dontAsk.
+        return None
     session = getattr(agent, "current_session", None)
     if not isinstance(session, dict):
         return None
@@ -470,6 +480,11 @@ def _provider_permission_for_event(
             host_mode,
             state_revision=state_revision,
         )
+
+
+def _restricted(agent) -> bool:
+    return any(getattr(plugin, "restriction", None) is not None
+               for plugin in getattr(agent, "installed_plugins", None) or ())
 
 
 def _emit_cached_provider_artifact(agent, lifecycle: dict[str, Any]) -> None:

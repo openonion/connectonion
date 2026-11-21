@@ -105,6 +105,8 @@ memory.write_memory("alice-notes", "Alice prefers email\nAlice works at TechCorp
 - Converted to lowercase
 - `"Alice Notes!"` becomes `"alicenotes"`
 
+**In single-file mode** (`Memory(memory_file="notes.md")`) each memory is a `## key` section. Anything above the first `##` heading, such as a `# Title` line or an introduction, is kept on every write; surrounding blank lines in it are trimmed.
+
 ### read_memory
 
 Retrieve saved information:
@@ -343,6 +345,43 @@ Prefers phone calls
 Project X is 80% complete
 Needs final testing
 ```
+
+#### Header
+
+Anything above the first `## ` heading is treated as the file header and is kept
+on every write:
+
+```markdown
+# Team notes
+
+Scratch file for the support agents. Safe to edit by hand.
+
+## alice-notes
+
+Alice prefers email communication
+```
+
+After `memory.write_memory("project-x", "Project X is 80% complete")` the file is:
+
+```markdown
+# Team notes
+
+Scratch file for the support agents. Safe to edit by hand.
+
+## alice-notes
+
+Alice prefers email communication
+
+## project-x
+
+Project X is 80% complete
+```
+
+The header is written back unchanged; only the blank lines directly around it are
+trimmed, so a write is not necessarily byte-identical to the file you typed. It is
+an annotation for humans, not a memory: `read_memory()`, `list_memories()` and
+`search_memory()` only look at the `## ` sections, so text that appears solely in
+the header is never returned or matched.
 
 ### Auto-Split to Directory
 

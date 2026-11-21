@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
 BASE = "http://rem.test/"
-GREEN = ("rgb(34, 210, 122)", "rgb(59, 227, 143)")
+GREEN = ("rgb(18, 21, 18)", "rgb(238, 240, 237)")
 LINK_ID, QUESTION_ID = "a1" * 16, "b2" * 16
 REVIEWS = r'''([live, language]) => {
   REM.live = live;
@@ -152,14 +152,14 @@ def test_a_snapshot_has_one_plain_line_and_no_buttons(reader, language, line):
 
 
 @pytest.mark.parametrize("live", [True, False])
-@pytest.mark.parametrize("view", ["view=graph", "c=knowledge"])
+@pytest.mark.parametrize("view", ["view=graph", "c=knowledge&view=entries"])
 def test_the_graph_files_knowledge_on_the_night_run_without_a_command(reader, live, view):
     page, _, _ = reader
     page.evaluate("""([live, view]) => { REM.live = live; REM.records = REM.records.filter(r => r.category !== 'knowledge');
       setInterfaceLanguage('zh'); location.hash = view; render(); }""", [live, view], isolated_context=False)
     page.wait_for_timeout(300)
     _no_command(page)
-    if view == "c=knowledge":
+    if view == "c=knowledge&view=entries":
         assert "REM 会在夜里那一轮从已有记录里整理知识。" in page.locator("#main").inner_text()
 
 
@@ -207,27 +207,33 @@ def test_waiting_on_you_gives_the_body_the_phone_width(reader):
 
 
 @pytest.mark.parametrize("path, head", [("people/mara-ostrowski.md", ".person-head"), ("projects/harbour.md", ".page-head")])
-def test_a_pending_translation_is_a_quiet_worded_line_under_the_header(reader, path, head):
+def test_a_pending_translation_is_asked_for_once_and_said_only_by_the_top_bar(reader, path, head):
+    """#3143: the page body carries no translation line or button; the top bar's language control says it."""
     page, calls, _ = reader
     page.evaluate("""path => { REM.live = true; delete byPath(path).translations?.zh; setInterfaceLanguage('zh');
       location.hash = 'r=' + encodeURIComponent(path); render(); }""", path, isolated_context=False)
     h1 = page.locator("#main h1").first
     h1.wait_for()
-    # Opening a page only moves it up the nightly queue: nothing is translating it now, so the
-    # line says the page is in its original language, never a "translating" that never ends.
+    # Opening a page only moves it up the nightly queue: never a "translating" that never ends.
     assert page.locator("#main").get_by_text(re.compile("^(翻译中|翻译待处理)$")).count() == 0
     # The owner read the old 原文 chip above the name as jargon (sprint 15): it is gone from the header.
     assert page.locator(f"#main {head} .lang-status, #main .hero-marks .lang-status, #main .eyebrow .lang-status").count() == 0
-    line = page.locator("#main .translation-line")
-    # #2999 adds the bulk action beside the D-103 notice; the notice itself stays quiet.
-    assert line.count() == 1
-    assert line.evaluate("n => n.firstChild.textContent") == "中文版还没好，先看原文"
-    assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
-    assert line.get_attribute("title") in ("已排入下一轮翻译", "翻译待处理，后台更新未开启")
+    assert page.locator("#main .translation-line, #main .translate-all").count() == 0
     assert ("/rem/translation-request", {"page": path, "language": "zh"}) in calls   # still asked for, once
-    assert line.get_attribute("role") is None                       # not announced again on every render
-    meta = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
-    assert line.evaluate("n => getComputedStyle(n).fontSize") == meta
-    box, header = line.bounding_box(), page.locator(f"#main {head}").first.bounding_box()
-    assert box["y"] >= header["y"] + header["height"] - 1             # under the header, by the body
+    assert sum(1 for call in calls if call == ("/rem/translation-request", {"page": path, "language": "zh"})) == 1
     assert page.locator("#main > p[role=status]").filter(has_text="翻译中").count() == 0
+
+
+def test_a_repeated_failure_is_one_quiet_line_in_the_night_card_in_local_time(reader):
+    """#3156: the background-health line sat above Today's work, an ISO timestamp in UTC. It belongs to the night card."""
+    page, _, _ = reader
+    page.evaluate("""() => { REM.status = {...(REM.status || {}), timezone: 'Australia/Sydney',
+      schedule_failure: {code: 'repeated_failure', evidence: 'x', failures: 8, empty: 2, since: '2026-11-17T14:00:00+00:00'}};
+      setInterfaceLanguage('zh'); render(); }""", isolated_context=False)
+    line = page.locator("#main .schedule-failure")
+    assert line.count() == 1 and line.evaluate("n => !!n.closest('.night-card')")
+    text = line.inner_text()
+    assert "UTC" not in text and "2026-11-17" not in text and "T14" not in text
+    assert "01:00" in text  # 14:00 UTC is 01:00 the next morning in Sydney
+    first = page.locator("#main > *").first
+    assert "schedule-failure" not in (first.get_attribute("class") or "")

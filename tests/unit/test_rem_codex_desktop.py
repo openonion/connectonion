@@ -197,9 +197,9 @@ def test_session_window_migrates_v1_without_recollecting_unchanged_files(
         metadata_reads.append(first['payload']['id'])
         return original_meta(first)
 
-    def collecting(subscription, progress, *limits):
+    def collecting(subscription, progress, *limits, **options):
         calls.append(progress)
-        return collect(subscription, progress, *limits)
+        return collect(subscription, progress, *limits, **options)
 
     monkeypatch.setitem(source.KINDS['codex'], 'meta', meta)
     monkeypatch.setattr(investigate, '_WINDOWS', {})
@@ -213,6 +213,10 @@ def test_session_window_migrates_v1_without_recollecting_unchanged_files(
         assert [item['text'] for item in items] == [
             'Ask Avery Lin about delivery.', 'Previously retained message.']
         assert metadata_reads == [interactive.stem, executable.stem]
+    elif missing_progress:
+        # A rollout that is gone takes its own messages with it; the others are not read again (1.9.6rc18).
+        assert calls[0] == {name: entry for name, entry in batch.progress.items() if name != 'rollout-gone.jsonl'}
+        assert [item['text'] for item in items] == ['Ask Avery Lin about delivery.']
     else:
         assert calls[0] == {}
         assert [item['text'] for item in items] == ['Ask Avery Lin about delivery.']

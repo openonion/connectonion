@@ -69,12 +69,9 @@ def gather(tmp_path, mailbox):
                       record="people/ivy.md", attachments_dir=tmp_path / ".state/attachments")
 
 
-def test_an_attachment_listing_timeout_is_a_coverage_line_not_the_end_of_the_page(tmp_path, no_wait):
-    items, coverage = gather(tmp_path, Mailbox(attachment_errors={"mail-1": read_timeout}))
-    bodies = [item for item in items if item["role"] == "other"]
-    assert len(bodies) == 2
-    assert [item["reference"] for item in items if item["role"] == "attachments-index"] == ["outlook:mail-2"]
-    assert "outlook: attachments for 1 message(s) not listed: timed out" in coverage
+def test_an_attachment_listing_timeout_remains_a_failure(tmp_path, no_wait):
+    with pytest.raises(httpx.ReadTimeout, match='The read operation timed out'):
+        gather(tmp_path, Mailbox(attachment_errors={"mail-1": read_timeout}))
 
 
 def test_a_mail_gone_from_the_server_is_skipped_with_a_coverage_line(tmp_path, no_wait):
@@ -323,7 +320,8 @@ def test_a_stopped_mailbox_holds_only_pages_that_read_mail_and_they_return_next_
     monkeypatch.setenv("CO_REM_TURN_ID", "fixture-turn-2")
     directory = state_path(notebook, "tasks/fixture-turn-2")
     directory.mkdir(parents=True)
-    native_round.prepare_task(notebook, cursor, read_config(notebook), directory)
+    with pytest.raises(native_round.RemError, match='All remaining candidates are parked'):
+        native_round.prepare_task(notebook, cursor, read_config(notebook), directory)
     assert asked == people
 
 

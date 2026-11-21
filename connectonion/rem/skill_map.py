@@ -225,7 +225,10 @@ def _shape(page: str, copies: list[dict], gone: list[str], usage: str, descripti
     def sources(body):  # the metadata citation names the page's File, not a merged copy's
         if not copies:
             return body
-        return re.sub(r"^- Skill metadata: .*$", f"- Skill metadata: {copies[0]['path']}", body, count=1, flags=re.M)
+        # A function, not a string: a Windows path's backslashes ("C:\\Program
+        # Files") are escapes in a replacement string ("bad escape \\P").
+        line = f"- Skill metadata: {copies[0]['path']}"
+        return re.sub(r"^- Skill metadata: .*$", lambda match: line, body, count=1, flags=re.M)
 
     page = _with_section(page, "Source", source)
     page = _with_section(page, "Sources", sources)

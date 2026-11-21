@@ -511,7 +511,7 @@ def test_mail_tells_what_rem_did_then_the_decisions(morning_book, monkeypatch):
     assert text.index('Fernhill Labs') < text.index('看稿并发送')  # done first, decisions after
     assert '@' not in text and '/fictional' not in text and 'draft-mara' not in text and 'Re:' not in text
     assert f'{LIVE}#r=orgs/fernhill-labs.md' in value['html']
-    assert value['html'].count('#22d27a;border') == 1  # one primary action
+    assert value['html'].count('#121512;border') == 1  # one primary action (the ink accent, #3144)
 
 
 def test_mail_without_a_live_reader_has_no_dead_buttons(morning_book):

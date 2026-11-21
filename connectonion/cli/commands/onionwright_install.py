@@ -17,7 +17,9 @@ explicit `co browser install-onion` or a typed `--engine wtf` reaches here.
 
 from __future__ import annotations
 
+import importlib
 import importlib.metadata
+import site
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -29,7 +31,7 @@ from ..._version import __version__
 # The floor, not a pin. A newer client is expected to keep working against the
 # catalogue: oo-api records `minimum_client_version` per artifact and refuses a
 # client below it, which is the check that actually protects a paid download.
-ONIONWRIGHT_VERSION = "0.0.15"
+ONIONWRIGHT_VERSION = "0.0.16"
 ONIONWRIGHT_REQUIREMENT = f"onionwright>={ONIONWRIGHT_VERSION}"
 
 
@@ -97,6 +99,20 @@ def _install_failure_advice(completed, break_system_packages: bool) -> str:
     return f"pip could not install Onionwright (exit {completed.returncode}).{tail}"
 
 
+def _see_new_user_site() -> None:
+    """Put a user site-packages that pip just created on this process's path.
+
+    Where the interpreter is not writable (Python under C:\\Program Files, run
+    without elevation), pip installs into the user site instead. That folder did
+    not exist when this process started, so it is not on sys.path: pip
+    succeeded and the check below still found nothing. The next process sees it.
+    """
+    user_site = site.getusersitepackages()
+    if site.ENABLE_USER_SITE and user_site not in sys.path:
+        site.addsitedir(user_site)
+    importlib.invalidate_caches()
+
+
 def install_onionwright(*, break_system_packages: bool = False) -> InstallResult:
     """Install the current client into this exact Python environment."""
     current = _installed_version()
@@ -129,6 +145,7 @@ def install_onionwright(*, break_system_packages: bool = False) -> InstallResult
             _install_failure_advice(completed, break_system_packages)
         )
 
+    _see_new_user_site()
     installed = _installed_version()
     if not _is_compatible(installed):
         raise OnionwrightInstallError(

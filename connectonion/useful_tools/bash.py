@@ -1,14 +1,14 @@
 """
-Purpose: Execute bash commands on Unix/Mac systems with timeout and output truncation
+Purpose: Execute bash commands (Git Bash on Windows, else cmd) with timeout and output truncation
 LLM-Note:
-  Dependencies: imports from [subprocess, platform] | imported by [useful_tools/__init__.py, useful_prompts/coding_agent/assembler.py] | tested by command execution
+  Dependencies: imports from [subprocess, shutil, platform] | imported by [useful_tools/__init__.py, useful_prompts/coding_agent/assembler.py] | tested by command execution
   Data flow: receives command: str, description: str, cwd: str, timeout: int → subprocess.run() locally or cancellable Popen in hosted mode → captures stdout+stderr → truncates if >10000 chars → returns formatted output: str
   State/Effects: executes shell commands | hosted runs use an isolated process group so OIP Stop terminates descendants | no persistent state | reads/writes filesystem based on command | can have any side effect depending on command (network calls, file operations, etc.)
-  Integration: exposes bash(command, description="", cwd, timeout) function | used as agent tool | description is OPTIONAL (defaults "") — an LLM is prompted to fill it for the approval UI, but direct/programmatic callers (remote.call, co call, scripts) can pass command alone | not passed to shell | Unix/Mac only (raises ValueError on Windows)
+  Integration: exposes bash(command, description="", cwd, timeout) function | used as agent tool | description is OPTIONAL (defaults "") — an LLM is prompted to fill it for the approval UI, but direct/programmatic callers (remote.call, co call, scripts) can pass command alone | not passed to shell | on Windows runs Git Bash, or cmd /c when there is none
   Performance: timeout default 120s; explicit caller values are honored | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
-  Errors: raises ValueError on Windows | propagates subprocess.TimeoutExpired so callers can distinguish timeout from success | non-zero exit codes included in output | stderr merged with stdout
+  Errors: propagates subprocess.TimeoutExpired so callers can distinguish timeout from success | non-zero exit codes included in output | stderr merged with stdout
 
-Bash tool for executing terminal commands (Unix/Mac only).
+Bash tool for executing terminal commands.
 
 Usage:
     from connectonion import Agent, bash
@@ -20,11 +20,13 @@ Usage:
     # - bash(command, cwd="/path") - Execute in specific directory
     # - bash(command, timeout=60) - Execute with custom timeout
 
-Note: This tool is for Unix/Mac systems. For cross-platform usage, use Shell class instead.
+On Windows it runs Git Bash when installed and falls back to `cmd /c`, so a
+`co call <address> co status` works against a Windows host (#3123).
 """
 
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import time
@@ -39,7 +41,7 @@ def bash(
     timeout: int = 120,
     agent=None,
 ) -> str:
-    """Execute a bash command, returns output (Unix/Mac only).
+    """Execute a bash command, returns output.
 
     Args:
         command: Bash command to execute (e.g., "ls -la", "git status")
@@ -56,19 +58,13 @@ def bash(
     Raises:
         subprocess.TimeoutExpired: If the command exceeds ``timeout``.
     """
-    # Check platform
-    if platform.system() == "Windows":
-        return "Error: bash tool is for Unix/Mac only. Use Shell class for Windows."
-
     cancelled = getattr(getattr(agent, "io", None), "is_cancelled", None)
     try:
         if callable(cancelled):
             result = _run_cancellable(command, cwd, timeout, cancelled)
         else:
             result = subprocess.run(
-                command,
-                shell=True,
-                executable="/bin/bash",
+                _argv(command),
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -77,7 +73,7 @@ def bash(
                 timeout=timeout,
             )
     except FileNotFoundError:
-        return "Error: /bin/bash not found. This tool requires bash shell."
+        return f"Error: {_argv(command)[0]} not found. This tool requires a bash shell."
 
     parts = []
     if result.stdout:
@@ -97,11 +93,30 @@ def bash(
     return output
 
 
+def _argv(command: str) -> list:
+    """The shell that runs `command`, as an argv list (no shell=True).
+
+    On Windows `executable=` with `shell=True` still builds a `cmd.exe /c`
+    line, so the list form is the only way to choose the shell there."""
+    if platform.system() != "Windows":
+        return ["/bin/bash", "-c", command]
+    bash_exe = _windows_bash()
+    return [bash_exe, "-c", command] if bash_exe else ["cmd", "/c", command]
+
+
+def _windows_bash():
+    """Git Bash, or None. System32\\bash.exe is the WSL launcher: it runs the
+    command inside Linux, where this machine's `co` and files are not."""
+    git = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Git", "bin", "bash.exe")
+    if os.path.isfile(git):
+        return git
+    found = shutil.which("bash")
+    return found if found and "system32" not in found.lower() else None
+
+
 def _run_cancellable(command, cwd, timeout, cancelled):
     process = subprocess.Popen(
-        command,
-        shell=True,
-        executable="/bin/bash",
+        _argv(command),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -130,6 +145,10 @@ def _run_cancellable(command, cwd, timeout, cancelled):
 
 def _terminate_process_group(process):
     if process.poll() is not None:
+        return
+    if not hasattr(os, "killpg"):  # Windows: no process groups to signal
+        process.kill()
+        process.wait(timeout=1)
         return
     try:
         os.killpg(process.pid, signal.SIGTERM)

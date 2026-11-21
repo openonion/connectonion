@@ -357,7 +357,7 @@ def test_a_page_is_written_once_from_the_material_and_the_status_line_says_so(wo
     assert "A swell warning tool for surfers. [1]" in page
     assert re.search(r"^Investigation: .*written \d{4}-\d\d-\d\d \(own messages: codex\)$", page, re.M)
     metrics = json.loads(next((world.root / ".state/tasks").glob("projects-*/result.json")).read_text())
-    assert (metrics["harness"], metrics["model"], metrics["speed"]) == ("codex", "default", "fast")
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == ("codex", "default", "standard")
     assert page_state(world.root, "projects/tide.md")["written_through"] == out["through"]
     assert page_state(world.root, "projects/tide.md")["last_page_coverage"] == {
         "inputs_read": 1, "inputs_available": 1, "scope": "queued"}
@@ -641,7 +641,7 @@ def test_the_page_s_size_and_the_limit_are_said_before_the_turn(tmp_path):
     small = prompt(tmp_path, [{"role": "page", "text": "# t"}], tmp_path / "candidate.md", 4_000)
     large = prompt(tmp_path, [{"role": "page", "text": "# t"}], tmp_path / "candidate.md", 24_586)
     assert "must stay under 20,000 characters" in small
-    assert "The page is 24,586 characters" in large and "fold the oldest History" in large
+    assert "The page is 24,586 characters" in large and "the program moves it to the page's archive" in large
 
 
 def test_write_pages_takes_a_portion_in_order_and_one_failure_does_not_stop_the_rest(world):

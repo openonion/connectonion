@@ -38,8 +38,17 @@ def test_a_decode_failure_without_a_file_still_says_it_was_decoding(tmp_path, mo
     assert "A co rem file is not UTF-8 text" in result.output, result.output
 
 
-def test_a_file_that_cannot_be_opened_is_still_a_read_or_write_failure_naming_it(tmp_path, monkeypatch):
+def test_a_file_that_cannot_be_opened_is_an_access_failure_naming_it(tmp_path, monkeypatch):
     missing = tmp_path / "nowhere" / "fixture.json"
     result = status_fails(tmp_path, monkeypatch, lambda root: missing.read_text(encoding="utf-8"))
-    assert "Cannot read or write the selected co rem files" in result.output, result.output
+    assert "Cannot access file or folder" in result.output, result.output
     assert str(missing) in result.output, result.output
+
+
+def test_unreadable_outside_path_does_not_blame_notebook_files(tmp_path, monkeypatch):
+    def fail(root):
+        raise PermissionError(13, "Permission denied", "/System/Volumes/Data/.fseventsd/.git")
+    result = status_fails(tmp_path, monkeypatch, fail)
+    assert result.exit_code == 1
+    assert "Cannot read or write the selected co rem files" not in result.output
+    assert "/System/Volumes/Data/.fseventsd/.git" in result.output

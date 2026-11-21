@@ -96,6 +96,9 @@ def _owner_next(root, arguments):
     return ["status"] if default_scheduler(root).installed(root) else arguments
 
 
+DRIVEN_NEXT = "End your turn: the co rem exec that started this task takes the next one."
+
+
 def _emit(ctx, value, arguments, *, failed=False, draw=None):
     """Print a result and its Next line: styled in a terminal, the same words anywhere else.
 
@@ -104,6 +107,10 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
     """
     from ..style import next_line
     command = _next(ctx, _owner_next(ctx.obj["root"], arguments or ["status"]))
+    driven = isinstance(value, dict) and value.get("driven") and arguments == ["next"]
+    if driven:
+        # A worker `co rem exec` runs has one task: a next of its own makes a task nobody drives (#3083).
+        command = None
     if ctx.obj["json"]:
         typer.echo(json.dumps({"ok": not failed, "data": value, "next": command}, ensure_ascii=False))
     elif isinstance(value, dict) and value.get("outcome") == "busy":
@@ -117,7 +124,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         tip = f"run {command} now (same turn)" if isinstance(value, dict) and value.get("same_turn") else command
         if isinstance(value, dict) and value.get("continuation"):
             tip += ". " + value["continuation"]
-        rem_look.say(next_line(tip))
+        rem_look.say(next_line(DRIVEN_NEXT if driven else tip))
     else:
         path, parent = [ctx.info_name or "status"], ctx.parent
         while parent is not None and parent.info_name not in (None, "rem") and parent.parent is not None:
@@ -166,7 +173,7 @@ def _file_error(error) -> str:
     if isinstance(error, RemError):
         return str(error)
     if isinstance(error, OSError):
-        return f"Cannot read or write the selected co rem files: {error}"
+        return f"Cannot access file or folder: {error}"
     if isinstance(error, UnicodeDecodeError):
         where = _decoding(error.__traceback__)
         return (f"{where or 'A co rem file'} is not UTF-8 text ({error.reason} at position {error.start}); "
@@ -190,6 +197,7 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     from ...rem.files import RemError
 
     _WRITTEN.clear()
+    preparation_error = response = None
     try:
         response = operation(ctx.obj["root"])
         value, arguments = response[:2]
@@ -197,6 +205,7 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     except KeyboardInterrupt:
         _interrupted(ctx, resume or retry or recovery)
     except (RemError, OSError, UnicodeError) as error:
+        preparation_error = error
         message = _file_error(error)
         # An error that says what to run is the Next line too. `sync` before
         # `start` said "run co rem start" and then printed "Next: co rem logs".
@@ -205,13 +214,22 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
                      retry if retry and getattr(error, "_rem_retry_page", False) else recovery)
         _emit(ctx, message, next_step, failed=True)
         return
+    finally:
+        # The scheduled turn's receipt is decided from what its own commands report.
+        if ctx.info_name == "next":
+            from ...rem.codex_exec import record_preparation
+            record_preparation(ctx.obj["root"], preparation_error or sys.exc_info()[1], response and response[0])
+        elif ctx.info_name == "submit" and response:
+            from ...rem.codex_exec import record_submission
+            record_submission(ctx.obj["root"], response[0])
     _emit(ctx, value, arguments, failed=failed, draw=draw)
 
 
-def _dashboard(ctx, verbose=False):
+def _dashboard(ctx, verbose=False, show_private=False):
     """How status draws its result: a small dashboard, internals only with --verbose (#1996)."""
     from .rem_status import dashboard
-    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose)
+    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose,
+                                   show_private=show_private)
 
 
 def _moved(ctx, old: str, new: list):
@@ -257,12 +275,16 @@ def _logged(root, record, phase, call, quiet=False):
     from ...rem import quota
     from ...rem.investigate import NothingFound, NothingNew
     from ...rem.service import abandon_stale_runs, running_marker
-    config = read_config(root)
+    from ...rem.inquiry import stage_config
+    from ...rem.runner import worker_effort
+    # The model and effort its turns run at: investigation's level (#3099), which the
+    # weekly budget charges by. It said the notebook's level-3 model and no effort.
+    config = stage_config(root, read_config(root), "investigate")
     abandon_stale_runs(root)
     # Manual investigation counts toward the weekly budget like the round (#1842).
     run = {"id": "run_" + uuid.uuid4().hex, "started_at": now().isoformat(), "phase": phase,
            "record": record, "harness": config["runner"], "model": config["model"],
-           "speed": config["speed"], "outcome": "running",
+           "speed": config["speed"], "effort": worker_effort(config), "outcome": "running",
            "runner_attempts": 0, "usage": None, "changed": [], "sources": [], "items": 0,
            "quota": {"before": quota.read(config)}, **running_marker()}
     path = state_path(root, f"runs/{run['id']}.json")
@@ -488,7 +510,7 @@ def _spending_skipped(ctx, *, want, problem, fix) -> str:
 
 
 def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=(), progress=None,
-                      quiet=False, retry_refused=False, rounds=None, mail=()):
+                      quiet=False, retry_refused=False, rounds=None, mail=(), mode=""):
     """One page of `co rem investigate PAGE|CATEGORY`, and of the first run's organisations."""
     from ...rem import investigate as rem_investigate
     from ...rem.files import RemError
@@ -511,7 +533,54 @@ def _investigate_page(root, notebook, record, *, handle=(), days=None, eval_dir=
     return _logged(root, record, "investigate", lambda update: rem_investigate.investigate(
         root, record, title, handles, days=days or rem_investigate.window_since(text, root=root), clients=clients,
         subscriptions=subscriptions(root), progress=progress, mail_skipped=skipped,
-        stage_progress=update, retry_refused=retry_refused, rounds=rounds), quiet=quiet)
+        stage_progress=update, retry_refused=retry_refused, rounds=rounds, mode=mode), quiet=quiet)
+
+
+def _page_steps(root, record, *, enrich=False, rewrite=False, handle=(), days=None, eval_dir=(),
+                progress=None, retry_refused=False, quiet=False):
+    """`co rem investigate PAGE`: write or append, then enrich if asked (#3105).
+
+    The page before the run is kept for --undo; a rewrite is held as a draft and
+    the page put back. Enrich runs even when there was nothing new to append:
+    following a page's leads needs no new mail."""
+    from ...rem import page_versions
+    from ...rem.files import Notebook, RemError
+    from ...rem.investigate import NothingFound
+    notebook = Notebook(root)
+    if rewrite and enrich:
+        raise RemError("--rewrite makes a draft; enrich the page after you accept it: "
+                       f"co rem investigate {record} --accept-rewrite, then --enrich")
+    if rewrite and not record.startswith(("people/", "orgs/", "projects/")):
+        raise RemError("--rewrite applies to people, orgs and projects pages")
+    before = notebook.read(record)
+    try:
+        # The owner naming a page is the retry: the refusal ledger is for
+        # scheduled runs, and made them add --retry-refused to their own request.
+        result = _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
+                                   progress=progress, quiet=quiet, mode="rewrite" if rewrite else "",
+                                   retry_refused=retry_refused or not record.startswith("skills/"))
+    except NothingFound as nothing:
+        # Nothing new is a finished run, not a failure: it read every source and
+        # made no model call. It printed "Error:", exited 1 and told the user to
+        # run the same command again (#2034). Enrich has sources of its own (the
+        # saved archive, the page's links), so it runs after either.
+        from ...rem.investigate import NothingNew
+        if not enrich and isinstance(nothing, NothingNew):
+            return str(nothing)
+        if not enrich:
+            raise
+        result = {"record": record, "investigate": str(nothing), "changed": []}
+    if rewrite:
+        result["rewrite"] = page_versions.hold_rewrite(root, record, before)
+        return result
+    if enrich:
+        from ...rem import muse as muse_module
+        found = _logged(root, record, "enrich", lambda update: muse_module.enrich(root, record, stage_progress=update),
+                        quiet=quiet)
+        result["enrich"] = {"changed": "yes" if found["changed"] else "no",
+                            "page_chars": "{:,} -> {:,}".format(*found["page_chars"]), "leads": found["report"]}
+    page_versions.keep_previous(root, record, before, notebook.read(record))
+    return result
 
 
 def _deepen_page(ctx, page, stage):
@@ -824,7 +893,7 @@ def _first_translation(root, config, say, *, language="", reason="") -> dict:
 
 
 def _first_abstract(root, config, say, result) -> dict:
-    """Decisions, then principles, from the pages the first run just wrote.
+    """Decisions, knowledge, then principles, from the pages the first run just wrote.
 
     The owner (2026-10-08): the first run should also leave the settled
     questions and standing rules, not only people and projects. `co rem
@@ -836,14 +905,16 @@ def _first_abstract(root, config, say, result) -> dict:
         return {"started": False}
     from ...rem.files import Notebook
     from ...rem.runner import RunFailed, run_stage
-    say("Drawing decisions and principles from the pages just written…")
+    say("Drawing decisions, knowledge and principles from the pages just written…")
     try:
         out = run_stage(Notebook(root), [], config, stage="abstract")
     except RunFailed as error:
-        say(f"Decisions and principles were not written ({str(error)[:160]}); retry with co rem abstract.")
+        say(f"Decisions, knowledge and principles were not written ({str(error)[:160]}); retry with co rem abstract.")
         return {"started": True, "outcome": "failed", "why": str(error), "usage": error.usage}
-    pages = [page for page in out.get("changed", []) if page.startswith(("decisions/", "principles/"))]
-    say(f"Decisions and principles: {len(pages)} page{'s' if len(pages) != 1 else ''} written.")
+    pages = [page for page in out.get("changed", []) if page.startswith(("decisions/", "knowledge/", "principles/"))]
+    counts = {category: sum(page.startswith(category + '/') for page in pages)
+              for category in ('decisions', 'knowledge', 'principles')}
+    say(f"Pages written: {counts['decisions']} decisions · {counts['knowledge']} knowledge · {counts['principles']} principles.")
     return {"started": True, "outcome": "completed", "pages": pages, "usage": out.get("usage")}
 
 
@@ -1539,7 +1610,8 @@ def make_rem_app(factory):
 
     @rem.command("investigate", cls=V("co rem investigate"))
     def investigate_page(ctx: typer.Context,
-                         target: str = typer.Argument(""),
+                         target: str = typer.Argument("", metavar="KIND"),
+                         name: str = typer.Argument("", metavar="NAME"),
                          handle: List[str] = typer.Option([], "--handle"),
                          days: Optional[int] = typer.Option(None, "--days", min=1),
                          quick: bool = typer.Option(False, "--quick", help="Bounded first pass for your own page"),
@@ -1550,7 +1622,12 @@ def make_rem_app(factory):
                          list_only: bool = typer.Option(False, "--list"),
                          recent_days: Optional[int] = typer.Option(None, "--recent-days", min=1),
                          eval_dir: List[Path] = typer.Option([], "--eval-dir"),
-                         retry_refused: bool = typer.Option(False, "--retry-refused")):
+                         retry_refused: bool = typer.Option(False, "--retry-refused"),
+                         enrich: bool = typer.Option(False, "--enrich"),
+                         rewrite: bool = typer.Option(False, "--rewrite"),
+                         accept_rewrite: bool = typer.Option(False, "--accept-rewrite"),
+                         discard_rewrite: bool = typer.Option(False, "--discard-rewrite"),
+                         undo: bool = typer.Option(False, "--undo")):
         from ...rem.files import Notebook, RemError, read_json, state_path
         from ...rem import queue as rem_queue
         from ...rem.queue import CATEGORIES, order
@@ -1686,22 +1763,53 @@ def make_rem_app(factory):
             result, record = _investigate_me(root, days=days, quick=quick, handle=handle)
             return result, ["show", record]
 
+        def topics(root, limit, list_only):
+            """Every tag page that is due (#3140): shared by enough pages, unwritten or with new or changed pages."""
+            from ...rem import tag_nodes
+            due = tag_nodes.due(root)
+            if list_only:
+                return {"category": "tags", "order": due}, (["investigate", "tags"] if due else ["status"])
+            report = tag_nodes.write_nodes(root, limit=limit or 50,
+                                           say=lambda line: rem_look.line(line, err=True))
+            return (report if ctx.obj["json"] else tag_nodes.summary(report)), (["logs"] if report["failed"] else ["open"]), \
+                bool(report["failed"])
+
         def run(root):
+            nonlocal target
+            from ...rem.named_pages import canonical
+            target = canonical(target)  # topic and topics are the same words as tag and tags (#3140)
             config = read_config(root)
             effective_workers = workers if workers is not None else (1 if (limit or budget) else config["limits"]["workers"])
-            if quick and target != "me":
-                raise RemError("--quick is for `co rem investigate me` only")
-            if retry_refused and (not target or target in runnable or target == "me"):
-                raise RemError("--retry-refused needs one page: co rem investigate PAGE --retry-refused")
-            if budget and target not in runnable:
+            steps = {"--enrich": enrich, "--rewrite": rewrite, "--accept-rewrite": accept_rewrite,
+                     "--discard-rewrite": discard_rewrite, "--undo": undo}
+            asked = [flag for flag, on in steps.items() if on]
+            one_page = bool(name) or "/" in target
+            if asked and not one_page:
+                raise RemError(f"{asked[0]} needs one page: co rem investigate person \"NAME\" {asked[0]}")
+            if quick and not one_page and target != "me":
+                raise RemError("--quick goes with me or one page: co rem investigate me --quick, or person \"NAME\" --quick")
+            if retry_refused and not one_page:
+                raise RemError("--retry-refused needs one page: co rem investigate person \"NAME\" --retry-refused")
+            if budget and target not in runnable and target not in ("tags", "topics"):
                 raise RemError("--budget goes with a category: co rem investigate all --budget 10")
-            if list_only and target not in runnable:
+            if list_only and target not in runnable and target not in ("tags", "topics"):
                 raise RemError("--list goes with a category: co rem investigate people --list "
                                 "(or projects, orgs, skills)")
             if recent_days is not None and target != "people":
                 raise RemError("--recent-days goes with people: co rem investigate people --recent-days 14")
+            from ...rem import named_pages, tag_nodes
             if not target:
                 return overview(root)
+            if name and target not in named_pages.KINDS:
+                raise (named_pages.unknown_kind(target) if target not in named_pages.PLURALS else
+                       RemError(f"{target} means every due page of that kind; for one page name its kind: "
+                                f"co rem investigate {named_pages.PLURALS[target]} \"{name}\""))
+            if target in named_pages.PLURALS and target not in runnable and target != "tags":
+                raise RemError(f"{target} are not investigated as a batch; name one: "
+                               f"co rem investigate {named_pages.PLURALS[target]} \"NAME\"")
+            if (target not in named_pages.KINDS and target not in runnable and target not in ("me", "tags")
+                    and "/" not in target):
+                raise named_pages.unknown_kind(target)
             if target == "people":
                 # An agent searching each person's prepared evidence (#1943, #1850).
                 from .rem_people import run_people
@@ -1711,33 +1819,57 @@ def make_rem_app(factory):
                                   workers=effective_workers)
             if target == "me":
                 return me(root)
+            if target == "tags":
+                return topics(root, pages_limit or None, list_only)
             if target in runnable:
                 return by_category(root, target, effective_workers)
             notebook = Notebook(root)
-            record = _resolve_page(notebook, target, next_args=["investigate"])
-            from ...rem.investigate import NothingNew
-            try:
-                # The owner naming a page is the retry: the refusal ledger is
-                # for scheduled runs, and made them add --retry-refused to
-                # their own request.
-                result = _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
-                                           progress=progress,
-                                           retry_refused=retry_refused or not record.startswith("skills/"))
-            except NothingNew as quiet:
-                # Nothing new is a finished run, not a failure: it read every
-                # source and made no model call. It printed "Error:", exited 1
-                # and told the user to run the same command again (#2034).
-                return str(quiet), ["show", record]
+            # KIND NAME is one page (owner, 2026-11-19: a bare name is ambiguous); a path is the old form.
+            record = (named_pages.resolve(root, target, name) if target in named_pages.KINDS
+                      else _resolve_page(notebook, target, next_args=["investigate"]))
+            slug = tag_nodes.topic_slug(root, record) if record.startswith("knowledge/") else ""
+            if slug and not (accept_rewrite or discard_rewrite or undo):
+                # A tag page (#3140): the pages carrying the tag are its material; written when missing, appended to.
+                report = tag_nodes.write_nodes(root, only=slug)
+                if report["failed"]:
+                    raise RemError(f"{slug}: " + "; ".join(report["errors"])[:400])
+                return ({**report, "tag": slug, "page": record} if ctx.obj["json"] else
+                        f"Investigated the tag {slug}: {record}"), ["show", record]
+            from ...rem import page_versions
+            if len(asked) > 1 and set(asked) - {"--enrich", "--rewrite"}:
+                raise RemError("Use one of --accept-rewrite, --discard-rewrite and --undo at a time")
+            if accept_rewrite or discard_rewrite or undo:
+                action = (page_versions.accept_rewrite if accept_rewrite else
+                          page_versions.discard_rewrite if discard_rewrite else page_versions.undo)
+                return action(root, record), ["show", record]
+            result = _page_steps(root, record, enrich=enrich, rewrite=rewrite, handle=handle, days=days,
+                                 eval_dir=eval_dir, progress=progress, retry_refused=retry_refused)
+            if isinstance(result, str):
+                return result, ["show", record]
+            if rewrite and result["rewrite"]["changed"]:
+                return result, ["investigate", record, "--accept-rewrite"]
             return result, ["show", result["report"] if record.startswith("skills/") else record]
-        retry = ["investigate", *([target] if target else []),
+        retry = ["investigate", *([target] if target else []), *([name] if name else []),
                  *(["--days", str(days)] if days is not None else []),
                  *(["--quick"] if quick else []),
-                 *(["--retry-refused"] if retry_refused else [])]
+                 *(["--retry-refused"] if retry_refused else []),
+                 *(["--enrich"] if enrich else []), *(["--rewrite"] if rewrite else [])]
         _handle(ctx, run, ["investigate"], retry=retry, resume=retry)
 
     @rem.command("enrich", cls=V("co rem enrich"))
     def enrich_page(ctx: typer.Context, page: str = typer.Argument(..., metavar="PAGE")):
-        _deepen_page(ctx, page, "enrich")
+        from ...rem.files import Notebook
+
+        def operation(root):
+            record = _resolve_page(Notebook(root), page)
+            # #3105: enrich is a step of investigate now; say so once, then do it.
+            rem_look.line("co rem enrich moved: it runs co rem investigate KIND NAME --enrich "
+                          f"(co rem investigate {record} --enrich).", err=True)
+            result = _page_steps(root, record, enrich=True)
+            return (result, ["show", record])
+
+        retry = ["investigate", page, "--enrich"]
+        _handle(ctx, operation, retry, retry=retry, resume=retry)
 
     @rem.command("muse", cls=V("co rem muse"))
     def muse_page(ctx: typer.Context, page: str = typer.Argument(..., metavar="PAGE")):
@@ -1843,6 +1975,41 @@ def make_rem_app(factory):
         if result.get("halted"):
             summary += f"\nStopped at {result['current']} of {total}: {result['halted']}."
         return result if ctx.obj["json"] else summary, ["open"], bool(result["failed"])
+
+    @rem.command("tag", cls=V("co rem tag"))
+    def tag_pages(ctx: typer.Context, kind: str = typer.Argument("", metavar="KIND"),
+                  name: str = typer.Argument("", metavar="NAME"),
+                  pages: int = typer.Option(200, "--pages", min=1, help="Tag at most N pages that have no tag"),
+                  dry_run: bool = typer.Option(False, "--dry-run", help="Count what would change; no model")):
+        from ...rem import named_pages, tag_nodes
+        from ...rem.files import RemError
+        from ...rem.tag_stage import summary, tag_pages as run_tagging
+
+        def operation(root):
+            say = None if ctx.obj["json"] else typer.echo
+            if dry_run:
+                from ...rem.tag_stage import candidates as untagged
+                plan = {**tag_nodes.dry_run(root), "untagged_waiting": len(untagged(root))}
+                plan.pop("members")
+                text = (f"{plan['untagged_waiting']} pages wait for tags · {plan['tags_linked_to_pages']} tags link to a "
+                        f"person, organisation or project page · {plan['tag_pages_possible']} tags get a tag page "
+                        f"({plan['waiting']} due) · {plan['single_page_tags']} tags on one page stay links")
+                return (plan if ctx.obj["json"] else text), ["tag"]
+            word = named_pages.canonical(kind)
+            if word and word not in named_pages.KINDS:
+                raise named_pages.unknown_kind(kind)
+            if word == "tag":
+                raise RemError("A tag's page is written by investigate: co rem investigate tag \"NAME\"")
+            only = [named_pages.resolve(root, word, name)] if word else None
+            report = run_tagging(root, limit=pages, say=say, only=only)
+            # Tags that name a person, organisation or project are links to those pages (#3140); the rest that
+            # two or more pages share get tag pages, written by investigate.
+            report.update(linked=len(tag_nodes.pages_for_tags(root)), tag_pages_due=len(tag_nodes.due(root)))
+            text = summary(report) + (f"\n{report['linked']} tags link to a person, organisation or project page; "
+                                      f"{report['tag_pages_due']} tag pages are due: co rem investigate tags")
+            return (report if ctx.obj["json"] else text), (["investigate", "tags"] if report["tag_pages_due"] else ["open"]), \
+                bool(report["failed"])
+        _handle(ctx, operation, ["status"])
 
     @rem.command("list", cls=V("co rem list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
@@ -2004,7 +2171,8 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (stop(root, scheduler=rem_schedule.default_scheduler(root)), ["status"]), ["status"])
 
     @rem.command("status", cls=V("co rem status"))
-    def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose")):
+    def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose"),
+                       show_private: bool = typer.Option(False, "--show-private")):
         from ...rem.service import status
         from .rem_status import status_next
 
@@ -2016,13 +2184,15 @@ def make_rem_app(factory):
                 value.pop("translation_coverage", None)
             return value, status_next(value)
         _handle(ctx, operation, ["config"],
-                draw=_dashboard(ctx, verbose))
+                draw=_dashboard(ctx, verbose, show_private))
 
-    def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days):
+    def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days, *, collect_only=False):
         from ...rem.files import RemError
         from ...rem.service import run_sync, scheduled_skip
 
         finished = []
+        again = ["collect", *(["--source", source] if source else []),
+                 *(["--with", with_person] if with_person else [])] if collect_only else ["sync"]
 
         def progress(number, record):
             # A backfill ran 37 minutes over five batches with no output at all
@@ -2033,7 +2203,7 @@ def make_rem_app(factory):
                        f"({record['outcome']})", err=True)
 
         def operation(root):
-            if dry_run or source or with_person or all_pending:
+            if collect_only or dry_run or source or with_person or all_pending:
                 try:
                     record = run_sync(root, source=source, with_person=with_person, dry_run=dry_run,
                                       scheduled=scheduled, all_pending=all_pending, on_batch=progress,
@@ -2050,6 +2220,9 @@ def make_rem_app(factory):
                     return scheduled_skip(root, start_command=_next(ctx, ["start"])), ["status"]
                 if record.get("outcome") == "busy":
                     return record, ["status"]
+                if collect_only:
+                    from ...rem.stages import collection_backlog
+                    record = {**record, "collection": collection_backlog(root)}
                 if all_pending:
                     if record["outcome"] not in ("caught_up",):
                         why = record.get("reason") or record["outcome"]
@@ -2057,11 +2230,11 @@ def make_rem_app(factory):
                                        f"({record['items']} items): {why}")
                     return record, ["status"]
                 if dry_run:
-                    return record, ["sync"]
+                    return record, again
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
-                return record, ["logs", record["id"]]
+                return record, again if collect_only else ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
             from ...rem.service import run_scheduled
@@ -2071,8 +2244,8 @@ def make_rem_app(factory):
                 if result is None or result["outcome"] in ("partial", "busy"):
                     return result
                 if scheduled:
-                    from ...rem import depth
-                    result["depth"] = depth.slot(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
+                    from ...rem.schedule import deepen_round
+                    result["depth"] = deepen_round(root, stage=_depth_stage, say=lambda text: rem_look.step(text))
                 return result
 
             result = run_scheduled(root, daily_round) if scheduled else daily_round()
@@ -2094,7 +2267,8 @@ def make_rem_app(factory):
     from rich.markup import escape
 
     def native_text(value):
-        repair = (f"Refused: {value['reason'][:500]}\nFix: {value['fix']} — \"Required corrections\" first"
+        # 1200: an audit refusal carries up to three findings under its first line (#3083).
+        repair = (f"Refused: {value['reason'][:1200]}\nFix: {value['fix']} — \"Required corrections\" first"
                   + f"\nEdit: {value['candidate']}\nSubmit: {value['submit']}") if value.get("fix") else ""
         if value.get("outcome") == "refused":
             if value.get("stage") == "claim-audit":
@@ -2112,14 +2286,125 @@ def make_rem_app(factory):
                     + progress + reason
                     + f"\nWrite: {value['candidate']}\nSubmit: {value['submit']}"
                     + f"\nInstructions: {Path(value['material']) / 'instructions.md'} ({lines} lines)" + notices)
+        parked = [f"Parked {row['record'] or 'a task'}: {row['reason'].removeprefix('parked: ')}"
+                  + (f" (candidate kept at {row['candidate']})"
+                     if row.get('candidate') and Path(row['candidate']).is_file() else '')
+                  for row in value.get("parked", [])]
         return "\n".join([*value.get("notices", []), value.get("reason") or value["outcome"],
-                           *(value.get("changed") or [])])
+                           *(value.get("changed") or []), *parked])
 
     @rem.command("exec", cls=V("co rem exec"))
     def native_exec(ctx: typer.Context, scheduled: bool = typer.Option(False, "--scheduled")):
         from ...rem.schedule import exec_round
         _handle(ctx, lambda root: (exec_round(root, scheduled=scheduled), []), [],
                 draw=lambda value: escape(native_text(value)))
+
+    @rem.command("catchup", cls=V("co rem catchup"))
+    def catchup(ctx: typer.Context, nights: int = typer.Option(1, "--nights", min=1)):
+        from ...rem.catchup import run
+
+        def deepen_text(value):
+            count = value['deepened']
+            text = f"{count} {'page' if count == 1 else 'pages'} deepened"
+            text += f" ({value['deepen_reason']})" if value['deepen_reason'] else ''
+            missed = value.get('not_deepened', 0)
+            return text + (f" · {missed} not deepened ({value['not_deepened_reason']}; see co rem logs)" if missed else '')
+
+        def written_text(value):
+            """Decision pages are among the pages written: "81 pages written · 66 decisions written" read as 147."""
+            decisions = value['decisions']
+            return f"{value['written']} pages written" + (f" ({decisions} of them decisions)" if decisions else '')
+
+        def calendar_text(row):
+            saved = row.get('calendar')
+            if saved is None:
+                return ''
+            if saved.get('stopped'):
+                return ' · calendar: ' + saved['stopped']
+            count = saved['events']
+            text = f" · {count} calendar {'event' if count == 1 else 'events'} saved"
+            if saved['errors']:
+                text += f" ({len(saved['errors'])} failed reads)"
+            elif not saved['read']:
+                return ' · no calendar is connected'
+            return text
+
+        def plan_text(row):
+            plan = row.get('day_plan', {})
+            return (' · day plan saved for ' + ' and '.join(plan['dates']) if plan.get('dates') else
+                    ' · ' + plan['stopped'] if plan.get('stopped') else '')
+
+        def held_text(value):
+            """No night ran: say which steps did and which wait, never a row of zeroes."""
+            held = value['held']
+            parts = [f"{held['mail']} mail collected"]
+            if held['sessions'] is not None:  # a round already open read its sessions when it began
+                parts += [f"{held['sessions']} sessions read",
+                          f"{held['written']} {'page' if held['written'] == 1 else 'pages'} updated"]
+            collected = held['note'] or ' · '.join(parts) + '; reading them into pages waits for the model'
+            *first, last = held['waiting']
+            return '\n'.join([
+                'No night ran: a limit holds the model, so only the steps that need no model were done.',
+                'Collect: ' + collected,
+                'Calendar: ' + (calendar_text(held) + plan_text(held)).removeprefix(' · '),
+                f"Waiting: {', '.join(first)} and {last} call the model"])
+
+        def parked_text(rows, kept=''):
+            """Pages set aside after their retries: how many, each cause in a clause, where a candidate is.
+
+            A cause is short, counted and without ids (`refusals.short_cause`); status has the whole reason.
+            One page is named; several are counted by cause (`refusals.causes_in_words`)."""
+            if not rows:
+                return ''
+            from ...rem.refusals import causes_in_words
+            count = len(rows)
+            candidate = next((row['candidate'] for row in rows if row['candidate']), None)
+            where = kept or (f"{'candidate' if count == 1 else 'first candidate'} kept at {candidate}"
+                             if candidate else 'no candidate is kept')
+            named = f"{rows[0]['record'] or 'a task'}: " if count == 1 else ''
+            return (f" · {count} {'page' if count == 1 else 'pages'} parked "
+                    f"({named}{causes_in_words([row['cause'] for row in rows])}; {where}; co rem status lists them)")
+
+        def shares_text(row):
+            from ...rem.native_round import shares_in_words
+            return ''.join(' · ' + words for words in [*shares_in_words(row.get('shares', {})),
+                                                       *filter(None, [row.get('investigation_hold')])])
+
+        def left_text(row):
+            left = row.get('translations_waiting')
+            return f" ({left} wait for the next round: limits.translations_per_round)" if left else ''
+
+        def tags_left(row):
+            left = row.get('tags_waiting')
+            return f" ({left} wait for the next round: limits.tags_per_round)" if left else ''
+
+        def progress(number, row):
+            _WRITTEN.extend(row['changed'])
+            planned = parked_text(row['parked']) + plan_text(row)
+            if not ctx.obj['json']:
+                typer.echo(f"Night {number}: {row['mail']} mail read · {row['sessions']} sessions read · "
+                           f"{written_text(row)} · "
+                           f"{row['translated']} pages translated{left_text(row)} · "
+                           f"{row.get('tagged', 0)} pages tagged{tags_left(row)} · "
+                           f"{row['drafts']} drafts prepared · {row.get('summarised', 0)} sessions summarised · "
+                           + deepen_text(row) + shares_text(row) + calendar_text(row) + planned)
+
+        def summary(value):
+            count = len(value['nights'])
+            if value['held']:
+                return escape(held_text(value) + f"\nStopped: {value['reason']}")
+            text = (f"Done: {count} {'night' if count == 1 else 'nights'} · {written_text(value)} · "
+                    f"{value['translated']} pages translated · "
+                    + deepen_text(value) + parked_text(value['parked'], f"candidates kept under {value['candidates']}"))
+            return escape(text + (f"\nStopped: {value['reason']}" if value['reason'] else ''))
+
+        def operation(root):
+            value = run(root, nights=nights, progress=progress, stage=_depth_stage, say=rem_look.step,
+                        cut_short=lambda value: _emit(ctx, value, ['logs'], failed=True, draw=summary))
+            _WRITTEN.extend((value['held'] or {}).get('changed', []))
+            return value, ['open'], value['failed']
+
+        _handle(ctx, operation, ['logs'], draw=summary, resume=['exec'])
 
     @rem.command("next", cls=V("co rem next"))
     def native_next(ctx: typer.Context,
@@ -2147,6 +2432,13 @@ def make_rem_app(factory):
             refused = value["outcome"] == "refused"
             return value, ["submit", task_id] if refused else ["next"], refused
         _handle(ctx, operation, ["next"], draw=lambda value: escape(native_text(value)))
+
+    @rem.command("collect", cls=V("co rem collect"))
+    def collect_rem(ctx: typer.Context,
+                    source: str = typer.Option("", "--source"),
+                    with_person: str = typer.Option("", "--with"),
+                    dry_run: bool = typer.Option(False, "--dry-run")):
+        _sync(ctx, source, with_person, dry_run, False, False, 30, collect_only=True)
 
     @rem.command("sync", cls=V("co rem sync"))
     def sync_rem(ctx: typer.Context,
@@ -2557,12 +2849,9 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["review"])
 
     @rem.command("abstract", cls=V("co rem abstract"))
-    def abstract_pages(ctx: typer.Context):
-        from ...rem.config import read_config
-        from ...rem.files import Notebook
-        from ...rem.runner import run_stage
-        _handle(ctx, lambda root: (
-            run_stage(Notebook(root), [], read_config(root), stage="abstract"), ["list", "decisions"]), ["status"])
+    def abstract_pages(ctx: typer.Context, rounds: Optional[int] = typer.Option(None, "--rounds", min=1)):
+        from .rem_decisions import write_decisions
+        write_decisions(ctx, rounds, _handle, _WRITTEN)
 
     @rem.command("capture", cls=V("co rem capture"))
     def capture_session(ctx: typer.Context, transcript: Path, source: str = typer.Option(..., "--source")):
@@ -2573,6 +2862,8 @@ def make_rem_app(factory):
     # ------------------- Project pages from the user's own messages (#1943)
     from .rem_projects import add_projects_app
     add_projects_app(rem, factory, _handle, _logged)
+    from .rem_decisions import add_decisions_app
+    add_decisions_app(rem, factory, _handle)
     from .rem_import import add_import_app
     add_import_app(rem, factory, _handle)
 
@@ -2645,8 +2936,8 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init investigate enrich muse deepen open list show search translate start stop status sync exec next submit sources config logs morning doctor history "
-             "advanced scan backfill map-skills stub merge reflect reflections propose review abstract capture "
+    order = ("init collect investigate deepen enrich muse abstract decisions translate tag catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
+             "advanced scan backfill map-skills stub merge reflect reflections propose review capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

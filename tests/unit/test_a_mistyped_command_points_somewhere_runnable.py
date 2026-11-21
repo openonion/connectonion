@@ -6,7 +6,7 @@ candidate had just been named. Two problems with that, both measured:
 
   * when Click *does* know the answer, the tip throws it away. The reader is
     told the right word in one line and sent to a flag in the next.
-  * when Click does *not* know — `co loke`, `co lisen`, both too far by edit
+  * when Click does *not* know — `co loke`, `co qwxyz`, both too far by edit
     distance to match anything — `co --help` is a boxed, paginated screen of
     groups. `co commands` prints all 199 commands one per line with a summary,
     which is the shape something reading this output can actually use.
@@ -48,7 +48,8 @@ def test_a_near_miss_names_the_command_it_guessed(typo, wanted, tmp_path):
 
 # `like` was here until `co linear` arrived: difflib scores like/linear at
 # exactly 0.6, Click's cutoff, so Click now guesses `co linear` for it.
-@pytest.mark.parametrize("typo", ["loke", "lisen", "zzzzzz"])
+# `lisen` went the same way when `co send` arrived.
+@pytest.mark.parametrize("typo", ["loke", "qwxyz", "zzzzzz"])
 def test_no_guess_points_at_the_list_of_everything(typo, tmp_path):
     """`co --help` is a screen of groups; `co commands` is every command, one per line."""
     code, out = run(typo, home=tmp_path)

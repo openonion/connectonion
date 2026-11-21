@@ -11,7 +11,7 @@ from test_rem_reader import _run_reader_js
 def search_result(query, selected="", *, hidden=True, unique=False, no_details=False,
                   first_title='Aster Vale', second_title='Aster Vale', second_alias='', extra_titles=()):
     page = TEMPLATE.read_text()
-    names = ["search", "listedRecords", "identityChoices", "identityDetails", "nameMatches", "recordedNames"]
+    names = ["search", "searchSnippet", "localDates", "listedRecords", "identityChoices", "identityDetails", "nameMatches", "recordedNames", "tagNorm", "tagResolve", "tagged"]
     functions = "\n".join(match.group(0) for name in names
                           if (match := re.search(r"function " + name + r"\(.*?\n\}", page, re.S)))
     script = r'''

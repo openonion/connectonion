@@ -109,7 +109,8 @@ that lists the ones you own. To use an existing one, configure it by hand:
 ├── cur/             taken but not yet replied; back to new/ after an hour
 ├── bad/             files that were in new/ but are not messages (a zero-byte file from a full disk); one log line each
 ├── log              the tool's own log: connected, reconnecting, send failed
-└── listen.lock      held by the running listener (a kernel lock; the pid inside is for you)
+├── listen.lock      held by the running listener (a kernel lock)
+└── listen.pid       the running listener's pid, for you
 ```
 
 Built-in receive, completion and stale recovery coordinate with the same short

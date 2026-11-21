@@ -1,5 +1,6 @@
 """Projects read like the clearest project tools (#2993, refs #2841): the directory opens on a board
-by state, and a project page leads with its state, the next steps and who holds each one.
+by state, and a project page leads with its state. Since #3096 a card and a record hold what is known
+(a sentence, the weeks, the last date); the next steps and who holds them are Today's.
 
 Owner, 2026-11-13: «项目页面：里面的内容让人觉得 overwhelm。整个项目的设计没有像 Asana 或者其他一些工具那样足够清晰。»
 and «不要写字告诉我，要让我通过 UI 之类就能一目了然地判断出来»: the layout carries the meaning, so these
@@ -35,7 +36,7 @@ def _column(page, name):
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_projects_open_on_a_board_by_state_with_the_next_step_and_who_holds_it(reader, width):
+def test_projects_open_on_a_board_by_state_and_a_card_says_what_the_project_is(reader, width):
     from patchright.sync_api import expect
 
     page = _open(reader, "#c=projects", width)
@@ -49,16 +50,13 @@ def test_projects_open_on_a_board_by_state_with_the_next_step_and_who_holds_it(r
     # The owner owes a step: active, and a promise past its date is red on the card.
     capstone = active.locator('.pd-card[data-path="projects/capstone-review.md"]')
     expect(capstone).to_have_class(re.compile(r"\blate\b"))
-    expect(capstone.locator(".pd-step-who")).to_contain_text("14 days late")
+    expect(capstone.locator(".pd-card-when .red")).to_have_text("14 days late")
     fernhill = active.locator('.pd-card[data-path="projects/fernhill-pilot.md"]')
-    expect(fernhill.locator(".pd-step-what")).to_have_text("You owe Mara the weekly chart report")
-    expect(fernhill.locator(".pd-owner")).to_have_text("You owe")
-    # Only someone else or an agent holds the next step: waiting, and the card names who.
-    quinn = page.evaluate("byPath('people/quinn-alder.md').title", isolated_context=False)
-    room = waiting.locator('.pd-card[data-path="projects/waiting-room.md"]')
-    expect(room.locator(".pd-step-what")).to_have_text("Waiting on Quinn for the contract")
-    expect(room.locator(".pd-owner")).to_have_text(quinn)
-    expect(waiting.locator('.pd-card[data-path="projects/agent-only.md"] .pd-owner')).to_have_text("Agent request")
+    expect(fernhill.locator(".pa-say")).to_have_text("A paid pilot of the weekly brief for Fernhill Labs.")
+    # Only someone else or an agent holds the next step: waiting. The step itself is Today's, not the card's (#3096).
+    expect(waiting.locator('.pd-card[data-path="projects/waiting-room.md"]')).to_have_count(1)
+    expect(waiting.locator('.pd-card[data-path="projects/agent-only.md"]')).to_have_count(1)
+    assert page.locator(".pd-step, .pd-owner").count() == 0
     expect(_column(page, "Done").locator(".pd-card")).to_contain_text(["Spring workshop"])
     # Every card carries its last activity.
     expect(fernhill.locator(".pd-when")).not_to_have_text("")
@@ -78,7 +76,7 @@ def test_projects_open_on_a_board_by_state_with_the_next_step_and_who_holds_it(r
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_a_project_page_leads_with_state_next_steps_and_recent_sessions_and_folds_the_rest(reader, width):
+def test_a_project_page_leads_with_state_what_it_is_its_weeks_and_sessions_and_folds_the_rest(reader, width):
     page = _open(reader, "#r=projects%2Ffernhill-pilot.md", width)
     page.evaluate("""() => {
       const base = {category: 'sessions', session_project: 'projects/fernhill-pilot.md', session_tags: ['pilot'], session_turns: 1, text: ''};
@@ -86,21 +84,19 @@ def test_a_project_page_leads_with_state_next_steps_and_recent_sessions_and_fold
         path: 'sessions/' + day + '-fernhill.md', title: 'Pilot session ' + (i + 1), session_date: day}));
       render();
     }""", isolated_context=False)
-    height = page.viewport_size["height"]
     state = page.locator(".project-state")
     assert state.inner_text().startswith("Active")
-    steps = page.locator(".next-exchanges .thread")
-    assert steps.locator(".dir").all_inner_texts() == ["You owe", "You owe", "Agent request"]
-    assert steps.first.locator(".what").inner_text().startswith("You owe Mara the weekly chart report")
-    recent = page.locator(".project-recent")
-    assert recent.locator("li a").all_inner_texts() == ["Pilot session 4", "Pilot session 3", "Pilot session 2"]
-    # One order: state, then next steps, then recent sessions, and all of it on the first screen.
-    tops = [box["y"] for box in (state.bounding_box(), steps.first.bounding_box(), recent.locator("li").first.bounding_box())]
-    assert tops == sorted(tops) and tops[-1] < height, tops
-    # Everything else is one fold away, never beside the lead.
+    what, weeks, recent = page.locator(".project-what"), page.locator(".project-weeks"), page.locator(".project-recent")
+    assert what.inner_text() == "A paid pilot of the weekly brief for Fernhill Labs."
+    assert recent.locator("li a").all_inner_texts() == ["Pilot session 4", "Pilot session 3", "Pilot session 2", "Pilot session 1"]
+    # One order: state, what it is, its weeks, its sessions. No step rows: open work is Today's (#3096).
+    tops = [box["y"] for box in (state.bounding_box(), what.bounding_box(), weeks.bounding_box(), recent.locator("li").first.bounding_box())]
+    assert tops == sorted(tops), tops
+    assert page.locator(".next-exchanges, .project-step").count() == 0
+    # Everything else is in Full memory under the lead, never beside it; Full memory is open on arrival (#3104).
     for selector in (".focus-facts", ".related-records", ".project-context", ".project-sessions"):
-        assert all(not node.is_visible() for node in page.locator(selector).all()), selector
-    page.locator("details.deep-note > summary").click()
+        assert all(node.evaluate("n => !!n.closest('.deep-note')") for node in page.locator(selector).all()), selector
+    assert page.locator("details.deep-note").get_attribute("open") is not None
     assert page.locator(".deep-note .related-records").is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
@@ -131,32 +127,11 @@ def test_full_size_board_renders_in_one_second_and_opens_project_and_citation(re
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.locator('.pd-state-card .pd-card-name').first.click()
     expect(page.locator('.project-state')).to_contain_text('Active')
-    expect(page.locator('.next-exchanges')).to_contain_text('You owe Mara the weekly chart report')
-    page.locator('.project-step a.cite').first.click()
+    expect(page.locator('.project-what')).to_have_text('A paid pilot of the weekly brief for Fernhill Labs.')
+    # The steps are in the full memory as written (open on arrival, #3104), and a citation there still opens its evidence.
+    page.locator('.deep-note .person-threads a.cite').first.click()
     expect(page.locator('#evidence-panel')).to_be_visible()
     expect(page.locator('#evidence-panel')).to_contain_text('Project notes: You owe Mara the weekly chart report.')
-
-
-def test_more_steps_reveals_only_the_remainder_in_the_same_priority_order(reader):
-    from patchright.sync_api import expect
-
-    page = _open(reader, "#r=projects%2Ffernhill-pilot.md", 390)
-    page.evaluate(r"""() => {
-      const r = byPath('projects/fernhill-pilot.md');
-      const lines = ['Waiting on Quinn for a review', 'Ask Codex to check the chart',
-        'You owe Mara the report', 'You owe Mara the release by 2026-09-20', 'An unassigned follow-up'];
-      r.text = r.text.replace(/## Open threads[\s\S]*?(?=\n## )/,
-        '## Open threads\n' + lines.map(line => '- ' + line + ' [1].').join('\n') + '\n');
-      r.open = lines.map((text, i) => ({text: text + ' [1].', kind: ['waiting', 'agent', 'owed', 'owed', 'unknown'][i]}));
-      KNOWN.clear(); FACTS.clear(); render();
-    }""", isolated_context=False)
-    lead = page.locator('.next-exchanges .what')
-    expect(lead).to_contain_text(['You owe Mara the release', 'You owe Mara the report', 'Waiting on Quinn'])
-    page.locator('.project-more-steps').click()
-    expect(page.locator('details.deep-note')).to_have_attribute('open', '')
-    rest = page.locator('.deep-note .block-threads .what')
-    expect(rest).to_contain_text(['Ask Codex to check the chart', 'An unassigned follow-up'])
-    assert page.locator('.deep-note .block-threads').inner_text().count('You owe Mara the release') == 0
 
 
 @pytest.mark.parametrize("width", [1440, 390])

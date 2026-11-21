@@ -2,7 +2,7 @@
 
 Tests cover:
 - Shell class: cross-platform shell execution
-- bash function: Unix/Mac specific bash execution
+- bash function: bash execution (Git Bash, or cmd /c, on Windows)
 
 LLM-Note: Tests for shell tool
 
@@ -14,6 +14,7 @@ Components under test:
 """
 
 
+import importlib
 import os
 import platform
 import signal
@@ -376,3 +377,39 @@ class TestBashOnWindows:
         """Test that bash returns error on Windows."""
         result = bash("echo test", "Echo test")
         assert "Unix/Mac only" in result
+
+
+class TestBashOnWindows:
+    """`co call` always goes through bash, and bash refused Windows outright, so
+    nothing could be run on a Windows host (#3123)."""
+
+    def test_it_runs_here_whatever_the_platform(self):
+        # On the Windows CI runner this is Git Bash; on POSIX, /bin/bash.
+        assert "hello" in bash("echo hello")
+
+    def test_windows_uses_git_bash_as_an_argv_list(self, monkeypatch):
+        bash_module = importlib.import_module("connectonion.useful_tools.bash")
+
+        seen = {}
+        monkeypatch.setattr(bash_module.platform, "system", lambda: "Windows")
+        monkeypatch.setattr(bash_module.os.path, "isfile", lambda path: path.endswith("bash.exe"))
+
+        def fake_run(argv, **kwargs):
+            seen["argv"], seen["kwargs"] = argv, kwargs
+            return subprocess.CompletedProcess(argv, 0, "co 1.9.6\n", "")
+
+        monkeypatch.setattr(bash_module.subprocess, "run", fake_run)
+
+        assert bash("co --version") == "co 1.9.6"
+        assert seen["argv"][0].endswith(os.path.join("Git", "bin", "bash.exe"))
+        assert seen["argv"][1:] == ["-c", "co --version"]
+        assert "shell" not in seen["kwargs"] and "executable" not in seen["kwargs"]
+
+    def test_windows_without_git_bash_falls_back_to_cmd_not_wsl(self, monkeypatch):
+        bash_module = importlib.import_module("connectonion.useful_tools.bash")
+
+        monkeypatch.setattr(bash_module.platform, "system", lambda: "Windows")
+        monkeypatch.setattr(bash_module.os.path, "isfile", lambda path: False)
+        monkeypatch.setattr(bash_module.shutil, "which", lambda name: r"C:\Windows\System32\bash.exe")
+
+        assert bash_module._argv("co status") == ["cmd", "/c", "co status"]

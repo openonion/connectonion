@@ -409,3 +409,41 @@ async def _exercise_real_async_driver(tmp_path, monkeypatch):
             for error in loop_errors
         ],
     }
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(120)
+def test_long_text_goes_in_through_cdp_when_there_is_no_clipboard(tmp_path, monkeypatch):
+    """Headless Chrome on Windows over SSH never took the paste (#2901): 1,402 characters must still go in at once."""
+    asyncio.run(_insert_without_a_clipboard(tmp_path, monkeypatch))
+
+
+async def _insert_without_a_clipboard(tmp_path, monkeypatch):
+    if not ASYNC_BROWSER_AVAILABLE:
+        pytest.skip("patchright async API is not installed")
+    from connectonion.useful_tools.browser_tools import humanize
+
+    monkeypatch.setenv("CO_BROWSER_PROFILE_DIR", str(tmp_path / "profile"))
+    monkeypatch.setattr(humanize, "_clipboard_set_argv", lambda _text: None)
+    browser = AsyncBrowserCore(headless=True, use_mock_keychain=True)
+    text = ("Kim's hook, typed into a share box. " * 39)[:1402]
+    await browser.open_browser()
+    browser._bind_session("A")
+    try:
+        await browser.go_to("data:text/html," + urllib.parse.quote(
+            "<textarea id=box></textarea><p id=seen></p>"
+            "<script>box.oninput=()=>seen.textContent=box.value.length</script>"),
+            purpose="insert without a clipboard", who="test")
+        await browser.page.locator("#box").focus()
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        typed = await browser.keyboard_type(text)
+        assert loop.time() - started < 10
+        assert "Entered by CDP insertText" in typed
+        assert await browser.page.locator("#box").input_value() == text
+        assert await browser.page.locator("#seen").text_content() == "1402"
+    finally:
+        browser._bind_session(None)
+        await browser.close()
+        gc.collect()
+        await asyncio.sleep(0.1)

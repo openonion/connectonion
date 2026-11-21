@@ -54,7 +54,7 @@ def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today
     assert page.locator("#today-stale > summary").inner_text() == "1 has gone quiet for a long time · Look"
     _open_stale(page)
     assert asked.locator(".stale-when").inner_text() == "Due Apr 14; no new message for 174 days"
-    assert asked.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]  # the Today strip (#2990)
+    assert asked.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # the Today strip (#2990)
     assert asked.evaluate("li => getComputedStyle(li).color") != "rgb(192, 42, 23)"
     # Still open: the owner says it is live, so it counts and burns again.
     asked.get_by_role("button", name="Still open", exact=True).click()
@@ -81,15 +81,15 @@ def test_the_projects_headline_shouts_only_about_a_live_late_promise(today):
     page.evaluate("""() => {
       const r = REM.records.find(r => r.category === 'projects');
       r.open = [{kind: 'owed', due: '2026-04-14', since: '2026-04-10', who: 'people/tomas-reyes.md', text: 'The user owes Tomás the van agreement', promised: []}];
-      location.hash = '#c=projects&v=timeline';
+      location.hash = '#c=projects&v=list';
     }""", isolated_context=False)
-    lede = page.locator(".pd-lede")
+    # Since #3096 a late promise is said in the row's status, never in a headline; a stale one is not said at all.
+    lede = page.locator(".pl")
     lede.wait_for()
     assert lede.locator(".red").count() == 0
-    assert lede.locator(".pd-asked").inner_text() == "1 promise is more than 60 days past its date with no word since; it may be over."
     page.evaluate("() => { REM.records.find(r => r.category === 'projects').open[0] = {...REM.records.find(r => r.category === 'projects').open[0], due: '2026-09-01', since: '2026-08-30'}; render(); }",
                   isolated_context=False)
-    assert "is 30 days late" in lede.locator(".red").inner_text() and lede.locator(".pd-asked").count() == 0
+    assert lede.locator(".red").inner_text() == "30 days late"
 
 
 def test_the_side_line_the_sheet_and_the_overnight_section_tell_the_same_number(today):
@@ -172,21 +172,24 @@ def test_the_hint_names_the_choice_left_and_a_tap_goes_to_it(today):
     assert hint.is_hidden() and send.is_enabled()
 
 
-def test_a_sparse_three_nights_give_the_row_back_and_a_busy_one_keeps_the_chart(today):
+def test_last_night_is_said_in_words_and_quiet_nights_give_the_row_back(today):
+    """Mac review of rc30: the night chart could not be read. The card says what last night produced, in words and
+    counts, and a night with nothing to say draws no line at all."""
     page, _, _ = today
-    assert page.locator(".night-card .hyp-wrap").is_visible()  # the fixture's nights hold several runs
-    tall = page.locator(".night-card").bounding_box()["height"]
-    page.evaluate("""() => { REM.logs = REM.logs.filter(run => Date.parse(REM.as_of) - Date.parse(run.started_at) > 3 * DAY_MS); REM.brief_logs = REM.logs; render(); }""",
-                  isolated_context=False)
+    import re
     card = page.locator(".night-card")
-    assert "sparse" in card.get_attribute("class") and card.locator(".hyp-wrap").count() == 0
-    # Its count is the side line's, so the two read as one story.
-    side = page.locator(".side .closed").inner_text()
-    n = side.split("handled ")[1].split()[0] if "handled " in side else ""
-    assert card.locator(".night-sum").inner_text() == ("Last 3 days: no mail read and no page rewritten"
-                                                         + (f"; REM handled {n} things in Today" if n else ""))
-    assert card.bounding_box()["height"] < tall - 30
-    assert page.locator(".deal").count() == int(card.locator(".count").inner_text())
+    assert card.locator(".hyp, .hyp-wrap").count() == 0
+    read = lambda: int((re.search(r"read (\d+) mail", page.locator(".night-card .nh").inner_text()) or [0, 0])[1])  # noqa: E731
+    before = read()
+    page.evaluate("""() => { const at = Date.parse(REM.as_of) - 4 * 3600000;
+      REM.logs = [...REM.logs, {phase: 'sync', started_at: new Date(at).toISOString(), finished_at: new Date(at + 600000).toISOString(), items: 9}];
+      REM.brief_logs = REM.logs; render(); }""", isolated_context=False)
+    head = page.locator(".night-card .nh")
+    assert "Last night" in head.inner_text() and read() == before + 9  # a run's mails are counted in words
+    page.evaluate("""() => { REM.logs = REM.logs.filter(run => Date.parse(REM.as_of) - Date.parse(run.started_at) > 3 * 86400000);
+      REM.brief_logs = REM.logs; REM.night_outcomes = []; render(); }""", isolated_context=False)
+    assert page.locator(".night-card .nh").count() == 0
+    assert page.locator(".deal").count() == int(page.locator(".night-card .count").inner_text())
 
 
 @pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
@@ -216,7 +219,9 @@ def test_every_row_says_its_three_ways_to_close_in_words_without_a_hover(today, 
     page.locator("#done-notice").get_by_role("button", name="撤销").click()
     row = page.locator(".today-brief .qcard.open .qitem:visible").first
     row.get_by_role("button", name="暂不处理", exact=True).click()
-    assert page.locator("#done-notice").inner_text().startswith("暂不处理 · 有新邮件会回来 · 撤销") and states()[-1] == "skipped"
+    # Not now asks when (#3072), and the notice says the day it comes back.
+    row.get_by_role("button", name="明天", exact=True).click()
+    assert page.locator("#done-notice").inner_text().startswith("已推后 · ") and "回来 · 撤销" in page.locator("#done-notice").inner_text() and states()[-1] == "skipped"
     page.locator("#done-notice").get_by_role("button", name="撤销").click()
     page.locator(".today-brief .qcard.open .qitem:visible").first.get_by_role("button", name="忽略", exact=True).click()
     page.evaluate("() => { location.hash = '#view=open'; }", isolated_context=False)
@@ -235,6 +240,8 @@ def test_all_three_closes_leave_the_way_mark_done_does(today):
         page.evaluate("() => { REM.live = true; render(); dealCard('people/mara-ostrowski.md'); scrollTo(0, 0); }", isolated_context=False)
         row = page.locator(".today-brief .qcard.open .qitem:visible").first
         row.get_by_role("button", name=name, exact=True).click()
+        if name == "Not now":  # it asks when first (#3072); the row leaves once he has chosen
+            row.get_by_role("button", name="Tomorrow", exact=True).click()
         assert page.locator(".today-brief .leaving").count() == 1, name
         page.locator("#done-notice").get_by_role("button", name="Undo").click()
 
@@ -255,7 +262,7 @@ def test_the_stale_widgets_more_link_opens_gone_quiet_and_shows_it(today):
     quiet = page.locator("#gone-quiet")
     page.wait_for_function("() => document.getElementById('gone-quiet')?.open")
     box = quiet.bounding_box()
-    assert 0 <= box["y"] < page.viewport_size["height"]
+    assert -1 < box["y"] < page.viewport_size["height"]  # scrolled to the top of the view, to within a pixel
     assert quiet.get_by_text("signed form 5 for the van").first.is_visible()
 
 
@@ -281,11 +288,11 @@ def test_a_late_promise_with_a_message_last_week_stays_live_on_today_and_project
       const r = REM.records.find(r => r.category === 'projects');
       r.open = [{kind: 'owed', due: '2026-07-23', since: '2026-07-03', who: 'people/tomas-reyes.md', text: 'The user owes Tomás the van agreement',
         sources: [{source: 'gmail:fixture-van'}], promised: []}];
-      location.hash = '#c=projects&v=timeline';
+      location.hash = '#c=projects&v=list';
     }""", isolated_context=False)
-    lede = page.locator(".pd-lede")
+    lede = page.locator(".pl")
     lede.wait_for()
-    assert "is 70 days late" in lede.locator(".red").inner_text() and lede.locator(".pd-asked").count() == 0
+    assert lede.locator(".red").inner_text() == "70 days late"
 
 
 def test_a_promise_with_no_dated_message_stays_live(today):

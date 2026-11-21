@@ -187,10 +187,26 @@ def test_deepen_records_metrics_insights_losses_and_points(root):
     assert row == {"record": RECORD, "round": 1, "at": TODAY.isoformat(), "chars": [len(PAGE), len(after)],
                    "quotes": [1, 1], "sources": [1, 2], "insights": 2, "insights_rejected": 1, "lost_quotes": 1,
                    "after_enrich": {"chars": len(enriched), "quotes": 2, "sources": 2},
-                   "enrich": "completed", "muse": "completed", "points": 2,
+                   "enrich": "completed", "muse": "completed",
+                   # 12M fresh tokens at enrich and muse's level-4 effort, low (#3099).
+                   "points": pytest.approx(12_000_000 / quota.TOKENS_PER_POINT["low"]),
                    "usage": {"input_tokens": 13_000_000, "cached_input_tokens": 1_000_000}}
     assert read_json(state_path(root, "depth.json"), {})[RECORD] == [{k: v for k, v in row.items() if k != "record"}]
     assert depth.deepen(root, RECORD, stage=stage)["round"] == 2
+
+
+def test_a_failed_stage_keeps_a_short_cause_and_no_local_path(root):
+    """The night's line prints it; `failed: ` + 200 raw characters put a task path there (2026-11-16)."""
+    def stage(path, record, name):
+        if name == "enrich":
+            raise RemError(f"Research capture {path}/.state/tasks/enrich-1/web/shot.png is not saved text; save the page's text")
+        raise runner.RunFailed(f"Candidate rejected, kept at {path}/.state/tasks/muse-1/candidate.md: "
+                               "Quote is not in its cited source: 1; Missing section: Sources")
+    row = depth.deepen(root, RECORD, stage=stage)
+    assert row["enrich"] == "failed: Research capture <path> is not saved text; save the page's text"
+    assert row["enrich_cause"] == "Research capture <path> is not saved text"
+    assert (row["muse"], row["muse_cause"]) == ("refused", "Quote is not in its cited source")
+    assert str(root) not in json.dumps(row)
 
 
 @pytest.mark.parametrize("message,outcome", [("review rejected", "refused"), ("x" * 250, "failed: " + "x" * 200)])
@@ -205,7 +221,7 @@ def test_failed_enrich_still_runs_muse_and_counts_failed_usage(root, message, ou
 
     row = depth.deepen(root, RECORD, stage=stage)
     assert calls == ["enrich", "muse"]
-    assert row["enrich"] == outcome and row["muse"] == "no_change" and row["points"] == 0.5
+    assert row["enrich"] == outcome and row["muse"] == "no_change" and row["points"] == pytest.approx(3_000_000 / quota.TOKENS_PER_POINT["low"])
     assert row["usage"] == {"output_tokens": 3_000_000}
     assert row["after_enrich"] == depth.page_metrics(PAGE)
 

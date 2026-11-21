@@ -44,6 +44,8 @@ def test_ai_forwards_full_access_options():
         permission_mode="default",
         timeout=600,
         speed=None,
+        # No --effort: the Codex harness keeps its own setting; co rem passes the notebook's.
+        effort=None,
     )
 
 
@@ -78,6 +80,8 @@ def test_ai_forwards_json_and_resume_options():
         permission_mode="default",
         timeout=600,
         speed=None,
+        # No --effort: the Codex harness keeps its own setting; co rem passes the notebook's.
+        effort=None,
     )
 
 

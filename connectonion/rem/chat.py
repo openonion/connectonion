@@ -27,7 +27,10 @@ from pathlib import Path
 from .files import RemError
 from .source import MAX_MESSAGE_CHARS, TRUNCATION_NOTE, Batch, timestamp
 
-CHAT_KINDS = ("whatsapp",)
+CHAT_KINDS = ("whatsapp", "wechat")
+# WeChat is read straight from WeChat for Mac's own databases (read-only), with no intermediate files;
+# "*" stands for every one-to-one chat: people, never groups (@chatroom) or official accounts (gh_).
+EVERY_PERSON = "*"
 # Records that are not someone saying something: an emoji on a message, a
 # group changing its subject. They stay in the inbox; they are not material.
 NOT_SAID = {"reaction", "revoke", "protocol", "group", "senderkeydistribution"}
@@ -76,14 +79,20 @@ def collect_chat(subscription: dict, progress: dict, max_items: int, max_chars: 
     updated = dict(progress)
     if not chats:
         return Batch([], updated)
-    home = Path(subscription["root"])
+    wanted = (lambda chat: chat in chats or (EVERY_PERSON in chats and _one_to_one(chat)))
     since = timestamp(subscription["since"])
-    agent = {row.get("id") for row in _records(home / "sent.jsonl") if row.get("id")}
     pending = defaultdict(list)
-    for role, name in (("other", "received.jsonl"), ("user", "own.jsonl")):
-        for row in _records(home / name):
+    if kind == "wechat":
+        streams = _wechat_streams()  # read now, in memory; nothing is written to disk
+    else:
+        home = Path(subscription["root"])
+        agent = {row.get("id") for row in _records(home / "sent.jsonl") if row.get("id")}
+        streams = (("other", _records(home / "received.jsonl")),
+                   ("user", [row for row in _records(home / "own.jsonl") if row.get("id") not in agent]))
+    for role, rows in streams:
+        for row in rows:
             chat = row["chat"]
-            if chat not in chats or (role == "user" and row["id"] in agent):
+            if not wanted(chat):
                 continue
             if (row.get("kind") or "text") in NOT_SAID:
                 continue
@@ -123,3 +132,28 @@ def collect_chat(subscription: dict, progress: dict, max_items: int, max_chars: 
             else:
                 updated[chat] = {"cursor": when.isoformat(), "seen": [message_id]}
     return Batch(items, updated)
+
+
+def _one_to_one(chat: str) -> bool:
+    """A chat with one person: not a group, not an official account, not WeChat's own service chats."""
+    return not (chat.endswith("@chatroom") or chat.startswith("gh_") or chat in ("filehelper", "weixin", "newsapp", "fmessage"))
+
+
+def _wechat_streams():
+    """WeChat's messages now, straight from WeChat for Mac's databases: ("other", rows) and ("user", rows).
+
+    Read-only, in memory; nothing is written to ~/.co/inbox. The owner's own messages are the "user" side.
+    """
+    from ..useful_tools import wechat as engine
+    db_storage = engine.db_storage_in_use()
+    if db_storage is None:
+        raise RemError("WeChat for Mac is not readable: run `co wechat` to grant access and capture keys")
+    if not engine.KEY_MAP.is_file():
+        raise RemError("No WeChat keys saved: run `co wechat key capture`")
+    owner = engine.owner_username(db_storage)
+    known = engine.names(engine.open_readonly(engine.decrypt_db(db_storage / "contact" / "contact.db",
+                                                                engine.key_for(db_storage / "contact" / "contact.db"))))
+    other, mine = [], []
+    for row in engine.all_messages(db_storage, known):
+        (mine if row["sender"] == owner else other).append(row)
+    return (("other", other), ("user", mine))
