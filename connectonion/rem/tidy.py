@@ -667,8 +667,8 @@ def _typed(files: dict, source: str) -> bool:
 
 def _typed_line(path: Path, kind: str, session: str, offset: int, source: str) -> bool | None:
     from .files import RemError
-    from .source import KINDS, SKIPPED
-    with path.open("rb") as transcript:
+    from .source import KINDS, SKIPPED, open_session
+    with open_session(path) as transcript:
         first = transcript.readline(1_000_000)
         transcript.seek(offset)
         line = transcript.readline()

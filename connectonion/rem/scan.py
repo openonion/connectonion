@@ -7,6 +7,7 @@ correspondent is a person, a company's notices, or an event mailer is a
 judgement the Skill makes; this only hands it the signals.
 """
 
+import threading
 import collections
 import html
 import io
@@ -19,7 +20,7 @@ from pathlib import Path
 
 from .files import RemError
 from .mail import _address, _addresses, _list_all, correspondent
-from .source import KINDS, source_files
+from .source import KINDS, open_session, source_files
 
 # Rings a bell on its own; the Skill still decides. Matched anywhere before the
 # @, because "no-reply.products@" slipped past a pattern anchored to the @.
@@ -300,6 +301,30 @@ def canonical_origin(origin: str) -> str:
     return origin
 
 
+# The longest name one folder or file can have, in bytes, on APFS, HFS+, ext4 and NTFS.
+NAME_MAX = 255
+
+
+def nameable(path: str) -> bool:
+    """Could this text be a path on disk? Asked where a path is read out of a session's text.
+
+    2026-11-16: a Codex tool call carried a base64url token; the `cd` pattern matched
+    two letters inside it and the 554 characters after them became a folder under the
+    session's workspace. Asking whether that folder held `.git` raised `[Errno 63] File
+    name too long`, and catchup ended inside its first minute with nothing read. Text
+    that no filesystem can hold as a name is not a path, so nothing asks the disk about it.
+    """
+    return "\0" not in path and all(len(part.encode("utf-8", "surrogatepass")) <= NAME_MAX for part in path.split("/"))
+
+
+def is_repository(folder: str | Path) -> bool:
+    """An unreadable session or scan folder is not a repository (#3066)."""
+    try:
+        return (Path(folder) / ".git").exists()
+    except PermissionError:
+        return False
+
+
 def project_exclusion(path: Path) -> str:
     """Ignore execution sandboxes, not legitimate projects sharing a display name."""
     normalized = str(path.resolve())
@@ -310,12 +335,12 @@ def project_exclusion(path: Path) -> str:
         return "test fixture notebook"
     # A workspace says so in its agent instructions; Claude Code reads CLAUDE.md,
     # Codex AGENTS.md, and the owner's ~/projects had both.
-    if path.is_dir() and not (path / ".git").exists() and any(
+    if path.is_dir() and not is_repository(path) and any(
             (path / marker).is_file() for marker in ("AGENTS.md", "CLAUDE.md")):
         repositories = 0
         try:
             for child in path.iterdir():
-                if child.is_dir() and (child / ".git").exists():
+                if child.is_dir() and is_repository(child):
                     repositories += 1
                     if repositories >= 2:
                         return "multi-repository workspace container"
@@ -331,6 +356,32 @@ def project_exclusion(path: Path) -> str:
 CLAUDE_WORKTREE = re.compile(r"^(/.+?)/\.claude/worktrees/[^/]+(/.*)?$")
 
 
+READ_WAIT_SECONDS = 2
+
+
+def _read_promptly(file: Path) -> str:
+    """A small file's text, or "" when the system does not hand it over in time.
+
+    macOS answers the first read under ~/Documents, ~/Desktop or ~/Downloads with a privacy
+    prompt and holds the read until someone answers it. In the background nobody does: one
+    worktree's 74-byte `.git` file under Documents held the owner's round for 44 s a time and
+    the round never started inside its ten minutes. Waiting is not worth more than knowing
+    whether a folder is a worktree, so the read is left behind and the folder is not one.
+    """
+    found: list[str] = []
+
+    def read() -> None:
+        try:
+            found.append(file.read_text(errors="replace"))
+        except OSError:  # refused or gone: the same answer as not in time
+            return
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    reader.join(READ_WAIT_SECONDS)
+    return found[0] if found else ""
+
+
 def main_checkout(path: str) -> str:
     """The repository checkout a worktree belongs to, or "" for anything else.
 
@@ -341,8 +392,9 @@ def main_checkout(path: str) -> str:
     removed still says so in its path.
     """
     git = Path(path) / ".git"
-    if git.is_file():
-        home = re.fullmatch(r"gitdir:\s*(.+?)/\.git/worktrees/[^/]+/?\s*", git.read_text(errors="replace"))
+    repository = is_repository(path)
+    if repository and git.is_file():
+        home = re.fullmatch(r"gitdir:\s*(.+?)/\.git/worktrees/[^/]+/?\s*", _read_promptly(git))
         if home:
             return os.path.normpath(os.path.join(path, home[1]))
     layout = CLAUDE_WORKTREE.match(path)
@@ -352,7 +404,7 @@ def main_checkout(path: str) -> str:
     # longer says where home is, so the folder beside it whose name starts its
     # own is home (#1974). With none, it is not guessed.
     folder = WORKTREE_FOLDER.match(path)
-    if folder and not git.exists():
+    if folder and not repository:
         home = _beside(folder[1], folder[2])
         return home + (folder[3] or "") if home else ""
     return ""
@@ -365,11 +417,11 @@ def _beside(parent: str, name: str) -> str:
     """The repository a `.worktree(s)/<name>` folder was made from: the folder
     holding `.worktrees/` when it is a repository, else the repository next to
     `.worktree/` whose name starts `<name>` (the longest such name)."""
-    if (Path(parent) / ".git").exists():
+    if is_repository(parent):
         return parent
     try:
         names = [child.name for child in Path(parent).iterdir()
-                 if not child.name.startswith(".") and (child / ".git").exists()]
+                 if not child.name.startswith(".") and is_repository(child)]
     except OSError:
         return ""
     fits = [repo for repo in names if name == repo or re.match(re.escape(repo) + r"[-_.]", name)]
@@ -419,7 +471,7 @@ def not_a_project(row: dict) -> str:
     path = Path(row["path"])
     if home_or_above(path):
         return "home directory"
-    if row.get("repo") or main_checkout(row["path"]) or (path / ".git").exists():
+    if row.get("repo") or main_checkout(row["path"]) or is_repository(path):
         return ""
     if DATED_SCRATCH.search(path.as_posix()):
         return ONE_OFF_TASK if scratch_without_manifest(path) else ""
@@ -443,7 +495,7 @@ def session_turns(path: Path, kind: str, limit: int = SHORT_SESSION_TURNS + 1) -
     `turn_context` records, one per turn, except in program-written sessions.
     """
     try:
-        with path.open("rb") as handle:
+        with open_session(path) as handle:
             return _session_turns(handle, kind, limit)
     except OSError:
         return limit
@@ -520,7 +572,7 @@ def scan_projects(subscriptions: dict, days: int, rem_root: Path | None = None,
             if stamp < since:
                 continue
             if sessions is None:
-                with path.open("rb") as handle:
+                with open_session(path) as handle:
                     meta = _project_meta(handle, kind)
             else:
                 meta = sessions.projects[str(path)][0]
@@ -565,13 +617,13 @@ def _repo_identity(path: Path) -> dict:
         return {}
     try:
         top = subprocess.run(["git", "-C", str(path), "rev-parse", "--show-toplevel"],
-                             capture_output=True, text=True, timeout=5)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         if top.returncode:
             return {}
         origin = subprocess.run(["git", "-C", str(path), "remote", "get-url", "origin"],
-                                capture_output=True, text=True, timeout=5)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         common = subprocess.run(["git", "-C", str(path), "rev-parse", "--git-common-dir"],
-                                capture_output=True, text=True, timeout=5)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         # A linked worktree's common dir is the main checkout's .git; that is the project.
         toplevel = top.stdout.strip()
         if common.returncode == 0 and common.stdout.strip() not in (".git", f"{toplevel}/.git"):

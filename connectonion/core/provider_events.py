@@ -121,6 +121,8 @@ def provider_status_summary(status: object) -> str:
 def provider_terminal_summary(
     status: object,
     activities: Iterable[Mapping[str, object]] | None = None,
+    *,
+    refusal_reason: object = "",
 ) -> str:
     """Return a bounded terminal summary backed by safe activity evidence.
 
@@ -129,6 +131,17 @@ def provider_terminal_summary(
     checks completed without ever echoing native command text or provider
     output.
     """
+    if str(status) in {"blocked", "declined"}:
+        reasons = {
+            "unexpected_approval": "The provider sent an unexpected approval request while prompts were disabled.",
+            "approvals_disabled": "Approval requests are disabled by the selected policy.",
+            "admin_required": "Approval requires a Host admin requester.",
+            "approval_ui_unavailable": "The provider requested permission but no approval UI is available.",
+            "approval_handler_failed": "The approval handler failed; the provider action was declined.",
+            "operator_declined": "The operator declined the provider action.",
+            "outside_boundary": "The provider requested permissions outside the verified workspace boundary.",
+        }
+        return "Blocked: " + reasons.get(str(refusal_reason), "The provider declined a requested action.")
     if str(status) == "completed":
         titles = _completed_activity_titles(activities)
         compiled = bool(

@@ -1110,59 +1110,96 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path,
     return True
 
 
-def _restart(target: str, agent: str) -> bool:
-    """Restart, then confirm it is actually running.
+def _restart(target: str, agent: str, port: int) -> bool:
+    """Restart, then confirm the new unit is up and the agent answers.
 
     `systemctl restart` returns 0 for a unit that starts and immediately dies,
-    so the status check is the real test. On failure show journald rather than
-    an exit code — the traceback is what the operator needs.
+    so the watch is the real test. On failure show journald rather than an exit
+    code — the traceback is what the operator needs.
     """
     console.print("[dim]  restarting …[/dim]")
-    result = _ssh(target, f"sudo systemctl restart {agent}", timeout=120)
+    # When the unit last became active, read before the restart: the watch only
+    # counts a unit that became active after it (#3016).
+    result = _ssh(target, f"before=$(systemctl show -p ActiveEnterTimestampMonotonic --value {agent}); "
+                          f'sudo systemctl restart {agent} && echo "before=$before"', timeout=120)
     if result.returncode != 0:
         console.print("[red]Restart failed.[/red]")
         for line in (result.stderr or result.stdout).strip().splitlines()[-8:]:
             console.print(f"  [dim]{line}[/dim]")
         return False
-
-    # Asking once is not a test. Restart=always means a unit that dies on import
-    # is "active" in the moment right after the restart and again after every
-    # crash, so an agent looping on a traceback reported a clean deploy. The
-    # restart also resets NRestarts, so a single delayed look is a race against
-    # however long the agent takes to fail — ten seconds, for one that dies on
-    # an import.
-    #
-    # Watch instead: fail the moment it restarts itself, and call it good only
-    # once it has been continuously up. Both answers arrive as early as they
-    # honestly can.
-    watch = (
-        f"for i in $(seq 1 {STARTUP_TIMEOUT_SECONDS}); do\n"
-        f"  state=$(systemctl is-active {agent})\n"
-        f"  restarts=$(systemctl show -p NRestarts --value {agent})\n"
-        f'  if [ "$restarts" != "0" ] || [ "$state" = failed ]; then\n'
-        f'    echo "verdict=crashed restarts=$restarts state=$state"; exit 0\n'
-        f"  fi\n"
-        f'  if [ "$state" = active ] && [ "$i" -ge {STARTUP_STABLE_SECONDS} ]; then\n'
-        f'    echo "verdict=up"; exit 0\n'
-        f"  fi\n"
-        f"  sleep 1\n"
-        f"done\n"
-        f'echo "verdict=never-started state=$(systemctl is-active {agent})"'
-    )
+    before = _facts(result.stdout).get("before") or "0"
+    watch = _watch_script(agent, port, before)
     status = _ssh(target, watch, timeout=STARTUP_TIMEOUT_SECONDS + 60)
-    facts = dict(f.split("=", 1) for f in status.stdout.split() if "=" in f)
-
-    if facts.get("verdict") != "up":
-        why = {"crashed": f"crashed and is being restarted "
-                          f"({facts.get('restarts')} time(s) so far)",
-               "never-started": f"never came up ({facts.get('state') or 'unknown'})"
-               }.get(facts.get("verdict"), "did not start")
-        console.print(f"[red]{agent} {why}.[/red]")
+    if "verdict=" not in status.stdout:
+        # The watch only reads state, so asking again is safe. A dropped
+        # connection is not an answer about the agent.
+        status = _ssh(target, watch, timeout=STARTUP_TIMEOUT_SECONDS + 60)
+    if "verdict=" not in status.stdout:
+        error = (status.stderr or "").strip().splitlines()[-1:] or [f"ssh exit {status.returncode}"]
+        console.print(f"[red]could not watch {agent} start: {error[0]}[/red]")
+        console.print(f"[dim]  the restart went through; check the server: co server check <name>, "
+                      f"then systemctl status {agent}[/dim]")
+        return False
+    facts = _facts(status.stdout)
+    if facts["verdict"] != "up":
+        console.print(f"[red]{agent} {_why_not_up(facts, port)}.[/red]")
         logs = _ssh(target, f"sudo journalctl -u {agent} -n 20 --no-pager", timeout=60)
         for line in logs.stdout.strip().splitlines()[-20:]:
             console.print(f"  [dim]{line}[/dim]")
         return False
     return True
+
+
+def _facts(stdout: str) -> dict:
+    return dict(word.split("=", 1) for word in stdout.split() if "=" in word)
+
+
+def _watch_script(agent: str, port: int, before: str) -> str:
+    """Watch the restarted unit until it has stayed up and answers /info, or give up.
+
+    Asking once is not a test. Restart=always means a unit that dies on import
+    is "active" in the moment right after the restart and again after every
+    crash, and the restart resets NRestarts, so a single delayed look is a race
+    against however long the agent takes to fail. So: fail the moment it
+    restarts itself; call it up only once the unit that became active after the
+    restart has been up for the stable period and /info answers on its port.
+    The probe is python3, the agent's own runtime, so it is on every server.
+    """
+    probe = (f'python3 -c "import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=3)" '
+             f"http://127.0.0.1:{port}/info >/dev/null 2>&1")
+    return (
+        f"start=$(date +%s); new=no; info=no\n"
+        f"while [ $(( $(date +%s) - start )) -lt {STARTUP_TIMEOUT_SECONDS} ]; do\n"
+        f"  state=$(systemctl is-active {agent})\n"
+        f"  restarts=$(systemctl show -p NRestarts --value {agent})\n"
+        f"  entered=$(systemctl show -p ActiveEnterTimestampMonotonic --value {agent})\n"
+        f'  if [ "$restarts" != "0" ] || [ "$state" = failed ]; then\n'
+        f'    echo "verdict=crashed restarts=$restarts state=$state"; exit 0\n'
+        f"  fi\n"
+        f'  if [ "${{entered:-0}}" -gt "{before}" ]; then new=yes; fi\n'
+        f'  if [ "$state" = active ] && [ $new = yes ] && '
+        f"[ $(( $(date +%s) - start )) -ge {STARTUP_STABLE_SECONDS} ]; then\n"
+        f'    if {probe}; then echo "verdict=up"; exit 0; fi\n'
+        f"  fi\n"
+        f"  sleep 1\n"
+        f"done\n"
+        f'if [ "$(systemctl is-active {agent})" = active ] && [ $new = yes ] && {probe}; then '
+        f'echo "verdict=up"; exit 0; fi\n'
+        f'echo "verdict=never-started state=$(systemctl is-active {agent}) new=$new '
+        f'info=$(if {probe}; then echo answered; else echo no; fi)"'
+    )
+
+
+def _why_not_up(facts: dict, port: int) -> str:
+    """What the watch saw, in words: a crash, or what was still missing when it gave up."""
+    if facts["verdict"] == "crashed":
+        return f"crashed and is being restarted ({facts.get('restarts')} time(s) so far)"
+    seen = [f"unit {facts.get('state') or 'unknown'}"]
+    if facts.get("new") != "yes":
+        seen.append("not restarted: still the unit from before the restart")
+    if facts.get("info") != "answered":
+        seen.append(f"/info on port {port} did not answer")
+    return f"never came up within {STARTUP_TIMEOUT_SECONDS} s ({'; '.join(seen)})"
 
 
 def _record_port(target: str, agent: str, port: int) -> None:
@@ -1315,7 +1352,7 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
     if not _write_unit_if_changed(target, agent, entrypoint, hostname, user=user,
                                   port=port):
         return False
-    if not _restart(target, agent):
+    if not _restart(target, agent, port):
         return False
 
     _mark_provisioned(target, agent)

@@ -11,7 +11,7 @@ from pathlib import Path
 from .files import Notebook, split_handles, state_path, read_json, maintenance_lock, WRITE_WAIT_SECONDS
 from .reader_model import CITATION, PRIVATE, source_definitions
 
-GENERIC = frozenset('email mail meeting meetings project projects knowledge topic topics notes facts insight history sources unknown user assistant work software technology'.split())
+GENERIC = frozenset('email mail meeting meetings project projects knowledge topic topics notes note facts insight history sources unknown user assistant work software technology draft drafts summary overview untitled'.split())
 VENDORS = frozenset({'google', 'apple', 'microsoft', 'amazon', 'openai', 'anthropic', 'airbnb', 'linkedin', 'feishu', 'lark', 'slack', 'notion'})
 HEALTH = re.compile(r'\b(?:health|asthma|illness|medication|therapy|diabetes|cancer|dental|depression|surgery|diagnosis|pregnancy|allergy|reflux|adhd|anxiety)\b|健康|哮喘|疾病|用药|治疗|抑郁|手术|怀孕|过敏|焦虑', re.I)
 PERSONAL = re.compile(r'\b(?:family|personal|visa|immigration|legal|lawsuit|divorce)\b|家庭|家人|签证|移民|法律|私人|个人财务', re.I)
@@ -45,8 +45,18 @@ def _names(pages):
     return excluded
 
 
+def generic_name(name):
+    """A word that names a kind of thing, not one thing: "The draft" matched seven unrelated drafts."""
+    words = re.findall(r'\w+', name)
+    # Only the article goes: "The wedding" and "My thesis" are one thing each.
+    if words and words[0].casefold() in ('the', 'a', 'an', 'this', 'that', 'my', 'our', 'your'):
+        words = words[1:]
+    return not words or ' '.join(words).casefold() in GENERIC
+
+
 def _allowed(name, excluded):
-    return 2 <= len(name) <= 80 and name.casefold() not in excluded and not re.search(r'[/@`=\n]|https?:', name)
+    return (2 <= len(name) <= 80 and name.casefold() not in excluded and not generic_name(name)
+            and not re.search(r'[/@`=\n]|https?:', name))
 
 
 def _block(text, heading):

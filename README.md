@@ -21,6 +21,11 @@ work, keep it on your machine, and carry it into the next task.
 
 </div>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/co-harness.webp" alt="CLI as your harness. No MCP servers, adapters or glue: a CLI's --help is the prompt, its commands are the tools, and together they are an agent. Any model runs it from Claude Code, Codex or Cursor. All you need is to install the CLI. Only simple things scale." width="100%">
+  <br><sub><a href="https://github.com/openonion/connectonion/raw/main/assets/co-harness.mp4">Watch it with sound</a> · illustrative UI</sub>
+</p>
+
 <!-- connections: generated, do not edit by hand. Refresh with
      curl -s https://www.connectonion.com/connections.md
      and paste the output between these two comments. -->
@@ -138,14 +143,14 @@ Captured with `python scripts/capture_rem_reader.py --readme docs/assets/rem-rea
 - **Keep context in your hands.** Local Markdown pages can be read by you and
   your agents. An approved schedule keeps them current.
 
-### Try co rem · 1.9.5
+### Try co rem · 1.9.6
 
 Start with [the setup guide](https://docs.connectonion.com/rem#start)
 for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.5'
+pip install --upgrade 'connectonion==1.9.6'
 # build your map and first pages; approve nightly upkeep when prompted
 co rem init
 # read the local notebook
@@ -343,7 +348,7 @@ opens in place. Replies to people you trust can go on their own through a
 
 ## Project
 
-**Stable 1.9.5** is what `pip install connectonion` installs; previews
+**Stable 1.9.6** is what `pip install connectonion` installs; previews
 remain opt-in ([release channels](docs/releases.md),
 [release notes](https://github.com/openonion/connectonion/releases)).
 Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)

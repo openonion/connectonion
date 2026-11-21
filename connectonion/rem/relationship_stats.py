@@ -44,22 +44,33 @@ def thread_stats(messages, owner, now, first_ids):
             "reply_seconds_owner": median(replies[False]) if replies[False] else None}
 
 
+def _stamp(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).isoformat(timespec="seconds")
+
+
 def metrics(messages, owner, now, first_ids=None):
     """Rolling UTC windows, oldest week first; reply medians over all indexed history."""
-    weeks, recent, prior = [0] * 52, 0, 0
+    weeks, recent, prior, quarter = [0] * 52, 0, 0, 0
     end = now.timestamp()
+    last_side = {}
     for message in messages:
+        last_side[message[2].casefold() in owner] = message[4]
         age = (end - message[4]) / 86400
         if 0 < age <= 364:
             bucket = min(51, int((364 - age) // 7))
             weeks[bucket] += 1
         recent += 0 <= age <= 30
         prior += 30 < age <= 120
+        quarter += 0 <= age <= 90
     change = round((recent * 3 / prior - 1) * 100, 1) if prior else None
     trend = ("warming" if change > 0 else "cooling" if change < 0 else "steady") if prior else (
         "new" if recent else "no activity")
-    last = datetime.fromtimestamp(messages[-1][4], timezone.utc).isoformat(timespec="seconds") if messages else ""
-    return {"weekly_messages": weeks, "messages_30d": recent, "messages_prior_90d": prior,
+    last = _stamp(messages[-1][4]) if messages else ""
+    # People sorts by the last time both sides had written (#2991): a sender who mails
+    # every day but never hears back does not outrank someone the owner talks with.
+    two_way = _stamp(min(last_side.values())) if len(last_side) == 2 else ""
+    return {"weekly_messages": weeks, "messages_30d": recent, "messages_prior_90d": prior, "messages_90d": quarter,
+            "last_two_way": two_way,
             "change_percent": change, "trend": trend, "last_mail": last,
             "quiet": bool(messages) and end - messages[-1][4] > 90 * 86400,
             "last_from_you": messages[-1][2].casefold() in owner if messages else None,

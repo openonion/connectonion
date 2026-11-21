@@ -120,6 +120,13 @@ Decide one of:
 Never answer from plausibility. An inference is labelled and rests on quotes.
 Each edit is small and cited; never rewrite a correct section, never drop a
 cited fact that is still true, keep every quote verbatim.
+A web page is citable only with a saved capture. If a bullet or a line you
+add cites a URL the page did not already cite, save the page's text in the task
+directory, `co fetch <url> > web/<slug>.md`, and register it in
+`web/sources.json`:
+`[{"url":"https://example.org/team","file":"team.md","date":"2026-11-06"}]`,
+with the read date, a `web/`-relative file and the exact URL you cite. A URL
+you cannot save is not cited: name it in your reply as a lead for enrich.
 An `At stake:` bullet names what the user loses or gains, and by when if a date is known.
 An `Insight` bullet states what is true and why it matters — a finding, not
 advice and not a hedge. It never tells the user what to do (`verify`,

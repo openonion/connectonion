@@ -22,6 +22,7 @@ from ..protocol import (
     requests_session_sync_only,
     supports_oip,
 )
+from ..revocation import current_trust_level
 from .agent_io import resume_forwarding
 
 console = Console()
@@ -365,6 +366,11 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     session_sync = requests_session_sync(data)
     session_sync_only = requests_session_sync_only(data)
     recipient_address = data.get("payload", {}).get("to")
+    trust_agent = route_handlers.get("trust_agent") if route_handlers is not None else None
+    if trust_agent is not None:
+        # Remember a grant so removing it revokes this live connection, while
+        # a stranger admitted by a default-allow policy remains welcome.
+        conn["trust_level"] = current_trust_level(trust_agent, agent_address)
 
     # A Recent Chat index must not create a blank conversation merely by
     # looking for existing ones. This authenticated capability socket skips

@@ -1046,3 +1046,4 @@ def test_followup_registration_keeps_saved_times_and_consent(native, tmp_path, m
     assert service.status(root)['schedule_times'] == status['schedule_times'] == config['schedule']['times']
     assert service.consent_summary(root) == summary
     assert service.summary_fingerprint(root) == before
+

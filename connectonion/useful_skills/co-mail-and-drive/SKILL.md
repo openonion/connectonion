@@ -288,6 +288,11 @@ co gdrive put report.pdf --name "Q3 report.pdf"
 co gdrive rm 3 --listing <listing-id>                     # move to trash (recoverable)
 ```
 
+A large file (a video) streams into `NAME.part` with a progress line on
+stderr every 5 seconds (bytes, rate, time left). If it is interrupted, or exits
+1 saying it is stuck, run the same `co gdrive get` again: it resumes from the
+`.part`. A completed download is size- and md5-checked before it gets its name.
+
 ## The two gotchas that make you report something false
 
 **1. Gmail numbers require a frozen listing token.** Use full IDs where

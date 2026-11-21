@@ -28,7 +28,6 @@ from connectonion.cli.commands import command_tips
 from connectonion.cli.commands.command_tips import HANDLER, NEXT, next_step_for
 from connectonion.cli.discovery import check, command_tree, commands_in
 
-
 runner = CliRunner()
 LEAVES = [e.path for e in command_tree(cli_main.app) if not e.is_group]
 
@@ -71,7 +70,7 @@ class TestItIsPrinted:
         # real handler run against whatever .co/ the test happens to be in.
         monkeypatch.setattr(
             "connectonion.cli.commands.trust_commands.handle_admin_remove",
-            lambda address: None)
+            lambda address, co_dir=None: None)
         monkeypatch.setitem(command_tips.NEXT, "co trust admin remove",
                             "See every list:  co trust list")
 
@@ -110,7 +109,7 @@ class TestItCanBeTurnedOff:
     def hermetic_handler(self, monkeypatch):
         monkeypatch.setattr(
             "connectonion.cli.commands.trust_commands.handle_admin_remove",
-            lambda address: None)
+            lambda address, co_dir=None: None)
         monkeypatch.setitem(command_tips.NEXT, "co trust admin remove",
                             "See every list:  co trust list")
         monkeypatch.setattr(command_tips, "_SUPPRESSED", False)

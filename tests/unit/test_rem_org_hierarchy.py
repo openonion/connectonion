@@ -210,3 +210,22 @@ def test_disjoint_explicit_unit_scopes_do_not_merge(tmp_path):
     book.write(ORG, book.read(ORG) + '\n## Open threads\n' + promise + f'  - Unit: [[{COURSE}]] [1]\n' +
                promise + f'  - Unit: [[{TEAM}]] [1]\n\n## Sources\n- [1] gmail:promises\n')
     assert len(rows(tmp_path)[ORG]['obligations']) == 2
+
+
+@pytest.mark.parametrize('label', ['[personal]', '[sensitive]'])
+def test_a_labelled_tie_on_the_persons_own_page_does_not_place_them_in_the_org(tmp_path, label):
+    # Once a labelled passage stopped curtaining the whole organisation, a person whose only tie
+    # was a labelled Company or Unit line on their own page appeared among the people you know there.
+    book = book_at(tmp_path)
+    unit(book, TEAM, 'team', ORG)
+    book.write(MARA, f'# Mara\n\n## Facts\n- Company: [[{ORG}]] [1]\n')
+    book.write(AVERY, f'# Avery\n\n## Facts\n- Company: [[{ORG}]] met at the clinic {label} [1]\n'
+               f'- Unit: [[{TEAM}]] {label} [1]\n- Role in unit: [[{TEAM}]] — patient liaison {label} [1]\n')
+    data = rows(tmp_path)
+    assert data[ORG]['people'] == [MARA]
+    assert data[TEAM]['people'] == []
+    assert data[AVERY]['organisations'] == [] and data[AVERY]['units'] == []
+    assert AVERY not in data[ORG]['unplaced']['people']
+    # Nor does the labelled line draw an edge on the map or the org's local graph.
+    edges = {(e['source'], e['target']) for e in snapshot(tmp_path)['graph']['edges']}
+    assert (ORG, AVERY) not in edges and (TEAM, AVERY) not in edges and (ORG, MARA) in edges

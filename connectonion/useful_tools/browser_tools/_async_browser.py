@@ -219,9 +219,8 @@ def _lock_dir_for(policy, resolved: str) -> Optional[Path]:
 
 def has_display() -> bool:
     """Whether a headed browser can open a window here."""
-    if platform.system() != "Linux":
-        return True
-    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    from .chrome_finder import has_a_display
+    return has_a_display()
 
 
 def _headless_without_display(headless: bool) -> bool:
@@ -451,6 +450,14 @@ def _write_page_context_files(
         json.dumps(element_dicts, indent=2), encoding="utf-8"
     )
     return out_dir
+
+
+# How the text went in, so a caller sees a fallback instead of guessing from the time it took.
+_ENTERED = {
+    "pasted": "Entered by paste.",
+    "inserted": "Entered by CDP insertText: the field did not take the paste.",
+    "typed": "Entered key by key.",
+}
 
 
 class AsyncBrowserCore:
@@ -1567,13 +1574,14 @@ class AsyncBrowserCore:
             await self.page.keyboard.press(key)
             return f"Pressed: '{key}'"
 
-    async def keyboard_type(self, text: str) -> str:
-        """Type into the focused element without blocking the event loop."""
+    async def keyboard_type(self, text: str, human: bool = False) -> str:
+        """Paste into the focused element; human=True types it key by key, as a person would."""
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
-            await humanize.type_text(self.page, text, self._clipboard_lock)
+            how = await humanize.type_text(self.page, text, self._clipboard_lock, human)
             return f"""Typed: '{text}'
+{_ENTERED[how]}
 
 SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
 
@@ -1663,9 +1671,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             return f"Clicked element {index + 1}/{count} matching selector: {selector}{where}"
 
     async def type_text_by_selector(
-        self, selector: str, text: str, index: int = 0
+        self, selector: str, text: str, index: int = 0, human: bool = False
     ) -> str:
-        """Focus a stable selector and type through async humanized input."""
+        """Focus a stable selector and paste the text; human=True types it key by key."""
         async with self._tab_operation():
             if self.page is None:
                 return "Browser not open"
@@ -1678,9 +1686,10 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
                     f"Selector matched {count} elements; index {index} is out of range"
                 )
             await locator.nth(index).click(force=True)
-            await humanize.type_text(self.page, text, self._clipboard_lock)
+            how = await humanize.type_text(self.page, text, self._clipboard_lock, human)
             await self.page.wait_for_timeout(1000)
-            return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
+            return (f"Typed text into element {index + 1}/{count} matching selector: {selector}\n"
+                    f"{_ENTERED[how]}")
 
     async def mouse_click(self, x: int, y: int) -> str:
         """Humanize an exact coordinate click without blocking the event loop."""
@@ -2246,6 +2255,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
           co browser -t shop cookies save                   # default ~/.co/browser/cookies/shop.json
           co browser -t shop cookies load ~/.co/browser/cookies/shop.json
           co browser cookies --all
+          co browser cookies ls --all --domain linkedin.com --json
 
         Cookies belong to the whole browser, not to one tab; the tab only says
         which site you mean, so its current page decides the default scope.
@@ -2262,6 +2272,12 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             site = "" if all else self._tab_site(key, tab)
             if action == "ls":
                 found = await self.browser.cookies([site] if site else [])
+                if domain:
+                    # Filter here so subdomains and every path survive, but the
+                    # whole jar never has to fit in one OIP reply (#2887).
+                    scope = domain.lstrip(".")
+                    found = [c for c in found if c["domain"].lstrip(".") == scope
+                             or c["domain"].endswith("." + scope)]
                 return network_log.render_cookies(found, raw=raw, as_json=json)
             if action == "set":
                 if not name:

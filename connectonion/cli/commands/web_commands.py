@@ -14,7 +14,7 @@ import json
 import shlex
 import sys
 
-from .command_tips import mark_next_step_named, selected_tip, tips_enabled
+from .command_tips import mark_next_step_named, selected_tip, success_tips_enabled, tips_enabled
 
 
 def _next(step: str) -> None:
@@ -47,7 +47,7 @@ def handle_search(query: str, engine: str, count: int, as_json: bool) -> int:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
         print(format_results(found))
-    if found["results"]:
+    if found["results"] and success_tips_enabled():
         _next(f"co fetch {shlex.quote(found['results'][0]['url'])}")
     return 0
 

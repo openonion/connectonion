@@ -9,7 +9,9 @@ import base64
 import importlib
 import io
 import json
+import os
 import subprocess
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,6 +33,7 @@ def _reap_open_only_clients():
 class FakeServer:
     """Stand-in CodexAppServer that simulates one turn via callbacks."""
     last = None
+    requests_approval = False
 
     def __init__(
         self, command, cwd=None, on_event=None, on_approval=None, cancelled=None
@@ -47,7 +50,7 @@ class FakeServer:
     def start(self):
         self.calls.append("start")
 
-    def close(self):
+    def close(self, force=False):
         self.calls.append("close")
 
     def request(self, method, params, timeout=60):
@@ -91,10 +94,13 @@ class FakeServer:
         self.calls.append(("run_turn", thread_id, prompt))
         self.on_event({"kind": "agent_message", "text": "Running the tests first."})
         self.on_event({"kind": "tool_start", "id": "c1", "name": "pytest"})
-        self.approval_decision = self.on_approval(
-            "item/commandExecution/requestApproval",
-            {"command": "pytest -q", "cwd": self.cwd},
-        )
+        if self.requests_approval:
+            self.approval_decision = self.on_approval(
+                "item/commandExecution/requestApproval",
+                {"command": "pytest -q", "cwd": self.cwd},
+            )
+            if not self.approval_decision:
+                self.on_event({"kind": "approval_denied", "reason": "operator_declined"})
         self.on_event({"kind": "tool_end", "id": "c1", "name": "pytest", "failed": False})
         self.on_event({"kind": "agent_message", "text": "Hello world"})
         return {"status": "completed", "usage": {"input_tokens": 5}}
@@ -648,6 +654,10 @@ class TestFrontendEventVocabulary:
 
 
 class TestApproval:
+    @pytest.fixture(autouse=True)
+    def request_native_approval(self, monkeypatch):
+        monkeypatch.setattr(FakeServer, "requests_approval", True)
+
     def test_native_approval_has_a_safe_verified_workroom_presentation(self):
         agent = _Agent(
             _IO(approve=True),
@@ -1361,11 +1371,38 @@ def test_a_turn_that_runs_out_of_time_says_timeout(tmp_path, monkeypatch):
     assert result["status"] == "timeout" and result["exit_code"] != 0 and "timed out" in result["error"]
 
 
-def test_refused_approvals_are_counted_not_hidden():
+def test_a_turn_that_runs_out_of_time_is_interrupted_and_its_server_is_gone(tmp_path, monkeypatch):
+    # Real run 2026-11-17: a worker's thread went on editing its task folder for about
+    # 7.5 minutes after the adapter had answered timeout, into the next task's time.
+    deliverable = tmp_path / "out" / "result.md"
+    deliverable.parent.mkdir()
+    record = tmp_path / "requests.jsonl"
+    monkeypatch.setenv("CODEX_CMD", str(FIXTURES / "fake_codex_app_server.py"))
+    monkeypatch.setenv("FAKE_CODEX_RECORD", str(record))
+    monkeypatch.setenv("FAKE_CODEX_SLEEP", "30")
+    monkeypatch.setenv("CO_REM_CODEX_ARCHIVE", "1")
+    began = time.monotonic()
+    result = json.loads(codex_module._run_codex(prompt=f"Deliverable: {deliverable}", cwd=str(tmp_path),
+                                                approval="auto", timeout=2))
+    assert result["status"] == "timeout"
+    requests = [json.loads(line) for line in record.read_text().splitlines()]
+    methods = [request["method"] for request in requests]
+    # Interrupted first, while the server can still answer, then archived, then killed.
+    assert methods[-2:] == ["turn/interrupt", "thread/archive"], methods
+    interrupt = requests[-2]["params"]
+    assert interrupt["threadId"] == result["session_id"] and interrupt["turnId"]
+    with pytest.raises(ProcessLookupError):
+        os.kill(int((deliverable.parent / "pid.txt").read_text()), 0)
+    assert time.monotonic() - began < 12
+
+
+def test_refused_approvals_are_counted_not_hidden(monkeypatch):
     # Real run 2026-11-09: the default policy refused the README edit and the
     # envelope still said exit_code 0 with no error.
+    monkeypatch.setattr(FakeServer, "requests_approval", True)
     result = _run(prompt="inspect", approval="deny")
     assert result["approvals_denied"] == 1
+    assert result["status"] == "blocked" and result["exit_code"] == 1
     assert _run(prompt="inspect", approval="manual", agent=_Agent(_IO(approve=True)))["approvals_denied"] == 0
 
 

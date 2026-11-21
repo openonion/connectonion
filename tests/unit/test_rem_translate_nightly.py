@@ -64,8 +64,9 @@ def test_scheduled_paths_follow_priority_with_no_daily_cap(nightly, path):
             task = native_round.prepare_translation(nightly, cursor, config, directory)
             if task is None:
                 break
-            selected.append(task['record'])
-            translate.check(task['task'], {'result': task['task']['prose']})
+            selected.extend(task['task']['records'])  # a batch of pages, in priority order (#3099)
+            for page in task['task']['pages']:
+                translate.check(page, {'result': page['prose']})
             write_json(state_path(nightly, f'runs/run_translation_{index}.json'), {
                 'id': f'run_translation_{index}', 'phase': 'translate',
                 'started_at': service.now().isoformat(), 'runner_attempts': 1,

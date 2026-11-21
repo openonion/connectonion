@@ -60,7 +60,7 @@ def candidates(root, *, refresh_index=True, records=None):
         refresh(root)
     if not state_path(root, 'rem.db').is_file():
         return []
-    owner = owner_addresses(root)
+    owner, ignored = owner_addresses(root), threads.ignored_senders(root)
     found = {}
     with closing(sqlite3.connect(state_path(root, 'rem.db'))) as db:
         db.row_factory = sqlite3.Row
@@ -79,7 +79,8 @@ def candidates(root, *, refresh_index=True, records=None):
                 continue
             sender = _address(saved.get('reply_to') or saved.get('from', ''))
             mailbox = next((a for a in _addresses(saved.get('to')) + _addresses(saved.get('cc')) if a.casefold() in owner), '')
-            if not sender or not mailbox:
+            # The owner ignored this sender from Today: the night writes them nothing either.
+            if not sender or not mailbox or {sender.casefold(), _address(saved.get('from', '')).casefold()} & set(ignored):
                 continue
             draft_id = hashlib.sha256(thread.encode()).hexdigest()[:32]
             cc = sorted(set(_addresses(saved.get('to')) + _addresses(saved.get('cc'))) - owner - {sender})
@@ -145,7 +146,7 @@ def _page_excerpt(root, record, sections, limit=1800):
         if match:
             found[title.lower().replace(' ', '_')] = match.group(1).strip()[:limit]
             if title == 'Facts':
-                permission = re.search(r'^- Direct send: (partner|close|none)\b', match.group(1), re.M)
+                permission = re.search(r'^- Direct send: (partner|close|none|never)\b', match.group(1), re.M)
                 found['direct_send'] = permission.group(1) if permission else 'none'
     return found
 
@@ -197,7 +198,7 @@ def _owner_samples(root, row):
 
 
 def prepare(root, row, config, *, directory):
-    from .languages import owner_languages
+    from .languages import native_name, owner_language
     from .runner import today_note
     material = directory / 'reply-material.json'
     identities = _identities(root, row)
@@ -207,12 +208,15 @@ def prepare(root, row, config, *, directory):
         write_json(directory / 'verdict.json', {'kind': 'reply', 'send': 'now' if tier in ('partner', 'close') else 'owner'})
     write_json(material, {**row, 'channel': row.get('channel', 'mail'), **identities, 'owner_samples': _owner_samples(root, row)})
     candidate = directory / 'candidate.json'
-    language = next(iter(owner_languages(root)['languages']), config['language'])
+    language = owner_language(root) or config['language']
     skill = useful_skills_dir() / 'rem-reply-draft' / 'SKILL.md'
     voice = owner_skill('email-writing')
     prompt = (f'Read {skill} and follow it. '
               + (f'The owner\'s own writing skill is {voice}; it comes first for voice and wording. ' if voice else '')
-              + f'The material is {material}; the owner\'s language is {language}. '
+              # Named twice, the code alone read as a hint: an en-first list once drafted the gist in English.
+              + f'The material is {material}; the owner reads {native_name(language)} ({language}): write gist, why '
+              'and every 【需要你：…】 slot in it, even when the thread and the body are in another language; '
+              'the body follows the skill\'s language rule (the thread\'s language unless the table says otherwise). '
               + today_note(root) + ' '
               f'Write JSON to {candidate} as the skill says. Never send or contact anyone. Reply DONE.')
     return {'row': row, 'person': identities['person'], 'verdict': read_json(directory / 'verdict.json', {}),
@@ -282,6 +286,8 @@ def promote(root, draft):
 def _current(root, draft_id, refresh_index=True):
     saved = read_json(path(root, draft_id), {})
     row = next((row for row in candidates(root, refresh_index=refresh_index) if row['id'] == draft_id), None)
+    if not row and saved.get('to', '').casefold() in threads.ignored_senders(root):
+        raise RemError('This sender is ignored; Show again in Settings to reply to them')
     if not row or saved.get('version') != row['version']:
         raise RemError('This reply draft is no longer current; the next round will prepare a fresh one')
     return saved
@@ -370,7 +376,7 @@ def _lark_open_id(found):
 
 
 def _cli(command):
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if completed.returncode:
         raise RemError((completed.stderr or completed.stdout).strip()[:400] or f'{command[0]} failed')
     return json.loads(completed.stdout or '{}')
@@ -418,7 +424,9 @@ def _send_locked(root, draft_id, body=None, *, held=False):
         client = mail_client(saved['provider'])
         receipt = (client.reply(saved['in_reply_to'], text, cc=saved['cc'] or None) if saved['provider'] == 'outlook'
                    else client.reply(saved['in_reply_to'], text))
-    write_json(path(root, draft_id), {**saved, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
+    # What REM prepared, kept when the owner changed it: the night learns his voice from the difference (#3174).
+    prepared = {'prepared_body': saved['body']} if text != saved['body'] and 'prepared_body' not in saved else {}
+    write_json(path(root, draft_id), {**saved, **prepared, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
     return {'status': 'sent'}
 
 

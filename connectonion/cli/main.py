@@ -220,7 +220,28 @@ def _show_help():
     console.print()
 
 
-@app.command(epilog="Example:  co init  |  co init --background  |  co init ./ --template co-ai")
+def _start_background_host():
+    """Install and start the always-on Host; None when this platform has no user service, False on failure."""
+    from .host_service import HostServiceError, HostServiceUnavailable
+    from .mac_bootstrap import prepare_host
+    try:
+        result = prepare_host()
+    except HostServiceUnavailable as error:
+        console.print(f"Background Host skipped: {error}", markup=False)
+        return None
+    except HostServiceError as error:
+        console.print(f"The background Host did not start: {error}", markup=False)
+        return False
+    except OSError:
+        console.print('The background Host did not start: its files could not be written. Next: co host', markup=False)
+        return False
+    pid = f", pid {result['pid']}" if result.get('pid') else ''
+    console.print(f"Host running in the background (model: {result['model']}{pid}). "
+                  "Status: co host  ·  Stop: co host --stop", markup=False)
+    return result
+
+
+@app.command(epilog="Example:  co init  |  co init --no-host  |  co init ./ --template co-ai")
 def init(
     path: Optional[Path] = typer.Argument(None, exists=True, file_okay=False, resolve_path=True,
                                          help="Existing project directory; omit for global ~/.co/keys.env"),
@@ -229,10 +250,11 @@ def init(
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing files"),
-    background: bool = typer.Option(False, '--background', help='Global macOS setup: prepare a native Codex Host user service and the same REM setup'),
+    background: bool = typer.Option(False, '--background', hidden=True, help='Kept for scripts: global init always starts the background Host now'),
     no_rem: bool = typer.Option(False, '--no-rem', help='Skip REM setup during global initialization'),
+    no_host: bool = typer.Option(False, '--no-host', help='Do not install or start the background Host during global initialization'),
 ):
-    """Initialize local identity, profile, coding-agent skills and REM, or use co init ./ for a project. Global setup never asks questions: it grants local session and connected mailbox access, installs upkeep and builds the first REM notebook in the foreground. The cost estimate is informational; --yes and no terminal behave the same. Future connected mailboxes join automatically. Ends with undo commands and the notebook path. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
+    """Initialize local identity, profile, coding-agent skills and REM, and start the always-on Host, or use co init ./ for a project. Global setup never asks questions: it grants local session and connected mailbox access, installs upkeep, starts the background Host (launchd on macOS, systemd on Linux; the model is `model:` in its host.yaml) and builds the first REM notebook in the foreground. Use --no-host to skip the Host. The cost estimate is informational; --yes and no terminal behave the same. Future connected mailboxes join automatically. Ends with undo commands and the notebook path. Use --no-rem to skip it. Writes global keys.env and a missing agent.json, links bundled skills and refreshes the command index for installed Codex and Claude Code. Re-run to repair omissions while keeping your edits; existing REM is unchanged."""
     from .commands.init import handle_global_init, handle_init
     if path is None:
         from ..environment import explicit_env_file
@@ -242,9 +264,6 @@ def init(
         if template is not None or description is not None or force:
             console.print("[red]Project options require a path, for example: co init ./ --template co-ai[/red]")
             raise typer.Exit(2)
-        if background and sys.platform != 'darwin':
-            console.print('Background Mac setup requires macOS. Next: co init', markup=False)
-            raise typer.Exit(2)
         from .codex_setup import setup_codex
         codex = setup_codex()
         handle_global_init(key=key)
@@ -252,16 +271,7 @@ def init(
         console.print(f"Undo Codex CLI: {codex['undo']}", markup=False, soft_wrap=True)
         if not codex["ready"]:
             console.print(f"Codex login pending. Run: {codex['next_action']}; then co rem start", markup=False, soft_wrap=True)
-        if background:
-            from .mac_bootstrap import prepare_mac_host
-            from .host_service import HostServiceError
-            import json
-            try:
-                result = prepare_mac_host()
-                console.print(json.dumps(result), markup=False)
-            except (HostServiceError, OSError) as error:
-                console.print(str(error) if isinstance(error, HostServiceError) else 'Mac setup could not finish. Next: co init --background', markup=False)
-                raise typer.Exit(1) from None
+        hosted = None if no_host else _start_background_host()
         if not no_rem:
             from .commands.rem_commands import init_global_rem
             from ..rem.files import RemError
@@ -272,13 +282,14 @@ def init(
                 # not a traceback (#2758). Consent is recorded, so the retry is cheap.
                 console.print(f"{error}\nNext: co rem start", markup=False)
                 raise typer.Exit(1) from None
-        if background and not result['codex_ready']:
-            console.print(f"{result['codex_problem']}. Next: {result['next_action']}", markup=False)
-            if codex['ready']:
-                raise typer.Exit(1)
+        if hosted is False:
+            raise typer.Exit(1)
+        if hosted and not hosted['model_ready']:
+            problem = hosted.get('model_problem') or hosted.get('codex_problem')
+            console.print(f"The Host's model ({hosted['model']}) cannot answer yet: {problem}. Next: {hosted['next_action']}", markup=False)
         return
-    if background:
-        console.print('--background prepares the global Mac profile; omit a project path. Next: co init --background', markup=False)
+    if background or no_host:
+        console.print('--background and --no-host belong to global setup; omit a project path. Next: co init', markup=False)
         raise typer.Exit(2)
     handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force, path=path)
 
@@ -300,19 +311,63 @@ def create(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co host  |  co host --background  |  co host --status  |  co host --stop")
+def _in_terminal() -> bool:
+    """Whether a person is at this command, rather than a service manager."""
+    return sys.stdin.isatty()
+
+
+def _host_target() -> Path:
+    """Which Host a bare `co host` means: this project, or the always-on one `co init` started."""
+    from .mac_bootstrap import profile_dir
+    here = Path.cwd().resolve()
+    if (here/'agent.py').is_file() or ((here/'.co'/'host.yaml').is_file() and here != Path.home().resolve()):
+        return here
+    return profile_dir()
+
+
+def _print_host_status(target: Path) -> None:
+    """The human summary `co host` prints: is it running, what it serves, how to stop it."""
+    import yaml
+
+    from .co_ai.native_host import configured_model
+    from .host_service import HostServiceError, host_service
+    config_path = target/'.co'/'host.yaml'
+    if not config_path.is_file():
+        console.print("No Host is set up yet. Next: co init", markup=False)
+        return
+    config = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+    agent = 'agent.py' if (target/'agent.py').is_file() else f"built-in, model {configured_model(target/'.co')}"
+    try:
+        state = host_service(target).status()
+    except HostServiceError as error:
+        console.print(f"Host: {target}\nServes: {agent}\n{error}", markup=False)
+        return
+    if state['running']:
+        line = f"Running in the background (pid {state['pid']})"
+    elif state['configured']:
+        line = "Installed but not running. Next: co host --background"
+    else:
+        line = "Not running in the background. Next: co host --background"
+    console.print(f"Host: {target}\nServes: {agent}\nPort: {config.get('port', 8000)}\n{line}\n"
+                  "Stop: co host --stop  ·  Run in this terminal: co host --serve  ·  Details: co host --status",
+                  markup=False)
+
+
+@app.command(epilog="Example:  co host  |  co host --serve  |  co host --stop  |  co host --agent agent.py")
 def host(
     port: Optional[int] = typer.Option(None, "--port", "-p", help="Port, instead of the one in .co/host.yaml"),
-    background: bool = typer.Option(False, '--background', help='Install/start a macOS login service for this project; preserves foreground behavior'),
-    status: bool = typer.Option(False, '--status', help='Read-only: inspect this project service and process; no device-ready claim'),
-    stop: bool = typer.Option(False, '--stop', help='Stop and disable this project service across login'),
-    uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove this project service; preserve agent, identity, memory and logs'),
-    native_codex: bool = typer.Option(False, '--native-codex', help='Serve native Codex directly from this initialized profile; no agent.py or outer model'),
+    serve: bool = typer.Option(False, '--serve', help="Run the Host in this terminal with the built-in agent; host.yaml's model: picks codex, claude-code or a model name"),
+    agent_file: Optional[Path] = typer.Option(None, '--agent', exists=True, dir_okay=False, help="Run your own agent.py as the Host instead of the built-in agent"),
+    background: bool = typer.Option(False, '--background', help='Install/start the background service (launchd on macOS, systemd on Linux); co init does this for you'),
+    status: bool = typer.Option(False, '--status', help='Read-only: the background service and process, as JSON; no device-ready claim'),
+    stop: bool = typer.Option(False, '--stop', help='Stop and disable the background service across login'),
+    uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove the background service; preserve agent, identity, memory and logs'),
+    native_codex: bool = typer.Option(False, '--native-codex', hidden=True, help='Pre-#3170: serve native Codex from this profile; set model: codex instead'),
 ):
-    """Serve the agent in this directory: runs ./agent.py with co's own Python, so it works however co was installed.
+    """Show the always-on Host that co init started, or manage it. With no option: its status. --serve runs it in this terminal; --agent runs your own agent.py.
 
     One host serves everything: the agent over HTTP, WebSocket and the relay, REM for you, and the
-    channels in .co/host.yaml's listen:. Runs until stopped.
+    channels in .co/host.yaml's listen:. The agent is the built-in one unless you pass --agent.
     """
     import os
     import subprocess
@@ -320,36 +375,57 @@ def host(
         if sum((background, status, stop, uninstall)) != 1 or (port is not None and not background):
             console.print('Choose one service action; --port applies to --background. Next: co host --help')
             raise typer.Exit(2)
-        from .host_service import HostService, HostServiceError
-        from ..environment import explicit_env_file
         import json
+
+        from ..environment import explicit_env_file
+        from .host_service import HostServiceError, host_service
+        from .mac_bootstrap import prepare_host, profile_dir
+        target = _host_target()
         try:
-            service = HostService(Path.cwd(), port=port, env_file=explicit_env_file(), native_codex=True if native_codex else None)
-            operation = service.start if background else service.status if status else service.stop if stop else service.uninstall
-            console.print(json.dumps(operation()), markup=False)
+            if background and target == profile_dir() and port is None:
+                result = prepare_host()
+            else:
+                service = host_service(target, port=port, env_file=explicit_env_file(),
+                                       builtin=True if native_codex else None)
+                operation = service.start if background else service.status if status else service.stop if stop else service.uninstall
+                result = operation()
+            console.print(json.dumps(result), markup=False)
         except (HostServiceError, OSError) as error:
             console.print(str(error) if isinstance(error, HostServiceError) else 'Cannot write the service files. Next: co host --status', markup=False)
             raise typer.Exit(1) from None
         return
-    if native_codex:
-        from .mac_bootstrap import serve_native_mac
+    if native_codex or serve:
         from .host_service import HostServiceError
+        from .mac_bootstrap import serve_native_mac, serve_project
         try:
-            serve_native_mac(Path.cwd(), port=port)
-        except HostServiceError as error:
+            (serve_native_mac if native_codex else serve_project)(Path.cwd(), port=port)
+        except (HostServiceError, ValueError) as error:
             console.print(str(error), markup=False)
             raise typer.Exit(1) from None
         return
-    if not Path("agent.py").exists():
-        console.print("[red]No agent.py in this directory.[/red] Make one: co create my-agent, then cd my-agent")
+    if agent_file is None and port is not None and _in_terminal():
+        console.print('--port goes with --serve, --agent or --background. Next: co host --serve --port '
+                      f'{port}', markup=False)
         raise typer.Exit(2)
+    if agent_file is None:
+        # A service installed before #3170 runs a bare `co host` in a project
+        # with agent.py, with no terminal; keep serving it. In a terminal, a bare
+        # `co host` shows status, and an agent.py needs --agent.
+        if Path("agent.py").is_file() and not _in_terminal():
+            agent_file = Path("agent.py")
+        else:
+            _print_host_status(_host_target())
+            if Path("agent.py").is_file():
+                console.print("This folder has an agent.py. To serve it: co host --agent agent.py", markup=False)
+            return
     # install.sh puts co in a uv tool environment the system python cannot import from (#2438).
     env = {**os.environ, **({"AGENT_PORT": str(port)} if port else {})}
+    script = str(agent_file)
     if os.name == "nt":  # Windows' exec spawns a new process and returns the prompt early
-        raise typer.Exit(subprocess.call([sys.executable, "agent.py"], env=env))
+        raise typer.Exit(subprocess.call([sys.executable, script], env=env))
     # Become agent.py rather than its parent: a child outlived `kill <co host pid>`,
     # SIGHUP and launchd's stop, kept the port, and the next `co host` failed.
-    os.execve(sys.executable, [sys.executable, "agent.py"], env)
+    os.execve(sys.executable, [sys.executable, script], env)
 
 
 @app.command(epilog="Example:  co deploy  |  co deploy --to prod")
@@ -791,9 +867,44 @@ def call(
     raise typer.Exit(handle_call(args or []))
 
 
+@app.command(epilog="Examples:  co send 0x3d40... ./C2350.MP4  |  co send 0x3d40... ./footage/  |  co receive")
+def send(
+    address: str = typer.Argument(..., help="The receiving agent's address (0x...)"),
+    paths: List[str] = typer.Argument(..., help="Files or folders to send"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay used to look the agent up (default: configured backend)"),
+):
+    """Sends files to another agent, verified by sha256; an interrupted send resumes.
+
+    Files go directly to the receiver when it is online and reachable. When it
+    is not, a file of up to 10 MB is held on the server for 7 days, encrypted
+    so only the receiver can open it; `co receive` there takes it. Only a contact, a
+    whitelisted address or an admin of the receiver may send; files land in
+    its .co/inbox/files/<date>/ and never overwrite anything. A folder arrives
+    as the files inside it, under its own name.
+    """
+    from .commands.send_commands import handle_send
+    raise typer.Exit(handle_send(address, paths, relay))
+
+
+@app.command(epilog="Examples:  co receive  |  co receive --json")
+def receive(
+    json_output: bool = typer.Option(False, "--json", help="Print the list as JSON"),
+):
+    """Writes: takes files waiting for this agent, then lists every file received.
+
+    Files sent while this agent was unreachable are held on the server for 7
+    days; this downloads the ones from contacts, whitelisted addresses and
+    admins, verifies them, and deletes the server copies. Run it
+    in the folder where the receiving agent runs. Files are in its
+    .co/inbox/files/<date>/; `co send` on the other machine sends them.
+    """
+    from .commands.send_commands import handle_receive
+    raise typer.Exit(handle_receive(json_output))
+
+
 @app.command(epilog='Example:  co ai "explain what agent.py does"  |  co ai --port 8000')
 def ai(
-    prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
+    prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits); - reads it from stdin"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: Optional[str] = typer.Option(
         None, "--model", "-m", show_default=DEFAULT_MODEL,
@@ -860,6 +971,10 @@ def ai(
         None, "--speed", metavar="fast|standard",
         help="Codex only: fast selects the Fast tier; standard leaves your configured tier unchanged.",
     ),
+    effort: Optional[str] = typer.Option(
+        None, "--effort", metavar="minimal|low|medium|high|xhigh|max",
+        help="Codex only: the reasoning effort of this run. Without it Codex uses your own configured effort.",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt. Runs an agent whose tools can edit files and run commands here, with approval."""
     from .commands.ai_commands import handle_ai
@@ -867,6 +982,9 @@ def ai(
         raise typer.BadParameter("--listen and --no-listen contradict each other")
     channels = [] if no_listen else ([c.strip() for c in listen.split(",") if c.strip()]
                                      if listen else None)
+    if prompt == "-":
+        # A long prompt as argv passes Windows' 32K command-line limit (WinError 206).
+        prompt = sys.stdin.read()
     handle_ai(
         prompt=prompt,
         port=port,
@@ -886,6 +1004,7 @@ def ai(
         permission_mode=permission_mode,
         timeout=timeout,
         speed=speed,
+        effort=effort,
     )
 
 
@@ -1257,7 +1376,7 @@ def server_add(
 
 @server_app.command("ls", epilog="Example:  co server ls")
 def server_ls():
-    """Show what you can deploy to. Read-only."""
+    """Show what you can deploy to, and what each server costs as the backend reports it. Read-only."""
     from .commands.server_commands import handle_server_list
     handle_server_list()
 
@@ -1278,11 +1397,14 @@ def server_new(
     machine: Optional[str] = typer.Option(None, "--machine", help="Machine type (default: the smallest)"),
     region: Optional[str] = typer.Option(None, "--region",
                                          help="Where to provision (default: australia-southeast1)"),
+    disk: Optional[int] = typer.Option(None, "--disk", metavar="GB",
+                                       help="Disk size in GB, one of the sizes co server new lists "
+                                            "(default 20; larger ones add to the monthly price)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the price confirmation"),
 ):
-    """Have a server created for you. Charges 12 months of credit up front."""
+    """Have a server created for you. Creates the machine and charges your credits for it; shows the price and how it is charged, then asks."""
     from .commands.server_commands import handle_server_new
-    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes):
+    if not handle_server_new(name=name, machine_type=machine, region=region, yes=yes, disk_gb=disk):
         raise typer.Exit(1)
 
 
@@ -1319,12 +1441,34 @@ def server_forget(
 
 @server_app.command("destroy", epilog="Example:  co server destroy prod")
 def server_destroy(
-    name: str = typer.Argument(..., help="Server to tear down"),
+    name: str = typer.Argument(..., help="The short name you gave the server, as co server ls lists it"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. Deletes the machine and its disk; the unused term is refunded."""
+    """Destroy the machine and stop the billing. Deletes the machine and its disk; refunds the unused part of this month, or of an old 12-month term."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
+        raise typer.Exit(1)
+
+
+@server_app.command("invoice", epilog="Example:  co server invoice prod  |  co server invoice prod 1  |  co server invoice prod SRV-2026-12-000123 --pdf SRV-2026-12-000123.pdf  |  co server invoice --all --month 2026-12")
+def server_invoice(
+    name: Optional[str] = typer.Argument(None, help="Server name, as co server ls lists it (leave out with --all)"),
+    number: Optional[str] = typer.Argument(None, help="One invoice: its row (#) in the list, e.g. 1, or its number from the invoice email"),
+    month: Optional[str] = typer.Option(None, "--month", metavar="YYYY-MM",
+                                        help="The invoices issued in this UTC month, in full"),
+    every: bool = typer.Option(False, "--all", help="Every server's invoices for --month (default: this month)"),
+    pdf: Optional[Path] = typer.Option(None, "--pdf", metavar="FILE",
+                                       help="Write the chosen invoices to this PDF instead of printing them"),
+    as_json: bool = typer.Option(False, "--json", help="Print the backend's invoice JSON instead"),
+):
+    """Show the invoices for a server's monthly charges. With a name only, lists them; with a number or --month, prints them in full. Read-only, except that --pdf writes FILE."""
+    from .commands.server_commands import handle_server_invoice, invoice_usage_error
+    problem = invoice_usage_error(name, number, month, every, pdf, as_json)
+    if problem:
+        console.print(problem, style="red", markup=False)
+        raise typer.Exit(2)
+    if not handle_server_invoice(name=name, number=number, month=month, every=every,
+                                 pdf=str(pdf) if pdf else None, as_json=as_json):
         raise typer.Exit(1)
 
 
@@ -1492,10 +1636,12 @@ def skills_index(
 # Shortened on purpose: a full 64-hex address in help reads as a real one, and
 # could be one. `co trust list` prints the full address to paste.
 EXAMPLE_ADDRESS = "0x3f5a...c9e1"
+TRUST_DIR_HELP = "The .co folder whose trust lists to use, for example ~/.co for co ai (default: this project's .co)"
+TRUST_GLOBAL_HELP = "Use the lists in ~/.co, the global identity that co ai and co handoff use"
 trust_app = _typer_app(
-    help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. "
+    help="Who may call your agent: contacts, whitelist, blocklist and admins, kept in this project's .co/. Use --co-dir DIR or --global/-g on any command to select another identity. "
          "trust='careful' admits contacts and the whitelist; trust='strict' admits only the whitelist.",
-    epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS}",
+    epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS} --global  |  co trust list --co-dir /srv/agent/.co",
 )
 app.add_typer(trust_app, name="trust")
 
@@ -1509,74 +1655,99 @@ def trust_callback(ctx: typer.Context):
         handle_trust_list()
 
 
-@trust_app.command("list", epilog="Example:  co trust list --global")
-def trust_list(global_: bool = typer.Option(False, "--global", "-g",
-                                            help="The global identity in ~/.co, which co ai and co handoff use")):
+@trust_app.command("list", epilog="Example:  co trust list  |  co trust list --co-dir /srv/agent/.co  |  co trust list --global")
+def trust_list(
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """List every address on each trust list. Read-only."""
-    from .commands.trust_commands import handle_trust_list
-    from ..environment import global_config_dir
-    handle_trust_list(global_config_dir() if global_ else None)
+    from .commands.trust_commands import handle_trust_list, trust_target
+    handle_trust_list(co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("level", epilog=f"Example:  co trust level {EXAMPLE_ADDRESS}")
-def trust_level(address: str = typer.Argument(..., help="Address to check")):
+@trust_app.command("level", epilog=f"Example:  co trust level {EXAMPLE_ADDRESS}  |  co trust level {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust level {EXAMPLE_ADDRESS} --global")
+def trust_level(
+    address: str = typer.Argument(..., help="Address to check"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Show whether an address is a stranger, contact, whitelisted or blocked. Read-only."""
-    from .commands.trust_commands import handle_trust_level
-    handle_trust_level(address)
+    from .commands.trust_commands import handle_trust_level, trust_target
+    handle_trust_level(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist")
+@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist  |  co trust add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust add {EXAMPLE_ADDRESS} --global")
 def trust_add(
     address: str = typer.Argument(..., help="Full 0x address of the agent to allow"),
     whitelist: bool = typer.Option(False, "-w", "--whitelist", help="Add to whitelist instead of contacts"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
 ):
     """Let an address call your agent: adds it to your contacts, or with --whitelist to the whitelist (needed when trust is 'strict'). Writes the trust list."""
-    from .commands.trust_commands import handle_trust_add
-    handle_trust_add(address, whitelist)
+    from .commands.trust_commands import handle_trust_add, trust_target
+    handle_trust_add(address, whitelist, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("remove", epilog=f"Example:  co trust remove {EXAMPLE_ADDRESS}")
-def trust_remove(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
+@trust_app.command("remove", epilog=f"Example:  co trust remove {EXAMPLE_ADDRESS}  |  co trust remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust remove {EXAMPLE_ADDRESS} --global")
+def trust_remove(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Stop trusting an address, so it is a stranger again. Removes it from contacts and the whitelist; blocks and admins are unchanged."""
-    from .commands.trust_commands import handle_trust_remove
-    handle_trust_remove(address)
+    from .commands.trust_commands import handle_trust_remove, trust_target
+    handle_trust_remove(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"')
+@trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"  |  co trust block {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust block {EXAMPLE_ADDRESS} --global')
 def trust_block(
     address: str = typer.Argument(..., help="Address to block"),
     reason: str = typer.Option("", "-r", "--reason", help="Reason for blocking"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
 ):
     """Refuse every call from an address. Writes the blocklist."""
-    from .commands.trust_commands import handle_trust_block
-    handle_trust_block(address, reason)
+    from .commands.trust_commands import handle_trust_block, trust_target
+    handle_trust_block(address, reason, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("unblock", epilog=f"Example:  co trust unblock {EXAMPLE_ADDRESS}")
-def trust_unblock(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
-    """Accept calls from a blocked address again. Removes it from the blocklist."""
-    from .commands.trust_commands import handle_trust_unblock
-    handle_trust_unblock(address)
+@trust_app.command("unblock", epilog=f"Example:  co trust unblock {EXAMPLE_ADDRESS}  |  co trust unblock {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust unblock {EXAMPLE_ADDRESS} --global")
+def trust_unblock(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
+    """Accept calls from a blocked address again. Removes it from the blocklist; its contacts, whitelist and your trust setting still decide access."""
+    from .commands.trust_commands import handle_trust_unblock, trust_target
+    handle_trust_unblock(address, co_dir=trust_target(co_dir, global_))
 
 
 # Admin subcommand group
 admin_app = _typer_app(help="Addresses that may command your agent (super admin only).",
-                       epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}")
+                       epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS} --global  |  co trust admin remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co")
 trust_app.add_typer(admin_app, name="admin")
 
 
-@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}")
-def admin_add(address: str = typer.Argument(..., help="Full 0x address of the new admin")):
+@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}  |  co trust admin add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin add {EXAMPLE_ADDRESS} --global")
+def admin_add(
+    address: str = typer.Argument(..., help="Full 0x address of the new admin"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Let an address command your agent. Writes .co/admins.txt."""
-    from .commands.trust_commands import handle_admin_add
-    handle_admin_add(address)
+    from .commands.trust_commands import handle_admin_add, trust_target
+    handle_admin_add(address, co_dir=trust_target(co_dir, global_))
 
 
-@admin_app.command("remove", epilog=f"Example:  co trust admin remove {EXAMPLE_ADDRESS}")
-def admin_remove(address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it")):
+@admin_app.command("remove", epilog=f"Example:  co trust admin remove {EXAMPLE_ADDRESS}  |  co trust admin remove {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin remove {EXAMPLE_ADDRESS} --global")
+def admin_remove(
+    address: str = typer.Argument(..., help="Full 0x address, as co trust list shows it"),
+    co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
+    global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
+):
     """Stop an address from commanding your agent. Removes it from .co/admins.txt."""
-    from .commands.trust_commands import handle_admin_remove
-    handle_admin_remove(address)
+    from .commands.trust_commands import handle_admin_remove, trust_target
+    handle_admin_remove(address, co_dir=trust_target(co_dir, global_))
 
 
 # SMS command group. `co sms` (no args) shows the inbox without changing state.
@@ -1933,34 +2104,36 @@ def email_domains():
     handle_email_domains()
 
 
-@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy")
+@email_app.command("setup", epilog="Example:  co email setup iron.share --domain steadmail.com  |  co email setup iron.share --domain steadmail.com --buy  |  co email setup iron.share --domain steadmail.com --buy --default")
 def email_setup(
     alias: str = typer.Argument(..., help="Mailbox name before @, e.g. iron.share"),
     domain: str = typer.Option("mail.openonion.ai", "--domain", "-d", help="Hosted domain from co email domains"),
     buy: bool = typer.Option(False, "--buy", help="Add the address (charges the one-time price from credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the new address the default sender; without it the default stays as it is"),
 ):
     """Set up another mailbox on this account. Shows price; --buy Charges credits."""
     from .commands.email_commands import handle_email_setup
-    handle_email_setup(alias, domain=domain, buy=buy)
+    handle_email_setup(alias, domain=domain, buy=buy, make_default=make_default)
 
 
-@email_app.command("default", epilog="Example:  co email default you@mail.openonion.ai")
+@email_app.command("default", epilog="Examples:  co email default 1  |  co email default ellis@mail.openonion.ai  |  co email default 0x1234567890@mail.openonion.ai")
 def email_default(
-    address: str = typer.Argument(..., help="One of your own addresses, e.g. ellis@mail.openonion.ai"),
+    address: str = typer.Argument(..., help="Row number N = the Nth address co email addresses lists right now (its # column; same order in script output), or an address as it prints it, including the 0x… one derived from your key"),
 ):
     """Choose which of your addresses is the default sender. Changes your account's default."""
     from .commands.email_commands import handle_email_default
     handle_email_default(address)
 
 
-@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy")
+@email_app.command("name", epilog="Examples:  co email name ellis  |  co email name ellis --buy  |  co email name ellis --buy --default")
 def email_name(
     name: str = typer.Argument(..., help="Desired name, e.g. 'ellis' → ellis@mail.openonion.ai"),
     buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
+    make_default: bool = typer.Option(False, "--default", help="With --buy, also make the name the default sender; without it the default stays as it is"),
 ):
     """Check a custom email name's availability, or --buy to claim it. Read-only; --buy Charges your credits."""
     from .commands.email_commands import handle_email_name
-    handle_email_name(name, buy=buy)
+    handle_email_name(name, buy=buy, make_default=make_default)
 
 
 @email_app.command("share", epilog="Examples:  co email share you@mail.openonion.ai --with teammate@example.com --can send,read  |  co email share --list")
@@ -2059,16 +2232,36 @@ _INBOX_IDS = {
 # Inbox providers: feishu, lark, whatsapp, telegram, discord, slack. One directory per provider under
 # ~/.co/inbox/, the same nine verbs on each. The tool knows nothing about
 # agents; anything that can read a file consumes it (DD-063).
+# What `send` takes as its first argument where it is more than a chat id.
+_SEND_TO = {
+    "feishu": "Who: a chat id (oc_…), a user id (ou_…, on_…), an email, a +phone, a saved contact or a group name",
+    "lark": "Who: a chat id (oc_…), a user id (ou_…, on_…), an email, a +phone, a saved contact or a group name",
+    "whatsapp": "Chat id, a saved contact name, or a phone number with its country code",
+}
+_SEND_EXAMPLES = {
+    "feishu": 'co feishu send alex@example.com "Hello"  |  co feishu send "Ops Room" "Deploy done"  |  '
+              'co feishu send Alex "On my way"  |  echo "Hello" | co feishu send oc_5ce6d572455d361153b7cb51da133945',
+    "lark": 'co lark send alex@example.com "Hello"  |  co lark send "Ops Room" "Deploy done"  |  '
+            'co lark send Alex "On my way"  |  echo "Hello" | co lark send oc_5ce6d572455d361153b7cb51da133945',
+    "whatsapp": 'co whatsapp send 61412345678@s.whatsapp.net "Hello"  |  co whatsapp send "Alex Example" "Hello"  |  '
+                'co whatsapp send +61412345678 "Hello"  |  echo "Hello" | co whatsapp send 61412345678@s.whatsapp.net',
+}
+
+
 def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = None,
-                 with_send: bool = True, writes: bool = False) -> typer.Typer:
+                 with_send: bool = True, writes: bool = False, media: bool = False) -> typer.Typer:
     """The inbox verbs on a fresh group, or on an existing one that already has
     its own `send`: `co telegram send` shipped first, and its output is part of
     its contract, so Telegram gains the other verbs beside it.
 
     `writes`: the provider implements edit, delete and react. Only WhatsApp
     does; elsewhere the verbs stay (one set of verbs everywhere) but their help
-    says they refuse, instead of promising an id they never print."""
+    says they refuse, instead of promising an id they never print.
+
+    `media`: the provider sends pictures and files. Elsewhere --image and
+    --file stay, and their help says they are refused."""
     co, chat, msg = f"co {name}", *_INBOX_IDS[name]
+    not_here = "" if media else f" Not supported on {name.capitalize()} yet; commands using this option fail and nothing is sent."
     group = group if group is not None else _typer_app(
         help=help_text,
         epilog=f'Example:  {co} check  |  {co} receive -t 60  |  {co} reply {msg} "On it"')
@@ -2076,14 +2269,39 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         return None if writes else (f"{what} Not implemented for {name.capitalize()} yet: it refuses, "
                                     "names the API endpoint that would do it, and sends nothing. Read-only.")
 
-    @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
-    def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
-                restart: bool = typer.Option(False, "--restart",
-                                             help="Stop the running listener and start a new one in the background, "
-                                                  "on the installed code")):
-        """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/."""
-        from .commands.listen_commands import handle_listen
-        handle_listen(name, raw=raw, restart=restart)
+    if name == "whatsapp":
+        @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --phone +61412345678  |  {co} listen --raw")
+        def _listen(raw: bool = typer.Option(False, "--raw", help="Also save each message's full raw WhatsApp data in inbox.jsonl"),
+                    restart: bool = typer.Option(False, "--restart",
+                                                 help="Stop the running listener and start a new one in the background, "
+                                                      "using the co installed now"),
+                    phone: str = typer.Option("", "--phone",
+                                              help="Link by code instead of QR: the bot's number with its country code. "
+                                                   "Prints an 8-character code to type on that phone under Linked devices "
+                                                   "> Link with phone number instead; it lasts minutes and can be sent as text")):
+            """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/. Links this device by QR, or by code with --phone."""
+            from .commands.listen_commands import errors, handle_listen
+            digits = ""
+            if phone:
+                from ..inbox.whatsapp_contacts import phone_digits
+                if restart:
+                    errors.print("--phone shows its code in the foreground; run it without --restart", style="red")
+                    raise typer.Exit(2)
+                try:
+                    digits = phone_digits(phone)
+                except ValueError as exc:
+                    errors.print(str(exc), style="red")
+                    raise typer.Exit(2)
+            handle_listen(name, raw=raw, restart=restart, phone=digits)
+    else:
+        @group.command("listen", epilog=f"Example:  {co} listen  |  {co} listen --raw")
+        def _listen(raw: bool = typer.Option(False, "--raw", help="Keep the provider payload in inbox.jsonl"),
+                    restart: bool = typer.Option(False, "--restart",
+                                                 help="Stop the running listener and start a new one in the background, "
+                                                      "on the installed code")):
+            """Hold the connection; write every message to the inbox. Ctrl-C stops. Runs in the foreground and writes to ~/.co/inbox/."""
+            from .commands.listen_commands import handle_listen
+            handle_listen(name, raw=raw, restart=restart)
 
     @group.command("receive", epilog=f"Example:  {co} receive -t 60  |  {co} receive -t 0 --no-start  |  {co} receive --context 5")
     def _receive(
@@ -2097,14 +2315,14 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         handle_receive(name, timeout=timeout, start=not no_start, context=context)
 
     def _send(
-        chat: str = typer.Argument(..., help="Chat id"),
+        chat: str = typer.Argument(..., help=_SEND_TO.get(name, "Chat id")),
         text: Optional[str] = typer.Argument(None, help="The text; omitted means stdin"),
         reply_to: Optional[str] = typer.Option(None, "--reply-to", help="Message id to reply to"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
         image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
-                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+                                            help="Send a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption." + not_here),
         file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
-                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption"),
+                                           help="Send any file as a document (up to 100 MB); the text becomes its optional caption." + not_here),
     ):
         """Send text, or a picture or file, to a chat. Prints the new message id. Sends a message to the chat."""
         from .commands.listen_commands import handle_send
@@ -2112,8 +2330,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
 
     if with_send:
         group.command("send", cls=NegativeIds,
-                      epilog=f'Example:  {co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
-                             f'{co} send {chat} "Thanks" --reply-to {msg}')(_send)
+                      epilog="Example:  " + _SEND_EXAMPLES.get(
+                          name, f'{co} send {chat} "Hello"  |  echo "Hello" | {co} send {chat}  |  '
+                                f'{co} send {chat} "Thanks" --reply-to {msg}'))(_send)
 
     # Every verb that takes a chat or message id parses with NegativeIds:
     # Telegram ids start with "-" for groups and channels.
@@ -2125,9 +2344,9 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         again: bool = typer.Option(False, "--again", help="Reply even if this message was already answered"),
         plain: bool = typer.Option(False, "--plain", help="Send the text as typed, without reading it as Markdown"),
         image: Optional[str] = typer.Option(None, "--image", metavar="PATH",
-                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption"),
+                                            help="Answer with a picture (JPEG, PNG, WebP, up to 16 MB); the text becomes its optional caption." + not_here),
         file: Optional[str] = typer.Option(None, "--file", metavar="PATH",
-                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption"),
+                                           help="Answer with any file as a document (up to 100 MB); the text becomes its optional caption." + not_here),
     ):
         """Reply to a received message, in the chat it came from. Prints the new message id. Sends a message to that chat."""
         from .commands.listen_commands import handle_reply
@@ -2194,7 +2413,7 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
         last: Optional[int] = typer.Option(None, "--last", "-n", min=1,
                                            help="Keep only the most recent N"),
     ):
-        """Every message ever received, one JSON line each. Changes nothing in the chat or the queue."""
+        """Every message ever received, one JSON line each; with a filter, what this account sent is included too, marked from_me. Changes nothing in the chat or the queue."""
         from .commands.listen_commands import handle_log
         handle_log(name, follow=follow, chat=chat, sender=sender, since=since, last=last)
 
@@ -2220,8 +2439,57 @@ def _inbox_group(name: str, help_text: str, *, group: Optional[typer.Typer] = No
     return group
 
 
-app.add_typer(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="feishu")
-app.add_typer(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="lark")
+def _people_verbs(group: typer.Typer, name: str) -> typer.Typer:
+    """Find who to send to on Feishu or Lark: a person by email or phone, the
+    groups the bot is in, and names saved for either (#3000)."""
+    co, brand = f"co {name}", name.capitalize()
+
+    @group.command("lookup", epilog=f"Example:  {co} lookup alex@example.com  |  {co} lookup +61412345678")
+    def _lookup(who: str = typer.Argument(..., help="An email, or a phone number with its +country code")):
+        """Find a person by email or phone: prints their user id (on_…), which send takes. Read-only. Needs the scope contact:user.id:readonly; without it, prints the link that grants it."""
+        from .commands.lark_commands import handle_lookup
+        handle_lookup(name, who)
+
+    @group.command("groups", epilog=f"Example:  {co} groups  |  {co} groups | grep -i ops",
+                   help=f"List the groups the bot is in, from {brand} itself: chat id and name. Read-only. "
+                        "Unlike `chats`, which lists only where messages arrived. Needs the scope "
+                        "im:chat:readonly; without it, prints the link that grants it.")
+    def _groups():
+        from .commands.lark_commands import handle_groups
+        handle_groups(name)
+
+    contacts = _typer_app(
+        help=f"Names for people and chats, so `{co} send Alex` works. Kept in this inbox's contacts.json; nothing changes on {brand}.",
+        epilog=f'Example:  {co} contacts add Alex alex@example.com  |  {co} contacts ls  |  {co} contacts rm Alex')
+
+    @contacts.command("add", epilog=f'Example:  {co} contacts add Alex alex@example.com  |  '
+                                    f'{co} contacts add "Sam Lee" +61412345678  |  {co} contacts add Ops oc_5ce6d572455d361153b7cb51da133945')
+    def _contacts_add(
+        contact: str = typer.Argument(..., help="The name you will send to"),
+        who: str = typer.Argument(..., help="An email, a +phone (looked up once, needs contact:user.id:readonly), or an id: oc_, ou_, on_"),
+    ):
+        """Save a name for a person or chat; replaces a name already saved. Prints the name and the id it stands for. Writes contacts.json only."""
+        from .commands.lark_commands import handle_contacts_add
+        handle_contacts_add(name, contact, who)
+
+    @contacts.command("ls", epilog=f"Example:  {co} contacts ls")
+    def _contacts_ls():
+        """List saved contacts, one name and id per line. Read-only."""
+        from .commands.lark_commands import handle_contacts_ls
+        handle_contacts_ls(name)
+
+    @contacts.command("rm", epilog=f"Example:  {co} contacts rm Alex")
+    def _contacts_rm(contact: str = typer.Argument(..., help="A saved name, from `contacts ls`")):
+        """Forget a saved name. Writes contacts.json only; nothing changes on the platform."""
+        from .commands.lark_commands import handle_contacts_rm
+        handle_contacts_rm(name, contact)
+
+    group.add_typer(contacts, name="contacts")
+    return group
+
+
+app.add_typer(_people_verbs(_inbox_group("feishu", "Feishu bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "feishu"), name="feishu")
+app.add_typer(_people_verbs(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "lark"), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
 app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
@@ -2286,7 +2554,7 @@ def _slack_search(
 app.add_typer(_slack_app, name="slack",
               short_help="Experimental: Slack bot as an inbox, and a reader for its channels.")
 _whatsapp_app = _inbox_group("whatsapp", "WhatsApp as an inbox: listen, receive, send, reply. Sends as your linked account.",
-                             writes=True)
+                             writes=True, media=True)
 _whatsapp_groups = _typer_app(
     help="Start a group, or add people to one. One line per person. Creates or changes WhatsApp groups.",
     epilog='Example:  co whatsapp group create "Acme onboarding" 61412345678 61498765432  |  '
@@ -2315,6 +2583,69 @@ def _whatsapp_group_add(
 
 
 _whatsapp_app.add_typer(_whatsapp_groups, name="group")
+_WA_COUNTRY = typer.Option(None, "--country", metavar="AU",
+                           help="Read local numbers (0412 345 678) as dialled in this country, by its two-letter code")
+
+
+@_whatsapp_app.command(
+    "lookup", epilog="Example:  co whatsapp lookup +61412345678  |  co whatsapp lookup 0412345678 0498765432 --country AU")
+def _whatsapp_lookup(
+    phones: List[str] = typer.Argument(..., help="Phone numbers, with the country code (+61412345678) or local with --country"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Check whether each number is on WhatsApp, and who it is: one JSON line per number with on_whatsapp, jid, name, business, about, has_photo. Exits 4 if any number is not on WhatsApp. Read-only: sends nothing to the person; runs through the listener, starting one if needed."""
+    from .commands.whatsapp_commands import handle_lookup
+    handle_lookup(phones, country)
+
+
+_whatsapp_contacts = _typer_app(
+    help="Names for WhatsApp numbers, shown in chats, log and ls and usable with send. Local only: nothing is sent to anyone.",
+    epilog='Example:  co whatsapp contacts add +61412345678 --name "Alex Example"  |  co whatsapp contacts ls  |  '
+           'co whatsapp contacts rm "Alex Example"')
+
+
+@_whatsapp_contacts.command(
+    "add", epilog='Example:  co whatsapp contacts add 61412345678@s.whatsapp.net --name "Alex Example" --note "Acme, new client"  |  '
+                  'co whatsapp contacts add 0412345678 --country AU --name "Alex Example"')
+def _whatsapp_contacts_add(
+    who: str = typer.Argument(..., help="The jid `lookup` printed, or a phone number"),
+    name: str = typer.Option(..., "--name", help="What to call them in chats, log and ls; send accepts it too"),
+    note: str = typer.Option("", "--note", help="Anything to remember about them; shown by contacts ls"),
+    country: Optional[str] = _WA_COUNTRY,
+):
+    """Save a name for a number. Prints the jid and the name. Writes contacts.json in the WhatsApp inbox; sends nothing."""
+    from .commands.whatsapp_commands import handle_contacts_add
+    handle_contacts_add(who, name, note, country)
+
+
+@_whatsapp_contacts.command("ls", epilog="Example:  co whatsapp contacts ls")
+def _whatsapp_contacts_ls():
+    """List saved contacts, one per line: jid, name, note. Read-only."""
+    from .commands.whatsapp_commands import handle_contacts_ls
+    handle_contacts_ls()
+
+
+@_whatsapp_contacts.command("rm", epilog='Example:  co whatsapp contacts rm "Alex Example"  |  co whatsapp contacts rm +61412345678')
+def _whatsapp_contacts_rm(
+    who: str = typer.Argument(..., help="The contact's name or phone number"),
+):
+    """Forget a saved contact. Prints what was removed. Changes contacts.json only; the chat and its history stay."""
+    from .commands.whatsapp_commands import handle_contacts_rm
+    handle_contacts_rm(who)
+
+
+_whatsapp_app.add_typer(_whatsapp_contacts, name="contacts")
+
+
+@_whatsapp_app.command(
+    "download", epilog="Example:  co whatsapp download 3EB0C127D8F1A2B4E5F6  |  co whatsapp download 3EB0C127D8F1A2B4E5F6 --to ./files")
+def _whatsapp_download(
+    message_id: str = typer.Argument(..., help="Id of a received message with a photo, video, voice note or document, from `co whatsapp log`"),
+    to: Optional[str] = typer.Option(None, "--to", metavar="DIR", help="Folder to save into (default: the inbox's media folder)"),
+):
+    """Fetch a received message's photo, video, voice note or document again, including ones shared as group history. Prints the saved path. Exits 4 when WhatsApp no longer has the file. Writes one file; sends nothing."""
+    from .commands.whatsapp_commands import handle_download
+    handle_download(message_id, to)
 app.add_typer(_whatsapp_app, name="whatsapp")
 # Telegram keeps the `send` it shipped with and gains every other inbox verb on
 # the same group, with the same TELEGRAM_BOT_TOKEN.
@@ -2629,15 +2960,23 @@ def gdrive_info(
 
 
 @gdrive_app.command("get", epilog="Example:  co gdrive get <file-id> --to ~/Downloads  |  "
-                                  "co gdrive get 2 --listing <listing-id>")
+                                  "co gdrive get 2 --listing <listing-id>  |  co gdrive get <file-id> --quiet")
 def gdrive_get(
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gdrive list or search; needed with a row number"),
     file_id: str = typer.Argument(..., help="Full Drive ID, or row with --listing"),
     dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
+    quiet: bool = typer.Option(False, "--quiet", help="No progress lines on stderr"),
 ):
-    """Download a file (Google Docs/Sheets/Slides are exported). Writes a local file; Drive is unchanged."""
+    """Download a file (Google Docs/Sheets/Slides are exported). Writes a local file; Drive is unchanged.
+
+    A file streams into NAME.part, with a progress line (bytes, rate, time left)
+    on stderr every 5 seconds, and becomes NAME once its size and md5 match
+    Drive's. Interrupted? Run the same command again: it resumes from the
+    .part. After 60 seconds with no data it reconnects, up to 5 times, then
+    stops and says what is on disk.
+    """
     from .commands.gdrive_commands import handle_gdrive_get
-    handle_gdrive_get(file_id, dest=dest, listing=listing)
+    handle_gdrive_get(file_id, dest=dest, listing=listing, quiet=quiet)
 
 
 @gdrive_app.command("put", epilog="Example:  co gdrive put report.pdf --name \"Q3 report.pdf\"")
@@ -2783,6 +3122,10 @@ app.add_typer(gcalendar_app, name="gcalendar")
 from .commands.synology_cli import syno_app
 app.add_typer(syno_app, name="syno")
 
+# WeChat (#3146): read the owner's own WeChat for Mac history locally, read-only. macOS only.
+from .commands.wechat_commands import wechat_app
+app.add_typer(wechat_app, name="wechat")
+
 # Linear (#2049): our own commands on Linear's GraphQL API, with LINEAR_API_KEY.
 from .commands.linear_commands import linear_app
 app.add_typer(linear_app, name="linear")
@@ -2792,6 +3135,152 @@ app.add_typer(canny_app, name="canny")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
+
+
+# Obsidian: local Markdown notes with explicit folder selection.
+obsidian_app = _typer_app(
+    help="Browse Obsidian vaults and list, read, or search Markdown notes. Read-only.\n\n"
+         "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
+         "The list is read-only. If a vault is available, the output suggests a command to browse it. "
+         "Use --folder to choose where to look for notes.\n\n"
+         "All Obsidian commands work offline.\n\n"
+         "Exit 0 means the list loaded, even if it is empty. "
+         "Exit 1 means the list could not be read or its row numbers could not be saved. "
+         "Exit 2 means an argument is invalid. Check the error and this help.",
+    epilog='Example:  co obsidian\n\n'
+           'Example:\n\nco obsidian ls --vault Personal --folder Course',
+    invoke_without_command=True,
+)
+app.add_typer(obsidian_app, name="obsidian")
+
+
+@obsidian_app.callback(invoke_without_command=True)
+def _obsidian_default(ctx: typer.Context):
+    """List all registered vaults when no Obsidian subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        from .commands.obsidian_commands import handle_obsidian_vaults
+        handle_obsidian_vaults()
+
+
+@obsidian_app.command("vaults", epilog="Example:  co obsidian vaults\n\nExample:  co obsidian vaults --json")
+def _obsidian_vaults(
+    json_output: bool = typer.Option(
+        False, "--json", help="Print all registered vaults as JSON and send the suggested next command to stderr."
+    ),
+):
+    """List numbered vaults with their paths, availability and open status. Read-only.
+
+    The list checks which vault folders exist without opening notes. A closed
+    vault can still be read. If a vault is available, the output suggests a
+    command to list its folders.
+    Use a number from the latest list, for example co obsidian ls --vault 1.
+    The number works for 15 minutes. A unique vault name or path also works.
+
+    Exit 0 means the list loaded, even if it is empty. If it is empty, open a
+    vault in Obsidian or give ls its path.
+    Exit 1 means the vault list could not be read or its row numbers could
+    not be saved. See the error message.
+    Exit 2 means an argument is invalid. Check this help for valid options.
+    """
+    from .commands.obsidian_commands import handle_obsidian_vaults
+    handle_obsidian_vaults(json_output=json_output)
+
+
+@obsidian_app.command("ls", short_help="List a vault's folders or the Markdown notes in selected folders. Read-only.",
+                      epilog='Example:  co obsidian ls --vault 1\n\n'
+                             'Example:  co obsidian ls --vault Personal --folder 1')
+def _obsidian_ls(
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault row, unique registered name, or path; omit when only one is available"),
+    folders: List[str] = typer.Option(None, "--folder", help="Folder row or vault-relative path; repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many notes, most recently modified first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print the result as JSON; no row numbers are saved"),
+):
+    """List a vault's folders or the Markdown notes in selected folders. Read-only.
+
+    With no --folder, the command lists folders and Markdown filenames at the
+    top of the vault. When folders are listed, the output suggests a command
+    to list notes in the first folder.
+    Pass a number from that vault's latest folder list or a path such as
+    Course to --folder. For a folder named 1, use --folder ./1.
+
+    With --folder, shows the latest 20 notes by default. Use -n up to 250.
+    Numbered rows show filenames, with a parent path when a name repeats.
+    Row numbers work for 15 minutes. JSON output does not save them.
+
+    Exit 0 means the list loaded. If it is empty, check the folder selection.
+    Exit 1 means a file or vault could not be read, or the list could not be
+    saved. The error message shows what to do next.
+    Exit 2 means the arguments or selection are invalid. Check this help or
+    choose a vault by its path if several vaults have the same name.
+    """
+    from .commands.obsidian_commands import handle_obsidian_ls
+    handle_obsidian_ls(vault=vault, folders=folders or (), last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("read", epilog="Example:  co obsidian read 1\n\n"
+                                    "Example:  co obsidian read Course/Note.md --folder Course")
+def _obsidian_read(
+    ref: str = typer.Argument(..., help="Note path, exact filename title, or row number from ls or search"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path for an explicit scope"),
+    folders: List[str] = typer.Option(None, "--folder", help="Vault-relative folder; required for a note path or title; repeat to select several"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID shown by ls or search (lasts 15 minutes)"),
+    json_output: bool = typer.Option(False, "--json", help="Print the full note record as JSON"),
+    raw: bool = typer.Option(False, "--raw", help="Show original Markdown in a terminal"),
+):
+    """Read a note by row number, path or exact filename title. Read-only.
+
+    Use a note number from ls with --folder, or from search.
+    Numbers from a folder list do not select notes. Note rows last 15 minutes.
+    If the list suggests a read command with --listing, copy it to use those
+    same note numbers even after you list or search again.
+    You can read a row without giving its vault or folders again. If you
+    give --vault with a row, also give its --folder. Both must match the list.
+    For a path or title, give --folder and use --vault if several vaults are
+    available.
+
+    The terminal shows formatted Markdown. Use --raw for the original text
+    or --json for the full note record. Piped output is raw by default.
+    The suggested search command goes to stderr, so it stays out of the note text.
+
+    Exit 0 means the note was read.
+    Exit 1 means the note could not be found or read. Use its path if several
+    notes have the same title.
+    Exit 2 means the arguments or selection are invalid, or the row expired.
+    Check the vault and folders or list notes again.
+    """
+    from .commands.obsidian_commands import handle_obsidian_read
+    handle_obsidian_read(ref, vault=vault, folders=folders or (), listing=listing, json_output=json_output, raw=raw)
+
+
+@obsidian_app.command("search", epilog='Example:\n\nco obsidian search "logic lecture" --folder Course')
+def _obsidian_search(
+    query: str = typer.Argument(..., help="All terms must match; quote phrases inside the query for an exact phrase"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many matches, title matches first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print search hits as JSON; no row numbers are saved"),
+):
+    """Search selected notes across title, body, tags, properties and links. Read-only.
+
+    All query terms must match, ignoring case. The example finds notes matching
+    both logic and lecture. Quotes inside the query keep a phrase together.
+    A query can match any field. Use co obsidian read with --json to check
+    a tag, property or link in a matching note.
+
+    Shows at most 20 matches by default, with title matches first. Row numbers
+    work for 15 minutes. JSON output does not save them. Repeat --folder to
+    search several folders.
+
+    Exit 0 means the search completed. If nothing matched, try a simpler query
+    in the same folders.
+    Exit 1 means a file or vault could not be read, or the list of matches
+    could not be saved. The error message shows what to do next.
+    Exit 2 means the query, arguments or selection are invalid. Check this help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_search
+    handle_obsidian_search(query, vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.

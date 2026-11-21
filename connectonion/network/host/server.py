@@ -27,6 +27,7 @@ don't interfere between concurrent requests.
 
 import asyncio
 import json
+import logging
 import os
 import random
 import threading
@@ -34,6 +35,7 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Union
 
+import httpx
 import uvicorn
 from rich.console import Console
 
@@ -72,6 +74,7 @@ from .http_router import (
 from .provider_workroom import prepare_provider_workroom_turn
 from .remote_browser import RemoteBrowserService
 from .replay import MemoryReplayStore, SignatureReplayStore
+from .revocation import stop_turn_when_revoked
 from .inbox import create_inbox_lifespan
 from .schedule import create_schedule_lifespan
 from .session import ActiveSessionRegistry, SessionStorage, SessionViewers, start_cleanup_job
@@ -382,6 +385,21 @@ def _create_route_handlers(
             project_dir or project_root(), agent_metadata['address'], base_factory)
         create_agent = lambda: controller.attach(base_factory())
 
+    agent_factory = create_agent
+
+    stop_if_revoked = stop_turn_when_revoked(trust_agent)
+
+    def create_agent():
+        agent = agent_factory()
+        agent._host_trust_dir = trust_agent._co_dir
+        # A requester who disconnected sends no frame for the socket check to
+        # catch, so every tool or model step of their turn re-checks trust.
+        # host(agent) hands back the same Agent for every turn: install once.
+        for event in ('before_llm', 'before_each_tool'):
+            if stop_if_revoked not in agent.events[event]:
+                agent.events[event].append(stop_if_revoked)
+        return agent
+
     def notify_result(result, prompt):
         if controller is not None:
             try:
@@ -559,70 +577,61 @@ def resolve_agent_identity(co_dir: Path) -> dict:
 SERVED_BY_FILE = "served_by.json"
 
 
-def claim_identity(co_dir: Path, identity: dict, name: str) -> Optional[str]:
-    """Record that this agent serves under this key, or say who already does.
+def _answers_as(port: int, address: str) -> bool:
+    """Verify a local Host; a failed probe cannot establish a live owner."""
+    try:
+        response = httpx.get(f"http://127.0.0.1:{port}/info",
+                             timeout=httpx.Timeout(1.0), trust_env=False)
+        info = response.json() if response.status_code == 200 else {}
+    except (json.JSONDecodeError, httpx.RequestError, httpx.InvalidURL):
+        return False
+    return isinstance(info, dict) and info.get("address") == address
 
-    One address, one agent. #642 caught two of them sharing `0x10e68f6d…` —
-    `oo` on this laptop with bash and write, and `naturewill` on the deployed
-    box with the contract-ledger tools — because every 1.5.x `co init` wrote
-    `AGENT_CONFIG_PATH=~/.co` and a project with no key of its own inherits the
-    global one on purpose. Since #643 a client resolves an endpoint directly
-    and picks by proximity, so a call meant for the deployed agent reaches the
-    local coding agent instead. `/info` verification cannot catch that: the
-    address genuinely matches.
 
-    The record goes beside the key rather than in the project, because the
-    whole problem is several projects sharing one identity directory.
+def _read_identity_claim(record: Path) -> dict:
+    """Missing or corrupt records cannot establish a previous owner."""
+    if not record.exists():
+        return {}
+    try:
+        existing = json.loads(record.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return existing if isinstance(existing, dict) else {}
 
-    Returns a warning, not a refusal. The agent whose address this is may be
-    the one restarting, and an operator who cannot start their agent because of
-    a stale claim is worse off than one who is told the truth. `co deploy` is
-    where refusing belongs — that is the moment a second permanent copy is
-    made.
+
+def claim_identity(co_dir: Path, identity: dict, name: str, port: int = 8000) -> Optional[str]:
+    """Record who serves this key, or return a verified duplicate's details.
+
+    Projects sharing the global key need a cross-folder notice (#642), and
+    verified live duplicates must stop to avoid splitting sessions (oo-api #283).
+    PIDs are only for the message. The folder is cwd, since co ai's co_dir is
+    global ~/.co. Unverified records allow restarts without changing the key.
     """
     source = Path(identity.get("source") or co_dir)
     if not source.is_dir():
-        # A freshly generated identity is saved into a directory that may not
-        # exist yet, and a hint about who is serving is not worth failing a
-        # start over. No directory, no claim, no warning.
+        # No identity directory means there is nowhere to record a claim.
         return None
     record = source / SERVED_BY_FILE
-    mine = {"name": name, "project": str(co_dir.parent), "address": identity["address"]}
+    mine = {"name": name, "project": str(Path.cwd()), "address": identity["address"],
+            "pid": os.getpid(), "port": port}
 
-    existing = None
-    if record.exists():
-        try:
-            existing = json.loads(record.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            # A warning aid, not a gate. An unreadable record costs a warning,
-            # not a start.
-            existing = None
+    existing = _read_identity_claim(record)
+    if existing.get("address") == mine["address"]:
+        if existing.get("port") and _answers_as(existing["port"], mine["address"]):
+            return (
+                f"{identity['address']} is already served by '{existing.get('name')}' "
+                f"(PID {existing.get('pid')}) in {existing.get('project')} "
+                f"on port {existing['port']}. "
+                f"Stop it with `kill {existing.get('pid')}`, then start this Host again."
+            )
+        if existing.get("project") and existing["project"] != mine["project"]:
+            print(f"[host] This address was last served from {existing['project']} "
+                  f"(no matching Host verified now); serving it from {mine['project']}.")
 
+    # Check-then-write is not atomic: simultaneous starts can both pass. This
+    # best-effort repeat-start guard accepts that race to avoid stale-lock recovery.
     record.write_text(json.dumps(mine, indent=2), encoding="utf-8")
-
-    if not existing or existing.get("project") == mine["project"]:
-        return None       # nobody else, or the same project restarting/renamed
-
-    # Only advice that works. Saying "point AGENT_CONFIG_PATH at this project's
-    # .co" would be wrong for the case that produces this warning: the project
-    # has no key there, which is why it inherited one. Nothing today mints a
-    # local identity for a project that already exists — that gap is what makes
-    # this a warning rather than a refusal, and it is filed separately.
-    return (
-        f"{identity['address'][:10]}… is already served by "
-        f"'{existing.get('name')}' in {existing.get('project')}, using the same "
-        f"key from {source}. Two agents on one address means whichever is "
-        f"nearest answers the call, and the tools they answer with differ. "
-        # This said a project made by `co create` gets its own identity. It
-        # does not: `co create` writes no key, so every such project inherits
-        # ~/.co's and lands here. A key in the project's own .co/keys/ wins
-        # over ~/.co (resolve_agent_identity), so that is the advice that works.
-        f"`co create` does not give a project its own key; they all use "
-        f"~/.co's. To give this one its own address, run in {co_dir.parent}: "
-        f"python -c \"from pathlib import Path; from connectonion import address; "
-        f"address.save(address.generate(), Path('.co'))\" -- the key in "
-        f".co/keys/ then wins over ~/.co. Clients must use the new address."
-    )
+    return None
 
 
 def usable_uvicorn_options(workers, reload) -> tuple:
@@ -700,7 +709,7 @@ def _port_taken_message(port: int, co_dir: Path) -> str:
     return (f"[host] Port {port} is already in use — another agent, or an earlier "
             f"`co host` still running?\n"
             f"       {where}, "
-            f"or for one run: co host --port {port + 1}")
+            f"or for one run: co host --serve --port {port + 1}")
 
 
 def _print_host_banner(
@@ -871,6 +880,31 @@ def _create_handoff_lifespan(co_dir: Path):
     async def on_shutdown():
         for event in stop:
             event.set()
+
+    return on_startup, on_shutdown
+
+
+def _create_rem_upgrade_lifespan(rem_root):
+    """A Host that serves REM notices an upgrade under it and starts the build that replaces it when idle (#3112)."""
+    if rem_root is None:
+        return None, None
+    from ...rem import live_host
+    stop = threading.Event()
+
+    def watch():
+        kicked = {}
+        while not stop.wait(live_host.UPGRADE_CHECK):
+            # A half-written upgrade raises on import or read: looked at again on the next tick.
+            try:
+                live_host.notice_upgrade(rem_root, kicked)
+            except (OSError, SyntaxError, ImportError, ValueError) as error:
+                logging.getLogger(__name__).info("REM upgrade check: %s", error)
+
+    async def on_startup():
+        threading.Thread(target=watch, name="rem-upgrade-watch", daemon=True).start()
+
+    async def on_shutdown():
+        stop.set()
 
     return on_startup, on_shutdown
 
@@ -1131,6 +1165,8 @@ def host(
 
     Passing an Agent instance is the simple path and shares that instance.
     Passing a factory creates a fresh Agent for each request.
+    Startup exits non-zero if another live process claims this address, naming
+    its PID, working folder and port, with the command to stop it.
 
     State Control:
         # Simple/default: share one configured agent and expensive tool setup:
@@ -1245,17 +1281,19 @@ def host(
     summary = config.get('summary')
     examples = config.get('examples')
 
-    # Before anything is printed: a banner announcing http://localhost:<port>
-    # followed by uvicorn's raw "[Errno 48] address already in use" told the
-    # user their agent was up at an address it would never serve.
     # After `pip install -U` nobody re-runs co init, but the agent starts
     # again: refresh the command index for co that Codex and Claude Code read (#2113).
     # Silent when current or when neither ~/.codex nor ~/.claude exists,
-    # which is every server with no human on it.
+    # which is every server with no human on it. It runs even when the port
+    # turns out to be taken: the upgrade happened either way.
     from ...cli.commands.agent_index import refresh
     for path, old, new in refresh():
         print(f"Refreshed the command index for co in {path} ({old or 'none'} → {new})")
 
+    # Before the banner and before the agent is built: a banner announcing
+    # http://localhost:<port> followed by uvicorn's raw "[Errno 48] address
+    # already in use" told the user their agent was up at an address it would
+    # never serve.
     if _port_in_use(port):
         raise SystemExit(_port_taken_message(port, co_dir))
 
@@ -1286,9 +1324,9 @@ def host(
 
     # Said before the banner, where the address is about to be printed as if it
     # belonged to this agent alone.
-    collision = claim_identity(co_dir, addr_data, agent_metadata["name"])
+    collision = claim_identity(co_dir, addr_data, agent_metadata["name"], port)
     if collision:
-        print(f"[host] {collision}")
+        raise SystemExit(f"[host] {collision}")
 
     agent_metadata["address"] = addr_data['address']
     agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
@@ -1356,6 +1394,9 @@ def host(
     route_handlers["identity_dir"] = co_dir
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
+    # Where files other agents send land (file_inbox.py, `co send`).
+    from .file_inbox import files_dir
+    route_handlers["files_dir"] = files_dir(co_dir)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -1422,6 +1463,9 @@ def host(
     handoff_startup, handoff_shutdown = _create_handoff_lifespan(co_dir)
     on_startup = _both(on_startup, handoff_startup)
     on_shutdown = _both(handoff_shutdown, on_shutdown)
+    rem_startup, rem_shutdown = _create_rem_upgrade_lifespan(route_handlers.get("rem_root"))
+    on_startup = _both(on_startup, rem_startup)
+    on_shutdown = _both(rem_shutdown, on_shutdown)
     on_startup = _both(on_startup, on_agent_startup)
     on_shutdown = _both(on_agent_shutdown, on_shutdown)
 

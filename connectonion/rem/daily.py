@@ -106,6 +106,8 @@ def _clients(sources: dict) -> dict:
 
 def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None) -> tuple[dict, Path]:
     from .service import running_marker
+    from .catchup import identity
+    from .runner import worker_effort
     config = read_config(root)
     # The model and the process, so logs --usage can name one (#1974) and a
     # later run can tell this one died.
@@ -113,7 +115,7 @@ def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None)
               'outcome': 'running', 'runner_attempts': attempts, 'usage': None,
               'sources': [], 'items': 0, 'changed': [], 'phase': phase,
               'harness': config['runner'], 'model': config['model'], 'speed': config['speed'],
-              'quota': {'before': meter}, **running_marker()}
+              'effort': worker_effort(config), 'quota': {'before': meter}, **running_marker(), **identity(root)}
     path = state_path(root, f"runs/{record['id']}.json")
     write_json(path, record)
     return record, path
@@ -195,6 +197,8 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         refresh(root)
         from .topic_map import backfill_topics
         maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)  # a failed weekly proposal must never fail the round
+    from .schedule import calendar_round
+    maintenance["calendar"] = calendar_round(root)
     _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
@@ -239,6 +243,16 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     changed = [*(maintenance.get('changed') or []), *((result.get('run') or {}).get('changed') or [])]
     _translate_changed(root, config, maintenance, changed, translate_one, say)
     return _record_scheduled_result(root, result, scheduled)
+
+
+def _log_calendar_faults(root, calendar):
+    """A fault in REM while reading a calendar is a failed run with its traceback: a broken refactor is
+    found in `co rem logs`, not as one word on Agenda. The traceback leaves the round's result here."""
+    for kind, error in calendar['errors'].items():
+        if 'traceback' in error:
+            record, path = _reserve(root, 'calendar', 0, {})
+            record.update(outcome='failed', error=f"{kind} calendar: {error.pop('traceback')}", finished_at=now().isoformat())
+            write_json(path, record)
 
 
 def _draft_replies(root, config, maintenance):
@@ -319,18 +333,23 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
-    from .languages import owner_languages
     from .runner import ready
-    from .translate import backlog, cached, translate
+    from .translate import backlog, cached, claimed, shown_today, translate
     from .translate import languages
-    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed)), None)
+    # The owner's one-click job (co rem translate / 全部翻译成中文) is translating the same pages.
+    if claimed(root):
+        say("Translations skipped: REM is already translating every page.")
+        return
+    # Once per round and before the lock: Today's queue reads the whole notebook.
+    shown = shown_today(root)
+    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed, shown=shown)), None)
     if not language or ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
-        for page in backlog(root, language, changed=changed):
+        for page in backlog(root, language, changed=changed, shown=shown):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue
@@ -673,8 +692,9 @@ def _owner_due(root: Path) -> list[dict]:
     status = next((line for line in Notebook(root).read(record).splitlines() if line.startswith("Investigation:")), "")
     read = last_investigated(status)
     today = notebook_today(root)
-    tried = read_json(state_path(root, "owner-refresh.json"), {}).get("date", "")
-    if (read and read >= today) or tried == today.isoformat():
+    from .catchup import key, marker, number
+    tried = read_json(marker(root, "owner-refresh.json"), {}).get("date", "")
+    if (number(root) is None and read and read >= today) or tried == key(root, today):
         return []
     days = min(RETRY_DAYS, (today - read).days + 1) if read else RETRY_DAYS
     return [{'record': record, 'kind': 'owner', 'mode': 'owner', 'days': days,
@@ -684,7 +704,8 @@ def _owner_due(root: Path) -> list[dict]:
 def _owner(root, row, *, clients, subscriptions):
     """`investigate me` over the days since the page was last read. Stamped first,
     so a refused or crashed reading waits until tomorrow, not the next run."""
-    write_json(state_path(root, "owner-refresh.json"), {"date": notebook_today(root).isoformat()})
+    from .catchup import key, marker
+    write_json(marker(root, "owner-refresh.json"), {"date": key(root, notebook_today(root))})
     record = row['record']
     title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines() if line.startswith("# ")),
                  "Account owner")

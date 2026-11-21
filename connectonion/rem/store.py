@@ -36,7 +36,7 @@ def db_path(root: Path) -> Path:
 def _connect(file: Path) -> sqlite3.Connection:
     if not file.exists():
         # Created owner-only before SQLite touches it; SQLite gives -wal and -shm the same mode.
-        os.close(os.open(file, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600))
+        os.close(os.open(file, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600))  # no O_NOFOLLOW on Windows
     file.chmod(0o600)
     db = sqlite3.connect(file, isolation_level=None, timeout=10)
     db.execute("pragma journal_mode=wal")
@@ -50,14 +50,18 @@ def _remove(file: Path) -> None:
 
 def _open_for_build(file: Path):
     """(connection, fresh): an index this code wrote, or a new empty one in its place."""
+    db = None
     try:
         db = _connect(file)
         found = db.execute("select value from meta where key = 'schema_version'").fetchone()
         if found and found[0] == SCHEMA_VERSION:
             return db, False
-        db.close()
     except sqlite3.DatabaseError:
         pass   # not a database, or no meta table: it holds nothing the files do not
+    if db is not None:
+        # Closed before the unlink: Windows refuses to delete an open file
+        # (WinError 32), and a new notebook's first index was skipped.
+        db.close()
     _remove(file)
     db = _connect(file)
     db.executescript(SCHEMA)

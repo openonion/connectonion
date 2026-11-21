@@ -426,14 +426,19 @@ def test_cli_backfill_skips_current_cache_and_nonrecords_and_continues(notebook,
         return 'translated prose'
 
     monkeypatch.setattr(tr, 'translate', translate)
+    from connectonion.rem.files import write_json, state_path
+    (notebook / 'people' / 'held.md').write_text('# held\n\nA source finding.\n\nInvestigation: not investigated yet\n')
+    write_json(state_path(notebook, 'map.json'), {'people': [{'record': 'people/held.md', 'needs_review': True}]})
+    # Logs, the catalog index and held or duplicate pages are not pages to read (#2999 review).
     result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', '--all', '--to', 'zh'])
     assert result.exit_code == 1, result.output
-    assert 'people/avery-lin.md: cached' in result.output
+    assert 'translating 9…' in result.output and 'people/avery-lin.md' not in result.output
     assert 'people/mara-ostrowski.md: failed: fixture translation refused' in result.output
     assert 'people/theo-park.md: translated' in result.output
-    assert '6 translated, 1 cached, 1 failed' in result.output
+    assert '8 translated, 0 cached, 1 failed.' in result.output
     assert sorted(calls) == sorted(['people/mara-ostrowski.md', 'people/theo-park.md', 'orgs/company.md', 'projects/launch.md',
-                                    'skills/catalog/mail.md', 'decisions/format.md', 'principles/simple.md'])
+                                    'skills/catalog/mail.md', 'decisions/format.md', 'principles/simple.md',
+                                    'knowledge/topic.md', 'notes/activity.md'])
     assert (notebook / 'people/avery-lin.md').read_text() == PAGE
 
 
@@ -453,8 +458,8 @@ def test_cli_backfill_category_and_owner_language_default(notebook, monkeypatch)
     assert calls[-1] == (notebook, 'people/avery-lin.md', 'zh-TW')
 
 
-@pytest.mark.parametrize('args', [[], ['--all', 'Avery Lin'], ['Avery Lin', '--category', 'people'],
-                                  ['--all', '--category', 'logs']])
+@pytest.mark.parametrize('args', [['--all', 'Avery Lin'], ['Avery Lin', '--category', 'people'],
+                                  ['--category', 'drafts']])
 def test_cli_backfill_rejects_invalid_selection_before_translating(notebook, monkeypatch, args):
     monkeypatch.setattr(tr, 'translate', lambda *a: pytest.fail('translator called'))
     result = CliRunner().invoke(app, ['rem', '--root', str(notebook), 'translate', *args, '--to', 'zh'])
@@ -594,3 +599,57 @@ def test_daily_summary_and_per_page_usage_are_not_counted_twice(notebook, monkey
 def test_issue_numbers_at_line_start_are_prose_not_headings():
     original = '# Theo Park\n\n## History\n- Fixed in #1037 [1].\n'
     assert tr.checked(original, '# Theo Park\n\n## History\n#1037 中修复 [1]。\n') .startswith('# Theo Park')
+
+
+def test_a_decisions_title_is_a_statement_and_is_translated_a_persons_name_is_not():
+    """#3142 (owner, 2026-11-19): «decision 的标题为什么是英文的呢？». A decision, knowledge or principle title says
+    something; a person, organisation or project title names one."""
+    from connectonion.rem import translate
+    decision = "# Keep the notebook in Markdown\n\nWe chose Markdown [1].\n"
+    assert "Keep the notebook in Markdown" not in translate.page_names(decision, "decisions/notebook-format.md")
+    assert "Mara Ostrowski" in translate.page_names("# Mara Ostrowski\n\nRuns the pilot.\n", "people/mara.md")
+    assert "translate its title" in translate.prompt("zh", statement=True)
+    assert "translate its title" not in translate.prompt("zh")
+    # The checker lets a statement's title change and still holds every other heading.
+    assert translate.checked(decision, "# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n", title_free=True)
+    with pytest.raises(RemError):
+        translate.checked(decision, "# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n")
+
+
+def _cache(root, record, original, translated):
+    from connectonion.rem.files import atomic_write
+    path = root / ".state" / "translations" / "zh" / record
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(path, f"<!-- co rem translation of {record} sha256:{tr.digest(original)} -->\n" + translated)
+
+
+def test_a_statement_translated_before_3142_with_its_english_title_waits_again_and_stays_shown(notebook, monkeypatch):
+    """rc34 hunt (#3165): 104 of 104 decision translations kept their English title and the queue called them
+    current, so «decision 的标题为什么是英文的呢？» could never be answered by the night."""
+    record = "decisions/notebook-format.md"
+    original = "# Keep the notebook in Markdown\n\nWe chose Markdown [1].\n"
+    (notebook / "decisions").mkdir(exist_ok=True)
+    (notebook / record).write_text(original)
+    _cache(notebook, record, original, "# Keep the notebook in Markdown\n\n我们选择了 Markdown [1]。\n")
+    # Still shown while it waits: the page stays readable in Chinese.
+    assert tr.cached(notebook, record, "zh").startswith("# Keep the notebook")
+    assert not tr.current(notebook, record, "zh")
+    assert record in tr.backlog(notebook, "zh")
+    calls = []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", model("# 笔记本保持 Markdown 格式\n\n我们选择了 Markdown [1]。\n", calls))
+    assert tr.translate(notebook, record, "zh").startswith("# 笔记本保持 Markdown 格式")
+    assert len(calls) == 1 and tr.current(notebook, record, "zh")
+    assert record not in tr.backlog(notebook, "zh")
+
+
+def test_a_names_title_left_as_written_is_current_and_so_is_a_statement_titled_by_a_product_name(notebook):
+    """A person's name is meant to stay; a statement whose whole title is a code name has nothing to translate."""
+    person = "people/avery-lin.md"
+    original = (notebook / person).read_text()
+    _cache(notebook, person, original, original.replace("founder", "创始人"))
+    assert tr.current(notebook, person, "zh")
+    record = "decisions/v2.md"
+    (notebook / "decisions").mkdir(exist_ok=True)
+    (notebook / record).write_text("# co-rem-v2\n\nWe ship it [1].\n")
+    _cache(notebook, record, "# co-rem-v2\n\nWe ship it [1].\n", "# co-rem-v2\n\n我们发布它 [1]。\n")
+    assert tr.current(notebook, record, "zh")

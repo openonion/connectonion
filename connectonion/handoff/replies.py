@@ -156,7 +156,38 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # 1.9.6rc3: no handoff transport change; the recipient installs this release too.
 # 1.9.6rc4: no handoff transport change; the recipient installs this release too.
 # 1.9.6rc5: no handoff transport change; the recipient installs this release too.
-MIN_VERSION = "1.9.6rc5"
+# 1.9.6rc6: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc7: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc8: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc9: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc10: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc11: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc20: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc21: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc22: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc23: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc25: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc26: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc27: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc28: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc29: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc30: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc32: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc33: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc34: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc36: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc39: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc40: no handoff transport change; rc39 never reached PyPI, so the floor skips it.
+# 1.9.6rc41: no handoff transport change; rc40 never reached PyPI either.
+# 1.9.6rc42: no handoff transport change; rc41 never reached PyPI either.
+# 1.9.6rc43: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc44: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc45: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc46: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc47: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc48: no handoff transport change; the recipient installs this release too.
+# 1.9.6: no handoff transport change; the recipient installs this release too.
+MIN_VERSION = "1.9.6"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 

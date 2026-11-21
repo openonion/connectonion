@@ -162,7 +162,11 @@ def test_global_init_finishes_with_login_pending(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["init", "--yes"])
     elapsed = time.monotonic() - started
     assert result.exit_code == 0, result.output
-    assert elapsed < 1
+    # What this guards is the 45 s `codex login` init used to wait on (4e1006050);
+    # run/Popen/browser below prove it is not started. One second was a load
+    # measurement: a busy CI worker took 1.34 s (run 43251992171). A third of the
+    # wait it replaced still tells "returned" from "waited for a login".
+    assert elapsed < 15
     run.assert_not_called()
     spawn.assert_not_called()
     browser.assert_not_called()

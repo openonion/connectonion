@@ -2,7 +2,7 @@
 Purpose: `co browser import` — carry the logins (cookies) of a Chrome profile on this Mac into the co browser profile, through that browser's own cookie API.
 LLM-Note:
   Dependencies: imports from [sys, json, shlex, tempfile, shutil, collections, useful_tools/browser_tools/chrome_cookies, useful_tools/browser_tools/engine | lazy: browser_agent.client._request, browser_commands._ensure_paid_client] | imported by [cli/main.py browser()] | tested by [tests/unit/test_browser_import.py]
-  Data flow: parse_args → resolve the Chrome profile → read a private copy of its cookie DB → filter by --domain → print sites and counts (never values) → --dry-run stops | confirm once (TTY, or --yes) → Keychain key → decrypt → `open_browser` on the daemon → `cookies ls --all --json` (values shaped) to find sites where the target already holds a login cookie (LOGIN_COOKIES, else a session-named Secure+HttpOnly cookie the source also has) → `cookies load FILE --all` per site from a 0600 file in a 0700 temp dir that is removed afterwards → per-site report
+  Data flow: parse_args → resolve the Chrome profile → read a private copy of its cookie DB → filter by --domain → print sites and counts (never values) → --dry-run stops | confirm once (TTY, or --yes) → Keychain key → decrypt → `open_browser` on the daemon → `cookies ls --all --domain SITE --json` per imported site (values shaped) to find sites where the target already holds a login cookie (LOGIN_COOKIES, else a session-named Secure+HttpOnly cookie the source also has) → `cookies load FILE --all` per site from a 0600 file in a 0700 temp dir that is removed afterwards → per-site report
   State/Effects: reads the source profile only through a copy; writes cookies into the target browser via Playwright add_cookies in the daemon, never by editing its files | CO_BROWSER_SOCK / CO_BROWSER_PROFILE_DIR apply because every write goes through the same daemon client as other browser verbs | a real import starts a browser session (billed on the WTF Browser)
   Integration: exposes handle_browser_import(args, engine=None, headless=False) -> int and IMPORT_HELP | the daemon is reached through _daemon(), which tests replace
   Errors: exit 2 on usage or a missing confirmation, 1 when the source cannot be read or nothing could be written; a site whose batch the browser rejects is retried cookie by cookie so the report can say which ones and why
@@ -278,14 +278,16 @@ _SESSION_WORDS = ("session", "auth", "token", "sid")
 def _target_cookies(engine_mode: str, headless: bool, sites: List[str]) -> Optional[Dict[str, list]]:
     """The target's cookies per site, as the daemon lists them: values shaped,
     so names, domains and flags are all this command ever sees."""
-    code, payload = _daemon("cookies ls --all --json", engine_mode=engine_mode, headless=headless)
-    if code:
-        print(f"could not read the target browser's cookies: {payload}", file=sys.stderr)
-        return None
     held: Dict[str, list] = defaultdict(list)
-    for cookie in json.loads(payload or "[]"):
-        host = str(cookie.get("domain", "")).lstrip(".")
-        for site in sites:
+    for site in sites:
+        line = shlex.join(["cookies", "ls", "--all", "--domain", site, "--json"])
+        code, payload = _daemon(line, engine_mode=engine_mode, headless=headless)
+        if code:
+            print(f"could not read the target browser's cookies: {payload}; nothing was written",
+                  file=sys.stderr)
+            return None
+        for cookie in json.loads(payload or "[]"):
+            host = str(cookie.get("domain", "")).lstrip(".")
             if chrome.matches(host, site):
                 held[site].append(cookie)
     return held

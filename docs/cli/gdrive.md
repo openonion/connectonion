@@ -106,6 +106,25 @@ Everything else downloads byte-for-byte. Folders and Forms have no export
 format at all — the command fails rather than writing a broken file.
 Shortcuts resolve to whatever they point at.
 
+A file with bytes of its own, such as a video, streams to disk as it arrives:
+
+- It is written to `NAME.part` and renamed to `NAME` only when its size and
+  md5 match what Drive reports. A `.part` that does not match is removed and
+  the command says so.
+- Every 5 seconds a line on stderr gives bytes so far, rate and time left
+  (`1.2 GB of 3.7 GB (32%), 41.0 MB/s, 62 s left`); stdout keeps only the
+  result. `--quiet` turns the lines off.
+- Interrupted, or killed? Run the same command again: it finds the `.part`
+  and asks Drive only for the rest (`Range`).
+- With no data for 60 seconds, or a dropped connection, it reconnects from
+  what is on disk, up to 5 times in a row. Then it stops with exit 1, says
+  where the `.part` is, and prints the command that resumes it.
+
+```bash
+co gdrive get 1A2b3C4d5E6f7G8h --to ~/Footage          # progress on stderr
+co gdrive get 1A2b3C4d5E6f7G8h --to ~/Footage --quiet  # no progress lines
+```
+
 An existing file is never replaced: if the name is taken (or is a symlink), the
 download is saved as `name-1.ext`, `name-2.ext`, … and the printed path says
 which. Only the last segment of a Drive name is used, so a file shared as

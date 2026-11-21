@@ -295,3 +295,102 @@ def test_finalize_runs_when_the_gate_skipped_the_tests():
     finalize_job = RELEASE.split("  finalize:", 1)[1].split("\n  ", 1)[0] + RELEASE.split("  finalize:", 1)[1][:600]
     assert "if: ${{ !cancelled()" in finalize_job
     assert "needs.publish.result == 'success'" in finalize_job
+
+
+# A release PR and its commit change only version strings and release notes.
+# Neither re-runs the full matrix on code main has already tested.
+
+_ONLY_SPEC = importlib.util.spec_from_file_location(
+    "version_only", ROOT / ".github/scripts/version_only.py")
+ONLY = importlib.util.module_from_spec(_ONLY_SPEC)
+_ONLY_SPEC.loader.exec_module(ONLY)
+
+RELEASE_DIFF = '''diff --git a/connectonion/_version.py b/connectonion/_version.py
+--- a/connectonion/_version.py
++++ b/connectonion/_version.py
+@@ -1 +1 @@
+-__version__ = "1.9.6rc24"
++__version__ = "1.9.6rc25"
+diff --git a/docs/releases/1.9.6rc25.md b/docs/releases/1.9.6rc25.md
+--- /dev/null
++++ b/docs/releases/1.9.6rc25.md
+@@ -0,0 +1 @@
++# ConnectOnion 1.9.6rc25
+diff --git a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -6,3 +6,3 @@
+ name = "connectonion"
+-version = "1.9.6rc24"
++version = "1.9.6rc25"
+ description = "x"
+diff --git a/uv.lock b/uv.lock
+--- a/uv.lock
++++ b/uv.lock
+@@ -400,3 +400,3 @@
+ name = "connectonion"
+-version = "1.9.6rc24"
++version = "1.9.6rc25"
+ source = { editable = "." }
+'''
+
+
+def test_a_release_bump_is_version_only():
+    assert ONLY.version_only(RELEASE_DIFF) is True
+
+
+@pytest.mark.parametrize("smuggled", [
+    # a dependency in pyproject.toml is code
+    ('pyproject.toml', '-    "httpx>=0.27",', '+    "httpx>=0.20",'),
+    # another package's version in uv.lock is a dependency change
+    ('uv.lock', '-version = "2.0.0"', '+version = "1.0.0"'),
+    # any source file
+    ('connectonion/agent.py', '-x = 1', '+x = 2'),
+])
+def test_anything_else_runs_the_full_matrix(smuggled):
+    path, old, new = smuggled
+    name = 'name = "httpx"' if path == 'uv.lock' else 'context'
+    extra = (f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n"
+             f"@@ -1,3 +1,3 @@\n {name}\n{old}\n{new}\n")
+    assert ONLY.version_only(RELEASE_DIFF + extra) is False
+
+
+def test_an_empty_diff_is_not_a_release():
+    assert ONLY.version_only("") is False
+
+
+def _runs(sha, status="completed", conclusion="success"):
+    run = dict(RECORDED_RUNS["workflow_runs"][0], head_sha=sha, status=status, conclusion=conclusion)
+    return {"total_count": 1, "workflow_runs": [run]}
+
+
+def test_a_version_only_release_commit_is_proven_by_its_parents_green_run():
+    runs = {"rel": _runs("rel", "in_progress", None), "par": _runs("par")}
+    decision = GATE.decide_release("rel", "par", True, runs.__getitem__, lambda run_id: RECORDED_JOBS)
+    assert decision.verdict == GATE.TESTED
+    assert "only release metadata" in decision.reason
+
+
+def test_a_code_change_never_borrows_its_parents_run():
+    runs = {"rel": _runs("rel", "in_progress", None), "par": _runs("par")}
+    decision = GATE.decide_release("rel", "par", False, runs.__getitem__, lambda run_id: RECORDED_JOBS)
+    assert decision.verdict == GATE.WAIT
+
+
+def test_a_red_run_on_the_release_commit_itself_still_blocks():
+    runs = {"rel": _runs("rel", conclusion="failure"), "par": _runs("par")}
+    red = {"jobs": [dict(job, conclusion="failure") if job["name"] == "tests-passed" else job
+                    for job in RECORDED_JOBS["jobs"]]}
+    decision = GATE.decide_release("rel", "par", True, runs.__getitem__, lambda run_id: red)
+    assert decision.verdict == GATE.BLOCKED
+
+
+def test_a_version_only_pr_skips_the_matrix_and_tests_passed_says_so():
+    jobs = yaml.safe_load(TESTS)["jobs"]
+    skip = "needs.scope.outputs.version_only != 'true'"
+    for name in ["test", "cli-help-audit", "remote-browser-egress", "windows-browser",
+                 "windows-e2e", "macos-e2e"]:
+        assert jobs[name]["needs"] == "scope" and jobs[name]["if"] == skip, name
+    assert "scope" in jobs["tests-passed"]["needs"]
+    steps = str(jobs["scope"]["steps"])
+    assert "pull_request" in steps and "refs/heads/release/*" in steps  # main and workflow_call run everything

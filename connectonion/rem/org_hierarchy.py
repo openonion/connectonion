@@ -3,7 +3,7 @@ import re
 from datetime import date
 
 from . import facts
-from .reader_model import notebook_links, source_definitions
+from .reader_model import PRIVATE, notebook_links, source_definitions
 
 
 def _links(path, values):
@@ -13,6 +13,11 @@ def _links(path, values):
 
 def _cited(values):
     return [value for value in values if value['citations']]
+
+
+def _open(values):
+    """A labelled membership stays behind its curtain: it never places a person in a unit."""
+    return [value for value in _cited(values) if not PRIVATE.search(value['value'])]
 
 
 def _parents(orgs):
@@ -44,7 +49,7 @@ def _structure_source(org):
 
 
 def _unit_role(person, unit):
-    for row in _cited(person['facts']['Role in unit']):
+    for row in _open(person['facts']['Role in unit']):
         if unit in notebook_links(person['path'], row['value']):
             return re.sub(r'^[\s:—–-]+', '', re.sub(r'\[\[[^\]]+\]\]|\[[^\]]+\]\([^)]+\)', '', row['value'])).strip()
     # A bare role immediately after one Unit line names that edge too.
@@ -52,9 +57,9 @@ def _unit_role(person, unit):
     span = facts._bounds(person['text'], 'Facts')
     for line in person['text'][span[0]:span[1]].splitlines() if span else []:
         if line.startswith('- Unit:'):
-            current = _links(person['path'], _cited(facts.values(line.partition(':')[2])))
+            current = _links(person['path'], _open(facts.values(line.partition(':')[2])))
         elif line.startswith('- Role in unit:') and current == [unit]:
-            roles = _cited(facts.values(line.partition(':')[2]))
+            roles = _open(facts.values(line.partition(':')[2]))
             if len(roles) == 1 and not notebook_links(person['path'], roles[0]['value']):
                 return roles[0]['value']
     return ''
@@ -90,7 +95,7 @@ def structure(records, owner=''):
         org['depth'] = len(chain) - 1 if orgs[chain[-1]]['depth'] is not None else None
         org['children'].sort()
     for person in (row for row in records if row['category'] == 'people'):
-        units = [path for path in _links(person['path'], _cited(person['facts']['Unit']))
+        units = [path for path in _links(person['path'], _open(person['facts']['Unit']))
                  if path in orgs and orgs[path]['unit_kind']]
         person['units'] = [{'path': path, 'role': _unit_role(person, path)} for path in units]
         if person['path'] == owner or person.get('service') or person.get('needs_review'):

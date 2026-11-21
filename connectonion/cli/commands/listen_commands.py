@@ -93,6 +93,13 @@ _CREDENTIAL_WORDS = re.compile(r"credential|unauthori[sz]ed|\b401\b|\b403\b|toke
 def _refused(name: str, exc: Exception) -> None:
     """Print a platform's refusal with the command to run next, and exit 1."""
     text = str(exc)
+    scope = _missing_scope(text) if name in ("feishu", "lark") else None
+    if scope:
+        from .feishu_auth import scan_to_enable_url
+
+        link = scan_to_enable_url(name, provider(name).app_id, tenant=[scope])
+        text = (f"{text.rstrip('. ')}. The bot does not have the scope {scope}. Open this link, approve it, "
+                f"and run the same command again: {link}")
     if "Next:" not in text:
         verb = "check" if _CREDENTIAL_WORDS.search(text) else "log"
         text = f"{text.rstrip('. ')}. Next: co {name} {verb}"
@@ -169,8 +176,8 @@ def _listener_died(inbox: Inbox, code, when: str = "at once") -> None:
     """
     errors.print(f"the listener exited {when}:", style="red")
     # The reason is the child's last few lines; an agent that reads
-    # stderr should not have to go and open the log to learn "pip
-    # install lark-oapi".
+    # stderr should not have to go and open the log to learn which
+    # command restores a missing SDK.
     for line in inbox.why_listener_stopped():
         # Unwrapped: a pip command split across two lines cannot be copied.
         errors.print(f"  {line}", style="red", soft_wrap=True, highlight=False)
@@ -281,21 +288,24 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     print_tip(f"Next: co {name} check")
 
 
-def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
+def handle_listen(name: str, raw: bool = False, restart: bool = False, phone: str = "") -> None:
     """Hold the connection and write every message to the inbox."""
     p = _configured(name)
     inbox = Inbox(name)
-    if restart:
-        _restart_listener(name, inbox)
-        return
     # The SDK is needed by listen alone; asking here, before the lock, means
     # the answer is exit 3 with the pip command on stderr, the same shape as
-    # a missing credential, and not "the listener exited at once".
+    # a missing credential, and not "the listener exited at once". Before a
+    # restart too: the new listener runs on this co's own Python, not the old
+    # one's venv, and stopping a working listener that this co cannot replace
+    # left none at all (#3001).
     needed = getattr(p, "listen_requirements", list)()
     if needed:
         for problem in needed:
             errors.print(problem, style="red")
         sys.exit(EXIT_CONFIG)
+    if restart:
+        _restart_listener(name, inbox)
+        return
     if not inbox.hold_lock():
         errors.print(f"already listening (pid {inbox.listener_pid()}); one listener per directory", style="yellow")
         sys.exit(1)
@@ -328,7 +338,7 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
     main = threading.current_thread() is threading.main_thread()
     previous = signal.signal(signal.SIGTERM, terminated) if main else None
     try:
-        p.run(inbox, raw=raw)
+        p.run(inbox, raw=raw, **({"phone": phone} if phone else {}))
     except KeyboardInterrupt:
         inbox.log("stopped by Ctrl-C")
     except ListenerStopped as exc:
@@ -437,7 +447,18 @@ def handle_send(name: str, chat: str, text: Optional[str] = None, reply_to: Opti
     p = _configured(name, sends=True)
     inbox = Inbox(name)
     body, media, extra = _body_and_media(p, name, "send", text, plain, image, file)
+    from ...inbox.whatsapp import WhatsApp
+
+    if isinstance(p, WhatsApp):
+        # A saved contact's name or a phone number, not only a JID (#2964).
+        try:
+            chat, extra["phone"] = p.resolve_chat(chat)
+        except ValueError as exc:
+            _refused(name, exc)
     try:
+        # Lark and Feishu also take an email, a phone number, a saved contact
+        # or a group name; what is recorded is the id it resolved to.
+        chat = getattr(p, "resolve", str)(chat)
         sent = p.send(chat, body, reply_to=reply_to, plain=True, **extra)
     except Exception as exc:
         inbox.record_sent(chat=chat, text=body, reply_to=reply_to, error=str(exc), by="send", media=media)
@@ -761,13 +782,27 @@ def _report_connection(name: str, inbox: Inbox, pid) -> None:
     sys.exit(EXIT_CONFIG)
 
 
+def _saved_names(name: str):
+    """jid -> the name the owner saved for it, for a provider that keeps contacts (#2964)."""
+    return getattr(provider(name), "contact_name", lambda jid: "")
+
+
+def _named(record: dict, saved) -> dict:
+    """The record with the owner's saved name for its sender, when there is one."""
+    chosen = saved(record.get("sender", ""))
+    return {**record, "sender_name": chosen} if chosen else record
+
+
 def handle_ls(name: str) -> None:
-    """Unread messages, one per line: id, chat, sender, text."""
+    """Unread messages, one per line: id, chat, sender, text. The sender is
+    the saved contact name when the owner gave it one."""
     inbox = Inbox(name)
+    saved = _saved_names(name)
     for message in inbox.list_messages():
         record = message.to_dict()
         text = " ".join(str(record.get("text", "")).split())
-        print(f"{record['id']}\t{record['chat']}\t{record.get('sender', '')}\t{text}")
+        sender = saved(record.get("sender", "")) or record.get("sender", "")
+        print(f"{record['id']}\t{record['chat']}\t{sender}\t{text}")
 
 
 def _handled_lines(inbox: Inbox) -> List[str]:
@@ -809,8 +844,9 @@ def handle_chats(name: str) -> None:
         errors.print("no conversations yet — nothing has arrived in this inbox.", style="dim")
         print_tip(f"Next: co {name} listen")
         return
+    saved = _saved_names(name)
     for row in rows:
-        who = row["last_sender_name"] or row["last_sender"]
+        who = saved(row["last_sender"]) or row["last_sender_name"] or row["last_sender"]
         text = " ".join(str(row["last_text"]).split())[:60]
         # Plain print, not Rich: Rich expands \t into spaces, and `cut -f1` has
         # to give the chat id — the one thing every other verb needs and nothing
@@ -825,12 +861,16 @@ def handle_log(name: str, follow: bool = False, chat: Optional[str] = None,
                last: Optional[int] = None) -> None:
     """Every message ever received; -f keeps printing new ones."""
     inbox = Inbox(name)
+    saved = _saved_names(name)
     if chat or sender or since or last is not None:
         # A filtered read is a query, not a tail: it answers from the record and
         # stops, so `--follow` with a filter would mean two different things at
         # once.
         window = _since_to_iso(since)
-        for record in inbox.history(chat=chat, sender=sender, since=window, last=last):
+        rows = [_named(record, saved) for record in inbox.history(chat=chat, since=window, ours=True)]
+        if sender:
+            rows = [r for r in rows if sender in (r.get("sender", ""), r.get("sender_name", ""))]
+        for record in rows[max(0, len(rows) - last):] if last is not None else rows:
             print(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
         return
     for line in _handled_lines(inbox):
@@ -840,12 +880,25 @@ def handle_log(name: str, follow: bool = False, chat: Optional[str] = None,
         while True:
             line = handle.readline()
             if line:
-                sys.stdout.write(line)
+                sys.stdout.write(_named_line(line, saved))
                 sys.stdout.flush()
                 continue
             if not follow:
                 return
             time.sleep(0.5)
+
+
+def _named_line(line: str, saved) -> str:
+    """A log line as written, or re-encoded with the saved name for its sender."""
+    if not line.endswith("\n"):
+        return line  # still being written; the next read has the rest
+    try:
+        record = json.loads(line)
+    except ValueError:
+        return line  # a torn line the store skips too; the tail shows it as it is
+    named = _named(record, saved)
+    return line if named is record else json.dumps(named, ensure_ascii=False,
+                                                   separators=(",", ":")) + "\n"
 
 
 def handle_consume(name: str, command: List[str], once: bool = False, workers: int = 1,
@@ -882,6 +935,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
             CO_SENDER=message.sender,
             CO_MSG_ID=message.id,
             CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
+            PYTHONIOENCODING="utf-8",
         )
         os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
         # Before the command, not before the send. Here the command *is* the
@@ -891,7 +945,10 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # lands, which is the same as not marking at all.
         _mark_answering(p, inbox, message)
         run = subprocess.run(command, input=_with_context(inbox, message, context) + "\n",
-                             capture_output=True, text=True, env=env)
+                             capture_output=True, text=True, env=env,
+                             # UTF-8 both ways, not the locale: on Windows that is
+                             # cp1252, and Chinese replies arrived as "â€¢".
+                             encoding="utf-8", errors="replace")
         # Returning finishes the message; raising leaves it in cur/ for the
         # sweep to offer again in an hour. So a command that failed, or a
         # reply the platform refused, raises: completing it here turned every

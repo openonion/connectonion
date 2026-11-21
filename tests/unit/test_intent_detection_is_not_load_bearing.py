@@ -38,7 +38,7 @@ def test_it_follows_the_model_the_agent_was_built_with():
     agent = make_agent()
 
     with patch.object(system_reminder, "llm_do") as called:
-        called.return_value = MagicMock(ack="ok", is_build=False)
+        called.return_value = MagicMock(ack="ok", is_connectonion_agent_build=False)
         system_reminder.detect_intent(agent)
 
     assert called.call_args.kwargs["llm"] is agent.llm

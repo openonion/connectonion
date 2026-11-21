@@ -289,7 +289,7 @@ def test_default_open_falls_back_to_a_snapshot_that_exists_and_renders_the_pages
     (owner, 2026-10-15). When co ai cannot start, the snapshot opens instead and
     says why -- the page asked for is still shown, so this is not a failure."""
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address: (None, "co ai exited during startup"))
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_local", lambda address, **k: (None, "co ai exited during startup"))
     result = runner.invoke(app, ["rem", "open", "--no-launch"])
     assert result.exit_code == 0, result.output
     output = _plain(result.output)
@@ -316,7 +316,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
     even with the Host online and O Chat serving it (--live asks for that)."""
     _, _, opened = _owner_notebook(tmp_path, monkeypatch, host="direct")
     monkeypatch.setattr("connectonion.rem.live_host.ensure_local",
-                        lambda address: ("http://127.0.0.1:8123/rem?token=t", None))
+                        lambda address, **k: ("http://127.0.0.1:8123/rem?token=t", None))
     result = runner.invoke(app, ["rem", "--json", "open"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)["data"]
@@ -326,7 +326,7 @@ def test_default_open_never_prints_a_chat_openonion_route(tmp_path, monkeypatch)
 
 def test_live_with_failed_host_startup_labels_the_snapshot_and_names_co_ai(tmp_path, monkeypatch):
     _, asked, opened = _owner_notebook(tmp_path, monkeypatch, host=None)
-    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address: "co ai is not online; see startup log")
+    monkeypatch.setattr("connectonion.rem.live_host.ensure_online", lambda address, **k: "co ai is not online; see startup log")
     result = runner.invoke(app, ["rem", "open", "--live"])
     assert result.exit_code == 1, result.output
     output = _plain(result.output)
@@ -634,18 +634,28 @@ def test_usage_command_shows_where_tokens_went(tmp_path):
 
 @pytest.mark.parametrize("stage", ["abstract"])
 def test_skill_entry_points_delegate_and_return_a_next_command(tmp_path, monkeypatch, stage):
+    """Abstract writes from the decisions captured on session pages (#2997, #3053),
+    so with none waiting it starts no model; one waiting line makes it delegate."""
     calls = []
 
     def run(notebook, items, config, **kw):
-        calls.append((notebook.root, items, kw["stage"]))
-        return {"changed": [], "usage": None, "report": "done"}
+        calls.append((notebook.root, [item["record"] for item in items], kw["stage"]))
+        notebook.write("decisions/keep-receipts.md",
+                       "# Keep receipts\n\n“Keep receipts.” [1]\n\n## Sources\n- [1] codex:fixture:7\n")
+        return {"changed": ["decisions/keep-receipts.md"], "usage": None, "report": "done"}
 
     monkeypatch.setattr("connectonion.rem.runner.run_stage", run)
+    idle = invoke(tmp_path, "--json", stage)
+    assert idle.exit_code == 0 and json.loads(idle.output)["data"]["rounds"] == [] and calls == []
+    prepare(tmp_path)
+    Notebook(tmp_path).write("sessions/backlog.md", "# Backlog\n\n## Decisions\n- “Keep receipts.” [1]\n\n"
+                                                    "## Sources\n- [1] codex:fixture:7\n")
     result = invoke(tmp_path, "--json", stage)
     assert result.exit_code == 0, result.output
     output = json.loads(result.output)
     assert output["ok"] and output["next"].startswith("co rem")
-    assert calls == [(tmp_path, [], stage)]
+    assert output["data"]["written"] == 1
+    assert calls == [(tmp_path, ["sessions/backlog.md"], stage)]
 
 
 def test_people_roster_returns_identity_and_existing_path(tmp_path):
@@ -907,6 +917,9 @@ def test_status_is_a_dashboard_of_the_notebook_not_a_dump_of_fields(tmp_path, mo
     last = lines.index('Last run         investigate people/alice.md · completed')
     assert lines[last + 1].endswith(' · 1 page changed · 91k tokens in')
     assert lines[-1] == f'Next: co rem --root {tmp_path} investigate people'  # the first thing to write (#2008)
+    # A stage sentence that would pass 80 columns breaks after a `;` (the Abstract line with its page counts).
+    abstract = lines.index('Abstract: 0 captured decisions waiting; last ran never;')
+    assert lines[abstract + 1] == '  0 decisions · 0 knowledge · 0 principles'
     assert [line for line in lines if len(line) > 80 and not line.lstrip().startswith(('→', 'Next:', 'Notebook'))] == []
     for internal in ('Known attempts', 'Schedule times', 'Worker', 'Runner attempts today', 'Usage by stage'):
         assert internal not in '\n'.join(lines), internal
@@ -927,8 +940,14 @@ def test_status_verbose_adds_the_internal_fields_and_json_keeps_its_keys(tmp_pat
                                  'usage_coverage', 'last_run', 'mailboxes', 'codex_week',
                                  'investigation_this_week', 'quota', 'investigation_quota',
                                  'schedule_runner', 'people_coverage', 'last_turn', 'models', 'tasks', 'tonight',
-                                 'round', 'nights'}
+                                 'round', 'nights', 'paused',
+                                 # The five stage rows (#3053), calendar freshness (#3057), the saved day plan (#3058).
+                                 'stages', 'calendar', 'day_plan'}
+    assert [row['name'] for row in data['data']['stages']] == ['Collect', 'Investigate', 'Deepen', 'Abstract', 'Translate', 'Tag']
+    assert data['data']['calendar'] == {'last_read': None, 'events': 0, 'text': 'Calendars: never read'}
+    assert set(data['data']['day_plan']) == {'saved_at', 'text'}
     assert data['data']['schedule_runner'] == schedule_runner
+    assert data['data']['paused'] is None  # always present: null until the Codex floor stops a round (#2938)
     assert data['data']['people_coverage'] == {'total': 0, 'covered': 0, 'missing': 0}
     assert data['data']['last_turn'] is None
 
@@ -1034,7 +1053,9 @@ def test_investigate_resolves_observed_name_email_or_path(tmp_path, monkeypatch,
         calls.append(record)
         return {'record': record, 'changed': []}
     monkeypatch.setattr('connectonion.rem.investigate.investigate', run)
-    result = invoke(tmp_path, 'investigate', selector)
+    # Kind first, then name (#3140); a page path names its own kind.
+    kind = [] if selector.endswith('.md') else ['person']
+    result = invoke(tmp_path, 'investigate', *kind, selector)
     assert result.exit_code == 0, result.output
     assert calls == ['people/corin-123.md']
     assert result.output.rstrip().endswith('show people/corin-123.md')
@@ -1083,9 +1104,9 @@ def test_ambiguous_investigation_shows_choices_without_starting(tmp_path, monkey
     for suffix in ('one', 'two'):
         Notebook(tmp_path).stub_person(f'people/corin-{suffix}.md', 'Corin', [])
     monkeypatch.setattr('connectonion.rem.investigate.investigate', lambda *a, **kw: pytest.fail('model called'))
-    result = invoke(tmp_path, 'investigate', 'Corin')
+    result = invoke(tmp_path, 'investigate', 'person', 'Corin')
     assert result.exit_code == 1, result.output
-    assert 'More than one page matches' in result.output
+    assert "2 people are named 'Corin'" in result.output  # every candidate's full name and path (#3140)
     assert 'people/corin-one.md' in result.output and 'people/corin-two.md' in result.output
     assert result.output.rstrip().endswith(' investigate')
 
@@ -1101,11 +1122,16 @@ def test_json_investigate_discovery_and_missing_selection(tmp_path):
     discovered = json.loads(invoke(tmp_path, '--json', 'investigate').stdout)
     assert discovered['ok'] and 'No pages available' in discovered['data']
     assert discovered['next'].endswith(' init')
+    # Kind first, then name (#3140): a bare word that is no kind says so and names the kinds.
     result = invoke(tmp_path, '--json', 'investigate', 'missing')
     failed = json.loads(result.stdout)
     assert result.exit_code == 1 and not failed['ok']
-    assert ('No page matches "missing" in people, projects, orgs, skills or topics. '
-            'Search names and paths with `co rem investigate`.') == failed['data']
+    assert failed['data'].startswith("'missing' is not a kind. Name the kind, then the page:")
+    assert failed['next'].endswith(' investigate')
+    result = invoke(tmp_path, '--json', 'investigate', 'person', 'missing')
+    failed = json.loads(result.stdout)
+    assert result.exit_code == 1 and not failed['ok']
+    assert failed['data'] == "No person is named 'missing'. Find it with: co rem search 'missing'"
     assert failed['next'].endswith(' investigate')
 
 

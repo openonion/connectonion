@@ -3,7 +3,7 @@ Purpose: One directory per chat platform where every inbound message becomes a f
 LLM-Note:
   Dependencies: imports from [dataclasses, json, os, re, subprocess, sys, time, pathlib, environment.py, cli/browser_agent/transport.py (the singleton lock)] | imported by [inbox/feishu.py, inbox/consumer.py, cli/commands/listen_commands.py] | tested by [tests/unit/test_inbox_store.py]
   Data flow: provider → Inbox.deliver(Message) → one line appended to received.jsonl + one file in new/ | consumer → Inbox.receive() → rename new/X → cur/X → Message | reply → Inbox.record_sent() → one line in sent.jsonl, cur/X removed
-  State/Effects: creates ~/.co/inbox/<provider>/ (or $CO_INBOX_HOME/<provider>) mode 0700 with received.jsonl, sent.jsonl, done.jsonl, tmp/, new/, cur/, bad/, log, listen.lock | every write is an append or an atomic rename | received.jsonl is never rewritten or truncated
+  State/Effects: creates ~/.co/inbox/<provider>/ (or $CO_INBOX_HOME/<provider>) mode 0700 with received.jsonl, sent.jsonl, done.jsonl, tmp/, new/, cur/, bad/, log, listen.lock, listen.pid | every write is an append or an atomic rename | received.jsonl is never rewritten or truncated
   Integration: exposes Message, Inbox | the directory is the interface: `ls new/` is the unread count, `tail -f received.jsonl` is a live view, `mv new/X cur/X` is a claim | receive() starts a listener when none is running, the gpg-agent convention
   Performance: deliver() is two small writes; receive() polls new/ four times a second; lookup() and already_replied() scan a JSONL file linearly, which is fine for the sizes one bot sees
   Errors: a torn last line in received.jsonl is skipped, never raised | a rename lost to another consumer moves on to the next file | a queue file that is not a message is set aside in bad/ with a log line | the listener lock is held by the kernel, so a dead listener holds nothing
@@ -153,6 +153,9 @@ class Message:
     attachments: Optional[list] = None
     # Explicit provider ID types, when available, alongside canonical sender.
     sender_ids: Optional[dict] = None
+    # Arrived as group history shared when the account joined, not live
+    # (#2853): recorded, never queued, never answered.
+    history: bool = False
 
     def to_dict(self, *, raw: bool = False) -> dict:
         record = {
@@ -173,6 +176,8 @@ class Message:
             record["attachments"] = self.attachments
         if self.sender_ids:
             record["sender_ids"] = self.sender_ids
+        if self.history:
+            record["history"] = True
         if raw and self.raw is not None:
             record["raw"] = self.raw
         return record
@@ -203,6 +208,7 @@ class Message:
             media=record.get("media") if isinstance(record.get("media"), dict) else None,
             attachments=record.get("attachments") if isinstance(record.get("attachments"), list) else None,
             sender_ids=record.get("sender_ids") if isinstance(record.get("sender_ids"), dict) else None,
+            history=record.get("history") is True,
         )
 
 
@@ -244,6 +250,7 @@ class Inbox:
         self.bad = self.root / "bad"
         self.logfile = self.root / "log"
         self.lock = self.root / "listen.lock"
+        self.pidfile = self.root / "listen.pid"
         for directory in (self.root, self.tmp, self.new, self.cur, self.bad):
             directory.mkdir(parents=True, exist_ok=True)
         # Messages are private. Whoever can read the home directory can read
@@ -473,6 +480,16 @@ class Inbox:
             record["media"] = media  # {kind, path, size}: what went with the caption (#1856)
         self._append(self.sent, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
+    def record_history(self, messages: list) -> int:
+        """Lines in received.jsonl and nothing in the queue: what happened
+        before we were here is read, never answered. Ids the log already has
+        are skipped; returns how many were new."""
+        known = {record.get("id") for record in self._records(self.received)}
+        fresh = [m for m in messages if m.id not in known]
+        for message in fresh:
+            self._append(self.received, message.to_json())
+        return len(fresh)
+
     def record_own(self, message: Message) -> None:
         """One line in own.jsonl: a message the account owner sent themselves."""
         self._append(self.own, message.to_json())
@@ -594,7 +611,8 @@ class Inbox:
         return sorted(seen.values(), key=lambda row: row["last_at"])
 
     def history(self, chat: Optional[str] = None, sender: Optional[str] = None,
-                since: Optional[str] = None, last: Optional[int] = None) -> list[dict]:
+                since: Optional[str] = None, last: Optional[int] = None,
+                ours: bool = False) -> list[dict]:
         """Received records, narrowed. Oldest first; `last` keeps the recent end.
 
         Which end a cap keeps is not a detail — a conversation is read backwards
@@ -611,9 +629,22 @@ class Inbox:
             if since and str(record.get("at", "")) < since:
                 continue
             rows.append(record)
+        if ours and not sender:
+            rows = sorted(rows + self._ours(chat, since), key=lambda r: str(r.get("at", "")))
         if last is not None and last >= 0:
             rows = rows[max(0, len(rows) - last):]
         return rows
+
+    def _ours(self, chat: Optional[str], since: Optional[str]) -> list[dict]:
+        """What this account said, marked `from_me` (#3001): own.jsonl, then
+        sends from sent.jsonl that own.jsonl does not already echo. A failed
+        send was never said."""
+        rows = [{**r, "from_me": True} for r in self._records(self.own)]
+        echoed = {r.get("id") for r in rows}
+        rows += [{**r, "from_me": True} for r in self._records(self.sent)
+                 if r.get("ok", True) and r.get("id") not in echoed]
+        return [r for r in rows if (not chat or r.get("chat") == chat)
+                and not (since and str(r.get("at", "")) < since)]
 
     def recent_records(self, path: Path, count: int = 5) -> list[dict]:
         """The last `count` well-formed records from a JSONL file. A missing
@@ -627,8 +658,11 @@ class Inbox:
     # The kernel holds the lock, not the file. flock(2) (msvcrt.locking on
     # Windows) is released when the holder exits, SIGKILL and reboot
     # included, so a listener that died holds nothing and a pid the OS has
-    # since reused is not a phantom. The pid inside the file is for people
-    # (`check` prints it) and is never what decides whether a listener runs.
+    # since reused is not a phantom. The pid lives in listen.pid, for people
+    # (`check` prints it), and is never what decides whether a listener runs.
+    # It is not written inside listen.lock: on Windows the locked byte makes
+    # that file unreadable to every other process, so `check` and `consume`
+    # crashed with PermissionError while a listener ran.
     # The bare-pid scheme this replaced failed in both directions: the file
     # existed empty for an instant before the pid was written, so a second
     # starter read "" and unlinked the winner's lock (two listeners, every
@@ -650,6 +684,13 @@ class Inbox:
         staged = self.listener_file.with_suffix(".json.partial")
         staged.write_text(json.dumps(payload), encoding="utf-8")
         staged.replace(self.listener_file)
+
+    def _listener_record(self) -> dict:
+        try:
+            record = json.loads(self.listener_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return record if isinstance(record, dict) else {}
 
     def listener_flags(self) -> list:
         """The flags the last listener was started with, whatever became of it."""
@@ -701,17 +742,17 @@ class Inbox:
         return state if isinstance(state, dict) else {}
 
     def listener_pid(self) -> Optional[int]:
-        """The pid in listen.lock if a process holds the lock, else None."""
-        try:
-            text = self.lock.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            return None
-        if not _held(self.lock):
+        """The listener's pid if a process holds listen.lock, else None."""
+        if not self.lock.exists() or not _held(self.lock):
             return None
         try:
-            return int(text)
-        except ValueError:
-            return -1  # held, but the holder has not written its pid yet
+            return int(self.pidfile.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            pass
+        # A listener from before 1.9.6rc24 wrote its pid into listen.lock, not
+        # listen.pid; listener.json names it on every release since #1859.
+        record = self._listener_record()
+        return record["pid"] if isinstance(record.get("pid"), int) else -1  # -1: held, pid not yet written
 
     def hold_lock(self) -> bool:
         """Claim the listener role for this process. False if another
@@ -721,10 +762,9 @@ class Inbox:
         handle = acquire_singleton_lock(str(self.lock))
         if handle is None:
             return False
-        handle.seek(0)
-        handle.truncate()
-        handle.write(f"{os.getpid()}\n")
-        handle.flush()
+        staged = self.pidfile.with_suffix(".pid.partial")
+        staged.write_text(f"{os.getpid()}\n", encoding="utf-8")
+        staged.replace(self.pidfile)
         self._lock_handle = handle
         return True
 
@@ -762,7 +802,9 @@ class Inbox:
         # With the flags the operator last started it with: a replacement that
         # came back without --raw stopped the raw archive silently (#1882).
         argv += [self.provider, "listen", *self.listener_flags()]
-        env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent))
+        # UTF-8 into the log: on Windows the child's stdout would otherwise be
+        # the ANSI code page, and the 👀/✍️ lines read back as "�o?�,?".
+        env = dict(os.environ, CO_INBOX_HOME=str(self.root.parent), PYTHONIOENCODING="utf-8")
         # In the inbox directory: `-m` puts the working directory first on
         # sys.path, and started from inside a connectonion checkout the
         # listener ran the checkout instead of the installed package (#1878).

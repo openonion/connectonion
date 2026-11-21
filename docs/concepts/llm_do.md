@@ -7,12 +7,12 @@ Make direct LLM calls with optional structured output. Supports OpenAI, Google G
 ```python
 from connectonion import llm_do
 
-# Default: co/gemini-3.8-flash (managed key, no setup needed)
+# Default: co/gemini-4-hydrogen (managed key, no setup needed)
 answer = llm_do("What's 2+2?")  
 print(answer)  # "4"
 
 # Google Gemini (your own key)
-answer = llm_do("What's 2+2?", model="gemini-3.8-flash")
+answer = llm_do("What's 2+2?", model="gemini-4-hydrogen")
 
 # Anthropic Claude
 answer = llm_do("What's 2+2?", model="claude-haiku-4-5")
@@ -119,7 +119,7 @@ llm_do("Hello", model="co/gpt-5")
 llm_do("Hello", model="co/o4-mini")
 
 # Google Gemini models (via managed keys)
-llm_do("Hello", model="co/gemini-3.8-flash")
+llm_do("Hello", model="co/gemini-4-hydrogen")
 llm_do("Hello", model="co/gemini-3.7-flash")  # Explicit rollback
 
 # Anthropic Claude models (via managed keys)
@@ -144,7 +144,7 @@ class Answer(BaseModel):
 
 # Works with all providers
 llm_do("What is 2+2?", output=Answer, model="co/o4-mini")      # ✅
-llm_do("What is 2+2?", output=Answer, model="co/gemini-3.8-flash") # ✅
+llm_do("What is 2+2?", output=Answer, model="co/gemini-4-hydrogen") # ✅
 llm_do("What is 2+2?", output=Answer, model="claude-sonnet-4-5") # ✅ your own key
 
 # Legacy Claude models do NOT support structured output

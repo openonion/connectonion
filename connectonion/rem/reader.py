@@ -30,30 +30,88 @@ D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"
 BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
+
+def source_labels(root: Path, records: list[dict], contexts: dict) -> dict[str, dict]:
+    """A repository file's name for every cited project source whose excerpt had no room in the snapshot (#3165).
+
+    Only the retained packet's origin is read, never its text, so the list stays a few kilobytes on any notebook."""
+    from .files import read_json, state_path
+    from .reader_model import SOURCE
+    labels = {}
+    for record in records:
+        for _, source in SOURCE.findall(record.get("text", "")):
+            if source in labels or source in contexts or not re.fullmatch(r"project-source:[0-9a-f]{64}", source):
+                continue
+            origin = read_json(state_path(root, "project-sources/" + source.split(":")[1] + ".json"), {}).get("origin", "")
+            if isinstance(origin, str) and origin:
+                labels[source] = {"origin": origin}
+    return labels
+
 def _title(record: str, text: str) -> str:
-    for line in text.splitlines():
-        if line.startswith("#"):
-            return line.lstrip("#").strip() or record
-    return Path(record).stem.replace("-", " ")
+    """The page's heading, else an alias that names one thing, else the file's readable stem.
+
+    A topic stub headed "The draft" was the top knowledge node; a bare "#" showed the path.
+    """
+    from .reader_model import PRIVATE
+    from .topic_map import generic_name, topic_aliases
+    stem = Path(record).stem.replace("-", " ")
+    heading = next((line[2:].strip() for line in text.splitlines() if line.startswith("# ")), "")
+    names = [heading, *topic_aliases(text), stem]
+    return next((name for name in names if not generic_name(PRIVATE.sub("", name))), heading or stem)
 
 
-def _org_name(domain: str, text: str) -> str:
-    """Find a capitalised spelling of the first domain label in the page itself."""
+def _org_name(domain: str, text: str, people: frozenset[str] = frozenset()) -> str:
+    """Find the organisation's name in the page itself: a capitalised spelling of the first
+    domain label ("Stone Field"), else a name the label shortens ("University of Brightlane").
+
+    A shortened name is a guess, so it must look like an institution's name: two capitalised
+    words joined by of/for/de/the, each giving two letters or more, and the only such name that
+    fits. "Microsoft" for micro.example or "Team Coordination" for teamco.example was unrelated
+    prose. A person's name (`people`, folded) is never a shortened org name; a full spelling
+    may be one (a founder-named org).
+    """
     body = re.sub(r"^## Sources[ \t]*\n.*?(?=^## |\Z)", "", text, flags=re.I | re.M | re.S)
     body = re.sub(r"^#[ \t]+.*$", "", body, flags=re.M)
     label = re.sub(r"[^a-z]", "", domain.split(".")[0])
-    tokens = list(re.finditer(r"(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]*(?:[’']s)?(?![A-Za-z0-9])", body))
-    names = Counter()
+    tokens = list(re.finditer(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*(?:[’']s)?(?![A-Za-z0-9])", body))
+    spelled, shortened = Counter(), Counter()
     for start, first in enumerate(tokens):
+        if not first.group()[0].isupper():
+            continue
         words, end = [], first.start()
-        for token in tokens[start:start + 4]:
-            if words and not body[end:token.start()].isspace():
+        for token in tokens[start:start + 7]:
+            word = re.sub(r"[’']s$", "", token.group())
+            if words and not body[end:token.start()].isspace() or not word[0].isupper() and word not in ORG_JOINERS:
                 break
-            words.append(re.sub(r"[’']s$", "", token.group()))
+            words.append(word)
             end = token.end()
-            if re.sub(r"[^a-z]", "", "".join(words).lower()) == label:
-                names[" ".join(words)] += 1
-    return names.most_common(1)[0][0] if names else ""
+            capitals = [re.sub(r"[^a-z]", "", w.lower()) for w in words if w[0].isupper()]
+            if len(capitals) > 4:
+                break
+            if not word[0].isupper():
+                continue
+            if len(capitals) == len(words) and "".join(capitals) == label:
+                spelled[" ".join(words)] += 1
+            elif 1 < len(capitals) < len(words) and _shortens(label, capitals):
+                shortened[" ".join(words)] += 1
+    if spelled:
+        return spelled.most_common(1)[0][0]
+    # One fitting name is the answer; two that both fit ("University of Brightlane" and "of
+    # Brightwater" for unibright) is a guess either way.
+    fits = [name for name in shortened if name.casefold() not in people]
+    return fits[0] if len(fits) == 1 else ""
+
+
+# Lowercase words a long name keeps between its capitals; "and" joins two names, not one.
+ORG_JOINERS = ("of", "the", "for", "de")
+
+
+def _shortens(label: str, words: list[str]) -> bool:
+    """`label` is a prefix of two letters or more of every word, in order: unibright <- University of Brightlane."""
+    if not words:
+        return not label
+    return any(label.startswith(words[0][:n]) and _shortens(label[n:], words[1:])
+               for n in range(2, min(len(words[0]), len(label)) + 1))
 
 
 def _org_company_name(path: str, records: list[dict]) -> str:
@@ -113,8 +171,12 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
     must still be findable, without pretending a header established a person.
     Subjects and message bodies never enter the reader's directory.
     """
-    from .files import read_json, state_path
+    from .census import assistant_contact, assistant_orgs
+    from .files import Notebook, read_json, state_path
+    from .threads import person_marks
     mapped = read_json(state_path(root, "map.json"), {})
+    notebook, marks = Notebook(root), person_marks(root)
+    orgs = assistant_orgs([{"path": path, "text": notebook.read(path)} for path in notebook.list("orgs")])
     seen, rows = set(), []
     for row in mapped.get("without_page", []):
         address = str(row.get("address") or "").strip()
@@ -126,6 +188,9 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                      "mails": row.get("mails") if type(row.get("mails")) is int else 0,
                      "sent": row.get("sent") if type(row.get("sent")) is int else 0,
                      "received": row.get("received") if type(row.get("received")) is int else 0})
+        # An assistant or service (the owner's 不是人, else its company's page naming it) waits in its own folded group.
+        mark = marks.get(address.casefold())
+        rows[-1]["machine"] = mark == "not-person" or (mark != "person" and assistant_contact(rows[-1]["name"], address, orgs))
     rows.sort(key=lambda row: (-row["mails"], row["email"].casefold()))
     errors = [row for row in mapped.get("errors", []) if row.get("source") in ("gmail", "outlook")]
     return rows, {"scope": "all available history since 1970" if mapped.get("all_history") else
@@ -147,7 +212,7 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .tasks import receipt_for
     from .sessions import mentions, reader_fields
     from .reader_model import (session_detail, organisation_fields, organisation_members,
-                               organisation_obligations, PRIVATE)
+                               organisation_obligations, organisation_logo, PRIVATE)
     notebook = Notebook(root)
     records = []
     paths = [path for category in CATEGORIES if category not in ('sessions', 'logs', 'notes')
@@ -164,17 +229,24 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                         **({'private': True} if private_topic else {})})
     # Held for review (#1844): still linkable, left off the contents until promoted.
     held = needs_review(root)
+    # A topic nothing names but a common noun ("The draft") joined unrelated people by the
+    # phrase alone. It stays openable by path; it is not a thing to list or draw.
+    from .topic_map import generic_name
+    unnamed = {r["path"] for r in records if r["category"] == "knowledge" and generic_name(PRIVATE.sub("", r["title"]))}
     # What is counted, written, and when it was last active comes from one
     # place (`census`), the same that `co rem status` counts with (#2008).
     from .census import counts, pages, written
     found = pages(root, records=records)
     mail, index = mail_facts(root), {} if today else index_rows(root)
     record_paths = {record['path'] for record in records}
+    person_names = frozenset(r["title"].casefold() for r in records if r["category"] == "people")
     for record in records:
         record.update(organisation_fields(record, record_paths))
+        if record['category'] == 'orgs':
+            record['logo'] = organisation_logo(root, record)
         if record["category"] == "orgs" and BARE_DOMAIN.fullmatch(record["title"]):
             domain = record["title"]
-            name = _org_name(domain, record["text"]) or _org_company_name(record["path"], records)
+            name = _org_name(domain, record["text"], person_names) or _org_company_name(record["path"], records)
             if name:
                 record.update(title=name, domain=domain)
         if record["path"] in mail:
@@ -182,9 +254,11 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         if record["path"] in index:
             record["index"] = index[record["path"]]
         record["needs_review"] = record["path"] in held
+        if record["path"] in unnamed:
+            record["unnamed"] = True
         entry = found.get(record["path"])
         if entry:
-            record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"])
+            record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"], agent=entry.get("agent", False))
         if record["category"] in ("decisions", "principles"):
             record["written"] = written(record["text"])
         if record["category"] == "projects" and not today:
@@ -197,6 +271,14 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
             record.update(session_detail(record["text"], private=local))
+    if not today:
+        # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
+        from .page_runs import states
+        found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")
+                                     or (r["category"] == "knowledge" and "- Tags:" in r["text"])])
+        for record in records:
+            if record["path"] in found_states:
+                record["investigation"] = found_states[record["path"]]
     owner = owner_record(root)
     organisation_members(records, owner)
     from .org_hierarchy import structure, rollups
@@ -235,8 +317,19 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                                'first': candidate.get('first', ''), 'last': candidate.get('last', ''),
                                'doubtful': [d for d in candidate.get('doubtful', []) if d['record'] in record_paths],
                                'mentions': topic_mentions(candidate, record_paths, owner)}
-    graph = {} if today else graph_snapshot(records, links, {r['path']: [m['path'] for m in r['topic']['mentions']]
-                                                             for r in records if 'topic' in r})
+    from .tags import page_tags, vocabulary as tag_vocabulary
+    from .tag_nodes import node_record, pages_for_tags
+    tag_entries = tag_vocabulary(root, records)
+    # A tag is a link to a page (#3140): the person, organisation or project named for it, else its tag page.
+    named, present = pages_for_tags(root), {r['path'] for r in records}
+    for slug, entry in tag_entries.items():
+        topic = node_record(root, slug) if slug not in named else ''
+        entry['page'] = named.get(slug) or (topic if topic in present else '')
+    for record in records:
+        record['tags'] = page_tags(record['text'])
+    graph = {} if today else graph_snapshot([r for r in records if r['path'] not in unnamed], links,
+                                            {r['path']: [m['path'] for m in r['topic']['mentions']]
+                                             for r in records if 'topic' in r}, tag_entries)
     # The owner's own reader holds every cited mail of a real notebook (960 citations, ~2.3M characters).
     context_records = [{**r, 'text': _today_text(r['text'])} for r in records
                        if r['category'] in ('people', 'orgs', 'projects')
@@ -251,16 +344,24 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
     from .config import read_config
-    from .translate import cached_languages
-    from .languages import language_of, owner_languages, spoken
+    from .translate import cached_languages, foreign_lines
+    from .languages import language_of, owner_language, owner_languages, spoken
+    mine = owner_language(root)
     for record in records:
         record["translations"] = cached_languages(root, record["path"])
         # For the "Read in" menu: what the page is written in, and what this person speaks.
         record["written_in"] = language_of(record["text"])
+        # Mostly the owner's language but with prose in another: "mixed", so the reader offers and awaits
+        # its translation like an English page's, by the rule co rem translate uses (translate.foreign_lines).
+        if mine and record["written_in"] == mine.split("-")[0].lower() and foreign_lines(record["text"], mine):
+            record["written_in"] = "mixed"
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
     current_status = status(root, include_coverage=False) if today else status(root)
+    # A status plan contains private meetings too; shared snapshots carry neither projection.
+    if not local:
+        current_status.pop('day_plan', None)
     logs = run_logs(root)
     shown_logs = logs[:20]
     translation = next((log for log in logs if log.get("phase") in ("init-translation", "daily-translation")), None)
@@ -273,18 +374,24 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
                if absolute.is_relative_to(home) else str(absolute))
     data = {"language": read_config(root, validated=False).get("language") or "en",
             "your_languages": languages["languages"],
+            # The interface's language, the same rule drafts and the night's translation use.
+            "owner_language": owner_language(root),
             "languages_from": "set" if languages["from"].startswith("set") else "detected",
             "root_display": display, "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # The release that drew this page: after an upgrade the open page compares it with the Host's.
+            "release": _release(),
             # The sidebar footer names the release ("co 1.9.3"), so a report can say which one it was.
             "version": connectonion.__version__,
             "root": str(root), "default_root": root.resolve() == (Path.home() / ".co" / "rem").resolve(),
             "categories": list(CATEGORIES), "records": records, "graph": graph,
+            # The vocabulary with counts: chips, tag pages and `tag:` search (docs/cli/rem-tags.md).
+            "tags": {slug: entry for slug, entry in tag_entries.items() if entry["count"]},
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "people_coverage": current_status.get("people_coverage"),
             "drafts": reply_drafts(root, local=local, records=records),
             "threads": threads.listing(root) if local else {},
             "mail_versions": threads.observed_versions(root, records) if local else {},
-            "source_context": contexts, "conversations": {} if today else cited_conversations(root, contexts, private=local),
+            "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
@@ -298,8 +405,26 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     data['inferred_projects'] = enrich_records(root, records, contexts, local=local, states=data['threads'], owner=owner)
     from .today import queue as today_queue
     data['today_queue'] = today_queue(root, records=records, contexts=contexts, states=data['threads'])
+    # Settings lists them so an ignored sender can be seen again; a shared page names no addresses.
+    from .threads import ignored_senders
+    data['ignored_senders'] = ignored_senders(root) if local else {}
+    from .threads import person_marks
+    data['person_marks'] = person_marks(root) if local else {}
+    # The owner's calendars as the night saved them; a shared page carries none of his meetings.
+    from .calendar import upcoming
+    data['calendar'] = upcoming(root, records, owner) if local else None
+    # His open to-dos as the night saved them (#3087); a shared page carries none.
+    from .todos import read as read_todos
+    data['todos'] = read_todos(root) if local else None
+    from .weather import read as read_weather
+    data['weather'] = read_weather(root) if local else None  # the forecast is for his place: his own reader only
+    from .day_plan import read as read_day_plan
+    data['day_plan'] = read_day_plan(root, items=data['today_queue']) if local else None
     from .night import listing as night_outcomes
     data['night_outcomes'] = night_outcomes(root, rows=data['today_queue']) if local else []
+    from .fetch_stalls import last_night
+    # Why nights read nothing: the mailbox, the reason and the pages set aside. Only on the owner's own reader.
+    data['night_stall'] = last_night(root) if local else None
     outcomes = {row['key']: row for row in data['night_outcomes']}
     for row in data['today_queue']:
         if row['key'] in outcomes:
@@ -318,9 +443,15 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         data['status']['tonight'].pop('unprepared', None)
         for row in data['today_queue']:
             row.pop('reply', None)
+            row.pop('sender', None)
     organisation_obligations(records, data['today_queue'])
-    from .service import notebook_today
+    from .service import notebook_today, notebook_zone
     rollups(records, notebook_today(root))
+    if not today:
+        # What happened on each project by week, for its activity strip and the order of the rows (#3096).
+        from .project_activity import attach
+        data['project_activity'] = attach(records, lambda path: stored(root, path), contexts,
+                                          notebook_today(root), notebook_zone(read_config(root)))
     return _today_data(data) if today else data
 
 
@@ -341,8 +472,8 @@ def _today_text(text: str) -> str:
 
 def _today_data(data: dict) -> dict:
     """Small, independently usable Today payload; the complete snapshot stays lazy."""
-    fields = ('path', 'category', 'title', 'updated', 'written', 'last_activity', 'service',
-              'needs_review', 'catalog_parent', 'mail', 'private_project', 'private', 'written_in', 'speaks')
+    fields = ('path', 'category', 'title', 'updated', 'written', 'last_activity', 'service', 'agent',
+              'needs_review', 'catalog_parent', 'mail', 'private_project', 'private', 'written_in', 'speaks', 'tags')
     records = [{**{key: r[key] for key in fields if key in r}, 'text': _today_text(r['text']),
                 'translations': {tag: _today_text(text) for tag, text in r.get('translations', {}).items()}}
                for r in data['records'] if r['category'] not in ('sessions', 'logs', 'notes')]
@@ -433,16 +564,19 @@ def reader_version(root: Path) -> list:
     queue over. A page edited in place by another tool is caught by the
     background walk (tree_version) each REBUILD_INTERVAL. The template and the package
     version are part of the key, so a new install re-renders even when a release
-    changed only Python and left reader.html as it was.
+    changed only Python and left reader.html as it was. The version is the one
+    on disk: a Host started before an upgrade put the version in its memory here,
+    the build (a new Python) saved pages under the installed one, and the two
+    never met, so every page said "Updating…" and every request started a build.
     """
-    import connectonion
     from .files import CHANGED
+    from .live_host import version_on_disk
     state = root / ".state"
     paths = [root, *(root / name for name in CATEGORIES), state / CHANGED,
              state / "rem.db", state / "rem.db-wal", TEMPLATE]
     from .service import notebook_today
     # The Today queue and every "overdue" turn over at the notebook's midnight.
-    key = [str(root.resolve()), str(TEMPLATE), connectonion.__version__,
+    key = [str(root.resolve()), str(TEMPLATE), version_on_disk(),
            str(notebook_today(root)) if root.is_dir() else None]
     for path in paths:
         try:
@@ -511,7 +645,7 @@ PROGRESS_SECONDS = 3.0
 # language, chosen as the page chooses it (uiLanguage in reader.html).
 UPDATING = ('<p id="rem-updating" role="status" style="position:fixed;right:16px;bottom:12px;margin:0;'
             'font:12px/18px system-ui,sans-serif;color:#8a8a8a;z-index:9"></p>'
-            '<script>(() => { const zh = (window.REM?.your_languages || []).some(tag => /^zh(?:-|$)/i.test(tag))'
+            '<script>(() => { const zh = /^zh(?:-|$)/i.test(window.REM?.owner_language || "")'
             ' || /^zh/i.test(navigator.language || ""); document.getElementById("rem-updating").textContent'
             ' = zh ? "正在更新…" : "Updating…"; })();</script>')
 
@@ -613,7 +747,7 @@ def tree_version(root: Path) -> str:
             info = path.lstat()
             if name in QUIET_STATE or name == "rem.db-shm" or name == "rem.db-wal" and not info.st_size:
                 continue
-            files.append((str(path.relative_to(root)), info.st_mtime_ns, info.st_size))
+            files.append((path.relative_to(root).as_posix(), info.st_mtime_ns, info.st_size))
     return hashlib.sha256(json.dumps(files).encode()).hexdigest()
 
 
@@ -655,8 +789,8 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
 
 
 def _release() -> str:
-    import connectonion
-    return connectonion.__version__
+    from .live_host import version_on_disk
+    return version_on_disk()
 
 
 def _checked(root: Path, build: str, moment: float) -> None:
@@ -691,10 +825,20 @@ def failure(root: Path):
     return json.loads(text) if text else None
 
 
+def _install_stamp():
+    """[release, template stat] of what is installed now, or None while an upgrade is still writing it."""
+    try:
+        info = TEMPLATE.stat()
+        return [_release(), info.st_mtime_ns, info.st_size]
+    except (OSError, SyntaxError, ImportError):  # mid-upgrade: a file missing or half-written
+        return None
+
+
 def _keep_failure(root: Path) -> None:
+    # The install it failed under: a failure is a reason to wait only while that install is what runs (#3112).
     _replace(_cached(root, "failed.json"),
              json.dumps({"at": datetime.fromtimestamp(_now(), timezone.utc).isoformat(timespec="seconds"),
-                         "seconds": _now(), "log": str(_cached(root, "build.log"))}))
+                         "seconds": _now(), "log": str(_cached(root, "build.log")), "install": _install_stamp()}))
 
 
 @contextmanager
@@ -713,15 +857,18 @@ def _building(root: Path):
         os.close(fd)
 
 
-def refresh(root: Path, builds=("live", "full")) -> None:
+def refresh(root: Path, builds=("live", "full")) -> bool:
     """The background build: bring these saved pages, and any others already saved,
-    up to date, unless a build runs. It passes again only for an owner action made
-    meanwhile, also one made after its last look (bounded); other writes wait for
-    the next interval."""
+    up to date, unless a build runs (False then). It passes again only for an owner
+    action made meanwhile, also one made after its last look (bounded); other writes
+    wait for the next interval."""
     for _ in range(3):
         finished = _refresh_once(root, builds)
-        if finished is None or not _owner_since(root, finished):
-            return
+        if finished is None:
+            return False
+        if not _owner_since(root, finished):
+            return True
+    return True
 
 
 def _refresh_once(root: Path, builds):
@@ -771,10 +918,24 @@ def main(argv) -> None:
     """The detached build (python -m connectonion.rem.reader ROOT BUILD...)."""
     root = Path(argv[0])
     try:
-        refresh(root, argv[1:])
+        ran = refresh(root, argv[1:])
     except Exception:
         _keep_failure(root)
         raise  # the traceback is the log's last lines
+    if not ran:
+        # Run by hand while the Host's build held the lock, this printed nothing and changed nothing (#3112).
+        print("Another build is running; it saves the pages when it finishes.")
+        return
+    # After the pages are saved, and outside the build's failure: a Host that
+    # could not be replaced is not a failed build, and the log says why in a line.
+    # Any error, because the expected one is an upgrade still being written under
+    # this build (a half-written _version.py raises SyntaxError, a module mid-copy
+    # ImportError); a stop that failed is OSError. The next build tries again.
+    from .live_host import renew_idle
+    try:
+        renew_idle()
+    except Exception as error:
+        print(f"The pages are saved; the server from before the upgrade was not replaced: {error}")
 
 
 def _spawn_refresh(root: Path, builds) -> bool:
@@ -784,7 +945,11 @@ def _spawn_refresh(root: Path, builds) -> bool:
         if not free:
             return True
     failed = failure(root)
-    if failed and _now() - failed.get("seconds", 0) < REBUILD_INTERVAL:
+    # Backed off only while the install it failed under is still the one installed: an upgrade that finished
+    # since (or one that was mid-write then, recorded as None) is a new cause, tried now (#3112).
+    install = _install_stamp()
+    same_install = install is not None and failed is not None and failed.get("install") == install
+    if same_install and _now() - failed.get("seconds", 0) < REBUILD_INTERVAL:
         return False
     log = _cached(root, "build.log")
     kept = (_read(log) or "").splitlines(keepends=True)[-LOG_LINES:]
@@ -881,10 +1046,15 @@ def latest(root: Path) -> dict:
     """When the live page was rendered and whether the newest build failed (polled by
     the open page); starts a rebuild when one is due."""
     try:
-        _rebuild_stale(root, "live.html", reader_version(root))
-        return {"as_of": saved(root, "live").get("as_of"), "failed": failure(root)}
+        building = _rebuild_stale(root, "live.html", reader_version(root))
+        row = saved(root, "live")
+        # `building` lets the open page take down its "Updating…" line once no newer page is coming (Mac review of rc30).
+        # `installed`: the release on disk; `release`: the one that drew the saved page. When they differ the
+        # new page is still being built, and the open page waits for it instead of reloading the old one.
+        return {"as_of": row.get("as_of"), "failed": failure(root), "building": bool(building),
+                "release": row.get("release"), "installed": _release()}
     except CacheRefused:
-        return {"as_of": None, "failed": None}
+        return {"as_of": None, "failed": None, "building": False, "release": None, "installed": _release()}
 
 
 def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False) -> bool:
@@ -1008,7 +1178,7 @@ def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
     if not address:
         return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
-    from .live_host import STARTING, ensure_local, local_reader, saved_host_dead, start
+    from .live_host import STARTING, Notice, ensure_local, local_reader, saved_host_dead, start
     if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
         # No Host answers: the saved page now, co ai starting behind it. Waiting
         # for it (up to 20 s) before the first paint was most of a cold open.
@@ -1021,8 +1191,8 @@ def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
         url, failure = ensure_local(address)
     except (OSError, RemError) as error:
         url, failure = None, f"could not start co ai: {error}; run `co ai` to diagnose"
-    if failure == STARTING:
-        return open_snapshot(root, launch=launch, say=say, live=STARTING)
+    if failure == STARTING or isinstance(failure, Notice):
+        return open_snapshot(root, launch=launch, say=say, live=failure)
     if failure:
         # The page the owner asked for still opens: a fallback, not a failure.
         return open_snapshot(root, launch=launch, say=say, live=f"Live reader unavailable: {failure}; showing a snapshot")
@@ -1042,15 +1212,18 @@ def live_or_snapshot(root: Path, address, *, live: bool, launch: bool, say=None)
     if not address:
         return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live view"))
-    if not host_online(address):
-        from .live_host import ensure_online
-        try:
-            failure = ensure_online(address)
-        except (OSError, RemError) as error:
-            failure = f"could not start co ai: {error}; run `co ai` to diagnose"
-        if failure:
-            return open_snapshot(root, launch=launch, say=say, live=f"Live startup failed: {failure}; showing a snapshot",
-                                 live_startup_failed=True)
+    from .live_host import Notice, ensure_online, outdated, recorded_gone
+    try:
+        # Online is not enough when what is online is a server from before an upgrade, or a dead Host the
+        # relay still lists (#3112).
+        failure = ensure_online(address) if not host_online(address) or outdated(address) or recorded_gone(address) else None
+    except (OSError, RemError) as error:
+        failure = f"could not start co ai: {error}; run `co ai` to diagnose"
+    if isinstance(failure, Notice):
+        return open_snapshot(root, launch=launch, say=say, live=failure)
+    if failure:
+        return open_snapshot(root, launch=launch, say=say, live=f"Live startup failed: {failure}; showing a snapshot",
+                             live_startup_failed=True)
     url = LIVE_REM_URL.format(address=address)
     if launch:
         webbrowser.open(url)

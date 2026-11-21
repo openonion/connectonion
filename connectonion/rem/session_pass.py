@@ -91,7 +91,7 @@ def _needed_bytes(path: Path, destinations) -> bytes:
     turn after that line: 14,603 of ~20,500 files, most of the 18 GB of Codex
     sessions on the owner's machine (2026-10-21).
     """
-    with path.open("rb") as handle:
+    with source.open_session(path) as handle:
         first = handle.readline(1_000_000)
         if all(sub["kind"] == "codex" for _, sub in destinations) and _codex_skip(first):
             return first

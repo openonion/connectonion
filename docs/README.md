@@ -331,7 +331,7 @@ class Agent:
         tools: Optional[List[Callable]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "co/gemini-3.8-flash",
+        model: str = "co/gemini-4-hydrogen",
         max_iterations: int = 100
     )
     

@@ -1,10 +1,13 @@
 """The owner's Today order, shared by the snapshot and the night's draft budget."""
 
+import copy
 import re
-from calendar import monthrange
 import sqlite3
+import time
+from calendar import monthrange
 from contextlib import closing, nullcontext
 from datetime import date, timedelta
+from pathlib import Path
 
 from . import census, threads
 from .files import Notebook, read_json, state_path
@@ -81,10 +84,19 @@ def _future_commitment(words):
                           r'我(?:会(?!不)|(?:下周|下星期|明天|后天|稍后|之后|周[一二三四五六日天]))', words, re.I))
 
 
+def _cited_mail(source):
+    """The mail a Sources entry names: an attachment (`outlook:<digest>:<file>`) is cited through its mail.
+
+    2026-11-16: the whole entry was taken for a message the archive lacked, the night asked
+    Graph for `/me/messages/<digest>:<file>`, and the HTTP 400 that came back ended the night."""
+    digest = re.match(r'(?:gmail|outlook):[0-9a-f]{12}(?![0-9a-f])', source)
+    return digest[0] if digest else source
+
+
 def _reply(root, sources, text, owner, db, direction):
     from .reader_model import _cited_row
     from .store_messages import archived_message
-    mail = [sources.get(number, '') for number in census.CITATION.findall(text)
+    mail = [_cited_mail(sources.get(number, '')) for number in census.CITATION.findall(text)
             if sources.get(number, '').partition(':')[0] in ('gmail', 'outlook')]
     if not mail:
         return {'state': 'task', 'last_word_yours': False, 'promise': text}
@@ -146,8 +158,13 @@ def _entries(root, records, today, contexts, states, db):
     title = next((record['text'].splitlines()[0].lstrip('# ') for record in records if record['path'] == owner), '')
     first, addresses = (title.split() or [''])[0], owner_addresses(root)
     found = census.pages(root, records=records)
+    ignored, notices = threads.ignored_senders(root), _notices(mapped)
     rows = []
     for record, text, sources in _items(records, found, first):
+        senders = _senders(sources, text, addresses, db)
+        # Only when every cited sender is ignored: a newsletter cited beside a person keeps her item.
+        if senders and senders <= set(ignored):
+            continue
         key = threads.done_key(record['path'], text)
         since, due = _dates(text, today)
         times = [_source_day(sources.get(n, ''), db, contexts) for n in census.CITATION.findall(text)]
@@ -159,8 +176,49 @@ def _entries(root, records, today, contexts, states, db):
         rows.append({'key': key, 'keys': [key], 'record': record['path'], 'text': text, 'title': record['title'],
                      'dir': direction, 'since': since, 'due': due, 'quiet': quiet,
                      'closed': threads.blocked(root, key, states=states),
-                     'reply': _reply(root, sources, text, addresses, db, direction), 'sources': sources})
+                     'reply': _reply(root, sources, text, addresses, db, direction), 'sources': sources,
+                     'sender': _offered(senders, addresses, notices)})
     return _grouped(rows)
+
+
+def _notices(mapped):
+    """Senders the map set apart as notices, not the service desks a person may answer."""
+    return {row['address'].casefold() for row in mapped.get('automated_correspondents', [])
+            if row.get('address') and row.get('classification') != 'service desk'}
+
+
+def _senders(sources, text, owner, db):
+    """Every address that wrote a cited mail, other than the owner's own."""
+    from .reader_model import _cited_row
+    if db is None:
+        return set()
+    rows = [_cited_row(db, sources.get(number, '')) for number in census.CITATION.findall(text)
+            if sources.get(number, '').partition(':')[0] in ('gmail', 'outlook')]
+    return {address for row in rows if row is not None for address in [(row['sender'] or '').casefold()]
+            if address and address not in owner}
+
+
+# These mailboxes multiplex other people's messages. Never offer a bulk stop,
+# even on a custom domain or if the map classified the address as a notice.
+SHARED_NOTIFICATIONS = re.compile(r"^(?:messages[-_.]noreply|notifications|calendar[-_.]notification)@", re.I)
+
+
+def _offered(senders, owner, notices):
+    """The one address 忽略 may offer to stop, or ''.
+
+    Only a sole sender, so stopping it never hides a person cited beside it; only when the owner's addresses are
+    known, so his own is never offered; and only one that looks like a machine or bulk mail (a no-reply or
+    sending-subdomain shape, or a notice sender the map already set apart), never a relay that carries many
+    different people (map.RELAY) and never a person-looking address."""
+    from .files import EMAIL
+    from .mail import AUTOMATED_SENDER
+    from .map import BULK, MACHINE, RELAY
+    if not owner or len(senders) != 1:
+        return ''
+    address = next(iter(senders))
+    machine = AUTOMATED_SENDER.search(address) or MACHINE.search(address) or BULK.search(address) or address in notices
+    shared = RELAY.search(address) or SHARED_NOTIFICATIONS.search(address)
+    return address if EMAIL.fullmatch(address) and not shared and machine else ''
 
 
 def _grouped(rows):
@@ -205,8 +263,33 @@ def _named_elsewhere(row, records):
     return len(matches) == 1 and matches[0] != row['record']
 
 
+# The queue for the notebook as it stands (#3106: each approve and talk rebuilt it from every page, 8-24 s). Keyed
+# by the reader's own stamp, which every REM write moves (files._changed) and which carries the notebook's day, and
+# by the mail archive's folders, whose files are also removed (a reply's original gone is its state); a page edited
+# in place by another tool is picked up within QUEUE_TTL seconds.
+_QUEUE: dict = {}
+QUEUE_TTL = 60
+MAIL_FOLDERS = [f"mail/{kind}/{provider}" for kind in ("messages", "observed") for provider in ("gmail", "outlook")]
+
+
+def _queue_key(root: Path) -> str:
+    from .reader import reader_version
+    folders = [(path.stat().st_mtime_ns if path.is_dir() else None) for path in (state_path(root, name) for name in MAIL_FOLDERS)]
+    return repr([reader_version(root), folders])
+
+
 def queue(root, *, records=None, contexts=None, states=None, as_of=None):
     """Visible deadline cards, visible morning cards, then the rest; no model or writes."""
+    if records is None and contexts is None and states is None and as_of is None:
+        key, now = (str(Path(root).resolve()), _queue_key(Path(root))), time.monotonic()
+        held = _QUEUE.get(key[0])
+        if not held or held[0] != key[1] or now - held[1] > QUEUE_TTL:
+            _QUEUE[key[0]] = held = (key[1], now, _queue(root))
+        return copy.deepcopy(held[2])
+    return _queue(root, records=records, contexts=contexts, states=states, as_of=as_of)
+
+
+def _queue(root, *, records=None, contexts=None, states=None, as_of=None):
     today = as_of or notebook_today(root)
     if records is None:
         book = Notebook(root)
@@ -219,7 +302,7 @@ def queue(root, *, records=None, contexts=None, states=None, as_of=None):
             db.row_factory = sqlite3.Row
         rows = _entries(root, records, today, contexts, states, db)
     soon = (today + timedelta(days=3)).isoformat()
-    due = [row for row in rows if not row['quiet'] and not row['closed'] and row['dir'] in ('mine', 'theirs')
+    due = [row for row in rows if not row['quiet'] and not row['closed'] and row['dir'] == 'mine'
            and (row['due'] <= soon if row['due'] else row['since'] == today.isoformat())]
     pages, morning = set(), []
     for row in rows:
@@ -229,6 +312,10 @@ def queue(root, *, records=None, contexts=None, states=None, as_of=None):
             if len(morning) == 3:
                 break
     ordered = due[:5] + morning + due[5:] + [row for row in rows if row not in due and row not in morning]
+    # An item carries its record's tags and its people's, so Waiting can filter and close by tag (#3093).
+    from .tags import item_tags
+    texts = {record['path']: record['text'] for record in records}
     return [{key: value for key, value in row.items() if key != 'sources'} | {
-        'rank': rank, 'section': 'today' if row in due else 'morning' if row in morning else ''}
+        'rank': rank, 'section': 'today' if row in due else 'morning' if row in morning else '',
+        'tags': item_tags(texts, row['record'], row['text'])}
         for rank, row in enumerate(ordered)]

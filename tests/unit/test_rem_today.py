@@ -11,7 +11,7 @@ from connectonion.rem.files import Notebook, state_path, write_json
 from connectonion.rem.mail_archive import retain_message
 from connectonion.rem.reader import TEMPLATE
 from connectonion.rem.store import refresh
-from test_rem_reader import _run_reader_js
+from test_rem_reader import HAND, _run_reader_js
 
 
 @pytest.mark.parametrize('provider', ['outlook', 'gmail'])
@@ -153,6 +153,38 @@ def reader_functions(*names):
     return '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
 
 
+@pytest.mark.parametrize('timing', ['due 2026-11-01', 'since 2026-11-08'])
+def test_counterparty_debt_never_takes_an_owner_today_slot(tmp_path, timing):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.write('people/tariq.md', '# Tariq Bell\n\n## Open threads\n'
+               f'- The user asked Tariq to arrange a call; {timing}.\n'
+               '- Tariq asked the user to review the proposal.\n')
+    rows = today.queue(tmp_path, as_of=date(2026, 11, 8))
+    assert rows[0]['dir'] == 'mine'
+    assert rows[0]['section'] == 'morning'
+    theirs = next(row for row in rows if row['dir'] == 'theirs')
+    assert theirs['section'] == ''
+    assert theirs['rank'] > rows[0]['rank']
+
+
+def test_waiting_cards_and_overdue_counts_ignore_counterparty_rows_in_old_snapshots():
+    result = _run_reader_js(reader_functions('todayGroups', 'personGroups', 'todayEntries', 'groupLate') + r'''
+      const mine = {r: {path: 'people/tariq.md'}, t: {key: 'mine', dir: 'mine', due: 2}};
+      const theirs = {r: mine.r, t: {key: 'theirs', dir: 'theirs', due: 15}};
+      const onlyTheirs = {r: {path: 'people/fern.md'}, t: {key: 'fern', dir: 'theirs', due: 20}};
+      const entries = [theirs, onlyTheirs, mine], REM = {owner: '', today_queue: entries.map(entry =>
+        ({key: entry.t.key, section: 'today'}))};
+      const doneKey = entry => entry.t.key, waitingOnYou = entry => entry.t.dir === 'mine';
+      const isDone = () => false, answered = () => false, staleEntry = () => false;
+      const overdueDays = thread => thread.due, morningEntries = entries => todayEntries(entries, 'morning');
+      const groups = todayGroups(entries);
+      console.log(JSON.stringify({cards: groups.map(group => group.r.path),
+        lead: groups[0].entries[0].t.key, late: groupLate({entries})}));
+    ''')
+    assert result == {'cards': ['people/tariq.md'], 'lead': 'mine', 'late': 2}
+
+
 @pytest.mark.parametrize('language', ['en', 'zh'])
 @pytest.mark.parametrize('status', [None, 'pending'])
 def test_replied_card_offers_completion_first_and_localized_explanation(language, status):
@@ -185,6 +217,183 @@ def test_replied_card_offers_completion_first_and_localized_explanation(language
     assert ('如果这件已经办了' if language == 'zh' else 'if this is handled') in result['note']['text']
 
 
+STRIP_ROWS = {
+    # reply state on the queue row, the draft's status, new mail on a done thread → [text, class] of the row's own actions
+    'plain': (None, None, None, [['Open the Outlook thread', 'btn-quiet']]),
+    'replied': ('replied', None, None, [['Open the Outlook thread', 'btn-quiet']]),
+    'replied_and_prepared': ('replied', 'prepared', None, [['Open the Outlook thread', 'btn-quiet']]),
+    'returned': ('task', None, '2026-11-07', [['Open the Outlook thread', 'btn-quiet'], ['New mail · 2026-11-07', 'done-tag']]),
+}
+
+
+@pytest.mark.parametrize('row', sorted(STRIP_ROWS))
+def test_a_row_that_carries_the_strip_has_no_mark_done_of_its_own(row):
+    """One Mark done per row (owner, 2026-11-11): with the hand-off strip on the row, its own actions never
+    mark it done, quietly or in green; without the strip (a snapshot) they still do."""
+    state, status, returned, expected = STRIP_ROWS[row]
+    result = _run_reader_js(reader_functions('primaryAction', 'threadUrl', 'threadActions', 'threadDraft')
+        + '\nconst state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ', returned = ' + json.dumps(returned) + ';\n' + r'''
+      const reply = state && {state, last_word_yours:true, provider:'outlook', thread:'mail:outlook:meeting', source:'outlook:answer'};
+      const REM = {live:true, as_of:'2026-11-08', drafts: status ? [{status, provider:'outlook', thread:'meeting'}] : [],
+        today_queue:[{key:'mara', reply}]};
+      const entry = {r:{path:'people/mara.md'}, t:{text:'You owe Mara a meeting time.', ...(returned ? {returnedAt: returned} : {})}};
+      const doneKey = () => 'mara', threadKind = () => ({kind:'outlook', mail:true}), isDone = () => false, href = () => '#mara';
+      const obligationEvidence = () => ({ids:new Set(['thread:outlook:meeting'])}), fmtDate = day => day, calendarDay = day => day;
+      const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children}), setDone = () => {};
+      const shown = strip => threadActions(entry, false, strip).children.filter(Boolean).map(node => [node.text, node.class]);
+      console.log(JSON.stringify({strip: shown(true), row: shown(false)}));
+    ''')
+    assert result['strip'] == expected
+    assert not any(text == 'Mark done' for text, _ in result['strip'])
+    assert any(text == 'Mark done' for text, _ in result['row'])
+
+
+def _live_here(page):
+    return re.search(r'function liveHere\(\) \{.*', page).group(0)
+
+
+def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_closing():
+    """stripDone with a real entry (a record and a thread): one quiet button that marks the row done, through the
+    page's own way of closing it when one is given; none on an ask or on a row with no record. A snapshot (file: or
+    no Host) shows all three too (#2990), disabled with its reason: nothing carries its mark to the notebook."""
+    result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('snapshotWhy', 'stripDone') + r'''
+      const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
+      const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
+      const setDone = (entry, done, state, entries, extra, until) => calls.push(['setDone', entry.t.text, done, state, ...(until ? [until] : [])]);
+      const todayRow = () => null;  // no cited mail sender, so Ignore offers nothing more
+      // Not now asks when (#3072): the chooser hands back the moment he picked, here always the same one.
+      const laterChooser = (line, choose) => choose('2026-11-20T00:00:00.000Z')('click'), press = {currentTarget: {closest: () => 'line'}};
+      const entry = {r: {path: 'people/mara.md'}, t: {text: 'You owe Mara a pilot review.'}};
+      const own = stripDone(entry), slide = stripDone(entry, (event, state, extra, until) => calls.push(['close', event, state, ...(until ? [until] : [])]));
+      own[0].onclick(); own[1].onclick(press); own[2].onclick(); slide[0].onclick('click'); slide[1].onclick(press); slide[2].onclick('click');
+      const shown = {own: own.map(node => [node.tag, node.class, node.text]), calls,
+        ask: stripDone({...entry, ask: true}).length,
+        bare: stripDone({key: 'open'}).length};
+      const why = buttons => buttons.map(node => [node.text, node.disabled, node.title, node['aria-describedby']]);
+      location.protocol = 'file:'; shown.file = why(stripDone(entry));
+      location.protocol = 'http:'; REM.live = false; shown.snapshot = why(stripDone(entry));
+      console.log(JSON.stringify(shown));
+    ''')
+    assert result['own'] == [['button', 'btn-quiet strip-done', 'Mark done'], ['button', 'btn-quiet strip-later', 'Not now'],
+                             ['button', 'btn-quiet strip-ignore', 'Ignore']]
+    # All three closes take the page's way out (Today slides the row), and Ignore is its own state.
+    assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True, 'done'],
+                               ['setDone', 'You owe Mara a pilot review.', True, 'skipped', '2026-11-20T00:00:00.000Z'],
+                               ['setDone', 'You owe Mara a pilot review.', True, 'ignored'],
+                               ['close', 'click', 'done'], ['close', 'click', 'skipped', '2026-11-20T00:00:00.000Z'], ['close', 'click', 'ignored']]
+    assert {key: result[key] for key in ('ask', 'bare')} == {'ask': 0, 'bare': 0}
+    reason = 'This is an offline snapshot; open REM to mark it.'
+    assert result['file'] == result['snapshot'] == [[word, 'disabled', reason, 'why-close'] for word in ('Mark done', 'Not now', 'Ignore')]
+
+
+TODAY_CARD = ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
+
+
+def _today_card_js(body):
+    """A Today card built by the reader's own functions, hand-off strip included; only the data and the DOM are stubs."""
+    page = TEMPLATE.read_text()
+    steps_order = re.search(r'const STEPS = .*?;', page).group(0)
+    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();\n'
+                          + reader_functions(*TODAY_CARD, *[name for name in HAND if name != 'snapshotWhy']) + r'''
+      const REM = {live: true, owner: 'people/avery.md', as_of: '2026-11-08', today_queue: []}, location = {protocol: 'http:'};
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }});
+      const doneKey = entry => entry.key, setTimeout = () => {}, icon = () => null, groupLate = () => 0, CHECK_ICON = '';
+      const threadDraft = () => null, draftNote = () => null, taskResult = () => null, mailboxLink = () => null, approvalTask = () => null;
+      const queuedReply = () => null, threadKind = () => null, threadContact = () => null, looksDone = entry => !!entry.handled;
+      const morningWords = entry => ({words: 'Feedback', context: ''}), contactFields = () => [], company = () => '';
+      const threadWho = r => r.title, href = () => '#fern', blockerTag = () => null, overdueDays = () => 0, kindBadge = () => null;
+      const alsoOn = () => null, firstName = r => r.title, threadAge = () => '5 days', setDone = () => {};
+      const closed = [], closeEntries = (node, entries) => closed.push([node, entries.map(entry => entry.key)]);
+      const r = {path: 'people/fern.md', title: 'Fern'};
+      const row = (key, handled = false) => ({key, handled, r, t: {dir: 'mine', text: 'You owe Fern ' + key + '.'}});
+      // Every control on the card that marks something done: [where it sits, its class, what it reads as].
+      const marks = (node, place = 'card', found = []) => {
+        if (!node || typeof node !== 'object') return found;
+        const here = node.class?.startsWith('qitem') ? 'row' : node.class === 'qhead' ? 'head' : node.class === 'card-acts' ? 'step' : place;
+        const label = node.text === 'Mark done' ? node.text : /^Mark (all )?done/.test(node['aria-label'] || '') ? node['aria-label'] : null;
+        if (node.tag === 'button' && label) found.push({where: here, cls: node.class, label, click: node.onclick});
+        (node.children || []).forEach(child => marks(child, here, found));
+        return found;
+      };
+      const click = mark => mark.click({currentTarget: {closest: selector => selector}});
+      const seen = list => list.map(({where, cls, label}) => [where, cls, label]);
+''' + body)
+
+
+def test_a_live_today_row_has_one_mark_done_and_it_slides_the_row_out():
+    """Today in the live reader: the strip's Mark done is the row's only one, and it closes the row the way the
+    tick did (closeEntries: the card when the row is alone, the row when it is one of several). A card of
+    several rows keeps the head's tick, which closes all of them at once."""
+    result = _today_card_js(r'''
+      const one = marks(personCard({r, entries: [row('feedback')]}, true));
+      one.forEach(click);
+      const alone = closed.splice(0);
+      const two = marks(personCard({r, entries: [row('feedback'), row('slides')]}, true));
+      two.filter(mark => mark.where === 'row').forEach(click);
+      console.log(JSON.stringify({one: seen(one), alone, two: seen(two), several: closed}));
+    ''')
+    assert result['one'] == [['row', 'btn-quiet strip-done strip-lead', 'Mark done']]  # nothing else to do: the row's Mark done leads, in bold (sprint 14)
+    assert result['alone'] == [['.qcard', ['feedback']]]
+    assert result['two'] == [['head', 'ibtn', 'Mark all done · E'], ['row', 'btn-quiet strip-done strip-lead', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
+    assert result['several'] == [['.qitem', ['feedback']], ['.qitem', ['slides']]]
+
+
+def test_the_cards_green_mark_done_stays_only_where_it_closes_more_than_one_row():
+    """REM judged a row handled, so the card's next step is a green Mark done. The strip's button is the row's
+    one Mark done wherever the strip is drawn, so a green step that would close just that row is not drawn;
+    one that closes several handled rows at once does something no row's button does, and stays."""
+    result = _today_card_js(r'''
+      const single = marks(personCard({r, entries: [row('feedback', true)]}, true));
+      single.forEach(click);
+      const alone = closed.splice(0);
+      const mixed = marks(personCard({r, entries: [row('feedback', true), row('slides')]}, true));
+      const both = marks(personCard({r, entries: [row('feedback', true), row('slides', true)]}, true));
+      both.filter(mark => mark.where === 'step').forEach(click);
+      console.log(JSON.stringify({single: seen(single), alone, mixed: seen(mixed), both: seen(both), together: closed}));
+    ''')
+    assert result['single'] == [['row', 'btn-quiet strip-done strip-lead', 'Mark done']]
+    assert result['alone'] == [['.qcard', ['feedback']]]
+    assert result['mixed'] == [['head', 'ibtn', 'Mark all done · E'], ['row', 'btn-quiet strip-done strip-lead', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done']]
+    # Every row handled: the green step closes them all, so the head's tick, which would too, is not drawn (E stays).
+    assert result['both'] == [['row', 'btn-quiet strip-done', 'Mark done'], ['row', 'btn-quiet strip-done', 'Mark done'], ['step', 'btn-act', 'Mark done']]
+    assert result['together'] == [['.qcard', ['feedback', 'slides']]]
+
+
+def test_a_handled_row_shows_its_strip_without_a_hover():
+    """Re-review of #2955: with the green step gone, a row REM judged handled kept its Mark done and the reason
+    in the part of the row that waits for a hover. Such a row is marked so its strip shows at once, unless the card's green step closes it."""
+    result = _today_card_js(r'''
+      const rows = card => card.children[1].children.map(item => item.class);
+      const shown = {single: rows(personCard({r, entries: [row('feedback', true)]}, true)),
+        mixed: rows(personCard({r, entries: [row('feedback', true), row('slides')]}, true)),
+        both: rows(personCard({r, entries: [row('feedback', true), row('slides', true)]}, true)),
+        open: rows(personCard({r, entries: [row('slides')]}, true))};
+      REM.live = false;
+      shown.snapshot = rows(personCard({r, entries: [row('feedback', true)]}, true));
+      console.log(JSON.stringify(shown));
+    ''')
+    assert result['single'] == ['qitem handled'] and result['open'] == ['qitem']
+    # A handled row shows its strip unless the card's green step already closes it (team, re-review of #2955):
+    # on a mixed card no green step closes the handled row; on an all-handled card the green step is the lead.
+    assert result['mixed'] == ['qitem handled', 'qitem'] and result['both'] == ['qitem', 'qitem']
+    assert result['snapshot'] == result['single']         # a snapshot's strip closes too (#2990), so it shows alike
+
+
+def test_a_snapshot_today_row_closes_with_the_strips_words_like_the_live_one():
+    """#2990: a snapshot had only an icon tick, so 忽略 was nowhere. Its close is kept on this device until the live
+    reader syncs it, so its row carries the same worded strip and no tick."""
+    result = _today_card_js(r'''
+      const live = seen(marks(personCard({r, entries: [row('feedback')]}, true)));
+      REM.live = false;
+      const one = marks(personCard({r, entries: [row('feedback')]}, true));
+      one.filter(mark => mark.where === 'row').forEach(click);
+      console.log(JSON.stringify({live, one: seen(one), closed}));
+    ''')
+    assert result['one'] == result['live'] and all(mark[1] != 'qdone' for mark in result['one'])
+    assert result['closed'] == [['.qcard', ['feedback']]]
+
+
 @pytest.mark.parametrize('provider,label', [('outlook', 'Outlook reply'), ('gmail', 'Gmail reply'), ('lark', 'Lark'), ('session', 'session'), ('', 'Task')])
 @pytest.mark.parametrize('prepared', [False, True])
 def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prepared):
@@ -211,7 +420,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'cardHead', 'cardItem', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
@@ -221,7 +430,7 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
         today_queue:[{key:'fern', reply:{state, last_word_yours:true, provider:'outlook',
           thread:'mail:outlook:original', promise:'I will send feedback.', since:'2026-10-28'}}]};
       const doneKey = () => 'fern', threadKind = () => ({kind:'outlook', mail:true});
-      const icon = () => null, groupLate = () => 0;
+      const icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live;
       const queuedReply = () => REM.today_queue[0].reply, looksDone = () => false, threadContact = () => null, approvalTask = () => null;
       const obligationEvidence = () => ({ids:new Set(['thread:outlook:original', 'thread:outlook:feedback'])});
       const morningWords = () => ({words:'Feedback', context:''}), contactFields = () => [], company = () => '';
@@ -233,7 +442,7 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
       const card = personCard({r: entry.r, entries: [entry]}, true);
       const item = card.children[1].children[0];
-      console.log(JSON.stringify({draft: card.children[2], note: item.children[2].children[2], acts: card.children[3]}));
+      console.log(JSON.stringify({draft: card.children[2], note: item.children[1].children[2], acts: card.children[3]}));
     ''')
     if status == 'prepared':
         assert result['draft']['children'][1] == {'sendable': True, 'body': 'Here is my feedback on Demo A.'}
@@ -242,8 +451,9 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     else:
         assert result['draft'] is None
         assert result['note']['text'] == 'No reply needed: Fern needs no further reply.'
-        assert result['acts']['children'][0]['text'] == 'Mark done'
-        assert result['acts']['children'][0]['class'] == 'btn-act'
+        # No reply needed and nothing else to do: the row's own strip Mark done is the card's lead, in a snapshot as
+        # live (#2990), so no green Mark done repeats it.
+        assert result['acts']['children'][0] is None
 
 
 def test_today_groups_a_persons_rows_into_their_first_card_without_reranking():
@@ -334,12 +544,35 @@ def test_today_card_speaks_chinese_where_rem_already_wrote_it():
 
 def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
     """Build 3b re-review: an owner row that names nobody is dropped before the five places are counted."""
-    result = _run_reader_js(reader_functions('personGroups', 'todayGroups') + r'''
+    result = _run_reader_js(reader_functions('personGroups', 'answered', 'waitingOnYou', 'todayGroups') + r'''
       const REM = {owner: 'people/owner.md'};
       const row = (path, n) => ({r: {path, title: path}, t: {text: 'ask ' + n}});
       const ranked = [row('people/owner.md', 0), ...[1, 2, 3, 4, 5, 6].map(n => row('people/p' + n + '.md', n))];
-      const todayEntries = () => ranked, morningEntries = () => [], threadDraft = () => null, ownerCounterpart = () => null;
+      const todayEntries = () => ranked, morningEntries = () => [], threadDraft = () => null, ownerCounterpart = () => null, staleEntry = () => false;
       const doneKey = entry => entry.r.path + '\n' + entry.t.text;
       console.log(JSON.stringify(todayGroups(ranked).map(group => group.r.path)));
     ''')
     assert result == ['people/p1.md', 'people/p2.md', 'people/p3.md', 'people/p4.md', 'people/p5.md']
+
+
+def test_the_queue_is_built_once_per_notebook_change(tmp_path, monkeypatch):
+    """#3106: approving and opening a talk each rebuilt Today's queue from every page. The Host now keeps the
+    queue for the notebook as it stands: a second click is free, and any write to the notebook builds it again."""
+    from connectonion.rem import today
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    root = tmp_path / "rem"
+    prepare(root)
+    book = Notebook(root)
+    book.stub_project("projects/pilot.md", "Pilot", [])
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("## Open threads\n", "## Open threads\n- You owe Mara a pilot review.\n"))
+    built = []
+    real = today._entries
+    monkeypatch.setattr(today, "_entries", lambda *a, **k: built.append(1) or real(*a, **k))
+    first = today.queue(root)
+    second = today.queue(root)
+    assert len(built) == 1 and first == second
+    second[0]["text"] = "changed by a caller"
+    assert today.queue(root)[0]["text"] != "changed by a caller"  # callers get their own copy
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("pilot review", "pilot review and invoice"))
+    assert "invoice" in today.queue(root)[0]["text"] and len(built) == 2

@@ -181,7 +181,7 @@ def test_sent_log_records_replies_so_a_second_reply_can_be_refused(tmp_path):
 
 def test_the_lock_ignores_a_dead_pid(tmp_path):
     box = make(tmp_path)
-    box.lock.write_text("999999999\n")
+    box.pidfile.write_text("999999999\n")
 
     assert box.listener_pid() is None
     assert box.hold_lock() is True
@@ -206,7 +206,8 @@ def test_ensure_listener_starts_one_only_when_none_is_running(tmp_path, monkeypa
 
     def fake_popen(argv, **kwargs):
         spawned.append(argv)
-        box.lock.write_text("4242\n")  # what the child does once it is up
+        box.lock.touch()
+        box.pidfile.write_text("4242\n")  # what the child does once it is up
         return FakeProcess()
 
     monkeypatch.setattr(store_module.subprocess, "Popen", fake_popen)
@@ -216,7 +217,7 @@ def test_ensure_listener_starts_one_only_when_none_is_running(tmp_path, monkeypa
     assert spawned[0][-2:] == ["feishu", "listen"]
     assert "listener started pid 4242" in box.logfile.read_text()
 
-    box.lock.write_text(f"{os.getpid()}\n")  # a live listener
+    box.pidfile.write_text(f"{os.getpid()}\n")  # a live listener
     assert box.ensure_listener() == os.getpid()
     assert len(spawned) == 1
 
@@ -307,7 +308,8 @@ def test_two_receives_in_the_same_instant_get_one_listener(tmp_path, monkeypatch
         returncode = 1
 
         def poll(self):
-            box.lock.write_text("5000\n")  # A's child took the lock meanwhile
+            box.lock.touch()
+            box.pidfile.write_text("5000\n")  # A's child took the lock meanwhile
             return 1
 
     monkeypatch.setattr(store_module.subprocess, "Popen", lambda argv, **kw: LostTheRace())
@@ -322,7 +324,37 @@ def test_the_lock_is_taken_exclusively(tmp_path):
 
     box = make(tmp_path)
     assert box.hold_lock() is False, "a live holder wins"
-    assert box.lock.read_text().strip() == str(os.getpid())
+    assert box.pidfile.read_text().strip() == str(os.getpid())
+    holder.release_lock()
+
+
+def test_the_pid_is_read_without_reading_the_locked_file(tmp_path, monkeypatch):
+    # On Windows msvcrt.locking makes the locked byte unreadable to every
+    # other process: `co whatsapp check` and `consume` crashed with
+    # PermissionError while a listener ran, because the pid sat inside
+    # listen.lock.
+    holder = make(tmp_path)
+    assert holder.hold_lock() is True
+    read_text = Path.read_text
+
+    def windows_read(self, *args, **kwargs):
+        if self.name == "listen.lock":
+            raise PermissionError(13, "Permission denied", str(self))
+        return read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", windows_read)
+    assert make(tmp_path).listener_pid() == os.getpid()
+    holder.release_lock()
+
+
+def test_a_listener_from_before_listen_pid_still_shows_its_pid(tmp_path):
+    # A listener started on 1.9.6rc23 or older holds the lock but never writes
+    # listen.pid; `check` on a newer co printed "listener pid -1".
+    holder = make(tmp_path)
+    assert holder.hold_lock() is True
+    holder.pidfile.unlink()
+    holder.listener_file.write_text('{"pid": 9525, "version": "1.9.6rc12"}')
+    assert make(tmp_path).listener_pid() == 9525
     holder.release_lock()
 
 
@@ -334,13 +366,13 @@ def test_the_lock_is_held_by_the_kernel_not_by_the_pid_in_the_file(tmp_path):
     # ever cleared the phantom. An OS-held lock dies with its process.
     holder = make(tmp_path)
     assert holder.hold_lock() is True
-    holder.lock.write_text("")  # the instant between create and write
+    holder.pidfile.write_text("")  # the instant between create and write
     assert make(tmp_path).hold_lock() is False, "an empty lock file is a listener mid-start, not a dead one"
-    assert holder.listener_pid() is None or holder.lock.read_text() == ""
+    assert holder.listener_pid() == -1, "held, pid not yet written"
     holder.release_lock()
 
     box = make(tmp_path)
-    box.lock.write_text(f"{os.getpid()}\n")  # a live pid, but nobody holds the lock
+    box.pidfile.write_text(f"{os.getpid()}\n")  # a live pid, but nobody holds the lock
     assert box.listener_pid() is None, "a pid in a file nobody holds is not a listener"
     assert box.hold_lock() is True
     assert box.listener_pid() == os.getpid()
@@ -410,7 +442,8 @@ def test_ensure_listener_pins_the_directory_and_forwards_the_env_file(tmp_path, 
     def fake_popen(argv, **kwargs):
         seen["argv"] = argv
         seen["env"] = kwargs.get("env")
-        box.lock.write_text("4321\n")
+        box.lock.touch()
+        box.pidfile.write_text("4321\n")
         return Running()
 
     monkeypatch.setattr(store_module.subprocess, "Popen", fake_popen)
@@ -419,6 +452,7 @@ def test_ensure_listener_pins_the_directory_and_forwards_the_env_file(tmp_path, 
 
     assert box.ensure_listener() == 4321
     assert seen["env"]["CO_INBOX_HOME"] == str(box.root.parent)
+    assert seen["env"]["PYTHONIOENCODING"] == "utf-8", "the log is UTF-8, not the Windows ANSI code page"
     assert seen["argv"][3:5] == ["--env-file", str(tmp_path / "app.env")]
     assert seen["argv"][-2:] == ["feishu", "listen"]
 

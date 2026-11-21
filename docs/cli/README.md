@@ -243,7 +243,7 @@ from connectonion import llm_do
 # Use co/ prefix
 response = llm_do("Hello", model="co/gpt-5")
 response = llm_do("Hello", model="co/claude-sonnet-4")
-response = llm_do("Hello", model="co/gemini-3.8-flash")
+response = llm_do("Hello", model="co/gemini-4-hydrogen")
 ```
 
 **Available models:**
@@ -379,6 +379,8 @@ pip install 'connectonion[whatsapp]'
 brew install libmagic                  # also needed; apt install libmagic1 on Debian/Ubuntu
 co whatsapp listen                     # scan the QR once; every message → ~/.co/inbox/whatsapp/
 echo "on it" | co whatsapp reply 3EB0A1
+co whatsapp lookup +61412345678       # on WhatsApp? who? sends nothing
+co whatsapp contacts add +61412345678 --name "Alex Example"   # then: co whatsapp send "Alex Example" "Hi"
 ```
 
 The same nine verbs, against a linked companion device — which is the only way
@@ -544,6 +546,15 @@ After `co auth microsoft`, run `co onenote ls` to see numbered sections,
 The row list lasts 15 minutes; page and section IDs remain available for
 scripts through `co onenote ls --ids` and `co onenote pages --ids`. See
 [onenote.md](onenote.md) for creation and listing rules.
+
+---
+
+#### `co obsidian` - Browse local Obsidian notes
+
+Run `co obsidian` to list registered vaults and `co obsidian ls --vault 1` to
+see the folders in the first vault. Choose a folder with `--folder`, then
+list, read or search its Markdown notes. See the [Obsidian command guide](obsidian.md)
+for examples.
 
 ---
 
@@ -1015,6 +1026,23 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 ---
 
+#### `co send <address> <path>...` - Send Files to Another Agent
+
+Files, and folders as the files inside them, to another agent's running Host.
+They arrive byte for byte and are checked against their sha256; an interrupted
+send continues from where it stopped. Only the receiver's contacts may send.
+When the receiver cannot be reached directly, a file of up to 10 MB waits on the
+server for 7 days, encrypted to the receiver. `co receive` takes what is waiting
+and lists what arrived. See [send.md](send.md).
+
+```bash
+co send 0x1e85... ./C2350.MP4        # one file, any size
+co send 0x1e85... ./footage/         # a folder
+co receive                           # on the receiving machine
+```
+
+---
+
 #### `co call <address> <command>` - Run a Command on a Remote Agent
 
 The **remote twin of `co browser`**: run one command on a remote agent and print
@@ -1427,14 +1455,16 @@ A server a deploy goes *onto*, so the agent keeps its address, its logs and any 
 made by hand — and answers on its own https hostname.
 
 ```bash
-co server new prod                       # have one created ($30/month, charged yearly)
+co server new prod                       # have one created (from $30/month; shows how it is charged, then asks)
 co server add prod --ssh you@1.2.3.4     # or register one you already have
 co server ls                             # reconciled against what you are billed for
+co server invoice prod                   # its invoices, where the backend bills monthly
 co deploy --to prod
 ```
 
 `co server forget` drops the local entry and the machine keeps billing;
-`co server destroy` tears it down and refunds the unused term. Two commands on purpose.
+`co server destroy` tears it down and settles the bill (the used part of the month, or a refund of an
+old 12-month term). Two commands on purpose.
 
 See [server.md](server.md).
 

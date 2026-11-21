@@ -20,6 +20,11 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
     assert sessions_handler(storage)["sessions"] == []
     launched = []
     history_modes = []
+    # The terminal's own facts are done: from here only the browser moves the
+    # revision. Waiting for the phase alone let attach() below run while the
+    # terminal was still sending them, and each saw the other's revision
+    # (4 == 3 in the worker, take_control refused; run 42729595537).
+    terminal_settled = threading.Event()
 
     def terminal(**options):
         launched.append(options["session_id"])
@@ -32,15 +37,15 @@ def test_terminal_browser_terminal_handover(tmp_path, monkeypatch):
             options["on_private_fact"]({"hook_event_name": "UserPromptSubmit"})
             options["on_private_fact"]({"hook_event_name": "Stop"})
             assert station._revision == control_revision
+            terminal_settled.set()
             assert options["stop_event"].wait(3)
         return 0, native_session
 
     monkeypatch.setattr(claude_station, "run_interactive_claude", terminal)
     worker = threading.Thread(target=station.run)
     worker.start()
-    deadline = time.monotonic() + 3
-    while station._phase != "local_observing" and time.monotonic() < deadline:
-        time.sleep(0.01)
+    assert terminal_settled.wait(5), "the terminal never finished its first turn"
+    assert station._phase == "local_observing"
     assert station.attach("0xowner", "bad")["accepted"] is False
     assert station.attach("0xowner", station.pairing_code)["accepted"] is True
     assert session_owner(storage.get(station.session_id)) == "0xowner"

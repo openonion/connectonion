@@ -148,6 +148,10 @@ def handle_email_change(address: str,*,name: str | None = None,domain: str | Non
     if not owned:
         out.print('This address is not in your owned-address list. Next: co email addresses',markup=False)
         raise typer.Exit(1)
+    if owned.get('derived'):
+        # Listed since openonion/oo-api#288 but it is the key's own address: there is no record to move.
+        out.print(f'{owned["address"]} is derived from your key and cannot be renamed or moved. Buy another address instead: co email setup <alias> --domain <domain>',markup=False)
+        raise typer.Exit(1)
     old_name,old_domain=owned['address'].rsplit('@',1)
     target=f'{name or old_name}@{domain or old_domain}'.lower()
     if target==owned['address'].lower():out.print(f'Already set to {target}.',markup=False);return

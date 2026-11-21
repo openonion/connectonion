@@ -8,6 +8,7 @@ the source for tip strings and checks each named command against the register.
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -120,6 +121,8 @@ NEXT = {
     "co browser": HANDLER,            # rotating tip on stderr; `import` names its own go_to check; exits by raise
     "co claude run": 'Continue this Claude session:  co claude run "<next task>" --session <session-id>',
     "co call": HANDLER,               # prints the remote's own output; exits by raise
+    "co send": "On the receiving machine:  co receive",
+    "co receive": "Another agent sends here with:  co send <this agent's address> <file>",
     "co commands": HANDLER,
     "co audit": HANDLER,              # names --review, or the rerun after a fix           # ends with the --help pointer itself
     "co copy": HANDLER,               # "co copy --list" after a copy; --list ends with usage
@@ -156,6 +159,11 @@ NEXT = {
     "co feishu chats": HANDLER,
     "co feishu log": "co feishu ls",
     "co feishu consume": "co feishu ls",
+    "co feishu lookup": HANDLER,  # names the id it found
+    "co feishu groups": HANDLER,
+    "co feishu contacts add": HANDLER,
+    "co feishu contacts ls": HANDLER,
+    "co feishu contacts rm": "co feishu contacts ls",
     "co lark listen": "co lark receive --timeout 0",
     "co lark receive": "co lark reply <message-id>",
     "co lark send": "co lark receive --timeout 0",
@@ -169,16 +177,27 @@ NEXT = {
     "co lark chats": HANDLER,
     "co lark log": "co lark ls",
     "co lark consume": "co lark ls",
+    "co lark lookup": HANDLER,  # names the id it found
+    "co lark groups": HANDLER,
+    "co lark contacts add": HANDLER,
+    "co lark contacts ls": HANDLER,
+    "co lark contacts rm": "co lark contacts ls",
     "co whatsapp listen": "co whatsapp receive --timeout 0",
     "co whatsapp receive": "co whatsapp reply <message-id>",
     "co whatsapp send": "co whatsapp receive --timeout 0",
     "co whatsapp reply": "co whatsapp receive --timeout 0",
     "co whatsapp done": "co whatsapp receive --timeout 0",
+    "co wechat *": HANDLER,            # doctor/key/chats/decrypt/export each print their own next step
     "co whatsapp edit": "co whatsapp log",
     "co whatsapp delete": "co whatsapp log",
     "co whatsapp react": "co whatsapp log",
     "co whatsapp group create": HANDLER,  # names the new chat id in its own tip
     "co whatsapp group add": HANDLER,
+    "co whatsapp lookup": HANDLER,  # names the jid to save
+    "co whatsapp contacts add": HANDLER,  # names the contact to send to
+    "co whatsapp contacts ls": 'co whatsapp send "<name>" "<text>"',
+    "co whatsapp contacts rm": "co whatsapp contacts ls",
+    "co whatsapp download": "co whatsapp log",
     "co whatsapp check": HANDLER,  # every branch of _report_connection names its own
     "co whatsapp ls": "co whatsapp receive --timeout 0",
     "co whatsapp chats": HANDLER,
@@ -262,6 +281,10 @@ NEXT = {
     "co schedule run": "co schedule list",
     "co schedule pause": HANDLER,  # names the resume for this entry
     "co schedule resume": "co schedule list",
+    "co obsidian vaults": HANDLER,
+    "co obsidian ls": HANDLER,
+    "co obsidian read": HANDLER,
+    "co obsidian search": HANDLER,
     "co onenote ls": HANDLER,        # each handler names the next onenote command (#1887)
     "co onenote pages": HANDLER,
     "co onenote read": HANDLER,
@@ -313,6 +336,7 @@ NEXT = {
     "co server fix-key": HANDLER,
     "co server forget": HANDLER,
     "co server destroy": "What you still have:  co server ls",
+    "co server invoice": HANDLER,
     "co skills discover": "Copy one into ~/.co/skills:  co skills copy <name from this index>",
     "co skills copy": "What is installed now:  co skills list",
     "co skills manifest": "Preview what would be published:  co announce --dry-run",
@@ -340,14 +364,14 @@ NEXT = {
     "co telegram chats": HANDLER,
     "co telegram log": "co telegram ls",
     "co telegram consume": "co telegram ls",
-    "co trust list": "Check one address:  co trust level <address>",
+    "co trust list": HANDLER,  # handler retains the selected trust directory
     "co trust level": HANDLER,  # the next step depends on the level it printed
-    "co trust add": "See every list:  co trust list",
-    "co trust remove": "See every list:  co trust list",
-    "co trust block": "See every list:  co trust list",
-    "co trust unblock": "See every list:  co trust list",
-    "co trust admin add": "See every list:  co trust list",
-    "co trust admin remove": "See every list:  co trust list",
+    "co trust add": HANDLER,  # handler retains the selected trust directory
+    "co trust remove": HANDLER,  # handler retains the selected trust directory
+    "co trust block": HANDLER,  # handler retains the selected trust directory
+    "co trust unblock": HANDLER,  # handler retains the selected trust directory
+    "co trust admin add": HANDLER,  # handler retains the selected trust directory
+    "co trust admin remove": HANDLER,  # handler retains the selected trust directory
     # co canny: each handler names its next command from what Canny returned
     # (the first post's id, the exact --yes command after a preview).
     "co canny check": HANDLER,
@@ -387,6 +411,17 @@ def tips_enabled() -> bool:
     return os.environ.get("CO_TIPS", "").strip().lower() not in ("0", "off", "false", "no")
 
 
+def success_tips_enabled() -> bool:
+    """Whether a tip after a command that worked may go to stderr.
+
+    Windows PowerShell 5.1 turns every captured stderr line into a red
+    NativeCommandError, so there a success tip reads as a failure (#3113).
+    On Windows it reaches only a terminal; a failure's own Next line is not a
+    success tip and still goes to stderr beside the error.
+    """
+    return tips_enabled() and (sys.platform != "win32" or sys.stderr.isatty())
+
+
 _SUPPRESSED = False
 
 
@@ -409,7 +444,7 @@ def print_next_step(path: str) -> None:
     know. A path missing from the table also prints nothing, and the test
     in tests/unit/test_every_command_has_a_next_step.py fails on it.
     """
-    if not tips_enabled():
+    if not success_tips_enabled():
         return
     try:
         tip = next_step_for(path)

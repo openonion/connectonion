@@ -13,7 +13,7 @@ Key components:
 Architecture:
 - Dual-trigger system: Intent detection on user input + reminder injection after tools
 - Uses llm_do with the product default for fast intent analysis (structured output)
-- Stores detected intent in agent.current_session['intent'] as {ack, is_build}
+- Stores detected intent in agent.current_session['intent'] as {ack, is_connectonion_agent_build}
 - Reminder files in prompts/system-reminders/ directory with YAML frontmatter
 - Only injects reminders when intent matches (build tasks) or tool usage matches
 - Reminders append to tool result messages or user messages for next LLM call
@@ -32,7 +32,9 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from connectonion.core.events import after_each_tool, after_user_input
+from connectonion.core.mode import AUTO, FULL_ACCESS, MODE_NAMES, READ_ONLY, mode_of
 from connectonion.llm_do import llm_do
+from connectonion.useful_plugins.system_reminder import reminder_message
 
 if TYPE_CHECKING:
     from connectonion.core.agent import Agent
@@ -45,8 +47,8 @@ PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 class IntentAnalysis(BaseModel):
     """Structured output for intent detection."""
-    ack: str  # Acknowledgment ~10 words showing understanding
-    is_build: bool  # True if creating/modifying software, code, agents
+    ack: str  # Neutral task label, 3-8 words
+    is_connectonion_agent_build: bool  # True only for building a ConnectOnion agent
 
 
 # Intent detection prompt with examples
@@ -55,19 +57,18 @@ INTENT_PROMPT = """Analyze the user's request.
 User request: {user_prompt}
 
 Return:
-- ack: Friendly, proactive acknowledgment (~10 words). Start with "understood" or "got it", use "I'll" to show you're taking action. Be warm and helpful.
-- is_build: true if creating/modifying code, software, agents, or automation; false for queries, questions, simple tasks
+- ack: A neutral task label (3-8 words), no first person, no promise of action or success. Name the task; do not announce what will happen.
+- is_connectonion_agent_build: true only for requests to create or modify a ConnectOnion agent. General coding, websites, scripts, bug fixes, and other frameworks are false.
 
 Examples:
-- "list files" → ack: "understood, I'll list the files in this directory for you", is_build: false
-- "what is this project" → ack: "got it, I'll explore the project structure and explain", is_build: false
-- "create a login page" → ack: "understood, I'll build a login page for you", is_build: true
-- "fix the bug in auth" → ack: "got it, I'll investigate and fix the auth bug", is_build: true
-- "help me write a script" → ack: "understood, I'll write that script for you", is_build: true
-- "run the tests" → ack: "got it, I'll run the tests and show you results", is_build: false
-- "explain how this works" → ack: "understood, I'll explain how this code works", is_build: false
-- "deploy to production" → ack: "got it, I'll deploy your app to production", is_build: false
-- "add a new feature" → ack: "understood, I'll add that feature for you", is_build: true"""
+- "list files" → ack: "Current directory file listing", is_connectonion_agent_build: false
+- "what is this project" → ack: "Project structure and purpose", is_connectonion_agent_build: false
+- "create a login page" → ack: "Login page implementation", is_connectonion_agent_build: false
+- "fix the bug in auth" → ack: "Authentication bug investigation", is_connectonion_agent_build: false
+- "help me write a script" → ack: "Script design and implementation", is_connectonion_agent_build: false
+- "run the tests" → ack: "Project test suite execution", is_connectonion_agent_build: false
+- "build a ConnectOnion email agent" → ack: "ConnectOnion email agent creation", is_connectonion_agent_build: true
+- "add a tool to my ConnectOnion agent" → ack: "ConnectOnion agent tool integration", is_connectonion_agent_build: true"""
 
 
 def _parse_frontmatter(text):
@@ -171,6 +172,18 @@ def detect_intent(agent: 'Agent') -> None:
     if not user_prompt:
         return
 
+    mode = mode_of(agent.current_session)
+    descriptions = {
+        READ_ONLY: "Asks you before every change. Without an authorized operator and approval UI, ungranted actions are declined.",
+        AUTO: "Safe reversible workspace work may run automatically; higher-risk actions require approval or are denied. Hosted Codex uses workspace-write with no approval prompts.",
+        FULL_ACCESS: "Routine approvals are skipped for the remaining bounded user turns; operator and workspace boundaries still apply.",
+    }
+    if agent.current_session.get('_last_mode_reminder') != mode:
+        agent.current_session['messages'].append(reminder_message(
+            f"Mode: {MODE_NAMES[mode]} — {descriptions[mode]}"
+        ))
+        agent.current_session['_last_mode_reminder'] = mode
+
     # Generate ID for correlation
     intent_id = str(uuid.uuid4())[:8]
 
@@ -218,7 +231,7 @@ def detect_intent(agent: 'Agent') -> None:
             'id': intent_id,
             'status': 'understood',
             'ack': analysis.ack,
-            'is_build': analysis.is_build,
+            'is_build': analysis.is_connectonion_agent_build,
         })
 
     # Persist to trace so reconnect/replay can rebuild the UI item.
@@ -226,20 +239,19 @@ def detect_intent(agent: 'Agent') -> None:
         'type': 'intent',
         'id': intent_id,
         'ack': analysis.ack,
-        'is_build': analysis.is_build,
+        'is_build': analysis.is_connectonion_agent_build,
     })
 
     # Store in session
     agent.current_session['intent'] = {
         'ack': analysis.ack,
-        'is_build': analysis.is_build,
+        'is_connectonion_agent_build': analysis.is_connectonion_agent_build,
     }
 
-    # Load full build context (workflow, index, examples) for build tasks
-    if analysis.is_build:
+    # Load full build context (workflow, index, examples) for ConnectOnion agent-building tasks
+    if analysis.is_connectonion_agent_build:
         build_context = _load_build_context()
         if build_context:
-            from ....useful_plugins.system_reminder import reminder_message
             agent.current_session['messages'].append(reminder_message(build_context))
 
 
