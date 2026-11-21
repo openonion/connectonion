@@ -621,6 +621,23 @@ def test_the_session_copy_masks_them_too(tmp_path, monkeypatch):
     assert "ward" not in copy and "me@home.net" in copy
 
 
+def test_mask_also_catches_known_mail_hosts_written_without_a_tld():
+    """#2531: REM fact pages quote truncated headers like name@gmail; the session copy must mask them
+    the same way as a full address. Key on known mail hosts so alice@-style examples stay."""
+    text = ("incomplete like alice.wong@gmail and bob@outlook and sam@icloud; "
+            "full carol@hotmail.com; kept side dana@yahoo; "
+            "example demo@example.com; and a bare token eve@ stays put.")
+    emails, _ = bundles.others(text, keep=["dana@yahoo"])
+    assert "alice.wong@gmail" in emails and "bob@outlook" in emails and "sam@icloud" in emails
+    assert "carol@hotmail.com" in emails
+    assert "dana@yahoo" not in emails and "demo@example.com" not in {e.lower() for e in emails}
+    out = bundles.mask(text, keep=["dana@yahoo"])
+    for gone in ("alice.wong@gmail", "bob@outlook", "sam@icloud", "carol@hotmail.com"):
+        assert gone not in out, gone
+    assert out.count("[email removed]") >= 4
+    assert "dana@yahoo" in out and "demo@example.com" in out and "eve@" in out
+
+
 def test_masking_leaves_ordinary_words_and_the_kept_addresses_alone():
     """#2493 review: "anyone" and "notify" became "someone" because anyone@x.com and notify@x.com were
     masked; a literal \\n before an address read as part of it, so a kept address was not recognised."""
