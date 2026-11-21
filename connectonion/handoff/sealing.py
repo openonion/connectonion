@@ -40,18 +40,30 @@ def key_from(text: str) -> bytes:
     return key
 
 
+def _json_bytes(value) -> bytes:
+    """JSON for a seal. A non-UTF-8 diff rides along as lone surrogates (#2570); surrogatepass keeps
+    those bytes in the ciphertext and is ordinary UTF-8 for every well-formed string, which is what
+    the browser's page holds."""
+    return json.dumps(value, ensure_ascii=False).encode("utf-8", errors="surrogatepass")
+
+
+def _json_value(raw: bytes):
+    return json.loads(raw.decode("utf-8", errors="surrogatepass"))
+
+
 def lock(key: bytes, value, label: str) -> str:
     """`value` as gzipped JSON, sealed with AES-256-GCM. `label` (the drop and which part of it) is bound in,
     so one part cannot be passed off as another. The browser opens the same format (oo-frontend /h)."""
     nonce = os.urandom(NONCE_BYTES)
-    sealed = AESGCM(key).encrypt(nonce, gzip.compress(json.dumps(value, ensure_ascii=False).encode()), label.encode())
+    sealed = AESGCM(key).encrypt(nonce, gzip.compress(_json_bytes(value)), label.encode())
     return base64.b64encode(nonce + sealed).decode()
 
 
 def unlock(key: bytes, blob: str, label: str):
     """What `lock` sealed; cryptography's InvalidTag for a wrong key, a wrong label or a changed byte."""
     raw = base64.b64decode(blob)
-    return json.loads(gzip.decompress(AESGCM(key).decrypt(raw[:NONCE_BYTES], raw[NONCE_BYTES:], label.encode())))
+    plain = gzip.decompress(AESGCM(key).decrypt(raw[:NONCE_BYTES], raw[NONCE_BYTES:], label.encode()))
+    return _json_value(plain)
 
 
 def _box(signing_key, address: str) -> Box:
