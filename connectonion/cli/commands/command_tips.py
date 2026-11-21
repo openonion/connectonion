@@ -378,6 +378,14 @@ NEXT = {
     "co canny status": HANDLER,
     "co canny comment": HANDLER,
     "co canny changelog create": HANDLER,
+    # co notion: each handler names its next command from what Notion returned
+    # (the first row's id, the --cursor command for the next page).
+    "co notion check": HANDLER,
+    "co notion pages": HANDLER,
+    "co notion search": HANDLER,
+    "co notion page": HANDLER,
+    "co notion db": HANDLER,
+    "co notion columns": HANDLER,
     "co youtube *": HANDLER,
     "co tiktok *": HANDLER,
 }
