@@ -14913,7 +14913,8 @@ function localizedRelation(link, currentPath) {
 // ("Wren runs the venue at Fernhill ." on a related-page card, rc36 dates fixer).
 function closeStripped(text) { return String(text).replace(/[ \t]+(?=[.,;:!?。，；：！？])/g, "").replace(/[ \t]{2,}/g, " "); }
 function relationCard(link, currentPath = "") {
-  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis && closeStripped(link.basis);
+  // A basis taken from an Insight line keeps its writer's prefix ("Changed: …"); the card shows the sentence.
+  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis && closeStripped(link.basis).replace(/^(?:Now|Pattern|At stake|Changed|现在|规律|关键所在|变化|利害|模式)[:：]\s*/i, "");
   const labelled = link.private || hasPrivacy(basis || "");
   const labels = { linked: "Linked from this page", "linked from": "Links here",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
@@ -15448,7 +15449,8 @@ function record(path, heading) {
   }
 
   const foot = el("div", { class: "page-foot" });
-  const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: t("Copy the file path") });
+  // The raw path is for the owner's terminal, not for reading: the button says what it does; the path is its tooltip.
+  const pathBtn = el("button", { class: "btn-action copy-path", type: "button", text: t("Copy the file path"), title: r.path });
   pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, t("Path copied"));
   const copyMd = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: t("Copy the page as written, unknowns included") });
   copyMd.onclick = () => copyToClipboard(r.text, copyMd, t("Markdown copied"));
@@ -16945,7 +16947,7 @@ function entryRail(r, text) {
   return parts.length ? el("aside", { class: "gx-rail", "aria-label": graphT("About") }, parts) : null;
 }
 function entryFoot(r) {
-  const path = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: t("Copy the file path") });
+  const path = el("button", { class: "btn-action copy-path", type: "button", text: t("Copy the file path"), title: r.path });
   path.onclick = () => copyToClipboard(REM.root + "/" + r.path, path, t("Path copied"));
   const copy = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: t("Copy the page as written, unknowns included") });
   copy.onclick = () => copyToClipboard(r.text, copy, t("Markdown copied"));
