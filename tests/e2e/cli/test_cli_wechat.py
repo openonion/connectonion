@@ -137,3 +137,18 @@ def test_doctor_ok_when_ready(macos, keys_env, tmp_path):
     with patch.object(wc, "_container_status", return_value=("ok", account)):
         result = runner.invoke(app, ["wechat", "doctor"])
     assert result.exit_code == 0
+
+
+def test_the_account_in_use_is_the_one_whose_chat_list_changed_last(tmp_path, monkeypatch):
+    import os
+    import time
+    root = tmp_path / "xwechat_files"
+    for name, age in (("wxid_aaa_old", 3600), ("wxid_zzz_new", 0)):
+        session = root / name / "db_storage" / "session"
+        session.mkdir(parents=True)
+        (session / "session.db").write_bytes(b"x")
+        stamp = time.time() - age
+        os.utime(session / "session.db", (stamp, stamp))
+    monkeypatch.setattr(wc, "WECHAT_CONTAINER", root)
+    # Alphabetical order would pick wxid_aaa_old; the account WeChat wrote last is wxid_zzz_new.
+    assert wc._probe_container() == ("ok", root / "wxid_zzz_new")

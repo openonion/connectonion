@@ -89,10 +89,12 @@ def _probe_container() -> tuple[str, Path | None]:
     try:
         if not WECHAT_CONTAINER.exists():
             return "missing", None
-        for account in sorted(WECHAT_CONTAINER.iterdir()):
-            if (account / "db_storage").is_dir():
-                return "ok", account
-        return "missing", None
+        # Several accounts can live here; the one in use is the one whose chat list WeChat wrote last.
+        accounts = [a for a in WECHAT_CONTAINER.iterdir() if (a / "db_storage").is_dir()]
+        if not accounts:
+            return "missing", None
+        latest = lambda a: max((p.stat().st_mtime for p in (a / "db_storage" / "session").glob("session.db*")), default=0)
+        return "ok", max(accounts, key=latest)
     except PermissionError:
         return "blocked", None
 
