@@ -5943,6 +5943,13 @@ function citationDate(r, n) {
   const day = context?.time ? calendarDay(context.time) : /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
   return day ? fmtDate(day) : t("source {n}", { n });
 }
+// A value's citations: one chip each, or one run when there are more than two or when two would print the
+// same date side by side ("11月8日 11月8日" on a project fact, rc44 hunt).
+function citeChips(ns, from) {
+  const r = byPath(from);
+  const same = ns.length === 2 && citationDate(r, ns[0]) === citationDate(r, ns[1]);
+  return ns.length > 2 || same ? citeRun(ns, from) : ns.map(n => citeChip(n, from)).join("");
+}
 function citeRun(ns, from) {
   return citeChip(ns[0], from, true, false, ns);
 }
@@ -11164,7 +11171,7 @@ function profileValue(item, r, label, copy) {
     el("span", { html: inline(item.value, r.path) }), done]);
   const say = words => { done.textContent = t(words); button.classList.add("done"); setTimeout(() => button.classList.remove("done"), 1600); };
   button.onclick = () => navigator.clipboard ? navigator.clipboard.writeText(value).then(() => say("Copied"), () => say("Copy failed")) : say("Select and copy");
-  const cites = item.citations.length ? el("span", { class: "pc-cites", html: item.citations.length > 2 ? citeRun(item.citations, r.path) : item.citations.map(n => citeChip(n, r.path)).join("") }) : null;
+  const cites = item.citations.length ? el("span", { class: "pc-cites", html: citeChips(item.citations, r.path) }) : null;
   // The qualifier and sources sit outside the button, so they wrap with each other and not alone under it.
   const after = item.qualifier || cites ? el("span", { class: "pc-after" }, [item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null, cites]) : null;
   const node = noted(el("span", { class: "pc-item" }, [softBreaks(button), after]));
@@ -14731,7 +14738,7 @@ function factValue(item, from) {
   const value = el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? t("read from the page's prose, not its Facts") : "" }, [
     el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null]);
   if (!item.citations.length) return value;
-  const cites = el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") });
+  const cites = el("span", { html: citeChips(item.citations, from) });
   softBreaks(value);
   const walker = document.createTreeWalker(value.firstChild, NodeFilter.SHOW_TEXT);
   let last;
