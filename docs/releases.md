@@ -33,7 +33,8 @@ python -m pip install --upgrade 'connectonion==1.9.5'
 
 ## Current preview
 
-Release candidate **1.9.6rc47**: on a phone, a linked page named by a long question wraps instead of widening the page. See [1.9.6rc47 notes](releases/1.9.6rc47.md).
+Release candidate **1.9.6rc48**: REM related cards drop the writer's prefix; the page foot says Copy the file path. See [1.9.6rc48 notes](releases/1.9.6rc48.md).
+Before it, release candidate **1.9.6rc47**: on a phone, a linked page named by a long question wraps instead of widening the page. See [1.9.6rc47 notes](releases/1.9.6rc47.md).
 Before it, release candidate **1.9.6rc46**: a Windows background Host counts as running only when it answers, and a Host the relay refuses stops with the reason. See [1.9.6rc46 notes](releases/1.9.6rc46.md).
 Before it, release candidate **1.9.6rc45**: on a phone, Today no longer zooms out when a finished hand-off has a long summary; a `claude-code` Host names a missing Claude login. See [1.9.6rc45 notes](releases/1.9.6rc45.md).
 Before it, release candidate **1.9.6rc44**: global `co init` on Windows from an elevated shell starts a working Host, `claude-code` by default when it is logged in. See [1.9.6rc44 notes](releases/1.9.6rc44.md).

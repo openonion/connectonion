@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc47
+## Current Version: 1.9.6rc48
+Release candidate 1.9.6rc48 for 1.9.6: REM related-page cards show the sentence without the writer's
+"Changed:" prefix, and the page foot says Copy the file path instead of printing it. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc48.md).
+
+- 1.9.6rc48 (related cards and page foot read cleanly).
+
+### Previous candidate: 1.9.6rc47
 Release candidate 1.9.6rc47 for 1.9.6: on a phone, a knowledge or tag page whose linked page is named by a
 long question no longer widens the page. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc47.md).
 
