@@ -425,6 +425,7 @@ def render_starter(agent_metadata, viewer=EVERYONE):
     goes in them. Design notes are in those files, next to the rules they explain.
     """
     skills = published_skills(agent_metadata.get("skills") or [])
+    restricted = agent_metadata.get("restricted_skills") or []
     page, _ = _starter_templates()
     name = str(agent_metadata.get("name") or "Agent")
     return page.safe_substitute(
@@ -441,11 +442,41 @@ def render_starter(agent_metadata, viewer=EVERYONE):
         # line), not on the agent's skills. Kept for operator overrides that
         # still name $quick_actions; the bundled page no longer does.
         quick_actions=_quick_actions(skills),
-        capability_count=(f"{len(skills)} skill{'s' if len(skills) != 1 else ''}"
-                          if skills else "None published"),
+        capability_count=_capability_count(skills, restricted),
         diagnostics=_diagnostics(agent_metadata, len(skills)),
-        body=_skill_sections(skills),
+        body=_skill_sections(skills) if skills or not restricted else _restricted_rows(restricted),
+        admin=_admin(agent_metadata, viewer),
     )
+
+
+def _capability_count(skills, restricted):
+    if skills:
+        return f"{len(skills)} skill{'s' if len(skills) != 1 else ''}"
+    if restricted:
+        return f"{len(restricted)} restricted skill{'s' if len(restricted) != 1 else ''}"
+    return "None published"
+
+
+def _restricted_rows(names):
+    """A `restricted:` Host's skills, as rows rather than buttons.
+
+    They are what the agent can do, so "None published" beside them was false.
+    They are not published, though, and a client runs a button only for a
+    published skill -- a button here would render and refuse to run.
+    """
+    _, fragments = _starter_templates()
+    rows = "\n".join("    " + fragments["restricted"].substitute(name=escape(str(n))).strip()
+                     for n in sorted(names))
+    return "  " + fragments["list"].substitute(rows=rows).strip()
+
+
+def _admin(agent_metadata, viewer):
+    """The admin card, for a verified admin socket only (admin_home explains why)."""
+    if viewer is EVERYONE or not viewer["is_admin"]:
+        return ""
+    from . import admin_home
+    _, fragments = _starter_templates()
+    return admin_home.render(agent_metadata, recent_runs(limit=200), fragments)
 
 
 def _tagline(agent_metadata):

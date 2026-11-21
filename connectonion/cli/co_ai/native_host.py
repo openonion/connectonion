@@ -146,6 +146,9 @@ class NativeClaudeHostAgent(_NativeHostAgent):
                  restriction: ClaudeRestriction | None = None):
         plugin = ClaudeCodePlugin(workspace=workspace, use_host_permissions=True, restriction=restriction)
         super().__init__('Claude Code', plugin, co_dir=co_dir, model=model, label=_label('claude-code', model))
+        # What the Control Center lists under Capabilities: these skills are the
+        # agent's real capability, and none of them is a published one.
+        self.restriction = restriction
 
     def _answer_text(self, answer: dict) -> str | None:
         if answer.get('error') or answer.get('status') != 'completed' or not isinstance(answer.get('result'), str):

@@ -283,6 +283,12 @@ def _extract_agent_metadata(create_agent: Callable,
         "skills": [{"name": s.name, "description": s.description, "location": s.location}
                    for s in raw_skills],
     }
+    # A `restricted:` Host publishes no skill, and its Home said "None published"
+    # beside the skills host.yaml lets it run (#3263).
+    from ...useful_tools.claude_code import ClaudeRestriction
+    restriction = getattr(sample, "restriction", None)
+    if isinstance(restriction, ClaudeRestriction) and restriction.skills:
+        metadata["restricted_skills"] = list(restriction.skills)
     # Managed-key (co/*) agents have an OpenOnion account balance; publish it so
     # chat clients can show the agent's balance. Clients can't fetch it themselves
     # — it's gated by the agent's private key — so the agent is the only party that
@@ -548,6 +554,14 @@ def _create_route_handlers(
         "result_ttl": result_ttl,
         "session_modes": mode_policy,
     }
+
+
+def _configure_admin_home(trust_agent, sample) -> None:
+    """Give the Control Center's admin section its trust agent and log (#3263)."""
+    from .ws_router import admin_home
+    logger = getattr(sample, "logger", None)
+    log_path = logger.log_file_path if getattr(logger, "enable_file", False) else None
+    admin_home.configure(trust_agent, log_path)
 
 
 def _host_mode_policy(sample) -> HostPermissionPolicy:
@@ -1415,6 +1429,7 @@ def host(
         project_dir=co_dir.parent,
         provider_station=provider_station,
     )
+    _configure_admin_home(trust_agent, sample)
     route_handlers["rem_root"] = _rem_root(rem_root, config)
     # Where the local reader's token lives (rem_http.py): beside this Host's key.
     route_handlers["identity_dir"] = co_dir
@@ -1592,6 +1607,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         remote_browser_service=remote_browser_service,
         project_dir=replay_dir.parent,
     )
+    _configure_admin_home(trust_agent, sample)
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata
     )
