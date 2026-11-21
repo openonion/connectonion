@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc6
+## Current Version: 1.9.7rc7
+Release candidate 1.9.7rc7 for 1.9.7: a reader polish batch (record pages open at one width, a project page's
+"in Today" opens the filtered Waiting view, calendar titles clamp, the empty Keys page leads with one-click
+import, a topic link review names the page not its file path) and the WeChat upgrade fix — an existing install's
+stale wechat source implies consent once keys are captured, and seeding matches the reader's gate, so the night
+both seeds and fills WeChat people. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc7.md).
+
+- 1.9.7rc7 (reader polish batch; WeChat upgrade fix #3289).
+
+### Previous candidate: 1.9.7rc6
 Release candidate 1.9.7rc6 for 1.9.7: WeChat is a co rem source that seeds people into the map and the night,
 on by default once its keys are captured. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc6.md).
 
