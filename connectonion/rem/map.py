@@ -125,7 +125,7 @@ def _chat_people_rows(subscriptions: dict) -> list[dict]:
     from .chat import wechat_people
     rows = []
     for sub in (subscriptions or {}).values():
-        if sub.get("kind") == "wechat" and sub.get("enabled"):
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
             rows += wechat_people()
     return rows
 

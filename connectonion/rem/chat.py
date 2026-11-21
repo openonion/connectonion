@@ -206,7 +206,7 @@ def seed_chat_people(root, subscriptions: dict) -> list[str]:
     from . import map as rem_map
     rows = []
     for sub in (subscriptions or {}).values():
-        if sub.get("kind") == "wechat" and sub.get("enabled"):
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
             rows += wechat_people()
     if not rows:
         return []

@@ -118,6 +118,14 @@ def subscriptions(root: Path) -> dict:
                    "adapter": "available" if _wechat_ready else "waiting for co wechat"},
     }
     defaults.update(saved)
+    # Capturing WeChat's keys IS the local, reversible consent (#3279): keys present means the source is
+    # enabled and consented, even for a subscription stored before #3281 with consented:False, so it is one
+    # source of truth and a page we seed is a page we fill (#3289). An explicit `co rem sources remove wechat`
+    # (unsubscribed) is respected and stays off.
+    wechat = defaults.get("wechat")
+    if _wechat_ready and wechat and not wechat.get("unsubscribed"):
+        wechat["enabled"] = True
+        wechat["consented"] = True
     return defaults
 
 
