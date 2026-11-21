@@ -5523,7 +5523,7 @@ Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏
   "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
   "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
   "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
-  "Sensitive · tap to show": "敏感 · 点一下显示", "Sensitive": "敏感", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+  "Sensitive · tap to show": "敏感 · 点一下显示", "A sensitive item (covered)": "一件敏感的事（已遮住，在「显示」里选全部显示可看）", "Sensitive": "敏感", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
 const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
   cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
   public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
@@ -8553,8 +8553,14 @@ function withoutDateClutter(text, { since = "", due = "" } = {}) {
     .replace(/\s+([.!?。！？])/g, "$1").trim()
     .replace(/\u0005(\d+)\u0005/g, (_, i) => quotes[i]);
 }
+// A Today line whose every clause is labelled: at Cover sensitive, taking the passages out left only "— due 9 Dec."
+// (rc44 hunt), so the row says what it is instead. At Show all the labels go and every word stays (owner,
+// 2026-11-20: "全部显示的时候，应该把这些都显示出来").
 function morningWords(text, r, thread = {}) {
-  text = unlabelled(text);
+  const labelled = hasPrivacy(text);
+  text = privacyLevel === "all" ? String(text).replace(/\s*[\[［](?:personal|sensitive)[\]］]/gi, "") : unlabelled(text);
+  const left = text.replace(/\[W?\d{1,3}\]|[\[［](?:personal|sensitive)[\]］]/gi, "").replace(/[—–-]?\s*due\s+\d{4}-\d{2}-\d{2}/gi, "").replace(/[\s—–\-.,;:。，；：]+/g, "");
+  if (labelled && !/[\p{L}\p{N}]/u.test(left)) return { words: t("A sensitive item (covered)"), context: "", covered: true };
   const cites = [...new Set(text.match(/\[W?\d{1,3}\]/g) || [])].join(" ");
   const words = withoutDateClutter(plainLine(capFirst(threadWords(text, r))), thread);
   return { words, context: cites };
