@@ -105,6 +105,8 @@ memory.write_memory("alice-notes", "Alice prefers email\nAlice works at TechCorp
 - Converted to lowercase
 - `"Alice Notes!"` becomes `"alicenotes"`
 
+**In single-file mode** (`Memory(memory_file="notes.md")`) each memory is a `## key` section. Anything above the first `##` heading, such as a `# Title` line or an introduction, is kept on every write; surrounding blank lines in it are trimmed.
+
 ### read_memory
 
 Retrieve saved information:
