@@ -102,6 +102,27 @@ def import_csv(root, text: str) -> dict:
     return {"filed": filed, "skipped": skipped}
 
 
+def import_browser(root, browser: str = "chrome") -> dict:
+    """Every saved login in a browser's vault (Chrome/Edge/Brave): the value to the OS vault, a page per key.
+
+    Returns counts only (filed, skipped), never a URL, account or value, so the reply is safe to show or log.
+    """
+    from ..useful_tools import chrome_passwords
+    try:
+        logins = chrome_passwords.all_logins(browser)
+    except chrome_passwords.ChromeError as error:
+        raise RemError(str(error))
+    filed = skipped = 0
+    for login in logins:
+        service = re.sub(r"^https?://(www\.)?|/.*$", "", login["url"]) or login["url"]
+        if not service or not login["password"]:
+            skipped += 1
+            continue
+        add(root, service, login["username"], login["password"], link=login["url"])
+        filed += 1
+    return {"filed": filed, "skipped": skipped}
+
+
 def _entropy(token: str) -> float:
     counts = Counter(token)
     return -sum(n / len(token) * math.log2(n / len(token)) for n in counts.values())
