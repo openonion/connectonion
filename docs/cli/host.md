@@ -45,6 +45,7 @@ restricted:
     - "Bash(python tool.py:*)"   # Claude Code permission rules; nothing else runs
   skills: [quote]                # .claude/skills/quote/SKILL.md in this folder
   system_prompt: You price cleaning jobs for our customers.
+  env: [FRESHDESK_API_KEY]       # names of your variables the script needs
 ```
 
 The agent is then `host.yaml`, a skill and the script it runs; no `agent.py`.
