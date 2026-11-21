@@ -578,6 +578,11 @@ The removed scoped rem_* tools are no longer a filesystem guarantee.
 
 ## Source coverage and output
 
+When `co rem init --no-investigate` maps projects from Claude Code history,
+a session can start with queue, mode, or bridge metadata. The map uses the
+first recorded working directory within the first 256 records and 1 MB of the
+session. Sessions without a working directory in that window stay unmapped.
+
 Gmail/Outlook programmatic collection searches the requested date windows.
 Sync lists each weekly window 200 messages at a time and splits any window
 that comes back full until every half fits, so a busy week is read whole; a
