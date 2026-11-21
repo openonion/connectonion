@@ -47,3 +47,23 @@ def test_wechat_is_on_by_default_once_keys_are_captured(tmp_path, monkeypatch):
     monkeypatch.setattr(svc.Path, "home", staticmethod(lambda: home))
     on = service.subscriptions(tmp_path / "rem")["wechat"]
     assert on["enabled"] is True and on["consented"] is True and on["chats"] == ["*"]
+
+
+def test_seed_chat_people_adds_new_two_way_contacts_only(tmp_path, monkeypatch):
+    from connectonion.rem import chat
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    prepare(tmp_path / "rem")
+    nb = Notebook(tmp_path / "rem")
+    nb.stub_person("people/known.md", "Mara Ostrowski", ["wxid_mara"])  # already has this handle
+    monkeypatch.setattr(chat, "wechat_people", lambda *a, **k: [
+        {"address": "wxid_mara", "name": "Mara Ostrowski", "mails": 9, "sent": 4, "received": 5, "kind": "wechat"},
+        {"address": "wxid_quinn", "name": "Quinn Alder", "mails": 6, "sent": 2, "received": 4, "kind": "wechat"},
+        {"address": "wxid_oneway", "name": "A Vendor", "mails": 3, "sent": 0, "received": 3, "kind": "wechat"}])
+    subs = {"wechat": {"kind": "wechat", "enabled": True}}
+    created = chat.seed_chat_people(tmp_path / "rem", subs)
+    paths = [p["path"] for p in nb.people()]
+    assert created == 2  # Mara already a handle (skip); Quinn and the vendor (who wrote to you) are new
+    assert any("quinn" in p for p in paths) and not any("mara" in p and "known" not in p for p in paths)
+    # Idempotent: a second night adds nothing.
+    assert chat.seed_chat_people(tmp_path / "rem", subs) == 0

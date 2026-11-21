@@ -193,3 +193,36 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
         people.append({"address": chat, "name": name, "mails": c["mails"],
                        "sent": c["sent"], "received": c["received"], "kind": "wechat"})
     return people
+
+
+def seed_chat_people(root, subscriptions: dict) -> int:
+    """Nightly: create a people page for each new two-way chat contact (WeChat) not already on the notebook.
+
+    Additive and local, no model and no network. The id is the handle, so the night's investigation then
+    reads the chat into the page. Merging a chat contact into an existing same-named mail page is left to
+    the full `co rem map`; here a contact whose id is already a handle, anywhere, is skipped.
+    """
+    from .files import Notebook
+    from . import map as rem_map
+    rows = []
+    for sub in (subscriptions or {}).values():
+        if sub.get("kind") == "wechat" and sub.get("enabled"):
+            rows += wechat_people()
+    if not rows:
+        return 0
+    notebook = Notebook(root)
+    known_handles = {alias.casefold() for person in notebook.people() for alias in person.get("aliases", [])}
+    created = 0
+    for group in rem_map._people_groups(rows):
+        first = group[0]
+        sent = sum(r.get("sent", 0) for r in group)
+        received = sum(r.get("received", 0) for r in group)
+        handle = first["address"]
+        name = " ".join(str(first.get("name") or "").split())
+        if not name or handle.casefold() in known_handles or not rem_map.worth_a_page(sent, received):
+            continue
+        record = rem_map._record("people", name, handle)
+        if notebook.stub_person(record, name, [handle]):
+            known_handles.add(handle.casefold())
+            created += 1
+    return created
