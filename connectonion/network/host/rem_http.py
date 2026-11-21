@@ -369,7 +369,7 @@ async def _keys(scope, receive, send, root, headers):
     operations = {"add": lambda: {"page": keys.add(root, text("service"), text("account"), text("secret"),
                                                    purpose=text("purpose"), link=text("link"))},
                   "reveal": lambda: {"secret": keys.reveal(root, text("page"))},
-                  "import": lambda: keys.import_csv(root, text("csv"))}
+                  "import": (lambda: keys.import_browser(root, text("source"))) if text("source") else (lambda: keys.import_csv(root, text("csv")))}
     try:
         result = await asyncio.to_thread(operations[action])
     except RemError as error:
