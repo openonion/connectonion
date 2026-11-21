@@ -688,6 +688,7 @@
   .chip { font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .chip .d { color: var(--grey); margin-left: 6px; }
   .page-foot { max-width: 66ch; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .unfilled-sections { color: var(--grey); font: var(--s-ui) var(--font); margin-top: var(--u4); }
   .page-foot .when { color: var(--grey); font: var(--s-ui)/1.5 var(--font); }
   .btn-action, .eyebrow-path { font: var(--s-ui) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; }
   .eyebrow-path { font: var(--s-ui) var(--font); }
@@ -6337,6 +6338,22 @@ function sourceChips(text) {
   return chips;
 }
 
+// A mapped page's unanswered sections, each a heading over "Unknown — not investigated yet", filled a skill page
+// with one empty section after another (rc48 hunt: 9 of 16). They fold into one line at the end that names them;
+// a section with anything else in it stays where it is.
+function foldUnfilled(note) {
+  const empty = [];
+  for (const h of [...note.querySelectorAll(":scope > h2")]) {
+    const body = [];
+    for (let n = h.nextElementSibling; n && n.tagName !== "H2"; n = n.nextElementSibling) body.push(n);
+    const words = body.map(n => n.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
+    if (!words.length || !words.every(w => UNFILLED_LINE.test(w.replace(/^[-*•]\s*/, "")))) continue;
+    empty.push(h.textContent.trim());
+    h.remove(); body.forEach(n => n.remove());
+  }
+  if (empty.length) note.appendChild(el("p", { class: "unfilled-sections", text: t("Still unknown: ") + empty.join(" · ") }));
+  return empty;
+}
 // ---------- what a page knows (#1836) ----------
 // A mapped page is a template: every heading is there and most answers are
 // "Unknown — not investigated yet". Shown as written, every page led with what
@@ -15387,6 +15404,7 @@ function record(path, heading) {
     if (li.querySelector(".private") && !rest.textContent.trim()) li.classList.add("private-item");
   });
 
+  foldUnfilled(note);
   const headings = [...note.querySelectorAll("h2, h3, h4, h5, h6")];
   const ids = new Set(), toc = [];
   for (const h of headings) {
