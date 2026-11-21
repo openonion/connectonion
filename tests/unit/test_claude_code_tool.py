@@ -938,8 +938,8 @@ def test_real_process_is_reaped_on_terminal_interrupt(tmp_path):
     started = []
     start_process = claude_module._start_process
 
-    def capture_process(argv, cwd):
-        process = start_process(argv, cwd)
+    def capture_process(argv, cwd, extra_env=None):
+        process = start_process(argv, cwd, extra_env)
         started.append(process)
         return process
 
