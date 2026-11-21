@@ -48,6 +48,9 @@ def prepare(root, config, *, scheduled, carry=None):
     batch = _read_sources(root, service._selected_sources(root, ""), progress, config, set_aside)
     from .people_basics import refresh as refresh_basics
     basics_changed = refresh_basics(root) + project_pages.refresh_last_activity(root)
+    # New chat contacts (WeChat) become people at night too, not only at `co rem map` (#3279).
+    from .chat import seed_chat_people
+    basics_changed += seed_chat_people(root, sources)
     # Skill call counts are a script over the session files, like the basics above:
     # only init and `co rem skills map` ran it, so counts froze on the day of init (#2950).
     from .skill_map import map_skills
