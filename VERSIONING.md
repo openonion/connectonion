@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc47
+## Current Version: 1.9.6
+
+Stable 1.9.6, released by the owner's decision from 1.9.6rc47's code. `co init` starts the Host and leaves it
+running on macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through a
+logged-in Claude Code with no API key (checked on a real Windows 11 PC over the relay in rc43). REM gets the new
+desk, a knowledge graph, three privacy levels and hand-offs you can watch; `co send` / `co receive`, `co wechat`,
+WhatsApp pairing by code and Windows hosts. The default model is Gemini 4 Hydrogen. See [1.9.6 notes](docs/releases/1.9.6.md).
+
+- 1.9.6 (co init starts the Host; model: claude-code; REM's new desk; files between agents).
+
+## Previous candidate: 1.9.6rc47
 Release candidate 1.9.6rc47 for 1.9.6: on a phone, a knowledge or tag page whose linked page is named by a
 long question no longer widens the page. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc47.md).
 
@@ -819,7 +829,7 @@ under More. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc1.m
 
 - 1.9.6rc1 (whole lines on desktop, letter first on a phone, less-used actions under More).
 
-## Current stable: 1.9.5
+## Previous stable: 1.9.5
 
 Stable 1.9.5. A fresh install works again: typer 0.29.0 (released 2026-11-09) made every `co`
 command crash, so typer is capped below 0.29. REM reads each slot's mail while the Codex weekly
