@@ -3178,8 +3178,9 @@ def _obsidian_vaults(
     """List registered vaults with their paths, availability and open status without changing notes.
 
     Reads the vault registry and checks which vault folders exist without
-    opening notes. Numbered output saves vault references outside the vault
-    for 15 minutes. --json does not save row numbers.
+    opening notes. Writes temporary row numbers and vault paths outside the
+    vault when showing a numbered list. The numbers expire after 15 minutes.
+    --json does not save row numbers.
     A closed vault can still be read. If a vault is available, the output
     suggests a command to list its folders.
     Use a number from the latest list, for example co obsidian ls --vault 1.
