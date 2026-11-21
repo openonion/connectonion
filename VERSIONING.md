@@ -400,7 +400,13 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc2
+## Current Version: 1.9.7rc3
+Release candidate 1.9.7rc3 for 1.9.7: `restricted: env` passes named Host variables to the tools, and the
+caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc3.md).
+
+- 1.9.7rc3 (restricted: env and the caller in the environment).
+
+### Previous candidate: 1.9.7rc2
 Release candidate 1.9.7rc2 for 1.9.7: `co wechat` just works on WeChat 4.1 for Mac. One command captures every
 database's key, the databases open (WAL frames applied), and bare `co wechat` lists your chats with `read` and
 `search`. The README shows WeChat, Asana and Obsidian. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc2.md).
