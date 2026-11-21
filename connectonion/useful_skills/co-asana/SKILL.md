@@ -7,9 +7,9 @@ description: Work with the user's Asana tasks through `co asana` — connecting 
 
 `co asana` acts in the user's Asana as the user, with their personal access
 token. Syntax lives in help, not here: run `co asana --help`, then
-`co asana <command> --help` before the first use of a command. Five commands
-read (`check`, `projects`, `tasks`, `task`, `stories`); two write (`update`,
-`comment`).
+`co asana <command> --help` before the first use of a command. Seven commands
+read (`check`, `projects`, `tasks`, `task`, `stories`, `changes`, `show`); two
+write (`update`, `comment`).
 
 **Read the output, not just the exit code.** A write without `--yes` exits 0
 after only a preview: nothing changed in Asana until you run the printed
@@ -43,7 +43,9 @@ a due filter is given. Say so when the user asked for "everything".
 
 `co asana task <ref>` shows the description and comments only.
 `co asana stories <ref>` adds Asana's own activity, oldest first, with who did
-it: use it for "who assigned this" or "when did the date move". A task
+it: use it for "who assigned this" or "when did the date move".
+For "what changed on my tasks since Monday", `co asana changes --since
+<time with zone>` lists them oldest first; `co asana show <id>` reads one. A task
 assigned to the user is not a promise they made. Only the user's own comment
 that accepts it or commits to a date ("yes, I'll do it by the 7th") is; a
 question, a refusal or any other reply is not.

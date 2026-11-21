@@ -317,6 +317,8 @@ NEXT = {
     "co asana tasks": HANDLER,
     "co asana task": HANDLER,         # the task's stories
     "co asana stories": HANDLER,
+    "co asana changes": HANDLER,      # the first changed task, or where to look when none changed
+    "co asana show": HANDLER,         # the task's stories
     "co asana update": HANDLER,       # preview → the same change with --yes; done → co asana task
     "co asana comment": HANDLER,
     # Every co rem command already ends by naming one next command, chosen from what
