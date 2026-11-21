@@ -21,11 +21,13 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
-Release candidate **1.9.7rc1**: a restricted claude-code Host from host.yaml, no silent co/ model, `co obsidian`
+Release candidate **1.9.7rc2**: `restricted: env` passes named Host variables to the tools, and the caller as
+`CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. See [1.9.7rc2 notes](releases/1.9.7rc2.md).
+Before it, **1.9.7rc1**: a restricted claude-code Host from host.yaml, no silent co/ model, `co obsidian`
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc1'
+python -m pip install --upgrade 'connectonion==1.9.7rc2'
 ```
 
 ## Current release

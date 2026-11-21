@@ -400,7 +400,13 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc1
+## Current Version: 1.9.7rc2
+Release candidate 1.9.7rc2 for 1.9.7: `restricted: env` passes named Host variables to the tools, and the
+caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc2.md).
+
+- 1.9.7rc2 (restricted: env and the caller in the environment).
+
+### Previous candidate: 1.9.7rc1
 Release candidate 1.9.7rc1 for 1.9.7: a restricted claude-code Host from host.yaml, a Host that refuses a silent
 co/ model, provider/model names in /info, and `co obsidian` / `co asana`. Stable is 1.9.6. See
 [candidate notes](docs/releases/1.9.7rc1.md).
