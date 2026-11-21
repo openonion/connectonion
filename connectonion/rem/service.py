@@ -77,7 +77,7 @@ def claude_projects_root() -> Path:
 # coding sessions older than half a year describe work that has moved on, while
 # mail keeps its value for years (people, commitments, what was agreed).
 DEFAULT_LOOKBACK_DAYS = 60
-MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
+MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730, "wechat": 730}
 # Every kind a subscription can be consented for and read.
 READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
 
@@ -107,6 +107,13 @@ def subscriptions(root: Path) -> dict:
                      "enabled": False, "consented": False,
                      "adapter": "available" if (chat_home("whatsapp") / "received.jsonl").is_file()
                      else "waiting for co whatsapp listen"},
+        # Off until chosen. Unlike WhatsApp it needs no listener: `co wechat sync` reads WeChat for Mac's own
+        # databases each time, and "*" reads every one-to-one chat (people), never a group unless named.
+        "wechat": {"id": "wechat", "kind": "wechat", "root": str(chat_home("wechat")), "chats": ["*"],
+                   "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["wechat"],
+                   "enabled": False, "consented": False,
+                   "adapter": "available" if (Path.home() / ".co" / "wechat" / "keys.json").is_file()
+                   else "waiting for co wechat"},
     }
     defaults.update(saved)
     return defaults
@@ -196,7 +203,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise RemError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -209,7 +216,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
             sources[name]["chats"] = sorted(chosen)
             enabled = bool(chosen)
         elif enabled and sources[name].get("kind") in CHAT_KINDS and not sources[name].get("chats"):
-            raise RemError("Name the chats to read: --chat <id>, from `co whatsapp chats`")
+            raise RemError(f"Name the chats to read: --chat <id>, from `co {sources[name].get('kind')} chats`")
         sources[name]["enabled"] = enabled
         # "Never subscribed" and "the user said stop" both read as enabled=False;
         # only the second forbids an explicit investigation from reading it.
@@ -248,7 +255,7 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     with maintenance_lock(root):
         sources = subscriptions(root)
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
         since = now() - timedelta(days=days)
         current = sources[name].get("since")

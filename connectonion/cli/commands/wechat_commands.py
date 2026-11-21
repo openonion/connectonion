@@ -180,7 +180,8 @@ def key_help(ctx: typer.Context):
 
 
 @key_app.command("capture", epilog="Example:  co wechat key capture  |  co wechat key capture --yes")
-def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question; for a script you started yourself")):
+def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question; for a script you started yourself"),
+                keep_copy: bool = typer.Option(False, "--keep-copy", help="Keep the 1.4 GB re-signed copy for the next capture")):
     """Writes the key of every WeChat database on this Mac to ~/.co/wechat/keys.json (0600), after one question. Quits and reopens WeChat."""
     _require_macos()
     status, account = _container_status()
@@ -194,7 +195,7 @@ def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question
         raise typer.Exit(1)
     from ...useful_tools import wechat as engine
     total = len(engine.message_dbs(account / "db_storage"))
-    done = capture_keys(account / "db_storage")
+    done = capture_keys(account / "db_storage", keep_copy=keep_copy)
     console.print(f"[green]Saved keys for {done} of {total} databases[/green] in {KEY_MAP}.")
     # The copy took WeChat's one Mac session, so the real app asks to log in once more; reading never does.
     console.print("WeChat has reopened: log in one last time. After this, co wechat only reads files on this Mac.")
@@ -359,7 +360,7 @@ def _quit_wechat() -> None:
     time.sleep(1)
 
 
-def capture_keys(db_storage: Path, wait_seconds: int = 600) -> int:
+def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = False) -> int:
     """Quit WeChat, open the re-signed copy under lldb, record each database's key by salt, restore WeChat.
 
     Returns how many of this account's databases now have a key. Only OS tools: codesign, lldb, python3.
@@ -412,6 +413,10 @@ def capture_keys(db_storage: Path, wait_seconds: int = 600) -> int:
         for leftover in work.iterdir():
             leftover.unlink()
         work.rmdir()
+        # The 1.4 GB re-signed copy is only needed while capturing; a later capture makes it again.
+        if not keep_copy and DEBUG_COPY.is_dir():
+            import shutil
+            shutil.rmtree(DEBUG_COPY, ignore_errors=True)
     _save_key_map(keys)
     if not found:
         console.print("[yellow]No keys appeared.[/yellow] The copy has to log in for WeChat to open its databases. "
