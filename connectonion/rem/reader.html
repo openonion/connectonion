@@ -2827,6 +2827,11 @@
 
 <style id="org-article-style">
   main:has(> .ov-page.ov-r6) { max-width: 800px; }
+  /* A skill page renders a bare .record-focus with no .ov-page wrapper, so it fell through to main's
+     1180px default: 1080px wide and offset left, while every other record kind sits in an 800px frame
+     (#3231). Put it in the same frame so all record pages open at one width. */
+  main:has(> .record-focus.skills) { max-width: 800px; }
+  main:has(> .record-focus.skills) > .record-focus.skills { max-width: 720px; margin-inline: auto; }
   .ov.ov-page.ov-r6 { max-width: 720px; margin-inline: auto; }
   main:has(> .ov-page.ov-r6) > .deep-note { max-width: 720px; margin-inline: auto; }
   .ov-page .ov-stage { display: block; }
