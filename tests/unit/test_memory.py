@@ -175,6 +175,36 @@ def test_search_memory_empty(test_memory):
     assert "no memories" in result.lower()
 
 
+def test_markdown_headings_in_content_stay_in_their_memory(tmp_path):
+    """A `## ` heading inside a memory must not become a memory of its own.
+
+    Storing structured markdown is the documented way to use a memory, and its
+    own example nests `## Contact Info` under the memory key. Parsing must keep
+    those headings with the content they belong to.
+    """
+    memory = Memory(memory_file=str(tmp_path / "memory.md"))
+    content = (
+        "# Alice - TechCorp\n"
+        "\n"
+        "## Contact Info\n"
+        "- Email: alice@techcorp.com\n"
+        "\n"
+        "## Notes\n"
+        "- Decision maker\n"
+    )
+
+    memory.write_memory("alice-techcorp", content)
+
+    assert memory.read_memory("alice-techcorp") == (
+        "Memory: alice-techcorp\n\n" + content.strip()
+    )
+    listed = memory.list_memories()
+    assert "Stored Memories (1)" in listed
+    assert "alice-techcorp" in listed
+    assert "Contact Info" not in listed
+    assert "Decision maker" in memory.search_memory("Decision maker")
+
+
 def test_single_file_preserves_header(tmp_path):
     """Writing to a single-file memory must not drop the leading header."""
     memory_file = tmp_path / "memory.md"

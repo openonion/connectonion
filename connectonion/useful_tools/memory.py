@@ -3,7 +3,7 @@ Purpose: Persistent key-value memory storage for agents using markdown files wit
 LLM-Note:
   Dependencies: imports from [os, re] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_memory.py]
   Data flow: Agent calls Memory methods → write_memory(key, content) stores in memory.md (or directory) → read_memory(key) retrieves by parsing markdown sections → list_memories() shows all keys → search_memory(pattern) uses regex across all content → auto-splits to directory when file exceeds split_threshold lines
-  State/Effects: creates/modifies memory.md file or memory/ directory | single file uses ## headings as keys | auto-migrates to directory structure at threshold | does NOT delete old file on migration (removes it) | no network I/O
+  State/Effects: creates/modifies memory.md file or memory/ directory | single file uses ## headings as keys, and a heading that is not a sanitized key stays content | auto-migrates to directory structure at threshold | does NOT delete old file on migration (removes it) | no network I/O
   Integration: exposes Memory class with write_memory(), read_memory(), list_memories(), search_memory() | used as agent tool by passing to Agent(tools=[memory]) | storage format: markdown with ## key headings | directory format: one .md file per key
   Performance: file I/O per operation (no caching) | parsing is O(n) file lines | search is O(n*m) files * lines | auto-scaling avoids single file bloat
   Errors: returns error string for missing keys | invalid key names sanitized (alphanumeric, hyphen, underscore only) | no exceptions raised (returns error messages)
@@ -39,6 +39,21 @@ Example:
 
 import os
 import re
+
+
+def _sanitize_key(key: str) -> str:
+    """Reduce a key to what can be stored: lowercase alphanumerics, '-' and '_'."""
+    return "".join(c for c in key if c.isalnum() or c in ('-', '_')).lower()
+
+
+def _is_section_key(text: str) -> bool:
+    """Whether a `## ` heading names a memory rather than a markdown heading.
+
+    Keys are always written sanitized, so anything with spaces, punctuation or
+    capital letters can only be part of the content above (a `## Contact Info`
+    heading inside a memory, for example).
+    """
+    return bool(text) and _sanitize_key(text) == text
 
 
 class Memory:
@@ -86,7 +101,7 @@ class Memory:
         Returns:
             Confirmation message
         """
-        safe_key = "".join(c for c in key if c.isalnum() or c in ('-', '_')).lower()
+        safe_key = _sanitize_key(key)
         if not safe_key:
             return "Invalid key name. Use alphanumeric characters, hyphens, or underscores."
 
@@ -104,7 +119,7 @@ class Memory:
         Returns:
             Memory content or error message
         """
-        safe_key = "".join(c for c in key if c.isalnum() or c in ('-', '_')).lower()
+        safe_key = _sanitize_key(key)
 
         if self.using_directory:
             return self._read_directory(safe_key)
@@ -254,6 +269,10 @@ class Memory:
         not necessarily byte-identical to the original file (harmless for
         Markdown, but worth knowing).
 
+        Only a heading that is already a sanitized key starts a section, so a
+        markdown heading inside a memory (``## Contact Info``) stays with the
+        content it belongs to instead of becoming a key of its own.
+
         Returns:
             A ``(header, sections)`` tuple where ``header`` is the text before
             the first section heading with surrounding whitespace stripped,
@@ -266,12 +285,13 @@ class Memory:
         in_header = True
 
         for line in content.split('\n'):
-            if line.startswith('## '):
+            heading = line[3:].strip() if line.startswith('## ') else None
+            if heading is not None and _is_section_key(heading):
                 # Save previous section
                 if current_key:
                     sections[current_key] = '\n'.join(current_content).strip()
                 # Start new section
-                current_key = line[3:].strip()
+                current_key = heading
                 current_content = []
                 in_header = False
             elif in_header:
