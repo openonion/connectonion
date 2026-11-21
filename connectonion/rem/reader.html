@@ -2385,6 +2385,9 @@
   .cal-ev.cal-microsoft { border-left-color: var(--grey); }
   .cal-ev:hover, .cal-ev:focus-visible { box-shadow: var(--e-ink); outline: none; }
   .cal-ev-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; }
+  /* A long mail-quote title would wrap into a wall of lines filling the block; clamp a timed event's title
+     to two lines (the full text stays on its detail panel). .short and .cal-suggest keep their one nowrap line. */
+  .cal-ev:not(.short):not(.cal-suggest) .cal-ev-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; min-width: 0; }
   .cal-ev.short .cal-ev-title { white-space: nowrap; }
   .cal-ev-time, .cal-ev-where { color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cal-ev.short .cal-ev-time, .cal-ev:not(.tall) .cal-ev-where { display: none; }
@@ -2456,7 +2459,7 @@
   .cal-row-bar.cal-event .cal-row-time { color: inherit; grid-row: 2; }
   .cal-row-time { color: var(--grey); font-size: var(--s-ui); }
   .cal-row.late .cal-row-time { color: var(--red); }
-  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; }
+  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; }
   .cal-row-where { grid-column: 2; color: var(--grey); font-size: var(--s-ui); overflow-wrap: anywhere; }
   .cal-row-bar.cal-event .cal-row-where { grid-column: 1; color: inherit; }
   @media (max-width: 640px) {
