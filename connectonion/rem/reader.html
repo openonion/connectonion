@@ -3378,6 +3378,7 @@
 
   /* phone: the rail and the ⌘K bar give way to a floating tab bar */
   .tabbar { display: none; }
+  body.evidence-open .tabbar { visibility: hidden; }
   @media (max-width: 640px) {
     .app { display: block; padding-bottom: 84px; }
     .rail { position: static; height: 0; padding: 0; width: 0; overflow: visible; }
@@ -4799,6 +4800,11 @@ const UI = {
     "What you typed": "你的输入",
     "Final reply": "最终回复",
     "Original conversation": "原始对话",
+    "Open in OneNote ↗": "在 OneNote 中打开 ↗",
+    "Source information could not be read": "无法读取来源信息",
+    "Source record not found in this local snapshot": "此快照中未找到来源记录",
+    "Only an API address is available; no web link": "只有 API 地址，没有可打开的网页链接",
+    "Source link unavailable": "来源链接不可用",
     "Messages": "消息",
     "Details": "详情",
     "Folder": "文件夹",
@@ -5893,7 +5899,7 @@ function sourceChannel(kind) {
   // left a web source's card with its header alone (rc35 hunt).
   kind = String(kind || "");
   if (!kind) return "";
-  return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp", web: "Web" })[kind]
+  return t(({ gmail: "Gmail", outlook: "Outlook", onenote: "OneNote", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp", web: "Web" })[kind]
     || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1)));
 }
 // A web source is named for a person, never by its URL-encoded query (rc35 hunt: "duckduckgo.com/?q=%22…"): a saved
@@ -7310,7 +7316,7 @@ function sourceList(r) {
   return out;
 }
 function sourceId(text, plain = false) {
-  return plain ? "" : /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
+  return plain && !/^source-ref:/.test(text) ? "" : /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
 }
 // #3104: a source row says what the thing is — a mail's subject, a session's title, a file's name — never
 // its hash. The raw id stays in the row's tooltip. {n, id, kind, title, who, channel, day}
@@ -17362,6 +17368,14 @@ function evidenceOriginal(context, quote) {
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     ...(context.truncated ? [el("p", { class: "evidence-meta", text: t("This archived excerpt is truncated; find searches only the text shown.") })] : [])]);
 }
+function onenoteSourceLink(context) {
+  const available = context.status === "resolved" && context.link === "ok" && /^https:\/\/[^\s]+$/i.test(context.url || "");
+  if (available) return el("a", { class: "evidence-open-file", href: context.url, target: "_blank", rel: "noopener noreferrer", text: t("Open in OneNote ↗") });
+  const message = context.status === "error" ? "Source information could not be read"
+    : context.status === "not_found" ? "Source record not found in this local snapshot"
+    : context.link === "api_only" ? "Only an API address is available; no web link" : "Source link unavailable";
+  return el("p", { class: "evidence-meta", text: t(message) });
+}
 function sourceIdentity(context) {
   const from = context.participants?.from;
   const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
@@ -17401,6 +17415,7 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
     show.onclick = () => { closeEvidence(); band.closest("details")?.setAttribute("open", ""); band.reveal(numbers); };
     panel.appendChild(show);
   }
+  if (context?.source === "onenote") panel.appendChild(onenoteSourceLink(context));
   const sessionSource = sourceId(source.text, source.plain);
   const session = (REM.records || []).find(record => record.category === "sessions" && record.session_messages?.some(message => message.source === sessionSource));
   if (session) {

@@ -69,6 +69,10 @@ def packet(notebook, candidate: str, record: str | None = None, items=(), remove
             continue
         number, source = match.groups()
         context = contexts.get(source)
+        if source.startswith(("adapter:docs/onenote/", "docs/onenote/")):
+            from .onenote_imports import evidence_item
+            original = evidence_item(notebook.root, source)
+            context = {"excerpt": original["text"], "truncated": False} if original else None
         if not context or not context.get("excerpt"):
             (unretained if source in handed else missing).append(number)
             unavailable.append({"citation": number, "source_id": source,

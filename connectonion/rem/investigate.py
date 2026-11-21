@@ -1037,6 +1037,14 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
             why = (mail_skipped or ("unsubscribed by the user" if subscriptions.get(kind, {}).get("unsubscribed")
                    else f"not connected (co auth {'google' if kind == 'gmail' else 'microsoft'})"))
             coverage.append(f"{kind}: {why}; not searched")
+    onenote = subscriptions.get("onenote", {})
+    if onenote.get("enabled") and onenote.get("consented") and archive_root is not None:
+        from .onenote_imports import investigation_items
+        picked = investigation_items(archive_root, onenote, record, start, end)
+        items.extend(picked)
+        coverage.append(f"onenote: {len(picked)} selected local snapshots in window; no remote read during investigation")
+    elif onenote:
+        coverage.append("onenote: disabled or waiting for approval; not searched")
     if domains:
         coverage.append(f"{len(left_out)} notice or owner-only messages on the domain left out")
     from .chat import CHAT_KINDS, collect_chat

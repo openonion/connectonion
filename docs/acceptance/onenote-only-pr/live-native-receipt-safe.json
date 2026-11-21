@@ -1,0 +1,9 @@
+{
+  "transport": "live Microsoft Graph",
+  "sample": "dedicated synthetic note",
+  "model": "fake callback; no LLM called",
+  "first_items": 1,
+  "repeat_items": 0,
+  "model_callback_calls": 1,
+  "remote_complete": true
+}

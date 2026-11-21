@@ -1,0 +1,9 @@
+{
+  "notebooks": [{"id": "nb-fixture", "displayName": "Synthetic notebook"}],
+  "sections": [{"id": "section-fixture", "displayName": "Synthetic notes"}],
+  "pages": [
+    {"id": "page-good", "title": "Fixture meeting", "createdDateTime": "2026-10-01T01:00:00Z", "lastModifiedDateTime": "2026-10-02T01:00:00Z", "links": {"oneNoteWebUrl": {"href": "https://example.invalid/notes/page-good"}}, "parentNotebook": {"id": "nb-fixture"}, "parentSection": {"id": "section-fixture"}},
+    {"id": "page-empty", "parentNotebook": {"id": "nb-fixture"}, "parentSection": {"id": "section-fixture"}},
+    {"id": "page-outside", "parentNotebook": {"id": "nb-fixture"}, "parentSection": {"id": "other-section"}}
+  ]
+}
