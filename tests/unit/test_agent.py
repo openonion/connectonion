@@ -1007,17 +1007,32 @@ def test_agent_input_with_files(tmp_path):
 
     # The model must still learn about the file — but not by having the notice
     # concatenated onto what the user typed (#308). It arrives as its own
-    # internal message, which the UI skips and the model still reads.
+    # message. The session keeps ``internal`` so the UI can skip it; the copy
+    # sent to the provider does not (#2702).
     messages = mock_llm.last_call["messages"]
     user_messages = [msg for msg in messages if msg['role'] == 'user']
 
-    typed = next(m for m in user_messages if not m.get('internal'))
-    assert typed['content'] == "Analyze this document", "the user's words, unmodified"
+    typed = next(m for m in user_messages if m.get('content') == "Analyze this document")
     assert "<system-reminder>" not in typed['content']
 
-    notice = next(m for m in user_messages if m.get('internal'))
-    assert "report.pdf" in notice['content']
+    notice = next(
+        m for m in user_messages
+        if isinstance(m.get('content'), str) and "report.pdf" in m['content']
+    )
+    assert notice is not typed
     assert "<system-reminder>" in notice['content']
+    assert all(
+        key not in message
+        for message in messages
+        for key in ("id", "internal", "watch_event", "watch_events")
+    )
+
+    session_users = [m for m in agent.current_session['messages'] if m['role'] == 'user']
+    session_typed = next(m for m in session_users if not m.get('internal'))
+    assert session_typed['content'] == "Analyze this document", "the user's words, unmodified"
+    session_notice = next(m for m in session_users if m.get('internal'))
+    assert "report.pdf" in session_notice['content']
+    assert "<system-reminder>" in session_notice['content']
 
 
 def test_agent_input_with_images_and_files(tmp_path):
@@ -1042,16 +1057,31 @@ def test_agent_input_with_images_and_files(tmp_path):
     user_messages = [msg for msg in messages if msg['role'] == 'user']
 
     # Images still make the typed message multimodal, and it still carries only
-    # what the user typed — the file notice is a separate internal message (#308).
-    typed = next(m for m in user_messages if not m.get('internal'))
-    assert isinstance(typed['content'], list)
+    # what the user typed — the file notice is a separate message (#308).
+    # ``internal`` stays on the session; the provider request leaves it off.
+    typed = next(m for m in user_messages if isinstance(m.get('content'), list))
     assert typed['content'][0]['type'] == 'text'
     assert typed['content'][0]['text'] == "Analyze these"
     assert "<system-reminder>" not in typed['content'][0]['text']
-
-    notice = next(m for m in user_messages if m.get('internal'))
-    assert "data.csv" in notice['content']
     assert typed['content'][1]['type'] == 'image_url', "the image is still attached"
+
+    notice = next(
+        m for m in user_messages
+        if isinstance(m.get('content'), str) and "data.csv" in m['content']
+    )
+    assert "<system-reminder>" in notice['content']
+    assert all(
+        key not in message
+        for message in messages
+        for key in ("id", "internal", "watch_event", "watch_events")
+    )
+
+    session_users = [m for m in agent.current_session['messages'] if m['role'] == 'user']
+    session_typed = next(m for m in session_users if not m.get('internal'))
+    assert isinstance(session_typed['content'], list)
+    assert session_typed['content'][0]['text'] == "Analyze these"
+    session_notice = next(m for m in session_users if m.get('internal'))
+    assert "data.csv" in session_notice['content']
 
     # Verify file saved (with timestamp prefix)
     uploads_dir = tmp_path / ".co" / "uploads"
