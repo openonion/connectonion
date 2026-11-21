@@ -21,14 +21,15 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
-Release candidate **1.9.7rc4**: WeChat as a co rem source, and one-click key import from Chrome/Edge/Brave. See [1.9.7rc4 notes](releases/1.9.7rc4.md).
+Release candidate **1.9.7rc5**: the Control Center has an admin section, shown only to admins: who joined, Remove/Block, rotate the invite without a restart, activity, health and the log. See [1.9.7rc5 notes](releases/1.9.7rc5.md).
+Before it, release candidate **1.9.7rc4**: WeChat as a co rem source, and one-click key import from Chrome/Edge/Brave. See [1.9.7rc4 notes](releases/1.9.7rc4.md).
 Before it, release candidate **1.9.7rc3**: `restricted: env` passes named Host variables to the tools, and the caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. See [1.9.7rc3 notes](releases/1.9.7rc3.md).
 Before it, release candidate **1.9.7rc2**: `co wechat` reads WeChat 4.1 for Mac with one command to get the keys; bare `co wechat` lists your chats. See [1.9.7rc2 notes](releases/1.9.7rc2.md).
 Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from host.yaml, no silent co/ model, `co obsidian`
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc3'
+python -m pip install --upgrade 'connectonion==1.9.7rc5'
 ```
 
 ## Current release
