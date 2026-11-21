@@ -56,6 +56,18 @@ def test_one_card_has_no_edges_under_it(reader):
     assert page.locator("#main .deck-next").count() == 0
 
 
+def test_the_edges_stay_under_the_cards_above_the_line_that_counts_them(reader):
+    """With fewer cards than items the deck ends in a line ("These cards are the most pressing …"); the edges sit
+    between the raised card and that line, and cover none of its words."""
+    page, _ = reader
+    page.evaluate("""() => { const real = todayGroups;
+      window.todayGroups = entries => real(entries).slice(0, 2).map(group => ({...group, entries: group.entries.slice(0, 1)})); render(); }""",
+                  isolated_context=False)
+    card = page.locator("#main .qcard.focal").bounding_box()
+    edges, rest = page.locator("#main .deck-next").bounding_box(), page.locator("#main .deck-rest").bounding_box()
+    assert card["y"] + card["height"] - 4 <= edges["y"] + edges["height"] <= rest["y"], (card, edges, rest)
+
+
 def test_a_tap_on_the_edges_deals_the_next_on_a_phone(reader):
     page, uri = reader
     phone = page.context.browser.new_context(viewport={"width": 390, "height": 844}, locale="en-US", has_touch=True, is_mobile=True).new_page()

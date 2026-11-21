@@ -3537,7 +3537,9 @@
   .tnext-ev { width: 100%; overflow: hidden; }
   .tnext .wt { min-width: 0; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
-  .deck-next { position: absolute; left: 22px; right: 22px; bottom: 0; height: 26px; padding: 0; border: 0; background: none; cursor: pointer; }
+  /* In the flow, right under the cards: the line under the deck (deck-rest) comes after the edges, not under them. */
+  .deck:has(.deck-next) { padding-bottom: 0; }
+  .deck-next { position: relative; display: block; width: calc(100% - 44px); margin: 0 22px; height: 26px; padding: 0; border: 0; background: none; cursor: pointer; }
   .deck-next::before, .deck-next::after { content: ""; position: absolute; left: 0; right: 0; bottom: 13px; height: 60px; border-radius: var(--r-card);
     background: var(--raised); box-shadow: var(--e1); transition: transform var(--t-draw) var(--spring); }
   .deck-next::after { left: 22px; right: 22px; bottom: 0; opacity: .7; }
