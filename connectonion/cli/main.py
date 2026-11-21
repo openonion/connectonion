@@ -3142,11 +3142,14 @@ app.add_typer(mcp_app, name="mcp")
 
 # Obsidian: local Markdown notes with explicit folder selection.
 obsidian_app = _typer_app(
-    help="Browse, read and search Obsidian notes; create or append with preview-bound confirmation.\n\n"
+    help="Browse, read and search Obsidian notes, or create and append notes after checking a preview.\n\n"
          "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
-         "The list is read-only. If a vault is available, the output suggests a command to browse it. "
+         "This reads the vault registry without opening or changing notes. "
+         "Numbered lists save references outside the vault for 15 minutes. "
+         "Use co obsidian vaults --json to list vaults without saving row numbers. "
+         "If a vault is available, the output suggests a command to browse it. "
          "Use --folder to choose where to look for notes.\n\n"
-         "All Obsidian commands work offline. Reads are Read-only. "
+         "All Obsidian commands work offline. Reading never changes notes. "
          "create and append write only with --yes --expect from a preview.\n\n"
          "Exit 0 means the list loaded, even if it is empty. "
          "Exit 1 means the list could not be read or its row numbers could not be saved. "
@@ -3172,11 +3175,13 @@ def _obsidian_vaults(
         False, "--json", help="Print all registered vaults as JSON and send the suggested next command to stderr."
     ),
 ):
-    """List numbered vaults with their paths, availability and open status. Read-only.
+    """List registered vaults with their paths, availability and open status without changing notes.
 
-    The list checks which vault folders exist without opening notes. A closed
-    vault can still be read. If a vault is available, the output suggests a
-    command to list its folders.
+    Reads the vault registry and checks which vault folders exist without
+    opening notes. Numbered output saves vault references outside the vault
+    for 15 minutes. --json does not save row numbers.
+    A closed vault can still be read. If a vault is available, the output
+    suggests a command to list its folders.
     Use a number from the latest list, for example co obsidian ls --vault 1.
     The number works for 15 minutes. A unique vault name or path also works.
 
@@ -3234,8 +3239,8 @@ def _obsidian_read(
 ):
     """Read a note by row number, path or exact filename title. Read-only.
 
-    Use a note number from ls with --folder, or from search.
-    Numbers from a folder list do not select notes. Note rows last 15 minutes.
+    Use a row number from a note list (ls --folder or search), not a folder list.
+    Note rows last 15 minutes.
     If the list suggests a read command with --listing, copy it to use those
     same note numbers even after you list or search again.
     You can read a row without giving its vault or folders again. If you
@@ -3245,7 +3250,8 @@ def _obsidian_read(
 
     The terminal shows formatted Markdown. Use --raw for the original text
     or --json for the full note record. Piped output is raw by default.
-    The suggested search command goes to stderr, so it stays out of the note text.
+    Follow-up command hints are sent to standard error so they stay separate
+    from the note text.
 
     Exit 0 means the note was read.
     Exit 1 means the note could not be found or read. Use its path if several
@@ -3302,7 +3308,7 @@ def _obsidian_create(
 
     The path is relative to the vault and must be inside the selected folders.
     An existing note stays as it is. Choose a folder that already exists.
-    Actual writes require macOS or Linux directory handles.
+    Saving notes is only supported on macOS and Linux.
     The command rejects paths in .obsidian, .trash and .git and paths through
     symbolic links.
     You can create an empty note. The command works offline.
@@ -3343,12 +3349,12 @@ def _obsidian_append(
     search. The list supplies the vault and folders for the preview.
     Note rows last 15 minutes. Use --listing to choose a specific list.
 
-    Actual writes require macOS or Linux directory handles.
+    Saving changes is only supported on macOS and Linux.
     Keeps the original text and frontmatter. Adds a line break if needed,
     using CRLF if present, otherwise LF. Empty input changes nothing.
     Append replaces the file, keeping permission bits but not ownership,
-    extended attributes or ACLs. Pause concurrent editor/sync writes while
-    confirming; their writes are not protected by the CLI's cooperative lock.
+    extended attributes or ACLs. Pause other editors or sync tools while
+    confirming, because they can still write to the file and cause lost changes.
 
     --yes requires --expect from a preview; neither flag alone writes.
     The preview shows a command under Next to save the change. Its --expect

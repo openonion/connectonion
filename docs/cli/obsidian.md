@@ -30,8 +30,11 @@ co obsidian search "<terms>" --vault "<vault-path>" --folder "<folder>" --json
 ```
 
 Both `co obsidian` and `co obsidian vaults` list all registered vaults with
-their names, paths, availability and open status. `Next` fills in the first
-available row for `co obsidian ls`. A unique vault name or path also works
+their names, paths, availability and open status. They read the vault registry
+without opening or changing notes. Numbered output saves vault references
+outside the vault for 15 minutes; `co obsidian vaults --json` does not save them.
+`Next` suggests a command for the first available vault, using its row number
+when one was saved, otherwise its path. A unique vault name or path also works
 for `--vault`.
 `available` means the registered path exists as a directory; note commands
 check read permissions. `open` / `not open` is Obsidian's recorded app state;
@@ -140,15 +143,16 @@ returns a structured preview or result on stdout and puts recovery/next commands
 on stderr. Previewing does not create a file, directory, receipt or write cache.
 The proposed content is included in the preview; review it before sharing output.
 
-Actual writes currently require macOS or Linux with POSIX directory handles.
+Saving notes is only supported on macOS and Linux.
 Unsupported platforms refuse the write; Windows write behavior is not implemented.
 A staged file is flushed before publication. Create publishes without replacing
 an existing name. Append replaces the target with the complete new file and keeps
 its permission bits; inode identity, ownership, extended attributes and ACLs are
 not preserved by that replacement. Do not use append when those metadata must be
 retained. A nonblocking directory lock serializes these CLI writers, and the
-original content and scope are checked again before publication. External editors
-or sync clients need not honor that lock: pause concurrent edits while confirming.
+original content and scope are checked again before publication. Pause other
+editors or sync tools while confirming, because they can still write to the file
+and cause lost changes.
 This is not a filesystem transaction against arbitrary external writers.
 After an interrupted or failed write, read the target before retrying.
 
