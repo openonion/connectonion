@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc4
+## Current Version: 1.9.7rc5
+Release candidate 1.9.7rc5 for 1.9.7: the Control Center has an admin section (who joined, Remove/Block, rotate
+the invite without a restart, activity, health, log), shown only to admins. Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc5.md).
+
+- 1.9.7rc5 (Control Center admin section).
+
+### Previous candidate: 1.9.7rc4
 Release candidate 1.9.7rc4 for 1.9.7: WeChat is a co rem source (read straight from its databases, no local
 copies), and the Keys page imports from Chrome/Edge/Brave in one click. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc4.md).
 
