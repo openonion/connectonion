@@ -55,8 +55,10 @@ def _joins():
     """address -> (when, how) of the latest add to contacts or whitelist."""
     joins = {}
     for entry in approvals.read(_trust_agent._co_dir, last=5000):
-        if entry.get("path") == "trust" and str(entry.get("tool", "")).startswith("add to "):
+        tool = str(entry.get("tool", ""))
+        if entry.get("path") == "trust" and (tool.startswith("add to ") or tool == "joined"):
             address = str(entry.get("subject", "")).removeprefix("key:")
+            # "joined" follows its "add to contacts" and says how (invite code, payment).
             joins[address] = (entry.get("ts"), entry.get("reason") or "added")
     return joins
 
