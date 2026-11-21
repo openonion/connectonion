@@ -545,7 +545,7 @@ move a due date, mark a task done or open, or comment, with a preview first.
 Rows from the last list stand in for long IDs for 15 minutes.
 
 ```bash
-co env set ASANA_ACCESS_TOKEN <pat> --secret
+co auth asana        # or: co env set ASANA_ACCESS_TOKEN <pat> --secret
 co asana projects
 co asana tasks 1 --assignee me --due-to 2026-11-09
 co asana update 1209876543210987 --due-on 2026-11-14 --yes
