@@ -83,10 +83,12 @@ Available tools: {tools_str}
 
 What should happen to complete this task? (1-2 sentences)"""
 
+    # No temperature: these calls go to agent.llm, and OpenAI reasoning models
+    # (o4-mini, the OpenAILLM default, and the gpt-5 family) accept only the
+    # default and answer anything else with a 400 (#2701).
     return llm_do(
         prompt,
         llm=agent.llm,
-        temperature=0.2,
         system_prompt=EXPECTED_PROMPT
     )
 
@@ -183,7 +185,13 @@ def evaluate_completion(agent: 'Agent') -> None:
     # Generate expected now (after task done) if not already set by another plugin
     expected = agent.current_session.get('expected', '')
     if not expected:
-        expected = _generate_expected(agent)
+        # Same reasoning as generate_expected: the work is already done, so a
+        # refused expectation call costs the expectation, not the turn (#2701).
+        try:
+            expected = _generate_expected(agent)
+        except Exception as exc:
+            agent.logger.print(f"[dim]/expected unavailable ({exc})[/dim]")
+            expected = ''
         agent.current_session['expected'] = expected
     agent.current_session['_eval_expected'] = expected
 
@@ -241,7 +249,6 @@ Is this task truly complete? What was achieved or what's missing?"""
             prompt,
             output=EvalResult,
             llm=agent.llm,
-            temperature=0,
             system_prompt=EVALUATE_PROMPT_TEXT
         )
     except Exception as exc:
