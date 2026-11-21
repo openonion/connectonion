@@ -400,7 +400,13 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc3
+## Current Version: 1.9.7rc4
+Release candidate 1.9.7rc4 for 1.9.7: WeChat is a co rem source (read straight from its databases, no local
+copies), and the Keys page imports from Chrome/Edge/Brave in one click. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc4.md).
+
+- 1.9.7rc4 (WeChat in co rem; one-click key import from browsers).
+
+### Previous candidate: 1.9.7rc3
 Release candidate 1.9.7rc3 for 1.9.7: `restricted: env` passes named Host variables to the tools, and the
 caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc3.md).
 
