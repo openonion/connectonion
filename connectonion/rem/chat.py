@@ -157,3 +157,39 @@ def _wechat_streams():
     for row in engine.all_messages(db_storage, known):
         (mine if row["sender"] == owner else other).append(row)
     return (("other", other), ("user", mine))
+
+
+def wechat_people(min_messages: int = 1) -> list[dict]:
+    """Candidate people from WeChat for Mac: one row per one-to-one chat with a real name and messages.
+
+    Shape matches the map's mail rows ({address, name, mails, sent, received}), with the bare WeChat id as
+    the address so investigation's handle match finds the chat (its correspondent is that id). Read-only.
+    Groups, official accounts and service chats are left out. Returns [] when WeChat isn't readable.
+    """
+    from ..useful_tools import wechat as engine
+    db_storage = engine.db_storage_in_use()
+    if db_storage is None or not engine.KEY_MAP.is_file():
+        return []
+    try:
+        known = engine.names(engine.open_readonly(engine.decrypt_db(
+            db_storage / "contact" / "contact.db", engine.key_for(db_storage / "contact" / "contact.db"))))
+    except Exception:
+        return []
+    owner = engine.owner_username(db_storage)
+    counts = {}
+    for row in engine.all_messages(db_storage, known):
+        chat = row["chat"]
+        if not _one_to_one(chat) or chat == owner:
+            continue
+        c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0})
+        c["mails"] += 1
+        c["sent" if row["sender"] == owner else "received"] += 1
+    people = []
+    for chat, c in counts.items():
+        name = (c["name"] or "").strip()
+        # A real name, not the raw id and not a group/service; the id is the handle, the name titles the page.
+        if c["mails"] < min_messages or not name or name == chat:
+            continue
+        people.append({"address": chat, "name": name, "mails": c["mails"],
+                       "sent": c["sent"], "received": c["received"], "kind": "wechat"})
+    return people
