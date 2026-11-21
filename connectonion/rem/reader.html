@@ -3923,6 +3923,7 @@
   .key-adder { margin: 8px 0 20px; }
   .key-importers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
   .key-import-lead { color: var(--grey); font: var(--s-ui) var(--font); margin: 6px 0 0; }
+  .key-import-primary { color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); margin: 6px 0 10px; }
   .key-adder > summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   .key-add { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .key-add input { min-width: 0; flex: 1 1 180px; height: 40px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
@@ -11913,7 +11914,7 @@ function category(c) {
 // where the value is, never the value.
 Object.assign(UI.zh, { "Service": "服务", "Account": "账号", "Purpose": "用途", "Used in": "用在", "Rotated": "最近更换", "Expires": "到期",
   "Who else has it": "还有谁知道", "Created": "建立", "Link": "链接", "Vault": "保存在",
-  "Add a key": "添加钥匙", "Import a password export (CSV)": "导入密码导出文件（CSV）", "Import a CSV export": "导入 CSV 文件", "Password or key": "密码或密钥", "Importing from {name} — approve the Keychain prompt…": "正在从 {name} 导入——请在钥匙串弹窗里点允许…", "Filed {n} keys from {name}; {m} had no password.": "从 {name} 导入了 {n} 条，{m} 条没有密码。", "One-click import. Values go to the Keychain; the notebook keeps only what each key is.": "一键导入。密码存进钥匙串，笔记本只记每条是什么。",
+  "Add a key": "添加钥匙", "Import a password export (CSV)": "导入密码导出文件（CSV）", "Import a CSV export": "导入 CSV 文件", "Password or key": "密码或密钥", "Importing from {name} — approve the Keychain prompt…": "正在从 {name} 导入——请在钥匙串弹窗里点允许…", "Filed {n} keys from {name}; {m} had no password.": "从 {name} 导入了 {n} 条，{m} 条没有密码。", "One-click import. Values go to the Keychain; the notebook keeps only what each key is.": "一键导入。密码存进钥匙串，笔记本只记每条是什么。", "Import from a browser in one click — no typing.": "从浏览器一键导入，不用手打。",
   "Save to the Keychain": "存进钥匙串", "Copy": "复制", "Show": "显示", "Hide": "隐藏",
   "Copied · cleared from the clipboard in 30 s": "已复制 · 30 秒后从剪贴板清除",
   "The value is in this Mac's Keychain. Copy it from the reader on this Mac.": "密码在这台电脑的钥匙串里，只能在这台电脑上的阅读器里复制。",
@@ -11973,9 +11974,15 @@ function keyAdder(open = false) {
   const importers = el("div", { class: "key-importers" }, [
     fromBrowser("chrome", "Chrome"), fromBrowser("edge", "Edge"), fromBrowser("brave", "Brave"),
     el("label", { class: "key-import" }, [el("span", { text: t("Import a CSV export") }), file])]);
-  return el("details", open ? { class: "key-adder", open: "" } : { class: "key-adder" }, [el("summary", { text: t("Add a key") }), form,
-    el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") }),
-    importers, status]);
+  const summary = el("summary", { text: t("Add a key") });
+  const safety = () => el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") });
+  if (open) {
+    // No keys yet: lead with the one-click importers — he wants to click, not type. The manual form stays below.
+    return el("details", { class: "key-adder", open: "" }, [summary,
+      el("p", { class: "key-import-primary", text: t("Import from a browser in one click — no typing.") }),
+      importers, safety(), form, status]);
+  }
+  return el("details", { class: "key-adder" }, [summary, form, safety(), importers, status]);
 }
 function keyPage(r) {
   const rows = ["Service", "Account", "Purpose", "Who else has it", "Used in", "Created", "Rotated", "Expires", "Link", "Vault"]

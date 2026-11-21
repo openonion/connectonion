@@ -112,6 +112,11 @@ def test_the_import_buttons_are_visible_on_an_empty_keys_page(today):
     assert adder.evaluate("el => el.open") is True  # open by default when there are no keys
     chrome = page.locator(".key-importers button", has_text="Chrome")
     assert chrome.is_visible()  # seen without clicking the summary
+    # He wants to click, not type: the one-click importers lead, the manual form sits below them.
+    chrome_y = chrome.bounding_box()["y"]
+    form_y = page.locator(".key-add input[name=Service]").bounding_box()["y"]
+    assert chrome_y < form_y, (chrome_y, form_y)
+    assert page.locator(".key-import-primary").is_visible()
     SHOTS.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(SHOTS / "keys-empty-open-1440.png"))
 
