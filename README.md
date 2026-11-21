@@ -42,11 +42,12 @@ work, keep it on your machine, and carry it into the next task.
 <a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/gcal.svg?v=3" width="80" height="80" alt="Google Calendar" title="Google Calendar · co gcalendar"></a>
 <a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/meet.svg?v=3" width="80" height="80" alt="Google Meet" title="Google Meet · co gcalendar meet"></a>
 <a href="docs/cli/onenote.md"><img src="https://www.connectonion.com/logos/onenote.svg?v=3" width="80" height="80" alt="OneNote" title="OneNote · co onenote"></a>
-<a href="docs/cli/obsidian.md"><img src="https://www.connectonion.com/logos/obsidian.svg?v=3" width="80" height="80" alt="Obsidian" title="Obsidian · co obsidian"></a>
+<a href="docs/cli/obsidian.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/obsidian.svg" width="80" height="80" alt="Obsidian" title="Obsidian · co obsidian"></a>
 <a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/teams.svg?v=3" width="80" height="80" alt="Teams meetings" title="Teams meetings · co outlook calendar"></a></p>
 
 <p><b>Chat apps</b><br>
 <a href="docs/cli/whatsapp.md"><img src="https://www.connectonion.com/logos/whatsapp.svg?v=3" width="80" height="80" alt="WhatsApp" title="WhatsApp · co whatsapp"></a>
+<a href="docs/wechat-read.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/wechat.svg" width="80" height="80" alt="WeChat" title="WeChat · co wechat"></a>
 <a href="docs/cli/telegram.md"><img src="https://www.connectonion.com/logos/telegram.svg?v=3" width="80" height="80" alt="Telegram" title="Telegram · co telegram"></a>
 <a href="docs/cli/discord.md"><img src="https://www.connectonion.com/logos/discord.svg?v=3" width="80" height="80" alt="Discord" title="Discord · co discord"></a>
 <a href="docs/cli/slack.md"><img src="https://www.connectonion.com/logos/slack.svg?v=3" width="80" height="80" alt="Slack" title="Slack · co slack"></a>
@@ -65,7 +66,7 @@ work, keep it on your machine, and carry it into the next task.
 <p><b>Issues &amp; feedback</b><br>
 <a href="docs/cli/linear.md"><img src="https://www.connectonion.com/logos/linear.svg?v=3" width="80" height="80" alt="Linear" title="Linear · co linear"></a>
 <a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg?v=3" width="80" height="80" alt="Canny" title="Canny · co canny"></a>
-<a href="docs/cli/asana.md"><img src="https://www.connectonion.com/logos/asana.svg?v=3" width="80" height="80" alt="Asana" title="Asana · co asana"></a></p>
+<a href="docs/cli/asana.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/asana.svg" width="80" height="80" alt="Asana" title="Asana · co asana"></a></p>
 
 <p><b>Coding agents</b><br>
 <a href="docs/cli/ai.md"><img src="https://www.connectonion.com/logos/ai.svg?v=3" width="80" height="80" alt="co ai" title="co ai · co ai"></a>
