@@ -1107,13 +1107,6 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                         + (" (account owner's own messages)" if is_owner or (chat and sent_only)
                            else " (handle, sender or chat match)" if chat else " (handle or project match)"))
         items += picked
-    if archive_root is not None:
-        from . import source_hooks
-        found, searched = source_hooks.gather(archive_root, handles, start=start, record=record,
-                                             names=set(subscriptions), end=end,
-                                             owner=sent_only or bool(own_addresses.intersection(handles)))
-        items.extend(found)
-        coverage.extend(searched)
     items.sort(key=lambda i: i["timestamp"])
     if archive_root is not None:
         from .mail_archive import mail_metadata
@@ -1497,19 +1490,19 @@ def _split_item(item: dict, limit_chars: int, measure=None):
 def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: Path | None = None,
                      max_calls=None, progress=None) -> tuple[list[dict], dict]:
     """Oldest first, each chunk within the extract limits, one digest item per chunk."""
-    from .extract import NOTHING, extraction_item, run_extract
+    from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .files import read_json, state_path, write_json
     limits = config["limits"]
     if extractor is None:
         if root is None:
             raise RemError("co rem root is required for model extraction")
         extractor = lambda chunk, settings, kind: run_extract(chunk, settings, kind, root=root)
-    from .runner import INLINE_LIMIT, material_instructions, readable_material
+    from .runner import INLINE_LIMIT, readable_material
     # Each piece travels in the prompt, beside the extraction Skill. 150k
     # characters never did, so every piece was read from files instead: about
     # 1M input tokens a piece on the owner's notebook, 15 pieces for one person.
-    kinds = {item.get("source_kind") or str(item.get("source", "")).split(":")[0] for item in items}
-    widest = max(len(material_instructions("extract", items, kind).encode("utf-8")) for kind in kinds | {""})
+    kinds = {str(item.get("source", "")).split(":")[0] for item in items}
+    widest = max(len(extraction_instructions(kind).encode("utf-8")) for kind in kinds | {""})
     room = min(limits["extract_chars_per_batch"], INLINE_LIMIT - widest - 2000)
     measure = lambda parts: len(readable_material(parts).encode("utf-8"))
     chunks, current = [], []
@@ -1526,7 +1519,7 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
         raise RemError("Extraction exceeds remaining call budget; page preserved")
     digests, usage = [], {}
     for number, chunk in enumerate(chunks, 1):
-        kinds = {i.get("source_kind") or i["source"].split(":")[0] for i in chunk}
+        kinds = {i["source"].split(":")[0] for i in chunk}
         kind = kinds.pop() if len(kinds) == 1 else ""
         checkpoint = None
         if root is not None:
@@ -1534,7 +1527,7 @@ def digest_in_chunks(items: list[dict], config: dict, extractor=None, *, root: P
             # digest again. Hash the material, model settings and Skill text so
             # a changed source or prompt cannot reuse stale conclusions.
             fingerprint = hashlib.sha256(json.dumps(
-                [chunk, config.get("runner"), config.get("model"), material_instructions("extract", chunk, kind)],
+                [chunk, config.get("runner"), config.get("model"), extraction_instructions(kind)],
                 ensure_ascii=False, sort_keys=True).encode()).hexdigest()
             checkpoint = state_path(root, f"extracts/investigate/{fingerprint}.json")
         saved = read_json(checkpoint, {}) if checkpoint else {}
@@ -1859,15 +1852,15 @@ def editing_turn(runner, notebook: Notebook, record: str, config: dict, stage_pr
     else:
         # A hedge is rewritten, never deleted with what it cited: three trial runs of
         # this turn lost 0-4 quotes and 3-11 sources across eight pages (2026-10-20).
-        kept = keep_editing(page, notebook.read(record), root=notebook.root)
+        kept = keep_editing(page, notebook.read(record))
         if kept != notebook.read(record):
             notebook.write(record, kept)
     return before, hedged_lines(notebook.read(record)), out
 
 
-def keep_editing(page, edited, *, root=None):
+def keep_editing(page, edited):
     from .page_review import fold_history, hedged_lines, restore_dropped, strip_hedge
-    kept = restore_dropped(page, edited, root=root)
+    kept = restore_dropped(page, edited)
     hedged = {line for _, line in hedged_lines(kept)}
     return fold_history("\n".join(strip_hedge(line) if line.strip() in hedged else line
                                  for line in kept.split("\n")))
@@ -1907,7 +1900,7 @@ def _keep_unless_lost(notebook: Notebook, record: str, before: str, refuted=()) 
     old = {normalise(quote): quote for quote in QUOTE.findall(prose(before))}
     kept = set(old) & {normalise(quote) for quote in QUOTE.findall(prose(after))}
     reason = (f'Turn kept {len(kept)} of the page\'s {len(old)} quotes; restored the prior page'
-              if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after, root=notebook.root))
+              if len(old) >= 3 and len(kept) < len(old) * KEEP_SHARE else shrinkage(before, after))
     return reason, [old[key] for key in old if key not in kept] if reason.startswith('Turn kept') else []
 
 
@@ -2005,7 +1998,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             # First put the dropped quoted lines back beside the rewrite, as project
             # quote turns and upkeep do; only what that cannot place costs a turn.
             from .page_review import restore_dropped
-            notebook.write(record, restore_dropped(before, notebook.read(record), root=notebook.root, claims=append))
+            notebook.write(record, restore_dropped(before, notebook.read(record), claims=append))
             reason, lost = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
         if lost:
             repaired += 1
@@ -2746,8 +2739,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if original_material:
         prompt_items.append({"role": "original_evidence", "source": "investigation:original-evidence",
                              "text": f"Original uncompressed evidence is retained at {original_material}. Read it to check summaries and counterevidence.",
-                             "file": str(original_material), "timestamp": now,
-                             "sources": sorted({item["source"] for item in original_items if item.get("source")})})
+                             "file": str(original_material), "timestamp": now})
     # Both runners are `co ai`: it is the orchestrator, and the runner setting
     # only picks which harness answers the Skill -- our own loop, or Codex
     # delegated through `co ai --harness codex`. Either one can reach the web.

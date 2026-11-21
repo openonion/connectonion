@@ -400,7 +400,76 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc44
+## Current Version: 1.9.7rc5
+Release candidate 1.9.7rc5 for 1.9.7: the Control Center has an admin section (who joined, Remove/Block, rotate
+the invite without a restart, activity, health, log), shown only to admins. Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc5.md).
+
+- 1.9.7rc5 (Control Center admin section).
+
+### Previous candidate: 1.9.7rc4
+Release candidate 1.9.7rc4 for 1.9.7: WeChat is a co rem source (read straight from its databases, no local
+copies), and the Keys page imports from Chrome/Edge/Brave in one click. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc4.md).
+
+- 1.9.7rc4 (WeChat in co rem; one-click key import from browsers).
+
+### Previous candidate: 1.9.7rc3
+Release candidate 1.9.7rc3 for 1.9.7: `restricted: env` passes named Host variables to the tools, and the
+caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc3.md).
+
+- 1.9.7rc3 (restricted: env and the caller in the environment).
+
+### Previous candidate: 1.9.7rc2
+Release candidate 1.9.7rc2 for 1.9.7: `co wechat` just works on WeChat 4.1 for Mac. One command captures every
+database's key, the databases open (WAL frames applied), and bare `co wechat` lists your chats with `read` and
+`search`. The README shows WeChat, Asana and Obsidian. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc2.md).
+
+- 1.9.7rc2 (co wechat reads WeChat 4.1 for Mac).
+
+### Previous candidate: 1.9.7rc1
+Release candidate 1.9.7rc1 for 1.9.7: a restricted claude-code Host from host.yaml, a Host that refuses a silent
+co/ model, provider/model names in /info, and `co obsidian` / `co asana`. Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc1.md).
+
+- 1.9.7rc1 (restricted claude-code Host; no silent co/ model; co obsidian and co asana).
+
+### Previous: stable 1.9.6
+
+Stable 1.9.6, released by the owner's decision: 1.9.6rc48's code. `co init` starts the Host and leaves it
+running on macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through a
+logged-in Claude Code with no API key (checked on a real Windows 11 PC over the relay in rc43). REM gets the new
+desk, a knowledge graph, three privacy levels and hand-offs you can watch; `co send` / `co receive`, `co wechat`,
+WhatsApp pairing by code and Windows hosts. The default model is Gemini 4 Hydrogen. See [1.9.6 notes](docs/releases/1.9.6.md).
+
+- 1.9.6 (co init starts the Host; model: claude-code; REM's new desk; files between agents).
+
+### Previous candidate: 1.9.6rc48
+Release candidate 1.9.6rc48 for 1.9.6: REM related-page cards show the sentence without the writer's
+"Changed:" prefix, and the page foot says Copy the file path instead of printing it. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc48.md).
+
+- 1.9.6rc48 (related cards and page foot read cleanly).
+
+### Previous candidate: 1.9.6rc47
+Release candidate 1.9.6rc47 for 1.9.6: on a phone, a knowledge or tag page whose linked page is named by a
+long question no longer widens the page. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc47.md).
+
+- 1.9.6rc47 (linked page names wrap on a phone).
+
+### Previous candidate: 1.9.6rc46
+Release candidate 1.9.6rc46 for 1.9.6: a Windows background Host counts as running only when it answers, and a
+Host the relay refuses stops with the reason. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc46.md).
+
+- 1.9.6rc46 (Host health on Windows; refused announce stops the Host).
+
+### Previous candidate: 1.9.6rc45
+Release candidate 1.9.6rc45 for 1.9.6: on a phone, a finished hand-off's line on Today wraps instead of widening
+the page so the phone zoomed out; a claude-code Host names a missing Claude login. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc45.md).
+
+- 1.9.6rc45 (Today on a phone no longer zooms out; missing Claude login named).
+
+### Previous candidate: 1.9.6rc44
 Release candidate 1.9.6rc44 for 1.9.6: global `co init` on Windows from an elevated shell starts a Host that
 can read its profile; with Claude Code logged in it serves `model: claude-code` by default. Stable remains 1.9.5.
 See [candidate notes](docs/releases/1.9.6rc44.md).
@@ -800,7 +869,7 @@ under More. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc1.m
 
 - 1.9.6rc1 (whole lines on desktop, letter first on a phone, less-used actions under More).
 
-## Current stable: 1.9.5
+## Previous stable: 1.9.5
 
 Stable 1.9.5. A fresh install works again: typer 0.29.0 (released 2026-11-09) made every `co`
 command crash, so typer is capped below 0.29. REM reads each slot's mail while the Codex weekly

@@ -30,6 +30,10 @@ def keys_env(tmp_path, monkeypatch):
     """Point WECHAT_DB_KEY storage at an isolated keys.env, and clear the env var."""
     path = tmp_path / "keys.env"
     monkeypatch.setattr(wc, "KEYS_ENV", path)
+    # The per-database key map and the last chat list live in ~/.co/wechat; never the real one in a test.
+    monkeypatch.setattr(wc, "KEY_DIR", tmp_path / "wechat")
+    monkeypatch.setattr(wc, "KEY_MAP", tmp_path / "wechat" / "keys.json")
+    monkeypatch.setattr(wc, "LISTING", tmp_path / "wechat" / "last-list.json")
     monkeypatch.delenv(wc.KEY_NAME, raising=False)
     return path
 
@@ -92,7 +96,7 @@ def ready(macos, keys_env, tmp_path):
 
 
 def test_chats_lists_tables(ready):
-    result = runner.invoke(app, ["wechat", "chats"])
+    result = runner.invoke(app, ["wechat", "tables"])
     assert result.exit_code == 0
     assert "message_0.db" in result.output and "Msg" in result.output
 
@@ -116,7 +120,7 @@ def test_export_table_as_json(ready):
 def test_commands_block_without_key(macos, keys_env, tmp_path):
     account = tmp_path / "account"
     with patch.object(wc, "_container_status", return_value=("ok", account)):
-        result = runner.invoke(app, ["wechat", "chats"])
+        result = runner.invoke(app, ["wechat", "tables"])
     assert result.exit_code == 2
     assert "key" in result.output.lower()
 
@@ -133,3 +137,18 @@ def test_doctor_ok_when_ready(macos, keys_env, tmp_path):
     with patch.object(wc, "_container_status", return_value=("ok", account)):
         result = runner.invoke(app, ["wechat", "doctor"])
     assert result.exit_code == 0
+
+
+def test_the_account_in_use_is_the_one_whose_chat_list_changed_last(tmp_path, monkeypatch):
+    import os
+    import time
+    root = tmp_path / "xwechat_files"
+    for name, age in (("wxid_aaa_old", 3600), ("wxid_zzz_new", 0)):
+        session = root / name / "db_storage" / "session"
+        session.mkdir(parents=True)
+        (session / "session.db").write_bytes(b"x")
+        stamp = time.time() - age
+        os.utime(session / "session.db", (stamp, stamp))
+    monkeypatch.setattr(wc, "WECHAT_CONTAINER", root)
+    # Alphabetical order would pick wxid_aaa_old; the account WeChat wrote last is wxid_zzz_new.
+    assert wc._probe_container() == ("ok", root / "wxid_zzz_new")

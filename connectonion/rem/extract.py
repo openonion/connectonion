@@ -66,18 +66,11 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
     with tempfile.TemporaryDirectory(prefix="extract-", dir=tasks) as temporary:
         directory = Path(temporary)
         task = prepare(items, config, kind, root=root, directory=directory)
-        from .source_hooks import guard_turn
-        execute = guard_turn(root, items, run_task, expected_execution=task["source_execution"])
-        return check(task, execute(tasks, task["prompt"], task["config"], "extract"))
+        from .inquiry import stage_config
+        return check(task, run_task(tasks, task["prompt"], stage_config(root, config, "extract"), "extract"))
 
 
 def prepare(items, config, kind="", *, root, directory, native=False):
-    from .source_hooks import execution_stamp, require_execution, require_material
-    from .inquiry import stage_config
-    require_material(root, items)
-    execution = execution_stamp(root, items)
-    effective = stage_config(root, config, "extract")
-    require_execution(root, items, effective, expected=execution, stage="extract")
     prompt = task_prompt(directory, items, "extract", kind, native=native)
     output = directory / "notes.md"
     # A summary-tier model has no tool to write a file with (#1847): its notes are its reply.
@@ -87,8 +80,7 @@ def prepare(items, config, kind="", *, root, directory, native=False):
     prompt += ("If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
                "Do not edit notebook pages, read other sources, or start nested co rem jobs.")
     return {"directory": str(directory), "candidate": str(output), "prompt": prompt, "summary": summary,
-            "root": str(root), "config": effective, "source_execution": execution,
-            "source_stage": "extract"}
+            "root": str(root)}
 
 
 def check(task, result):

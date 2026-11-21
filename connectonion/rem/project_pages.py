@@ -760,7 +760,7 @@ def _project_quote_turn(notebook, record, page, items, counts, config, run, work
                              workdir=workdir, config=config, stage="investigate", run=run, repairs=1)
         # A quote the edit dropped is put back beside its rewrite, as upkeep does;
         # discarding the whole edit threw away four of six (2026-10-20).
-        edited = restore_dropped(page, notebook.read(record), root=notebook.root)
+        edited = restore_dropped(page, notebook.read(record))
         notebook.write(record, edited)
         reason, _ = _keep_unless_lost(notebook, record, page)
         # A quote edit must keep even the small losses the general maintenance guard tolerates.

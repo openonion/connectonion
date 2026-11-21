@@ -483,7 +483,7 @@ def _stall_hold(root):
 
 @contextmanager
 def _watching(root):
-    """Report progress while preparing; callers arm deadlines outside lock waits."""
+    """A progress line every PROGRESS_SECONDS; the deadline once the lock is held."""
     stop = threading.Event()
     watcher = threading.Thread(target=_watch, args=(root, stop), daemon=True)
     watcher.start()
@@ -517,51 +517,6 @@ def next_task(root, *, scheduled=False, discard=False, own=False, in_round=False
         return result
 
 
-def _continuing_round(root, cursor, *, scheduled):
-    """A new catchup night reads fresh sources while carrying unfinished page work."""
-    from .catchup import number
-    night = number(root)
-    return bool(cursor and not cursor.get('done') and cursor.get('catchup_night') != night
-                and (night is not None or scheduled and cursor.get('catchup_night') is not None))
-
-
-def _fetch_sources(root, *, scheduled, in_round, discard=False, collect_only=False):
-    """Acquire for a new round outside its long lock, respecting preparation stalls."""
-    from . import native_round, source_hooks
-    if not source_hooks.selected(root):
-        return [], {}
-    with _deadline_interrupts(root, in_round), _watching(root):
-        _WATCH["deadline"] = None
-        progress_step("checking selected sources")
-        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS, operation="next",
-                              wait_for_native=True, scheduled=scheduled) as waited_for:
-            notices = _skip_stalled(root)
-            if hold := _stall_hold(root):
-                _held(root, hold)
-                print(f"Source collection held: {hold}", file=sys.stderr)
-                return notices, waited_for
-            cursor = read_json(state_path(root, "round.json"), {})
-            fresh = (not cursor or cursor.get("done") or discard
-                     or not collect_only and _continuing_round(root, cursor, scheduled=scheduled))
-            if not fresh or cursor.get("pending") and not discard:
-                return notices, waited_for
-        _WATCH["deadline"] = time.monotonic() + NEXT_DEADLINE_SECONDS
-        progress_step("collecting selected sources")
-        try:
-            config = read_config(root)
-            if ((not collect_only and _stop(root, config)[0])
-                    or scheduled and native_round.scheduled_slot(root, config) is None):
-                return notices, waited_for
-            for name, result in source_hooks.fetch(root).items():
-                if not result["ok"]:
-                    fallback = ("using only previously saved approved material" if result.get("allow_saved", True)
-                                else "saved material blocked until successful acquisition")
-                    print(f"{name}: {result['error']}; {fallback}", file=sys.stderr)
-        finally:
-            _WATCH["deadline"] = None
-    return notices, waited_for
-
-
 def _next_task(root, *, scheduled, discard, own=False, in_round=False):
     root = root.resolve()
     if scheduled:
@@ -572,8 +527,6 @@ def _next_task(root, *, scheduled, discard, own=False, in_round=False):
     print("Preparing the next REM task (resuming saved work or checking whether a round is due)…",
           file=sys.stderr, flush=True)
     _WATCH.update(deadline=None, step=None, timings={})
-    acquisition_notices, acquisition_wait = _fetch_sources(
-        root, scheduled=scheduled, in_round=in_round, discard=discard)
     progress_step("waiting for the maintenance lock")
     # Outermost: the interrupt is caught after the lock is released and the watcher has ended.
     with _deadline_interrupts(root, in_round), _watching(root), maintenance_lock(
@@ -581,7 +534,7 @@ def _next_task(root, *, scheduled, discard, own=False, in_round=False):
             scheduled=scheduled) as waited_for, runner.private_task_mask():
         _WATCH["deadline"] = time.monotonic() + NEXT_DEADLINE_SECONDS
         progress_step("preparing the next task")
-        stall_notices = [*acquisition_notices, *_skip_stalled(root)]
+        stall_notices = _skip_stalled(root)
         if hold := _stall_hold(root):
             _held(root, hold)
             return {"outcome": "done", "reason": hold, "notices": stall_notices}
@@ -595,7 +548,7 @@ def _next_task(root, *, scheduled, discard, own=False, in_round=False):
         tasks = pending(root)
         # A next or submit can publish a task just before its CLI exits (or is
         # reaped). That preparer's advisory claim must not hide the new task.
-        preparer = waited_for.get("pid") or acquisition_wait.get("pid")
+        preparer = waited_for.get("pid")
         result = (_offer_pending(root, tasks[0], preparer=preparer, takeover=scheduled or own, driven=in_round)
                   if tasks else _next_round(root, cursor, scheduled=scheduled, notices=notices, driven=in_round))
         if scheduled and result.get("reason") == "daily cap reached":
@@ -631,8 +584,6 @@ def _worker(root, task):
 
 
 def _offer_pending(root, task, *, preparer=None, takeover=False, driven=False):
-    from .source_hooks import task_material
-    task_material(root, task)
     # Whoever offers the task now drives it: a task a stopped exec left is the scheduled agent's to run.
     redriven = bool(task.get("driven")) != driven
     task["driven"] = driven
@@ -664,7 +615,8 @@ def _next_round(root, cursor, *, scheduled, notices, driven=False):
     from .catchup import number
     config = read_config(root)
     night = number(root)
-    continuing = _continuing_round(root, cursor, scheduled=scheduled)
+    continuing = (cursor and not cursor.get('done') and cursor.get('catchup_night') != night
+                  and (night is not None or scheduled and cursor.get('catchup_night') is not None))
     if scheduled and (not cursor or cursor.get("done") or continuing) and native_round.scheduled_slot(root, config) is None:
         return {"outcome": "done", "reason": "not due", "notices": notices}
     reason, meter = _stop(root, config)
@@ -749,8 +701,6 @@ def collect_while_held(root, reason):
     """
     from . import native_round, night
     root = root.resolve()
-    _WATCH.update(deadline=None, step=None, timings={})
-    _fetch_sources(root, scheduled=False, in_round=False, collect_only=True)
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS), runner.private_task_mask():
         config, cursor = read_config(root), read_json(state_path(root, "round.json"), {})
         _held(root, reason)
@@ -936,8 +886,6 @@ def _last_lines(lines, room):
 
 
 def _save(root, cursor, task):
-    from .source_hooks import task_material
-    task_material(root, task)
     _claim(task)
     directory = Path(task["directory"])
     stage_task = task["task"]
@@ -1056,11 +1004,6 @@ def _submit(root, task_id, *, usage):
                 for path, digest in task["inputs"].items() if path in inputs)
                 or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
             raise TaskFault("Task input changed; preserve the current notebook. Run co rem next --discard")
-        from .source_hooks import SourceMaterialUnavailable, task_material
-        try:
-            task_material(root, task)
-        except SourceMaterialUnavailable as error:
-            raise TaskFault(str(error)) from error
         result = _check_submission(root, task)
         if result.get("outcome") in ("refused", "parked"):
             return result

@@ -506,8 +506,8 @@ def page_kind_of(record: str) -> str:
     return PAGE_KINDS.get(record.split("/")[0], "")
 
 
-def material_instructions(stage: str, items: list[dict], kind: str = "") -> str:
-    """Compose the same instructions for execution, input budgets and cache keys."""
+def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", *, native=False) -> str:
+    """Let co ai load the stage Skill once; supply only its composed additions."""
     record = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     page_kind = page_kind_of(record)
     if stage == "maintain" and any(item.get("role") == "extract" for item in items):
@@ -518,19 +518,6 @@ def material_instructions(stage: str, items: list[dict], kind: str = "") -> str:
     one_page = stage in ONE_PAGE_STAGES or (stage == "maintain" and any(item.get("one_page") for item in items))
     owner = any(i.get("role") == "page" and i.get("owner") for i in items)
     text = instructions(stage, kind, page_kind=page_kind if one_page and record else "", owner=owner)
-    from .source_hooks import material_kinds
-    extra_kinds = material_kinds(items) - {kind}
-    if stage != "abstract" and not any(item.get("role") == "extract" for item in items):
-        for source_kind in sorted(extra_kinds):
-            source_skill = useful_skills_dir() / f"rem-source-{source_kind}/SKILL.md"
-            if source_skill.is_file():
-                text += "\n\n---\n\n" + source_skill.read_text(encoding="utf-8")
-    return text
-
-
-def task_prompt(directory: Path, items: list[dict], stage: str, kind: str = "", *, native=False) -> str:
-    """Let co ai load the stage Skill once; supply only its composed additions."""
-    text = material_instructions(stage, items, kind)
     # co ai expands /rem-{stage} before delegating. Repeating that core in the
     # arguments sent every rule twice on every model turn (#1972).
     core = (useful_skills_dir() / f"rem-{stage}/SKILL.md").read_text(encoding="utf-8")
@@ -773,7 +760,7 @@ def _usage_delta(config, before, after) -> dict | None:
     return {key: max(0, (value or 0) - (before.get(key) or 0)) for key, value in after.items()}
 
 
-def _retry_timeouts(metrics, execute=None):
+def _retry_timeouts(metrics):
     """Retry a timed-out call once, preserving its usage and resumed thread."""
     # 2026-10-20: one enrich period hit the 1,200s limit and failed the stage.
     # Codex usage is cumulative; keep retry charges on subsequent resumed turns.
@@ -784,7 +771,7 @@ def _retry_timeouts(metrics, execute=None):
         extra = thread_extras.get(options.get("session")) if config["runner"] == "codex" else None
         for attempt in range(2):
             try:
-                result = (execute or run_task)(workdir, text, config, stage, **options)
+                result = run_task(workdir, text, config, stage, **options)
             except RunFailed as error:
                 failed_usage = _add_usage(failed_usage, error.usage)
                 if "timed out" not in str(error) or attempt == 1:
@@ -945,7 +932,6 @@ def promote_with_repairs(notebook, record, candidate, original, items, directory
 
 def _review_insights(notebook, record, original, candidate, items, config, directory, result, stage_progress):
     """2026-10-21: independent audit kept 6/18 proposals; repairs must pass it too."""
-    from .source_hooks import guard_turn
     from .insight_critic import _bullets, _matches_approved, judge, new_bullets
     proposed = new_bullets(original, candidate.read_text(encoding="utf-8"))
     if stage_progress:
@@ -954,7 +940,7 @@ def _review_insights(notebook, record, original, candidate, items, config, direc
     approved = result.get("insights_approved", [])
     from .inquiry import stage_config
     decision = judge(notebook, record, original, candidate, items, stage_config(notebook.root, config, "insight-critic"),
-                     directory, guard_turn(notebook.root, items, run_claim_task),
+                     directory, run_claim_task,
                      approved=approved)
     result["critic_usage_pending"] = False
     result["usage"] = _add_usage(result.get("usage"), decision["usage"])
@@ -1193,7 +1179,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
     if last_resort and carried:
         before_restore = text
         # A restored History line can take it past sixteen: fold again (2026-10-21, 17 lines refused an update).
-        text = fold_history(restore_dropped(carried, text, exempt, root=notebook.root, claims=claims))
+        text = fold_history(restore_dropped(carried, text, exempt, claims=claims))
         added = Counter(text.partition('\n## Sources\n')[0].splitlines()) - Counter(
             before_restore.partition('\n## Sources\n')[0].splitlines())
         restored_lines = sum(count for line, count in added.items() if line.strip())
@@ -1233,7 +1219,7 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
         from .threads import closed_errors  # an item the owner closed is not written back as open (#3174)
         errors += closed_errors(notebook.root, record, text)
     if carried:
-        errors += dropped_content(carried, with_moved(text, moved), exempt, claims=claims, root=notebook.root)
+        errors += dropped_content(carried, with_moved(text, moved), exempt, claims=claims)
     if ask_quotes and record.startswith("projects/"):
         # Asked of a repair turn, never a refusal: the final attempt and the last resort skip it.
         errors += unquoted_decisions(text)
@@ -1305,9 +1291,8 @@ def _promote_candidate(notebook, record, candidate, original, items, directory, 
             with _promotion_lock(notebook.root, candidate, usage, lock_held):
                 retain_cited_originals(notebook, text, items)
             from .inquiry import stage_config
-            from .source_hooks import guard_turn
             report, audit_usage = review_claims(notebook, text, stage_config(notebook.root, claim_config, "claim-audit"),
-                                                directory, guard_turn(notebook.root, items, run_claim_task),
+                                                directory, run_claim_task,
                                                 record=record, items=items, carried=carried,
                                                 removed=[*removed, *unverified])
         write_json(directory / "claim-review.json", report)
@@ -1469,9 +1454,9 @@ def _promote_maintenance(notebook, working, before, items, directory, usage, loc
             # Upkeep has no repair turn: a quote or source the page had and this
             # turn dropped is put back (2026-10-20 A/B: 1-2 quotes lost per run).
             # A gutted page is still refused on what the turn wrote, before anything is put back.
-            shrunk = shrinkage(original, text, root=notebook.root) if headings(record) else ''
+            shrunk = shrinkage(original, text) if headings(record) else ''
             written = text
-            text = fold_history(restore_dropped(original, text, root=notebook.root)) if original and not shrunk else text
+            text = fold_history(restore_dropped(original, text)) if original and not shrunk else text
             restored_lines = len(set(text.splitlines()) - set(written.splitlines()))
             text = drop_empty_owner_section(text, owner=record == owner)
             text = timezone_from_location(record, text)
@@ -1712,10 +1697,6 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
     from .reflections import context as reflections
     from .reviews import context as reviews
     from .service import notebook_zone
-    from .source_hooks import execution_stamp, require_execution, require_material
-    require_material(notebook.root, items)
-    execution = execution_stamp(notebook.root, items)
-    require_execution(notebook.root, items, config, expected=execution, stage=None if native else stage)
     subject = next((i.get("record", "") for i in items if i.get("role") == "page"), "")
     tails = thread_tails(notebook.root, items) if stage == "maintain" else []
     if not (native and stage == "abstract"):
@@ -1912,8 +1893,6 @@ def prepare(notebook, items, config, kind="", *, stage="maintain", directory, na
                    "already searched; do not repeat those addresses.")
     return {"root": str(notebook.root), "directory": str(directory), "stage": stage, "kind": kind,
             "record": record, "items": items, "before": before, "config": config,
-            "source_execution": execution,
-            "source_stage": None if native else stage,
             "candidate": str(candidate) if candidate else None, "task_root": str(task_root),
             "prompt": prompt, "metrics": metrics, "summary": summary}
 
@@ -1931,10 +1910,6 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
           automatic_repairs=True, native=False):
     """Validate and promote prepared output; no preparation or evidence collection is repeated."""
     notebook = Notebook(Path(task["root"]))
-    from .source_hooks import require_execution, require_material
-    require_material(notebook.root, [*task["items"], *task.get("prior_items", [])])
-    require_execution(notebook.root, [*task["items"], *task.get("prior_items", [])], task["config"],
-                      expected=task.get("source_execution", {}), stage=task.get("source_stage"))
     _collect_abstract_report(task, result)
     directory, workdir = Path(task["directory"]), Path(task["directory"]).parent
     record, before, items, stage = task["record"], task["before"], task["items"], task["stage"]
@@ -1942,9 +1917,7 @@ def check(task, result, *, maintenance_lock_held=False, run_turn=None, stage_pro
         items = [*items, *task.get("prior_items", [])]
     candidate = Path(task["candidate"]) if task["candidate"] else None
     task_root, summary, selected_config = Path(task["task_root"]), task["summary"], task["config"]
-    from .source_hooks import guard_turn
-    run_turn = guard_turn(notebook.root, items, run_turn or run_task,
-                          expected_execution=task.get("source_execution", {}))
+    run_turn = run_turn or run_task
     refusals = []
     metrics = task["metrics"]
     def changed():
@@ -2030,9 +2003,7 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
     turn_replies = []
     inquiry_usage = {}
     refusals = []
-    from .source_hooks import guard_turn
-    run_turn = _retry_timeouts(metrics, guard_turn(notebook.root, items, run_task,
-                                               expected_execution=task.get("source_execution", {})))
+    run_turn = _retry_timeouts(metrics)
     try:
         from .inquiry import inquiry_routed
         from .inquiry import run as inquiry_run
@@ -2048,8 +2019,6 @@ def _run_stage(notebook, items, config, kind, stage, maintenance_lock_held, work
             prompt = _followup_prompt(prompt, turns[0])
         metrics["prompt_chars"] = len(prompt)
         selected_config = stage_config(notebook.root, config, "render") if candidate and stage == "investigate" else config
-        if candidate and stage == "investigate":
-            task["source_stage"] = "render"
         if turns and stage_progress:
             stage_progress(f"turn 1 of {len(turns)}")
         result = run_turn(workdir, prompt, selected_config, stage)

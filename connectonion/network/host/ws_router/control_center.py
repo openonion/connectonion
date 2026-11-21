@@ -3,6 +3,7 @@ import asyncio
 import logging
 
 from ..control_center.runtime import RuntimeErrorState
+from . import admin_home
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,16 @@ async def handle_control_center(data, send_msg, conn, routes):
             if not isinstance(request_id, str) or not 1 <= len(request_id) <= 128:
                 raise ValueError('Invalid signed request ID')
             response['request_id'] = request_id
+        if data.get('action') in admin_home.ACTIONS:
+            # Decided from the verified caller against admins.txt, here, at
+            # arrival: never from the page that showed the button (#3263).
+            result = await asyncio.to_thread(admin_home.run, data['action'],
+                                             data.get('payload') or {}, conn.get('agent_address'))
+            response.update(ok=True, result=result)
+            await send_msg(response)
+            from .dashboard import send_dashboard
+            await send_dashboard(send_msg, conn.get('session_id'), conn, force=True)
+            return
         controller = routes.get('control_center')
         if controller is None:
             raise RuntimeErrorState('Control Center is not configured on this Host')

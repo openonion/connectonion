@@ -17,23 +17,7 @@ HEALTH = re.compile(r'\b(?:health|asthma|illness|medication|therapy|diabetes|can
 PERSONAL = re.compile(r'\b(?:family|personal|visa|immigration|legal|lawsuit|divorce)\b|家庭|家人|签证|移民|法律|私人|个人财务', re.I)
 REQUEST = re.compile(r'\b(?:remember|learn)\s+(.+?)(?:[.!?。\n]|$)|(?:记住|记下|学习)\s*(.+?)(?:[。！？\n]|$)', re.I)
 DAY = re.compile(r'\b\d{4}-\d{2}-\d{2}\b')
-SOURCE_ID = re.compile(r'\b(?:gmail|outlook|codex|claude-code|telegram|feishu|lark|discord|slack|whatsapp|file|manual):[^\s,;，；)\]]+')
-
-
-def _source_ids(text):
-    """Recognize selected-source citations without importing a provider or reading its storage."""
-    from .source_hooks import MODULES
-    prefixes = '|'.join(map(re.escape, ('adapter', *MODULES)))
-    pattern = SOURCE_ID.pattern + r'|\b(?:' + prefixes + r'):[^\s,;，；)\]`]+'
-    return re.findall(pattern, text)
-
-
-def _dated_sources(text):
-    """Read evidence dates from attribution, not date-bearing snapshot identifiers."""
-    sources = _source_ids(text)
-    for source in sources:
-        text = text.replace(source, '')
-    return sources, DAY.findall(text)
+SOURCE_ID = re.compile(r'\b(?:gmail|outlook|codex|claude-code|telegram|feishu|lark|discord|slack|whatsapp|wechat|file|manual):[^\s,;，；)\]]+')
 
 
 def _plain(text):
@@ -86,7 +70,7 @@ def _topic_rows(text):
         if len(parts) != 5:
             continue
         name, aliases, record, attribution, sentence = parts
-        sources, dates = _dated_sources(attribution)
+        dates, sources = DAY.findall(attribution), SOURCE_ID.findall(attribution)
         if not dates or not sources:
             continue
         speaker = attribution.split(',', 1)[0].strip()
@@ -131,7 +115,7 @@ def _page_evidence(record, text, aliases, indexed):
             labels = [label for label, source in definitions.items() if re.search(r'\b(?:codex|claude-code):', source)]
         for label in labels:
             source = definitions.get(label, '')
-            ids, dates = _dated_sources(source)
+            ids, dates = SOURCE_ID.findall(source), DAY.findall(source)
             if ids and dates:
                 evidence.append({'record': record, 'source': ids[0], 'date': dates[0],
                                  'speaker': '', 'sentence': _plain(line),
@@ -194,12 +178,11 @@ def _extracted_evidence(texts, aliases, source_records):
         for line in text.splitlines():
             if not pattern.search(line):
                 continue
-            sources, dates = _dated_sources(line)
-            days = set(dates)
+            days = set(DAY.findall(line))
             if len(days) != 1:
                 continue  # A date range cannot date each ID independently.
             speaker = 'user' if re.search(r'[—–]\s*user\s*,', line, re.I) else ''
-            for source in sources:
+            for source in SOURCE_ID.findall(line):
                 for record in source_records.get(source, []):
                     found.append({'record': record, 'source': source, 'date': next(iter(days)),
                                   'speaker': speaker, 'sentence': _plain(line), 'private': bool(PRIVATE.search(line))})
@@ -291,7 +274,7 @@ def scan_topics(notebook: Notebook, *, backfill=False, coverage=None, proposed=(
         definitions = dict(source_definitions(_block(text, 'Sources')))
         page_index[record] = (text.casefold(), definitions)
         for value in definitions.values():
-            for source in _source_ids(value):
+            for source in SOURCE_ID.findall(value):
                 source_records.setdefault(source, []).append(record)
     archived = []
     if backfill:

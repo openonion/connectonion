@@ -214,6 +214,61 @@ reload: false
 co_dir: null
 ```
 
+### Model
+
+```yaml
+# Which agent answers, as provider/model. Default: the managed co/ default.
+model: claude-code/claude-sonnet-5-5   # or codex/<model>, co/<model>, codex, claude-code
+```
+
+`co host --serve` and the background service build the agent from this line.
+`/info` reports the same provider/model. When this names `codex` or
+`claude-code` and the Host serves an `agent.py` on another model (such as the
+`co/` default), the Host refuses to start rather than send every message
+through that other model first.
+
+### Restricted Claude Code
+
+`model: claude-code/<model>` alone gives Claude Code your own permissions in
+the project folder. To let outside callers use it, add `restricted:`:
+
+```yaml
+model: claude-code/claude-sonnet-5-5   # a model is required here
+restricted:
+  allowed_tools:                 # Claude Code permission rules; default: none
+    - "Bash(python tool.py:*)"   # this command, with any arguments
+  skills: [quote]                # .claude/skills/<name>/SKILL.md in the project; default: none
+  system_prompt: You price cleaning jobs for our customers.   # added to Claude Code's own
+  env: [FRESHDESK_API_KEY, FRESHDESK_DOMAIN]   # Host variables the tools need; default: none
+```
+
+Each turn then runs the claude CLI with:
+
+- only the built-in tools a rule names (`--tools`), and the rules as `--allowedTools`;
+- `dontAsk`, so a call no rule allows is refused instead of asked about, and no
+  Work Room choice widens it;
+- a PreToolUse Hook that refuses any call a rule does not name. A command must
+  be the rule's command, optionally followed by arguments, with no `; & | < > $ \``
+  or parentheses: `python tool.py 3` runs, `python tool.py 3; cat .env` and
+  `cat .env` do not. The claude CLI runs read-only commands such as `cat`
+  without asking, so `--allowedTools` alone does not stop them;
+- the project's settings only (`--setting-sources project`: its `CLAUDE.md`,
+  `.claude/settings.json` and skills; not yours from `~/.claude`), and no MCP
+  server (`--strict-mcp-config`);
+- the caller's verified address and trust level in the system prompt, and as
+  `CO_CALLER_ADDRESS` and `CO_CALLER_TRUST` in the environment, so a script can
+  check the caller's role itself;
+- of your own environment, only the variables `env:` names. Write names, not
+  values: the values come from the Host's environment (its shell or `.env`), so
+  a secret never sits in host.yaml. Everything else the claude CLI needs (PATH,
+  its login) is passed as before.
+
+Rules take a tool name (`Read`) or a command rule (`Bash(<command>:*)`,
+`Bash(<command> *)`, `Bash(<exact command>)`; `PowerShell(...)` the same).
+Other rule patterns, such as file paths, are refused. On Windows, write the
+command as the claude CLI's shell runs it, e.g. `Bash(python tool.py:*)`.
+Without `restricted:` nothing changes.
+
 ### REM and channels
 
 One host serves REM and answers chat channels too, whichever command started

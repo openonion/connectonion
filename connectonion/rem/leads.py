@@ -79,32 +79,7 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
         if hits and all(record != lead for _, lead in leads):
             leads.append((hits, record))
     leads.sort(key=lambda lead: (-lead[0], lead[1]))
-    return _with_agendas(notebook, [record for _, record in leads[:MAX_LEADS]])[:MAX_LEADS]
-
-
-def _with_agendas(notebook: Notebook, leads: list[str]) -> list[str]:
-    """Each project lead followed by that project's agenda page.
-
-    An agenda page keeps one dated line per item of one project. It names the
-    project, never the item, so a batch about the item never names it: a moved
-    due date reached the project page and left the agenda on the old date
-    (2026-11-14). An agenda page belongs to a project when it shares the
-    project page's file name or links to it, whatever source wrote it.
-    """
-    projects = [lead for lead in leads if lead.startswith("projects/")]
-    if not projects:
-        return leads
-    agendas = {record: notebook.read(record) for record in notebook.list("agenda")}
-    out = []
-    for lead in leads:
-        out.append(lead)
-        if lead not in projects:
-            continue
-        name = lead.removeprefix("projects/")
-        out += [record for record, text in sorted(agendas.items())
-                if record not in out and record not in leads
-                and (record.removeprefix("agenda/") == name or f"](../{lead})" in text)]
-    return out
+    return [record for _, record in leads[:MAX_LEADS]]
 
 
 def project_writer_pages(notebook: Notebook, leads: list[str]) -> list[str]:
@@ -185,7 +160,7 @@ def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
     messages `co rem projects write` wrote it from. One unread message, or none
     pointing at it, and the page gets its turn.
     """
-    from .page_review import source_id_pattern
+    from .page_review import SOURCE_ID
     from .project_material import page_state, stored
     text = notebook.read(record)
     roots = project_paths(text) if record.startswith("projects/") else []
@@ -197,7 +172,7 @@ def nothing_new(notebook: Notebook, record: str, items: list[dict]) -> bool:
                 if (item.get("project") and _under(str(item["project"]), roots))
                 or any(_named(name, str(item.get("text", ""))) for name in names)
                 for source in item.get("sources") or [item.get("source")] if source}
-    read = {source.rstrip(".,;") for source in source_id_pattern().findall(text)}
+    read = {source.rstrip(".,;") for source in SOURCE_ID.findall(text)}
     if roots:
         through = page_state(notebook.root, record).get("written_through") or ""
         read |= {m["source"] for m in stored(notebook.root, record) if m["timestamp"] <= through}

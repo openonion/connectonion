@@ -2234,11 +2234,6 @@ def make_rem_app(factory):
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
-                from ...rem.files import state_path
-                if not state_path(root, f"runs/{record['id']}.json").is_file():
-                    # Nothing new: no model ran and no run was kept (#1846), so
-                    # `logs <id>` would name a run that does not exist.
-                    return {**record, "record_kept": False}, again if collect_only else ["status"]
                 return record, again if collect_only else ["logs", record["id"]]
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
@@ -2487,18 +2482,10 @@ def make_rem_app(factory):
         if ctx.invoked_subcommand is None:
             _handle(ctx, lambda root: (subscriptions(root), ["sync", "--dry-run"]), ["config"])
 
-    def _add_source(ctx, name, chat, project, about, since, only, force, vault="", folder=(), replace=False, config=""):
-        from ...rem.files import RemError
+    def _add_source(ctx, name, chat, project, about, since, only, force):
         from ...rem.service import set_window, toggle_source
 
         def operation(root):
-            from ...rem import source_hooks
-            if name in source_hooks.MODULES:
-                result = source_hooks.configure(root, name, vault=vault, folders=list(folder), replace=replace,
-                    chat=chat, project=project, about=about, since=since, only=only, force=force, config=config)
-                return result, ["start"]
-            if vault or folder or replace or config:
-                raise RemError("Vault and configuration options apply only to a registered source")
             subscription = toggle_source(root, name, True, project=project, about=about,
                                          since=since or "60d", chats=chat)
             result = {"subscription": subscription, "enabled": True}
@@ -2511,17 +2498,10 @@ def make_rem_app(factory):
             return result, ["sync", "--dry-run"]
         _handle(ctx, operation, ["sources"])
 
-    def _remove_source(ctx, name, chat, project=""):
+    def _remove_source(ctx, name, chat):
         from ...rem.service import subscriptions, toggle_source
 
         def operation(root):
-            if project:
-                from ...rem import source_hooks
-                from ...rem.files import RemError
-                if chat or name not in source_hooks.MODULES:
-                    raise RemError("Project removal requires a registered source and no --chat")
-                result = source_hooks.configure(root, name, remove=True, project=project)
-                return result, ["start"] if result["enabled"] else ["sources"]
             toggle_source(root, name, False, chats=chat)
             source = subscriptions(root)[name]
             return {"subscription": name, "enabled": bool(source.get("enabled")),
@@ -2535,30 +2515,13 @@ def make_rem_app(factory):
                    about: str = typer.Option("", "--about"),
                    since: str = typer.Option("", "--since"),
                    only: bool = typer.Option(False, "--only"),
-                   force: bool = typer.Option(False, "--force"),
-                   vault: str = typer.Option("", "--vault"),
-                   folder: List[str] = typer.Option([], "--folder"),
-                   replace: bool = typer.Option(False, "--replace"),
-                   config: str = typer.Option("", "--config")):
-        _add_source(ctx, name, chat, project, about, since, only, force, vault, folder, replace, config)
-
-    @sources_app.command("connect", cls=V("co rem sources connect"))
-    def connect_source(ctx: typer.Context, name: str = typer.Argument(...),
-                       config: str = typer.Option(..., "--config")):
-        from ...rem import source_hooks
-        from ...rem.files import RemError
-
-        def operation(root):
-            if name not in source_hooks.MODULES:
-                raise RemError("Connect requires a registered source")
-            return source_hooks.configure(root, name, connect=True, config=config), ["start"]
-        _handle(ctx, operation, ["sources"])
+                   force: bool = typer.Option(False, "--force")):
+        _add_source(ctx, name, chat, project, about, since, only, force)
 
     @sources_app.command("remove", cls=V("co rem sources remove"))
     def remove_source(ctx: typer.Context, name: str = typer.Argument(...),
-                      chat: List[str] = typer.Option([], "--chat"),
-                      project: str = typer.Option("", "--project")):
-        _remove_source(ctx, name, chat, project)
+                      chat: List[str] = typer.Option([], "--chat")):
+        _remove_source(ctx, name, chat)
 
     config_app = factory(help="co rem config", no_args_is_help=False)
     config_app.info.cls = verbatim("co rem config", config_app.info.cls)

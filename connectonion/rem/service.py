@@ -13,7 +13,6 @@ import sys
 import threading
 import uuid
 from contextlib import contextmanager
-from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -31,7 +30,6 @@ from .mail import collect_mail
 from .mail_archive import archive_state, resume_stalled
 from .chat import CHAT_KINDS, chat_home, collect_chat
 from .source import KINDS, collect, pending_metadata, timestamp
-from . import source_hooks
 
 MAIL_KINDS = ("gmail", "outlook")
 
@@ -79,13 +77,9 @@ def claude_projects_root() -> Path:
 # coding sessions older than half a year describe work that has moved on, while
 # mail keeps its value for years (people, commitments, what was agreed).
 DEFAULT_LOOKBACK_DAYS = 60
-MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
+MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730, "wechat": 730}
 # Every kind a subscription can be consented for and read.
 READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
-
-
-def readable_kinds():
-    return (*READABLE, *source_hooks.MODULES)
 
 
 def subscriptions(root: Path) -> dict:
@@ -113,10 +107,15 @@ def subscriptions(root: Path) -> dict:
                      "enabled": False, "consented": False,
                      "adapter": "available" if (chat_home("whatsapp") / "received.jsonl").is_file()
                      else "waiting for co whatsapp listen"},
+        # Off until chosen. Unlike WhatsApp it needs no listener: `co wechat sync` reads WeChat for Mac's own
+        # databases each time, and "*" reads every one-to-one chat (people), never a group unless named.
+        "wechat": {"id": "wechat", "kind": "wechat", "root": str(chat_home("wechat")), "chats": ["*"],
+                   "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["wechat"],
+                   "enabled": False, "consented": False,
+                   "adapter": "available" if (Path.home() / ".co" / "wechat" / "keys.json").is_file()
+                   else "waiting for co wechat"},
     }
     defaults.update(saved)
-    for name, metadata in source_hooks.statuses(root).items():
-        defaults[name] = {**defaults[name], **metadata}
     return defaults
 
 
@@ -143,31 +142,22 @@ def subscribe_read_mail(root: Path, kinds) -> list[str]:
     return changed
 
 
-def approve_sources(root: Path, *, mail=(), expected: dict | None = None, offered=()) -> None:
+def approve_sources(root: Path, *, mail=()) -> None:
     """Record approved sources and the source/schedule summary; never called by inspection."""
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         prepare(root)
         validate(read_config(root))
-        shown = consent_summary(root, mail=mail)
-        if expected is not None and shown != expected:
-            raise RemError("Source access or model configuration changed during confirmation; run co rem start again")
         sources = subscriptions(root)
-        for name in offered:
-            if name in sources and not sources[name].get("unsubscribed"):
-                sources[name]["enabled"] = True
         for source in sources.values():
             if mail and source.get("kind") in MAIL_KINDS and source["kind"] not in mail:
                 continue
-            if source.get("kind") in readable_kinds() and source.get("enabled"):
+            if source.get("kind") in READABLE and source.get("enabled"):
                 source["consented"] = True
         write_json(state_path(root, "subscriptions.json"), sources)
-        previous = read_json(state_path(root, "consent.json"), {})
-        approvals = dict(previous.get("source_approvals", {}))
-        for name, sub in source_hooks.selected(root).items():
-            approvals[name] = {"scope": source_hooks.scope_value(sub), "execution": shown["source_execution"]}
-        summary = consent_summary(root, mail=mail)
-        write_json(state_path(root, "consent.json"), {**previous, "authorized_at": now().isoformat(),
-                   "source_approvals": approvals, "summary_value": summary, "summary": _summary_fingerprint(summary)})
+        write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
+                                                      "authorized_at": now().isoformat(),
+                                                      "summary_value": consent_summary(root, mail=mail),
+                                                      "summary": summary_fingerprint(root, mail=mail)})
 
 
 def summary_fingerprint(root: Path, *, mail=()) -> str:
@@ -179,11 +169,7 @@ def summary_fingerprint(root: Path, *, mail=()) -> str:
     `start` ask again whenever the sources, runner, model, permissions or
     schedule are no longer what the user said yes to.
     """
-    return _summary_fingerprint(consent_summary(root, mail=mail))
-
-
-def _summary_fingerprint(summary: dict) -> str:
-    shown = json.dumps(summary, sort_keys=True, default=str)
+    shown = json.dumps(consent_summary(root, mail=mail), sort_keys=True, default=str)
     return hashlib.sha256(shown.encode()).hexdigest()
 
 
@@ -217,7 +203,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise RemError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -230,10 +216,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
             sources[name]["chats"] = sorted(chosen)
             enabled = bool(chosen)
         elif enabled and sources[name].get("kind") in CHAT_KINDS and not sources[name].get("chats"):
-            raise RemError("Name the chats to read: --chat <id>, from `co whatsapp chats`")
-        if sources[name].get("kind") in source_hooks.MODULES:
-            if enabled != bool(sources[name].get("enabled")):
-                sources[name]["consented"] = False
+            raise RemError(f"Name the chats to read: --chat <id>, from `co {sources[name].get('kind')} chats`")
         sources[name]["enabled"] = enabled
         # "Never subscribed" and "the user said stop" both read as enabled=False;
         # only the second forbids an explicit investigation from reading it.
@@ -269,13 +252,10 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     edge and the new one is dropped unread, and no cursor brings it back -- so it takes
     `--only` to mean it and `--force` to accept the loss.
     """
-    source = source_hooks.selected(root).get(name)
-    if source is not None:
-        return source_hooks.configure(root, source["kind"], since=value, only=narrow, force=force)
     with maintenance_lock(root):
         sources = subscriptions(root)
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
         since = now() - timedelta(days=days)
         current = sources[name].get("since")
@@ -874,7 +854,6 @@ def status(root: Path, *, include_quota: bool = False, include_coverage: bool = 
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
-            **({"registered_sources": sources} if (sources := source_hooks.statuses(root)) else {}),
             **({"people_coverage": people_coverage(root),
                 "translation_coverage": translation_coverage(root, next_run=slot)} if include_coverage else {}),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
@@ -889,7 +868,7 @@ def _status_worker(worker: dict) -> dict:
     if failure:
         failure = _safe_source_failure(failure)
         worker = {**worker, "last_scheduled_failure": failure}
-    for name in readable_kinds():
+    for name in READABLE:
         if reason.startswith(f"{name.title()} read failed"):
             return {**worker, "last_scheduled_reason": _safe_read_error(name, reason,
                     code=failure.get("code", ""), next_command=failure.get("next_command", ""))}
@@ -1042,8 +1021,6 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             state = source["adapter"]          # not connected: say how, not "unsubscribed" (#2752)
         elif not source.get("enabled"):
             state = "unsubscribed"
-        elif source.get("kind") in source_hooks.MODULES:
-            state = source_hooks.consent_description(source)
         elif source.get("kind") in KINDS:
             state = "will be read" if Path(source["root"]).is_dir() else "directory missing"
         elif source.get("kind") in MAIL_KINDS:
@@ -1056,13 +1033,9 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
-        if source.get("kind") in source_hooks.MODULES:
-            sources[name]["scope"] = source_hooks.scope_value(source)
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
-    execution = ({"source_execution": source_hooks.execution_scope(root, config)}
-                 if source_hooks.selected(root) else {})
-    return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"], **execution,
+    return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
             "model_permissions": CONFINEMENT[config["runner"]],
@@ -1102,8 +1075,6 @@ def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
                     source["adapter"] = "available"
         write_json(state_path(root, "subscriptions.json"), sources)
         previous = read_json(state_path(root, "consent.json"), {})
-        # Preserve source_approvals verbatim. Init authorizes sessions/mail only;
-        # refreshing that summary must never renew another source's model/scope.
         write_json(state_path(root, "consent.json"), {
             **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
             "granted_by": "init", "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
@@ -1136,30 +1107,32 @@ def _consent_changes(previous: dict, current: dict, prefix='') -> list[str]:
 def ensure_consent(root: Path, *, confirm, mail=(), report_unchanged=False) -> bool:
     """Approve init/start sources; --mail limits new approvals, never revokes prior consent."""
     refresh_init_mailboxes(root)
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        # Defaults include a relative lookback. Freeze it before showing it so
-        # time spent confirming does not itself change the selection snapshot.
-        sources = subscriptions(root)
-        write_json(state_path(root, "subscriptions.json"), sources)
-        first = not state_path(root, "consent.json").is_file()
-        waiting = [name for name, source in sources.items()
-                   if source.get("enabled") and source.get("kind") in readable_kinds()
-                   and (not source_hooks.approved(root, name, source) if source["kind"] in source_hooks.MODULES
-                        else not source.get("consented"))
-                   and (not mail or source["kind"] not in MAIL_KINDS or source["kind"] in mail)]
-        offered = offered_mailboxes(root, mail=mail)
-        agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
-        summary = consent_summary(root, mail=mail)
-        changed = agreed.get("summary") != _summary_fingerprint(summary)
+    first = not state_path(root, "consent.json").is_file()
+    # A source subscribed after the first start -- a mailbox, a WhatsApp chat --
+    # has not been agreed to. Asking only the first time meant it could never be
+    # read; asking again whenever one is waiting means it is read only once shown.
+    waiting = [name for name, source in subscriptions(root).items()
+               if source.get("enabled") and not source.get("consented") and source.get("kind") in READABLE
+               and (not mail or source["kind"] not in MAIL_KINDS or source["kind"] in mail)]
+    # A connected mailbox init did not subscribe (notebooks before #1946) is
+    # offered, never switched on unasked: it is read only if this is approved.
+    offered = offered_mailboxes(root, mail=mail)
     waiting += offered
+    # The same holds for everything else the summary shows. A consent recorded
+    # before the summary was, has no fingerprint and is asked for once more.
+    agreed = read_json(state_path(root, "consent.json"), {}) if not first else {}
+    changed = not first and (not isinstance(agreed, dict)
+                             or agreed.get("summary") != summary_fingerprint(root, mail=mail))
     if first or waiting or changed:
-        changes = _consent_changes(agreed.get('summary_value', {}), summary) if agreed.get('summary_value') else []
-        shown = {**summary, 'changes': changes} if changes else summary
-        if not confirm(deepcopy(shown)):
+        summary = consent_summary(root, mail=mail)
+        if agreed.get('summary_value'):
+            summary = {**summary, 'changes': _consent_changes(agreed['summary_value'], summary)}
+        if not confirm(summary):
             return False
-        approve_sources(root, mail=mail, expected=summary, offered=offered)
+        subscribe_read_mail(root, offered)
+        approve_sources(root, mail=mail)
     elif report_unchanged:
-        return confirm(deepcopy(summary))
+        return confirm(consent_summary(root, mail=mail))
     return True
 
 
@@ -1228,7 +1201,7 @@ def _selected_sources(root: Path, selector: str) -> dict:
         if sources[selector].get("adapter") == "deferred":
             raise RemError("This source adapter is deferred to a later milestone")
     return {name: source for name, source in sources.items()
-            if source.get("enabled") and not source.get("unsubscribed") and source.get("kind") in readable_kinds()}
+            if source.get("enabled") and source.get("kind") in READABLE}
 
 
 PAGES_PER_BATCH = 5
@@ -1271,7 +1244,6 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
     from .page_review import shrinkage
     from .runner import RunFailed, run_stage
     execute = runner or run_stage
-    source_hooks.require_material(root, items)
     notebook = Notebook(root)
     usage, changed, refusals, reviews, sizes, growth = {}, [], [], [], [], {}
     say = say or (lambda text: None)
@@ -1294,7 +1266,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
             result = execute(notebook, supplied, config, kind=kind, **options)
         except RunFailed as error:
             result = {"usage": error.usage, "refused": str(error)}
-        shrunk = shrinkage(before, notebook.read(record), root=root) if record in result.get("changed", []) else ""
+        shrunk = shrinkage(before, notebook.read(record)) if record in result.get("changed", []) else ""
         if shrunk:
             notebook.write(record, before)
             result = {"usage": result.get("usage"), "refused": f"Candidate rejected: {shrunk}"}
@@ -1324,7 +1296,7 @@ def _maintain_pages(root: Path, items: list[dict], config: dict, kind: str, lead
 
 def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bool = False,
              scheduled: bool = False, all_pending: bool = False, runner=None, extractor=None,
-             on_batch=None, say=None, _acquisition=None) -> dict | None:
+             on_batch=None, say=None) -> dict | None:
     """One bounded batch; caller must have recorded explicit source consent.
 
     `scheduled` is what the background tick passes: run only if a saved time has
@@ -1344,8 +1316,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
     if dry_run:
         progress = read_json(state_path(root, "progress.json"), {})
         return {"dry_run": True, "sources": {
-            name: (source_hooks.pending(root, name, progress.get(name, {})) if sub.get("kind") in source_hooks.MODULES
-                   else pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
+            name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
                    else {"chats": sub.get("chats") or [], "body_reads": False,
                          "source_available": sub.get("adapter") == "available"}
                    if sub.get("kind") in CHAT_KINDS else {"candidate_files": None, "message_count": None, "body_reads": False,
@@ -1358,14 +1329,12 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
         return run_scheduled(root, lambda: run_sync(
             root, source=source, with_person=with_person, all_pending=all_pending,
             runner=runner, extractor=extractor, on_batch=on_batch, say=say))
-    if _acquisition is None:
-        _acquisition = {} if with_person else source_hooks.fetch(root, names={source} if source else None)
     if all_pending:
         records, spent = [], ""
         while True:
             try:
                 record = run_sync(root, source=source, with_person=with_person, runner=runner,
-                                  extractor=extractor, _acquisition=_acquisition)
+                                  extractor=extractor)
             except RemError as error:
                 if CAP_LIMIT not in str(error):
                     raise
@@ -1390,8 +1359,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
                 "changed": sorted({path for r in records for path in r.get("changed", [])}),
                 "usage": {key: sum((r.get("usage") or {}).get(key, 0) for r in records)
                           for key in ("input_tokens", "output_tokens", "cached_input_tokens")},
-                "runs": [r["id"] for r in records],
-                **({"acquisition": _acquisition} if _acquisition else {})}
+                "runs": [r["id"] for r in records]}
     if not state_path(root, "consent.json").is_file():
         raise RemError("Source access is not authorized yet; run `co rem start` to review and confirm it")
     from .sessions import import_sessions
@@ -1413,8 +1381,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             raise RemError("Invalid source progress; preserve it for diagnosis")
         record = _sync_locked(root, selected, progress, config, runner, extractor,
                               with_person=with_person, include_local=not source, say=say)
-        record = {**record, "sessions": sessions,
-                  **({"acquisition": _acquisition} if _acquisition else {})}
+        record = {**record, "sessions": sessions}
         archive = (_resume_archive(root, say) if isinstance(record, dict)
                    and record.get("outcome") != "failed" else None)
         record = {**record, "mail_archive": archive} if archive else record
@@ -1575,8 +1542,6 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     from .extract import NOTHING, extraction_instructions, extraction_item, run_extract
     from .runner import maintenance_instructions, run_stage
 
-    selected = {name: sub for name, sub in selected.items()
-                if sub.get("kind") not in source_hooks.MODULES or source_hooks.approved(root, name, sub)}
     started = now()
     items, updated, seen, counts, unrecognised = [], dict(progress), set(), {}, {}
     source_skips, source_failures, sources_read, dropped_missing = [], [], [], {}
@@ -1586,12 +1551,12 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     # extraction pass reads it once. A batch that fits items_per_batch
     # is small enough for the maintainer to read directly and skips extraction.
     # The widest source Skill, so the budget holds whichever source this batch is.
-    widest_maintain = max(len(maintenance_instructions(k)) for k in ("", *(sub.get("kind", "") for sub in selected.values())))
+    widest_maintain = max(len(maintenance_instructions(k)) for k in ("", *READABLE))
     maintain_room = limits["input_chars_per_batch"] - widest_maintain - 1000
     if maintain_room <= 0:
         raise RemError("Configured input limit is too small for the maintenance Skill")
     # The largest source Skill, so the budget holds whichever source this batch turns out to be.
-    widest = max(len(extraction_instructions(k)) for k in ("", *(sub.get("kind", "") for sub in selected.values())))
+    widest = max(len(extraction_instructions(k)) for k in ("", *READABLE))
     remaining = max(limits["extract_chars_per_batch"] - widest - 1000, maintain_room * 2 // 3)
     max_items = limits["extract_items_per_batch"]
     from . import feedback
@@ -1659,8 +1624,6 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                                      remaining, client, only=with_person)
             elif with_person:
                 continue  # a person is a mail concept; a coding session has no correspondent
-            elif subscription.get("kind") in source_hooks.MODULES:
-                batch = source_hooks.collect(root, name, progress.get(name, {}), max_items - len(items), remaining)
             elif subscription.get("kind") in CHAT_KINDS:
                 batch = collect_chat(subscription, progress.get(name, {}), max_items - len(items), remaining)
             else:
@@ -1717,10 +1680,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
               "source_skips": source_skips, "dropped_missing": dropped_missing,
               **({"failed_source": source_failures[0]["source"], "error": source_failures[0]["error"],
                   "source_failures": source_failures} if source_failures else {}),
-              "warning": "; ".join([*(warning for name, sub in selected.items()
-                                      if sub.get("kind") in source_hooks.MODULES
-                                      if (warning := source_hooks.stale_notice(root, name, sub))),
-                                    *(["Source read failed (" + ", ".join(row["source"] for row in source_failures)
+              "warning": "; ".join([*(["Source read failed (" + ", ".join(row["source"] for row in source_failures)
                                        + "); source progress preserved; inspect co rem logs"] if source_failures else []),
                                     *(f"{name}: {count} queued messages dropped as missing"
                                       for name, count in dropped_missing.items()),

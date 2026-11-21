@@ -86,9 +86,7 @@ def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -
         started = time.monotonic()
         result = {}
         try:
-            from .source_hooks import guard_turn
-            guarded = guard_turn(root, items, execute, expected_execution=task["source_execution"])
-            result = guarded(directory, prompt, cfg, 'investigate')
+            result = execute(directory, prompt, cfg, 'investigate')
             value = check(task, result)
         except Exception as error:
             metrics.append({'stage': stage, 'runner': cfg['runner'], 'model': cfg['model'],
@@ -111,9 +109,6 @@ def run(root: Path, directory: Path, items: list[dict], config: dict, execute) -
 
 
 def prepare(root, directory, items, config, stage, *, plan_path=None, native=False):
-    from .source_hooks import execution_stamp, require_execution, require_material
-    require_material(root, items)
-    execution = execution_stamp(root, items)
     material = directory / 'material.json'
     known = {i['source'] for i in items if i.get('source')}
     derived = {i['source'] for i in items if i.get('source') and i.get('role') in ('page', 'coverage', 'reflection-summary')}
@@ -130,7 +125,6 @@ def prepare(root, directory, items, config, stage, *, plan_path=None, native=Fal
         material = directory / 'material.md'
     destination = directory / f'{stage}.json'
     cfg = stage_config(root, config, stage)
-    require_execution(root, items, cfg, expected=execution, stage=stage)
     shape = ('{"questions":[{"question":"...","hypothesis":"... or unknown",'
              '"alternative":"...","would_change":"..."}]}' if stage == 'plan' else
              '{"findings":[{"question":"...","before":"...","after":"...",'
@@ -150,8 +144,6 @@ def prepare(root, directory, items, config, stage, *, plan_path=None, native=Fal
     if stage == 'synthesize':
         prompt += f'Read the plan at {plan_path or directory / "plan.json"}. Inspect original evidence as well as summaries. '
     return {"stage": stage, "prompt": prompt, "candidate": str(destination), "config": cfg,
-            "source_execution": execution,
-            "source_stage": stage,
             "known": sorted(known), "derived": sorted(derived), "items": items,
             "input_paths": [str(plan_path)] if plan_path else []}
 

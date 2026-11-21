@@ -960,53 +960,6 @@ def test_completed_extraction_chunks_are_reused_after_interruption(tmp_path):
     assert (root / '.state/extracts/investigate').is_dir()
 
 
-@pytest.mark.parametrize("mixed", [False, True])
-def test_digest_cache_tracks_source_skills_used_by_the_prompt(tmp_path, monkeypatch, mixed):
-    from connectonion.rem import runner, source_hooks
-    skills = tmp_path / "skills"
-    rules = {"rem-extract": "Extract supported facts.",
-             "rem-source-summaries": "Treat generated summaries as indirect evidence.",
-             "rem-source-notes": "Keep the note author's attribution."}
-    for name, text in rules.items():
-        path = skills / name / "SKILL.md"
-        path.parent.mkdir(parents=True)
-        path.write_text(text, encoding="utf-8")
-    monkeypatch.setattr(runner, "useful_skills_dir", lambda: skills)
-    monkeypatch.setattr(source_hooks, "MODULES", {"summaries": "unused", "notes": "unused"})
-    items = [{"source": "adapter:docs/summary.jsonl#meeting:one?version=v1",
-              "source_kind": "summaries", "timestamp": "2026-09-20", "text": "Amber"}]
-    if mixed:
-        items.append({"source": "notes:work:one:v1", "source_kind": "notes",
-                      "timestamp": "2026-09-20", "text": "Blue"})
-    config = {"runner": "codex", "model": "test-model", "limits": {
-        "extract_items_per_batch": 10, "extract_chars_per_batch": 10_000}}
-    calls = []
-
-    def extract(chunk, settings, kind):
-        directory = tmp_path / f"task-{len(calls)}"
-        directory.mkdir()
-        runner.task_prompt(directory, chunk, "extract", kind)
-        calls.append((kind, (directory / "instructions.md").read_text()))
-        return {"notes": f"Digest {len(calls)}", "usage": {"input_tokens": 1}}
-
-    root = tmp_path / "book"
-    first, _ = inv.digest_in_chunks(items, config, extract, root=root)
-    reused, usage = inv.digest_in_chunks(items, config, extract, root=root)
-    assert reused == first and usage == {} and len(calls) == 1
-    assert calls[0][0] == ("" if mixed else "summaries")
-    source_kinds = ["summaries", "notes"] if mixed else ["summaries"]
-    for kind in source_kinds:
-        assert calls[0][1].count(rules[f"rem-source-{kind}"]) == 1
-    for number, kind in enumerate(source_kinds, 2):
-        updated = rules[f"rem-source-{kind}"] + " Require an exact saved-version citation."
-        (skills / f"rem-source-{kind}/SKILL.md").write_text(updated, encoding="utf-8")
-        refreshed, _ = inv.digest_in_chunks(items, config, extract, root=root)
-        assert len(calls) == number and refreshed != first
-        assert updated in calls[-1][1]
-        cached, usage = inv.digest_in_chunks(items, config, extract, root=root)
-        assert cached == refreshed and usage == {} and len(calls) == number
-
-
 def test_over_input_limit_the_writer_searches_evidence_files_instead_of_digests(tmp_path, monkeypatch):
     """#1850: summarising everything first cost the owner's page 39 digest calls
     and 75 minutes. Over the limit, the material becomes files the one turn

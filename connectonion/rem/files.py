@@ -282,24 +282,6 @@ def _native_waiter(root: Path, waited_for: dict, *, scheduled=False):
     return on_busy
 
 
-_MATERIAL_OWNER = threading.local()
-
-
-@contextmanager
-def material_lock(root: Path, *, wait: float | None = None):
-    """Read saved source material under this thread's existing notebook lock, or take one.
-
-    Ordinary maintenance_lock remains non-reentrant. Only this read boundary
-    may reuse an already-held lock for the exact notebook and process.
-    """
-    owner = (os.getpid(), str(root.resolve()))
-    if getattr(_MATERIAL_OWNER, "notebook", None) == owner:
-        yield
-    else:
-        with maintenance_lock(root, wait=WRITE_WAIT_SECONDS if wait is None else wait):
-            yield
-
-
 @contextmanager
 def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_native=False, scheduled=False):
     """One OS-owned lock for every write path; process death releases it.
@@ -315,12 +297,7 @@ def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_na
     try:
         with _file_lock(root, max(0, deadline - time.monotonic()), operation=operation, on_busy=on_busy,
                         scheduled=scheduled):
-            previous = getattr(_MATERIAL_OWNER, "notebook", None)
-            _MATERIAL_OWNER.notebook = (os.getpid(), str(root.resolve()))
-            try:
-                yield waited_for
-            finally:
-                _MATERIAL_OWNER.notebook = previous
+            yield waited_for
     finally:
         _THREADS.release()
 

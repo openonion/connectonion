@@ -40,7 +40,7 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False, show_private: 
              *([highlight(seen(value['calendar']['text'])), ""] if value.get('calendar') else []),
              *([highlight(seen(value['day_plan']['text'])), ""] if value.get('day_plan') else []),
              *_notebook(root, value, counts, spell), "",
-             *_mailboxes(root, spell), *_source_access(value, spell), *_archive(value, spell), ""]
+             *_mailboxes(root, spell), *_archive(value, spell), ""]
     if value.get('models'):
         lines += [rem_look.section('Models'), *(row for line in value['models'] for row in _level_rows(line))]
     if value.get('schedule_runner'):
@@ -62,21 +62,6 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False, show_private: 
         from .rem_output import _lines
         lines += ["", style.label("Details"), *(highlight(seen(line)) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
-
-
-def _source_access(value, spell):
-    sources = value.get('registered_sources', {})
-    if not sources:
-        return []
-    lines = [style.label('Connected sources')]
-    for name, source in sources.items():
-        lines.extend(highlight(line) for line in _clause_rows(f"{name}: {source['status']}"))
-        if source['status'].startswith('approved;'):
-            lines.append(rem_look.follow(style.command(spell(['collect', '--source', name]))
-                                         + style.muted(' to retry acquisition')))
-    if any(source['status'].startswith('awaiting approval') for source in sources.values()):
-        lines.append(rem_look.follow(style.command(spell(['start'])) + style.muted(' to review and approve access')))
-    return lines
 
 
 def _paused(root, value, spell):

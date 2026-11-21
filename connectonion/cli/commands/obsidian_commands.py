@@ -595,3 +595,50 @@ def handle_obsidian_search(query: str, *, vault: str | None = None, folders: Seq
         _render_search(hits, ids=ids)
         _listing_note(token)
     _read_tip(hits, token, path, selected, json_output)
+
+
+@_reported
+def handle_obsidian_changes(since: str, *, vault: str | None, folders: Sequence[str],
+                            json_output: bool = False) -> None:
+    """List changed filenames without reading or saving note bodies."""
+    from ...useful_tools import obsidian_changes as source
+    try:
+        start, until = source.read_window(since)
+    except ValueError as error:
+        raise UsageError(str(error), source.CHANGES_HELP) from None
+    scope = _selection(_resolve_vault_reference(vault), folders)
+    batch = source.changes(scope, start, until)
+    path, selected = _scope_parts(scope)
+    if json_output:
+        _emit_json(batch)
+    else:
+        out = style.console()
+        out.print(f"{style.count(len(batch['items']))} changed notes in the selected folders")
+        out.print(f"Since: {batch['since']}\nUntil: {batch['until']}")
+        for item in batch["items"]:
+            out.print(escape(f"{item['time']}  {item['path']}\n  ID: {item['id']}"), emoji=False)
+    if batch["items"]:
+        first = batch["items"][0]
+        reference = first["id"] if json_output else "./" + first["path"]
+        command = "show " + shlex.quote(reference)
+    else:
+        command = "changes --since " + shlex.quote(batch["until"])
+    _tip(_scope_command(command, path, selected) + (" --json" if json_output else ""), json_output)
+
+
+@_reported
+def handle_obsidian_show(identifier: str, *, vault: str | None, folders: Sequence[str],
+                         json_output: bool = False) -> None:
+    """Show a live note by ID or relative path without reading unrelated notes."""
+    from ...useful_tools import obsidian_changes as source
+    scope = _selection(_resolve_vault_reference(vault), folders)
+    try:
+        note = source.show(scope, identifier)
+    except ValueError as error:
+        raise UsageError(str(error), source.SHOW_HELP) from None
+    if json_output:
+        _emit_json(note)
+    else:
+        _print_raw_note(note["text"])
+    path, selected = _scope_parts(scope)
+    _tip(_scope_command("ls", path, selected) + (" --json" if json_output else ""), True)

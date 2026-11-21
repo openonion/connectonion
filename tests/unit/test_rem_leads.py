@@ -94,29 +94,3 @@ def test_notes_route_to_the_project_they_name_and_say_which_names_have_no_page(t
     found, unrouted = note_leads(notebook, notes)
     assert found == ["projects/connectonion.md", "projects/chat.md"]   # by title, and by folder name
     assert unrouted == ["Night Runner"]
-
-
-def test_a_project_lead_brings_its_agenda_page(tmp_path):
-    """A moved due date reached projects/atlas.md and left agenda/atlas.md on the
-    old date (2026-11-14): the agenda names the project, never the item, so no
-    batch names it. It follows its project, by file name or by link, whatever
-    source the batch came from; an agenda for another project stays out."""
-    prepare(tmp_path)
-    notebook = Notebook(tmp_path)
-    notebook.stub_project("projects/atlas.md", "Atlas", [])
-    notebook.stub_project("projects/kite.md", "Kite", [])
-    notebook.write("agenda/atlas.md", "# Atlas agenda\n\n- 2026-11-27 ship the beta\n")
-    notebook.write("agenda/launch-dates.md", "# Launch dates\n\nFor [Atlas](../projects/atlas.md).\n")
-    notebook.write("agenda/kite.md", "# Kite agenda\n\n- 2026-12-01 logo\n")
-    items = [{"role": "other", "source": "tick:T4@5", "text": "Atlas: the beta moved to 2026-11-27."}]
-
-    leads = page_leads(notebook, items)
-
-    assert leads == ["projects/atlas.md", "agenda/atlas.md", "agenda/launch-dates.md"]
-
-
-def test_without_a_project_lead_no_agenda_is_added(tmp_path):
-    prepare(tmp_path)
-    notebook = Notebook(tmp_path)
-    notebook.write("agenda/atlas.md", "# Atlas agenda\n\n- 2026-11-27 ship the beta\n")
-    assert page_leads(notebook, [{"role": "other", "text": "nothing about a project"}]) == []

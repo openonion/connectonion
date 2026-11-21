@@ -343,8 +343,6 @@ def prepare_batch(root, cursor, config, directory):
     batch = cursor["batch"]
     if batch["done"]:
         return None
-    from .source_hooks import require_material
-    require_material(root, batch["items"])
     if read_json(state_path(root, "progress.json"), {}) != batch["progress_before"]:
         raise RemError("Source progress changed between tasks; run co rem next --discard")
     if batch["record"]["extracted"] and batch["digested"] is None:
@@ -1003,7 +1001,7 @@ def check_task(root, task, output):
         if candidate.is_file() and investigate._cut_too_much(before, candidate.read_text(encoding="utf-8")):
             raise runner.RunFailed("Editing round cut the lead or a third of the page; fix the candidate")
         if candidate.is_file():
-            candidate.write_text(investigate.keep_editing(before, candidate.read_text(encoding="utf-8"), root=root), encoding="utf-8")
+            candidate.write_text(investigate.keep_editing(before, candidate.read_text(encoding="utf-8")), encoding="utf-8")
     if handler == "project":
         result = project_pages.check(prepared, output, lock_held=True, native=True)
     else:

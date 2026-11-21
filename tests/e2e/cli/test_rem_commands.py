@@ -1295,19 +1295,12 @@ def test_list_without_a_category_is_refused_before_anything_runs(tmp_path):
     assert result.exit_code == 1 and 'investigate people --list' in result.output
 
 
-def test_start_help_explains_runner_access_and_the_undo():
+def test_start_help_names_the_confinement_and_the_undo():
     import re
     result = runner.invoke(app, ["rem", "start", "--help"])
-    assert result.exit_code == 0, result.output
     text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
-    access = ' '.join(text.split('Access:', 1)[1].split('Requires:', 1)[0].split())
-    assert 'run commands and access files or the network' in access
-    assert 'depending on the runner and task' in access
-    assert 'Scheduled Codex CLI runs have network access.' in access
-    assert 'Research and delegated tasks can use full-access permissions.' in access
-    assert 'write only under' not in access
-    assert 'no shell commands or network access' not in access
-    assert re.search(r'^Undo:\s+co rem stop\s*$', text, re.MULTILINE)
+    assert "--sandbox workspace-write" in text and "--permission-mode acceptEdits" in text
+    assert "co rem stop" in text
 
 
 def test_start_help_explains_linux_systemd_and_linger():
