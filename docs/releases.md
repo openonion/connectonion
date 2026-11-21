@@ -25,7 +25,7 @@ Release candidate **1.9.7rc1**: a restricted claude-code Host from host.yaml, no
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade --pre 'connectonion==1.9.7rc1'
+python -m pip install --upgrade 'connectonion==1.9.7rc1'
 ```
 
 ## Current release
