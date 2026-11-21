@@ -3132,6 +3132,9 @@ app.add_typer(linear_app, name="linear")
 # Canny feedback boards (#2050): our own commands on Canny's REST API.
 from .commands.canny_commands import canny_app
 app.add_typer(canny_app, name="canny")
+# Asana: our own commands on Asana's REST API, with ASANA_ACCESS_TOKEN.
+from .commands.asana_commands import asana_app
+app.add_typer(asana_app, name="asana")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
