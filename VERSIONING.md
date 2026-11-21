@@ -405,6 +405,8 @@ Release candidate 1.9.7rc1 for 1.9.7: a restricted claude-code Host from host.ya
 co/ model, provider/model names in /info, and `co obsidian` / `co asana`. Stable is 1.9.6. See
 [candidate notes](docs/releases/1.9.7rc1.md).
 
+- 1.9.7rc1 (restricted claude-code Host; no silent co/ model; co obsidian and co asana).
+
 ### Previous: stable 1.9.6
 
 Stable 1.9.6, released by the owner's decision: 1.9.6rc48's code. `co init` starts the Host and leaves it
