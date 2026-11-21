@@ -106,6 +106,8 @@ def _clients(sources: dict) -> dict:
 
 def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None) -> tuple[dict, Path]:
     from .service import running_marker
+    from .catchup import identity
+    from .runner import worker_effort
     config = read_config(root)
     # The model and the process, so logs --usage can name one (#1974) and a
     # later run can tell this one died.
@@ -113,7 +115,7 @@ def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None)
               'outcome': 'running', 'runner_attempts': attempts, 'usage': None,
               'sources': [], 'items': 0, 'changed': [], 'phase': phase,
               'harness': config['runner'], 'model': config['model'], 'speed': config['speed'],
-              'quota': {'before': meter}, **running_marker()}
+              'effort': worker_effort(config), 'quota': {'before': meter}, **running_marker(), **identity(root)}
     path = state_path(root, f"runs/{record['id']}.json")
     write_json(path, record)
     return record, path
@@ -195,12 +197,8 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         refresh(root)
         from .topic_map import backfill_topics
         maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)  # a failed weekly proposal must never fail the round
-    # Agenda's week (#2998): the reader shows the calendars as the night last read them, never live.
-    # Outside the writer lock: these are network calls, and the file is the night's alone.
-    from .calendar import save_upcoming
-    from .service import notebook_zone
-    maintenance["calendar"] = save_upcoming(root, now(), notebook_zone(config))
-    _log_calendar_faults(root, maintenance["calendar"])
+    from .schedule import calendar_round
+    maintenance["calendar"] = calendar_round(root)
     _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
@@ -694,8 +692,9 @@ def _owner_due(root: Path) -> list[dict]:
     status = next((line for line in Notebook(root).read(record).splitlines() if line.startswith("Investigation:")), "")
     read = last_investigated(status)
     today = notebook_today(root)
-    tried = read_json(state_path(root, "owner-refresh.json"), {}).get("date", "")
-    if (read and read >= today) or tried == today.isoformat():
+    from .catchup import key, marker, number
+    tried = read_json(marker(root, "owner-refresh.json"), {}).get("date", "")
+    if (number(root) is None and read and read >= today) or tried == key(root, today):
         return []
     days = min(RETRY_DAYS, (today - read).days + 1) if read else RETRY_DAYS
     return [{'record': record, 'kind': 'owner', 'mode': 'owner', 'days': days,
@@ -705,7 +704,8 @@ def _owner_due(root: Path) -> list[dict]:
 def _owner(root, row, *, clients, subscriptions):
     """`investigate me` over the days since the page was last read. Stamped first,
     so a refused or crashed reading waits until tomorrow, not the next run."""
-    write_json(state_path(root, "owner-refresh.json"), {"date": notebook_today(root).isoformat()})
+    from .catchup import key, marker
+    write_json(marker(root, "owner-refresh.json"), {"date": key(root, notebook_today(root))})
     record = row['record']
     title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines() if line.startswith("# ")),
                  "Account owner")

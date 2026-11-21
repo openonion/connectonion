@@ -28,3 +28,21 @@ def find_system_chrome():
                     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"],
     }.get(platform.system(), [])
     return next((p for p in candidates if os.path.exists(p)), None)
+
+
+def has_a_display() -> bool:
+    """Whether a headed browser can open a window here.
+
+    Linux has none without DISPLAY/WAYLAND_DISPLAY. Windows has none in
+    session 0, where services, OpenSSH logins and scheduled tasks run (#3168).
+    macOS always has one.
+    """
+    system = platform.system()
+    if system == "Linux":
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    if system == "Windows":
+        import ctypes
+        session = ctypes.c_ulong()
+        ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session))
+        return session.value != 0
+    return True

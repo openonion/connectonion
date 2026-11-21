@@ -13,6 +13,78 @@ def _gmail(root):
     return service.mailbox_state("gmail", service.subscriptions(root)["gmail"], root=root)
 
 
+@pytest.mark.parametrize("count", [1, 66])
+def test_background_failure_streak_is_counted_and_said_in_status_and_today(tmp_path, rem_clock, count):
+    from rich.text import Text
+    from connectonion.cli.commands.rem_status import _today
+    from connectonion.rem.config import prepare
+    from connectonion.rem.reader import snapshot
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "UTC"])
+    start = service.now() - timedelta(days=2)
+    for index in range(count + 1):
+        stamp = (start + timedelta(minutes=30 * index)).isoformat()
+        turn = {"turn_id": str(index), "started_at": stamp, "finished_at": stamp,
+                "result": "failed" if index else "completed", "reason": "Permission denied: /outside/.git"}
+        write_json(state_path(tmp_path, f"turns/{index:03}.json"), turn)
+    write_json(state_path(tmp_path, "last-turn.json"), turn)
+    value = service.status(tmp_path)
+    warning = value["schedule_failure"]
+    assert warning["failures"] == count
+    assert warning["since"] == (start + timedelta(minutes=30)).isoformat()
+    output = Text.from_markup("\n".join(_today(tmp_path, value))).plain
+    noun = "turn failed" if count == 1 else "turns failed"
+    assert f"Background: the last {count} {noun}, since " in output
+    assert warning["since"][:16].replace("T", " ") in output
+    assert " UTC" in output
+    assert "Last error: Permission denied: /outside/.git" in output
+    assert "co rem logs" in output
+    assert snapshot(tmp_path, today=True)["status"]["schedule_failure"] == warning
+
+
+@pytest.mark.parametrize("last", ["completed", "running", "skipped"])
+def test_background_failure_streak_stops_after_success_or_while_starting(tmp_path, rem_clock, last):
+    write_json(state_path(tmp_path, "turns/first.json"), {
+        "started_at": "2026-09-06T00:00:00Z", "result": "failed", "reason": "fixture"})
+    write_json(state_path(tmp_path, "last-turn.json"), {"started_at": "2026-09-07T00:00:00Z", "result": last})
+    assert service.schedule_failure(tmp_path) is None
+
+
+@pytest.mark.parametrize("count,language", [(1, "en"), (66, "en"), (66, "zh")])
+def test_reader_today_background_status_says_failure_count_and_since(count, language):
+    import json
+    import re
+    from connectonion.rem.reader import TEMPLATE
+    from tests.unit.test_rem_reader import _run_reader_js
+    function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
+    script = f'uiLanguage = {json.dumps(language)}; const REM = {{status: {{timezone: "Australia/Sydney"}}}};\n' + function
+    script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
+        "code": "blocked", "failures": count, "since": "2026-11-14T14:00:00+00:00",
+        "evidence": "Permission denied: /private/fixture/.git"}) + ')));'
+    output = _run_reader_js(script)
+    # #3156: local time in the reader's words (14:00 UTC is 01:00 on the 15th in Sydney), never ISO or UTC.
+    assert str(count) in output and "01:00" in output and "15" in output
+    assert "UTC" not in output and "2026-11-14" not in output
+    assert ("failed" if language == "en" else "失败") in output
+    assert "/private/fixture" not in output
+
+
+@pytest.mark.parametrize("empty,language,said", [
+    (3, "en", "the last 3 turns ran but produced nothing"), (1, "en", "the last 3 turns failed (1 ran but produced nothing)"),
+    (3, "zh", "最近 3 轮运行了但没有产出"), (1, "zh", "最近 3 轮失败（其中 1 轮运行了但没有产出）")])
+def test_reader_today_says_how_many_turns_ran_but_produced_nothing(empty, language, said):
+    import json
+    import re
+    from connectonion.rem.reader import TEMPLATE
+    from tests.unit.test_rem_reader import _run_reader_js
+    function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
+    script = f'uiLanguage = {json.dumps(language)};\n' + function
+    script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
+        "code": "repeated_failure", "failures": 3, "empty": empty, "since": "2026-11-14T14:00:00+00:00",
+        "evidence": "The turn produced nothing: co rem next passed its deadline 3 times"}) + ')));'
+    assert said in _run_reader_js(script)
+
+
 def test_a_mailbox_last_read_more_than_a_day_ago_is_not_a_tick(mixed_sources):
     root = mixed_sources[0]
     write_json(state_path(root, "source_reads.json"), {"gmail": {
@@ -120,3 +192,86 @@ def test_a_round_whose_tasks_keep_landing_or_whose_turn_runs_is_working(tmp_path
     write_json(state_path(tmp_path, "runs/run_" + "a" * 32 + ".json"), {"id": "run_" + "a" * 32,
                "phase": "daily-update", "started_at": (moment - timedelta(minutes=20)).isoformat()})
     assert service.round_state(tmp_path, read_config(tmp_path))["state"] == "working"
+
+
+@pytest.mark.parametrize("recorded", [True, False])
+def test_a_turn_that_hit_the_three_hour_cap_after_accepting_work_is_not_a_failure(tmp_path, rem_clock, recorded):
+    """rc31 on a real notebook: three capped turns accepted 137, 126 and 217 items, each ending "the next fire
+    continues the round", yet Today said "the last 3 turns failed". A capped turn that did work is a normal turn.
+    `recorded`: the receipt carries its accepted count; otherwise (older receipts) it is read from the turn's log."""
+    import json
+    for index, accepted in enumerate((137, 126, 217)):
+        log = tmp_path / f"turn-{index}.jsonl"
+        log.write_text("".join(json.dumps({"type": "rem.submitted", "outcome": "accepted"}) + "\n" for _ in range(accepted)))
+        turn = {"turn_id": str(index), "started_at": f"2026-09-0{index + 5}T00:00:00Z", "result": "timed-out",
+                "exit_code": 124, "reason": "Turn exceeded 3 hours; the next fire continues the round", "log": str(log)}
+        if recorded:
+            turn["accepted"] = accepted
+        write_json(state_path(tmp_path, f"turns/{index:03}.json"), turn)
+    write_json(state_path(tmp_path, "last-turn.json"), turn)
+    assert service.schedule_failure(tmp_path) is None
+
+
+def test_a_capped_turn_that_accepted_nothing_still_counts_as_failed(tmp_path, rem_clock):
+    log = tmp_path / "empty.jsonl"
+    log.write_text("")
+    for index in range(2):
+        turn = {"turn_id": str(index), "started_at": f"2026-09-0{index + 5}T00:00:00Z", "result": "timed-out",
+                "exit_code": 124, "reason": "Turn exceeded 3 hours; the next fire continues the round", "log": str(log),
+                "accepted": 0}
+        write_json(state_path(tmp_path, f"turns/{index:03}.json"), turn)
+    write_json(state_path(tmp_path, "last-turn.json"), turn)
+    assert service.schedule_failure(tmp_path)["failures"] == 2
+
+
+def _failed_turns(root, reasons, **extra):
+    for index, reason in enumerate(reasons):
+        turn = {"turn_id": str(index), "started_at": f"2026-09-0{index + 1}T00:00:00Z", "result": "failed",
+                "exit_code": 0, "reason": reason, "accepted": 0, **extra}
+        write_json(state_path(root, f"turns/{index:03}.json"), turn)
+    write_json(state_path(root, "last-turn.json"), turn)
+
+
+@pytest.mark.parametrize("extra", [{}, {"error_class": "AttributeError"}])
+def test_a_repeated_code_error_is_named_as_one_not_a_retryable_failure(tmp_path, rem_clock, extra):
+    """rc35–rc36 on a real notebook: every scheduled turn died on the same AttributeError in `co rem next`, and Today
+    said "REM retries by itself; nothing is needed from you". A retry cannot fix a code error. `extra`: older receipts
+    carry only the message; newer ones also carry the exception's class."""
+    _failed_turns(tmp_path, ["'str' object has no attribute 'values'"] * 6, **extra)
+    warning = service.schedule_failure(tmp_path)
+    assert warning["failures"] == 6 and warning["code_error"] == 6
+
+
+@pytest.mark.parametrize("reasons", [
+    ["Turn exceeded 3 hours; the next fire continues the round"] * 3,
+    ["The turn produced nothing: co rem next passed its deadline 3 times"] * 3,
+    ["Permission denied: /outside/.git"] * 3])
+def test_timeouts_and_empty_turns_are_not_code_errors(tmp_path, rem_clock, reasons):
+    _failed_turns(tmp_path, reasons)
+    warning = service.schedule_failure(tmp_path)
+    assert warning["failures"] == 3 and not warning.get("code_error")
+
+
+def test_only_the_newest_run_of_one_code_error_is_counted(tmp_path, rem_clock):
+    _failed_turns(tmp_path, ["Permission denied: /outside/.git", "'NoneType' object is not subscriptable",
+                             "'str' object has no attribute 'values'", "'str' object has no attribute 'values'"])
+    assert service.schedule_failure(tmp_path)["code_error"] == 2
+
+
+@pytest.mark.parametrize("language,said,calm", [
+    ("zh", "夜里的程序出错了（同一个错误 6 次），升级到新版本后会继续", "不需要你做什么"),
+    ("en", "The night runner hit a code error 6 times; it resumes after an update", "nothing is needed from you")],
+    ids=["zh", "en"])
+def test_today_says_a_code_error_honestly(language, said, calm):
+    import json
+    import re
+    from connectonion.rem.reader import TEMPLATE
+    from tests.unit.test_rem_reader import _run_reader_js
+    function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
+    script = f'uiLanguage = {json.dumps(language)}; const REM = {{status: {{timezone: "UTC"}}}};\n' + function
+    script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
+        "code": "blocked", "failures": 6, "code_error": 6, "since": "2026-11-19T18:15:05+00:00",
+        "evidence": "'str' object has no attribute 'values'"}) + ')));'
+    output = _run_reader_js(script)
+    assert said in output and calm not in output
+    assert "has no attribute" not in output     # the raw message stays for whoever debugs it, not on Today

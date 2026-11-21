@@ -22,12 +22,13 @@ from pathlib import Path
 from . import fetch_stalls
 from .config import read_config
 from ..provider_credentials import ProviderCredentialError
-from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
+from .files import DOMAIN_HANDLE, WRITE_WAIT_SECONDS, KEY_SHAPES, Notebook, RemError, is_address, maintenance_lock, read_json, state_path, write_json
 # A refused turn's material, by source id, per page (#2041): one ledger every refusing path writes.
 from .refusals import forget_refusal, refused_for, remember_refusal
 from .mail import _address, _list_all, correspondent, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE, strip_noise, strip_quoted
-from .mail import SERVER_ERRORS, error_status
+from .mail import MissingMail, SERVER_ERRORS, error_status, read_mail
 from .source import KINDS, collect, parse_session_source, timestamp, with_local_times
+from .scan import is_repository
 
 MAIL_KINDS = ("outlook", "gmail")
 SESSION_WIDEST_DAYS = 730
@@ -442,7 +443,7 @@ def project_file_texts(paths: list[str], *, max_files: int = 12, chars_per_file:
         path = Path(name)
         with path.open(encoding="utf-8", errors="replace") as handle:
             raw = handle.read(chars_per_file + 1)
-        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
+        text = KEY_SHAPES.sub("[secret-shaped text removed by co rem]", raw[:chars_per_file])
         truncated = len(raw) > chars_per_file or len(text) > chars_per_file
         captured = datetime.now(timezone.utc).isoformat()
         items.append({"role": "project-file", "source": "file:" + name, "file": name,
@@ -463,18 +464,42 @@ _PROJECT_MEMO_LOCK = threading.Lock()
 _PROJECT_TEXT_LOCK = threading.Lock()   # separate: a text lookup must not wait for a walk
 
 
+# 2026-11-16: macOS holds the listing of a folder under ~/Documents, ~/Desktop or
+# ~/Downloads until someone answers its privacy prompt. Two such project folders
+# held one person's page for its whole ten minutes; the other 33 folders were
+# listed and read in 1.6 s together, the slowest listing in 0.72 s.
+DOCUMENT_LIST_SECONDS = 5
+_PROJECT_WALKERS = {}   # the thread listing each folder; one still alive is a listing still held
+
+
+def _list_project_documents(root: Path) -> None:
+    _PROJECT_DOCUMENTS[root] = (time.monotonic(), tuple(_walk_project_documents(root)))
+
+
 def _project_documents(root: Path):
+    """The folder's documents, or None when its listing did not arrive within DOCUMENT_LIST_SECONDS.
+
+    The listing runs in a thread of its own, as `scan._read_promptly` reads: a
+    held listing cannot be given up from the thread that waits in it. A folder
+    whose listing is still held is not waited for or asked again; when it
+    arrives, the thread saves it for the pages after."""
     if not root.is_dir() or root.is_symlink():
         return ()
     root = root.resolve()
-    # Walked under the lock: sixteen pages starting together each walked every folder.
+    # Listed under the lock: sixteen pages starting together each walked every folder.
     with _PROJECT_MEMO_LOCK:
         kept = _PROJECT_DOCUMENTS.get(root)
         if kept and time.monotonic() - kept[0] < SESSION_MEMO_SECONDS:
             return kept[1]
-        documents = tuple(_walk_project_documents(root))
-        _PROJECT_DOCUMENTS[root] = (time.monotonic(), documents)
-        return documents
+        walker = _PROJECT_WALKERS.get(root)
+        if walker and walker.is_alive():
+            return None
+        began = time.monotonic()
+        walker = _PROJECT_WALKERS[root] = threading.Thread(target=_list_project_documents, args=(root,), daemon=True)
+        walker.start()
+        walker.join(DOCUMENT_LIST_SECONDS)
+        kept = _PROJECT_DOCUMENTS.get(root)
+        return kept[1] if kept and kept[0] >= began else None
 
 
 def _project_text(path: Path) -> str:
@@ -525,7 +550,7 @@ SCRUBBED = "[secret-shaped text removed by co rem]"
 
 def _mention_excerpt(text: str, pattern: re.Pattern, chars: int) -> tuple[int, str]:
     """Keep the lines around a client's name, rather than sending their whole project file."""
-    text = SECRET_SHAPES.sub(SCRUBBED, text)
+    text = KEY_SHAPES.sub(SCRUBBED, text)
     lines = text.splitlines()
     hits = [(i, len(pattern.findall(line))) for i, line in enumerate(lines) if pattern.search(line)]
     selected = sorted({n for i, _ in hits for n in range(max(0, i - 3), min(len(lines), i + 4))})
@@ -559,9 +584,12 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
              for path in project_paths(collapse_worktree_paths(notebook.read(record)))
              if Path(path).expanduser().is_dir() and not Path(path).expanduser().is_symlink()
              and not _private_folder(str(Path(path).expanduser().resolve()), opted_in)}
-    found, seen, real = [], set(), {}
+    found, seen, real, skipped = [], set(), {}, []
     for root in sorted(roots):
-        for path in _project_documents(root):
+        documents = _project_documents(root)
+        if documents is None:
+            skipped.append(str(root))
+        for path in documents or ():
             if _private_folder(str(path), opted_in):
                 continue
             # Cached names can be deleted or replaced by links while other pages run.
@@ -591,10 +619,15 @@ def project_mentions(notebook: Notebook, handles: list[str], *, max_files: int =
                                      "written by the owner, not by the subject; a quote here is the owner's record "
                                      "of what someone said, never their own message.",
                       "text": text})
-    coverage = (f"project documents: {len(found)} file(s) name the subject in {len(roots)} project folder(s) searched; "
+    searched = len(roots) - len(skipped)
+    coverage = (f"project documents: {len(found)} file(s) name the subject in {searched} project folder(s) searched; "
                 f"excerpts read from {len(items)} file(s)")
     if not found:
-        coverage = f"project documents: {len(roots)} project folder(s) searched; none name the subject"
+        coverage = f"project documents: {searched} project folder(s) searched; none name the subject"
+    if skipped:
+        # Said by name: a page with no notes from a folder must not read as one the folder never mentions.
+        coverage += (f"; skipped {len(skipped)} project folder(s) not listed within "
+                     f"{DOCUMENT_LIST_SECONDS:g} seconds: {', '.join(skipped)}")
     return items, coverage
 
 
@@ -607,7 +640,7 @@ STALE_CHECKOUT_DAYS = 14
 def _git(path: str, *args: str) -> str:
     import subprocess
     try:
-        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, errors="replace", timeout=10)
+        done = subprocess.run(["git", "-C", path, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -631,7 +664,7 @@ def checkout_state(path: str, newest_session: str = "") -> str:
     come from origin/main (else main, else the most recently committed branch),
     and a HEAD weeks older than the project's newest session is named as stale.
     """
-    if not (Path(path) / ".git").exists():
+    if not is_repository(path):
         return ""
     head = _git(path, "log", "-1", "--format=%cI", "HEAD")
     if not head:
@@ -701,7 +734,7 @@ def _mail_body(client, message_id: str, kind: str = "", root: Path | None = None
             if isinstance(body, str):
                 return body
     with _fetch_slot(kind):
-        return _patient(client.get_email_body, message_id)
+        return read_mail(partial(_patient, client.get_email_body), message_id, provider=kind, root=root)
 
 
 def _matches(row: dict, handles: list[str], mine: set) -> bool:
@@ -816,37 +849,28 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if undated:
             coverage.append(f"{kind}: {undated} saved message(s) skipped for an unreadable date")
         items.extend(local)
-        attached, unlisted, gone = 0, [], []
+        attached, gone = 0, []
 
+        # A mail deleted or moved since it was listed is that mail's gap, never the page's: one Graph 404 ended
+        # 16 turns in a row on 2026-11-12, and parking the page "until it changes" could last for ever (#3101).
+        # A body REM saved is read from the archive first (_mail_body); otherwise the mail is left out and said.
         def attachment_metadata(message_id: str) -> list[dict]:
-            # Attachments are enrichment, not a gate: one listing that timed out
-            # (after _patient's retries) ended the owner's turns from 2026-11-12.
-            with _fetch_slot(kind):
-                try:
-                    return _patient(client.list_attachments, message_id)
-                except Exception as error:  # noqa: BLE001 -- only a mailbox's failure is kept; a bug re-raises
-                    reason = fetch_stalls.failure(error)
-                    if reason is None:
-                        raise
-                    unlisted.append(reason)
-                    return []
+            try:
+                with _fetch_slot(kind):
+                    return read_mail(partial(_patient, client.list_attachments), message_id,
+                                     provider=kind, root=archive_root, operation='attachments')
+            except MissingMail:
+                if message_id not in gone:
+                    gone.append(message_id)
+                return []
 
         def fetch_body(message_id: str) -> str | None:
-            # A mail deleted or moved since it was listed is that mail's gap:
-            # one Graph 404 ended 16 turns in a row on 2026-11-12.
             try:
                 return _mail_body(client, message_id, kind=kind, root=archive_root)
-            except Exception as error:  # noqa: BLE001 -- only "not found" is skipped; anything else re-raises
-                if fetch_stalls.failure(error) != "not_found":
-                    raise
-                gone.append(message_id)
+            except MissingMail:
+                if message_id not in gone:
+                    gone.append(message_id)
                 return None
-
-        def note_gaps() -> None:
-            if unlisted:
-                why = ", ".join(fetch_stalls.PHRASES[reason] for reason in sorted(set(unlisted)))
-                coverage.append(f"{kind}: attachments for {len(unlisted)} message(s) not listed: {why}")
-                unlisted.clear()
 
         def add_attachments(message_id: str, sender: str, stamp: str, subject: str, scope: str = "",
                             metadata=None) -> None:
@@ -884,17 +908,20 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                                 "attachment metadata unavailable without provider")
             continue
         if attachments_dir is not None and hasattr(client, "list_attachments") and local:
+            if stage_progress:
+                stage_progress(f"listing {kind} attachments", 0, len(local))
             with ThreadPoolExecutor(max_workers=10) as pool:
                 metadata = pool.map(attachment_metadata, (item["_mail_id"] for item in local))
                 for item, listed in zip(local, metadata):
                     add_attachments(item["_mail_id"], item["speaker"], item["timestamp"], item.get("subject", ""),
                                     item.get("relationship_scope", ""), listed)
-            note_gaps()
         # Only a whole address goes to the server: a page line with prose or a
         # citation in it made Gmail match 677 unrelated mails (#1954). A bare
         # domain is not an address; org pages search it through `domains` above.
         emails = sorted({h.strip() for h in handles if is_address(h) and h not in mine})
         unavailable = None
+        if stage_progress and intervals:
+            stage_progress(f"searching {kind} mail")
         for begin, finish in intervals:
             if record.startswith('knowledge/') and hasattr(client, 'list_search'):
                 terms = ['"' + handle.replace('"', '') + '"' for handle in handles]
@@ -953,6 +980,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
         if sent_only:
             searched += ", kept the owner's own sent mail"
         mail_to_read = sorted(hit, key=lambda r: str(r["date"]))
+        if stage_progress and mail_to_read:
+            # Named before the bodies are asked for: the first ten used to be counted as the search.
+            stage_progress(f"gathering {kind} mail", 0, len(mail_to_read))
         with ThreadPoolExecutor(max_workers=min(len(mail_to_read) or 1, 20)) as pool:
             bodies = pool.map(fetch_body, (row["id"] for row in mail_to_read))
             for number, (r, body) in enumerate(zip(mail_to_read, bodies), 1):
@@ -991,9 +1021,9 @@ def gather(subject: str, handles: list[str], *, days: int, clients: dict, subscr
                 add_attachments(r["id"], r["from"], str(r["date"]), r.get("subject", ""), scope)
                 if stage_progress and (number % 10 == 0 or number == len(mail_to_read)):
                     stage_progress(f"gathering {kind} mail", number, len(mail_to_read))
-        note_gaps()
         if gone:
             coverage.append(f"{kind}: {len(gone)} message(s) skipped: {fetch_stalls.PHRASES['not_found']}")
+            coverage.append(f"{kind}: missing message IDs: {', '.join(sorted(gone))}")
         coverage.append(f"{kind} ({', '.join(sorted(mine))}): {searched} over {days} days, "
                         f"{len(local) + len(hit)} matched, {len(local) + len(mail_to_read) - len(gone)} bodies read"
                         + (f", {len(local)} of them from the private mail archive" if local else "")
@@ -1162,6 +1192,8 @@ SESSION_WINDOW_VERSION = 2  # Bump when source.collect changes which messages it
 # A first run is hours long; re-verifying every rollout each ten minutes held all
 # its workers behind one three-minute scan. Half an hour stale is fine for it.
 SESSION_MEMO_SECONDS = 1800
+# How much of the store one batch walks before the window is saved (11-16).
+WINDOW_SCAN_BYTES = 512_000_000
 
 
 def _migrate_session_window(saved: dict, kind: str, *, root: Path) -> dict:
@@ -1239,10 +1271,11 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path, *, mis
     saved = read_json(cache_path, {})
     since = timestamp(scoped["since"])
     if (saved.get("version") not in (1, SESSION_WINDOW_VERSION) or saved.get("subscription") != identity
-            or timestamp(saved["since"]) > since
-            or any(not (Path(scoped["root"]) / name).is_file() for name in saved["progress"])):
+            or timestamp(saved["since"]) > since):
         saved = {"version": SESSION_WINDOW_VERSION, "subscription": identity, "since": scoped["since"],
                  "items": [], "progress": {}, "unfamiliar": 0}
+    kept = _without_vanished_rollouts(saved, Path(scoped["root"]))
+    pruned, saved = kept is not saved, kept
     if saved["version"] == 1:
         saved = _migrate_session_window(saved, scoped.get("kind", "codex"), root=Path(scoped["root"]))
         write_json(cache_path, saved)
@@ -1250,24 +1283,55 @@ def _session_window(scoped: dict, label: str, stage_progress, root: Path, *, mis
     unfamiliar, told = saved["unfamiliar"], len(items)
     earlier_missing = set(saved.pop("missing_files", []))
     missing.update(name for name in earlier_missing if not (Path(scoped["root"]) / name).is_file())
+    written = saved["progress"] if cache_path.is_file() and missing == earlier_missing and not pruned else None
     while True:
-        batch = collect({**scoped, "since": saved["since"]}, cursor, 4_000, 20_000_000)
+        batch = collect({**scoped, "since": saved["since"]}, cursor, 4_000, 20_000_000, scan_bytes=WINDOW_SCAN_BYTES)
         items.extend(batch.items)
         unfamiliar += batch.unrecognised
         missing.update(batch.missing_files)
         if stage_progress and len(items) > told:
             told = len(items)
             stage_progress(f"gathering {label}: {told:,} scanned", told)
-        if batch.progress == cursor:
+        done, cursor = batch.progress == cursor, batch.progress
+        if written != cursor:
+            # Saved batch by batch: a build ended by next's deadline used to save nothing,
+            # so the next call read the same gigabytes and was ended at the same place.
+            write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar,
+                                    **({"missing_files": sorted(missing)} if missing else {})})
+            written = cursor
+        if done:
             break
-        cursor = batch.progress
-    if saved["progress"] != cursor or not cache_path.is_file() or missing != earlier_missing:
-        write_json(cache_path, {**saved, "items": items, "progress": cursor, "unfamiliar": unfamiliar,
-                                **({"missing_files": sorted(missing)} if missing else {})})
     _WINDOWS[memo] = (time.monotonic(), timestamp(saved["since"]), items, unfamiliar, sorted(missing))
     if timestamp(saved["since"]) < requested:
         items = [item for item in items if timestamp(item["timestamp"]) >= requested]
     return items, unfamiliar
+
+
+def _without_vanished_rollouts(saved: dict, root: Path) -> dict:
+    """The window without what a rollout that no longer exists gave it; one Codex compressed is followed.
+
+    Any rollout no longer a plain file used to discard the whole window, and Codex
+    compresses old sessions in place: from the first one compressed, every page
+    read the whole store again, on every call (11-16: 6.7 GB, past the deadline).
+    The messages of a compressed rollout are the same bytes at the same offsets."""
+    from .source import COMPRESSED
+    moved, gone = {}, set()
+    for name in saved["progress"]:
+        plain = root / name
+        if plain.is_file():
+            continue
+        packed = plain.with_name(plain.name + COMPRESSED)
+        if packed.is_file():
+            moved[plain.as_uri()] = packed.as_uri()
+        else:
+            gone.add(name)
+    if not moved and not gone:
+        return saved
+    lost = {(root / name).as_uri() for name in gone} | {(root / (name + COMPRESSED)).as_uri() for name in gone}
+    items = [{**item, "reference": moved.get(item.get("reference"), item.get("reference"))}
+             for item in saved["items"] if item.get("reference") not in lost]
+    progress = {name: entry for name, entry in saved["progress"].items() if name not in gone}
+    return {**saved, "items": items, "progress": progress}
 
 
 SEARCH_RESULTS = 20
@@ -1315,7 +1379,10 @@ def mail_search(clients: dict, root: Path, known: set | None = None):
                         # results on one round, and a beehiiv letter and a bulk
                         # founders@ mailout passed the no-reply test (2026-10-10).
                         continue
-                    body = _patient(client.get_email_body, row["id"])
+                    try:
+                        body = read_mail(partial(_patient, client.get_email_body), row['id'], provider=kind, root=root)
+                    except MissingMail:
+                        continue
                     # 2026-10-16 trial: Zia Tanaka's searched citation had no archived body.
                     body = retain_message(root, kind, row, body,
                                           fetched_at=datetime.now(timezone.utc).isoformat())["body"]
@@ -1350,7 +1417,7 @@ def github_search(query: str) -> list[dict]:
     argv = (["gh", "issue", "view", number, "-R", repo, "--json", GITHUB_FIELDS + ",body"] if number else
             ["gh", "search", "issues", "-R", repo, *words.split(), "--limit", "30", "--json",
              GITHUB_FIELDS.replace("createdAt", "createdAt,repository")])
-    run = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+    run = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     if run.returncode:
         return [{"role": "search-failure", "source": "", "query": query, "text": f"gh: {run.stderr.strip()[:300]}"}]
     rows = json.loads(run.stdout or "[]")
@@ -1619,6 +1686,34 @@ QUOTE_NOTE = ("Quote round: an edit, not an investigation. The page has {quotes}
               "resting on two or more cited messages. Add no new claim, no new source. Delete nothing cited. Then end.")
 
 
+# #3105: the task for a page investigated before. The rewrite cost grew with the page, not
+# with what was new, and lost lines: "the rewrite dropped 4 quotes the page had".
+APPEND_NOTE = ("Update, not a rewrite: this page was last investigated {last}. The material in this turn is only "
+               "what arrived since then (and, where a new mail answers an older one, that older original for "
+               "comparison). Your task is additions and corrections, nothing else.\n"
+               "- Add what the new material establishes: new facts, asks, offers, decisions and outcomes, each "
+               "with its date and citation, quoting the speaker's exact words for an ask, offer, term, refusal "
+               "or decision. Put each where it belongs: a new History line, a new Open threads line, a new "
+               "bullet in its section, or a Facts value.\n"
+               "- Correct a line the new material contradicts in place, and keep the old value with when it "
+               "stopped being true: \"Role: Head of Design [9] (was Senior Designer until 2026-10-01 [3])\". "
+               "A thread that the new material settles keeps its line, with the outcome and its date added; "
+               "move it to History only with that outcome.\n"
+               "- Never remove a line, a quote, a citation or a source. Never reword, merge or reorder a line "
+               "the new material does not touch. Do not edit the page whole, tidy it or shorten it: the "
+               "program compares your draft with this page and puts back every cited line you drop.\n"
+               "- The lead may change only to say what is live now; keep its quotes.\n"
+               "- Older threads and attachments the new material continues are in the notebook's own archive: "
+               "mail under {archive}/mail/messages (search with rg -il for the subject line, the thread or the "
+               "sender) and attachments under {archive}/attachments. Read what the new mail points to there "
+               "before writing that a thread has no earlier ask or no reply.\n"
+               "- If nothing in the new material changes the page, answer NO CHANGE.")
+
+
+def append_note(root: Path, last) -> str:
+    return APPEND_NOTE.format(last=last.isoformat() if last else "before", archive=root / ".state")
+
+
 def _quote_counts(page: str) -> tuple[int, int]:
     """Prose quotes and Insight bullets, excluding sources and fenced examples."""
     from .page_review import QUOTE, prose
@@ -1839,7 +1934,8 @@ def prepare_round(notebook, state, page=None):
     """The next bounded turn, including leads carried by earlier processes."""
     record, number, parts = state["record"], state["number"], state["parts"]
     total = len(parts)
-    if number > total + 1 or number > total and (not state["multi"] or not state["edited"]):
+    # An append has no synthesis round: that round edits the page whole (#3105).
+    if number > total + 1 or number > total and (not state["multi"] or not state["edited"] or state.get("append")):
         return None
     part = parts[number - 1] if number <= total else []
     dates = [(i.get("local_time") or str(i.get("timestamp") or ""))[:10]
@@ -1865,7 +1961,7 @@ def check_round(state, result):
 
 
 def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list[dict], rounds: list[list[dict]],
-               config: dict, stage_progress=None) -> dict:
+               config: dict, stage_progress=None, *, append=False) -> dict:
     """One turn per part, each on the page the last one left, then a synthesis turn.
 
     A refused round loses that round, not the page: the next part builds on
@@ -1879,7 +1975,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     usage, changed, ledgers, refused, threads, unread = {}, [], [], [], [], []
     total, edited, repaired = len(rounds), False, 0
     state = {"record": record, "parts": rounds, "context": context, "page": {}, "number": 1,
-             "multi": True, "edited": False, "ledgers": ledgers, "changed": [], "leads": []}
+             "multi": True, "edited": False, "ledgers": ledgers, "changed": [], "leads": [], "append": append}
     for number, part in enumerate([*rounds, []], 1):
         state.update(number=number, edited=edited)
         items = prepare_round(notebook, state, page_item(notebook.read(record)))
@@ -1902,7 +1998,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             # First put the dropped quoted lines back beside the rewrite, as project
             # quote turns and upkeep do; only what that cannot place costs a turn.
             from .page_review import restore_dropped
-            notebook.write(record, restore_dropped(before, notebook.read(record)))
+            notebook.write(record, restore_dropped(before, notebook.read(record), claims=append))
             reason, lost = _keep_unless_lost(notebook, record, before, out.get("refuted_claims", []))
         if lost:
             repaired += 1
@@ -1923,7 +2019,9 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
     if refused and not changed:
         raise RunFailed(refused[-1], usage)
     page = notebook.read(record)
-    before, after, edit = editing_turn(runner, notebook, record, config, stage_progress, context)
+    # An append ends with its parts: the editing and quote turns rewrite lines it did not touch (#3105).
+    before, after, edit = ([], [], None) if append else editing_turn(runner, notebook, record, config,
+                                                                      stage_progress, context)
     if edit is not None:
         reason, _ = _keep_unless_lost(notebook, record, page, edit.get("refuted_claims", []))
         for key, value in (edit.get("usage") or {}).items():
@@ -1940,7 +2038,7 @@ def run_rounds(runner, notebook: Notebook, record: str, page_item, context: list
             changed = sorted({*changed, *edit.get("changed", [])})
             if edit.get("report"):
                 ledgers.append(f"Editing round: {str(edit['report']).strip()}")
-    quote = quote_pass(runner, notebook, record, rounds, config, stage_progress, context)
+    quote = None if append else quote_pass(runner, notebook, record, rounds, config, stage_progress, context)
     if quote:
         for key, value in (quote.get("usage") or {}).items():
             usage[key] = usage.get(key, 0) + value
@@ -2280,13 +2378,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                 sent_only: bool = False, mail_skipped: str = "", stage_progress=None,
                 quick: bool = False, retry_refused: bool = False, website=None,
                 fetch_attachments: bool = True, rounds: int | None = None, read_before: str = "",
-                prepare_only=False, lock_held=False, directory=None) -> dict:
+                prepare_only=False, lock_held=False, directory=None, mode: str = "") -> dict:
     """Fill the page's gaps from everything gathered; the page itself is the first input.
 
     `rounds` caps the parts read in full (the first run's time budget), and
     `read_before` reads the parts dated before it -- a deepen pass, whose newer
     parts the first pass already read. The parts not read stay searchable in files.
+    A people, orgs or projects page investigated before is appended to (#3105);
+    `mode="rewrite"` writes it whole, as every investigation did before.
     """
+    if mode not in ("", "rewrite"):
+        raise RemError(f"Unknown investigation mode {mode!r}; expected rewrite or none")
     notebook = Notebook(root)
     if not notebook.path(record).is_file():
         raise RemError(f"{record} does not exist; create it with `co rem stub` first")
@@ -2326,6 +2428,8 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         company_note = (OWN_COMPANY_NOTE + f"\nOwner: {company['name']}; own addresses and agents: "
                         + ', '.join(company['addresses']) + '\n\n' + company_context(notebook, record, company))
     if not sent_only and record.startswith(("people/", "orgs/")):
+        if stage_progress:
+            stage_progress("searching project documents")
         mentions, documents_coverage = project_mentions(notebook, [subject, *search_handles])
         items.extend(mentions)
         coverage.append(documents_coverage)
@@ -2341,6 +2445,9 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     from .service import notebook_today
     coverage.append(f"Requested investigation window: {days} days ending {notebook_today(root).isoformat()}")
     last = last_investigated(notebook.read(record))
+    # Your own page keeps its whole-page pass from your recent work; skills and topics have no append yet.
+    append = (bool(last) and mode != "rewrite" and not sent_only
+              and record.startswith(("people/", "orgs/", "projects/")))
     # Read from everything gathered, before anything is filtered, laid out in
     # files or sampled: the turn searches files for what it thinks to look for,
     # and Corin's phone sat in a signature it never opened (#2068). A mail the
@@ -2579,12 +2686,23 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
         write_json(original_material, original_items)
     # `sent_only` is `investigate me`: the owner's own page, with its own spec (#2008).
     def page_item(text):
+        ask = (f"The page as it stands, at {record}. Append to it as the update note says; keep every line:"
+               if append else f"The page as it stands, at {record}. Fill its Unknowns, update what "
+                              "has moved, keep what is right:")
         return {"role": "page", "record": record, **({"owner": True} if sent_only else {}),
-                "text": f"The page as it stands, at {record}. Fill its Unknowns, update what "
-                        f"has moved, keep what is right:\n\n{normalize(record, text, owner=sent_only)}",
+                **({"append": True} if append else {}),
+                "text": f"{ask}\n\n{normalize(record, text, owner=sent_only)}",
                 "timestamp": now, "source": "investigation:page"}
 
+    # What the owner did in the day and what he closed on this page (#3174): settled input, not material to cite.
+    from .owner_today import note as owner_note
+    from .threads import closed_note
+    owner_text = "\n\n".join(part for part in (owner_note(root, record), closed_note(root, record)) if part)
     prompt_items = [page_item(notebook.read(record))] + (
+        [{"role": "round", "source": "investigation:append", "timestamp": now, "text": append_note(root, last)}]
+        if append else []) + (
+        [{"role": "owner-today", "source": "investigation:owner-today", "timestamp": now, "text": owner_text}]
+        if owner_text else []) + (
         [{"role": "own-company", "source": "investigation:own-company", "timestamp": now, "text": company_note}]
         if company_note else []) + ([{"role": "project-repositories", "source": "investigation:project-repositories",
            "paths": project_roots, "timestamp": now, "text": _repositories_note(project_roots, line)}]
@@ -2653,15 +2771,17 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
     if prepare_only:
         return {"record": record, "parts": parts, "context": context, "page": prompt_items[0],
                 "number": 1, "ledgers": [], "leads": [], "refused_sources": [], "refused_rounds": [],
-                "changed": [], "edited": False, "multi": in_rounds,
+                "changed": [], "edited": False, "multi": in_rounds, "append": append,
                 "searched": searched_sources(coverage), "repository_items": repository_items,
                 "session_items": original_items, "project_inputs": project_inputs, "days": days}
     try:
         if in_rounds:
-            result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress)
+            result = run_rounds(runner, notebook, record, page_item, context, parts, config, stage_progress,
+                                append=append)
         else:
             result = runner(notebook, prompt_items, config, stage="investigate")
-            quote = quote_pass(runner, notebook, record, [items], config, stage_progress, prompt_items)
+            quote = None if append else quote_pass(runner, notebook, record, [items], config, stage_progress,
+                                                   prompt_items)
             if quote:
                 from .runner import _add_usage
                 result = {**result, "usage": _add_usage(result.get("usage"), quote.get("usage")),
@@ -2717,6 +2837,7 @@ def investigate(root: Path, record: str, subject: str, handles: list[str], *, da
                                "file": source[5:].rsplit("@", 1)[0] if source.startswith("file:") else source,
                                "timestamp": context["time"], "captured_at": context["captured_at"]})
     return {"record": record, "items": len(items), "items_available": available_items,
+            "mode": "append" if append else "write",
             "quick": quick, "chars_gathered": gathered_chars,
             "tokens_estimated_in": gathered_chars // 4, "coverage": coverage,
             "changed": result.get("changed", []), "usage": total or None,

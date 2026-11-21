@@ -218,7 +218,10 @@ def _driver_error_text(verb: str, exc: BaseException, tab) -> str | None:
 # from "timed out".
 _KEYCHAIN = ("Chrome's cookie store — on macOS it waits on a Keychain prompt "
              "until someone answers it (look behind other windows)")
-_WAITS_ON = {"cookies": _KEYCHAIN, "save_state": _KEYCHAIN, "go_to": "the page to load"}
+_TYPING = ("text being typed key by key; part of it is already in the field, "
+           "so clear the field before retrying")
+_WAITS_ON = {"cookies": _KEYCHAIN, "save_state": _KEYCHAIN, "go_to": "the page to load",
+             "keyboard_type": _TYPING, "type_text_by_selector": _TYPING}
 
 
 def _is_verb(browser, name: str) -> bool:

@@ -172,32 +172,33 @@ def test_without_a_terminal_bare_translate_asks_for_all_before_spending(notebook
     assert "2 pages, one model turn each" in result.output and "--all" in result.output
 
 
-FULL = {"used_percent": 95, "window_minutes": 10080, "resets_at": 0, "plan": "pro"}
+# Past the 97% ceiling: a one-click translation goes on past the 90% floor and stops here (#3195).
+FULL = {"used_percent": 98, "window_minutes": 10080, "resets_at": 0, "plan": "pro"}
 
 
 def _meter_after(calls, pages):
-    """The week crosses the floor once `pages` model turns have run."""
+    """The week crosses the ceiling once `pages` model turns have run."""
     return lambda root, config: FULL if len(calls) >= pages else {**FULL, "used_percent": 10}
 
 
-def test_the_quota_floor_stops_the_cli_before_the_next_page(notebook, monkeypatch):
+def test_the_quota_ceiling_stops_the_cli_before_the_next_page(notebook, monkeypatch):
     calls = []
     monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
     monkeypatch.setattr("connectonion.rem.quota.meter", _meter_after(calls, 1))
     total = len(tr.Notebook(notebook).list())
     result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
     assert len(calls) == 1, result.output
-    assert f"Stopped at {total - 1} of {total}: the Codex week is at 95%" in result.output
+    assert f"Stopped at {total - 1} of {total}: the Codex week is at 98%" in result.output
 
 
-def test_the_quota_floor_stops_the_host_job_in_words(notebook, tmp_path_factory, monkeypatch):
+def test_the_quota_ceiling_stops_the_host_job_in_words(notebook, tmp_path_factory, monkeypatch):
     calls = []
     monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
     monkeypatch.setattr("connectonion.rem.quota.meter", _meter_after(calls, 1))
     call = _host(notebook, tmp_path_factory.mktemp("co"))
     call({"action": "start"})
     stopped = _until(call, "stopped")
-    assert len(calls) == 1 and stopped["halted"].startswith("the Codex week is at 95%")
+    assert len(calls) == 1 and stopped["halted"].startswith("the Codex week is at 98%")
 
 
 # A holder in another process: it takes the job's lock the way claim() does, says so, and waits.

@@ -400,7 +400,287 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc16
+## Current Version: 1.9.6
+
+Stable 1.9.6, released by the owner's decision: 1.9.6rc48's code. `co init` starts the Host and leaves it
+running on macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through a
+logged-in Claude Code with no API key (checked on a real Windows 11 PC over the relay in rc43). REM gets the new
+desk, a knowledge graph, three privacy levels and hand-offs you can watch; `co send` / `co receive`, `co wechat`,
+WhatsApp pairing by code and Windows hosts. The default model is Gemini 4 Hydrogen. See [1.9.6 notes](docs/releases/1.9.6.md).
+
+- 1.9.6 (co init starts the Host; model: claude-code; REM's new desk; files between agents).
+
+### Previous candidate: 1.9.6rc48
+Release candidate 1.9.6rc48 for 1.9.6: REM related-page cards show the sentence without the writer's
+"Changed:" prefix, and the page foot says Copy the file path instead of printing it. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc48.md).
+
+- 1.9.6rc48 (related cards and page foot read cleanly).
+
+### Previous candidate: 1.9.6rc47
+Release candidate 1.9.6rc47 for 1.9.6: on a phone, a knowledge or tag page whose linked page is named by a
+long question no longer widens the page. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc47.md).
+
+- 1.9.6rc47 (linked page names wrap on a phone).
+
+### Previous candidate: 1.9.6rc46
+Release candidate 1.9.6rc46 for 1.9.6: a Windows background Host counts as running only when it answers, and a
+Host the relay refuses stops with the reason. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc46.md).
+
+- 1.9.6rc46 (Host health on Windows; refused announce stops the Host).
+
+### Previous candidate: 1.9.6rc45
+Release candidate 1.9.6rc45 for 1.9.6: on a phone, a finished hand-off's line on Today wraps instead of widening
+the page so the phone zoomed out; a claude-code Host names a missing Claude login. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc45.md).
+
+- 1.9.6rc45 (Today on a phone no longer zooms out; missing Claude login named).
+
+### Previous candidate: 1.9.6rc44
+Release candidate 1.9.6rc44 for 1.9.6: global `co init` on Windows from an elevated shell starts a Host that
+can read its profile; with Claude Code logged in it serves `model: claude-code` by default. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc44.md).
+
+- 1.9.6rc44 (Windows default Host from an elevated shell).
+
+### Previous candidate: 1.9.6rc43
+Release candidate 1.9.6rc43 for 1.9.6: the Windows logon Host starts when co was set up from an elevated
+shell, checked on a real Windows 11 PC with `model: claude-code` over the relay. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc43.md).
+
+- 1.9.6rc43 (Windows logon Host from an elevated shell).
+
+### Previous candidate: 1.9.6rc42
+Release candidate 1.9.6rc42 for 1.9.6: rc40's code, published; rc39 to rc41 were tagged but stopped at the
+release checks that run global `co init` under a temporary HOME, which now pass `--no-host`. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc42.md).
+
+- 1.9.6rc42 (rc39 to rc41, published).
+
+### Previous candidate: 1.9.6rc41 (not published)
+Release candidate 1.9.6rc41 for 1.9.6: rc40's code, published; rc39 and rc40 were tagged but stopped at the
+wheel check, which now runs global `co init` with `--no-host`. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc41.md).
+
+- 1.9.6rc41 (rc39 and rc40, published).
+
+### Previous candidate: 1.9.6rc40 (not published)
+Release candidate 1.9.6rc40 for 1.9.6: everything from rc39, which was tagged but never published, plus
+`co init` that skips the background Host and exits 0 on Linux without a systemd user session (containers, CI,
+SSH without linger). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc40.md).
+
+- 1.9.6rc40 (rc39 plus co init on machines without a user service manager).
+
+### Previous candidate: 1.9.6rc39 (not published)
+Release candidate 1.9.6rc39 for 1.9.6: `co init` starts the Host and leaves it running (launchd on macOS,
+systemd on Linux, a Scheduled Task at logon on Windows); `co host` shows it; the model is one line in
+host.yaml (`codex`, `claude-code` or a model name), so a logged-in Claude Code answers through the Host and
+O Chat with no API key. The WTF engine requires onionwright 0.0.16, the first with Windows support.
+Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc39.md).
+
+- 1.9.6rc39 (co init starts the Host on every OS; model: claude-code; onionwright 0.0.16).
+
+### Previous candidate: 1.9.6rc38
+Release candidate 1.9.6rc38 for 1.9.6: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc38.md).
+
+- 1.9.6rc38 (REM rc36 bug-hunt fixes, #3203 #3204 #3206 #3208 #3209 #3210 #3211).
+
+### Previous candidate: 1.9.6rc37
+Release candidate 1.9.6rc37 for 1.9.6: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc37.md).
+
+### Previous candidate: 1.9.6rc36
+Release candidate 1.9.6rc36 for 1.9.6: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said once in the reader's own form. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc36.md).
+
+- 1.9.6rc36 (REM: rc35 bug-hunt fixes — web source cards, Today's side column, phone agenda, worded counts, privacy polish, dates and hex).
+
+### Previous candidate: 1.9.6rc35
+Release candidate 1.9.6rc35 for 1.9.6: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
+bar, and night stages that drain. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc35.md).
+
+- 1.9.6rc35 (REM: rc34 bug-hunt fixes — upgrade-safe tab, Today's first screen, dates and ids, compact top bar, draining stages).
+
+### Previous candidate: 1.9.6rc34
+Release candidate 1.9.6rc34 for 1.9.6: REM gets the knowledge graph (a tag links pages; tag pages; `co rem investigate tag`), a closed item
+stays closed, three privacy levels in the reader's top bar that cover every place a passage shows, sources that never
+open empty, and the hourly bug hunt's fixes. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc34.md).
+
+- 1.9.6rc34 (REM: knowledge graph, closed stays closed, privacy levels, bug-hunt fixes).
+
+### Previous candidate: 1.9.6rc33
+Release candidate 1.9.6rc33 for 1.9.6: `co wechat` reads your own WeChat for Mac history locally, read-only — a
+SQLCipher-4 decryption engine (no new dependency, tested against an independent sqlcipher-CLI oracle) with `doctor`,
+`key`, `chats`, `decrypt` and `export`. Obtaining the key stays a consented manual step; the schema is revealed, not
+assumed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc33.md).
+
+- 1.9.6rc33 (co wechat: read your own WeChat for Mac history locally).
+
+### Previous candidate: 1.9.6rc32
+Release candidate 1.9.6rc32 for 1.9.6: `co browser` starts headless on Windows in session 0 (OpenSSH logins,
+services, scheduled tasks), where a headed Chrome could never show a window and go_to waited 120 s. Together with
+rc31's Windows fixes for co rem (timezone, UTF-8, paths, long prompts) and the onionwright install, co runs on a
+Windows PC end to end. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc32.md).
+
+- 1.9.6rc32 (co browser headless in Windows session 0).
+
+### Previous candidate: 1.9.6rc31
+Release candidate 1.9.6rc31 for 1.9.6: the calendar is part of Today (a week strip over the day's timeline, under
+the cards; no separate Agenda place), record pages read in one 720 px measure with a flat header and an ink accent,
+a Keys place whose values live only in the macOS Keychain, tags on every page kind with tag pages, filters and graph
+nodes, approve and talk answering in under a second, a Host that moves itself onto a new release, done marks that
+survive the night's rewording, and a deleted mail that no longer fails an investigation. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc31.md).
+
+- 1.9.6rc31 (calendar in Today; reading measure and ink; Keys; tags everywhere; faster approve and talk).
+
+### Previous candidate: 1.9.6rc30
+Release candidate 1.9.6rc30 for 1.9.6: hand-offs to Codex and Claude you can watch and pick up (live steps, a tmux
+session, Watch in Terminal, Continue in Codex/Claude; the row turns at the click, a finished run says so with a
+summary and offers to draft its reply, failures say why with Retry), enrich that writes like OSINT (career timelines,
+organisation pages created and linked both ways), decisions found on the cheap model with translated titles, one
+language control in the top bar, a page that lost its Host says so and reconnects, and a person page that leads with
+what happened (no open-topics block; a timeline row opens its original). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc30.md).
+
+- 1.9.6rc30 (hand-offs you can watch; OSINT enrich; one language control; person timeline first).
+
+### Previous candidate: 1.9.6rc29
+Release candidate 1.9.6rc29 for 1.9.6: a source's title in Full memory's Sources opens its original (mail, file,
+session) in the side card again (#3134); a calendar event shows how to join (Google Meet, Teams, Zoom named), who
+organised it and its notes, with the provider's page a quiet link (#3135); and the Investigate menu and "What
+changed" float over every card under the record head. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc29.md).
+
+- 1.9.6rc29 (source titles open the original; calendar join links and notes; Investigate popovers on top).
+
+### Previous candidate: 1.9.6rc28
+Release candidate 1.9.6rc28 for 1.9.6: the night runs again (a finishing step deadlocked on its own lock; a step
+that keeps stalling is held and named; the Codex quota is read outside the sandbox), Investigate can append to a
+page already over the length limit (its oldest History moves word for word to an archive), the live reader
+recovers after an upgrade (a failed rebuild retries, a dead Host is replaced, the port is kept), a person's reply
+policy is one click (以后直接发给他 / 以后先给我看; nothing auto-sent before 07:00; private facts hold), and the
+person header is polished. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc28.md).
+
+- 1.9.6rc28 (night unblocked, append to long pages, live reader recovers, one-click reply policy).
+
+### Previous candidate: 1.9.6rc27
+Release candidate 1.9.6rc27 for 1.9.6: the person page's header and profile card are redesigned (#3131's first
+slice). Three header lines (name; role · organisation; place · last contact · mail · Today), one action column
+(调查, then the translation state), and facts as single-line rows in two balanced columns, with sources one hover
+away. Also fixes a private project page that rendered nothing after its first section, and the Investigate menu
+running off a phone's screen. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc27.md).
+
+- 1.9.6rc27 (person header and profile card redesign; private project page crash; phone Investigate menu).
+
+### Previous candidate: 1.9.6rc26
+Release candidate 1.9.6rc26 for 1.9.6: REM sprint 22. Today's Send always answers (an unfilled slot is
+pointed at, a sent reply says when and to whom with Undo), full-screen writing is a visible button, and the
+"more" panel's Codex/Claude actions are a button row. A person's profile card is the first thing under the
+name. Full memory opens by itself and its sources are short, named and linked both ways with the lines that
+cite them. `co rem investigate PAGE` writes a missing page and appends to an existing one (`--enrich` adds
+the web step, `--rewrite` is held for approval, `--undo` reverts), and record pages get one Investigate
+button. The calendar draws multi-day events as all-day bars. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc26.md).
+
+- 1.9.6rc26 (REM sprint 22: Send feedback, profile card first, sources band, investigate appends).
+
+### Previous candidate: 1.9.6rc25
+Release candidate 1.9.6rc25 for 1.9.6: a Windows PC can host. `co host` no longer publishes
+link-local 169.254.x addresses and never sends the relay more than its 10 endpoints, so a PC with
+disconnected adapters registers; `co call` runs on a Windows host through Git Bash (or `cmd /c`);
+the background listener's log is UTF-8. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc25.md).
+
+- 1.9.6rc25 (Windows hosts: announce within the relay limit, bash via Git Bash or cmd, UTF-8 listener log).
+
+### Previous candidate: 1.9.6rc24
+Release candidate 1.9.6rc24 for 1.9.6: three Windows fixes from the first live `co whatsapp` run on
+Windows 11. `check` and `consume` no longer crash with PermissionError while a listener runs (the pid
+moved out of the locked file into listen.pid); incoming WhatsApp messages are no longer dropped
+(timestamps arrive in milliseconds); `consume` talks UTF-8 with its command instead of cp1252.
+Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc24.md).
+
+- 1.9.6rc24 (Windows: listen.pid, millisecond WhatsApp timestamps, UTF-8 consume).
+
+### Previous candidate: 1.9.6rc23
+
+Release candidate 1.9.6rc23 for 1.9.6: `co whatsapp listen --phone <number>` prints an 8-character
+pairing code to type on the phone under Linked devices, instead of a QR that changes every ~20 s and
+has to be seen. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc23.md).
+
+- 1.9.6rc23 (co whatsapp listen --phone: link by pairing code).
+
+### Previous candidate: 1.9.6rc22
+
+Release candidate 1.9.6rc22 for 1.9.6: when `co browser keyboard_type` or `type_text_by_selector`
+cannot paste, the whole text goes in through one CDP `Input.insertText` call, which needs no OS
+clipboard (measured on rc21: headless Chrome on Windows over SSH never took the paste and typed 920
+of 1,402 characters key by key before the 120 s timeout). The result says whether the text was
+pasted, inserted or typed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc22.md).
+
+- 1.9.6rc22 (co browser: CDP insert when the paste does not land; the result says how text went in).
+
+### Previous candidate: 1.9.6rc21
+
+Release candidate 1.9.6rc21 for 1.9.6: when `co send` cannot reach the receiver directly, because
+its Host is behind a router or not running, a file of up to 10 MB waits on the server for 7 days,
+boxed to the receiver so the server never sees its name or bytes, and `co receive` there takes it
+from a trusted sender. `co browser keyboard_type` and `type_text_by_selector` paste the text in one
+event (measured: a 1,402-character post had 610 characters in when the CLI's 120 s timeout cut it
+off); `--human` types key by key. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc21.md).
+
+- 1.9.6rc21 (co send: small files wait on the server; co browser: keyboard_type pastes).
+
+### Previous candidate: 1.9.6rc20
+
+Release candidate 1.9.6rc20 for 1.9.6: the night's Codex workers run at the reasoning effort the
+notebook's config names instead of inheriting the global Codex setting (measured: every worker of
+three real nights ran at `max` against a configured `medium`). `co rem catchup` and the scheduled
+turn hold one lock, so two runs no longer work the same notebook. A worker turn that times out
+parks its page and the round goes on. Each night has shares per stage, and a spent investigation
+budget holds only new investigations. Decision pages that admit their own reason is unknown are
+refused. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc20.md).
+
+- 1.9.6rc20 (REM: configured effort reaches the workers; one lock per notebook; a timeout parks one page; nightly shares).
+
+### Previous candidate: 1.9.6rc19
+
+Release candidate 1.9.6rc19 for 1.9.6: `co send <address> <file or folder>` sends files to another
+agent's running Host, byte for byte and verified by sha256, and `co receive` lists what arrived. An
+interrupted send continues from where it stopped (measured: 5 GiB from a laptop to a mini PC on the
+office network, stopped at 1.2 GB and resumed there). Only the receiver's contacts may send, the
+bytes never go through the relay, and sealed client sockets no longer offer compression. Stable
+remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc19.md).
+
+- 1.9.6rc19 (co send / co receive: files between agents, verified and resumable; no deflate on sealed sockets).
+
+### Previous candidate: 1.9.6rc18
+
+Release candidate 1.9.6rc18 for 1.9.6: found on the owner's Mac, where one scheduled turn ran
+`co rem next` three times, each to its ten-minute deadline on the same person's page, and was
+recorded as completed. The page is now parked by name and the next call serves other work; a turn
+whose last `co rem next` passed its deadline with nothing served or submitted is recorded as failed
+and counted in words; the deadline says which step was waited on; and the session window no longer
+reads every coding-session log again once one of them has been compressed. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc18.md).
+
+- 1.9.6rc18 (REM background: a page that passes the deadline is parked and the round moves on; a turn that only stalled is not completed; the session window reads only changed rollouts).
+
+### Previous candidate: 1.9.6rc17
+
+Release candidate 1.9.6rc17 for 1.9.6: found on the owner's Mac, where every background round had
+failed since 2026-11-14. A session that names a folder REM may not read no longer stops the round:
+an unreadable folder is not a repository. A turn whose round could not be prepared is recorded as
+failed, and `co rem status` and Today say so in words (#3066). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc17.md).
+
+- 1.9.6rc17 (REM background: an unreadable folder no longer stops the round; failed turns are recorded as failed).
+
+### Previous candidate: 1.9.6rc16
+
 Release candidate 1.9.6rc16 for 1.9.6: found by opening rc15 on a real notebook. The Organisations
 table never prints the not-investigated placeholder as a fact, whichever field or translation
 carried it (#3036, #3037); an organisation whose kind is `company` renders; a long location is
@@ -556,7 +836,7 @@ under More. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc1.m
 
 - 1.9.6rc1 (whole lines on desktop, letter first on a phone, less-used actions under More).
 
-## Current stable: 1.9.5
+## Previous stable: 1.9.5
 
 Stable 1.9.5. A fresh install works again: typer 0.29.0 (released 2026-11-09) made every `co`
 command crash, so typer is capped below 0.29. REM reads each slot's mail while the Codex weekly

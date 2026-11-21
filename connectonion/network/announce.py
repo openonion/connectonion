@@ -109,14 +109,23 @@ def _is_loopback(host: str) -> bool:
     return host.startswith("127.")
 
 
+# The relay refuses an announce with more (oo-api relay/service.py). Over it,
+# the host never registered and every `co call` failed (#3122).
+RELAY_MAX_ENDPOINTS = 10
+
+
 def get_endpoints(port: int) -> List[str]:
     """Get all endpoints as full URLs (http and ws for each IP)."""
     domain = os.getenv("AGENT_PUBLIC_DOMAIN", "").strip().rstrip("/")
     if domain:
         return [f"https://{domain}", f"wss://{domain}/ws"]
 
-    endpoints = []
+    ips = []
     for ip in get_ips():
+        if ip.startswith("169.254."):
+            # Link-local: a disconnected Windows adapter has one, and no other
+            # machine can reach it. Five of them pushed a PC over the limit.
+            continue
         if _is_loopback(ip):
             # Not a place another machine can go, and the relay record is read
             # by other machines. Published, it made a browser client walking the
@@ -129,6 +138,13 @@ def get_endpoints(port: int) -> List[str]:
             # on one LAN can use them, and the relay would otherwise carry a
             # connection that did not need it.
             continue
+        ips.append(ip)
+    if len(ips) * 2 > RELAY_MAX_ENDPOINTS:
+        # Docker, Hyper-V and VPN adapters are real; keep the first ones and
+        # the public address, which get_ips() puts last.
+        ips = ips[:RELAY_MAX_ENDPOINTS // 2 - 1] + ips[-1:]
+    endpoints = []
+    for ip in ips:
         endpoints.append(f"http://{ip}:{port}")
         endpoints.append(f"ws://{ip}:{port}/ws")
     return endpoints

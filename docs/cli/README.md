@@ -538,6 +538,23 @@ See [linear.md](linear.md).
 
 ---
 
+#### `co asana` - Asana tasks
+
+Your Asana projects, tasks and their comments with a personal access token;
+move a due date, mark a task done or open, or comment, with a preview first.
+Rows from the last list stand in for long IDs for 15 minutes.
+
+```bash
+co env set ASANA_ACCESS_TOKEN <pat> --secret
+co asana projects
+co asana tasks 1 --assignee me --due-to 2026-11-09
+co asana update 1209876543210987 --due-on 2026-11-14 --yes
+```
+
+See [asana.md](asana.md).
+
+---
+
 #### `co onenote` - Browse OneNote by number
 
 After `co auth microsoft`, run `co onenote ls` to see numbered sections,
@@ -1027,6 +1044,23 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 ---
 
+#### `co send <address> <path>...` - Send Files to Another Agent
+
+Files, and folders as the files inside them, to another agent's running Host.
+They arrive byte for byte and are checked against their sha256; an interrupted
+send continues from where it stopped. Only the receiver's contacts may send.
+When the receiver cannot be reached directly, a file of up to 10 MB waits on the
+server for 7 days, encrypted to the receiver. `co receive` takes what is waiting
+and lists what arrived. See [send.md](send.md).
+
+```bash
+co send 0x1e85... ./C2350.MP4        # one file, any size
+co send 0x1e85... ./footage/         # a folder
+co receive                           # on the receiving machine
+```
+
+---
+
 #### `co call <address> <command>` - Run a Command on a Remote Agent
 
 The **remote twin of `co browser`**: run one command on a remote agent and print
@@ -1477,6 +1511,7 @@ See [server.md](server.md).
 | `co schedule` | See, check, run now, pause and resume `.co/schedule.yaml` entries — [schedule.md](schedule.md) | No | ✅ Yes (writes schedule state only) |
 | `co mcp` | The MCP servers and connectors Codex already has: list, list tools, call one — [mcp.md](mcp.md) | No | ✅ Yes (non-read-only tools only with `--yes`) |
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
+| `co asana` | Asana tasks: projects, tasks, one task's comments and activity; move a due date, mark done, comment — [asana.md](asana.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co asr` | Transcribe an audio file; Codex default or configured ConnectOnion provider — [ASR](../asr.md) | Audio upload | Yes, explicit invocation |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |

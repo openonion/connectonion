@@ -67,6 +67,26 @@ def test_search_json_is_pure_json_on_stdout(net):
     assert json.loads(result.stdout)["engine"] == "co"
 
 
+def test_windows_capture_gets_no_success_tip_on_stderr(net, monkeypatch):
+    """#3113: Windows PowerShell 5.1 turns each captured stderr line into a red error record."""
+    net["oo.test"] = lambda r: httpx.Response(200, json=RESULTS)
+    monkeypatch.setattr("sys.platform", "win32")
+
+    result = co("search", "python docs")
+
+    assert result.exit_code == 0 and "1. Python" in result.stdout
+    assert result.stderr == ""
+
+
+def test_windows_failure_still_names_its_next_step(net, monkeypatch):
+    net["oo.test"] = lambda r: httpx.Response(402, json={"detail": {"error": "insufficient_credits"}})
+    monkeypatch.setattr("sys.platform", "win32")
+
+    result = co("search", "python docs", "--engine", "co")
+
+    assert result.exit_code == 1 and "Next: co search 'python docs' --engine ddg" in result.stderr
+
+
 def test_out_of_credits_names_one_next_step_and_it_is_free(net):
     net["oo.test"] = lambda r: httpx.Response(402, json={"detail": {"error": "insufficient_credits"}})
 

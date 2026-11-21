@@ -9,7 +9,7 @@ command indexes. You can start from this command without running `co init` first
 ```bash
 co create my-agent --yes
 cd my-agent
-co host
+co host --agent agent.py
 ```
 
 The name must be a new directory. To initialize an existing directory, use

@@ -21,9 +21,19 @@ def run_js(names, script):
         function = match[0] if match[0].endswith('}') else re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0]
         functions.append(function)
     functions = '\n'.join(functions)
+    # #3160: org rows leave out role-titled pages; the helper and its pattern come with any function that uses it.
+    if 'personAsOrg(' in functions and 'personAsOrg' not in names:
+        functions += '\n' + re.search(r'^const ROLE_TITLE = .*$', page, re.M)[0] + '\n' + re.search(r'^function personAsOrg\(.*$', page, re.M)[0]
+    # #3140: record heads carry their tag row; these tests are about the org head's other parts.
+    if 'pageTagRow(' in functions and 'pageTagRow' not in names and 'function pageTagRow' not in script:
+        functions += '\nfunction pageTagRow() { return null; }'
     result = subprocess.run([node], input=functions + '\n' + script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
+
+
+# Lists read their tag filter from the route since #3093; these tests are about the org rows themselves.
+TAG_ROUTE = 'const route = () => ({}), TAG_LISTS = [];\n'
 
 
 TREE_FUNCTIONS = ['orgTree', 'orgLoose', 'orgUnitCount', 'orgByLast', 'orgByActivity', 'orgBranchLast']
@@ -38,7 +48,7 @@ TREE_DOM = r'''
 
 
 def test_same_name_private_org_does_not_join_public_people_or_project_tasks():
-    result = run_js(['orgRows'], r'''
+    result = run_js(['orgRows', 'listRows', 'tagged'], TAG_ROUTE + r'''
       const orgUnitNames = () => [];
       const publicOrg = {path: 'orgs/public.md', title: 'Fernhill', people: ['people/public.md']};
       const privateOrg = {path: 'orgs/private.md', title: 'Fernhill', private: true, people: ['people/private.md']};
@@ -187,7 +197,7 @@ ROLLUP = r'''
 
 
 def test_an_org_row_takes_its_last_contact_from_the_newest_exchange_of_anyone_there():
-    result = run_js(['orgRows'], ROLLUP + r'''
+    result = run_js(['orgRows', 'listRows', 'tagged'], TAG_ROUTE + ROLLUP + r'''
       const orgUnitNames = () => [];
       const inCategory = () => [org], orgName = r => r.title, orgHidden = () => false;
       const orgOwed = () => [], owedFirst = () => 0;
@@ -210,7 +220,7 @@ def test_an_org_page_says_last_contact_from_its_people_not_the_page_date():
 
 
 def test_org_list_folds_only_resolved_units_and_keeps_orphans_findable():
-    result = run_js(['orgRows'], r'''
+    result = run_js(['orgRows', 'listRows', 'tagged'], TAG_ROUTE + r'''
       const orgUnitNames = r => (r.children || []).map(path => byPath(path).title);
       const root = {path: 'orgs/root.md', title: 'Fernhill', children: ['orgs/course.md']};
       const unit = {path: 'orgs/course.md', title: 'Fieldwork', parent: root.path};

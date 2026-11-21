@@ -184,7 +184,7 @@ Keep responses concise and informative:
 
 ## How Keyboard Tools Work
 
-`keyboard_type(text)` wraps Playwright's `page.keyboard.type()` — inputs text character by character into the focused element.
+`keyboard_type(text)` pastes the text into the focused element as one event, however long it is. Pass `human=True` to type it key by key with human timing (about 0.1 s a character) where the cadence matters, such as a login form; when the paste does not land the text is inserted through CDP in one call, and only a field that takes neither is typed key by key. The result's second line says which.
 
 `get_focused_element()` returns JSON for the current focus target, including `is_editable`; password values are redacted. Call it before replacing text.
 

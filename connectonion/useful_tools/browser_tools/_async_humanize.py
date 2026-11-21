@@ -3,7 +3,7 @@ Purpose: Non-blocking humanized pointer, keyboard, and wheel input for AsyncBrow
 LLM-Note:
   Dependencies: asyncio + stdlib-only humanize rules; no Patchright sync API | imported by [_async_browser.py] | tested by [tests/unit/test_async_browser_humanize.py]
   Data flow: known target → shared geometry/persona rules → awaited mouse/keyboard/CDP events with asyncio sleeps between events
-  State/Effects: per-page cursor/CDP state | temporary OS clipboard mutation for CJK paste, serialized by the runtime clipboard lock and restored on cancellation
+  State/Effects: per-page cursor/CDP state | temporary OS clipboard mutation for paste, serialized by the runtime clipboard lock and restored on cancellation
   Integration: internal 1.8 async driver; used by AsyncBrowserCore directly and by synchronous BrowserAutomation through its facade
   Errors: browser/CDP errors bubble; clipboard absence falls back to IME composition
 
@@ -187,8 +187,32 @@ async def _type_ime(page, run):
             await _pause(page, 0.3, 0.5)
 
 
-async def type_text(page, text, clipboard_lock):
-    """Type Latin text per key and route CJK through paste or awaited CDP IME."""
+async def _insert(page, text) -> bool:
+    """Insert the whole text through CDP, as an IME commits it; no OS clipboard."""
+    session = _cdp.get(page)
+    if session is None:
+        session = await page.context.new_cdp_session(page)
+        _cdp[page] = session
+    before = await page.evaluate(rules._ACTIVE_TEXT_SCRIPT)
+    await session.send("Input.insertText", {"text": text})
+    return await _paste_landed(page, before)
+
+
+async def type_text(page, text, clipboard_lock, human=False) -> str:
+    """Enter text and say how: "pasted", "inserted" (CDP) or "typed" (per key).
+
+    Per key costs ~0.1 s a character: 610 of 1,402 characters were in when the
+    CLI's 120 s timeout cut the rest off (#2901). A paste is one event, so it
+    also leaves no window for focus to move mid-text (#2899). Headless Chrome
+    on Windows over SSH never took the paste (920 of 1,402 characters typed
+    per key in 120 s), so CDP insertText, which needs no OS clipboard, comes
+    before per-key typing.
+    """
+    if not human:
+        if await _paste(page, text, clipboard_lock):
+            return "pasted"
+        if await _insert(page, text):
+            return "inserted"
     for needs_ime, run in rules._segments(text):
         if needs_ime:
             if not await _paste(page, run, clipboard_lock):
@@ -201,3 +225,4 @@ async def type_text(page, text, clipboard_lock):
                 await _pause(page, 0.06, 0.5)
             if random.random() < 0.03:
                 await _pause(page, 0.3, 0.5)
+    return "typed"

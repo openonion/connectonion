@@ -30,7 +30,7 @@ from pathlib import Path
 
 import httpx
 
-from .files import RemError, read_json, state_path
+from .files import RemError, read_json, state_path, write_json
 
 RELATED_ORG_SCOPE = ("Related contact outside the target mail domains; verify person/company/domain identity "
                      "from primary messages before attributing this exchange to the organization.")
@@ -182,6 +182,7 @@ def collect_mail(subscription: dict, progress: dict, max_items: int, max_chars: 
                 # sync, and left in the queue it stopped the whole mailbox (2026-10).
                 _consume(updated["pending"], address, row["id"])
                 dropped_missing += 1
+                updated.setdefault("dropped_missing", []).append(row["id"])
                 continue
             head, _, rest = body.partition("--- Email Body ---")
             body = head + "--- Email Body ---" + strip_noise(strip_quoted(rest)) if rest else strip_noise(strip_quoted(body))
@@ -214,6 +215,8 @@ def _scan(subscription: dict, progress: dict, client, mine: set, end: datetime) 
     seen = set(progress.get("seen", []))
     pending = {address: list(rows) for address, rows in progress.get("pending", {}).items()}
     updated = {"scanned_until": scanned.isoformat(), "seen": sorted(seen), "pending": pending}
+    if progress.get('dropped_missing'):
+        updated['dropped_missing'] = list(progress['dropped_missing'])
     window_start = scanned
     while window_start < end:
         window_end = min(window_start + LISTING_WINDOW, end)
@@ -322,18 +325,77 @@ def _turns(pending: dict, max_items: int):
 
 
 def _body(client, email_id: str) -> str | None:
-    """The mail's text, or None when the mailbox says it no longer exists (HTTP 404)."""
+    """The mail's text, or None when the mailbox says it no longer exists."""
+    try:
+        return read_mail(client.get_email_body, email_id)
+    except MissingMail:
+        return None
+
+
+class MissingMail(RemError):
+    """One provider-confirmed missing message or attachment, with its native ID."""
+
+    def __init__(self, provider, identity, operation, status, error):
+        super().__init__(f'{provider.title()} {operation} {identity} no longer exists: {error}')
+        self.rem_provider, self.missing_id, self.operation = provider, identity, operation
+        self.status = status
+
+
+# A read answered 401 or 403 needs `co auth`, 408 timed out and 429 is throttling: those are
+# the mailbox's state. Any other 4xx is the mailbox refusing this one request.
+GONE, NOT_THIS_READ = (404, 410), (401, 403, 408, 429)
+STEPS = {'message': 'reading message', 'attachments': 'listing the attachments of message'}
+
+
+class RefusedMail(RemError):
+    """One read the mailbox refused: that read's page or night item is set aside, never the round.
+
+    2026-11-16: a citation that was no message id reached Graph as one, Graph answered
+    HTTP 400, and the raw error left `co rem catchup` after 22 minutes with no totals
+    and none of the stages after it. The message names the step and the status,
+    because "Microsoft Graph API error (HTTP 400)" names neither the read nor the page."""
+
+    def __init__(self, provider, identity, operation, status):
+        super().__init__(f"{provider.title() or 'The mailbox'} refused {STEPS.get(operation, 'reading ' + operation)} "
+                         f'{identity} (HTTP {status})')
+        self.rem_provider, self.refused_id, self.operation = provider or None, identity, operation
+        self.status = status
+
+
+def missing_mail_path(root, provider, identity, operation='message'):
+    key = hashlib.sha256(f'{operation}:{identity}'.encode()).hexdigest()
+    return state_path(root, f'mail/dropped-missing/{provider}/{key}.json')
+
+
+def read_mail(call, identity: str, *, provider: str = '', root: Path | None = None, operation: str = 'message'):
+    """Read one piece of mail; only a provider's HTTP 404/410 means it is gone.
+
+    Another 4xx that is not about authorization or throttling is this read refused
+    (RefusedMail). Every other read error passes through unchanged, including through
+    legacy parking handlers. Keep the missing ID separately from any retained original body.
+    """
     from googleapiclient.errors import HttpError
     from ..provider_credentials import ProviderCredentialError
+    from ..useful_tools.gmail_mailbox import MailboxError
     try:
-        return client.get_email_body(email_id)
-    except HttpError as error:
-        if error.resp.status != 404:
+        return call(identity)
+    except Exception as error:  # This boundary covers one read, never a round.
+        error.rem_read_failure = True
+        status = error_status(error)
+        if status is None and isinstance(error, MailboxError):
+            match = re.search(r'\bHTTP (\d{3})\b', str(error))
+            status = int(match[1]) if match else None
+        if not isinstance(error, (HttpError, ProviderCredentialError, MailboxError)) or status is None:
             raise
-    except ProviderCredentialError as error:
-        if error.status != 404:
+        if 400 <= status < 500 and status not in GONE + NOT_THIS_READ:
+            raise RefusedMail(provider or getattr(error, 'rem_provider', ''), identity, operation, status) from error
+        if status not in GONE:
             raise
-    return None
+        missing = MissingMail(provider, identity, operation, status, error)
+        if root is not None:
+            write_json(missing_mail_path(root, provider, identity, operation), {
+                'provider': provider, 'id': identity, 'operation': operation, 'status': status, 'reason': str(missing)})
+        raise missing from error
 
 
 def _consume(pending: dict, address: str, email_id: str) -> None:

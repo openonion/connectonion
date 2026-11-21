@@ -238,7 +238,7 @@ def session_samples(root: Path, name: str, limit: int = 3) -> dict:
 
 def _invocation_turn(path: Path, kind: str, when: str) -> str:
     """Raw request, invocation, tool results and replies until the next typed request."""
-    from .files import SECRET_SHAPES
+    from .files import KEY_SHAPES
     selected, request, active = [], None, False
     with io.TextIOWrapper(open_session(path), encoding="utf-8") as handle:
         first = json.loads(handle.readline())
@@ -277,7 +277,7 @@ def _invocation_turn(path: Path, kind: str, when: str) -> str:
                 break
             if active and kind == 'claude-code' and payload.get('stop_reason') == 'end_turn':
                 break
-    return SECRET_SHAPES.sub("[REDACTED]", "\n".join(json.dumps(row, ensure_ascii=False) for row in selected))
+    return KEY_SHAPES.sub("[REDACTED]", "\n".join(json.dumps(row, ensure_ascii=False) for row in selected))
 
 
 def _text_skill_content(content: list) -> list:
