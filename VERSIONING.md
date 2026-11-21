@@ -402,7 +402,7 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 
 ## Current Version: 1.9.6
 
-Stable 1.9.6, released by the owner's decision from 1.9.6rc47's code. `co init` starts the Host and leaves it
+Stable 1.9.6, released by the owner's decision: 1.9.6rc47's code plus one reader polish (#3243). `co init` starts the Host and leaves it
 running on macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through a
 logged-in Claude Code with no API key (checked on a real Windows 11 PC over the relay in rc43). REM gets the new
 desk, a knowledge graph, three privacy levels and hand-offs you can watch; `co send` / `co receive`, `co wechat`,
