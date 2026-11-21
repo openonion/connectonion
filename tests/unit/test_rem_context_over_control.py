@@ -234,7 +234,10 @@ def test_manual_run_record_keeps_page_evidence_and_inspection_report(tmp_path):
     record = json.loads(next((root / ".state/runs").glob("run_*.json")).read_text())
     assert record["evidence"] == evidence
     config = read_config(root)
-    assert (record["harness"], record["model"], record["speed"]) == (config["runner"], config["model"], "fast")
+    # Investigation's own level (#3099): the budget charges a run at the effort it ran at.
+    assert (record["harness"], record["model"], record["speed"], record["effort"]) == (
+        config["runner"], config["models"]["investigate"], "standard",
+        config["efforts"]["investigate"] if config["runner"] == "codex" else "")  # no effort is claimed for another harness
     assert record["report"] == "Inspected /work/reader/README.md"
     from connectonion.rem.reader import snapshot
     assert snapshot(root)["logs"][0]["report"] == record["report"]
@@ -255,5 +258,5 @@ def test_an_unexpected_failure_keeps_its_traceback_in_the_run_record(tmp_path):
         _logged(root, "projects/reader.md", "investigate", broken, quiet=True)
     record = json.loads(next((root / ".state/runs").glob("run_*.json")).read_text())
     assert record["outcome"] == "failed"
-    assert record["speed"] == "fast"
+    assert record["speed"] == "standard"
     assert "in broken" in record["traceback"] and "UnicodeDecodeError" in record["traceback"]

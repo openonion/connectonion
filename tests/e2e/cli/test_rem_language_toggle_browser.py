@@ -16,7 +16,7 @@ from tests.e2e.cli.test_rem_today_fuse_browser import OVERDUE, today  # noqa: F4
 pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
-VIEWS = ["", "r=people%2Fmara-ostrowski.md", "c=projects", "c=all"]
+VIEWS = ["", "r=people%2Fmara-ostrowski.md", "c=projects", "view=graph"]
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -26,7 +26,8 @@ def test_the_toggle_is_at_the_top_of_every_page(reader, width):
     for view in VIEWS:
         page.evaluate("view => { location.hash = view; }", view, isolated_context=False)
         page.wait_for_timeout(300)
-        toggle = page.locator("header.top #lang-toggle")
+        # A phone has one 显示 menu holding the language (rc34 check: four top-bar controls truncated); a desk, 中/EN.
+        toggle = page.locator("header.top " + ("#lang-toggle" if width > 400 else "#display-menu"))
         assert toggle.is_visible(), view
         box = toggle.bounding_box()
         assert box["y"] < 80 and box["x"] + box["width"] <= width and box["x"] > width / 2, (view, box)

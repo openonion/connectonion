@@ -40,7 +40,7 @@ def debt_reasons(items, records, today):
     found = []
     agent_added = False
     for item in items:
-        if item['kind'] == 'answerable' or item.get('project_match', {}).get('needs_review'):
+        if item['kind'] in ('answerable', 'unconfirmed') or item.get('project_match', {}).get('needs_review'):
             continue
         if item['kind'] == 'agent':
             if not agent_added:

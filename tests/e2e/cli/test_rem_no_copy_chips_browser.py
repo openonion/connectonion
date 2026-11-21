@@ -115,7 +115,7 @@ def test_reviews_and_knowledge_offer_actions_not_commands(live):
         review.screenshot(path=str(Path(SHOTS) / "reviews-actions.png"))
     review.get_by_role("button", name="Yes").click()
     review.get_by_text("Recorded: Yes").wait_for()
-    page.goto(BASE + "/rem#c=knowledge")
+    page.goto(BASE + "/rem#c=knowledge&view=entries")
     page.get_by_text("REM files knowledge from your records on its night run.").wait_for()
     _no_command(page)
     if SHOTS:
@@ -136,7 +136,7 @@ def test_ask_codex_to_look_investigates_a_private_project_in_place(live):
     line.get_by_text("Codex is working").wait_for(timeout=10000)
     line.get_by_text("Codex finished").wait_for(timeout=30000)
     line.get_by_role("button", name="See result").click()
-    box.locator(".task-output").wait_for()
+    page.locator("#evidence-panel").wait_for()  # the report opens in the side card (#3147)
     if SHOTS:
         box.screenshot(path=str(Path(SHOTS) / "ask-codex-finished.png"))
         page.evaluate("() => { setInterfaceLanguage('zh'); render(); }", isolated_context=False)

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .config import LANGUAGE
 from .files import Notebook, RemError, atomic_write, state_path, write_json
+from .tags import without_tags
 
 # Glossary and preservation rules apply to new translations. Keep the version:
 # invalidating every cache would leave existing notebooks in English until retranslated.
@@ -35,6 +36,13 @@ MARKERS = ("Unknown", "None as of", "Nothing open as of", "Now:", "Changed:", "A
 # The page's last line, which the reader reads for its status. Not prose: it is
 # never sent to the model (Codex translated its label) and is put back as written.
 STAMP = re.compile(r"^Investigation:[^\n]*$", re.M)
+SOURCE_SECTIONS = re.compile(r"^#{2,3} Sources[^\n]*\n([\s\S]*?)(?=^#{1,3} |^Investigation:|\Z)", re.M | re.I)
+PRESERVED = re.compile(r"<!-- co rem preserve \d+ -->")
+# Pages one native translation turn translates (#3099). The rc20 night ran 87 one-page
+# turns: about 20 s, 96K input and 21K fresh tokens a page, 9 of 9 and then 87 of 87
+# accepted first try, while 44.7K of each turn's first request is the harness and its
+# instructions. Eight pages pay that once, and a turn's context stays near 150K.
+BATCH = 8
 
 
 def digest(text: str) -> str:
@@ -59,7 +67,8 @@ def cached(root: Path, record: str, language: str) -> str | None:
     saved = path.read_text(encoding="utf-8")
     match = HEADER.match(saved)
     original = Notebook(root).read(record)
-    if not match or match.group(1) != record or match.group(2) != digest(original):
+    # The Tags line is not prose (#3093): tagging a page leaves its translation current.
+    if not match or match.group(1) != record or match.group(2) not in (digest(original), digest(without_tags(original))):
         return None
     translation = saved[match.end():]
     if _reader_sources(translation) != _reader_sources(original):
@@ -70,8 +79,7 @@ def cached(root: Path, record: str, language: str) -> str | None:
 def _reader_sources(text: str) -> str:
     # Match reader.html rawSection, including comments and nonstandard headings.
     text = re.sub(r"<!--[\s\S]*?-->", "", text)
-    match = re.search(r"^## Sources[^\n]*\n([\s\S]*?)(?=^## |^Investigation:|\Z)", text, re.M | re.I)
-    return match.group(1).strip() if match else ""
+    return '\n'.join(match[1].strip() for match in SOURCE_SECTIONS.finditer(text))
 
 
 def cached_languages(root: Path, record: str) -> dict[str, str]:
@@ -87,20 +95,38 @@ def cached_languages(root: Path, record: str) -> dict[str, str]:
     return found
 
 
-def prompt(language: str, quotes=(), terms=(), names=()) -> str:
+# A decision, knowledge entry or principle is titled by what it says, not by a name: its title is prose and is
+# translated (#3142, owner 2026-11-19: «decision 的标题为什么是英文的呢？»). People, organisations and projects
+# are titled by their names, which stay as written.
+STATEMENT_KINDS = ("decisions/", "knowledge/", "principles/")
+
+
+def statement_title(record) -> bool:
+    return str(record or "").startswith(STATEMENT_KINDS)
+
+
+def prompt(language: str, quotes=(), terms=(), names=(), statement=False) -> str:
+    return ("Translate page.md, a Markdown notebook page, into the language tagged "
+            f"`{language}` and write the result to translation.md in this folder. Do not edit "
+            "page.md and do not read anything else. " + _rules(language, quotes, terms, names, statement))
+
+
+def _rules(language: str, quotes=(), terms=(), names=(), statement=False) -> str:
+    """What every translation keeps, for one page (`prompt`) or a batch (`prepare_batch`)."""
     from .runner import language_rules
     # Named one by one: told only the rule, the model still translated “zero-risk things”.
     keep = "".join(f"\n- {quote}" for quote in dict.fromkeys(quotes))
     keep_names = "".join(f"\n- {name}" for name in dict.fromkeys(names))
-    return ("Translate page.md, a Markdown notebook page, into the language tagged "
-            f"`{language}` and write the result to translation.md in this folder. Do not edit "
-            "page.md and do not read anything else. Translate the prose only: add nothing, drop "
+    return ("Translate the prose only: add nothing, drop "
             "nothing, keep every line's Markdown, every link target and every source id like [3] "
             "where it is. Keep every amount, number and currency symbol exactly as written "
             "(`$50,000`, `A$1,200`, `¥300`); never convert or name a currency the original doesn't name. "
             "Keep names of people, organisations, projects, products, repositories and tools exactly as written, "
-            "including lowercase project names. The page's own title and every link text name a thing "
-            "and stay as written. Keep email addresses, URLs, file paths, issue/PR numbers (#2345), "
+            "including lowercase project names. "
+            + ("Every link text names a thing and stays as written; the page's own title is a statement, so translate its title "
+               "(the `# ` line) like the prose. " if statement else
+               "The page's own title and every link text name a thing and stay as written. ")
+            + "Keep email addresses, URLs, file paths, issue/PR numbers (#2345), "
             "version numbers and code spans unchanged; a line that only lists source ids, such as "
             "`Sources: codex:…`, stays exactly as written, label included. "
             "Keep every privacy label such as [personal] and [sensitive] on the same line, "
@@ -118,9 +144,9 @@ def prompt(language: str, quotes=(), terms=(), names=()) -> str:
             + " Then reply DONE.")
 
 
-def page_names(text: str) -> list[str]:
-    """The title and link labels are explicit names, including lowercase repositories."""
-    title = re.search(r"^# ([^\n]+)", text, re.M)
+def page_names(text: str, record=None) -> list[str]:
+    """The title and link labels are explicit names, including lowercase repositories; a statement's title is not."""
+    title = None if statement_title(record) else re.search(r"^# ([^\n]+)", text, re.M)
     links = re.findall(r"\[([^\]\n]+)\](?:\([^\n]*?\)|\[[^\]\n]*\])", text)
     return list(dict.fromkeys(([title.group(1)] if title else []) + links))[:40]
 
@@ -149,17 +175,20 @@ def _check_citations(original: str, translation: str) -> None:
                        "exactly as many times as in page.md; nothing was cached. Translate again")
 
 
-def checked(original: str, translation: str) -> str:
-    """Keep headings, sources, privacy labels and reader markers intact."""
+def checked(original: str, translation: str, title_free=False) -> str:
+    """Keep headings, sources, privacy labels and reader markers intact; a statement's title (`title_free`) may change."""
     # A Markdown heading has a space after its hashes; "#1037 was fixed" is prose.
     heading = re.compile(r"#{1,6}\s")
-    headings = [line for line in original.splitlines() if heading.match(line)]
-    translated_headings = [line for line in translation.splitlines() if heading.match(line)]
+    title = re.compile(r"# ") if title_free else None
+    headings = [line for line in original.splitlines() if heading.match(line) and not (title and title.match(line))]
+    translated_headings = [line for line in translation.splitlines() if heading.match(line) and not (title and title.match(line))]
     if translated_headings != headings:
         detail = _count_changes(Counter(headings), Counter(translated_headings)) or "headings are out of order"
         raise RemError(f"The translation changed the page's headings: {detail}; "
                        "keep page.md's headings in their original order; nothing was cached. Translate again")
     _check_citations(original, translation)
+    if PRESERVED.findall(original) != PRESERVED.findall(translation):
+        raise RemError('The translation changed a preserved source section; keep each preservation marker exactly once')
 
     def privacy_lines(text):
         return Counter(f"[{tag.lower()}] on line {number}"
@@ -189,7 +218,7 @@ def translate(root: Path, record: str, language: str, *, on_run=None) -> str:
     from .config import read_config
     from .runner import ready
     text = Notebook(root).read(record)
-    if (hit := cached(root, record, language)) is not None:
+    if (hit := cached(root, record, language)) is not None and not title_left(record, text, hit, language):
         return hit
     config = read_config(root)
     problem, fix = ready(config)
@@ -216,7 +245,7 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
         on_run(run["id"])
     started = monotonic()
     try:
-        translation = _translate_prose(workspace, prose, task["prompt"], config, run)
+        translation = _translate_prose(workspace, prose, task["prompt"], config, run, title_free=statement_title(record))
         translation = check(task, {"result": translation})
         run["outcome"] = "completed"
         return translation
@@ -229,43 +258,112 @@ def _run_translation(root, record, language, config, text, *, on_run=None):
         shutil.rmtree(workspace)
 
 
+def prepare_batch(root, records, language, *, directory):
+    """One native turn for several pages: each in pages/pN/ with its constraints, each answer
+    in translations/pN.md, each checked and accepted on its own (`check_batch`)."""
+    (directory / "translations").mkdir(parents=True, exist_ok=True)
+    pages = []
+    for number, record in enumerate(records, 1):
+        folder = directory / "pages" / f"p{number}"
+        folder.mkdir(parents=True, exist_ok=True)
+        page = prepare(root, record, language, directory=folder, native=True)
+        pages.append({**page, "id": f"p{number}", "candidate": str(directory / "translations" / f"p{number}.md")})
+    listed = "\n".join(f"- {page['id']}: pages/{page['id']}/page.md -> translations/{page['id']}.md"
+                       + (" (keep every <!-- co rem preserve N --> marker exactly once in its place)"
+                          if page["protected_sections"] else "")
+                       + (" (its title is a statement: translate the `# ` line too)" if statement_title(page["record"]) else "")
+                       for page in pages)
+    instruction = (f"Translate {len(pages)} pages into the language tagged `{language}`, each on its own. "
+                   "For each, read its page.md and the "
+                   "translation-constraints.json beside it (exact quotes, terms and names to preserve), and "
+                   "write its translation to the file named below; do not edit the pages and read nothing "
+                   "else. Each page is checked on its own: one that fails does not hold back the others.\n"
+                   + listed + "\nFor every page: " + _rules(language))
+    return {"root": str(root), "language": language, "directory": str(directory), "pages": pages,
+            "records": list(records), "before": {page["record"]: page["before"][page["record"]] for page in pages},
+            "candidate": pages[0]["candidate"], "prompt": instruction}
+
+
+def check_batch(task, output):
+    """{"translated": records cached, "refused": {record: why}}. Raises only when no page passed."""
+    import json
+    answers = json.loads(output["result"] or "{}")
+    translated, refused = [], {}
+    for page in task["pages"]:
+        if not (answers.get(page["id"]) or "").strip():
+            refused[page["record"]] = f"no translation was written to translations/{page['id']}.md"
+            continue
+        try:
+            check(page, {"result": answers[page["id"]]})
+            translated.append(page["record"])
+        except RemError as error:
+            refused[page["record"]] = str(error)
+    if not translated:
+        ids = {page["record"]: page["id"] for page in task["pages"]}
+        raise RemError("No page of the batch passed: " + "; ".join(f"{ids[record]}: {why}" for record, why in refused.items()))
+    return {"translated": translated, "refused": refused}
+
+
 def prepare(root, record, language, *, directory, text=None, native=False):
     from .languages import owner_languages
     text = Notebook(root).read(record) if text is None else text
-    prose, sources, stamp = _page_parts(text)
+    prose, sources, stamp, protected = _page_parts(text)
     (directory / "page.md").write_text(prose, encoding="utf-8")
     terms = (owner_languages(root).get("english_terms") or []) if language.split("-")[0] == "zh" else []
-    instruction = prompt(language, quoted_passages(prose), terms, page_names(prose))
+    statement = statement_title(record)
+    instruction = prompt(language, quoted_passages(prose), terms, page_names(prose, record), statement)
     if native:
         from .files import write_json
-        constraints = {"quotes": list(quoted_passages(prose)), "terms": terms, "names": page_names(prose)}
+        constraints = {"quotes": list(quoted_passages(prose)), "terms": terms, "names": page_names(prose, record),
+                       "translate_title": statement}
         write_json(directory / "translation-constraints.json", constraints, readable=True)
-        instruction = prompt(language).replace("and do not read anything else.", "and read only the supplied constraints file as well.") + f"\nRead {directory / 'translation-constraints.json'} for exact quotes, terms and names to preserve."
+        instruction = prompt(language, statement=statement).replace("and do not read anything else.", "and read only the supplied constraints file as well.") + f"\nRead {directory / 'translation-constraints.json'} for exact quotes, terms and names to preserve."
+    if protected:
+        instruction += '\nKeep every <!-- co rem preserve N --> marker exactly once in its original position.'
     return {"root": str(root), "record": record, "language": language, "directory": str(directory),
             "before": {record: text}, "prose": prose, "sources": sources, "stamp": stamp.group(0) if stamp else "",
+            "protected_sections": protected,
             "candidate": str(directory / "translation.md"),
             "prompt": instruction}
 
 
 def check(task, output):
     original = task["before"][task["record"]]
-    translation = checked(task["prose"], output["result"])
+    translation = checked(task["prose"], output["result"], title_free=statement_title(task.get("record")))
+    for marker, section in task.get('protected_sections', {}).items():
+        translation = translation.replace(marker, section)
     translation += ("\n" + task["sources"] if task["sources"] else "")
     translation += (("" if task["sources"] else "\n") + task["stamp"] + "\n" if task["stamp"] else "")
     atomic_write(translation_path(Path(task["root"]), task["record"], task["language"]),
-                 f"<!-- co rem translation of {task['record']} sha256:{digest(original)} -->\n" + translation)
+                 f"<!-- co rem translation of {task['record']} sha256:{digest(without_tags(original))} -->\n" + translation)
     return translation
 
 
 def _page_parts(text):
     stamp = STAMP.search(text)
+    # Abstract may append learning after a topic's original Sources and stamp.
+    # Keep the source blocks private while sending all of its prose in one turn.
+    sources = re.search(r'^## Sources[^\n]*\n', text, re.M)
+    appended = (re.search(r'^#{2,3} Drawn from[ \t]*$', text, re.M)
+                and (stamp and text[stamp.end():].strip()
+                     or sources and re.search(r'^## ', text[sources.end():], re.M)))
+    if appended:
+        protected = {}
+
+        def keep(match):
+            marker = f'<!-- co rem preserve {len(protected)} -->'
+            protected[marker] = match[0]
+            return marker + ('\n' if match[0].endswith('\n') else '')
+
+        body = STAMP.sub(keep, SOURCE_SECTIONS.sub(keep, text))
+        return body.rstrip() + '\n', '', None, protected
     body = text[:stamp.start()] if stamp else text
     sources = re.search(r"^## Sources[ \t]*$", body, re.M)
     prose, tail = (body[:sources.start()], body[sources.start():]) if sources else (body, "")
-    return prose.rstrip() + "\n", tail, stamp
+    return prose.rstrip() + "\n", tail, stamp, {}
 
 
-def _translate_prose(workspace, prose, task_prompt, config, run):
+def _translate_prose(workspace, prose, task_prompt, config, run, title_free=False):
     from .runner import _add_usage, run_task
     repair = ""
     for attempt in range(2):
@@ -275,7 +373,7 @@ def _translate_prose(workspace, prose, task_prompt, config, run):
         answer = _read_translation(workspace)
         # Only a completed translation's structural errors get one repair turn.
         try:
-            return checked(prose, answer)
+            return checked(prose, answer, title_free)
         except RemError as error:
             if attempt:
                 raise
@@ -329,9 +427,9 @@ def translate_pages(root: Path, language: str, records, say=None, workers=1, *, 
 
 
 def quota_floor(root: Path, config: dict):
-    """The night's own guard for a one-click job: the week's floor kept for the owner's own work."""
+    """The guard for a one-click job: translation stops at the cheap stages' ceiling, past the floor (#3195)."""
     from . import quota
-    return lambda: quota.floor_block(quota.meter(root, config), config["limits"])
+    return lambda: quota.ceiling_block(quota.meter(root, config), config["limits"])
 
 
 # Held while a translate-every-page job runs (the CLI or the Host's), so a second one and the night's
@@ -419,7 +517,7 @@ def in_language(text: str, language: str) -> bool:
 
 def _prose_lines(text, language):
     from .languages import language_of
-    prose, _, _ = _page_parts(re.sub(r"<!--[\s\S]*?-->", "", text))
+    prose, _, _, _ = _page_parts(re.sub(r"<!--[\s\S]*?-->", "", without_tags(text)))
     prose = re.sub(r"^```[\s\S]*?^```[ \t]*$", "", prose, flags=re.M)
     base, names = language.split("-")[0].lower(), page_names(prose)
     found, ours, worded = [], 0, []
@@ -441,7 +539,32 @@ def _prose_lines(text, language):
 
 def current(root: Path, record: str, language: str) -> bool:
     """The page reads in `language` now: a current translation, or written in it to begin with."""
-    return cached(root, record, language) is not None or in_language(Notebook(root).read(record), language)
+    original = Notebook(root).read(record)
+    translation = cached(root, record, language)
+    if translation is not None:
+        return not title_left(record, original, translation, language)
+    return in_language(original, language)
+
+
+def title_left(record, original: str, translation: str, language: str) -> bool:
+    """A statement's translation that kept its English `# ` title: it is shown, and waits to be made again.
+
+    #3142 made a decision, knowledge or principle title translatable but kept PROMPT_VERSION (bumping it
+    would show every page in English until retranslated). So the 113 statement translations cached before
+    it stayed current with English titles, and the queue never offered them again (rc34 hunt, #3165:
+    104 of 104 decision translations). Only the title is checked, so nothing else is redone."""
+    if not statement_title(record):
+        return False
+    title = re.search(r"^# ([^\n]+)", original, re.M)
+    theirs = re.search(r"^# ([^\n]+)", translation, re.M)
+    if not title or not theirs or title.group(1).strip() != theirs.group(1).strip():
+        return False
+    from .languages import language_of
+    words = ADDRESS.sub(" ", title.group(1))
+    base = language.split("-")[0].lower()
+    if base == "zh":
+        return not HAN_PAIR.search(words) and bool(re.search(r"[A-Za-z]{2}", words))
+    return language_of(words) not in (None, base)
 
 
 def readable(root: Path) -> list[str]:
@@ -545,14 +668,14 @@ def _run_job(root, job):
 
 
 def written_pages(root: Path) -> list[str]:
-    """Listed reader pages with prose, including decisions and principles outside the census."""
+    """Listed reader pages with prose, including all three Abstract lifts outside the census."""
     from .census import listed, pages, written
     found = pages(root)
     notebook = Notebook(root)
     return [record for record in notebook.list()
             if (record in found and found[record]["category"] != "sessions"
                 and listed(found[record]) and found[record]["written"])
-            or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
+            or (record.split("/")[0] in ("decisions", "knowledge", "principles") and written(notebook.read(record)))]
 
 
 def _waiting_pages(root):
@@ -604,7 +727,8 @@ def backlog(root, language, *, changed=(), shown=()):
 def attempts_today(root):
     from . import service
     from .config import read_config
-    _, runs = service.runs_today(service.run_logs(root), service.notebook_zone(read_config(root)))
+    from .catchup import limit_runs
+    runs = limit_runs(root, service.run_logs(root), service.notebook_zone(read_config(root)))
     # Summary records describe the same work as their individual translate runs.
     return sum(row.get('runner_attempts', 0) for row in runs
                if row.get('phase') in ('daily-translation', 'translate'))

@@ -59,6 +59,8 @@ def test_offline_startup_finishes_details_without_navigation():
     startup = template[template.index('Promise.all([readerStorage('):].split('</script>')[0]
     result = _run_reader_js(loader + r'''
       const REM = {records: [], drafts: [], threads: {}, source_context: {}};
+      const ORG_COLUMNS = [];
+      let orgTableColumns;
       let detailLoad = null, detailReady = false, peopleColumns,
         pendingThreads, threadStates, notebookThreads, notDoneKeys;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
@@ -67,6 +69,7 @@ def test_offline_startup_finishes_details_without_navigation():
       const document = {readyState: 'complete', documentElement: {dataset: {}},
         getElementById() {return {textContent: JSON.stringify({records: [], logs: [], source_context: {}})};}};
       const readerStorage = () => Promise.resolve(null);
+      const PRIVACY_LEVELS = ['all', 'cover', 'public'], privacyDefault = () => 'cover', setPrivacy = () => {};  // #2840
       const peopleColumnKeys = () => [];
       const doneStorageKey = () => 'done', threadStorageKey = () => 'threads', notDoneStorageKey = () => 'not-done', keptOpenStorageKey = () => 'kept-open';
       const reconcileThreads = () => Promise.resolve();
@@ -103,13 +106,14 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
         return {tag, ...attrs, children: children.filter(x => x != null),
           innerHTML: attrs.html || '',
           classList: {add() {}, toggle() {}, contains() {return false;}}, setAttribute() {},
+          style: {}, dataset: {}, addEventListener() {}, setProperty() {},  // Today's calendar (#3152) styles its blocks
           appendChild(node) {this.children.push(node); return node;},
           append(...nodes) {this.children.push(...nodes);},
           cloneNode() {return this;},
           querySelector() {return null;}, querySelectorAll() {return [];}};
       }
       const main = el('main');
-      const document = {getElementById(id) {
+      const document = {querySelectorAll() {return [];}, querySelector() {return null;}, getElementById(id) {
         if (id === 'approval-undo') return null;
         if (id !== 'main') throw Error('Today tried to load ' + id);
         return main;
@@ -133,7 +137,7 @@ def test_today_renders_a_usable_first_card_without_parsing_detail(tmp_path, monk
     def words(node):
         return node if isinstance(node, str) else node.get('text', '') + ''.join(words(child) for child in node.get('children', []))
     # N3 (D-123): the count is the night card's display element; the overdue face says its days late.
-    assert any('count-line' in n.get('class', '') and words(n) == '1thing waiting on youStart with this 1 person' for n in rendered)
+    assert any('count-line' in n.get('class', '') and words(n) == '1thing waiting on you' for n in rendered)
     assert any('dd late' == n.get('class') for n in rendered)
     assert any('overdue' in n.get('text', '') for n in rendered)
     card = next(n for n in rendered if 'qcard' in n.get('class', ''))

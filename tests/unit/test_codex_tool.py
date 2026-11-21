@@ -9,7 +9,9 @@ import base64
 import importlib
 import io
 import json
+import os
 import subprocess
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,7 +50,7 @@ class FakeServer:
     def start(self):
         self.calls.append("start")
 
-    def close(self):
+    def close(self, force=False):
         self.calls.append("close")
 
     def request(self, method, params, timeout=60):
@@ -1367,6 +1369,31 @@ def test_a_turn_that_runs_out_of_time_says_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_CODEX_SLEEP", "10")
     result, _ = _replayed(tmp_path, monkeypatch, approval="auto", timeout=2)
     assert result["status"] == "timeout" and result["exit_code"] != 0 and "timed out" in result["error"]
+
+
+def test_a_turn_that_runs_out_of_time_is_interrupted_and_its_server_is_gone(tmp_path, monkeypatch):
+    # Real run 2026-11-17: a worker's thread went on editing its task folder for about
+    # 7.5 minutes after the adapter had answered timeout, into the next task's time.
+    deliverable = tmp_path / "out" / "result.md"
+    deliverable.parent.mkdir()
+    record = tmp_path / "requests.jsonl"
+    monkeypatch.setenv("CODEX_CMD", str(FIXTURES / "fake_codex_app_server.py"))
+    monkeypatch.setenv("FAKE_CODEX_RECORD", str(record))
+    monkeypatch.setenv("FAKE_CODEX_SLEEP", "30")
+    monkeypatch.setenv("CO_REM_CODEX_ARCHIVE", "1")
+    began = time.monotonic()
+    result = json.loads(codex_module._run_codex(prompt=f"Deliverable: {deliverable}", cwd=str(tmp_path),
+                                                approval="auto", timeout=2))
+    assert result["status"] == "timeout"
+    requests = [json.loads(line) for line in record.read_text().splitlines()]
+    methods = [request["method"] for request in requests]
+    # Interrupted first, while the server can still answer, then archived, then killed.
+    assert methods[-2:] == ["turn/interrupt", "thread/archive"], methods
+    interrupt = requests[-2]["params"]
+    assert interrupt["threadId"] == result["session_id"] and interrupt["turnId"]
+    with pytest.raises(ProcessLookupError):
+        os.kill(int((deliverable.parent / "pid.txt").read_text()), 0)
+    assert time.monotonic() - began < 12
 
 
 def test_refused_approvals_are_counted_not_hidden(monkeypatch):

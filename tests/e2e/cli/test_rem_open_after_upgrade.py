@@ -7,6 +7,7 @@ the open is the real command in its own process.
 """
 
 import json
+from contextlib import contextmanager
 import os
 import socket
 import subprocess
@@ -24,6 +25,10 @@ from connectonion.rem.files import Notebook
 from tests import host_leak_guard
 
 # co ai, started before the upgrade: it says the version it was started with.
+# Startup and cleanup may each wait for the real Host; cleanup must outwait
+# live_host.RENEW_WAIT (30s), rather than time out with the replacement still alive.
+pytestmark = pytest.mark.timeout(150)
+
 OLD_CO_AI = '''
 import runpy
 import connectonion
@@ -39,10 +44,12 @@ def _info(port):
         return None
 
 
-def _wait_for_replacement(co_dir: Path, seconds: float = 30.0) -> None:
+@contextmanager
+def _wait_for_replacement(co_dir: Path, seconds: float = 60.0):
     """Until no build or open is replacing this home's Host: the lock they hold
-    while they do (co_ai.main._owner_invite_lock), taken and let go."""
+    while they do (co_ai.main._owner_invite_lock), held through cleanup."""
     if os.name == "nt":  # nothing replaces a Host there (live_host._started_here)
+        yield
         return
     import fcntl
     deadline = time.monotonic() + seconds
@@ -54,7 +61,22 @@ def _wait_for_replacement(co_dir: Path, seconds: float = 30.0) -> None:
             except BlockingIOError:
                 assert time.monotonic() < deadline, f"a Host replacement under {co_dir} did not finish in {seconds:g}s"
                 time.sleep(0.05)
-        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _stop_upgraded_hosts(root: Path, home: Path) -> None:
+    """The record can still name the old pid; inspect only this fixture's home.
+
+    Keep the replacement lock until the processes are gone: a queued build must
+    recheck a dead Host, rather than restart one during our cleanup.
+    """
+    with _wait_for_replacement(home / ".co"):
+        for pid, host_home, _test in host_leak_guard.hosts_under(root):
+            if Path(host_home).resolve() == home.resolve():
+                host_leak_guard.stop(root, pid)
 
 
 @pytest.fixture
@@ -90,17 +112,11 @@ def upgraded(tmp_path, tmp_path_factory, monkeypatch):
                                       "command": " ".join(args[1:])}))
         yield old, port, identity["address"], record
     finally:
-        # The replacement is finished when its lock is free, not when the new Host
-        # answers. The detached build holds the lock from the old Host's stop until
-        # it has seen the new one answer (live_host._renew/_exits). This test can see
-        # the answer first; stopping the Host then made the build read it as "exited
-        # during startup" and start another on a fresh port, recorded after this
-        # stop had run: the Host the leak guard found in five main runs (#2980).
-        _wait_for_replacement(home / ".co")
-        # The new Host is the one this home recorded; this test started it, so it stops it.
-        host_leak_guard.stop_recorded(tmp_path_factory.getbasetemp(), str(home))
+        # Stop the source of new page builds even if waiting for a replacement
+        # fails. The detached replacement may outlive it, with a stale record.
         old.kill()
         old.wait()
+        _stop_upgraded_hosts(tmp_path_factory.getbasetemp(), home)
 
 
 def test_open_after_an_upgrade_ends_on_a_host_of_the_installed_version(upgraded):

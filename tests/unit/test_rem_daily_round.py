@@ -78,7 +78,7 @@ def test_a_skill_page_goes_to_the_skill_investigator_not_the_mail_search(root, m
     result = daily.run_daily(root, maintain=no_change)
     assert calls[0][:2] == ("skill", "skills/catalog/job-followup.md")
     assert result["run"]["pages"][0]["outcome"] == "accepted"
-    assert result["run"]["speed"] == "fast"
+    assert result["run"]["speed"] == "standard"
     assert result["run"]["harness"] == read_config(root)["runner"]
 
 

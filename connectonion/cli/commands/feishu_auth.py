@@ -1,12 +1,12 @@
 """
 Purpose: `co auth feishu` — scan once, and the app that receives your messages exists and is configured
 LLM-Note:
-  Dependencies: imports from [io, sys, qrcode, environment.py, env_file.py] and lazily from [lark_oapi] | imported by [cli/main.py via the auth command] | tested by [tests/unit/test_feishu_auth.py]
+  Dependencies: imports from [io, sys, qrcode, environment.py, env_file.py, inbox/feishu.py (SDK_MISSING)] and lazily from [lark_oapi] | imported by [cli/main.py via the auth command] | tested by [tests/unit/test_feishu_auth.py]
   Data flow: lark_oapi.register_app() → a verification link and a terminal QR → the person approves in Feishu → {client_id, client_secret, user_info.tenant_brand} → upsert_env writes FEISHU_APP_ID/SECRET (or LARK_*) to the selected env file
   State/Effects: creates a real Feishu application owned by the person who scans | writes two names to the selected env file | prints a link and a QR, never the secret
   Integration: the pair this writes is exactly what inbox/feishu.py reads, so `co feishu check` passes straight after | `co env set FEISHU_APP_SECRET` refuses and names this command, as the Google and Microsoft records do
   Performance: one HTTP round trip to begin, then a poll every few seconds until the person approves or ten minutes pass
-  Errors: a missing SDK exits 3 with the pip command | a denied or expired scan is one line and exit 1 | a response without both halves writes nothing and exits 1
+  Errors: a missing SDK exits 3 with the command that reinstalls connectonion | a denied or expired scan is one line and exit 1 | a response without both halves writes nothing and exits 1
 
 Why a scan and not a paste: Feishu has no API that hands out an app_secret —
 `application/v6` never returns one, and reading it needs a token you can only
@@ -39,9 +39,8 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from ...environment import display_path, selected_env_file
 from ...env_file import upsert_env
+from ...inbox.feishu import SDK_MISSING
 from .command_tips import print_tip
-
-SDK_MISSING = "The Feishu SDK is not installed. Run: pip install lark-oapi"
 
 # What the platform issues. Checked so a typo fails now rather than on a page.
 _APP_ID = re.compile(r"^cli_[A-Za-z0-9]{8,}$")

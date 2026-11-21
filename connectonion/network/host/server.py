@@ -27,6 +27,7 @@ don't interfere between concurrent requests.
 
 import asyncio
 import json
+import logging
 import os
 import random
 import threading
@@ -708,7 +709,7 @@ def _port_taken_message(port: int, co_dir: Path) -> str:
     return (f"[host] Port {port} is already in use — another agent, or an earlier "
             f"`co host` still running?\n"
             f"       {where}, "
-            f"or for one run: co host --port {port + 1}")
+            f"or for one run: co host --serve --port {port + 1}")
 
 
 def _print_host_banner(
@@ -879,6 +880,31 @@ def _create_handoff_lifespan(co_dir: Path):
     async def on_shutdown():
         for event in stop:
             event.set()
+
+    return on_startup, on_shutdown
+
+
+def _create_rem_upgrade_lifespan(rem_root):
+    """A Host that serves REM notices an upgrade under it and starts the build that replaces it when idle (#3112)."""
+    if rem_root is None:
+        return None, None
+    from ...rem import live_host
+    stop = threading.Event()
+
+    def watch():
+        kicked = {}
+        while not stop.wait(live_host.UPGRADE_CHECK):
+            # A half-written upgrade raises on import or read: looked at again on the next tick.
+            try:
+                live_host.notice_upgrade(rem_root, kicked)
+            except (OSError, SyntaxError, ImportError, ValueError) as error:
+                logging.getLogger(__name__).info("REM upgrade check: %s", error)
+
+    async def on_startup():
+        threading.Thread(target=watch, name="rem-upgrade-watch", daemon=True).start()
+
+    async def on_shutdown():
+        stop.set()
 
     return on_startup, on_shutdown
 
@@ -1368,6 +1394,9 @@ def host(
     route_handlers["identity_dir"] = co_dir
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
+    # Where files other agents send land (file_inbox.py, `co send`).
+    from .file_inbox import files_dir
+    route_handlers["files_dir"] = files_dir(co_dir)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -1434,6 +1463,9 @@ def host(
     handoff_startup, handoff_shutdown = _create_handoff_lifespan(co_dir)
     on_startup = _both(on_startup, handoff_startup)
     on_shutdown = _both(handoff_shutdown, on_shutdown)
+    rem_startup, rem_shutdown = _create_rem_upgrade_lifespan(route_handlers.get("rem_root"))
+    on_startup = _both(on_startup, rem_startup)
+    on_shutdown = _both(rem_shutdown, on_shutdown)
     on_startup = _both(on_startup, on_agent_startup)
     on_shutdown = _both(on_agent_shutdown, on_shutdown)
 

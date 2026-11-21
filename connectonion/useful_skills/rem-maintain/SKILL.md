@@ -73,7 +73,7 @@ When the task hands you one `page` item with the batch as material:
 
 Name a project by what the conversation is about, not the session's directory.
 
-Start every page with a `#` title naming the subject. Entity pages (people,
+Start every page with a `#` title naming the subject. Record pages (people,
 projects, organizations, installed Skills) follow their appended canonical
 templates exactly, including numbered Sources; unsupported sections say `Unknown`,
 never disappear. Preserve existing headings, source references, diagrams, mapped
@@ -81,7 +81,7 @@ metadata, useful citations and Investigation status; a correction must not shrin
 a page to a summary or rename sections. Keep original Skill snapshots as attributed
 source material. Free-form pages may end with a short Sources line.
 
-Free-form decision record format (not a replacement for an entity page):
+Free-form decision record format (not a replacement for a record page):
 
 ```markdown
 # Aurora stores notes as Markdown, not SQLite

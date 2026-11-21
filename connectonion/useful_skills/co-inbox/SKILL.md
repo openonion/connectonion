@@ -45,6 +45,7 @@ docs/cli/slack.md.
 | **start a group with people (WhatsApp)** | `co whatsapp group create "<name>" <phone>…` |
 | **check a new number, save a name (WhatsApp)** | `co whatsapp lookup +61…`, then `co whatsapp contacts add <jid> --name "<name>"`; send to the name |
 | **fetch a photo or file again (WhatsApp)** | `co whatsapp download <id>` |
+| **link WhatsApp when the phone's owner is not at this screen** | `co whatsapp listen --phone +61…`, then send them the 8-character code; a QR changes every ~20 s |
 | see what is waiting | `co feishu ls` |
 | **find out which conversations exist** | `co feishu chats` |
 | **read one conversation back** | `co feishu log --chat <id>` |
@@ -392,7 +393,8 @@ the bot already exists and is already in the groups you need,
 `co auth feishu --app-id cli_…` authorizes that one instead, keeping its groups
 and permissions — a freshly created application is in no group at all.
 
-`listen` additionally needs the SDK, and says so: `pip install lark-oapi`.
+`listen` uses the Feishu SDK (`lark-oapi`), which ships with connectonion. An
+environment that lost it says so, with the command that reinstalls connectonion.
 
 ## What this does not do
 

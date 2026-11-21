@@ -44,8 +44,9 @@ def hosts_under(root: Path, pids=None) -> list:
         return []
     # One BSD-style word: macOS takes a second word ("ax") for an argument.
     which = ["eww", "-p", ",".join(str(pid) for pid in pids)] if pids else ["axeww"]
+    # errors="replace": macOS ps cuts a long command at a byte limit, mid-character (#3041).
     result = subprocess.run(["ps", *which, "-o", "pid=", "-o", "uid=", "-o", "command="],
-                            capture_output=True, text=True, timeout=30)
+                            capture_output=True, text=True, errors="replace", timeout=30)
     # A failing or empty ps is not "no Hosts": the guard would report a clean run.
     # Every process listed is never empty (this one is in it); pids that have all
     # exited print nothing and exit 1 with nothing on stderr.

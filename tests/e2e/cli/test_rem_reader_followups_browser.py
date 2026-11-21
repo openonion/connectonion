@@ -2,7 +2,7 @@
 
 The rail itself is the owner's design (D-132) and stays: a picture and a word per place. These tests check
 what the review found around it: a short word is the start of its place's name (WCAG 2.5.3, label in name),
-More opens beside its button wherever the rail has scrolled and never past the window, your own face says
+More opens beside its button in however low a window and never past it, your own face says
 its name on keyboard focus, and the phone More sheet keeps every label in one column. The notebook is the
 invented one in tests/fixtures/rem_reader_notebook.py.
 """
@@ -30,21 +30,22 @@ def test_every_rail_word_is_the_start_of_its_places_name(reader, lang):
     page, uri = reader
     page.goto(uri)
     page.evaluate(f"setInterfaceLanguage('{lang}')", isolated_context=False)
-    cells = page.locator(".rail .nav").evaluate_all("""nodes => nodes.filter(n => n.querySelector('.w'))
+    cells = page.locator(".rail .nav").evaluate_all("""nodes => nodes.filter(n => n.querySelector('.w') && n.getClientRects().length)
       .map(n => [n.querySelector('.w').textContent, n.getAttribute('aria-label')])""")
-    assert len(cells) == 9 and all(name.startswith(word) for word, name in cells), cells
+    # #3091: every place the notebook has is in the rail at this height (ten of them), then Settings; no More.
+    assert len(cells) == 11 and all(name.startswith(word) for word, name in cells), cells  # no Agenda (#3152)
     if lang == "en":  # what a voice-control user says is what they see
         assert page.get_by_role("link", name="Orgs").get_attribute("href") == "#c=orgs"
         assert "Organisations" in page.locator('#nav a[href="#c=orgs"]').get_attribute("aria-label")
 
 
 @pytest.mark.parametrize("height", [540, 400])
-def test_more_opens_beside_its_button_after_the_rail_scrolls(reader, height):
+def test_more_opens_beside_its_button_in_a_low_window(reader, height):
     page, uri = reader
     page.set_viewport_size({"width": 960, "height": height})
     page.goto(uri)
-    page.locator(".rail").evaluate("rail => rail.scrollTop = rail.scrollHeight")
-    page.locator(".nav.more").click()
+    page.locator(".nav.more").click()  # #3091: a low rail folds its last places under More; it does not scroll
+    page.evaluate("Promise.all(document.getElementById('rail-more').getAnimations().map(a => a.finished))")  # measured settled, not mid pop-in
     button, menu = page.locator(".nav.more").bounding_box(), page.locator("#rail-more").bounding_box()
     _shot(page, f"rail-more-scrolled-{height}.png")
     assert menu["y"] >= 0 and menu["y"] + menu["height"] <= height, menu      # none of it past the window
@@ -82,10 +83,11 @@ def test_phone_more_sheet_starts_every_label_in_one_column(reader, theme):
     starts = page.evaluate("""() => {
       const places = [...document.querySelectorAll('#nav .nav, #rail-end .nav.settings-open')].filter(n => n.getClientRects().length).map(n => {
         const picture = n.querySelector('svg.ic').getBoundingClientRect(); return Math.round(picture.right + parseFloat(getComputedStyle(n).columnGap)); });
-      const more = [...document.querySelectorAll('#rail-more .mi span:not(.icw)')].map(s => Math.round(s.getBoundingClientRect().left));
-      return {places, more}; }""")
+      return {places}; }""")
     _shot(page, f"phone-more-sheet-{theme}-390.png")
-    assert starts["more"] and len(set(starts["places"] + starts["more"])) == 1, starts
+    # #3091: the sheet is one list of every place, so there is no second list to line up with.
+    assert len(starts["places"]) == 11 and len(set(starts["places"])) == 1, starts  # no Agenda (#3152)
+    assert page.locator("#rail-more .mi").count() == 0
 
 
 # #2942: a long last word in a fact (kept with its citation marks) and a long unit-with-role chip.
@@ -115,7 +117,7 @@ def test_a_person_page_is_never_wider_than_its_window(reader, width, theme):
       .map(n => n.className + ' ' + Math.round(n.getBoundingClientRect().right)).slice(0, 6)""")
     assert page.evaluate("document.documentElement.scrollWidth") == width, wide
     tails = page.locator(".fact-tail").evaluate_all("""tails => tails.map(t => { const cite = t.querySelector('.cite');
-      if (!cite) return true; const range = document.createRange(); range.selectNodeContents(t.firstChild || t);
+      if (!cite || !cite.getClientRects().length || getComputedStyle(cite).opacity === '0') return true; const range = document.createRange(); range.selectNodeContents(t.firstChild || t);
       const words = [...range.getClientRects()].filter(r => r.width > 0), last = words[words.length - 1], c = cite.getBoundingClientRect();
       return !last || Math.abs(last.top - c.top) < c.height; })""")
     assert all(tails), tails  # the citation marks stay on the line of the fact's last word

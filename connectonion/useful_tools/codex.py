@@ -119,7 +119,7 @@ def codex(prompt: str = "", session_id: str = "", cwd: str = "",
 
 def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", model="", timeout=600,
                approval="manual", agent=None, speed="standard", effort="", writable_roots=(),
-               cancelled=None):
+               cancelled=None, on_activity=None):
     """codex() plus the operator-only thread settings an Agent must not choose.
 
     effort: model_reasoning_effort for the thread; empty keeps the user's own.
@@ -127,6 +127,8 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
     as `codex exec --add-dir` does. Never on the Agent-facing tool: a model
     choosing it could widen its own sandbox.
     cancelled: an operator's stop check, used instead of the Agent's Work Room Stop.
+    on_activity: an operator's live view of the run (co rem's hand-off), given each step as
+    the same safe OIP provider_activity event the Work Room shows; never the command itself.
     """
     if sandbox not in SANDBOX_LEVELS:
         return _envelope(session_id, error=f"Invalid sandbox {sandbox!r}. Use one of: {', '.join(SANDBOX_LEVELS)}")
@@ -171,6 +173,8 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
             reason = event.get("reason", "operator_declined")
             refusals.append(approval_refusal_reason if reason == "operator_declined" else reason)
         _forward_ui(agent, event, workspace=working_directory)
+        if on_activity is not None:
+            _forward_activity(on_activity, event)
 
     def last_message():
         return messages[-1] if messages else ""
@@ -294,6 +298,14 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
             )
         try:
             turn = client.run_turn(sid, prompt, **turn_options)
+        except TimeoutError:
+            # A turn past its deadline is still running in the app-server. Ask it to
+            # stop while it can still answer, then kill the process group without the
+            # shutdown grace: on 2026-11-17 a timed-out REM worker's thread went on
+            # editing its task folder for about 7.5 minutes, into the next task's time.
+            _interrupt_timed_out_turn(client)
+            force_close = True
+            raise
         finally:
             if os.environ.get("CO_REM_CODEX_ARCHIVE") == "1":
                 client.request("thread/archive", {"threadId": sid}, timeout=10)
@@ -339,6 +351,18 @@ def _run_codex(prompt="", session_id="", cwd="", sandbox="workspace-write", mode
     return _envelope(sid, resumed=resumed, last_message=last_message(),
                      usage=turn.get("usage", {}), exit_code=1, error=f"turn {status}: {_turn_error(turn)}",
                      approvals_denied=len(denied))
+
+
+# Seconds a timed-out turn's interrupt may wait for its answer. The caller's own
+# deadline has already passed, and the process is killed next whatever the answer.
+TIMEOUT_INTERRUPT_S = 5
+
+
+def _interrupt_timed_out_turn(client):
+    """Send turn/interrupt for the client's active turn, where the client can."""
+    interrupt = getattr(client, "interrupt_active_turn", None)
+    if callable(interrupt):
+        interrupt(timeout=TIMEOUT_INTERRUPT_S)
 
 
 def _approval_policy(approval, agent):
@@ -476,6 +500,19 @@ def _base_command():
     from ..codex_cli import resolve_codex
     found = resolve_codex()
     return [found, "app-server"] if found else None
+
+
+def _forward_activity(on_activity, event):
+    """One tool start or end as an OIP provider_activity, for a caller without an Agent."""
+    kind, activity_id = event.get("kind", ""), event.get("id")
+    if kind not in ("tool_start", "tool_end") or not isinstance(activity_id, str) or not activity_id:
+        return
+    details = event.get("args")
+    on_activity(provider_activity_event(
+        provider="codex", activity_id=activity_id, sequence=0,
+        native_kind=event.get("native_kind", event.get("name", "")),
+        status="running" if kind == "tool_start" else "failed" if event.get("failed") else "completed",
+        name=event.get("name", ""), details=details if isinstance(details, dict) else {}))
 
 
 def _forward_ui(agent, event, *, workspace=None):
@@ -1470,7 +1507,7 @@ class CodexAppServer:
             params["clientUserMessageId"] = client_user_message_id
         return self.request("turn/steer", params, timeout=30)
 
-    def interrupt_active_turn(self):
+    def interrupt_active_turn(self, timeout=10):
         """Ask Codex to interrupt its active turn before the Host closes it."""
         thread_id = self._active_thread_id
         turn_id = self._active_turn_id
@@ -1485,7 +1522,7 @@ class CodexAppServer:
             self.request("turn/interrupt", {
                 "threadId": thread_id,
                 "turnId": turn_id,
-            }, timeout=10)
+            }, timeout=timeout)
         except (RuntimeError, TimeoutError, _ProviderCancelled):
             # A terminal notification can race this request. The caller still
             # exits, but never fabricates a paused/resumed claim for that race.

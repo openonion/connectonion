@@ -14,13 +14,14 @@ the next unavoidable user action, and finish with actual observed status.
    genuinely published official version containing these capabilities, using its
    verified release instructions. Never downgrade a working co or install a
    private development branch as though it were a public release.
-2. When `co init --background` and native Codex hosting exist in that release,
-   run `co init --background`. This performs standard identity/skill setup,
-   prepares a dedicated private Mac Host profile and REM storage, and starts the
-   macOS user service. It does not authorize mailbox investigation or cloud
+2. Run `co init` (1.9.6 and later start the Host by default; on an earlier
+   release that has it, run `co init --background`). This performs standard
+   identity/skill setup, prepares a dedicated private Mac Host profile and REM
+   storage, and starts the macOS user service. Set `model: codex` in that
+   profile's `.co/host.yaml` if `co init` chose another model. It does not authorize mailbox investigation or cloud
    processing of saved recordings.
 3. Inspect the returned profile and real service/process status. From that actual
-   profile, use `co host --status`. A plist alone is not a running service. Codex
+   profile, use `co host` (or `co host --status` for JSON). A plist alone is not a running service. Codex
    login preflight is not a completed AI request. If Codex needs installation or
    login, use the returned recovery command and let the user complete any real
    account confirmation, then rerun initialization.
