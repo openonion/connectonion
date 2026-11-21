@@ -137,6 +137,7 @@ class ClaudeRestriction:
     allowed_tools: tuple[str, ...] = ()
     skills: tuple[str, ...] = ()
     system_prompt: str = ""
+    env: tuple[str, ...] = ()
 
     @property
     def rules(self) -> list[str]:
@@ -151,6 +152,13 @@ class ClaudeRestriction:
             argv.extend(["--allowedTools", *rules])
         prompt = "\n\n".join(part for part in (self.system_prompt, _caller_line(caller)) if part)
         return [*argv, "--append-system-prompt", prompt]
+
+    def environment(self, caller: dict | None) -> dict[str, str]:
+        """The Host's variables `env:` names, and the verified caller, for the tools a turn runs."""
+        named = {key: os.environ[key] for key in self.env if os.environ.get(key)}
+        if caller and caller.get("address"):
+            named.update(CO_CALLER_ADDRESS=caller["address"], CO_CALLER_TRUST=caller.get("level") or "unknown")
+        return named
 
 
 def _caller_line(caller: dict | None) -> str:
@@ -267,6 +275,7 @@ def _run_claude_code(
         return _envelope(session_id, error=error)
 
     caller = (getattr(agent, "current_session", None) or {}).get("requester")
+    extra_env = restriction.environment(caller) if restriction else {}
     argv = _stream_command(
         command, prompt, session_id, permission_mode, model, bridge_settings, add_dirs,
         restriction=restriction, caller=caller,
@@ -305,6 +314,7 @@ def _run_claude_code(
                 cancelled=cancelled if callable(cancelled) else None,
                 on_event=provider_event,
                 on_started=provider_started if bridge_events is None else None,
+                extra_env=extra_env,
             )
     except FileNotFoundError:
         return _envelope(session_id, error="Claude Code CLI not found during launch.")
@@ -1271,9 +1281,10 @@ def _run_process(
     cancelled: Callable[[], bool] | None = None,
     on_event: Callable[[dict[str, Any]], None],
     on_started: Callable[[], None] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> _StreamCompleted:
     """Read Claude NDJSON without blocking cancellation on one quiet stream."""
-    process = _start_process(argv, cwd)
+    process = _start_process(argv, cwd, extra_env)
     with owned_child(process, lambda: _terminate_process_tree(process)):
         return _read_process(process, argv, timeout, cancelled, on_event, on_started)
 
@@ -1369,7 +1380,7 @@ def _confirm_direct_workroom_turn(agent) -> None:
         session["_provider_direct_acknowledged"] = True
 
 
-def _start_process(argv: list[str], cwd: str):
+def _start_process(argv: list[str], cwd: str, extra_env: dict[str, str] | None = None):
     platform_options = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
         if os.name == "nt"
@@ -1384,7 +1395,7 @@ def _start_process(argv: list[str], cwd: str):
         text=True,
         encoding="utf-8",
         errors="replace",
-        env=_claude_environment(),
+        env={**_claude_environment(), **(extra_env or {})},
         shell=False,
         **platform_options,
     )

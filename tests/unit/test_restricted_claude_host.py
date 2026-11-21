@@ -256,3 +256,43 @@ def test_a_restricted_turn_installs_the_guard_hook():
     with bridge.scoped_bridge_settings() as (settings, _):
         hooks = json.loads(settings.read_text(encoding='utf-8'))['hooks']['PreToolUse'][0]['hooks']
         assert not any('--guard' in hook['args'] for hook in hooks)
+
+
+def test_env_names_reach_the_claude_cli_and_nothing_else_does(tmp_path, monkeypatch):
+    """1Cyber's fd.py needs FRESHDESK_API_KEY; the child environment is an
+    allowlist, so a restricted Host names what its tools need in host.yaml."""
+    from connectonion.cli.co_ai.native_host import configured_restriction
+    monkeypatch.setenv('FRESHDESK_API_KEY', 'fd-synthetic')
+    monkeypatch.setenv('UNLISTED_SECRET', 'nope')
+    co_dir = _host_yaml(tmp_path, RESTRICTED + '  env: [FRESHDESK_API_KEY, NOT_SET_HERE]\n')
+    restriction = configured_restriction(co_dir)
+    environment = restriction.environment({'address': '0xabc', 'level': 'contact'})
+    assert environment == {'FRESHDESK_API_KEY': 'fd-synthetic',
+                           'CO_CALLER_ADDRESS': '0xabc', 'CO_CALLER_TRUST': 'contact'}
+    assert claude.ClaudeRestriction().environment(None) == {}
+
+
+def test_a_restricted_turn_starts_claude_with_the_named_env(tmp_path, monkeypatch):
+    monkeypatch.setenv('FRESHDESK_API_KEY', 'fd-synthetic')
+    monkeypatch.setenv('UNLISTED_SECRET', 'nope')
+    seen = {}
+
+    class Started(Exception):
+        pass
+
+    def popen(argv, **kwargs):
+        seen.update(kwargs['env'])
+        raise Started
+    monkeypatch.setattr(claude.subprocess, 'Popen', popen)
+    restriction = claude.ClaudeRestriction(env=('FRESHDESK_API_KEY',))
+    with pytest.raises(Started):
+        claude._start_process(['claude'], str(tmp_path), restriction.environment({'address': '0xabc', 'level': 'contact'}))
+    assert seen['FRESHDESK_API_KEY'] == 'fd-synthetic' and seen['CO_CALLER_ADDRESS'] == '0xabc'
+    assert 'UNLISTED_SECRET' not in seen
+
+
+@pytest.mark.parametrize('line', ['  env: FRESHDESK_API_KEY\n', '  env: ["lower-case"]\n', '  env: [CO_CALLER_ADDRESS]\n'])
+def test_a_bad_env_list_stops_the_host(tmp_path, line):
+    from connectonion.cli.co_ai.native_host import configured_restriction
+    with pytest.raises(ValueError, match='restricted: env'):
+        configured_restriction(_host_yaml(tmp_path, RESTRICTED + line))
