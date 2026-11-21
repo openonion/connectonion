@@ -402,7 +402,7 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 
 ## Current Version: 1.9.6
 
-Stable 1.9.6, released by the owner's decision: 1.9.6rc47's code plus one reader polish (#3243). `co init` starts the Host and leaves it
+Stable 1.9.6, released by the owner's decision: 1.9.6rc48's code. `co init` starts the Host and leaves it
 running on macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through a
 logged-in Claude Code with no API key (checked on a real Windows 11 PC over the relay in rc43). REM gets the new
 desk, a knowledge graph, three privacy levels and hand-offs you can watch; `co send` / `co receive`, `co wechat`,
@@ -410,7 +410,14 @@ WhatsApp pairing by code and Windows hosts. The default model is Gemini 4 Hydrog
 
 - 1.9.6 (co init starts the Host; model: claude-code; REM's new desk; files between agents).
 
-## Previous candidate: 1.9.6rc47
+### Previous candidate: 1.9.6rc48
+Release candidate 1.9.6rc48 for 1.9.6: REM related-page cards show the sentence without the writer's
+"Changed:" prefix, and the page foot says Copy the file path instead of printing it. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc48.md).
+
+- 1.9.6rc48 (related cards and page foot read cleanly).
+
+### Previous candidate: 1.9.6rc47
 Release candidate 1.9.6rc47 for 1.9.6: on a phone, a knowledge or tag page whose linked page is named by a
 long question no longer widens the page. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc47.md).
 
