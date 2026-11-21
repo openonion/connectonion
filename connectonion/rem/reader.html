@@ -11926,7 +11926,9 @@ function keysView() {
   const main = document.getElementById("main"), items = inCategory("keys").sort((a, b) => a.title.localeCompare(b.title));
   main.textContent = "";
   const head = el("div", { class: "category-head" }, [el("h1", { text: label("keys") }), items.length ? el("span", { class: "mono", text: String(items.length) }) : null]);
-  main.append(head, liveHere() ? keyAdder() : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
+  // With no keys yet, open the adder so the one-click import buttons are the first thing seen, not hidden
+  // inside a collapsed "Add a key" disclosure. Once there are keys, keep it collapsed so it doesn't nag.
+  main.append(head, liveHere() ? keyAdder(!items.length) : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
   if (!items.length) { main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export.")); return; }
   const cols = ["Service", "Account", "Purpose", "Used in", "Rotated"];
   main.appendChild(el("div", { class: "sheet-scroll keys-sheet", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("keys") }) }, [
@@ -11934,7 +11936,7 @@ function keysView() {
       el("tbody", {}, items.map(r => el("tr", {}, [el("td", { class: "name" }, [el("a", { href: href(r), text: r.title })]),
         ...cols.slice(1).map(col => el("td", {}, [textCell(keyFact(r, col))]))])))])]));
 }
-function keyAdder() {
+function keyAdder(open = false) {
   const field = (name, type = "text") => el("input", { type, name, placeholder: t(name), "aria-label": t(name), autocomplete: type === "password" ? "new-password" : "off" });
   const service = field("Service"), account = field("Account"), secret = field("Password or key", "password"), purpose = field("Purpose");
   const status = el("p", { class: "key-status", role: "status" });
@@ -11971,7 +11973,7 @@ function keyAdder() {
   const importers = el("div", { class: "key-importers" }, [
     fromBrowser("chrome", "Chrome"), fromBrowser("edge", "Edge"), fromBrowser("brave", "Brave"),
     el("label", { class: "key-import" }, [el("span", { text: t("Import a CSV export") }), file])]);
-  return el("details", { class: "key-adder" }, [el("summary", { text: t("Add a key") }), form,
+  return el("details", open ? { class: "key-adder", open: "" } : { class: "key-adder" }, [el("summary", { text: t("Add a key") }), form,
     el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") }),
     importers, status]);
 }

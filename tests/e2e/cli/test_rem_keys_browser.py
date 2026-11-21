@@ -91,3 +91,36 @@ def test_a_snapshot_shows_the_rows_and_says_where_the_value_is(today):
     assert "Copy it from the reader on this Mac" in page.locator(".key-page").inner_text()
     _shot(page, "snapshot", 390)
     assert not [path for path, _ in calls if path.startswith("/rem/keys/")]
+
+
+def _empty_keys(page, width=1440, live=True):
+    page.set_viewport_size({"width": width, "height": 900})
+    page.evaluate("""([live]) => {
+      REM.live = live;
+      REM.records = REM.records.filter(r => r.category !== 'keys');  // a notebook with no keys yet
+      if (!REM.categories.includes('keys')) REM.categories.push('keys');
+      KNOWN.clear(); FACTS.clear(); location.hash = '#c=keys'; render();
+    }""", [live], isolated_context=False)
+
+
+def test_the_import_buttons_are_visible_on_an_empty_keys_page(today):
+    # P大 opened Keys with no keys and saw no button — they were hidden in a collapsed "Add a key" disclosure.
+    page, calls, answers = today
+    _empty_keys(page)
+    adder = page.locator(".key-adder")
+    assert adder.count() == 1
+    assert adder.evaluate("el => el.open") is True  # open by default when there are no keys
+    chrome = page.locator(".key-importers button", has_text="Chrome")
+    assert chrome.is_visible()  # seen without clicking the summary
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(SHOTS / "keys-empty-open-1440.png"))
+
+
+def test_the_adder_stays_collapsed_once_there_are_keys(today):
+    # With keys present the adder is a quiet disclosure, not a nag: collapsed, import buttons hidden until asked for.
+    page, calls, answers = today
+    _with_keys(page, 1440)
+    adder = page.locator(".key-adder")
+    assert not adder.evaluate("el => el.open")  # collapsed by default
+    assert not page.locator(".key-importers button", has_text="Chrome").is_visible()
+
