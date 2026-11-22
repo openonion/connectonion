@@ -400,7 +400,14 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc8
+## Current Version: 1.9.7rc9
+Release candidate 1.9.7rc9 for 1.9.7: `co discord` as your own account (experimental), system Chrome fallback
+that keeps other sessions' tabs, a bare `co host` that no longer stops serving silently, and `co call` that names
+the address it signed with. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc9.md).
+
+- 1.9.7rc9 (co discord as your account; browser fallback; bare co host; co call identity).
+
+### Previous candidate: 1.9.7rc8
 Release candidate 1.9.7rc8 for 1.9.7: fixes a regression in rc7. rc7 reworded a topic link review from the page
 path to its title, and reviews deduped on the question text, so the next night would have proposed every stored
 link again (36 became 77 on a clone of a real notebook) and re-asked decided ones. A link review now matches on
