@@ -239,12 +239,19 @@ def test_a_reply_written_for_a_chat_the_person_is_not_on_is_shown_as_a_defect_an
     assert ("/rem/draft", {"id": "ines-receipts", "action": "redraft", "channel": "mail"}) in calls
 
 
-def test_on_a_phone_send_sits_above_the_tab_bar(today):
+def test_on_a_phone_a_scroll_to_send_or_the_choice_stops_above_the_tab_bar(today):
+    # #3312 H: nothing he must tap rests under fixed chrome. The dock is not pinned over the letter (sprint 13) and
+    # the tab bar stays; a scroll to a control stops above it.
     page, _, _ = today
     card = _card(page, 390)
-    send = card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
-    send.scroll_into_view_if_needed()
-    page.evaluate("scrollBy(0, -200)", isolated_context=False)
-    bar = page.locator(".tabbar").bounding_box()
-    box = send.bounding_box()
-    assert box["y"] + box["height"] <= bar["y"]
+    view = page.viewport_size["height"]
+    for selector in (".mail-actions .btn-act", ".owner-slot button"):
+        page.evaluate("s => document.querySelector('.qcard.open ' + s).scrollIntoView({block: 'nearest'})", selector, isolated_context=False)
+        box, bar = card.locator(selector).first.bounding_box(), page.locator(".tabbar").bounding_box()
+        assert bar["y"] < view and box["y"] + box["height"] <= bar["y"], (selector, box, bar)
+    # A Send with REM's question open jumps to it, above the bar too.
+    page.evaluate("scrollTo(0, document.body.scrollHeight)", isolated_context=False)
+    card.locator(".mail-actions .btn-act").click()
+    page.wait_for_timeout(500)
+    box, bar = card.locator(".owner-slot").first.bounding_box(), page.locator(".tabbar").bounding_box()
+    assert box["y"] + box["height"] <= bar["y"], (box, bar)

@@ -341,13 +341,12 @@
   .qnav { display: inline-flex; align-items: center; gap: 2px; }
   .qnav .qnav-step { width: 32px; height: 32px; font: var(--w-bold) 20px/1 var(--font); color: var(--ink); }
   .qcount { min-width: 3.2em; text-align: center; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); font-variant-numeric: tabular-nums; }
-  /* On a phone, Send stays in the thumb's reach above the tab bar while the card is open (#3312 H). */
+  /* On a phone nothing the owner must tap rests under fixed chrome (#3312 H): every scroll to a control (a jump to
+     REM's open question, a focus, the dock brought into view) stops above the floating tab bar. The dock is never
+     pinned over the letter (sprint 13: a bar over the draft covered what he was approving), and the tab bar stays,
+     since hiding it on Today's first screen would take the navigation away. */
   @media (max-width: 719px) {
-    .qcard.focal .mail-dock { position: sticky; bottom: calc(14px + 62px + 10px + env(safe-area-inset-bottom, 0px)); z-index: 3;
-      background: var(--paper); box-shadow: 0 -8px 16px -12px rgb(0 0 0 / .25); }
-    .qcard.focal .mail-dock .mail-choices { max-height: 40dvh; overflow-y: auto; }
-    /* What scrolls under the dock stops above it when scrolled to (the letter's own unfold). */
-    .qcard.focal .mail-unfold { scroll-margin-bottom: calc(14px + 62px + 10px + 140px + env(safe-area-inset-bottom, 0px)); }
+    html { scroll-padding-bottom: calc(14px + 62px + 12px + env(safe-area-inset-bottom, 0px)); }
   }
 
   .mail-channels .channel { border: 0; background: transparent; padding: 3px 10px; border-radius: var(--radius); font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); cursor: pointer; }
@@ -2305,23 +2304,24 @@
     /* The first phone screen holds To, Subject, the letter's first lines and Send; the context line and channel
        switch wait behind More. */
     .qcard.focal[data-step="send"]:not(.full) .mailcard { display: flex; flex-direction: column; }
-    /* REM's question follows the letter, a hairline above it. */
-    .qcard.focal[data-step="send"]:not(.full) .mail-choices { order: 2; }
-    /* No two-line clamp: Send is pinned in the dock, so the letter shows its first eight lines (#3312 B4, H). */
-    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 2; }
+    /* The phone reads in the card's order (#3312 B): who → the letter (its first eight lines, no two-line clamp) →
+       the dock with REM's question and Send → status → why → what REM did. */
+    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 1; }
     .qcard.focal[data-step="send"]:not(.full) .mail-text { max-height: none; -webkit-mask-image: none; mask-image: none; }
-    .qcard.focal[data-step="send"]:not(.full) :is(.mail-why, .mail-status) { order: 3; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-dock { order: 2; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-status { order: 3; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-why { order: 4; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-did { order: 5; }
     .qcard.focal[data-step="send"]:not(.full) .mail-head .mail-channels,
     .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: none; }
     .qcard.focal[data-step="send"]:not(.full) .qitem { grid-template-columns: minmax(0, 1fr); }
     /* The reply's needed parts and Send fit the first screen: the items behind the reply, their meta and hand-off
        lines wait behind More, which stays in place of the first item. */
     .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull, .handoff)) { display: none; }
-    /* On a phone Send stays where the draft ends, right under REM's question, and comes into view with the draft.
-       It was pinned above the tab bar, and on real data it sat over the draft's first lines while the owner was
-       still reading the message above it (sprint 13); a bar that covers what it asks you to approve is worse
-       than one you scroll to. */
-    .qcard.focal.open .mail-actions { order: 3; padding: var(--u2) var(--u3) var(--u3); }
+    /* Send sits where the draft ends, right under REM's question, in the dock. It is not pinned (sprint 13: a bar
+       fixed over the draft's first lines covered what it asked him to approve); a scroll to it stops above the tab
+       bar instead (#3312 H, html scroll-padding-bottom). */
+    .qcard.focal.open .mail-actions { padding: var(--u2) var(--u3) var(--u3); }
     .qcard.open .mail-actions .btn-act { flex: 1 1 auto; }
     /* One row above the thumb: Send, full screen, Skip. Editing in the provider's drafts waits for a desk. */
     /* Buttons keep their words whole ("Skip", not "Ski / p"); a hint waiting on REM's question takes its own
@@ -7079,25 +7079,28 @@ const SLOT_SPLIT = /(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g
 function openWriter(draft, who, onSend) {
   const to = mailbox(draft.to);
   const body = el("textarea", { class: "writer-body", "aria-label": t("Reply body") });
-  body.value = draft.body;
+  // REM's open questions read as their own words in the letter, 【邮件附件 / 共享文件夹】, never the raw
+  // 【需要你：… — date not agreed】 (#3312 F); the answer picked on the right takes their place.
+  const parts = draft.body.split(SLOT_SPLIT), fills = {}, current = {};
+  const marker = part => "【" + slotWhat(part) + "】";
+  body.value = parts.map(part => /^(?:\[|［|【)/.test(part) ? marker(part) : part).join("");
   const initial = body.value, dirty = () => body.value !== initial;
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const close = el("button", { type: "button", class: "writer-close", "aria-label": t("Close"), title: t("Close") + " (Esc)" }, [icon("x")]);
   const notice = el("p", { class: "mail-status writer-notice", role: "status" });
   const cited = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean);
   // REM's open questions: the answer replaces the question (or the last answer) where it sits in the letter.
-  const parts = draft.body.split(SLOT_SPLIT), fills = {}, current = {};
   const slots = parts.map((part, i) => [part, i]).filter(([part]) => /^(?:\[|［|【)/.test(part));
   const rows = slots.map(([part, i]) => {
-    current[i] = part;
+    current[i] = marker(part);
     return slotChoices(part, fills, i, () => {
-      const value = fills[i] ?? part;
+      const value = fills[i] ?? marker(part);
       if (body.value.includes(current[i])) body.value = body.value.replace(current[i], value);
       current[i] = value;
       notice.textContent = "";
     });
   });
-  const unanswered = () => slots.filter(([part, i]) => current[i] === part && body.value.includes(part));
+  const unanswered = () => slots.filter(([part, i]) => current[i] === marker(part) && body.value.includes(marker(part)));
   const did = el("p", { class: "writer-did", text: remDid(draft) });
   const channel = draft.channel || "mail";
   const channelWord = channel === "mail" ? (draft.provider === "gmail" ? "Gmail" : "Outlook") : t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel);
@@ -7142,7 +7145,7 @@ function openWriter(draft, who, onSend) {
     send.disabled = close.disabled = sendTop.disabled = true;
     send.textContent = sendTop.textContent = t("Sending…");
     notice.textContent = "";
-    const error = await onSend(body.value.trim() === draft.body.trim() ? undefined : body.value);
+    const error = await onSend(body.value.trim() === draft.body.trim() ? undefined : body.value);  // answered slots always differ
     if (!error) {
       send.textContent = sendTop.textContent = t("Reply sent");
       setTimeout(() => dialog.close(), motionStilled() ? 0 : 700);
