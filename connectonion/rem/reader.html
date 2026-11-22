@@ -10754,6 +10754,25 @@ function turnTrouble(failure) {
     if (failure.code_error) return uiLanguage === "zh"
       ? `后台：夜里的程序出错了（同一个错误 ${failure.code_error} 次），升级到新版本后会继续。自 ${since} 起。`
       : `Background: The night runner hit a code error ${failure.code_error} ${failure.code_error === 1 ? "time" : "times"}; it resumes after an update. Since ${since}.`;
+    // The same error turn after turn will not clear by retrying (#3402: five turns on one page's
+    // preparation under "REM 会自动重试，不需要你做什么"). Name what is stuck; say 已经跳过 only when the
+    // ledger shows it was set aside (`stuck.skipped`, read by status, never assumed). The raw reason stays on the title.
+    if (failure.same_error) {
+      const n = failure.same_error, stuck = failure.stuck || {}, zh = uiLanguage === "zh";
+      const kindZh = { skill: "技能", person: "人物", org: "组织", project: "项目" }[stuck.kind] || "页面";
+      const kindEn = { skill: "A skill", person: "A person", org: "An organisation", project: "A project" }[stuck.kind] || "A";
+      if (!stuck.kind) return zh
+        ? `后台：最近 ${n} 轮都停在同一个错误上，自 ${since} 起。重试解决不了它，要等修复它的新版本。`
+        : `Background: the last ${n} turns stopped on the same error, since ${since}. Retrying will not clear it; it needs a release that fixes it.`;
+      const what = zh ? (stuck.not_installed ? "有一个技能页的技能已经不在了" : `有一个${kindZh}页准备不了`)
+        : (stuck.not_installed ? "A skill page's skill is no longer installed" : `${kindEn} page cannot be prepared`);
+      const next = stuck.skipped
+        ? (zh ? `REM 已经跳过它，其余工作照常${stuck.not_installed ? "；要修好它得等新版本" : ""}。`
+          : `REM has set it aside and the rest goes on${stuck.not_installed ? "; fixing it needs a new release" : ""}.`)
+        : (zh ? "重试解决不了它，要等修复它的新版本。" : "Retrying will not clear it; it needs a release that fixes it.");
+      return zh ? `后台：${what}，最近 ${n} 轮都停在它上面（自 ${since} 起）。${next}`
+        : `Background: ${what}; the last ${n} turns stopped on it (since ${since}). ${next}`;
+    }
     if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} 起。REM 会自动重试，不需要你做什么。`;
     const said = all ? (failure.failures === 1 ? "turn ran but produced nothing" : "turns ran but produced nothing")
       : (failure.failures === 1 ? "turn failed" : "turns failed") + (empty ? ` (${empty} ran but produced nothing)` : "");
