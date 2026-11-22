@@ -6752,7 +6752,8 @@ function splitTrailers(text) {
     }
     if (fence) { body.push(line); continue; }
     // Code-owned lines: the Tags line is the tag row under the title (#3140), the Investigation stamp is the button's.
-    if (/^-\s*Tags:/.test(t) || /^Investigation:/.test(t)) continue;
+    // A masked page's number (masked.py) is the graph's label, not prose.
+    if (/^-\s*Tags:/.test(t) || /^Investigation:/.test(t) || /^Masked:\s*\d+\s*$/.test(t)) continue;
     if (/^(related|相关|相关页面|相关链接|相关项目|相关人物|相关决定|相关待办)[:：]/i.test(t)) related.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else if (/^(sources?|来源)[:：]/i.test(t)) sources.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else body.push(line);
@@ -17389,16 +17390,12 @@ function graphModel() {
   // One kind of point, the page (#3140): a tag only adds edges between the pages carrying it and its page.
   const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) }));
   const byId = new Map(nodes.map(n => [n.id, n]));
-  // Two masked pages never read as one (#3385: four rows said "Personal"). Each keeps its own number, taken from
-  // its path, never from sort order: a new private page never renumbers the others. A rare clash moves only the
-  // later path on to the next free number.
-  const taken = new Set();
-  for (const n of nodes.filter(n => n.private).sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    let no = graphMaskNumber(n.id);
-    while (taken.has(no)) no = no === 999 ? 100 : no + 1;
-    taken.add(no);
-    n.maskNo = no;
-  }
+  // Two masked pages never read as one (#3385: four rows said "Personal"). Each page carries its number, given once
+  // in the order pages were first masked (masked.py, "Masked: N"); the reader only reads it. A legacy page with none
+  // yet follows the highest stored number, by path, without writing anything.
+  const masked = nodes.filter(n => n.private), stored = n => +(/^Masked:[ \t]*(\d+)[ \t]*$/m.exec(n.r?.text || "")?.[1] || 0);
+  let next = Math.max(0, ...masked.map(stored));
+  for (const n of masked.sort((a, b) => (a.id < b.id ? -1 : 1))) n.maskNo = stored(n) || ++next;
   const edges = source.edges.concat(source.tags?.edges || []).filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
   const adj = new Map();
   for (const e of edges) for (const [a, b] of [[e.s, e.t], [e.t, e.s]]) (adj.get(a) || adj.set(a, new Set()).get(a)).add(b);
@@ -17406,12 +17403,6 @@ function graphModel() {
   const sim = graphLayout(linked, edges, byId);
   GRAPH = { source: REM.graph, nodes, byId, edges, adj, linked, sim, isolated: nodes.filter(n => !adj.has(n.id)) };
   return GRAPH;
-}
-// A masked page's number, 100-999, from its path alone (FNV-1a): the same page keeps it on every build.
-function graphMaskNumber(id) {
-  let hash = 2166136261;
-  for (const ch of String(id)) hash = Math.imul(hash ^ ch.codePointAt(0), 16777619);
-  return 100 + ((hash >>> 0) % 900);
 }
 function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 // A labelled-private record keeps its name only on this Mac and only while passages are shown.

@@ -438,6 +438,8 @@ def _unmarked(text: str) -> str:
     """The page with its title's mark moved onto each prose passage that carries none."""
     title, _, rest = text.partition("\n")
     mark = PRIVATE.search(title).group(0).replace("［", "[").replace("］", "]").lower()
+    # An unmasked page needs no mask number (masked.py): its own name is its label again.
+    rest = re.sub(r"(?m)^Masked:[ \t]*\d+[ \t]*\n", "", rest)
     prose, *owned = re.split(r"(?m)^(?=## (?:Pages|Sources)[ \t]*$)", rest, maxsplit=1)
     lines = [line if not line.strip() or CODE_OWNED.match(line) or PRIVATE.search(line) else line.rstrip() + " " + mark
              for line in prose.split("\n")]

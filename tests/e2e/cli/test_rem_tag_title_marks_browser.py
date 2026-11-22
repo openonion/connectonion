@@ -36,8 +36,11 @@ def notebook(root):
     from connectonion.rem.files import Notebook, state_path, write_json
     prepare(root)
     nb = Notebook(root)
+    # Written by an older release, before tag titles were refused and before masked pages were numbered:
+    # straight to disk, as the owner's notebook holds them.
+    (root / "knowledge").mkdir(exist_ok=True)
     for slug, title in (("python", "Python"), ("night-runs", "Night runs")):
-        nb.write(f"knowledge/{slug}.md", TAG_PAGE.format(title=title, slug=slug))
+        (root / "knowledge" / f"{slug}.md").write_text(TAG_PAGE.format(title=title, slug=slug), encoding="utf-8")
     for slug, name in (("mara-ostrowski", "Mara Ostrowski"), ("quinn-alder", "Quinn Alder")):
         nb.write(f"people/{slug}.md", f"# {name}\n\n## Facts\n- Tags: python [1], night-runs [1]\n\n## Insight\n"
                  f"- {name} writes Python and runs at night [1].\n- Linked to [Night notes](../knowledge/night-notes.md) "
@@ -93,41 +96,75 @@ def test_tag_pages_keep_their_names_in_the_graph_and_on_a_person_page(page):
     assert page.locator('.tag-link:has-text("Python")').first.get_attribute("href") == "#r=knowledge%2Fpython.md"
 
 
-def test_two_masked_pages_never_share_one_label(page):
-    page, _, _ = page
-    page.locator('#nav a[href="#c=knowledge"]').click()
-    page.locator(".gx-map canvas").wait_for()
-    masked = page.evaluate("() => graphModel().nodes.filter(graphHidden).map(graphTitle)", isolated_context=False)
-    assert len(masked) == 2 and len(set(masked)) == 2, masked
-    assert all(label.startswith("Personal") for label in masked)
-    # The same numbers on the next build: a label is stable, not a shuffle.
-    page.reload()
-    page.locator(".gx-map canvas").wait_for()
-    assert page.evaluate("() => graphModel().nodes.filter(graphHidden).map(graphTitle)", isolated_context=False) == masked
-
-
 def masked_labels(page):
     return page.evaluate("() => Object.fromEntries(graphModel().nodes.filter(graphHidden).map(n => [n.id, graphTitle(n)]))",
                          isolated_context=False)
+
+
+def open_graph(page, url):
+    page.goto(url)
+    page.locator(".gx-map canvas").wait_for()
+
+
+def rebuilt(root, tmp_path, name):
+    from connectonion.rem.reader import render
+    path = tmp_path / name
+    path.write_text(render(root, local=True), encoding="utf-8")
+    return path.as_uri() + "#c=knowledge"
+
+
+def link_from_mara(root, record, name):
+    from connectonion.rem.files import Notebook
+    nb = Notebook(root)
+    nb.write("people/mara-ostrowski.md", nb.read("people/mara-ostrowski.md").replace(
+        "## Sources", f"- Also [{name}](../{record}) [1].\n\n## Sources"))
+
+
+def test_masked_pages_read_personal_one_and_two_in_the_order_they_were_masked(page):
+    page, uri, _ = page
+    open_graph(page, uri + "#c=knowledge")
+    # Night notes was written first, Garden diary second (masked.py numbers them where they are written).
+    assert masked_labels(page) == {"knowledge/night-notes.md": "Personal 1", "knowledge/garden-diary.md": "Personal 2"}
+    page.reload()
+    page.locator(".gx-map canvas").wait_for()
+    assert masked_labels(page) == {"knowledge/night-notes.md": "Personal 1", "knowledge/garden-diary.md": "Personal 2"}
 
 
 def test_a_new_private_page_never_renumbers_the_others(page, tmp_path):
     """The art director's rule on #3386: 「个人事项 1」 never becomes 2. A number belongs to its page."""
     page, uri, root = page
     from connectonion.rem.files import Notebook
-    from connectonion.rem.reader import render
-    page.locator('#nav a[href="#c=knowledge"]').click()
-    page.locator(".gx-map canvas").wait_for()
+    open_graph(page, uri + "#c=knowledge")
     before = masked_labels(page)
     # A private page whose path sorts before both, linked so it draws: an ordinal would shift every label.
-    nb = Notebook(root)
-    nb.write("knowledge/aaa-early.md", "# Early [personal]\n\nA third private topic [1].\n\n## Sources\n- [1] gmail:m1\n")
-    nb.write("people/mara-ostrowski.md", nb.read("people/mara-ostrowski.md").replace(
-        "## Sources", "- Also [Early](../knowledge/aaa-early.md) [1].\n\n## Sources"))
-    path = tmp_path / "reader-2.html"
-    path.write_text(render(root, local=True), encoding="utf-8")
-    page.goto(path.as_uri() + "#c=knowledge")
-    page.locator(".gx-map canvas").wait_for()
+    Notebook(root).write("knowledge/aaa-early.md", "# Early [personal]\n\nA third private topic [1].\n\n## Sources\n- [1] gmail:m1\n")
+    link_from_mara(root, "knowledge/aaa-early.md", "Early")
+    open_graph(page, rebuilt(root, tmp_path, "reader-2.html"))
     after = masked_labels(page)
-    assert len(after) == 3 and len(set(after.values())) == 3, after
     assert {k: after[k] for k in before} == before
+    assert after["knowledge/aaa-early.md"] == "Personal 3"
+
+
+def test_a_deleted_pages_number_is_never_reused(page, tmp_path):
+    page, uri, root = page
+    from connectonion.rem.files import Notebook
+    nb = Notebook(root)
+    nb.delete("knowledge/garden-diary.md")  # Personal 2 is gone
+    nb.write("knowledge/third.md", "# Third [personal]\n\nA new private topic [1].\n\n## Sources\n- [1] gmail:m1\n")
+    link_from_mara(root, "knowledge/third.md", "Third")
+    open_graph(page, rebuilt(root, tmp_path, "reader-3.html"))
+    labels = masked_labels(page)
+    assert labels["knowledge/night-notes.md"] == "Personal 1"
+    assert labels["knowledge/third.md"] == "Personal 3"
+
+
+def test_a_legacy_page_with_no_number_follows_the_highest_without_writing(page, tmp_path):
+    page, uri, root = page
+    # Written before numbering existed: straight to disk, no "Masked:" line.
+    legacy = root / "knowledge" / "old-private.md"
+    legacy.write_text("# Old private [personal]\n\nFrom an older release [1].\n\n## Sources\n- [1] gmail:m1\n", encoding="utf-8")
+    link_from_mara(root, "knowledge/old-private.md", "Old private")
+    before = legacy.read_text(encoding="utf-8")
+    open_graph(page, rebuilt(root, tmp_path, "reader-4.html"))
+    assert masked_labels(page)["knowledge/old-private.md"] == "Personal 3"
+    assert legacy.read_text(encoding="utf-8") == before  # the reader only reads

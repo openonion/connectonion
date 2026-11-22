@@ -296,7 +296,9 @@ def test_the_repair_unmarks_tag_titles_once_and_keeps_their_passages_private(boo
     assert "## How they connect\n" in page and "- [Lena Brandt](../people/lena-brandt.md)\n" in page
     assert "- [1] gmail:fixture:aa01\n" in page and "(tag page, from 2 pages)\n" in page
     # A private topic that is not a tag's page keeps its title mark: it is private as a whole.
-    assert book.read("knowledge/night-notes.md") == DIARY
+    # (It was the second masked page written, so it carries "Masked: 2"; masked.py.)
+    assert book.read("knowledge/night-notes.md") == DIARY.replace("\n", "\nMasked: 2\n", 1)
+    assert "Masked:" not in page  # an unmasked tag page's own name is its label again
     # Idempotent: a second build finds no marked tag title and writes nothing.
     assert tag_nodes.repair_titles(book.root) == []
 
@@ -318,4 +320,4 @@ def test_the_repair_keeps_the_marked_page_for_undo(book):
     from connectonion.rem import page_versions
     book.write("knowledge/kiln-pilot.md", MARKED_TAG)
     tag_nodes.repair_titles(book.root)
-    assert page_versions.previous(book.root, "knowledge/kiln-pilot.md")["text"] == MARKED_TAG
+    assert page_versions.previous(book.root, "knowledge/kiln-pilot.md")["text"] == MARKED_TAG.replace("\n", "\nMasked: 1\n", 1)
