@@ -497,7 +497,7 @@ def test_ensure_dashboard_takes_an_explicit_project_dir(tmp_path, monkeypatch):
     ensure_control_center({"name": "Explicit", "skills": []}, project_dir=project)
 
     assert dashboard_module._project_dir == project
-    assert dashboard_module.control_center_path() == project / ".co" / "dashboard.html"
+    assert dashboard_module.control_center_path() == project / ".co" / "control_center.html"
 
 
 def test_a_read_only_project_still_gets_a_home(in_tmp, monkeypatch):
