@@ -183,7 +183,8 @@
   /* Fuse has no shadow, so rings became hairline outlines declared later with one or two classes; three
      selectors' weight lets the focus ring win without !important. #main and the Today cards are focused by
      script (tabindex=-1) and keep their own rules, as do text fields. */
-  :root :focus-visible:not([tabindex="-1"], input, textarea) { outline: var(--rule-heavy) solid var(--ink); }
+  /* A writing surface shows its caret, not a ring: inputs, textareas and the full-screen letter (contenteditable). */
+  :root :focus-visible:not([tabindex="-1"], input, textarea, [contenteditable="true"]) { outline: var(--rule-heavy) solid var(--ink); }
   code { font: var(--s-body) var(--mono); }
   .mono { font-family: var(--font); font-variant-numeric: tabular-nums; }
   svg.moon { width: 11px; height: 11px; flex-shrink: 0; color: var(--grey); vertical-align: -1px; }
@@ -288,7 +289,7 @@
     /* One standard bar, 取消 · 回复 <name> · <channel> · 发送, about 56px; a long name is cut, never wrapped. */
     .writer-title { height: 56px; padding: 0 8px; gap: 8px; }
     .writer-title h2 { text-align: center; font-size: var(--s-meta); }
-    .writer-cancel, .writer-send-top { display: inline-flex; flex: none; min-height: 40px; }
+    .writer-cancel, .writer-send-top { display: inline-flex; align-items: center; flex: none; min-height: 40px; height: 40px; padding: 0 14px; }
     .writer-letter .mail-head { padding: 10px 16px 8px; }
     .writer-body { padding: 12px 16px; }
     .writer-close, .writer-actions .btn-act { display: none; }
@@ -316,7 +317,7 @@
   .writer-msg-head { font: var(--w-bold) var(--s-meta)/1.4 var(--font); color: var(--grey); margin-bottom: 4px; }
   .writer-msg-text { white-space: pre-wrap; font: var(--s-meta)/1.55 var(--font); color: var(--grey); max-height: 14em; overflow: hidden; }
   @media (max-width: 719px) {
-    .writer { width: 100vw; height: 100dvh; border-radius: var(--radius); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+    .writer { width: 100vw; height: 100dvh; border-radius: var(--radius); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
     .writer-letter { border-right: 0; }
     .writer-side { max-height: 38dvh; border-top: 1px solid var(--rule); }
   }
