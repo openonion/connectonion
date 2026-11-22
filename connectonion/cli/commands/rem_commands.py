@@ -210,9 +210,19 @@ def _map_summary(report: dict, dry_run: bool) -> str:
                     f"already there {out['known']}", f"not worth a page {out['skip']}"]
             if out.get("not_person"):
                 rest.append(f"not a person by your mark {out['not_person']}")
+            if out.get("retitled"):
+                rest.append(("would retitle" if dry_run else "retitled") + f" {len(out['retitled'])} pages named only by punctuation")
             lines.append("  " + " · ".join(rest))
             if out["create"] and kind == "people":
                 made.append(name)
+    from ...rem.onboard import coverage, sync_hint
+    for kinds in report.values():
+        for out in kinds.values():
+            if found := coverage(out):
+                lines.append(found)   # the address book against the chats found (#3347)
+    hint = next((h for kinds in report.values() for out in kinds.values() if (h := sync_hint(out))), "")
+    if hint:
+        lines.append(hint)  # once: few of the owner's WeChat friends have chats on this Mac (#3347)
     if dry_run:
         lines.append("Dry run: nothing was written.")
     elif made:
@@ -2103,7 +2113,9 @@ def make_rem_app(factory):
                 if not (sub.get("enabled") and sub.get("consented")):
                     raise RemError(f"{name} is not enabled and approved; run `co rem sources add {name}`")
                 kinds = onboard.check_kinds(name, sub, (kind,) if kind else ())
-                report[name] = onboard.plan(root, onboard.rows(root, name, sub, MAP_DAYS), kinds, write=not dry_run)
+                # A real map leaves the same state the night does: activity, the queue, the mapped record (#3368).
+                report[name] = (onboard.plan(root, onboard.rows(root, name, sub, MAP_DAYS), kinds, write=False) if dry_run
+                                else onboard.onboard(root, name, sub, MAP_DAYS, kinds))
             follow = ["investigate", "people", "--source", source or (names[0] if names else ""), "--new"]
             if ctx.obj["json"]:
                 return {"dry_run": dry_run, "sources": report}, follow

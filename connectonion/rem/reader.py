@@ -205,6 +205,13 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
 
 
 def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
+    """The page build's data; the whole-notebook tag scans run once in it (tags.held)."""
+    from .tags import held
+    with held(root):
+        return _snapshot(root, local=local, today=today)
+
+
+def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook.
 
     `local`: this machine's own reader (the file snapshot, the loopback live
@@ -400,6 +407,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),
+            # What the last night could not read, with its fix (#3353): Today shows it in one line.
+            "coverage_gaps": coverage_gaps(root) if local else [],
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
@@ -416,6 +425,14 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     data['ignored_senders'] = ignored_senders(root) if local else {}
     from .threads import person_marks
     data['person_marks'] = person_marks(root) if local else {}
+    # Address-book friends with nothing to read yet: People folds them out of the table (#3347).
+    from .onboard import activity, backfill, idle
+    if local:
+        # Pages made by an older map have no activity or onboarding record; fill them once, locally (#3368).
+        backfill(root)
+    data['idle_people'] = idle(root)
+    # When the owner last talked with each WeChat person: People's columns and its 90-day fold (#3346).
+    data['chat_activity'] = activity(root)
     # The owner's calendars as the night saved them; a shared page carries none of his meetings.
     from .calendar import upcoming
     data['calendar'] = upcoming(root, records, owner) if local else None
@@ -797,6 +814,11 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
     for old in os.listdir(_cache_dir()):
         if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
             (_cache_dir() / old).unlink(missing_ok=True)
+
+
+def coverage_gaps(root):
+    from .coverage import stored
+    return stored(root)
 
 
 def _release() -> str:

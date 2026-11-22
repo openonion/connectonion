@@ -101,8 +101,18 @@ def queue(root):
     states = threads.listing(root)
     from .today import queue as today_queue
     ranks = {key: entry['rank'] for entry in today_queue(root, states=states) for key in entry['keys']}
-    pending = [row for row in rows if not closed(root, row, states=states)
-               and read_json(path(root, row['id']), {}).get('version') != row['version']]
+    pending = []
+    for row in rows:
+        if closed(root, row, states=states):
+            continue
+        saved = read_json(path(root, row['id']), {})
+        stray = wrong_channel(root, row, saved)
+        if stray:
+            # Written for a chat this person is not on: rewriting it on the thread's own channel is REM's to undo,
+            # not the owner's chore (#3348). The mark rides through check() into the stored draft as the card's note.
+            pending.append({**row, 'redrafted_from': stray})
+        elif saved.get('version') != row['version']:
+            pending.append(row)
     return sorted(pending, key=lambda row: min((ranks.get(threads.done_key(item['record'], item['text']), float('inf'))
                                              for item in row['obligations']), default=float('inf')))
 
@@ -120,7 +130,8 @@ def listing(root, *, include_pending=False, records=None):
         if saved.get('version') == row['version'] and (include_pending or saved.get('status') not in ('discarded', 'skipped')):
             reach = reachable_channels(root, row, saved)
             found.append({**saved, "private": saved.get("private", False) or row["private"], "channels": reach,
-                          # Written for a channel the person is not on: shown as a defect and never sent (#3312 C).
+                          # Written for a channel the person is not on: shown as a defect and never sent (#3312 C);
+                          # the next round rewrites it on the thread's own channel (#3348).
                           "channel_defect": saved.get('channel', 'mail') not in reach})
         elif include_pending:
             found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private', 'version')} |
@@ -147,6 +158,14 @@ def reachable_channels(root, row, saved):
     if CHAT_EVIDENCE['lark'].search(text):
         channels.append('lark')
     return channels
+
+
+def wrong_channel(root, row, saved):
+    """The chat a current, unsent draft was written for when this person can't be reached there; else None (#3348)."""
+    channel = saved.get('channel', 'mail')
+    if channel == 'mail' or saved.get('version') != row['version'] or saved.get('status') != 'prepared':
+        return None
+    return channel if channel not in reachable_channels(root, row, saved) else None
 
 
 def _reachable_or_refuse(root, row, saved, channel):

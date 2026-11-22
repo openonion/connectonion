@@ -254,8 +254,10 @@ def _sources_mapped(root) -> list[str]:
             continue
         done = summary(root, name)
         made = ", ".join(f"{n} {kind}" for kind, n in done["created"].items() if n) or "no new pages"
-        when = done["mapped_at"][:10] if done["mapped_at"] != "never" else "never mapped"
-        text = f"{when} · {made} · {done['to_investigate']} to investigate"
+        when = {"never": "never mapped", "earlier": f"mapped earlier · {done.get('pages', 0)} pages"}.get(
+            done["mapped_at"], done["mapped_at"][:10])
+        text = f"{when} · {made} · {done['to_investigate']} to investigate" + (
+            f" · {done['coverage']}" if done.get("coverage") else "")
         rows.append(rem_look.row(f"Source {name}", text + (f" · {done['error']}" if done.get("error") else "")))
         # How much of the source REM can read (#3353): a gap and its fix, never a silent shortfall.
         coverage = source_coverage(name, sub)

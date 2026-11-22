@@ -344,3 +344,13 @@ def test_a_status_command_without_a_next_line_is_caught():
 
 def test_the_status_commands_include_the_ones_2008_found():
     assert {"co auth status", "co whatsapp check"} <= set(audit.STATUS)
+
+
+def test_a_source_command_must_document_its_coverage_line():
+    # #3353: a source that can't read part of itself must say so; its page documents the coverage line.
+    page = ("Usage: co wechat [OPTIONS]\n\nRead your WeChat chats.\n\nExample:  co wechat\n")
+    found = {f.check for f in audit.check("co wechat", Page(0, page), {})}
+    assert "coverage" in found
+    documented = page.replace("Read your WeChat chats.", "Read your WeChat chats. It ends with a coverage line.")
+    assert "coverage" not in {f.check for f in audit.check("co wechat", Page(0, documented), {})}
+    assert "coverage" not in {f.check for f in audit.check("co mail", Page(0, page.replace("wechat", "mail")), {})}
