@@ -3427,7 +3427,6 @@
   .not-person, .is-person { min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent;
     color: var(--grey); font: inherit; font-size: var(--s-ui); cursor: pointer; white-space: nowrap; }
   .not-person:hover, .is-person:hover, .not-person:focus-visible, .is-person:focus-visible { color: var(--ink); background: var(--well); }
-  .hero-acts .not-person { display: block; margin: 4px 0 0 auto; }
   .contact-directory td .is-person { min-height: 44px; }
   /* Over the name cell's right end, so a row's names keep their width; shown on hover or focus. The sticky name
      column (.sheet .name) already anchors it; relative only where the cell isn't sticky, or the name would scroll away. */
@@ -11066,7 +11065,8 @@ function shellArg(value) { return "'" + String(value).replace(/'/g, "'\\''") + "
 Object.assign(UI.zh, { "Not a person": "不是人", "A person": "是人", "Moved out of People · {name}": "已移出人物 · {name}",
   "Back in People · {name}": "已回到人物 · {name}", "{n} agents and services found in mail": "邮件里的 {n} 个助理和服务",
   "Assistants, bots and services: their company's page says so, or you said so. They stay out of People.": "助理、机器人和服务：公司页面这么写，或者你这么说过。它们不进人物。",
-  "Not a person: an assistant, a bot or a service": "不是人：是助理、机器人或服务" });
+  "Not a person: an assistant, a bot or a service": "不是人：是助理、机器人或服务",
+  "This person": "这个人", "Put them back in People": "放回人物里", "An assistant, a bot or a service": "是助理、机器人或服务" });
 function recordEmails(r) {
   return [...new Set((String(facts(r).email || "").match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []).map(address => address.toLowerCase()))];
 }
@@ -11095,6 +11095,30 @@ function personMarkNotice(words, undo) {
   button.onclick = undo;
   document.body.appendChild(el("div", { id: "done-notice", class: "done-notice", role: "status" }, [words, " · ", button, " · ", t("Saved in notebook")]));
   button.focus({ preventScroll: true });
+}
+// The header ⋯ item on every person page (mail, WeChat only, both): 不是人, or 是人 once the page is set aside.
+// Same mark, same notice and Undo as the row button in People.
+function personMarkItem(r, close) {
+  const addresses = r && r.category === "people" ? recordMarkHandles(r) : [];
+  if (!liveHere() || !addresses.length || r.path === REM.owner) return null;
+  const aside = !!r.service;
+  const item = el("button", { type: "button", role: "menuitem", class: "person-mark", "data-mark": aside ? "person" : "not-person" },
+    [t(aside ? "A person" : "Not a person"), el("small", { text: t(aside ? "Put them back in People" : "An assistant, a bot or a service") })]);
+  item.onclick = async () => {
+    item.disabled = true;
+    if (!await savePersonMark(addresses, aside)) { item.disabled = false; return notSavedNotice(() => item.click(), null); }
+    r.service_rule ??= !!r.service;
+    r.service = !aside;
+    close?.();
+    render();
+    personMarkNotice(t(aside ? "Back in People · {name}" : "Moved out of People · {name}", { name: r.title }), async () => {
+      if (!await savePersonMark(addresses, null)) return notSavedNotice(() => {}, null);
+      r.service = r.service_rule;
+      document.getElementById("done-notice")?.remove();
+      render();
+    });
+  };
+  return item;
 }
 function notPersonButton(r, compact = false) {
   const addresses = recordMarkHandles(r);
@@ -11390,7 +11414,7 @@ function personHead(r) {
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
         el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late),
         pageTagRow(r, personSaid(r))]),
-      el("div", { class: "hero-acts" }, [recordActs(r), notPersonButton(r)])]),
+      el("div", { class: "hero-acts" }, [recordActs(r)])]),
     profileCard(r)]);
 }
 // What the person head already names (organisation, its full name, their units): the tag row and the card skip these.
@@ -11685,7 +11709,9 @@ function invMenu(r, s, paint, off) {
         [t(name), mode === "full" ? el("span", { class: "inv-default", text: " · " + t("default") }) : null, el("small", { text: t(says) + cost(mode) })]);
       item.onclick = () => { menu.open = false; invRun(r, mode, paint); };
       return item;
-    }), ...(r.category === "people" && REM.live ? [el("p", { class: "inv-h", text: t("Replies to this person") }), directSendItem(r)] : [])]));
+    }), ...(r.category === "people" && REM.live ? [el("p", { class: "inv-h", text: t("Replies to this person") }), directSendItem(r)] : []),
+    // 不是人 / 是人 lives in the header's ⋯ (#3231 header tidy; #3339): a lone grey word under 查看来源 pushed the page down.
+    ...(personMarkItem(r) ? [el("p", { class: "inv-h", text: t("This person") }), personMarkItem(r, () => { menu.open = false; })] : [])]));
   menu.onkeydown = event => { if (event.key === "Escape" && menu.open) { event.stopPropagation(); menu.open = false; menu.querySelector("summary").focus(); } };
   return menu;
 }
