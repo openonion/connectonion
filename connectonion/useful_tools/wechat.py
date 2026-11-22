@@ -162,8 +162,12 @@ def names(contact_conn: sqlite3.Connection) -> dict[str, str]:
 def verified_accounts(contact_conn: sqlite3.Connection) -> set[str]:
     """Usernames WeChat marks as verified (verify_flag set): official accounts, brands, companies and services.
 
-    On the owner's 4.1 contact table people carry verify_flag 0; a verified account carries a non-zero flag.
+    On the owner's 4.1 contact table people carry verify_flag 0; a verified account carries a non-zero flag. A
+    table without the column (another WeChat version) has no verified accounts to leave out, rather than no people.
     """
+    columns = {row[1] for row in contact_conn.execute("PRAGMA table_info(contact)")}
+    if "verify_flag" not in columns:
+        return set()
     return {row["username"] for row in contact_conn.execute("SELECT username FROM contact WHERE verify_flag != 0")}
 
 

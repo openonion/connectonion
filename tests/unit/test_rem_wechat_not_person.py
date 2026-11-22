@@ -127,3 +127,13 @@ def test_the_map_summary_puts_each_name_list_after_its_own_count():
     assert "not worth a page 10" in second and "Quinn" not in second and "not a person by your mark 1" in second
     assert "co rem investigate people --source wechat --new" in text
     assert "Dry run: nothing was written." in _map_summary(report, dry_run=True)
+
+
+def test_a_contact_table_without_verify_flag_still_yields_people(tmp_path):
+    from connectonion.useful_tools import wechat as engine
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE contact (username TEXT, remark TEXT, nick_name TEXT)")
+    conn.commit()
+    conn.close()
+    assert engine.verified_accounts(engine.open_readonly(path.read_bytes())) == set()
