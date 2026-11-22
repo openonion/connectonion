@@ -9,6 +9,7 @@ disagree with them. docs/cli/rem-tags.md is the contract.
 
 import re
 from collections import Counter
+from contextlib import contextmanager
 
 from .files import read_json, state_path, write_json
 
@@ -148,8 +149,42 @@ def counts(texts) -> Counter:
     return Counter(tag for text in texts for tag in page_tags(text))
 
 
+# One page build reads the notebook and writes none of it. Tag nodes asked for the whole-notebook tag scans once
+# per tag page, each reading every page: with every WeChat friend on a page (~1.8k people, #3347) that doubled the
+# build. `held` keeps each scan's answer for one build only, so the long-running Host never serves a stale one.
+_HELD: dict = {}
+
+
+@contextmanager
+def held(root):
+    key = str(root)
+    outer = key in _HELD
+    _HELD.setdefault(key, {})
+    try:
+        yield
+    finally:
+        if not outer:
+            _HELD.pop(key, None)
+
+
+def once(root, name: str, compute):
+    """`compute()`, or inside `held(root)` the answer this build already has."""
+    store = _HELD.get(str(root))
+    if store is None:
+        return compute()
+    if name not in store:
+        store[name] = compute()
+    return store[name]
+
+
 def vocabulary(root, records=None) -> dict:
     """Every tag with its count over the pages: {slug: {label, kind, aliases, count}}."""
+    if records is None:
+        return once(root, "vocabulary", lambda: _vocabulary(root, None))
+    return _vocabulary(root, records)
+
+
+def _vocabulary(root, records) -> dict:
     from .files import Notebook
     if records is None:
         book = Notebook(root)

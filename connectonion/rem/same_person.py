@@ -56,6 +56,40 @@ def _alike(one: dict, other: dict) -> str:
     return ""
 
 
+def _words(names: set[str]) -> set[str]:
+    return {word for name in names for word in re.findall(r"\w+", name) if len(word) > 1}
+
+
+def _close(roster: list[dict], mapped: dict) -> list[tuple[int, int]]:
+    """The index pairs (i < j) that can tie at all, in roster order, without comparing every pair.
+
+    A pair ties only through a shared name, one name's words all inside the other's, or an address one page
+    lists that the other was made from. So each page meets the pages sharing one of its names, the pages
+    holding its rarest word (a subset holds every word of the smaller set) and the page its addresses map
+    to. Same pairs as the full sweep; with every WeChat friend on a page (~1.8k people, #3347) the full
+    sweep was 1.6M comparisons on every status and page build.
+    """
+    from collections import defaultdict
+    names = [_names(person) for person in roster]
+    words = [_words(found) for found in names]
+    by_name, by_word = defaultdict(set), defaultdict(set)
+    for i in range(len(roster)):
+        for name in names[i]:
+            by_name[name].add(i)
+        for word in words[i]:
+            by_word[word].add(i)
+    where = {person["path"]: i for i, person in enumerate(roster)}
+    close = set()
+    for i, person in enumerate(roster):
+        near = set().union(*(by_name[name] for name in names[i])) if names[i] else set()
+        if words[i]:
+            near |= by_word[min(words[i], key=lambda word: (len(by_word[word]), word))]
+        near |= {where[mapped[email.casefold()]] for email in person["emails"]
+                 if mapped.get(email.casefold()) in where}
+        close.update((min(i, j), max(i, j)) for j in near if j != i)
+    return sorted(close)
+
+
 def candidates(root: Path, *, uninvestigated: bool | None = None) -> list[dict]:
     """Pairs of people pages that look alike and have not been judged, by code alone."""
     from .merge import aliases
@@ -69,16 +103,16 @@ def candidates(root: Path, *, uninvestigated: bool | None = None) -> list[dict]:
     new = {person["path"] for person in roster
            if uninvestigated is not None and "· not investigated yet" in Notebook(root).read(person["path"])}
     pairs = {}
-    for i, one in enumerate(roster):
-        for other in roster[i + 1:]:
-            key = "|".join(sorted([one["path"], other["path"]]))
-            shared = [email for email in one["emails"] if mapped.get(email.casefold()) == other["path"]] + [
-                email for email in other["emails"] if mapped.get(email.casefold()) == one["path"]]
-            why = (f"one page lists {shared[0]}, the address the other was made from" if shared else "") \
-                or _alike(one, other)
-            has_new = one["path"] in new or other["path"] in new
-            if why and (uninvestigated is None or has_new == uninvestigated) and _due(root, judged.get(key)):
-                pairs[key] = {"pages": key.split("|"), "why": why}
+    for i, j in _close(roster, mapped):
+        one, other = roster[i], roster[j]
+        key = "|".join(sorted([one["path"], other["path"]]))
+        shared = [email for email in one["emails"] if mapped.get(email.casefold()) == other["path"]] + [
+            email for email in other["emails"] if mapped.get(email.casefold()) == one["path"]]
+        why = (f"one page lists {shared[0]}, the address the other was made from" if shared else "") \
+            or _alike(one, other)
+        has_new = one["path"] in new or other["path"] in new
+        if why and (uninvestigated is None or has_new == uninvestigated) and _due(root, judged.get(key)):
+            pairs[key] = {"pages": key.split("|"), "why": why}
     return list(pairs.values())
 
 

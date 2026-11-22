@@ -62,6 +62,10 @@ def _names_of(text: str, record: str) -> set[str]:
 
 def pages_for_tags(root: Path) -> dict[str, str]:
     """{tag: the person, organisation or project page named for it}, by title, alias or file name."""
+    return tags.once(root, "pages_for_tags", lambda: _pages_for_tags(root))
+
+
+def _pages_for_tags(root: Path) -> dict[str, str]:
     book, index = Notebook(root), {}
     for category in PAGE_KINDS:
         for record in book.list(category):
@@ -114,6 +118,10 @@ def node_record(root: Path, slug: str) -> str:
 
 def members(root: Path) -> dict[str, list[str]]:
     """{tag: [records carrying it]}, a tag's own node excluded, in path order."""
+    return tags.once(root, "members", lambda: _members(root))
+
+
+def _members(root: Path) -> dict[str, list[str]]:
     book, found = Notebook(root), {}
     for record in book.list():
         for slug in tags.page_tags(book.read(record)):
