@@ -28,7 +28,9 @@ PREVIEW = "See you at the harbour on Friday"
 def _wren(root):
     from connectonion.rem import onboard
     from connectonion.rem.files import Notebook, state_path, write_json
-    Notebook(root).stub_person("people/wren-pike.md", "Wren Pike", ["wxid_wrenpike99"])
+    book = Notebook(root)
+    book.stub_person("people/wren-pike.md", "Wren Pike", ["wxid_wrenpike99"])
+    book.stub_person("people/ash-kiln.md", "Ash Kiln", ["ash@kiln.example", "wxid_ashkiln42"])   # mail and WeChat
     write_json(state_path(root, onboard.ACTIVITY), {"wxid_wrenpike99": {
         "last": (NOW - timedelta(days=1)).isoformat(), "mine": False, "n90": 12, "total": 40,
         "first": "2024-03-05T09:00:00+00:00", "preview": PREVIEW}})
@@ -68,7 +70,10 @@ def reader(request, tmp_path, monkeypatch):
 def test_the_header_says_the_last_exchange_the_count_and_since_when(reader):
     page, _ = reader
     meta = page.locator(".hero-meta").inner_text()
-    assert "12 messages in 90 days" in meta and "they said last" in meta and "chatting since" in meta and "2024" in meta
+    assert "12 messages in 90 days" in meta and "chatting since" in meta and "2024" in meta
+    assert "said last" not in meta                                   # who said last opens the preview line instead
+    assert page.locator(".hero-meta .hero-date").evaluate("node => getComputedStyle(node).whiteSpace") == "nowrap"
+    assert page.locator(".hero-preview .hero-preview-k").inner_text().strip() == "They said last:"
 
 
 def test_the_last_message_is_covered_by_default_and_readable_at_show_all(reader):
@@ -82,6 +87,10 @@ def test_the_last_message_is_covered_by_default_and_readable_at_show_all(reader)
     page.evaluate("() => setPrivacy('all')", isolated_context=False)
     page.wait_for_timeout(200)
     assert PREVIEW in page.locator(".hero-preview").inner_text()
+    # Readable, tinted, and no raw marker beside it: neither "[sensitive]" nor an English "sensitive" chip.
+    assert page.locator(".hero-preview .privacy-tag").count() == 0
+    assert "sensitive" not in page.locator("header.person-head").inner_text().lower()
+    assert page.locator(".hero-preview .private").evaluate("node => getComputedStyle(node).backgroundColor") != "rgba(0, 0, 0, 0)"
     page.evaluate("() => setPrivacy('public')", isolated_context=False)
     page.wait_for_timeout(200)
     assert page.locator(".hero-preview").count() == 0 or not page.locator(".hero-preview").first.is_visible()
@@ -93,3 +102,20 @@ def test_the_raw_wechat_id_is_not_on_the_page_and_copy_is_in_the_menu(reader):
     page.locator(".inv-more > summary").first.click()
     item = page.locator(".inv-menu .copy-wechat")
     assert item.count() == 1 and item.inner_text().strip() == "Copy WeChat ID"
+
+
+@pytest.mark.parametrize("record, copy", [("people/wren-pike.md", True), ("people/ash-kiln.md", True),
+                                          ("people/quinn-alder.md", False)])
+def test_this_person_keeps_not_a_person_beside_copy_wechat_id(reader, record, copy):
+    """#3341's 不是人 stays in ⋯ → This person on chat-only, mixed and mail pages; Copy WeChat ID joins it where
+    the page has a WeChat id. The mark is a live-reader action, so the page is made live as the Mac serves it."""
+    page, _ = reader
+    page.goto(BASE + "#r=" + record.replace("/", "%2F"))
+    page.wait_for_selector(".r4-name")
+    page.evaluate("() => { REM.live = true; render(); }", isolated_context=False)
+    page.wait_for_selector(".r4-name")
+    assert "wxid_" not in page.locator("header.person-head").inner_text()   # mixed pages too
+    page.locator(".inv-more > summary").first.click()
+    menu = page.locator(".inv-menu")
+    assert menu.locator(".person-mark[data-mark='not-person']").count() == 1
+    assert menu.locator(".copy-wechat").count() == (1 if copy else 0)
