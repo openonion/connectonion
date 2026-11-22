@@ -11614,6 +11614,22 @@ function wechatIds(r) {
     .split(/[,;]\s*/).map(h => h.trim()).filter(Boolean);
   return values.filter(h => /^wxid_|@openim$/i.test(h) || (wechatPage(r) && h && !/@/.test(h)));
 }
+// One part of a Handles or Also known as value that is a WeChat id: wxid_…, a WeCom …@openim, or on a WeChat page
+// a bare handle. Every card that shows a person's handles or aliases drops it (#3372: the fallback facts card of a
+// friend who knows no fact yet printed it twice on 1,009 pages, after #3374 had cleaned the profile card only).
+function wechatIdPart(r, part) {
+  const value = plainLine(String(part ?? "")).replace(/\s*\[[^\]]*\]/g, "").trim();
+  return !!value && (/^wxid_|@openim$/i.test(value) || (wechatPage(r) && !/@/.test(value)));
+}
+// A Handles or Also known as item without its WeChat-id parts; null when nothing readable is left. An alias is a
+// name and may be one bare word, so there only the page's own ids go, never every bare word.
+function withoutWechatIds(r, item, label) {
+  const ids = label === "Also known as" ? new Set(wechatIds(r).map(id => id.toLowerCase())) : null;
+  const drop = part => ids ? ids.has(plainLine(part).replace(/\s*\[[^\]]*\]/g, "").trim().toLowerCase())
+    || /^wxid_|@openim$/i.test(plainLine(part).trim()) : wechatIdPart(r, part);
+  const parts = String(item.value).split(/,\s*/).filter(part => part.trim() && !drop(part));
+  return parts.length ? { ...item, value: parts.join(", ") } : null;
+}
 function wechatCopyItem(r, close) {
   const ids = wechatIds(r);
   if (!ids.length) return null;
@@ -12058,7 +12074,7 @@ function profileCard(r) {
   // A raw WeChat id is not something to read (owner: "一串 wxid_ 开头的乱码"): it lives in ⋯ → 复制微信号 (#3372).
   // On a page the WeChat map made, or one with WeChat chats, a bare handle is a WeChat id too (#3346). One Handles
   // item can hold several ("ash@kiln.example, wxid_…"), so each part is checked, not the item.
-  const wechatPart = part => /^wxid_|@openim$/i.test(plainLine(part)) || (wechatPage(r) && !/@/.test(plainLine(part)));
+  const wechatPart = part => wechatIdPart(r, part);
   const readable = handles.map(item => ({ ...item, value: String(item.value).split(/,\s*/).filter(part => part.trim() && !wechatPart(part)).join(", ") }))
     .filter(item => item.value.trim());
   for (const item of readable.filter(once)) {
@@ -16017,10 +16033,19 @@ function factList(r) {
   const parsed = parseFacts(r);
   const order = [...labels, ...[...parsed.keys()].filter(l => !labels.includes(l))];
   const dl = el("dl", { class: "factlist" });
-  let filled = 0;
+  let filled = 0, idOnly = 0;
   const notFound = [];
   for (const label of order) {
-    const items = (parsed.has(label) ? parsed.get(label) : legacyFact(r, label)).filter(item => knownValue(item.value));
+    let items = (parsed.has(label) ? parsed.get(label) : legacyFact(r, label)).filter(item => knownValue(item.value));
+    if (r.category === "people" && (label === "Handles" || label === "Also known as") && items.length) {
+      items = items.map(item => withoutWechatIds(r, item, label)).filter(Boolean);
+      // Known, but only as the WeChat id ⋯ copies: neither a fact to count nor one "not found".
+      if (!items.length) { idOnly++; continue; }
+    }
+    // A WeChat friend's last chat is when you were last in touch: the header says it, so the card does not call it
+    // "not found" (#3372).
+    const chatDay = label === "Last contact" && !items.length && r.category === "people" && calendarDay(chatActivity(r)?.last || "");
+    if (chatDay) items = [{ value: chatDay, qualifier: t("WeChat"), citations: [], derived: true }];
     if (items.length) filled++;
     const missing = label === "Last contact" && mappedContact(r) && known(r).last
       ? "— map date shown above" : "— not found";
@@ -16039,7 +16064,7 @@ function factList(r) {
   }
   if (!filled && !(r.category === "people" && r.mail)) return null;
   const none = notFound.length ? el("p", { class: "fact-missing", title: notFound.join(" · "), text: t("{n} not found", { n: notFound.length }) + ": " + notFound.join(" · ") }) : null;
-  return panel("Facts", [el("p", { class: "fill mono", text: t("{n} of {m} known", { n: filled, m: order.length }) }), dl, none]);
+  return panel("Facts", [el("p", { class: "fill mono", text: t("{n} of {m} known", { n: filled, m: order.length - idOnly }) }), dl, none]);
 }
 function daysSince(day) {
   const today = calendarDay(REM.as_of || new Date().toISOString());
@@ -16238,7 +16263,8 @@ function contactStrip(r) {
   const org = /\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
   const orgRecord = org && byPath(org[1].replace(/^\.\.\//, ""));
   const what = orgRecord && (parseFacts(orgRecord).get("What they do") || [])[0];
-  const aka = (parsed.get("Also known as") || []).map(i => i.value).filter(v => !v.includes("@")).join("; ");
+  const aka = (parsed.get("Also known as") || []).map(i => withoutWechatIds(r, i, "Also known as")).filter(Boolean)
+    .map(i => i.value).filter(v => !v.includes("@")).join("; ");   // never a WeChat id (#3372)
   const rows = [["Email", value("Email")], ["Phone", value("Phone")], ["Also known as", aka],
     ["Company", company], ["Role", f.role ? String(f.role) : ""]].filter(([, v]) => knownValue(v));
   if (!rows.length) return null;

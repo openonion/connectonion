@@ -2149,6 +2149,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
       const listItems = () => [], threads = () => ({items: [], calm: false});
       const youify = text => text, inline = text => text, softBreaks = node => node, privateFallback = node => node;
       const changedValue = node => node, mappedContact = () => false, legacyFact = () => [], knownValue = Boolean;
+      const withoutWechatIds = (r, item) => item, chatActivity = () => null;  // WeChat ids: tested in the browser (#3372)
       const inCategory = () => [], orgName = page => page.title;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         get childNodes() { return this.children; },
