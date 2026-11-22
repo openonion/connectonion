@@ -400,6 +400,8 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),
+            # What the last night could not read, with its fix (#3353): Today shows it in one line.
+            "coverage_gaps": coverage_gaps(root) if local else [],
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
@@ -797,6 +799,11 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
     for old in os.listdir(_cache_dir()):
         if old.startswith(prefix) and old.endswith(tuple(BUILDS)) and old not in keep:
             (_cache_dir() / old).unlink(missing_ok=True)
+
+
+def coverage_gaps(root):
+    from .coverage import stored
+    return stored(root)
 
 
 def _release() -> str:

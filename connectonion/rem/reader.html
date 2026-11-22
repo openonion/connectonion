@@ -374,6 +374,8 @@
   .mail-actions .mail-write + .more-menu + .btn-act { margin-left: 0; }
   .mail-did { margin: 0; padding: 8px 16px 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .mail-defect { margin: 0; padding: 10px 16px; border-top: 1px solid var(--rule); color: var(--red); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .mail-redrafted { margin: 0; padding: 10px 16px; border-top: 1px solid var(--rule); color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .writer-defect { border-top: 0; border-bottom: 1px solid var(--rule); }
   .mail-defect .btn-line { margin-left: 6px; min-height: 32px; padding: 0 12px; border: var(--hair) solid var(--ink); border-radius: var(--r-pill);
     background: none; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
   .owner-slot.attention { animation: slot-attention var(--t-burn) var(--ease-out); border-radius: var(--radius); }
@@ -3766,6 +3768,9 @@
     font: var(--w-bold) var(--s-ui)/1.3 var(--font); cursor: pointer; }
   .approve-all:hover:not(:disabled) { background: var(--well); }
   .closed { display: flex; align-items: center; gap: 8px; padding: 4px 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .coverage-fix { white-space: nowrap; }
+  .coverage-gap { flex-wrap: wrap; }
+  .coverage-note { flex-basis: 100%; }
   .closed .ic { width: 15px; height: 15px; }
   .closed .link-btn { margin-left: auto; }
   #night-sheet .night-done h2 { display: none; }
@@ -4587,7 +4592,7 @@ const UI = {
     "Searching for relevant context": "正在查资料", "Context search completed": "资料查完了", "Context search failed": "查资料失败",
     "Using a provider tool": "正在用工具", "Provider tool completed": "工具用完了", "Provider tool failed": "工具失败了",
     "{agent} finished": "{agent} 做完了",
-    "{agent} stopped before finishing": "{agent} 没做完就停了",
+    "{agent} stopped before finishing": "{agent} 没做完就停了", "(+{n} more)": "（另有 {n} 个源）", "WeChat has {n}\u00a0chat databases it can't read yet ({read} of {found} read)": "微信还有 {n}\u00a0个聊天库读不了（已读 {read}/{found}）", "Many WeChat chats are still only on your phone": "微信里很多聊天还只在手机上", "About 2 minutes; you log in once in the WeChat window that opens": "约 2 分钟，需要在弹出的微信里登录一次", "Complete WeChat →": "补全微信 →", "Copied. Paste it into Terminal and run it: {command}": "已复制，在终端里粘贴运行：{command}", "Opened in Terminal: log in once in the WeChat window it opens": "已在终端打开：在弹出的微信里登录一次", "Move chat history from your phone →": "从手机迁移聊天记录 →", "On your phone: WeChat → Me → Settings → Chats → Chat history migration & backup": "在手机上：微信 → 我 → 设置 → 聊天 → 聊天记录迁移与备份", "Choose Migrate → to this computer, and pick the chats (or all)": "选「迁移 → 迁移到电脑」，勾选要迁移的聊天（或全部）", "Keep both on the same Wi-Fi until it finishes": "手机和电脑连同一个 Wi-Fi，等它迁完", "REM reads the new history at the next night run": "REM 会在下一次夜跑读入新的聊天记录",
     "See result": "看结果",
     "Draft with this reply": "用这个回复起草", "Retry": "重试", "Clear failed runs": "清除失败记录",
     "Reply draft prepared": "回复草稿已准备好", "Open reply draft": "查看回复草稿",
@@ -4743,6 +4748,9 @@ const UI = {
     "Answer REM's question first: {what}": "先回答 REM 的问题：{what}",
     "This reply was written for {channel}, but {name} can't be reached there.": "这封回复被写成了 {channel} 消息，但在 {channel} 上联系不到 {name}。",
     "Rewrite it as an email": "改写成邮件",
+    "REM rewrote this as an email: the earlier draft was written for {channel}, but {name} isn't on {channel}.": "REM 已改写为邮件：原草稿写成了 {channel}，但 {name} 没有 {channel}。",
+    "{channel} can't reach {name} · rewritten as an email it sends from {provider}": "{channel} 上联系不到 {name} · 改写成邮件后从 {provider} 发出",
+    "Rewrite it before sending": "改写后才能发送",
     "REM read the {date} message “{subject}” and drafted this reply.": "REM 读了 {date} 的〈{subject}〉，起草了这封回复。",
     "REM read the thread “{subject}” and drafted this reply.": "REM 读了〈{subject}〉这段往来，起草了这封回复。",
     "Reply to {name}": "回复 {name}",
@@ -7237,7 +7245,21 @@ function threadActions(entry, onPage = false, strip = false) {
 // and 重试. It used to close at once and leave a grey caption, and it refused any bracket in the letter while
 // REM's 【需要你：…】 sat in the text with nowhere to answer it, so Send looked dead (owner, 2026-11-22).
 const SLOT_SPLIT = /(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g;
-function openWriter(draft, who, onSend) {
+// Where a reply goes and whether it can honestly go there: the card and full screen read this one answer (#3348).
+// A draft written for a chat the person is not on is a defect (never sent); one REM already rewrote says so.
+function replyChannel(draft, name) {
+  const channel = draft.channel || "mail";
+  const chat = value => ({ lark: "Lark", whatsapp: "WhatsApp" }[value] || value);
+  const provider = draft.provider === "gmail" ? "Gmail" : "Outlook";
+  return { channel, defect: !!draft.channel_defect,
+    defectWords: t("This reply was written for {channel}, but {name} can't be reached there.", { channel: chat(channel), name }),
+    // While the channel can't send, the fix is the primary action and the footer says where it will go (#3348).
+    footer: t("{channel} can't reach {name} · rewritten as an email it sends from {provider}", { channel: chat(channel), name, provider }),
+    held: t("Rewrite it before sending"),
+    note: draft.redrafted_from && !draft.channel_defect
+      ? t("REM rewrote this as an email: the earlier draft was written for {channel}, but {name} isn't on {channel}.", { channel: chat(draft.redrafted_from), name }) : "" };
+}
+function openWriter(draft, who, onSend, onFix) {
   const to = mailbox(draft.to);
   // The letter is editable text with REM's open questions as chips in it, as on the card (#3312 F): a chip reads
   // the question in its own words until it is answered on the right, then the answer. Bracket text never shows.
@@ -7273,6 +7295,11 @@ function openWriter(draft, who, onSend) {
   // A chip deleted from the letter is a question the owner took out; one still there and unanswered holds Send.
   const unanswered = () => slots.filter(([, i]) => !fills[i] && chips[i].isConnected !== false);
   const did = el("p", { class: "writer-did", text: remDid(draft) });
+  const reach = replyChannel(draft, who?.title || mailbox(draft.to).name);
+  const fix = el("button", { type: "button", class: reach.defect ? "btn-act" : "btn-line", text: t("Rewrite it as an email") });
+  fix.onclick = () => { dialog.close(); onFix?.(); };
+  const band = reach.defect ? el("p", { class: "mail-defect writer-defect", role: "alert" }, [reach.defectWords, " ", fix])
+    : reach.note ? el("p", { class: "mail-redrafted writer-defect", role: "status", text: reach.note }) : null;
   const channel = draft.channel || "mail";
   const channelWord = channel === "mail" ? (draft.provider === "gmail" ? "Gmail" : "Outlook") : t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel);
   // The title bar: who it goes to and on what, × at the top right; on a phone 取消 top left and 发送 top right.
@@ -7282,13 +7309,14 @@ function openWriter(draft, who, onSend) {
     el("h2", { text: t("Reply to {name}", { name: who?.title || to.name }) + " · " + channelWord }), sendTop, close]);
   const dialog = el("dialog", { class: "writer " + (channel === "mail" ? "provider-" + (draft.provider || "mail") : "chat"), "aria-label": t("Reply draft") }, [
     title,
-    el("div", { class: "writer-letter" }, [
+    el("div", { class: "writer-letter" }, [band,
       el("div", { class: "mail-head" }, [
         el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v", text: (who?.title || to.name) + (channel === "mail" ? " <" + to.address + ">" : " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || "")) })]),
         channel === "mail" && draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
         channel === "mail" ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })]) : null]),
       body,
-      el("div", { class: "writer-actions" }, [send, el("span", { class: "mail-note", text: channel === "mail"
+      el("div", { class: "writer-actions" }, [send, ...(reach.defect ? [el("span", { class: "choose-hint", text: reach.held })] : []),
+        el("span", { class: "mail-note", text: reach.defect ? reach.footer : channel === "mail"
         ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" })
         // A Lark or WhatsApp reply leaves through that chat, as the card says, never through the mailbox it answers.
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]),
@@ -7307,6 +7335,8 @@ function openWriter(draft, who, onSend) {
   const mayLeave = () => !dirty() || confirm(t("Discard your changes to this reply?"));
   const leave = () => { if (mayLeave()) dialog.close(); };
   send.onclick = async () => {
+    // The same rule as the card: a reply written for a chat this person is not on never leaves (#3348).
+    if (reach.defect) { notice.textContent = reach.defectWords; fix.focus(); return; }
     const left = unanswered();
     if (left.length) {
       notice.textContent = t("Answer REM's question on the right first: {what}", { what: slotWhat(left[0][0]) });
@@ -7329,6 +7359,8 @@ function openWriter(draft, who, onSend) {
   };
   close.onclick = cancel.onclick = leave;
   sendTop.onclick = () => send.onclick();
+  // Paused while the channel can't send: quiet, not the boldest thing on the sheet (#3348).
+  if (reach.defect) for (const button of [send, sendTop]) button.className = button.className.replace("btn-act", "btn-quiet");
   // Esc is the dialog's own cancel; a changed letter asks once before it goes.
   dialog.addEventListener("cancel", event => { if (!mayLeave()) event.preventDefault(); });
   // A click on the dimmed page outside the letter lands on the dialog element itself.
@@ -7459,6 +7491,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
   const write = el("button", { type: "button", class: "ibtn mail-write", "aria-label": t("Write full screen"), title: t("Write full screen") + " · R", "data-key": "r" }, [icon("expand")]);
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
+  const reach = replyChannel(draft, who?.title || to.name);
   // Only channels this person can be reached on (#3302): the Host lists them from the person's page. A switch
   // says what it does, and while REM rewrites, the pill itself says so.
   const offered = (draft.channels?.length ? draft.channels : [channel]).filter(name => ["mail", "lark", "whatsapp"].includes(name));
@@ -7476,16 +7509,17 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   // Triage waits in ⋯ beside Send (#3312 B): 标为完成, 暂不处理, 忽略, 交给 Codex / Claude, and editing in the mail app.
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
     el("div", { class: "menu" }, [extra.triage || null, ...(channel === "mail" ? [edit] : []), extra.triage ? null : skip, directSendItem(who || person)].filter(Boolean))]);
-  const actions = el("div", { class: "mail-actions" }, [hint,
-      el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
+  const actions = el("div", { class: "mail-actions" }, [hint, ...(reach.defect ? [el("span", { class: "choose-hint", text: reach.held })] : []),
+      el("span", { class: "mail-note", text: reach.defect ? reach.footer : channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), write, more, send]);
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
   let letter;
   // Rewritten for a chat this person is not on: said so, never sent, and mail offered (#3312 C).
-  const chatName = { lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel;
-  const defectWords = t("This reply was written for {channel}, but {name} can't be reached there.", { channel: chatName, name: who?.title || to.name });
+  const defectWords = reach.defectWords;
   const backToMail = el("button", { type: "button", class: "btn-line", text: t("Rewrite it as an email") });
-  const defect = draft.channel_defect ? el("p", { class: "mail-defect", role: "alert" }, [defectWords, " ", backToMail]) : null;
+  if (reach.defect) { backToMail.className = "btn-act"; send.className = "btn-quiet"; }
+  const defect = reach.defect ? el("p", { class: "mail-defect", role: "alert" }, [defectWords, " ", backToMail])
+    : reach.note ? el("p", { class: "mail-redrafted", role: "status", text: reach.note }) : null;
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
@@ -7580,7 +7614,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   };
   backToMail.onclick = () => run("redraft", undefined, "mail");
   send.onclick = () => {
-    if (draft.channel_defect) { status.textContent = defectWords; backToMail.focus(); return; }
+    if (reach.defect) { status.textContent = defectWords; backToMail.focus(); return; }
     const body = filled();
     if (body === null) {
       const open = parts.findIndex((part, i) => isSlot(part) && !fills[i]), first = rowAt[open];
@@ -7594,7 +7628,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   };
   write.onclick = () => {
     const base = filled() ?? draft.body;
-    openWriter({ ...draft, body: base, ask: extra.ask }, who, body => deliver(body ?? (base === draft.body ? undefined : base)));
+    openWriter({ ...draft, body: base, ask: extra.ask }, who, body => deliver(body ?? (base === draft.body ? undefined : base)), () => backToMail.click());
   };
   edit.onclick = () => run("open");
   skip.onclick = () => {
@@ -10830,7 +10864,44 @@ function nightSummary(runs, marks) {
 // The side column: what others owe and what can be approved at once, what REM did overnight. 「关于 X，有什么值得
 // 记住？」 left Today in sprint 14: it picked a page REM already knew well, gave no reason and took no answer.
 function todaySide(counts) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine()].filter(Boolean));
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine(), coverageLine()].filter(Boolean));
+}
+// What last night could not read, and one button that fixes it (#3353). Plain words, not internals (art director):
+// "微信还有 10 个聊天库读不了（已读 2/12）". A key capture needs the owner to log into a WeChat copy, so the
+// button opens his Terminal running it; a Host in launchd's Background session (#3317) can't open windows, so
+// then it copies the command and says so. The phone-migration case opens the steps instead.
+function coverageLine() {
+  const gaps = REM.coverage_gaps || [], gap = gaps[0];
+  if (!gap) return null;
+  const more = gaps.length - 1, unread = Math.max((gap.found || 0) - (gap.read || 0), 0);
+  const said = gap.fix_kind === "key_capture"
+    ? t("WeChat has {n}\u00a0chat databases it can't read yet ({read} of {found} read)", { n: unread, read: gap.read, found: gap.found })
+    : t("Many WeChat chats are still only on your phone");
+  const note = el("span", { class: "meta coverage-note", text: gap.fix_kind === "key_capture"
+    ? t("About 2 minutes; you log in once in the WeChat window that opens") : "" });
+  let action;
+  if (gap.fix_kind === "key_capture") {
+    action = el("button", { type: "button", class: "link-btn coverage-fix", text: t("Complete WeChat →") });
+    const copy = command => {
+      navigator.clipboard?.writeText(command);
+      note.textContent = t("Copied. Paste it into Terminal and run it: {command}", { command });
+    };
+    action.onclick = async () => {
+      if (!liveHere()) return copy(gap.fix);
+      action.disabled = true;
+      const reply = await hostPost("/rem/source-fix", { fix: "key_capture" });
+      action.disabled = false;
+      if (reply.ok && reply.opened) note.textContent = t("Opened in Terminal: log in once in the WeChat window it opens");
+      else copy(reply.command || gap.fix);
+    };
+  } else {
+    action = el("details", { class: "coverage-steps" }, [el("summary", { class: "link-btn coverage-fix", text: t("Move chat history from your phone →") }),
+      el("ol", {}, [t("On your phone: WeChat → Me → Settings → Chats → Chat history migration & backup"),
+        t("Choose Migrate → to this computer, and pick the chats (or all)"), t("Keep both on the same Wi-Fi until it finishes"),
+        t("REM reads the new history at the next night run")].map(step => el("li", { text: step })))]);
+  }
+  return el("div", { class: "closed coverage-gap", role: "status" }, [icon("ellipsis"),
+    el("span", { class: "coverage-said" }, [said + (more > 0 ? " " + t("(+{n} more)", { n: more }) : "")]), action, note]);
 }
 // What is next, on the first screen beside the cards (rc34 hunt: the calendar sat ~989px down). The cards stay
 // first; this is the calendar's head, not a second calendar: it reuses agendaEntries and agDetail.

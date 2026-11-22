@@ -84,3 +84,11 @@ def test_the_chat_reader_never_drops_a_database_without_a_record():
     body = source[source.index("def all_messages"):]
     body = body[:body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
     assert not SKIP.search(body), "a database is skipped without being recorded (#3353)"
+
+
+def test_an_unreadable_address_book_is_a_gap(tmp_path, monkeypatch):
+    storage = _storage(tmp_path, monkeypatch, keyed=1, unkeyed=0)
+    (storage / "contact").mkdir()
+    _sqlcipher(storage / "contact" / "contact.db", lambda c: c.execute("CREATE TABLE contact (username TEXT)"))
+    coverage = wechat.message_coverage(storage)
+    assert any(s["item"] == "contact.db" and s["reason"] == wechat.NO_KEY for s in coverage["skipped"])
