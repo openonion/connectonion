@@ -213,7 +213,11 @@ def _map_summary(report: dict, dry_run: bool) -> str:
             lines.append("  " + " · ".join(rest))
             if out["create"] and kind == "people":
                 made.append(name)
-    from ...rem.onboard import sync_hint
+    from ...rem.onboard import coverage, sync_hint
+    for kinds in report.values():
+        for out in kinds.values():
+            if found := coverage(out):
+                lines.append(found)   # the address book against the chats found (#3347)
     hint = next((h for kinds in report.values() for out in kinds.values() if (h := sync_hint(out))), "")
     if hint:
         lines.append(hint)  # once: few of the owner's WeChat friends have chats on this Mac (#3347)

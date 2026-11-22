@@ -225,6 +225,14 @@ def plan(root: Path, source_rows: list[dict], kinds: tuple, *, write: bool) -> d
     return result
 
 
+def coverage(out: dict) -> str:
+    """The address book against what was found (#3347): "微信好友 1,659 · 找到聊天 1,428 · 还缺 231"."""
+    friends, chats = out.get("friends", 0), out.get("chats", 0)
+    if not friends:
+        return ""
+    return f"微信好友 {friends:,} · 找到聊天 {chats:,} · 还缺 {friends - chats:,}"
+
+
 def sync_hint(out: dict) -> str:
     """One line when WeChat for Mac holds chats for few of the owner's friends: how to bring the rest over."""
     friends, chats = out.get("friends", 0), out.get("chats", 0)
@@ -354,7 +362,8 @@ def summary(root: Path, name: str) -> dict:
     asked = read_json(state_path(root, ASKED), {})
     resting = [record for record, entry in asked.items() if entry.get("source") == name and entry.get("material") is False]
     waiting = [record for record in waiting if record not in set(resting)]
-    hint = sync_hint(done.get("chats", {}))
+    hint, found = sync_hint(done.get("chats", {})), coverage(done.get("chats", {}))
     return {"mapped_at": done.get("mapped_at") or "never", "created": done.get("created", {}),
-            "to_investigate": len(waiting), **({"no_chats_yet": len(resting)} if resting else {}),
+            "to_investigate": len(waiting), **({"coverage": found} if found else {}),
+            **({"no_chats_yet": len(resting)} if resting else {}),
             **({"hint": hint} if hint else {}), **({"error": done["error"]} if done.get("error") else {})}

@@ -154,7 +154,7 @@ def _wechat_streams():
     known = engine.names(engine.open_readonly(engine.decrypt_db(db_storage / "contact" / "contact.db",
                                                                 engine.key_for(db_storage / "contact" / "contact.db"))))
     other, mine = [], []
-    for row in engine.all_messages(db_storage, known):
+    for row in engine.every_message(db_storage, known):
         (mine if row["sender"] == owner else other).append(row)
     return (("other", other), ("user", mine))
 
@@ -183,7 +183,7 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
         return []
     owner = engine.owner_username(db_storage)
     counts = {}
-    for row in engine.all_messages(db_storage, known):
+    for row in engine.every_message(db_storage, known):
         chat = row["chat"]
         # A verified account (verify_flag set: a brand, a company or a service) is not a person (#3339).
         if not _one_to_one(chat) or chat == owner or chat in verified:

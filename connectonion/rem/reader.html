@@ -5270,6 +5270,7 @@ const UI = {
     "{n} WeChat friends with no chats yet": "微信好友 · 暂无聊天记录 {n} 位",
     "In your WeChat address book, with no chats on this Mac yet. REM investigates each one once a chat or a mail arrives.": "在你的微信通讯录里，这台 Mac 上还没有和他们的聊天记录。一有聊天或邮件，REM 就会调查。",
     "Find a friend…": "查找好友…",
+    "No chats yet": "暂无聊天",
     "WeChat friends table": "微信好友表",
     "{n} possible contacts are held for review, outside this list.": "{n} 位可能的联系人待审核，暂未列入此表。",
     "{n} service or institutional senders are excluded from People.": "已排除 {n} 个服务或机构发件人。",
@@ -12217,7 +12218,8 @@ function friendDirectory() {
     const needle = find.value.trim().toLowerCase();
     const matched = friends.filter(r => !needle || r.title.toLowerCase().includes(needle));
     tbody.textContent = "";
-    for (const r of matched.slice(0, limit)) tbody.appendChild(el("tr", {}, [el("td", {}, [el("a", { href: href(r), text: r.title })])]));
+    for (const r of matched.slice(0, limit)) tbody.appendChild(el("tr", {}, [el("td", { class: "candidate-name" }, [el("a", { href: href(r), text: r.title })]),
+      el("td", { class: "candidate-memory", text: t("No chats yet") })]));
     more.hidden = matched.length <= limit;
   };
   find.oninput = () => { limit = 100; draw(); };

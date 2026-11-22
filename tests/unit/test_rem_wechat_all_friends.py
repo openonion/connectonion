@@ -174,3 +174,59 @@ def test_same_person_finds_the_same_pairs_without_comparing_every_pair():
     close = same_person._close(roster, mapped)
     assert [(i, j) for i, j in close if tie(roster[i], roster[j])] == brute
     assert len(close) < len(roster) * (len(roster) - 1) // 2
+
+
+def _fts_db(path):
+    """WeChat's full-text index as message_fts.db stores it: content tables c0..c6 plus name2id."""
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE name2id (username TEXT)")
+    conn.executemany("INSERT INTO name2id (rowid, username) VALUES (?, ?)",
+                     [(1, "wxid_quinn"), (2, "wxid_ines"), (3, "wxid_owner"), (4, "99@chatroom"), (5, "wxid_crowd")])
+    conn.execute("CREATE TABLE message_fts_v4_0_content (id INTEGER PRIMARY KEY, c0, c1, c2, c3, c4, c5, c6)")
+    conn.executemany("INSERT INTO message_fts_v4_0_content (c0, c1, c2, c3, c4, c5, c6) VALUES (?, ?, ?, ?, ?, ?, ?)", [
+        ("周三见", 7, 7000, 1, 1, 1, 1763000000),            # Quinn, also in message_0.db (local id 7)
+        ("好的", 8, 8000, 1, 1, 3, 1763000100),              # the owner to Quinn, only in the index
+        ("下周有空吗", 1, 1000, 1, 2, 2, 1763000200),         # Ines: history only the index holds
+        ("", 2, 2000, 3, 2, 3, 1763000300),                   # a picture to Ines
+        ("wxid_crowd:\n大家好", 3, 3000, 1, 4, 5, 1763000400)])  # a group line
+    conn.commit()
+    conn.close()
+
+
+def test_the_full_text_index_supplies_chats_the_message_databases_cannot(tmp_path, monkeypatch):
+    from connectonion.useful_tools import wechat as engine
+    (tmp_path / "message").mkdir()
+    _fts_db(tmp_path / "message" / "message_fts.db")
+    monkeypatch.setattr(engine, "key_for", lambda path: "x")
+    monkeypatch.setattr(engine, "decrypt_db", lambda path, key: path.read_bytes())
+    monkeypatch.setattr(engine, "all_messages", lambda storage, known: [
+        {"id": "7", "chat": "wxid_quinn", "chat_name": "Quinn Harbour", "at": "", "text": "周三见",
+         "sender": "wxid_quinn", "sender_name": "Quinn Harbour", "kind": "text"}])
+    fts = engine.fts_messages(tmp_path, {"wxid_quinn": "Quinn Harbour"})
+    assert len(fts) == 5
+    group = next(row for row in fts if row["chat"] == "99@chatroom")
+    assert (group["sender"], group["text"]) == ("wxid_crowd", "大家好")
+    assert next(row for row in fts if row["id"] == "2")["text"] == "[图片]"
+    rows = engine.every_message(tmp_path, {})
+    assert len(rows) == 5   # Quinn's local id 7 came from message_0.db; the index's copy is dropped
+    assert sorted((row["chat"], row["id"]) for row in rows if row["chat"] != "99@chatroom") == [
+        ("wxid_ines", "1"), ("wxid_ines", "2"), ("wxid_quinn", "7"), ("wxid_quinn", "8")]
+
+
+def test_a_friend_whose_chats_only_the_index_holds_is_counted_and_read_first(tmp_path, monkeypatch):
+    from connectonion.useful_tools import wechat as engine
+    _engine(tmp_path, monkeypatch, _said(("wxid_quinn", "Quinn Harbour")))
+    monkeypatch.setattr(engine, "fts_messages", lambda storage, known: [
+        {"id": "1", "chat": "wxid_ines", "chat_name": "Ines Vale", "sender": "wxid_ines"},
+        {"id": "2", "chat": "wxid_ines", "chat_name": "Ines Vale", "sender": "wxid_owner"}])
+    people = {row["address"]: row for row in chat.wechat_people()}
+    assert (people["wxid_ines"]["sent"], people["wxid_ines"]["received"]) == (1, 1)
+    assert people["wxid_theo"]["mails"] == 0
+
+
+def test_the_map_reports_the_address_book_against_the_chats_found():
+    from connectonion.cli.commands.rem_commands import _map_summary
+    report = {"wechat": {"people": {"create": [], "merge": [], "known": 0, "skip": 0, "friends": 1659, "chats": 1428}}}
+    text = _map_summary(report, dry_run=True)
+    assert "微信好友 1,659 · 找到聊天 1,428 · 还缺 231" in text
+    assert "迁移到电脑" not in text   # most friends have chats: no migration nag

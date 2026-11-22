@@ -254,7 +254,8 @@ def _sources_mapped(root) -> list[str]:
         done = summary(root, name)
         made = ", ".join(f"{n} {kind}" for kind, n in done["created"].items() if n) or "no new pages"
         when = done["mapped_at"][:10] if done["mapped_at"] != "never" else "never mapped"
-        text = f"{when} · {made} · {done['to_investigate']} to investigate"
+        text = f"{when} · {made} · {done['to_investigate']} to investigate" + (
+            f" · {done['coverage']}" if done.get("coverage") else "")
         rows.append(rem_look.row(f"Source {name}", text + (f" · {done['error']}" if done.get("error") else "")))
     return rows
 

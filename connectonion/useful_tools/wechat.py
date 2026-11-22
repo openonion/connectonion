@@ -171,6 +171,63 @@ def verified_accounts(contact_conn: sqlite3.Connection) -> set[str]:
     return {row["username"] for row in contact_conn.execute("SELECT username FROM contact WHERE verify_flag != 0")}
 
 
+FTS_DB = "message_fts.db"
+FTS_TABLES = 4   # message_fts_v4_0 .. _3
+
+
+def fts_messages(db_storage: Path, known: dict) -> list[dict]:
+    """Every message in WeChat's full-text index, as all_messages' rows. Read-only, in memory.
+
+    `message/message_fts.db` opens with the keys already captured and holds the text of chats whose own
+    message_N.db has no key, such as history migrated from the phone (#3347: on the owner's machine 597,618
+    messages, 1,428 of 1,659 friends, against 24 from the one keyed message_0.db). Its rows are read from the
+    FTS5 content tables (c0..c6 = acontent, message_local_id, sort_seq, local_type, session_id, sender_id,
+    create_time), which need no tokenizer; ids resolve through this database's own name2id. [] without a key.
+    """
+    from datetime import datetime, timezone
+    path = Path(db_storage) / "message" / FTS_DB
+    key = key_for(path) if path.is_file() else None
+    if not key:
+        return []
+    try:
+        conn = open_readonly(decrypt_db(path, key))
+    except (WrongKeyError, sqlite3.DatabaseError):
+        return []
+    name = {r[0]: r[1] for r in conn.execute("SELECT rowid, username FROM name2id")}
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    rows = []
+    for i in range(FTS_TABLES):
+        table = f"message_fts_v4_{i}_content"
+        if table not in tables:
+            continue
+        for content, local_id, _seq, local_type, session, sender_id, created in conn.execute(
+                f'SELECT c0, c1, c2, c3, c4, c5, c6 FROM "{table}"'):
+            chat = name.get(session)
+            if not chat:
+                continue
+            kind = int(local_type or 0) & 0xFFFF
+            text = str(content or "") if kind in (1, 10000) else KINDS.get(kind, "[其他]")
+            sender = name.get(sender_id, "")
+            if chat.endswith("@chatroom") and ":\n" in text[:80]:
+                sender, text = text.split(":\n", 1)
+            rows.append({"id": str(local_id), "chat": chat, "chat_name": known.get(chat, chat),
+                         "at": datetime.fromtimestamp(int(created or 0), timezone.utc).isoformat(),
+                         "text": text.strip(), "sender": sender, "sender_name": known.get(sender, sender),
+                         "kind": "text" if kind == 1 else "system" if kind == 10000 else "media"})
+    return rows
+
+
+def every_message(db_storage: Path, known: dict) -> list[dict]:
+    """The keyed message_N.db rows (full rows, media types), then the full-text index for the rest.
+
+    One message is one row: an FTS row is dropped when a message database already gave that chat's local id.
+    """
+    rows = all_messages(db_storage, known)
+    seen = {(row["chat"], row.get("id")) for row in rows}
+    rows += [row for row in fts_messages(db_storage, known) if (row["chat"], row.get("id")) not in seen]
+    return rows
+
+
 def friends(contact_conn: sqlite3.Connection) -> list[dict]:
     """The owner's address book: contacts with local_type 1, as {username, remark, nick_name}.
 
