@@ -22,6 +22,7 @@ conversation rather than from a week of several interleaved ones.
 import hashlib
 import json
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError
@@ -182,15 +183,22 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
     except Exception:
         return []
     owner = engine.owner_username(db_storage)
+    # When the owner last talked with each friend, and how much lately: People's columns read these (#3346).
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
     counts = {}
     for row in engine.every_message(db_storage, known):
         chat = row["chat"]
         # A verified account (verify_flag set: a brand, a company or a service) is not a person (#3339).
         if not _one_to_one(chat) or chat == owner or chat in verified:
             continue
-        c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0})
+        c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0,
+                                     "last": "", "last_mine": None, "n90": 0})
         c["mails"] += 1
         c["sent" if row["sender"] == owner else "received"] += 1
+        at = row.get("at") or ""
+        if at >= c["last"]:
+            c["last"], c["last_mine"] = at, row["sender"] == owner
+        c["n90"] += at >= cutoff
     friend_ids = {f["username"] for f in book}
     remarked = {f["username"] for f in book if f["remark"].strip()}
     people = []
@@ -201,7 +209,7 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
             continue
         people.append({"address": chat, "name": name, "mails": c["mails"], "sent": c["sent"],
                        "received": c["received"], "kind": "wechat", "friend": chat in friend_ids,
-                       "remark": chat in remarked})
+                       "remark": chat in remarked, "last": c["last"], "last_mine": c["last_mine"], "n90": c["n90"]})
     # The rest of the address book: a friend with no chat on this Mac is still someone the owner knows (#3347).
     for f in book:
         chat, name = f["username"], (f["remark"] or f["nick_name"]).strip()

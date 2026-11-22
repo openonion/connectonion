@@ -230,3 +230,26 @@ def test_the_map_reports_the_address_book_against_the_chats_found():
     text = _map_summary(report, dry_run=True)
     assert "微信好友 1,659 · 找到聊天 1,428 · 还缺 231" in text
     assert "迁移到电脑" not in text   # most friends have chats: no migration nag
+
+
+def test_each_chat_says_when_you_last_talked_who_wrote_last_and_how_much_lately(tmp_path, monkeypatch):
+    # People's columns read these (#3346): the later of mail and WeChat is the last contact.
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    said = [{"chat": "wxid_quinn", "chat_name": "Quinn Harbour", "sender": "wxid_quinn", "at": (now - timedelta(days=200)).isoformat()},
+            {"chat": "wxid_quinn", "chat_name": "Quinn Harbour", "sender": "wxid_quinn", "at": (now - timedelta(days=10)).isoformat()},
+            {"chat": "wxid_quinn", "chat_name": "Quinn Harbour", "sender": "wxid_owner", "at": (now - timedelta(days=2)).isoformat()}]
+    _engine(tmp_path, monkeypatch, said)
+    quinn = next(row for row in chat.wechat_people() if row["address"] == "wxid_quinn")
+    assert quinn["last"] == said[-1]["at"] and quinn["last_mine"] is True and quinn["n90"] == 2
+
+
+def test_the_map_keeps_chat_activity_by_page_for_the_reader(tmp_path, monkeypatch):
+    rows = [{**row, "last": "2026-11-20T10:00:00+00:00" if row["address"] == "wxid_quinn" else "",
+             "last_mine": False, "n90": 6 if row["address"] == "wxid_quinn" else 0} for row in _rows()]
+    monkeypatch.setattr("connectonion.rem.chat.wechat_people", lambda *a, **k: rows)
+    onboard.run_due(tmp_path, SUBS, night=True)
+    found = onboard.activity(tmp_path)
+    assert len(found) == 1   # only the friend with chats
+    (record, entry), = found.items()
+    assert "Quinn" in Notebook(tmp_path).read(record) and (entry["n90"], entry["mine"]) == (6, False)

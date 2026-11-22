@@ -217,12 +217,41 @@ def plan(root: Path, source_rows: list[dict], kinds: tuple, *, write: bool) -> d
     for kind in KIND_WORDS:
         if kind in kinds:
             result[kind] = APPLY[kind](notebook, [r for r in source_rows if ROW_KIND.get(r.get("kind")) == kind], write)
+    if write and any("last" in r for r in source_rows):
+        record_activity(root, source_rows)
     friends = [r for r in source_rows if r.get("friend")]
     if "people" in result and friends:
         # How much of the address book this machine holds chats for: the map says how to sync more (#3347).
         result["people"]["friends"] = len(friends)
         result["people"]["chats"] = sum(1 for r in friends if r.get("sent", 0) + r.get("received", 0))
     return result
+
+
+ACTIVITY = "wechat-activity.json"   # per chat handle: when the owner last talked, who wrote last, 90-day count
+
+
+def record_activity(root: Path, source_rows: list[dict]) -> None:
+    """Keep each chat handle's activity where the reader finds it, so People sorts WeChat people by when the owner
+    actually last talked with them (#3346). Rewritten by every map and night; a handle with no chat is left out."""
+    from .files import write_json
+    write_json(state_path(root, ACTIVITY), {
+        row["address"]: {"last": row["last"], "mine": row.get("last_mine"), "n90": row.get("n90", 0),
+                         "total": row.get("sent", 0) + row.get("received", 0)}
+        for row in source_rows if row.get("last")})
+
+
+def activity(root: Path) -> dict:
+    """{people record: chat activity} for the pages that carry a chat handle with messages (#3346)."""
+    found = read_json(state_path(root, ACTIVITY), {})
+    if not found:
+        return {}
+    by_handle, _ = _roster(Notebook(root))
+    out = {}
+    for handle, entry in found.items():
+        record = by_handle.get(handle.casefold())
+        if record and entry.get("last", "") > out.get(record, {}).get("last", ""):
+            out[record] = entry
+    return out
 
 
 def coverage(out: dict) -> str:
