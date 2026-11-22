@@ -31,12 +31,13 @@ def test_reader_person_lead_keeps_english_punctuation_and_private_passages(text)
     """The full memory now retains the complete intro, including its privacy markup."""
     result = run_js(['markdown', 'inline', 'privatePassages', 'pageWords'], r'''
       const UNKNOWN_TEXT = /^Unknown$/, uiLanguage = 'en';
-      const esc = value => value, youify = value => value;
+      const esc = value => value, youify = value => value, t = value => value;
       const tetherCitations = value => value, uncertainCitations = value => value, quoteSpans = value => value;
       console.log(JSON.stringify(markdown(''' + json.dumps(text) + r''', 'people/mara.md')));
     ''')
     plain = re.sub(r'<[^>]+>', '', result)
-    assert plain == text.replace('[personal]', 'personal')
+    # The chip prints the reader's word for the level (#3374), never the raw "[personal]" marker.
+    assert plain == text.replace('[personal]', 'Personal passage')
     if '[personal]' in text:
         assert '<span class="private" data-level="personal">秘密信息' in result
         assert result.startswith('<p>公开介绍。')

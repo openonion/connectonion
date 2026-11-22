@@ -171,6 +171,13 @@ def usable_name(text: str) -> bool:
     return any(unicodedata.category(ch)[0] in "LN" and ch not in _FILLERS for ch in text or "")
 
 
+def preview_line(text: str, limit: int = 80) -> str:
+    """One line of a message for a page header: whitespace collapsed, markdown brackets dropped (so a pasted "[1]" or
+    "[personal]" is never read as a citation or a privacy mark), cut at `limit` characters."""
+    line = " ".join(str(text).replace("[", "").replace("]", "").split())
+    return line if len(line) <= limit else line[:limit - 1].rstrip() + "…"
+
+
 def wechat_title(username: str, *names: str) -> str:
     """The first usable of the owner's remark and the contact's nickname; else a plain placeholder with a short
     hint, never the raw id. "" when the contact has no name at all (left out, as before)."""
@@ -216,12 +223,16 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
         if not _one_to_one(chat) or chat == owner or chat in verified:
             continue
         c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0,
-                                     "last": "", "last_mine": None, "n90": 0})
+                                     "last": "", "last_mine": None, "n90": 0, "first": "", "preview": ""})
         c["mails"] += 1
         c["sent" if row["sender"] == owner else "received"] += 1
         at = row.get("at") or ""
         if at >= c["last"]:
             c["last"], c["last_mine"] = at, row["sender"] == owner
+            # What was last said, for the page header before any investigation (#3372); the reader curtains it.
+            c["preview"] = preview_line(row.get("text") or "")
+        if at and (not c["first"] or at < c["first"]):
+            c["first"] = at
         c["n90"] += at >= cutoff
     friend_ids = {f["username"] for f in book}
     remarked = {f["username"] for f in book if f["remark"].strip()}
@@ -235,7 +246,8 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
             continue
         people.append({"address": chat, "name": name, "mails": c["mails"], "sent": c["sent"],
                        "received": c["received"], "kind": "wechat", "friend": chat in friend_ids,
-                       "remark": chat in remarked, "last": c["last"], "last_mine": c["last_mine"], "n90": c["n90"]})
+                       "remark": chat in remarked, "last": c["last"], "last_mine": c["last_mine"], "n90": c["n90"],
+                       "first": c["first"], "preview": c["preview"]})
     # The rest of the address book: a friend with no chat on this Mac is still someone the owner knows (#3347).
     for f in book:
         chat, name = f["username"], wechat_title(f["username"], f["remark"], f["nick_name"])

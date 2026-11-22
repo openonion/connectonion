@@ -155,11 +155,26 @@ def _retitle(notebook, record, name, write) -> bool:
     from .chat import usable_name
     lines = notebook.read(record).split("\n")
     title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else ""
-    if not name or usable_name(title) or name == title:
+    # A one-character title ("谢") gives way too when the source has a longer usable name: the owner's remark.
+    weak = not usable_name(title) or (len(title) == 1 and usable_name(name) and len(name) > 1)
+    if not name or not weak or name == title:
         return False
     if write:
         notebook.write(record, "\n".join([f"# {name}", *lines[1:]]))
     return True
+
+
+def _retitle_known(notebook, people_rows) -> list[str]:
+    """Retitle the pages this source already holds (by handle); the records changed. No page is made."""
+    from . import map as rem_map
+    by_handle, _ = _roster(notebook)
+    changed = []
+    for group in rem_map._people_groups(people_rows):
+        name = " ".join(str(next((r["name"] for r in group if r.get("name")), "")).split())
+        record = next((by_handle[r["address"].casefold()] for r in group if r["address"].casefold() in by_handle), None)
+        if record and _retitle(notebook, record, name, True):
+            changed.append(record)
+    return changed
 
 
 def _orgs(notebook, org_rows, write):
@@ -252,7 +267,8 @@ def record_activity(root: Path, source_rows: list[dict]) -> None:
     from .files import write_json
     write_json(state_path(root, ACTIVITY), {
         row["address"]: {"last": row["last"], "mine": row.get("last_mine"), "n90": row.get("n90", 0),
-                         "total": row.get("sent", 0) + row.get("received", 0)}
+                         "total": row.get("sent", 0) + row.get("received", 0),
+                         "first": row.get("first", ""), "preview": row.get("preview", "")}
         for row in source_rows if row.get("last")})
 
 
@@ -435,6 +451,8 @@ def backfill(root: Path) -> list[str]:
         if not source_rows:
             continue
         record_activity(root, source_rows)
+        # Titles an older map made from bare punctuation ("^ ^") are fixed now, not at the next map (#3368).
+        _retitle_known(Notebook(root), [r for r in source_rows if ROW_KIND.get(r.get("kind")) == "people"])
         result = plan(root, source_rows, yields(sub), write=False)
         result.get("people", {}).update(create=[], merge=[])    # counted only: a page build makes no pages
         _record(root, name, sub, result, source_rows, backfilled=True)

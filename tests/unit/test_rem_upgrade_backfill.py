@@ -130,3 +130,45 @@ def test_no_person_page_is_left_titled_without_a_letter_digit_or_cjk(tmp_path, m
                            "mails": 0, "sent": 0, "received": 0, "friend": True, "remark": False}])
     onboard.onboard(tmp_path, "wechat", SUBS["wechat"], 30)
     assert all(chat.usable_name(person["title"]) for person in book.people())
+
+
+def test_the_backfill_also_retitles_punctuation_titles_without_waiting_for_a_map(tmp_path, monkeypatch):
+    # rc17 on the owner's notebook: the backfill fixed activity but left 25 "." / "^ ^" titles until the next map.
+    book = Notebook(tmp_path)
+    book.stub_person("people/caret.md", "^ ^", ["wxid_caret"])
+    rows = [{"address": "wxid_caret", "name": "Wren Lake", "mails": 2, "sent": 1, "received": 1, "friend": True,
+             "remark": True, "last": "2026-11-20T10:00:00+00:00", "last_mine": True, "n90": 2}]
+    _source(monkeypatch, rows)
+    assert onboard.backfill(tmp_path) == ["wechat"]
+    assert book.read("people/caret.md").splitlines()[0] == "# Wren Lake"
+    assert "wxid_caret" in book.read("people/caret.md")          # the handle is kept
+
+
+def test_a_one_character_nickname_gives_way_to_the_remark(tmp_path, monkeypatch):
+    # 33 one-character titles ("谢") on the owner's notebook: when the owner named the contact, use his name.
+    book = Notebook(tmp_path)
+    book.stub_person("people/xie.md", "谢", ["wxid_xie"])
+    book.stub_person("people/solo.md", "林", ["wxid_solo"])
+    rows = [{"address": "wxid_xie", "name": "谢明远", "mails": 1, "sent": 1, "received": 0, "friend": True,
+             "remark": True},
+            {"address": "wxid_solo", "name": "林", "mails": 1, "sent": 0, "received": 1, "friend": True,
+             "remark": False}]
+    _source(monkeypatch, rows)
+    onboard.backfill(tmp_path)
+    assert book.read("people/xie.md").splitlines()[0] == "# 谢明远"
+    assert book.read("people/solo.md").splitlines()[0] == "# 林"     # no remark: the one character stays
+
+
+def test_activity_keeps_the_earliest_chat_and_a_one_line_preview(tmp_path):
+    """The person header reads these before any investigation (#3372): since when, and what was last said."""
+    from connectonion.rem import onboard
+    from connectonion.rem.chat import preview_line
+    from connectonion.rem.files import read_json, state_path
+    onboard.record_activity(tmp_path, [{"address": "wxid_wren", "last": "2026-11-20T09:00:00+00:00", "last_mine": False,
+                                        "n90": 3, "sent": 1, "received": 2, "first": "2024-03-05T09:00:00+00:00",
+                                        "preview": preview_line("See you\n at   the harbour [1] [personal]")}])
+    entry = read_json(state_path(tmp_path, onboard.ACTIVITY), {})["wxid_wren"]
+    assert entry["first"].startswith("2024-03-05")
+    # One line, and no bracket the reader would take for a citation or a privacy mark.
+    assert entry["preview"] == "See you at the harbour 1 personal"
+    assert len(preview_line("字" * 200)) == 80 and preview_line("字" * 200).endswith("…")

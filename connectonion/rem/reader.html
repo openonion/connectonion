@@ -225,6 +225,8 @@
   svg.moon { width: 11px; height: 11px; flex-shrink: 0; color: var(--grey); vertical-align: -1px; }
 
   .privacy-tag { font: var(--s-meta) var(--font); letter-spacing: 0; text-transform: none; padding: 0 5px; margin: 0 2px; border-radius: var(--radius); border: 1px solid var(--rule); color: var(--grey); background: var(--rule); white-space: nowrap; }
+  /* A sensitive passage you can read (全部显示, or a curtain lifted) keeps a soft tint, so it still looks set apart (#3374). */
+  :root:not(.privacy-cover):not(.hide-private) .private[data-level="sensitive"], .curtain.lifted { background: var(--well); border-radius: var(--radius); }
   .privacy-tag.sensitive { border-color: var(--grey); color: var(--ink); font-weight: var(--w-bold); }
   :root.hide-private .private, :root.hide-private li.private-item { display: none; }
   :root.hide-private .privacy-only .privacy-content { display: none; }
@@ -4063,6 +4065,9 @@
      by that gutter and clipped, so a dot that would start a wrapped line falls outside it. */
   .hero-meta, .n3-person .r4-sub.dek { clip-path: inset(-4px -4px -4px 16px); }
   .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0 -16px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .hide-private .hero-preview { display: none; }
+  .hero-date { white-space: nowrap; }
+  .hero-preview { margin: 4px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hero-meta > * { margin-left: 16px; }
   .hero-meta > *::before, .n3-person .dek > *::before { content: "·"; display: inline-block; width: 16px; margin-left: -16px; text-align: center; color: var(--grey); }
   .n3-person .hero-meta .r4-today { display: inline; height: auto; margin: 0 0 0 16px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink);
@@ -5404,6 +5409,8 @@ const UI = {
     "WeChat": "微信",
     "WeChat · {n} messages in 90 days": "微信 · 近 90 天 {n} 条",
     "WeChat friend · no chats yet": "微信好友 · 暂无聊天",
+    "You said last:": "你最后说：", "They said last:": "对方最后说：", "chatting since {when}": "最早 {when}",
+    "Last message:": "最后一条：", "Copy WeChat ID": "复制微信号", "WeChat ID copied": "已复制微信号",
     "In your WeChat address book, with no chats on this Mac yet. REM investigates each one once a chat or a mail arrives.": "在你的微信通讯录里，这台 Mac 上还没有和他们的聊天记录。一有聊天或邮件，REM 就会调查。",
     "Find a friend…": "查找好友…",
     "No chats yet": "暂无聊天",
@@ -5870,7 +5877,7 @@ Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏
   "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
   "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
   "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
-  "Sensitive · tap to show": "敏感 · 点一下显示", "A sensitive item (covered)": "一件敏感的事（已遮住，在「显示」里选全部显示可看）", "Sensitive": "敏感", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+  "Sensitive · tap to show": "敏感 · 点一下显示", "A sensitive item (covered)": "一件敏感的事（已遮住，在「显示」里选全部显示可看）", "Sensitive": "敏感", "Personal passage": "私人", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
 const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
   cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
   public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
@@ -6500,7 +6507,7 @@ function inline(text, from) {
   });
   if (uiLanguage === "zh") s = s.replace(/\bUnknown\b/g, t("Unknown"));
   s = privatePassages(s, (passage, level) => '<span class="private" data-level="' + level + '">' +
-    passage.replace(/[\[［](personal|sensitive)[\]］]/gi, (_, tag) => '<span class="privacy-tag ' + tag.toLowerCase() + '">' + tag.toLowerCase() + '</span>') + '</span>');
+    passage.replace(/[\[［](personal|sensitive)[\]］]/gi, (_, tag) => '<span class="privacy-tag ' + tag.toLowerCase() + '">' + esc(t(tag.toLowerCase() === "sensitive" ? "Sensitive" : "Personal passage")) + '</span>') + '</span>');
   // Full-width citation brackets carry the same source ids.
   s = s.replace(/［(W?\d{1,3})］/g, "[$1]");
   // Adjacent claim numbers share one quiet marker: one chip says how many, and names them on hover.
@@ -11598,6 +11605,29 @@ function personMarkNotice(words, undo) {
   document.body.appendChild(el("div", { id: "done-notice", class: "done-notice", role: "status" }, [words, " · ", button, " · ", t("Saved in notebook")]));
   button.focus({ preventScroll: true });
 }
+// The page's WeChat ids (wxid_… or a WeCom …@openim, or a bare handle on a WeChat page), for ⋯ → 复制微信号 (#3372).
+function wechatIds(r) {
+  if (!r || r.category !== "people") return [];
+  const line = [...parseFacts(r)].find(([label]) => label.toLowerCase() === "handles");
+  // One Handles line may hold several, comma separated, with their privacy marks; split as recordMarkHandles does.
+  const values = (line ? line[1].map(item => plainLine(item.value)).join(", ") : "").replace(/\s*\[[^\]]*\]/g, "")
+    .split(/[,;]\s*/).map(h => h.trim()).filter(Boolean);
+  return values.filter(h => /^wxid_|@openim$/i.test(h) || (wechatPage(r) && h && !/@/.test(h)));
+}
+function wechatCopyItem(r, close) {
+  const ids = wechatIds(r);
+  if (!ids.length) return null;
+  const item = el("button", { type: "button", role: "menuitem", class: "copy-wechat" }, [t("Copy WeChat ID")]);
+  item.onclick = async () => {
+    try { await navigator.clipboard.writeText(ids[0]); } catch (error) { console.warn("clipboard", error); }
+    close?.();
+    document.getElementById("done-notice")?.remove();
+    const notice = el("div", { id: "done-notice", class: "done-notice", role: "status", text: t("WeChat ID copied") });
+    document.body.appendChild(notice);
+    setTimeout(() => notice.remove(), 2500);
+  };
+  return item;
+}
 // The header ⋯ item on every person page (mail, WeChat only, both): 不是人, or 是人 once the page is set aside.
 // Same mark, same notice and Undo as the row button in People.
 function personMarkItem(r, close) {
@@ -11914,7 +11944,7 @@ function personHead(r) {
     el("div", { class: "hero-top" }, [fusedFace(r, late, "xl"),
       el("div", { class: "hero-who" }, [
         el("div", { class: "hero-marks" }, [updatedMarker(r, true)]),
-        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late),
+        el("h1", { class: "r4-name", lang: nameLang(r.title), "aria-label": r.title, text: r.title }), personSub(r), personMeta(r, late), chatPreview(r),
         pageTagRow(r, personSaid(r))]),
       el("div", { class: "hero-acts" }, [recordActs(r)])]),
     profileCard(r)]);
@@ -11937,7 +11967,10 @@ function personMeta(r, late) {
   // nothing to read yet for an address-book friend.
   const chat = chatActivity(r);
   if (chat && calendarDay(chat.last) >= (isoDay(lastValue) || "")) lastText = fmtDate(calendarDay(chat.last));
-  const wechat = chat ? el("span", { text: t("WeChat · {n} messages in 90 days", { n: chat.n90 || 0 }) })
+  // Who wrote last and since when: what the chats say before any model reads them (#3372).
+  // The earliest date is one unbroken span: at 390 it must not wrap as "2024 / 年3月5日".
+  const wechat = chat ? el("span", {}, [t("WeChat · {n} messages in 90 days", { n: chat.n90 || 0 }),
+    chat.first ? " · " : "", chat.first ? el("span", { class: "hero-date", text: t("chatting since {when}", { when: fmtDate(calendarDay(chat.first)) }) }) : null])
     : restingFriends().has(r.path) ? el("span", { text: t("WeChat friend · no chats yet") }) : null;
   // The place keeps its privacy mark, so a [personal] location hides with the others (the facts panel that used to
   // guard it is gone from person pages, #3131).
@@ -11947,6 +11980,16 @@ function personMeta(r, late) {
       text: t(r.mail.mails === 1 ? "1 mail" : "{n} mails", { n: r.mail.mails }) }) : null,
     wechat, personTodayLink(r, late)].filter(Boolean);
   return parts.length ? el("p", { class: "hero-meta" }, parts) : null;
+}
+// The last thing said on WeChat, one line under the header (#3372). It is a chat message, so it is [sensitive]:
+// covered at this computer's default level, readable at 全部显示, gone at 只看公开.
+function chatPreview(r) {
+  const chat = chatActivity(r);
+  if (!chat?.preview) return null;
+  const who = chat.mine === true ? "You said last:" : chat.mine === false ? "They said last:" : "Last message:";
+  // Marked by its level, not by a "[sensitive]" marker in the text, so no chip ever prints beside it.
+  return privateFallback(el("p", { class: "hero-preview" }, [el("span", { class: "hero-preview-k", text: t(who) + " " }),
+    el("span", { class: "private", "data-level": "sensitive", text: chat.preview })]));
 }
 // Who they are in one line of words: role, organisation (→ its page) and units (→ theirs). These are said here
 // and nowhere else in the header (owner, 2026-11-18: one place per fact); where a value came from stays in its title.
@@ -12012,10 +12055,14 @@ function profileCard(r) {
   add("Contact", "Phone", "phone", have("Phone").map(item => ({ item, copy: true })));
   const places = new Map(), linked = new Set();
   const once = item => { const key = urlKey(item.value); if (!/[./]/.test(key) || !linked.has(key)) { linked.add(key); return true; } return false; };
-  for (const item of handles.filter(once)) {
-    // On a page the WeChat map made, or one with WeChat chats, a bare handle is a WeChat id (#3346): 微信, not 账号.
-    const wechatId = /^wxid_|@openim$/i.test(plainLine(item.value)) || (wechatPage(r) && !/@/.test(plainLine(item.value)));
-    const [label, pic] = contactPlace(item, wechatId ? ["WeChat", "brand-wechat"] : ["Handle", "at"]);
+  // A raw WeChat id is not something to read (owner: "一串 wxid_ 开头的乱码"): it lives in ⋯ → 复制微信号 (#3372).
+  // On a page the WeChat map made, or one with WeChat chats, a bare handle is a WeChat id too (#3346). One Handles
+  // item can hold several ("ash@kiln.example, wxid_…"), so each part is checked, not the item.
+  const wechatPart = part => /^wxid_|@openim$/i.test(plainLine(part)) || (wechatPage(r) && !/@/.test(plainLine(part)));
+  const readable = handles.map(item => ({ ...item, value: String(item.value).split(/,\s*/).filter(part => part.trim() && !wechatPart(part)).join(", ") }))
+    .filter(item => item.value.trim());
+  for (const item of readable.filter(once)) {
+    const [label, pic] = contactPlace(item, ["Handle", "at"]);
     places.set(label, { pic, values: [...(places.get(label)?.values || []), { item: label === item.qualifier ? { ...item, qualifier: "" } : item, copy: true }] });
   }
   for (const item of have("Links").filter(once)) {
@@ -12034,7 +12081,10 @@ function profileCard(r) {
   for (const label of ["How we know them", "First contact"]) add("Relationship", label, "", have(label).map(item => ({ item })));
   // Last contact, mail and location are the header's third line (personMeta); said once.
   const mapped = !have("Last contact").length && mappedContact(r) && known(r).last;
-  const aliases = have("Also known as").filter(item => !seen.includes(plainLine(item.value).toLowerCase()));
+  // Each handle part counts as said, and a raw WeChat id is never an alias to show (#3372); names stay.
+  const handleParts = handles.flatMap(item => String(item.value).split(/,\s*/).map(part => plainLine(part).toLowerCase()));
+  const aliases = have("Also known as").filter(item => !seen.includes(plainLine(item.value).toLowerCase())
+    && !handleParts.includes(plainLine(item.value).toLowerCase()) && !/^wxid_|@openim$/i.test(plainLine(item.value)));
   if (aliases.length) add("Identity", "Also known as", "", [{ node: el("span", { class: "pc-inline" }, aliases.map(item => profileValue(item, r, "Also known as"))) }]);
   const languages = have("Language");
   if (languages.length) add("Identity", "Language", "", [{ node: el("span", { class: "pc-inline" }, languages.map(item => profileValue(item, r, "Language"))) }]);
@@ -12221,7 +12271,8 @@ function invMenu(r, s, paint, off) {
       return item;
     }), ...(r.category === "people" && REM.live ? [el("p", { class: "inv-h", text: t("Replies to this person") }), directSendItem(r)] : []),
     // 不是人 / 是人 lives in the header's ⋯ (#3231 header tidy; #3339): a lone grey word under 查看来源 pushed the page down.
-    ...(personMarkItem(r) ? [el("p", { class: "inv-h", text: t("This person") }), personMarkItem(r, () => { menu.open = false; })] : [])]));
+    ...(personMarkItem(r) || wechatIds(r).length ? [el("p", { class: "inv-h", text: t("This person") }), personMarkItem(r, () => { menu.open = false; }),
+      wechatCopyItem(r, () => { menu.open = false; })].filter(Boolean) : [])]));
   menu.onkeydown = event => { if (event.key === "Escape" && menu.open) { event.stopPropagation(); menu.open = false; menu.querySelector("summary").focus(); } };
   return menu;
 }
