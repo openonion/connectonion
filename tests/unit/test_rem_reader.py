@@ -946,7 +946,7 @@ def test_update_markers_follow_latest_pass_in_the_invented_notebook(tmp_path, mo
     data = snapshot(build(tmp_path / 'rem', datetime(2026, 10, 1, 12, tzinfo=timezone.utc)))
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['lastPass', 'firstBuild', 'runTime', 'sameClaim', 'updatedMarker'])
+                          for name in ['passRuns', 'lastPass', 'firstBuild', 'runTime', 'sameClaim', 'updatedMarker'])
     result = _run_reader_js('\n'.join([
         '(() => { const REM = ' + json.dumps(data) + ';', functions,
         'const HOUR = 3600e3, FAILED = /^(failed|abandoned|error|refused|timeout)/i;',
@@ -2363,7 +2363,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     assert len(data['logs']) == 1
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
-        'runTime', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
+        'runTime', 'passRuns', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
         'passSummary', 'morningBrief', 'pagesLine', 'translationNotice'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js('const REM = ' + json.dumps(data) + '; UI.zh = ' + ui + ';\n' + functions + r'''
@@ -2388,7 +2388,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const enough = translationNotice();
       REM.logs.push({...REM.logs[0], started_at: '2026-10-01T01:00:00Z'});
       const returning = firstBuild();
-      REM.logs = [];
+      REM.logs = []; REM.night_runs = [];  // a notebook with no runs has neither (#3391)
       console.log(JSON.stringify({first, header, brief, scheduled, zhHeader, notice, enough,
         returning, noPass: firstBuild()}));
     ''')
@@ -2424,7 +2424,7 @@ def test_a_busy_day_does_not_make_an_old_notebook_look_new(tmp_path, monkeypatch
     assert len(data['logs']) <= 21
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['runTime', 'lastPass', 'firstBuild', 'sameClaim'])
+                          for name in ['runTime', 'passRuns', 'lastPass', 'firstBuild', 'sameClaim'])
     result = _run_reader_js('const REM = ' + json.dumps(data) + ';\n' + functions + r'''
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
