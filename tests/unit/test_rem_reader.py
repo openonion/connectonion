@@ -784,6 +784,7 @@ def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
         functions, 'const REM = {as_of: "2026-10-20"}, DAY_MS = 86400000;',
         'const calendarDay = text => text.slice(0, 10);',
         'const el = (tag, attrs) => attrs;',
+        'const upcomingWhen = () => "";',  # no calendar here: the age alone (#3406 in the browser test)
         'console.log(JSON.stringify(' + json.dumps(cases)
         + '.map(t => ({age: threadAge(t), tag: blockerTag(t)}))));',
     ]))
@@ -1801,7 +1802,7 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'morningWords', 'withoutDateClutter'])
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + r'''
       const threadWho = r => r.title, overdueDays = () => 0;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
       const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
@@ -2145,7 +2146,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};

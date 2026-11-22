@@ -3672,7 +3672,11 @@
   }
   .stretch { position: absolute; top: calc(var(--row, 0) * 28px); max-width: 40%; }
   .stretch.from-right .stretch-pages { left: auto; right: 0; }
-  .stretches.stacked .stretch { position: static; max-width: none; }
+  /* A phone's column is the card's width, never a caption's (#3379: 「…· 21 次运行提前停止」 made Today 406px wide at
+     390); the words wrap under their times instead of running off the card. */
+  .stretches.stacked { grid-template-columns: minmax(0, 1fr); }
+  .stretches.stacked .stretch { position: static; max-width: none; min-width: 0; }
+  #main .stretches.stacked .stretch > summary { white-space: normal; align-items: baseline; }
   .stretch > summary { display: flex; gap: 6px; padding: 2px 8px; margin-left: -8px; overflow: hidden; border-radius: var(--r-pill); color: var(--ink);
     white-space: nowrap; text-overflow: ellipsis; cursor: pointer; list-style: none; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .stretch > summary::-webkit-details-marker { display: none; }
@@ -9543,7 +9547,7 @@ function cardHead(group, late, skippable, tick = group.entries.length > 1, pos =
     el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
     org ? el(page ? "a" : "span", { class: "meta org-chip", title: role ? plainLine(role) : "", ...(page ? { href: href(page) } : {}) }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.trim()[0]?.toUpperCase() || "" }), org]) : null,
     el("span", { class: "qhead-acts" }, [done, skip]),
-    el("span", { class: "qage" + (late ? " late" : ""), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t) })]);
+    el("span", { class: "qage" + (late ? " late" : ""), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t, r) })]);
 }
 // On a 中文 reader the card speaks his language where REM already wrote it: the draft's gist.
 function ownerLine(draft) {
@@ -13463,7 +13467,18 @@ function agEvent(e, first) {
 // entries. A late one sits on today and keeps its due date in words.
 function agendaEntries() {
   const today = agToday(), entries = [], placed = new Set();
-  for (const e of REM.calendar?.events || []) if (calendarDay(e.start)) entries.push(agEvent(e, calendarDay(e.start)));
+  // One event once, though two calendars hold it (#3406: a Tuesday event twice in 接下来): the same id, or the same
+  // start instant and title, is the same event. The first keeps its place; a later copy only fills what it lacks.
+  const seen = new Map();
+  for (const e of REM.calendar?.events || []) {
+    if (!calendarDay(e.start)) continue;
+    const keys = [e.id ? "id:" + e.id : "", "at:" + Date.parse(e.start) + "|" + eventTitle(e).trim().toLowerCase().replace(/\s+/g, " ")].filter(Boolean);
+    const twin = keys.map(key => seen.get(key)).find(Boolean);
+    if (twin) { twin.meet ||= e.meet || null; twin.where ||= e.location || ""; twin.link ||= e.link || ""; continue; }
+    const entry = agEvent(e, calendarDay(e.start));
+    entries.push(entry);
+    keys.forEach(key => seen.set(key, entry));
+  }
   const dated = (day, late, rest) => entries.push({ allDay: true, first: late ? today : day, last: late ? today : day, due: day, late, ...rest });
   for (const row of REM.today_queue || []) {
     if (!row.due || row.closed || row.quiet) continue;
@@ -16242,9 +16257,37 @@ function blocksWork(thread) { return /\b(?:blocks|blocked|blocking)\b|\bbefore\b
 function blockerTag(thread) {
   return blocksWork(thread) ? el("small", { class: "blocker-tag", text: t("blocker") }) : null;
 }
-// Show an explicit deadline first, without inferring whether it was met.
-function threadAge(t) {
-  return [age(t.since), t.due ? dueLabel(t) : ""].filter(Boolean).join(" · ");
+// Show an explicit deadline first, without inferring whether it was met. Something happening today or tomorrow says
+// when first and how old second (#3406: a card about a demo at 14:00 today read 「2 天」).
+function threadAge(t, r) {
+  const soon = upcomingWhen(t, r);
+  return soon ? [soon, age(t.since)].filter(Boolean).join(" · ") : [age(t.since), t.due ? dueLabel(t) : ""].filter(Boolean).join(" · ");
+}
+// The days a thread's words name: 2026-11-23, 11月23日, Nov 23 or 23 November, in this year (the year of `today`).
+const MONTH_WORDS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+function statedDays(text, today) {
+  const year = today.slice(0, 4), iso = (m, d) => year + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+  const month = word => MONTH_WORDS.indexOf(word.slice(0, 3).toLowerCase()) + 1;
+  return [...(text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []),
+    ...[...text.matchAll(/(\d{1,2})月(\d{1,2})[日号]/g)].map(m => iso(m[1], m[2])),
+    ...[...text.matchAll(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})\b/gi)].map(m => iso(month(m[1]), m[2])),
+    ...[...text.matchAll(/\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b/gi)].map(m => iso(month(m[2]), m[1]))];
+}
+// When a thread's thing happens, if that is today or tomorrow: the person's next calendar event on those days, else a
+// due date or an ISO date in the thread's words, with its time when the words give one. Never guessed from 今天/today
+// in old words: those meant the day they were written.
+function upcomingWhen(thread, r) {
+  const today = agToday(), tomorrow = agDay(today, 1), soon = day => day === today || day === tomorrow;
+  const word = day => agT(day === today ? "Today" : "Tomorrow");
+  const now = Date.parse(REM.as_of || "") || clockNow();
+  const event = r && !REM.shared ? timedEvents(now).find(e => soon(e.first) && Date.parse(e.start) > now && e.people.some(p => p.path === r.path)) : null;
+  if (event) return word(event.first) + " " + agTime(event.start);
+  const text = thread.text || "", day = soon(thread.due) ? thread.due : statedDays(text, today).find(soon);
+  if (!day) return "";
+  const clock = text.match(/\b([01]?\d|2[0-3])[:：]([0-5]\d)\b/), meridiem = text.match(/\b(1[0-2]|[1-9])\s?([ap])\.?m\b/i);
+  const time = clock ? clock[1].padStart(2, "0") + ":" + clock[2]
+    : meridiem ? String((Number(meridiem[1]) % 12) + (meridiem[2].toLowerCase() === "p" ? 12 : 0)).padStart(2, "0") + ":00" : "";
+  return word(day) + (time ? " " + time : "");
 }
 function threadPreview(text) {
   const summary = withoutDateClutter(plainLine(text));
