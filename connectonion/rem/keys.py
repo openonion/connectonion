@@ -194,7 +194,37 @@ def env_names(path: Path | None = None) -> dict:
     except EnvFileError as error:  # its message names the line, never a value
         return {"where": display_path(path), "names": [], "error": str(error)}
     names = [item.key for item in bindings if item.key and item.key != "AGENT_CONFIG_PATH"]
-    return {"where": display_path(path), "names": sorted(dict.fromkeys(names))}
+    names = sorted(dict.fromkeys(names))
+    return {"where": display_path(path), "names": names, **env_groups(names)}
+
+
+# What counts as a credential in keys.env (#3326): a name that ENDS in a secret word. GOOGLE_ACCESS_TOKEN and
+# OPENAI_API_KEY are credentials; GOOGLE_TOKEN_EXPIRES_AT, GOOGLE_SCOPES, IS_EMAIL_ACTIVE, CO_BROWSER_ENGINE and
+# AGENT_ADDRESS are settings. The owner read 29 raw variable names as "29 keys" next to "you have no keys".
+SECRET_NAME = re.compile(r"(?:^|_)(?:API_KEY|KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|PAT|CREDENTIALS?)$")
+# The service a variable belongs to, by its first word; anything unlisted is named after that word.
+SERVICES = {"GOOGLE": "Google", "GMAIL": "Google", "GEMINI": "Google", "YOUTUBE": "Google", "GDRIVE": "Google",
+            "MICROSOFT": "Microsoft", "OUTLOOK": "Microsoft", "MS": "Microsoft", "AZURE": "Microsoft",
+            "LARK": "Lark", "FEISHU": "Lark", "OPENAI": "OpenAI", "ANTHROPIC": "Anthropic", "CLAUDE": "Anthropic",
+            "OPENONION": "OpenOnion", "CO": "OpenOnion", "GITHUB": "GitHub", "GH": "GitHub", "SLACK": "Slack",
+            "DISCORD": "Discord", "TELEGRAM": "Telegram", "WHATSAPP": "WhatsApp", "LINEAR": "Linear",
+            "ASANA": "Asana", "CANNY": "Canny", "NOTION": "Notion", "SYNO": "Synology", "SYNOLOGY": "Synology",
+            "FREESOUND": "Freesound", "STRIPE": "Stripe", "AWS": "AWS", "DEEPSEEK": "DeepSeek"}
+
+
+def env_groups(names: list[str]) -> dict:
+    """Credentials grouped by service with a count, and the settings apart: names only, never a value."""
+    services: dict[str, int] = {}
+    settings = []
+    for name in names:
+        if not SECRET_NAME.search(name):
+            settings.append(name)
+            continue
+        word = name.split("_", 1)[0]
+        service = SERVICES.get(word, word.title())
+        services[service] = services.get(service, 0) + 1
+    return {"services": [{"service": name, "count": count} for name, count in sorted(services.items())],
+            "settings": settings}
 
 
 def _entropy(token: str) -> float:

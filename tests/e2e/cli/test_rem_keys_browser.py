@@ -218,12 +218,80 @@ def test_apple_passwords_says_how_to_export_and_offers_the_file(today):
     _import_shot(page, "apple", 1440)
 
 
-def test_cos_own_keys_env_names_are_listed_without_values(today):
+def test_cos_own_keys_are_grouped_by_service_with_settings_folded(today):
+    # #3326 replaces the flat list of variable names (#3305): one row per service with a count, settings folded.
     page, calls, answers = today
-    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": ["OPENAI_API_KEY", "OPENONION_API_KEY"]})
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [],
+        "services": [{"service": "Google", "count": 2}, {"service": "OpenAI", "count": 1}],
+        "settings": ["GOOGLE_SCOPES", "IS_EMAIL_ACTIVE"]})
     _with_keys(page, 1440)
     section = page.locator(".keys-env")
     section.wait_for()
-    assert section.locator(".keys-env-name").all_inner_texts() == ["OPENAI_API_KEY", "OPENONION_API_KEY"]
+    assert section.locator(".keys-env-service").all_inner_texts() == ["Google", "OpenAI"]
+    assert "2" in section.locator("li").first.inner_text()
+    settings = section.locator(".keys-env-settings")
+    assert settings.get_attribute("open") is None and not settings.locator(".keys-env-name").first.is_visible()
     assert "~/.co/keys.env" in section.inner_text() and "null" not in section.inner_text()
     _import_shot(page, "keys-env", 1440)
+
+
+SITES = {"github.com": 1, "accounts.example.org": 7, "mail.example.org": 2, "shop.example.net": 3, "10.0.0.1": 1,
+         "bank.example.co.uk": 4, "nas.example.test": 2}
+
+
+def _vault(page, width=1440, live=True):
+    """Twenty imported key pages over seven sites (one site with nine keys across two subdomains)."""
+    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
+    page.evaluate("""([sites, live]) => {
+      REM.live = live;
+      REM.records = REM.records.filter(r => r.category !== 'keys');
+      let i = 0;
+      for (const [site, n] of Object.entries(sites)) for (let k = 0; k < n; k++, i++)
+        REM.records.push({path: `keys/k${i}.md`, category: 'keys', title: site, written: true,
+          text: `# ${site}\n\n## Facts\n- Service: ${site}\n- Account: user${i}@example.test\n- Purpose: sign in\n`});
+      if (!REM.categories.includes('keys')) REM.categories.push('keys');
+      KNOWN.clear(); FACTS.clear(); location.hash = '#c=keys'; render();
+    }""", [SITES, live], isolated_context=False)
+
+
+def test_an_imported_vault_is_listed_grouped_by_site_and_never_says_there_are_none(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _vault(page)
+    main = page.locator("#main")
+    assert "No keys yet" not in main.inner_text() and "还没有钥匙" not in main.inner_text()
+    assert page.locator(".key-row").count() == 20
+    assert "20" in page.locator(".key-summary").inner_text()
+    # accounts.example.org (7) and mail.example.org (2) are one site, example.org: 9 keys, folded.
+    group = page.locator(".key-group[data-site='example.org']")
+    assert "9" in group.inner_text() and group.locator("button").get_attribute("aria-expanded") == "false"
+    assert page.locator(".key-row[data-site='example.org']:visible").count() == 0
+    group.locator("button").click()
+    assert page.locator(".key-row[data-site='example.org']:visible").count() == 9
+    assert page.locator(".key-group[data-site='example.co.uk']").count() == 1  # a country domain keeps three labels
+    # A search narrows to the matching row, across folded groups.
+    page.locator(".key-search").fill("user5@")
+    assert page.locator(".key-row:visible").count() == 1
+    page.locator(".key-search").fill("")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_no_vault_keys_but_cos_own_says_what_is_here_not_none(today, width):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [],
+        "services": [{"service": "Google", "count": 2}, {"service": "OpenAI", "count": 1}], "settings": ["GOOGLE_SCOPES"]})
+    _empty_keys(page, width)
+    page.locator(".keys-env").wait_for()
+    main = page.locator("#main")
+    assert "No keys yet" not in main.inner_text() and "还没有钥匙" not in main.inner_text()
+    assert "3" in page.locator(".key-summary").inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_the_empty_line_shows_when_there_is_nothing_at_all(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _empty_keys(page)
+    page.locator("#main .empty").first.wait_for(state="visible")
+    assert "No keys yet" in page.locator("#main").inner_text()
