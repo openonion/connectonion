@@ -6174,18 +6174,29 @@ function tagPage(slug) {
 // reads: a course or project code (digits, capitals, dashes) or a bare domain goes by its organisation's or tag page's
 // own title when the notebook has one, and otherwise waits under 更多 instead of heading the row. One company under
 // a short and a full name is one chip.
-const CHIP_CODE = /^(?=\S*\d)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/, CHIP_DOMAIN = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
+const CHIP_CODE = /^(?=\S*\d)[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*$/, CHIP_DOMAIN = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
 function chipCoded(name) { return CHIP_CODE.test(name) || CHIP_DOMAIN.test(name); }
 function orgForDomain(domain) {
   const d = domain.toLowerCase(), dashed = d.replace(/\./g, "-");
   return inCategory("orgs").find(org => org.path.split("/").pop().replace(/\.md$/, "").replace(/-[0-9a-f]{6,}$/, "") === dashed
     || (rawSection(org, "Domains") || "").toLowerCase().includes(d)) || null;
 }
+// A course or team page titled by its code alone ("3900", "9900-F13D-BREAD", "3900/9900") says what it is wherever an
+// organisation's name shows (rc18 hunt: bare codes headed the graph and the org tree): "课程 3900", "团队 9900-F13D-BREAD".
+// A code page whose kind REM does not know yet keeps its code. The one rule for coded organisation names.
+function codedOrgName(r) {
+  const title = String(r?.title || "").trim(), kind = r?.unit_kind || "";
+  if (!r?.path?.startsWith("orgs/") || !kind || !CHIP_CODE.test(title)) return null;
+  const word = orgT(kind);
+  return t("{kind} {code}", { kind: uiLanguage === "en" ? word[0].toUpperCase() + word.slice(1) : word, code: title });
+}
+// Any page's name in a link: its title, or what a coded course or team is.
+function pageName(r) { return codedOrgName(r) || r?.title; }
 function chipName(slug) {
   const label = tagLabel(slug).trim();
   if (!chipCoded(label)) return { name: label, readable: true };
   const page = REM.tags?.[slug]?.page ? byPath(REM.tags[slug].page) : tagWritten(slug);
-  const title = String(page?.title || "").trim();
+  const title = String(codedOrgName(page) || page?.title || "").trim();
   if (title && !chipCoded(title)) return { name: title, readable: true };
   const org = CHIP_DOMAIN.test(label) ? orgForDomain(label) : null;
   return org ? { name: orgName(org), readable: true } : { name: label, readable: false };
@@ -6868,7 +6879,10 @@ function pageWords(text, link) {
   const pathOf = raw => String(raw).trim().replace(/^(?:\.\.?\/)+/, "");
   const record = path => typeof byPath === "function" ? byPath(pathOf(path)) : null;
   const words = path => pathOf(path).split("/").pop().replace(/\.md$/i, "").replace(/-[0-9a-f]{8,}$/i, "").replace(/[-_]+/g, " ").trim();
-  const name = (path, label) => (label && label.trim()) || record(path)?.title || words(path) || pathOf(path);
+  // A link that names a coded course or team by its bare code says what it is (codedOrgName).
+  const coded = (path, label) => { const r = record(path), name = typeof codedOrgName === "function" ? codedOrgName(r) : null;
+    return name && (!label || label.trim() === r.title.trim()) ? name : null; };
+  const name = (path, label) => coded(path, label) || (label && label.trim()) || record(path)?.title || words(path) || pathOf(path);
   const out = (path, label) => link ? link(record(path), name(path, label)) : name(path, label);
   return String(text ?? "")
     .replace(/\[\[\s*([^\]|#]+?)\s*(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (m, path, label) => out(path, label))
@@ -10505,7 +10519,7 @@ function connectionReview() {
     el("h2", { text: pageWords(candidate.question) }),
     el("p", { text: pageWords(candidate.basis) }),
     el("div", { class: "subjects" }, [
-      ...candidate.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path })),
+      ...candidate.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: pageName(byPath(path)) || path })),
       el("a", { href: "#reviews=1", text: t("Review the evidence →") })])]);
 }
 function todayEntries(entries, section = "today") {
@@ -11520,7 +11534,7 @@ function maintenance(s) {
 
 // ---------- activity: what co rem did, run by run ----------
 function pageLink(path) {
-  return el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path });
+  return el("a", { href: "#r=" + encodeURIComponent(path), text: pageName(byPath(path)) || path });
 }
 // Pages a run looked at and did not write, each with the reason it gave.
 function refusalReason(reason) {
@@ -11896,6 +11910,7 @@ function orgNamed(r, org, label, full) {
   const name = label.replace(/\s*[（(][^()（）]*[)）]\s*$/, "") || label;
   // An internal code (digits, capitals and dashes, no space: a course group, a ticket) is never an organisation.
   if (/^(?=\S*\d)[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(name.trim())) return null;
+  if (codedOrgName(org)) return { org, name: orgName(org), full: label };
   // A page linked under a longer label ("Harbour Uni Founders" → Harbour Uni) or under its domain goes by its own name.
   if (org && !domain.test(title) && (domain.test(name) || startsWords(name, title)))
     return { org, name: orgName(org), full: label === orgName(org) ? full : label };
@@ -12047,7 +12062,7 @@ function personSub(r) {
   const parts = [knownValue(role) && items.length ? changedValue(el("span", { class: "dek-role" }, [roleLede(items, role, r.path)]), r, "Role") : null,
     org ? changedValue(org.org ? el("a", { class: "dek-org", href: href(org.org), title: [org.full, knownValue(domain) ? domain : ""].filter(Boolean).join(" · ") }, [mark(), org.name])
       : el("span", { class: "dek-org" }, [mark(), org.name]), r, "Company") : null,
-    ...units.map(({ edge, unit }) => el("a", { class: "dek-unit", href: href(unit), text: unit.title + (edge.role ? " · " + unlabelled(edge.role) : "") }))].filter(Boolean);
+    ...units.map(({ edge, unit }) => el("a", { class: "dek-unit", href: href(unit), text: orgName(unit) + (edge.role ? " · " + unlabelled(edge.role) : "") }))].filter(Boolean);
   return parts.length ? privateFallback(el("div", { class: "r4-sub dek" }, parts)) : null;
 }
 // The profile card (owner, 2026-11-18: "shouldn't the profile card be the first thing shown?"): every known fact
@@ -12357,7 +12372,7 @@ function invResult(r, s, paint) {
     : count ? t("Updated · {n} lines added", { n: count }) : t("Updated");
   const line = el("p", { class: "inv-line", role: "status" }, [words]);
   // The organisations the run linked come first, each a link to its page, new pages said so (#3141).
-  const orgs = (run.orgs || []).map(org => el("li", { class: "inv-org" }, [el("a", { href: "#r=" + encodeURIComponent(org.record), text: org.title }),
+  const orgs = (run.orgs || []).map(org => el("li", { class: "inv-org" }, [el("a", { href: "#r=" + encodeURIComponent(org.record), text: pageName(byPath(org.record)) || org.title }),
     " · " + t(org.created ? "new organisation page" : "linked")]));
   const changes = added.length || orgs.length ? el("div", { class: "inv-changed", hidden: "" }, [el("b", { text: t("What changed") }),
     el("ul", {}, [...orgs, ...added.slice(0, 12).map(text => el("li", { html: inline(text.replace(/^[-*]\s+/, ""), r.path) }))])]) : null;
@@ -14563,7 +14578,7 @@ function orgIcon(name) {
   return box.firstChild;
 }
 // "University of New South Wales (UNSW)" is UNSW in lists and headings.
-function orgName(r) { return /\(([^()]{2,24})\)\s*$/.exec(r.title)?.[1] || r.title; }
+function orgName(r) { return codedOrgName(r) || /\(([^()]{2,24})\)\s*$/.exec(r.title)?.[1] || r.title; }
 function orgUnknown(r) { return /^[\w-]+(?:\.[\w-]+)+$/.test(r.title.trim()); }
 function orgKind(r) { return r.unit_kind ? orgT(r.unit_kind) : r.kind ? orgT(ORG_KINDS[r.kind]) : orgUnknown(r) ? orgT("Not sure what this is yet") : ""; }
 function firstSentence(text) { return (text || "").split(/(?<=[.。!?！？])\s+/)[0]; }
@@ -15090,7 +15105,7 @@ function orgConnections(v) {
   return el("section", { class: "ov-connections" }, [el("h2", { text: uiLanguage === "zh" ? "关联" : "Connections" }),
     ...pages.map(p => {
       const summary = orgSummary(known(p).summary);
-      return el("p", {}, [el("a", { href: href(p), text: p.title }), ...(summary ? [" — ", orgProse(summary)] : [])]);
+      return el("p", {}, [el("a", { href: href(p), text: pageName(p) }), ...(summary ? [" — ", orgProse(summary)] : [])]);
     })]);
 }
 function orgCoda(v) {
@@ -15680,7 +15695,7 @@ function projectDecided(r) {
   const pages = projectLinked(r, "decisions"), prose = pages.length ? [] : projectProse(r, "key decisions", 3);
   if (!pages.length && !prose.length) return null;
   return projectPart("project-decided", "What was decided", [
-    pages.length ? el("ul", { class: "project-links" }, pages.slice(0, 6).map(page => el("li", {}, [el("a", { href: href(page), text: page.title })]))) : null, ...prose,
+    pages.length ? el("ul", { class: "project-links" }, pages.slice(0, 6).map(page => el("li", {}, [el("a", { href: href(page), text: pageName(page) })]))) : null, ...prose,
     pages.length > 6 ? el("a", { class: "project-more", href: "#c=decisions", text: pdT("All {n} decisions", { n: pages.length }) }) : null]);
 }
 function projectPeople(r) {
@@ -16232,7 +16247,7 @@ function relationCard(link, currentPath = "") {
   const entry = el("div", { class: "relation-entry" + (other.private || origin?.private ? " private" : "") }, [
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
-      el("strong", { text: other.title }),
+      el("strong", { text: pageName(other) }),
       basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(pageWords(basis)) }) : null,
       basis && link.original ? originalMark() : null])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (labelled ? " private" : "") }, [
@@ -16450,7 +16465,7 @@ function recordContext(r) {
     el("h2", { text: t("Cited conversations") }),
     el("div", { class: "conversation-list" }, conversations.slice(0, 3).map(([id, value]) => {
       const button = el("button", { type: "button", class: "conversation-open" }, [
-        el("strong", { text: byPath(value.subject)?.title || value.subject }),
+        el("strong", { text: pageName(byPath(value.subject)) || value.subject }),
         el("span", { text: value.total + (uiLanguage === "zh" ? "" : " ") + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : t("date unknown")) })]);
       button.onclick = () => openConversation(r, id, button);
       return button;
@@ -16458,7 +16473,7 @@ function recordContext(r) {
       el("summary", { text: t("Show {n} more cited conversations", { n: conversations.length - 3 }) }),
       el("div", { class: "conversation-list" }, conversations.slice(3).map(([id, value]) => {
         const button = el("button", { type: "button", class: "conversation-open" }, [
-          el("strong", { text: byPath(value.subject)?.title || value.subject }),
+          el("strong", { text: pageName(byPath(value.subject)) || value.subject }),
           el("span", { text: value.total + (uiLanguage === "zh" ? "" : " ") + t("archived messages") + " · " + (value.messages.at(-1)?.time ? fmtDate(value.messages.at(-1).time) : t("date unknown")) })]);
         button.onclick = () => openConversation(r, id, button);
         return button;
@@ -16493,7 +16508,7 @@ function openConversation(r, id, trigger) {
   const close = el("button", { type: "button", class: "evidence-close", text: t("Close ×"), "aria-label": t("Close conversation") });
   close.onclick = () => dialog.close();
   dialog.append(el("div", { class: "evidence-top" }, [el("span", { class: "focus-kicker", text: t("Archived conversation") }), close]),
-    el("h2", { text: byPath(conversation.subject)?.title || conversation.subject }),
+    el("h2", { text: pageName(byPath(conversation.subject)) || conversation.subject }),
     el("p", { class: "evidence-summary", text: t("{n} archived messages around this page’s citations. Up to two before and after each cited message.", { n: conversation.messages.length }) }));
   const commonScope = conversation.messages.find(message => /^Your input only\./.test(message.input_scope || ""))?.input_scope || "";
   if (commonScope) dialog.appendChild(el("p", { class: "evidence-input-scope private", text: inputScopeText(commonScope) }));
@@ -17216,7 +17231,7 @@ function reviewPage() {
     box.appendChild(el("div", { class: "eyebrow" }, [el("span", { class: "pill" + (row.status === "pending" ? " warn" : " quiet"), text: t(row.status) }), el("span", { text: t(row.kind || "") })]));
     box.appendChild(el("h2", { text: pageWords(row.question) }));
     box.appendChild(el("p", { class: "basis", text: t(row.status) + " · " + pageWords(row.basis) }));
-    box.appendChild(el("p", { class: "subjects" }, row.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: byPath(path)?.title || path }))));
+    box.appendChild(el("p", { class: "subjects" }, row.subjects.map(path => el("a", { href: "#r=" + encodeURIComponent(path), text: pageName(byPath(path)) || path }))));
     if (row.response) box.appendChild(el("p", { class: "response", text: t("{who}: {text}", { who: row.author === "owner" ? t("You") : row.author, text: pageWords(row.response) }) }));
     if (row.status === "pending" && REM.live) box.appendChild(reviewActions(row, box));
     main.appendChild(box);
@@ -17404,6 +17419,8 @@ function graphHidden(n) { return n.private && (!n.r || privacyLevel !== "all"); 
 // The name in the reading language when the page has a current translation: its translated heading.
 function graphTitle(n) {
   if (graphHidden(n)) return graphT("Personal");
+  const coded = codedOrgName(n.r);
+  if (coded) return coded;
   const translated = uiLanguage !== "en" && /^# +(.+)$/m.exec(n.r?.translations?.[uiLanguage] || "")?.[1];
   return topicName(translated || n.r?.title || n.title || n.id).replace(" (automated candidate)", "");
 }

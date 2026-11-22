@@ -78,6 +78,7 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
     result = run_js(['personOrg', 'orgNamed', 'domainName', 'startsWords', 'personDomain', 'sameCompany'], r'''
       const facts = () => ({company: ''' + json.dumps(company) + r'''});
       const plainLine = text => text, knownValue = Boolean;
+      const codedOrgName = () => null;  // Fernhill Labs is a name, not a course or team code
       const org = {path: 'orgs/fernhill.md', title: 'Fernhill Labs'};
       const byPath = path => path === org.path ? org : null;
       console.log(JSON.stringify(personOrg({organisations: [org.path]})));
