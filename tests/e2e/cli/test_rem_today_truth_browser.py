@@ -181,15 +181,17 @@ def test_last_night_is_said_in_words_and_quiet_nights_give_the_row_back(today):
     import re
     card = page.locator(".night-card")
     assert card.locator(".hyp, .hyp-wrap").count() == 0
-    read = lambda: int((re.search(r"read (\d+) mail", page.locator(".night-card .nh").inner_text()) or [0, 0])[1])  # noqa: E731
+    # Reads come from every source, so they are items, not mails (#3396: the heading called them mails).
+    read = lambda: int((re.search(r"read (\d+) item", page.locator(".night-card .nh").inner_text()) or [0, 0])[1])  # noqa: E731
     before = read()
     page.evaluate("""() => { const at = Date.parse(REM.as_of) - 4 * 3600000;
       REM.logs = [...REM.logs, {phase: 'sync', started_at: new Date(at).toISOString(), finished_at: new Date(at + 600000).toISOString(), items: 9}];
       REM.brief_logs = REM.logs; render(); }""", isolated_context=False)
     head = page.locator(".night-card .nh")
-    assert "Last night" in head.inner_text() and read() == before + 9  # a run's mails are counted in words
+    assert "Last night" in head.inner_text() and read() == before + 9  # a run's reads are counted in words
     page.evaluate("""() => { REM.logs = REM.logs.filter(run => Date.parse(REM.as_of) - Date.parse(run.started_at) > 3 * 86400000);
-      REM.brief_logs = REM.logs; REM.night_outcomes = []; render(); }""", isolated_context=False)
+      // A quiet night has no runs anywhere: since #3391 the whole night also rides night_runs, which the heading reads.
+      REM.brief_logs = REM.logs; REM.night_runs = []; REM.night_outcomes = []; render(); }""", isolated_context=False)
     assert page.locator(".night-card .nh").count() == 0
     assert page.locator(".deal").count() == int(page.locator("#main .count-line .count").inner_text())
 

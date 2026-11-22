@@ -4957,6 +4957,7 @@ const UI = {
     "{agent} is working on 1 thing": "{agent} 正在做 1 件事", "{agent} is working on {n} things": "{agent} 正在做 {n} 件事",
     "{agent} finished 1 thing": "{agent} 做完了 1 件事", "{agent} finished {n} things": "{agent} 做完了 {n} 件事",
     "{agent} stopped before finishing 1 thing": "{agent} 有 1 件事没做完就停了", "{agent} stopped before finishing {n} things": "{agent} 有 {n} 件事没做完就停了",
+    "another 1 stopped before finishing": "另有 1 件没做完就停了", "another {n} stopped before finishing": "另有 {n} 件没做完就停了",
     "started just now": "刚刚开始", "started {n} min ago": "{n} 分钟前开始", "started {time}": "{time} 开始", "Show its card": "看这张卡片",
     "{agent} did not take this: {why}": "{agent} 没有接下这件事：{why}",
     "This page can no longer reach REM, so nothing was handed over. Open REM again and act from the page it opens.": "这个页面已经连不上 REM，所以没有交出去。重新打开 REM，在它打开的页面里操作。",
@@ -5719,7 +5720,7 @@ const UI = {
     "1 page cites mail no longer in {provider}; REM stopped waiting for it": "1 页引用的邮件已不在 {provider}，不再等",
     "{n} pages cite mail no longer in {provider}; REM stopped waiting for them": "{n} 页引用的邮件已不在 {provider}，不再等",
     "Around today": "今天的其他事",
-    "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
+    "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件待办", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件待办",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
     "source": "来源", "sources": "来源", "session mentions them": "次会话提到 TA", "sessions mention them": "次会话提到 TA", "{n} entries": "{n} 条",
     "Waiting on you, in the rail": "等你处理", "Organisations, in the rail": "组织",
@@ -8617,13 +8618,19 @@ function hypnogram(asOf, size = "") {
 // The night under its curve (#3311, owner 2026-11-22: «那个线的下面，就是晚上做事情的时候»): each stretch's work sits
 // under the dip it made, on the curve's own time axis (hypnoScale), and opens to the pages it changed. Up to three
 // rows; a phone keeps the three biggest stretches in time order. 全部 → opens the whole night in Activity.
-function stretchWords(segment) {
+// What one stretch did, in numbers. Each Today line about the night adds these up (nightTotals), so the 昨夜
+// heading and the captions under the curve are the same count, never three (#3396).
+function stretchCounts(segment) {
   let read = 0, rewrote = 0, translated = 0;
   for (const run of segment.list) {
     const changed = (run.changed || []).filter(path => byPath(path)).length;
     if (/translat/.test(run.phase || "")) translated += changed; else rewrote += changed;
     if ((run.phase || "sync") === "sync" || !changed) read += Number(run.items) || 0;
   }
+  return { read, rewrote, translated };
+}
+function stretchWords(segment) {
+  const { read, rewrote, translated } = stretchCounts(segment);
   return [segment.stuck ? t("stuck {n} min · skipped automatically", { n: segment.stuck }) : null,
     read ? t(read === 1 ? "read {n} item" : "read {n} items", { n: num(read) }) : null,
     rewrote ? t(rewrote === 1 ? "rewrote {n} page" : "rewrote {n} pages", { n: rewrote }) : null,
@@ -9970,7 +9977,11 @@ function workSummary(rows) {
       .map(({ task }) => task.started_at || task.queued_at).filter(Boolean).sort()[0];
     return [say(count(agent, task => ACTIVE_TASK.includes(task.result)), "{agent} is working on 1 thing", "{agent} is working on {n} things", agent, first ? " · " + taskElapsed(first) : ""),
       say(count(agent, task => task.result === "completed"), "{agent} finished 1 thing", "{agent} finished {n} things", agent),
-      say(count(agent, task => !ACTIVE_TASK.includes(task.result) && task.result !== "completed"), "{agent} stopped before finishing 1 thing", "{agent} stopped before finishing {n} things", agent)];
+      // Beside "working on 1 thing", a stopped one is another task: «正在做 1 件事 · 有 1 件事没做完就停了» read as one
+      // task both running and stopped (#3396).
+      count(agent, task => ACTIVE_TASK.includes(task.result))
+        ? say(count(agent, task => !ACTIVE_TASK.includes(task.result) && task.result !== "completed"), "another 1 stopped before finishing", "another {n} stopped before finishing", agent)
+        : say(count(agent, task => !ACTIVE_TASK.includes(task.result) && task.result !== "completed"), "{agent} stopped before finishing 1 thing", "{agent} stopped before finishing {n} things", agent)];
   }).filter(Boolean).join(" · ");
 }
 // What the agent is doing now (#3138): the latest step its run reported, in the Work Room's safe words.
@@ -11116,17 +11127,27 @@ function chartToggle() {
 }
 // What last night produced, in words and counts (Mac review of rc30: the chart's flat lines, spikes and "RU +4"
 // could not be read): mails read, pages written, replies and tasks prepared. Nothing done says so in one line.
-function nightWords() {
-  const end = Date.parse(REM.as_of || new Date().toISOString()), start = end - 18 * HOUR;
-  const runs = nightRuns().filter(run => run.to >= start && run.from <= end), rises = nightRises().filter(rise => rise.at >= start && rise.at <= end);
-  const read = runs.filter(run => run.level === "read").reduce((sum, run) => sum + run.items, 0);
-  const pages = lastPass()?.changed?.length || 0, replies = rises.filter(rise => rise.kind !== "task").length, tasks = rises.length - replies;
-  const parts = [read ? t(read === 1 ? "read 1 mail" : "read {n} mails", { n: read }) : null,
-    pages ? t(pages === 1 ? "wrote 1 page" : "wrote {n} pages", { n: pages }) : null,
-    replies ? t(replies === 1 ? "drafted 1 reply" : "drafted {n} replies", { n: replies }) : null,
-    tasks ? t(tasks === 1 ? "prepared 1 task" : "prepared {n} tasks", { n: tasks }) : null].filter(Boolean);
-  if (!runs.length && !rises.length) return null;
-  return parts.length ? parts.join(uiLanguage === "zh" ? "，" : ", ") : t("nothing new to do");
+// The whole night in one count: the curve's own stretches added up (#3396). Rc19 gave three totals for one night:
+// the heading counted the latest 21 runs' reads as "mails" and the pass's investigations as pages written, the
+// captions counted each stretch, and the side line counted items on the desk. Now the heading and the captions are
+// the same numbers in the same words; the side line counts waiting items and says so.
+function nightTotals(asOf) {
+  const totals = { read: 0, rewrote: 0, translated: 0, runs: 0 };
+  // 昨夜 is the last 18 hours: a pass days old is not last night, so a quiet night gives the row back.
+  for (const segment of hypnoScale(asOf).segments.filter(segment => segment.end >= asOf - 18 * HOUR)) {
+    const counts = stretchCounts(segment);
+    for (const key of ["read", "rewrote", "translated"]) totals[key] += counts[key];
+    totals.runs += segment.list.length;
+  }
+  return totals;
+}
+function nightWords(asOf = new Date(REM.as_of).getTime() || Date.now()) {
+  const { read, rewrote, translated, runs } = nightTotals(asOf);
+  if (!runs) return null;
+  const parts = [read ? t(read === 1 ? "read {n} item" : "read {n} items", { n: num(read) }) : null,
+    rewrote ? t(rewrote === 1 ? "rewrote {n} page" : "rewrote {n} pages", { n: rewrote }) : null,
+    translated ? t(translated === 1 ? "translated {n} page" : "translated {n} pages", { n: translated }) : null].filter(Boolean);
+  return parts.length ? parts.join(" · ") : t("nothing new to do");
 }
 // Today opens with the night (#3311, owner 2026-11-22: the sleep curve stays on top, it is REM's signature): the
 // curve, the work under it on the same clock, what REM handled, and what it could not read, then who waits.
