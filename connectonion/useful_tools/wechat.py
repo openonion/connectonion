@@ -373,6 +373,11 @@ def message_coverage(db_storage: Path) -> dict:
             skipped.append({"item": path.name, "reason": reason, "fix": KEY_FIX})
         else:
             read += 1
+    # The address book too: without it no WeChat contact can become a person (wechat_people returns nothing).
+    contact = Path(db_storage) / "contact" / "contact.db"
+    contact_key = key_for(contact) if contact.is_file() else None
+    if contact.is_file() and not (contact_key and key_opens(contact, contact_key)):
+        skipped = skipped + [{"item": "contact.db", "reason": NO_KEY if not contact_key else WRONG_KEY, "fix": KEY_FIX}]
     coverage = {"source": "wechat", "found": len(found), "read": read, "skipped": skipped,
                 "missing_keys": sum(1 for s in skipped if s["reason"] == NO_KEY)}
     text = text_coverage(db_storage)
