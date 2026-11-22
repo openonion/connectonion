@@ -118,7 +118,9 @@
     --t-burn: 1100ms; /* a fuse ring burns in */
     --t-ember: 1600ms; /* the most urgent fuse still glows */
     --t-night: 2400ms; /* the night chart draws up to now */
+    --t-spin: 900ms; /* one turn of a spinner while the system is asked (the Keychain's 允许) */
     --ease-out: cubic-bezier(.2, .7, .2, 1);
+    --ease-even: linear; /* a spinner turns at one speed */
     --spring: cubic-bezier(.2, .9, .25, 1.15);
   }
 
@@ -164,12 +166,12 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :root { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; }
+    :root { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; --t-spin: 0ms; }
   }
   /* A phone's display element is 36. */
   @media (max-width: 640px) { :root { --s-display: 36px; } }
   /* 设置 ▸ 减少动态效果: the same stillness, chosen in the reader. */
-  :root.calm { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; }
+  :root.calm { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; --t-spin: 0ms; }
   /* /fuse:tokens */
   * { box-sizing: border-box; }
   html { background: var(--paper); }
@@ -3937,6 +3939,34 @@
   .key-add input { min-width: 0; flex: 1 1 180px; height: 40px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .key-import { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .key-status { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  /* One-click import (#3305): a button, a chooser of sources, a visible wait on the system prompt, an outcome block. */
+  .key-importers { flex-direction: column; align-items: flex-start; }
+  .key-import-chooser:not([hidden]) { display: flex; flex-wrap: wrap; gap: 8px; }  /* a display here would beat [hidden] */
+  .key-source { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); cursor: pointer; }
+  .key-source:hover, .key-source:focus-visible { border-color: var(--ink); }
+  .key-source:disabled { opacity: 0.5; cursor: default; border-color: var(--rule); }
+  .key-import-title { margin: 6px 0 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-importers > .key-import-note { margin: 0 0 4px; }
+  .key-manual { margin-top: 16px; }
+  .key-manual > summary { cursor: pointer; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-manual[open] > summary { margin-bottom: 8px; }
+  .key-source small { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); }
+  .key-import-wait, .key-import-result { box-sizing: border-box; width: 100%; max-width: 560px; padding: 12px 14px; border: var(--hair) solid var(--rule); border-radius: var(--radius); }
+  .key-import-wait:not([hidden]) { display: flex; align-items: center; gap: 12px; }
+  .key-import-wait > div { flex: 1; min-width: 0; }
+  .key-spin { width: 18px; height: 18px; flex: none; box-sizing: border-box; border: var(--rule-heavy) solid var(--rule); border-top-color: var(--ink); border-radius: var(--round); animation: key-spin var(--t-spin) var(--ease-even) infinite; }
+  @keyframes key-spin { to { transform: rotate(360deg); } }
+  .key-import-result.error { border-color: var(--red); border-width: var(--rule-heavy); }
+  .key-import-head { margin: 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-import-note, .key-import-sites { margin: 4px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); overflow-wrap: anywhere; }
+  .key-import-fix { display: inline-block; margin-top: 8px; padding: 4px 8px; border: var(--hair) solid var(--rule); border-radius: var(--r-cell); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); }
+  .key-import-csv input { margin-top: 8px; }
+  .keys-env { margin-top: 28px; max-width: 720px; }
+  .keys-env-h { margin: 0 0 4px; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .keys-env-list { list-style: none; padding: 0; margin: 8px 0 0; }
+  .keys-env-list li { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 0; border-bottom: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .keys-env-name { color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
+  .keys-env-mask { color: var(--grey); }
   .key-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
   .key-value { padding: 4px 8px; border-radius: var(--r-cell); background: var(--well); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
   .key-page .key-facts { columns: 1; max-width: 720px; margin-top: 20px; }
@@ -11938,12 +11968,34 @@ function keysView() {
   // With no keys yet, open the adder so the one-click import buttons are the first thing seen, not hidden
   // inside a collapsed "Add a key" disclosure. Once there are keys, keep it collapsed so it doesn't nag.
   main.append(head, liveHere() ? keyAdder(!items.length) : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
-  if (!items.length) { main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export.")); return; }
+  if (!items.length) {
+    main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export."));
+    if (liveHere()) main.appendChild(keysEnvSection());
+    return;
+  }
   const cols = ["Service", "Account", "Purpose", "Used in", "Rotated"];
   main.appendChild(el("div", { class: "sheet-scroll keys-sheet", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("keys") }) }, [
     el("table", { class: "sheet" }, [el("thead", {}, [el("tr", {}, cols.map(col => el("th", { text: t(col) })))]),
       el("tbody", {}, items.map(r => el("tr", {}, [el("td", { class: "name" }, [el("a", { href: href(r), text: r.title })]),
         ...cols.slice(1).map(col => el("td", {}, [textCell(keyFact(r, col))]))])))])]));
+  if (liveHere()) main.appendChild(keysEnvSection());
+}
+// co's own credentials (#3305, owner 2026-11-22: «我们自己的密钥是在 keys.env 里面»): their names and where the
+// file is, so every key the owner has is on this one page. The Host sends names only; a value never reaches it.
+function keysEnvSection() {
+  const box = el("section", { class: "keys-env", hidden: "" });
+  hostPost("/rem/keys/env", {}).then(reply => {
+    const names = reply.names || [];
+    if (!reply.ok || (!names.length && !reply.error)) return;
+    box.append(...[el("h2", { class: "keys-env-h", text: t("co's own keys") }),
+      el("p", { class: "key-import-note", text: t("They live in {where}. Values stay hidden.", { where: reply.where }) }),
+      reply.error ? el("p", { class: "key-import-note", text: reply.error }) : null,
+      el("ul", { class: "keys-env-list" }, names.map(name => el("li", {}, [el("code", { class: "keys-env-name", text: name }),
+        el("span", { class: "keys-env-mask", "aria-label": t("hidden"), text: "••••••" })])))]
+      .filter(Boolean));
+    box.hidden = false;
+  });
+  return box;
 }
 function keyAdder(open = false) {
   const field = (name, type = "text") => el("input", { type, name, placeholder: t(name), "aria-label": t(name), autocomplete: type === "password" ? "new-password" : "off" });
@@ -11959,38 +12011,119 @@ function keyAdder(open = false) {
     save.disabled = false;
     status.textContent = reply.ok ? t("Saved · the value is in the Keychain") : reply.error || t("Could not do that. Try again.");
   };
+  const summary = el("summary", { text: t("Add a key") });
+  // The heading above already says 一键导入; this line only says where the values go (#3316 review).
+  const safety = () => el("p", { class: "key-import-lead", text: t("Values go to the Keychain; the notebook keeps only what each key is.") });
+  const importer = keyImporter();
+  if (open) {
+    // No keys yet: the import is the page's one action (he wants to click, not type). Typing one in by hand is the
+    // folded fallback, and its save is an outline button so nothing competes with the sources (#3305 review).
+    save.className = "btn-action";
+    const manual = el("details", { class: "key-manual" }, [el("summary", { text: t("Add one by hand") }), form, status]);
+    return el("details", { class: "key-adder", open: "" }, [summary, importer, safety(), manual]);
+  }
+  return el("details", { class: "key-adder" }, [summary, form, safety(), importer, status]);
+}
+// One-click import (#3305, owner 2026-11-22: «那个按钮应该就是直接一键导入吧。里面可以选择 Chrome，还有 macOS
+// 本身、Apple 本身都可以导入»). One button opens the sources. A browser or the macOS Keychain waits on the
+// system's 允许 prompt in a visible step with a cancel; the outcome is a block, never a one-line status he misses
+// («点击了导入之后，并没有给我弹出一个框»). Apple Passwords cannot be read by another program, so it says how to
+// export a CSV and offers that file — the honest path, not a button that pretends.
+const KEY_IMPORT_ERRORS = {
+  no_gui: "REM is running in a background session (a background process restarted it), so macOS cannot show the Keychain prompt here. Run this in this Mac's Terminal, then import again:",
+  denied: "The Keychain prompt was declined, so nothing was imported. Import again and choose Allow.",
+  timeout: "No one clicked Allow in the Keychain prompt within two minutes. Import again.",
+  not_found: "{name} has no saved-password key on this Mac. Is it installed and signed in?",
+  no_data: "{name} has no saved passwords on this Mac.",
+};
+Object.assign(UI.zh, {
+  "One-click import": "一键导入", "Import from": "从哪里导入", "macOS Keychain": "macOS 钥匙串", "asks once per password": "每条都会问一次",
+  "Apple Passwords": "Apple 密码", "via a CSV export": "先导出 CSV", "A CSV export": "CSV 导出文件", "Cancel": "取消",
+  "Waiting for you to click Allow in the Keychain prompt…": "等你在钥匙串弹窗里点「允许」…",
+  "macOS asks once for each password.": "每条密码 macOS 都会问一次。",
+  "macOS asks once for {name}'s saved passwords.": "macOS 会问一次能不能读 {name} 保存的密码。",
+  "Imported {n} keys from {name}.": "从 {name} 导入了 {n} 条。", "and {n} more": "等另外 {n} 个",
+  "{n} had no password and were skipped.": "{n} 条没有密码，跳过了。", "Stopped early: {why}": "中途停了：{why}",
+  "the Keychain stopped answering": "钥匙串没有再回应", "the CSV export": "CSV 导出文件",
+  "REM is running in a background session (a background process restarted it), so macOS cannot show the Keychain prompt here. Run this in this Mac's Terminal, then import again:":
+    "REM 现在运行在后台会话里（是被后台程序重启的），macOS 没法在这里弹出钥匙串授权窗。在这台 Mac 的「终端」里运行下面这行，然后回来再导入一次：",
+  "The Keychain prompt was declined, so nothing was imported. Import again and choose Allow.": "钥匙串弹窗里点了「拒绝」，所以没有导入。再导入一次，选「允许」。",
+  "No one clicked Allow in the Keychain prompt within two minutes. Import again.": "两分钟内没等到你在钥匙串弹窗里点「允许」。再导入一次。",
+  "{name} has no saved-password key on this Mac. Is it installed and signed in?": "这台 Mac 上的 {name} 没有保存密码用的钥匙。装过并登录过吗？",
+  "{name} has no saved passwords on this Mac.": "{name} 在这台 Mac 上没有保存的密码。",
+  "Delete the export file now: it holds every password in plain text.": "现在就把导出文件删掉：里面每个密码都是明文。",
+  "Apple's Passwords app doesn't let other programs read it. In Passwords, choose File → Export All Passwords…, save the CSV, then pick it here:":
+    "Apple 的「密码」App 不让其他程序直接读取。在「密码」App 里选 文件 → 导出所有密码…，存成 CSV，再在这里选这个文件：",
+  "Pick a password export from 1Password, LastPass, Bitwarden, Chrome or Safari:": "选一个从 1Password、LastPass、Bitwarden、Chrome 或 Safari 导出的密码文件：",
+  "Add one by hand": "手动添加一条", "Values go to the Keychain; the notebook keeps only what each key is.": "密码存进钥匙串，笔记本只记每条是什么。", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏" });
+function keyImporter() {
+  const result = el("div", { class: "key-import-result", hidden: "" });
   const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": t("Import a password export (CSV)") });
+  const waiting = el("div", { class: "key-import-wait", role: "status", hidden: "" });
+  // 一键导入 is the heading and the sources ARE its buttons, always in view: a button that opened them did nothing
+  // visible once they were shown (#3305 review). A wait disables them so one prompt is asked at a time.
+  const chooser = el("div", { class: "key-import-chooser", role: "group", "aria-label": t("Import from") });
+  const show = node => {
+    waiting.hidden = node !== waiting;
+    result.hidden = node !== result;
+    for (const button of chooser.querySelectorAll("button")) button.disabled = node === waiting;
+  };
+  const outcome = (reply, name) => {
+    result.textContent = "";
+    if (reply.ok) {
+      result.className = "key-import-result ok";
+      const sites = reply.sites || [];
+      result.append(...[el("p", { class: "key-import-head", text: t("Imported {n} keys from {name}.", { n: reply.filed, name }) }),
+        sites.length ? el("p", { class: "key-import-sites", text: sites.slice(0, 12).join(" · ") + (sites.length > 12 ? " · " + t("and {n} more", { n: sites.length - 12 }) : "") }) : null,
+        reply.skipped ? el("p", { class: "key-import-note", text: t("{n} had no password and were skipped.", { n: reply.skipped }) }) : null,
+        reply.stopped ? el("p", { class: "key-import-note", text: t("Stopped early: {why}", { why: t(KEY_IMPORT_ERRORS[reply.stopped] || "the Keychain stopped answering", { name }) }) }) : null]
+        .filter(Boolean));  // append() would print a null as the word "null"
+    } else {
+      result.className = "key-import-result error";
+      result.setAttribute("role", "alert");
+      const words = KEY_IMPORT_ERRORS[reply.reason];
+      result.append(el("p", { class: "key-import-head", text: reply.code === 0 ? t(HOST_LOST_WORDS)
+        : words ? t(words, { name }) : reply.error || t("Could not do that. Try again.") }));
+      if (reply.reason === "no_gui") result.append(el("code", { class: "key-import-fix", text: "co rem open" }));
+    }
+    show(result);
+  };
+  const run = async (body, name, hint) => {
+    let cancelled = false;
+    const cancel = el("button", { type: "button", class: "btn-quiet", text: t("Cancel") });
+    cancel.onclick = () => { cancelled = true; show(null); };
+    waiting.textContent = "";
+    waiting.append(el("span", { class: "key-spin", "aria-hidden": "true" }),
+      el("div", {}, [el("p", { class: "key-import-head", text: t("Waiting for you to click Allow in the Keychain prompt…") }),
+        el("p", { class: "key-import-note", text: hint })]), cancel);
+    show(waiting);
+    const reply = await hostPost("/rem/keys/import", body);
+    if (!cancelled) outcome(reply, name);
+  };
+  const csvPanel = lead => el("div", { class: "key-import-csv" }, [el("p", { class: "key-import-note", text: lead }), file]);
   file.onchange = async () => {
     if (!file.files[0]) return;
     const reply = await hostPost("/rem/keys/import", { csv: await file.files[0].text() });
     file.value = "";
-    status.textContent = reply.ok ? t("Filed {n} keys; {m} rows had no password. Delete the export file now: it holds every password in plain text.", { n: reply.filed, m: reply.skipped })
-      : reply.error || t("Could not do that. Try again.");
+    outcome(reply.ok ? { ...reply, sites: reply.sites || [] } : reply, t("the CSV export"));
+    if (reply.ok) result.append(el("p", { class: "key-import-note", text: t("Delete the export file now: it holds every password in plain text.") }));
   };
-  const fromBrowser = (browser, label) => {
-    const button = el("button", { type: "button", class: "btn-action", text: label });
-    button.onclick = async () => {
-      button.disabled = true;
-      status.textContent = t("Importing from {name} — approve the Keychain prompt…", { name: label });
-      const reply = await hostPost("/rem/keys/import", { source: browser });
-      button.disabled = false;
-      status.textContent = reply.ok ? t("Filed {n} keys from {name}; {m} had no password.", { n: reply.filed, m: reply.skipped, name: label })
-        : reply.error || t("Could not do that. Try again.");
+  const source = (id, name, note) => {
+    const button = el("button", { type: "button", class: "key-source", "data-source": id }, [el("span", { text: name }), note ? el("small", { text: note }) : null]);
+    button.onclick = () => {
+      if (id === "apple") { result.textContent = ""; result.className = "key-import-result"; result.removeAttribute("role");
+        result.append(csvPanel(t("Apple's Passwords app doesn't let other programs read it. In Passwords, choose File → Export All Passwords…, save the CSV, then pick it here:"))); show(result); return; }
+      if (id === "csv") { result.textContent = ""; result.className = "key-import-result"; result.removeAttribute("role");
+        result.append(csvPanel(t("Pick a password export from 1Password, LastPass, Bitwarden, Chrome or Safari:"))); show(result); return; }
+      run({ source: id }, name, id === "keychain" ? t("macOS asks once for each password.") : t("macOS asks once for {name}'s saved passwords.", { name }));
     };
     return button;
   };
-  const importers = el("div", { class: "key-importers" }, [
-    fromBrowser("chrome", "Chrome"), fromBrowser("edge", "Edge"), fromBrowser("brave", "Brave"),
-    el("label", { class: "key-import" }, [el("span", { text: t("Import a CSV export") }), file])]);
-  const summary = el("summary", { text: t("Add a key") });
-  const safety = () => el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") });
-  if (open) {
-    // No keys yet: lead with the one-click importers — he wants to click, not type. The manual form stays below.
-    return el("details", { class: "key-adder", open: "" }, [summary,
-      el("p", { class: "key-import-primary", text: t("Import from a browser in one click — no typing.") }),
-      importers, safety(), form, status]);
-  }
-  return el("details", { class: "key-adder" }, [summary, form, safety(), importers, status]);
+  chooser.append(source("chrome", "Chrome"), source("edge", "Edge"), source("brave", "Brave"),
+    source("keychain", t("macOS Keychain"), t("asks once per password")), source("apple", t("Apple Passwords"), t("via a CSV export")),
+    source("csv", t("A CSV export")));
+  return el("div", { class: "key-importers" }, [el("h2", { class: "key-import-title", text: t("One-click import") }),
+    el("p", { class: "key-import-note", text: t("Import from a browser in one click — no typing.") }), chooser, waiting, result]);
 }
 function keyPage(r) {
   const rows = ["Service", "Account", "Purpose", "Who else has it", "Used in", "Created", "Rotated", "Expires", "Link", "Vault"]

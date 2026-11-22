@@ -102,25 +102,99 @@ def import_csv(root, text: str) -> dict:
     return {"filed": filed, "skipped": skipped}
 
 
-def import_browser(root, browser: str = "chrome") -> dict:
-    """Every saved login in a browser's vault (Chrome/Edge/Brave): the value to the OS vault, a page per key.
+class KeyImportError(RemError):
+    """An import that could not run, with a `code` the reader turns into what to do (#3305)."""
 
-    Returns counts only (filed, skipped), never a URL, account or value, so the reply is safe to show or log.
-    """
-    from ..useful_tools import chrome_passwords
-    try:
-        logins = chrome_passwords.all_logins(browser)
-    except chrome_passwords.ChromeError as error:
-        raise RemError(str(error))
+    def __init__(self, message: str, code: str = "failed"):
+        super().__init__(message)
+        self.code = code
+
+
+NO_GUI = ("REM's Host is running outside your login session (it was restarted by a background process), so macOS "
+          "cannot show the Keychain prompt. Run `co rem open` in this Mac's Terminal, then import again.")
+
+
+def _need_prompt() -> None:
+    """Refuse before reading anything when this Host cannot show the system prompt: it would only fail."""
+    from .live_host import launch_session
+    if launch_session() not in ("Aqua", ""):
+        raise KeyImportError(NO_GUI, "no_gui")
+
+
+def _site(url: str) -> str:
+    return re.sub(r"^https?://(www\.)?|/.*$", "", url) or url
+
+
+def _file_logins(root, logins) -> dict:
+    """Each login's value to the vault and a page per key; the reply names sites, never an account or value."""
     filed = skipped = 0
+    sites = []
     for login in logins:
-        service = re.sub(r"^https?://(www\.)?|/.*$", "", login["url"]) or login["url"]
+        service = _site(login["url"])
         if not service or not login["password"]:
             skipped += 1
             continue
         add(root, service, login["username"], login["password"], link=login["url"])
         filed += 1
-    return {"filed": filed, "skipped": skipped}
+        sites.append(service)
+    return {"filed": filed, "skipped": skipped, "sites": sorted(set(sites))}
+
+
+def import_browser(root, browser: str = "chrome") -> dict:
+    """Every saved login in a browser's vault (Chrome/Edge/Brave): the value to the OS vault, a page per key.
+
+    Returns counts and site names only, never an account or value, so the reply is safe to show.
+    """
+    from ..useful_tools import chrome_passwords, macos_keychain
+    _need_prompt()
+    try:
+        logins = chrome_passwords.all_logins(browser)
+    except chrome_passwords.ChromeError as error:
+        raise KeyImportError(str(error), "no_data")
+    except macos_keychain.KeychainError as error:
+        raise KeyImportError(NO_GUI if error.code == "no_gui" else str(error), error.code)
+    return _file_logins(root, logins)
+
+
+def import_keychain(root) -> dict:
+    """The login keychain's internet passwords: listing asks nothing, and macOS asks once per value read.
+
+    A declined or unanswered prompt stops the import there; what was filed stays filed and the reply says so.
+    """
+    from ..useful_tools import macos_keychain
+    _need_prompt()
+    try:
+        items = macos_keychain.internet_passwords()
+    except macos_keychain.KeychainError as error:
+        raise KeyImportError(str(error), error.code)
+    logins, stopped = [], ""
+    for item in items:
+        try:
+            secret = macos_keychain.internet_password(item["server"], item["account"])
+        except macos_keychain.KeychainError as error:
+            if error.code == "not_found":
+                continue
+            if error.code == "no_gui" and not logins:
+                raise KeyImportError(NO_GUI, "no_gui")
+            stopped = error.code
+            break
+        logins.append({"url": item["server"], "username": item["account"], "password": secret})
+    result = _file_logins(root, logins)
+    return {**result, "stopped": stopped} if stopped else result
+
+
+def env_names(path: Path | None = None) -> dict:
+    """The names of co's own credentials in keys.env and where that file is: never a value (#3305)."""
+    from ..environment import EnvironmentError as EnvFileError, display_path, parse_env_file, selected_env_file
+    path = path or selected_env_file()
+    if not path.exists():
+        return {"where": display_path(path), "names": []}
+    try:
+        bindings = parse_env_file(path)
+    except EnvFileError as error:  # its message names the line, never a value
+        return {"where": display_path(path), "names": [], "error": str(error)}
+    names = [item.key for item in bindings if item.key and item.key != "AGENT_CONFIG_PATH"]
+    return {"where": display_path(path), "names": sorted(dict.fromkeys(names))}
 
 
 def _entropy(token: str) -> float:
