@@ -400,12 +400,19 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc9
+## Current Version: 1.9.7rc10
+Release candidate 1.9.7rc10 for 1.9.7: the Keys page imports with one 一键导入 (Chrome, Edge, Brave, the macOS
+Keychain, Apple Passwords via its CSV export, or a CSV), shows a waiting step while the system asks to 允许, and
+says why when the REM Host cannot show that prompt, with the one fix; co's own keys from `~/.co/keys.env` are
+listed by name. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc10.md).
+
+- 1.9.7rc10 (Keys: one-click import from honest sources, a visible prompt step, keys.env listed).
+
+### Previous candidate: 1.9.7rc9
 Release candidate 1.9.7rc9 for 1.9.7: `co discord` as your own account (experimental), system Chrome fallback
 that keeps other sessions' tabs, a bare `co host` that no longer stops serving silently, and `co call` that names
 the address it signed with. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc9.md).
 
-- 1.9.7rc9 (co discord as your account; browser fallback; bare co host; co call identity).
 
 ### Previous candidate: 1.9.7rc8
 Release candidate 1.9.7rc8 for 1.9.7: fixes a regression in rc7. rc7 reworded a topic link review from the page
