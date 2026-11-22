@@ -87,6 +87,7 @@ def subscriptions(root: Path) -> dict:
     if not isinstance(saved, dict):
         raise RemError("Invalid subscriptions file; preserve it for diagnosis")
     since = (now() - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
+    _wechat_ready = (Path.home() / ".co" / "wechat" / "keys.json").is_file()
     defaults = {
         "codex": {"id": "codex", "kind": "codex", "root": str(codex_sessions_root()),
                   "project": None, "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["codex"],
@@ -109,13 +110,22 @@ def subscriptions(root: Path) -> dict:
                      else "waiting for co whatsapp listen"},
         # Off until chosen. Unlike WhatsApp it needs no listener: `co wechat sync` reads WeChat for Mac's own
         # databases each time, and "*" reads every one-to-one chat (people), never a group unless named.
+        # On by default once WeChat's keys are captured (co wechat key capture): reading your own WeChat
+        # locally is reversible, so context-over-control means do it, not ask (co rem sources remove wechat undoes it).
         "wechat": {"id": "wechat", "kind": "wechat", "root": str(chat_home("wechat")), "chats": ["*"],
                    "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["wechat"],
-                   "enabled": False, "consented": False,
-                   "adapter": "available" if (Path.home() / ".co" / "wechat" / "keys.json").is_file()
-                   else "waiting for co wechat"},
+                   "enabled": _wechat_ready, "consented": _wechat_ready,
+                   "adapter": "available" if _wechat_ready else "waiting for co wechat"},
     }
     defaults.update(saved)
+    # Capturing WeChat's keys IS the local, reversible consent (#3279): keys present means the source is
+    # enabled and consented, even for a subscription stored before #3281 with consented:False, so it is one
+    # source of truth and a page we seed is a page we fill (#3289). An explicit `co rem sources remove wechat`
+    # (unsubscribed) is respected and stays off.
+    wechat = defaults.get("wechat")
+    if _wechat_ready and wechat and not wechat.get("unsubscribed"):
+        wechat["enabled"] = True
+        wechat["consented"] = True
     return defaults
 
 

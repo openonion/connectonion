@@ -2385,6 +2385,9 @@
   .cal-ev.cal-microsoft { border-left-color: var(--grey); }
   .cal-ev:hover, .cal-ev:focus-visible { box-shadow: var(--e-ink); outline: none; }
   .cal-ev-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; }
+  /* A long mail-quote title would wrap into a wall of lines filling the block; clamp a timed event's title
+     to two lines (the full text stays on its detail panel). .short and .cal-suggest keep their one nowrap line. */
+  .cal-ev:not(.short):not(.cal-suggest) .cal-ev-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; min-width: 0; }
   .cal-ev.short .cal-ev-title { white-space: nowrap; }
   .cal-ev-time, .cal-ev-where { color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cal-ev.short .cal-ev-time, .cal-ev:not(.tall) .cal-ev-where { display: none; }
@@ -2456,7 +2459,7 @@
   .cal-row-bar.cal-event .cal-row-time { color: inherit; grid-row: 2; }
   .cal-row-time { color: var(--grey); font-size: var(--s-ui); }
   .cal-row.late .cal-row-time { color: var(--red); }
-  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; }
+  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; }
   .cal-row-where { grid-column: 2; color: var(--grey); font-size: var(--s-ui); overflow-wrap: anywhere; }
   .cal-row-bar.cal-event .cal-row-where { grid-column: 1; color: inherit; }
   @media (max-width: 640px) {
@@ -2827,6 +2830,11 @@
 
 <style id="org-article-style">
   main:has(> .ov-page.ov-r6) { max-width: 800px; }
+  /* A skill page renders a bare .record-focus with no .ov-page wrapper, so it fell through to main's
+     1180px default: 1080px wide and offset left, while every other record kind sits in an 800px frame
+     (#3231). Put it in the same frame so all record pages open at one width. */
+  main:has(> .record-focus.skills) { max-width: 800px; }
+  main:has(> .record-focus.skills) > .record-focus.skills { max-width: 720px; margin-inline: auto; }
   .ov.ov-page.ov-r6 { max-width: 720px; margin-inline: auto; }
   main:has(> .ov-page.ov-r6) > .deep-note { max-width: 720px; margin-inline: auto; }
   .ov-page .ov-stage { display: block; }
@@ -3959,6 +3967,7 @@
   .key-adder { margin: 8px 0 20px; }
   .key-importers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
   .key-import-lead { color: var(--grey); font: var(--s-ui) var(--font); margin: 6px 0 0; }
+  .key-import-primary { color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); margin: 6px 0 10px; }
   .key-adder > summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   .key-add { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .key-add input { min-width: 0; flex: 1 1 180px; height: 40px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
@@ -11954,7 +11963,7 @@ function category(c) {
 // where the value is, never the value.
 Object.assign(UI.zh, { "Service": "服务", "Account": "账号", "Purpose": "用途", "Used in": "用在", "Rotated": "最近更换", "Expires": "到期",
   "Who else has it": "还有谁知道", "Created": "建立", "Link": "链接", "Vault": "保存在",
-  "Add a key": "添加钥匙", "Import a password export (CSV)": "导入密码导出文件（CSV）", "Import a CSV export": "导入 CSV 文件", "Password or key": "密码或密钥", "Importing from {name} — approve the Keychain prompt…": "正在从 {name} 导入——请在钥匙串弹窗里点允许…", "Filed {n} keys from {name}; {m} had no password.": "从 {name} 导入了 {n} 条，{m} 条没有密码。", "One-click import. Values go to the Keychain; the notebook keeps only what each key is.": "一键导入。密码存进钥匙串，笔记本只记每条是什么。",
+  "Add a key": "添加钥匙", "Import a password export (CSV)": "导入密码导出文件（CSV）", "Import a CSV export": "导入 CSV 文件", "Password or key": "密码或密钥", "Importing from {name} — approve the Keychain prompt…": "正在从 {name} 导入——请在钥匙串弹窗里点允许…", "Filed {n} keys from {name}; {m} had no password.": "从 {name} 导入了 {n} 条，{m} 条没有密码。", "One-click import. Values go to the Keychain; the notebook keeps only what each key is.": "一键导入。密码存进钥匙串，笔记本只记每条是什么。", "Import from a browser in one click — no typing.": "从浏览器一键导入，不用手打。",
   "Save to the Keychain": "存进钥匙串", "Copy": "复制", "Show": "显示", "Hide": "隐藏",
   "Copied · cleared from the clipboard in 30 s": "已复制 · 30 秒后从剪贴板清除",
   "The value is in this Mac's Keychain. Copy it from the reader on this Mac.": "密码在这台电脑的钥匙串里，只能在这台电脑上的阅读器里复制。",
@@ -11967,7 +11976,9 @@ function keysView() {
   const main = document.getElementById("main"), items = inCategory("keys").sort((a, b) => a.title.localeCompare(b.title));
   main.textContent = "";
   const head = el("div", { class: "category-head" }, [el("h1", { text: label("keys") }), items.length ? el("span", { class: "mono", text: String(items.length) }) : null]);
-  main.append(head, liveHere() ? keyAdder() : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
+  // With no keys yet, open the adder so the one-click import buttons are the first thing seen, not hidden
+  // inside a collapsed "Add a key" disclosure. Once there are keys, keep it collapsed so it doesn't nag.
+  main.append(head, liveHere() ? keyAdder(!items.length) : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
   if (!items.length) { main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export.")); return; }
   const cols = ["Service", "Account", "Purpose", "Used in", "Rotated"];
   main.appendChild(el("div", { class: "sheet-scroll keys-sheet", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("keys") }) }, [
@@ -11975,7 +11986,7 @@ function keysView() {
       el("tbody", {}, items.map(r => el("tr", {}, [el("td", { class: "name" }, [el("a", { href: href(r), text: r.title })]),
         ...cols.slice(1).map(col => el("td", {}, [textCell(keyFact(r, col))]))])))])]));
 }
-function keyAdder() {
+function keyAdder(open = false) {
   const field = (name, type = "text") => el("input", { type, name, placeholder: t(name), "aria-label": t(name), autocomplete: type === "password" ? "new-password" : "off" });
   const service = field("Service"), account = field("Account"), secret = field("Password or key", "password"), purpose = field("Purpose");
   const status = el("p", { class: "key-status", role: "status" });
@@ -12012,9 +12023,15 @@ function keyAdder() {
   const importers = el("div", { class: "key-importers" }, [
     fromBrowser("chrome", "Chrome"), fromBrowser("edge", "Edge"), fromBrowser("brave", "Brave"),
     el("label", { class: "key-import" }, [el("span", { text: t("Import a CSV export") }), file])]);
-  return el("details", { class: "key-adder" }, [el("summary", { text: t("Add a key") }), form,
-    el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") }),
-    importers, status]);
+  const summary = el("summary", { text: t("Add a key") });
+  const safety = () => el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") });
+  if (open) {
+    // No keys yet: lead with the one-click importers — he wants to click, not type. The manual form stays below.
+    return el("details", { class: "key-adder", open: "" }, [summary,
+      el("p", { class: "key-import-primary", text: t("Import from a browser in one click — no typing.") }),
+      importers, safety(), form, status]);
+  }
+  return el("details", { class: "key-adder" }, [summary, form, safety(), importers, status]);
 }
 function keyPage(r) {
   const rows = ["Service", "Account", "Purpose", "Who else has it", "Used in", "Created", "Rotated", "Expires", "Link", "Vault"]
@@ -13117,9 +13134,12 @@ function projectLiveLate(r) {
 }
 function projectTodayCount(r) { return (REM.today_queue || []).filter(row => row.record === r.path && !row.closed && !row.quiet).length; }
 function projectTodayLink(r, words) {
-  const link = el("a", { class: "project-today-link", href: "#", text: words });
-  link.onclick = () => { todayLead = r.path; };
-  return link;
+  // A project's open items live in Today under their correspondents, never as one project card in the reply deck,
+  // so this opens the Waiting view filtered to the project — the very place and filter id ("project:" + title)
+  // that project's own chip uses there (openTags/openChips) — instead of the deck. todayLead could only reorder
+  // the deck, which holds no card keyed to a project, so a project page's "N open items are in Today" line used to
+  // land on an unrelated card or an empty, off-screen panel (#3165). One shared filter, same as every chip.
+  return el("a", { class: "project-today-link", href: "#view=open&tag=" + encodeURIComponent("project:" + r.title), text: words });
 }
 
 // ---- the head: the page's name and its three views ----
