@@ -219,6 +219,30 @@ def _added(before: str, after: str) -> list[str]:
     return [re.sub(r"\s*(?:\[W?\d+\](?!\()\s*)+", " ", line).strip() for line in lines]
 
 
+def next_step(root, record: str, logs) -> dict | None:
+    """What happens to a refused page next, read from the refusal ledger the night retries from (refusals.py),
+    so the reader never promises a retry the night will not make (#3392's lesson).
+
+    {"kind": "retry"}: the night tries it again (once a night, up to MAX_RETRIES).
+    {"kind": "parked", "tries": N}: out of retries on this material; N is the refused investigations since the
+    page was last written. None: the ledger holds nothing for the page, so nothing is promised."""
+    from .refusals import MAX_RETRIES, refused_for
+    entry = refused_for(root, record)
+    if not entry:
+        return None
+    if entry.get("retries", 0) < MAX_RETRIES:
+        return {"kind": "retry"}
+    mine = sorted((run for run in logs if run.get("record") == record and run.get("phase") == "investigate"),
+                  key=lambda run: run.get("started_at", ""))
+    tries = 0
+    for run in mine:
+        if run.get("outcome") == "completed" and run.get("changed"):
+            tries = 0
+        elif run.get("outcome") in ("refused", "failed"):
+            tries += 1
+    return {"kind": "parked", "tries": max(tries, 1)}
+
+
 def status(root, record: str, *, logs=None) -> dict:
     from . import page_versions
     from .service import run_logs
@@ -233,8 +257,11 @@ def status(root, record: str, *, logs=None) -> dict:
             receipt.update(result="failed", reason="The investigation stopped without saying how it ended; "
                                                    "see co rem logs", finished_at=now().isoformat())
             write_json(path, receipt)
-    progress = _progress(root, receipt, run_logs(root) if logs is None else logs)
+    logs = run_logs(root) if logs is None else logs
+    progress = _progress(root, receipt, logs)
     value = {**receipt, **_readable(receipt, progress), "progress": progress}
+    if value["result"] == "failed" and value.get("reason_kind") == "rejected":
+        value["next"] = next_step(root, record, logs)
     if receipt["result"] != "running":
         book = Notebook(root)
         after = book.read(record) if book.exists(record) else ""

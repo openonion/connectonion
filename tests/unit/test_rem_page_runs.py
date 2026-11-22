@@ -244,3 +244,36 @@ def test_a_receipt_saved_with_the_raw_rejection_is_read_plainly(root):
     run = page_runs.status(root, PAGE)
     assert run["reason_kind"] == "rejected" and run["detail"] == "Unused citation: 41"
     assert "candidate" not in run["reason"].lower()
+
+
+def _rejected_receipt(root):
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append"], "result": "failed",
+                                                    "started_at": "2026-10-01T23:00:00+00:00", "finished_at": "2026-10-02T00:20:00+00:00",
+                                                    "before_sha256": page_runs._sha(INVESTIGATED),
+                                                    "reason": REJECTED, "reason_kind": "other"})
+
+
+def test_a_refused_page_the_night_will_retry_says_so_from_the_refusal_ledger(root):
+    from connectonion.rem.refusals import remember_refusal
+    _rejected_receipt(root)
+    remember_refusal(root, PAGE, ["gmail:aaaaaaaaaaaa"], "Unused citation: 41", stage="investigate")
+    assert page_runs.status(root, PAGE)["next"] == {"kind": "retry"}
+
+
+def test_a_refused_page_out_of_retries_is_parked_with_the_real_count(root):
+    from connectonion.rem.refusals import MAX_RETRIES, refused_pages
+    from connectonion.rem.files import write_json as save
+    _rejected_receipt(root)
+    save(state_path(root, "refused-investigations.json"),
+         {PAGE: {"sources": ["gmail:aaaaaaaaaaaa"], "at": "2026-10-02T00:20:00+00:00", "why": "Unused citation: 41",
+                 "stage": "investigate", "retries": MAX_RETRIES}})
+    assert refused_pages(root)[PAGE]["retries"] == MAX_RETRIES
+    _run(root, 1, phase="investigate", started="2026-09-01T00:00:00+00:00", changed=["x"])
+    for n, day in enumerate(("2026-09-20", "2026-09-21", "2026-09-22", "2026-10-01"), start=2):
+        _run(root, n, phase="investigate", started=f"{day}T00:00:00+00:00", outcome="refused")
+    assert page_runs.status(root, PAGE)["next"] == {"kind": "parked", "tries": 4}
+
+
+def test_a_refused_page_the_ledger_does_not_hold_promises_nothing(root):
+    _rejected_receipt(root)
+    assert page_runs.status(root, PAGE)["next"] is None

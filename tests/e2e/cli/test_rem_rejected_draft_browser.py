@@ -21,10 +21,11 @@ PAGES = {
     "projects/lantern-pilot.md": "# Lantern pilot\n\nThe pilot runs until March. [1]\n\n## Sources\n- [1] gmail:pilot0001 — 2026-01-10"
                                  + INVESTIGATED,
 }
-REJECT = """(path) => {
+REJECT = """([path, next]) => {
   const r = byPath(path), at = new Date().toISOString();
   r.investigation = { label: 'update', last: '2026-10-01', run: { result: 'failed', reason_kind: 'rejected', started_at: at,
-    finished_at: at, reason: 'The draft did not pass the page check, so nothing on the page changed.', detail: 'Unused citation: 41' } };
+    finished_at: at, reason: 'The draft did not pass the page check, so nothing on the page changed.', detail: 'Unused citation: 41',
+    next } };
   KNOWN.clear(); render();
 }"""
 
@@ -59,7 +60,7 @@ def tab(request, tmp_path, monkeypatch):
 def test_a_refused_draft_says_the_page_is_unchanged_and_folds_what_the_check_found(tab, path):
     tab.goto(tab.html_uri + "#r=" + quote(path))
     tab.wait_for_function(f"() => byPath({path!r}) && document.querySelector('#main h1')")
-    tab.evaluate(REJECT, path, isolated_context=False)
+    tab.evaluate(REJECT, [path, None], isolated_context=False)
     line = tab.locator("#main .inv-line").first
     line.wait_for()
     said = line.inner_text()
@@ -72,3 +73,27 @@ def test_a_refused_draft_says_the_page_is_unchanged_and_folds_what_the_check_fou
     assert detail.is_visible()
     assert detail.inner_text() == "稿子列了第 41 条来源，正文却没有用到"
     assert line.get_by_role("button", name="检查发现了什么").get_attribute("aria-expanded") == "true"
+
+
+def _line(tab, path, next_step):
+    tab.goto(tab.html_uri + "#r=" + quote(path))
+    tab.wait_for_function(f"() => byPath({path!r}) && document.querySelector('#main h1')")
+    tab.evaluate(REJECT, [path, next_step], isolated_context=False)
+    line = tab.locator("#main .inv-line").first
+    line.wait_for()
+    # A clause keeps its separator with it on a narrow screen (a no-break space); read it as a space.
+    return line.inner_text().replace("\u00a0", " ")
+
+
+# The art director (2026-11-23): the line says what happens next, from the night's own retry state.
+@pytest.mark.parametrize("path", list(PAGES))
+def test_a_refused_draft_the_night_will_retry_says_tonight(tab, path):
+    said = _line(tab, path, {"kind": "retry"})
+    assert said.startswith("这次调查的稿子没通过检查，页面保持原样 · 今晚会再试一次")
+
+
+@pytest.mark.parametrize("path", list(PAGES))
+def test_a_refused_draft_out_of_retries_says_it_is_paused_with_the_real_count(tab, path):
+    said = _line(tab, path, {"kind": "parked", "tries": 3})
+    assert said.startswith("试了 3 次都没通过，已暂停 · 想再试就点调查")
+    assert "今晚" not in said
