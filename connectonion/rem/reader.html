@@ -17574,7 +17574,9 @@ function graph3dFit(whole = false) {
   const toward = from.clone().sub(centre);
   if (toward.lengthSq() < 1e-6) toward.set(0, 0, 1);
   toward.normalize();
-  const dist = graph3dDistance(marks, centre, toward, .87, from.distanceTo(centre) || 600);
+  // The bulk (95th percentile) fills about 87% of the inner area; every mark, its size included, stays inside it.
+  const need = () => Math.max(graph3dCover(marks, centre) / .87, graph3dCover(marks, centre, 1, true));
+  const dist = graph3dDistance(centre, toward, need, from.distanceTo(centre) || 600);
   graphState.fitDist3 = dist;
   graph3dMove(centre.clone().addScaledVector(toward, dist), centre);
 }
@@ -17583,18 +17585,18 @@ function graph3dCentroid(marks, like) {
   for (const n of marks) { c.x += n.x; c.y += n.y; c.z += n.z; }
   return c.multiplyScalar(1 / marks.length);
 }
-// The distance from `aim`, looking along `toward`, at which `marks` cover `share` of the stage: measured, not
-// guessed (three passes), then the camera is put back, so the eased move starts where it stands.
-function graph3dDistance(marks, aim, toward, share, start) {
+// The distance from `aim`, looking along `toward`, at which `need()` comes to 1 (it scales with the distance):
+// measured, not guessed (three passes), then the camera is put back, so the eased move starts where it stands.
+function graph3dDistance(aim, toward, need, start) {
   const camera = graphState.fg.camera(), from = camera.position.clone(), turn = camera.quaternion.clone();
   let dist = start;
   for (let pass = 0; pass < 3; pass++) {
     camera.position.copy(aim).addScaledVector(toward, dist);
     camera.lookAt(aim);
     camera.updateMatrixWorld();
-    const cover = graph3dCover(marks, aim);
-    if (!cover) break;
-    dist *= cover / share;
+    const scale = need();
+    if (!scale) break;
+    dist *= scale;
   }
   camera.position.copy(from);
   camera.quaternion.copy(turn);
@@ -17614,7 +17616,7 @@ function graph3dFlyTo(d, centre) {
   toward.normalize();
   const radius = d.__threeObj?.geometry?.parameters?.radius || 6;
   const nearest = 2 * radius / (.15 * 2 * Math.tan(camera.fov * Math.PI / 360));  // the hit at most 15% of the stage's height
-  const dist = group.length > 1 ? graph3dDistance(group, aim, toward, .6, (graphState.fitDist3 || 600) * .5) : nearest * 2;
+  const dist = group.length > 1 ? graph3dDistance(aim, toward, () => graph3dCover(group, aim, 1, true) / .6, (graphState.fitDist3 || 600) * .5) : nearest * 2;
   graph3dMove(aim.clone().addScaledVector(toward, Math.max(dist, nearest)), aim);
 }
 // One camera move, eased in and out over 700 ms; reduced motion jumps. A newer move replaces one still running.
@@ -17637,17 +17639,34 @@ function graph3dMove(to, aim) {
 // How much of the stage the marks take up: the larger of their height and width shares.
 // How much of the stage the marks take up around `aim`: twice their 95th-percentile offset from it on each axis,
 // so one outlying mark may sit at the edge instead of shrinking the whole map to fit it (#3309 review).
-function graph3dCover(marks, aim) {
+// The inner area the 3D map is fitted into, in stage pixels (#3309 review): room for the legend line and 12 px
+// under it at the top, 12 px in from every other edge. Outliers may touch it; none sits on the legend or is cut.
+function graph3dRoom() {
   const fg = graphState.fg, W = fg.width(), H = fg.height();
-  if (!W || !H || !marks.length) return 0;
-  const centre = fg.graph2ScreenCoords(aim.x, aim.y, aim.z), dx = [], dy = [];
-  for (const n of marks) {
-    const at = fg.graph2ScreenCoords(n.x, n.y, n.z);
-    dx.push(Math.abs(at.x - centre.x));
-    dy.push(Math.abs(at.y - centre.y));
+  const holder = document.querySelector(".gx-map .gx-3d"), key = document.querySelector(".gx-map .gx-key3d");
+  let top = 12;
+  if (holder && key && key.offsetParent) {
+    const k = key.getBoundingClientRect(), h = holder.getBoundingClientRect();
+    top = Math.max(0, k.bottom - h.top) + k.height + 12;
   }
-  const p95 = values => values.sort((a, b) => a - b)[Math.min(values.length - 1, Math.floor(values.length * .95))];
-  return Math.max(2 * p95(dx) / W, 2 * p95(dy) / H);
+  return { left: 12, top, right: W - 12, bottom: H - 12 };
+}
+// How far the marks reach toward the inner area's edges around `aim`, as a share of the room on each side (1 is
+// touching): the given quantile of the marks, so the 95th percentile lets one outlier stand apart from the fit,
+// and `edges` adds each mark's drawn radius so a whole sphere is counted, not its centre.
+function graph3dCover(marks, aim, quantile = .95, edges = false) {
+  const fg = graphState.fg, room = graph3dRoom();
+  if (!marks.length || room.right <= room.left || room.bottom <= room.top) return 0;
+  const camera = fg.camera(), H = fg.height(), tan = Math.tan(camera.fov * Math.PI / 360);
+  const centre = fg.graph2ScreenCoords(aim.x, aim.y, aim.z);
+  const reach = marks.map(n => {
+    const at = fg.graph2ScreenCoords(n.x, n.y, n.z), dx = at.x - centre.x, dy = at.y - centre.y;
+    const r = edges ? (n.__threeObj?.geometry?.parameters?.radius || 4) * H / (2 * tan * Math.max(1, camera.position.distanceTo(n))) : 0;
+    const across = dx >= 0 ? (dx + r) / Math.max(1, room.right - centre.x) : (r - dx) / Math.max(1, centre.x - room.left);
+    const down = dy >= 0 ? (dy + r) / Math.max(1, room.bottom - centre.y) : (r - dy) / Math.max(1, centre.y - room.top);
+    return Math.max(across, down);
+  }).sort((a, b) => a - b);
+  return reach[Math.min(reach.length - 1, Math.floor(reach.length * quantile))];
 }
 function graph3dZoom(by) {
   const fg = graphState.fg;

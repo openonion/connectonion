@@ -151,8 +151,10 @@ def test_the_live_reader_opens_3d_settles_and_fits_the_stage(api, built):
         after = positions_3d(page)
         assert max(moved(before[k], after[k]) for k in before) > 1, "the map animates into place, it is not frozen"
         wait_settled_3d(page)
-        cover = js(page, "() => { const n = graphState.fg.graphData().nodes; return graph3dCover(n, graph3dCentroid(n, graphState.fg.camera().position)); }")
-        assert .78 <= cover <= .95, f"settled, the map fills the stage (85-90% with a margin), not a small ball: {cover:.2f}"
+        bulk, edge = js(page, """() => { const n = graphState.fg.graphData().nodes, c = graph3dCentroid(n, graphState.fg.camera().position);
+          return [graph3dCover(n, c), graph3dCover(n, c, 1, true)]; }""")
+        assert .95 <= max(bulk / .87, edge) <= 1.05, f"settled, the map is fitted to the inner area: bulk {bulk:.2f}, every mark {edge:.2f}"
+        assert bulk >= .6 and edge <= 1.02, f"a full map, not a small ball, and nothing past the inner area: {bulk:.2f} / {edge:.2f}"
         smallest = js(page, """() => { const fg = graphState.fg, cam = fg.camera(); return Math.min(...fg.graphData().nodes.map(d => {
           const r = d.__threeObj.geometry.parameters.radius, a = fg.graph2ScreenCoords(d.x, d.y, d.z);
           const right = new cam.position.constructor(1, 0, 0).applyQuaternion(cam.quaternion).multiplyScalar(r);
@@ -230,21 +232,50 @@ def test_search_flies_to_the_page_and_lights_it_and_zooming_in_names_more(api, b
         close(page)
 
 
-def test_one_outlying_mark_sits_at_the_edge_instead_of_shrinking_the_map(api, built):
-    """#3309 review: the fit reads the 95th percentile of the marks' spread, not the single farthest one."""
+MARKS_ON_SCREEN = """() => { const fg = graphState.fg, h = document.querySelector('.gx-3d').getBoundingClientRect(), cam = fg.camera();
+  const tan = Math.tan(cam.fov * Math.PI / 360);
+  return fg.graphData().nodes.map(d => { const at = fg.graph2ScreenCoords(d.x, d.y, d.z);
+    const r = d.__threeObj.geometry.parameters.radius * fg.height() / (2 * tan * cam.position.distanceTo(d));
+    return [d.id, h.left + at.x, h.top + at.y, r]; }); }"""
+
+
+def offenders(page):
+    """Marks whose centre is on the legend line, or whose sphere is cut by the stage's edge."""
+    legend = page.locator(".gx-key3d").bounding_box()
+    stage = page.locator(".gx-3d").bounding_box()
+    bad = []
+    for id_, x, y, r in js(page, MARKS_ON_SCREEN):
+        on_legend = legend["x"] <= x <= legend["x"] + legend["width"] and legend["y"] <= y <= legend["y"] + legend["height"]
+        cut = x - r < stage["x"] or x + r > stage["x"] + stage["width"] or y - r < stage["y"] or y + r > stage["y"] + stage["height"]
+        if on_legend or cut:
+            bad.append((id_, round(x), round(y), round(r, 1)))
+    return bad
+
+
+def test_settled_no_mark_sits_on_the_legend_or_is_cut_by_the_stage(api, built):
+    """#3309 review: the map fits an inner area under the legend line, 12 px in from every edge."""
     page = open_graph(api, built)
     try:
         wait_settled_3d(page)
-        # Pin a leaf far outside the cloud, then fit the whole map again.
+        for _ in range(3):  # while the map turns slowly
+            assert offenders(page) == []
+            page.wait_for_timeout(500)
+    finally:
+        close(page)
+
+
+def test_an_outlying_mark_touches_the_inner_area_but_is_never_cut(api, built):
+    """The bulk is fitted by the 95th percentile, and an outlier is kept whole inside the inner area."""
+    page = open_graph(api, built)
+    try:
+        wait_settled_3d(page)
         js(page, """() => { const fg = graphState.fg, nodes = fg.graphData().nodes, c = graph3dCentroid(nodes, fg.camera().position);
           const leaf = nodes.filter(d => GRAPH.adj.get(d.id).size === 1)[0], spread = Math.max(...nodes.map(d => Math.hypot(d.x - c.x, d.y - c.y, d.z - c.z)));
-          leaf.fx = leaf.x = c.x + spread * 3; leaf.fy = leaf.y = c.y; leaf.fz = leaf.z = c.z; window.__leaf = leaf.id; graph3dFit(true); }""")
+          leaf.fx = leaf.x = c.x + spread * 2; leaf.fy = leaf.y = c.y; leaf.fz = leaf.z = c.z; graphState.fg.controls().autoRotate = false; graph3dFit(true); }""")
         page.wait_for_timeout(1200)
-        p95, whole = js(page, """() => { const fg = graphState.fg, nodes = fg.graphData().nodes, c = graph3dCentroid(nodes, fg.camera().position);
-          const xs = nodes.map(d => fg.graph2ScreenCoords(d.x, d.y, d.z).x), ys = nodes.map(d => fg.graph2ScreenCoords(d.x, d.y, d.z).y);
-          return [graph3dCover(nodes, c), Math.max((Math.max(...xs) - Math.min(...xs)) / fg.width(), (Math.max(...ys) - Math.min(...ys)) / fg.height())]; }""")
-        assert .8 <= p95 <= .95, f"the bulk of the map still fills about 87% of the stage: {p95:.2f}"
-        assert whole > 1, f"the outlier sits at or past the edge rather than shrinking everything: {whole:.2f}"
+        edge = js(page, "() => { const n = graphState.fg.graphData().nodes; return graph3dCover(n, graph3dCentroid(n, graphState.fg.camera().position), 1, true); }")
+        assert .95 <= edge <= 1.02, f"the outlier touches the inner area's edge: {edge:.2f}"
+        assert offenders(page) == [], "and neither it nor any other mark is cut or on the legend"
     finally:
         close(page)
 
