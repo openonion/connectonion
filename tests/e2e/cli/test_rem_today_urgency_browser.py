@@ -75,12 +75,19 @@ SOON = """() => {
   const word = day => day === agToday() ? agT('Today') : agT('Tomorrow');
   REM.calendar = { events: [{ id: 'demo-1', start, end, title: 'Product demo', calendar: 'google', people: [r.path] }] };
   const byEvent = threadAge({ since, text: 'Asked to see the product.' }, r);
+  // Another person's event the same day is not this thread's time (art director on #3408).
+  const other = inCategory('people').find(p => p.path !== r.path);
+  REM.calendar = { events: [{ id: 'demo-2', start, end, title: 'Someone else demo', calendar: 'google', people: [other.path] }] };
+  const notMine = threadAge({ since, text: 'Asked to see the product.' }, r);
+  REM.calendar = { events: [{ id: 'demo-3', start, end, title: 'No attendees', calendar: 'google', people: [] }] };
+  const noAttendee = threadAge({ since, text: 'Asked to see the product.' }, r);
   REM.calendar = { events: [] };
   const [y, m, d] = agToday().split('-').map(Number);
   const zh = threadAge({ since, text: `提议${m}月${d}日周一14:00演示，草稿说明演示时长。` }, r);
   const en = threadAge({ since, text: `Proposed a demo on ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]} ${d} at 2pm.` }, r);
   const old = threadAge({ since, text: 'We met last spring, demo went well.' }, r);
-  return { byEvent, eventWant: word(calendarDay(start)) + ' ' + agTime(start), zh, en, old, today: agT('Today'), ageWord: age(since) };
+  return { byEvent, notMine, noAttendee, eventWant: word(calendarDay(start)) + ' ' + agTime(start), zh, en, old, today: agT('Today'),
+           ageWord: age(since), waiting: t('waiting {age}', { age: age(since) }) };
 }"""
 
 
@@ -88,7 +95,9 @@ def test_a_thread_about_something_today_says_when_first(page_file):
     api, browser, page = _open(page_file, 1440, 1000)
     try:
         got = page.evaluate(SOON, isolated_context=False)
-        assert got["byEvent"].startswith(got["eventWant"]), got
+        assert got["byEvent"] == got["eventWant"] + " · " + got["waiting"], got  # the age has its word beside a time
+        assert got["notMine"] == got["ageWord"], got
+        assert got["noAttendee"] == got["ageWord"], got
         assert got["zh"].startswith(got["today"] + " 14:00"), got
         assert got["en"].startswith(got["today"] + " 14:00"), got
         assert got["old"] == got["ageWord"], got  # no date in the words, no event: the age alone, as before
@@ -121,9 +130,12 @@ def test_one_event_in_two_calendars_shows_once(page_file):
 
 # Any caption, however long, wraps inside the card. The owner's 「读了 651 项 · 改写了 38 页 · 21 次运行提前停止」 made the
 # page 406px wide: a stacked stretch kept its one-line width (nowrap, and a grid item's automatic min-width).
-LENGTHEN = """(zh) => { for (const n of document.querySelectorAll('#main .night-card .stretch-what'))
-  n.textContent = zh ? '读了 651 项 · 改写了 38 页 · 21 次运行提前停止' : 'read 651 items · rewrote 38 pages · 21 runs stopped early'; }"""
+LENGTHEN = """(zh) => { const words = zh ? ['读了 651 项', '改写了 38 页', '21 次运行提前停止'] : ['read 651 items', 'rewrote 38 pages', '21 runs stopped early'];
+  for (const n of document.querySelectorAll('#main .night-card .stretch-what'))
+    n.replaceChildren(...words.flatMap((w, i) => [el('span', { class: 'clause', text: w + (i < words.length - 1 ? ' ·' : '') }), i < words.length - 1 ? ' ' : ''])
+      .map(c => typeof c === 'string' ? document.createTextNode(c) : c)); }"""
 WIDTH = """() => ({ page: document.documentElement.scrollWidth, view: window.innerWidth,
+  broken: [...document.querySelectorAll('#main .night-card .stretch-what .clause')].filter(c => c.getClientRects().length > 1).map(c => c.textContent),
   captions: [...document.querySelectorAll('#main .night-card .stretch')].map(n => {
     const b = n.getBoundingClientRect(); return { right: Math.round(b.right), text: n.textContent };
   }) })"""
@@ -143,5 +155,6 @@ def test_phone_today_never_scrolls_sideways(page_file, locale):
         assert got["page"] <= 390, got
         assert all(c["right"] <= 390 for c in got["captions"]), got
         assert any("21" in c["text"] for c in got["captions"]), got  # wrapped, not cut: the end of the line is still there
+        assert not got["broken"], got  # lines break between clauses, never inside one (no lone 「止」)
     finally:
         browser.close(); api.stop()

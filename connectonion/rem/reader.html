@@ -3677,6 +3677,7 @@
   .stretches.stacked { grid-template-columns: minmax(0, 1fr); }
   .stretches.stacked .stretch { position: static; max-width: none; min-width: 0; }
   #main .stretches.stacked .stretch > summary { white-space: normal; align-items: baseline; }
+  .stretch-what .clause { white-space: nowrap; }
   .stretch > summary { display: flex; gap: 6px; padding: 2px 8px; margin-left: -8px; overflow: hidden; border-radius: var(--r-pill); color: var(--ink);
     white-space: nowrap; text-overflow: ellipsis; cursor: pointer; list-style: none; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .stretch > summary::-webkit-details-marker { display: none; }
@@ -5389,6 +5390,7 @@ const UI = {
     "today": "今天",
     "1 day": "1 天",
     "{n} days": "{n} 天",
+    "waiting {age}": "已等 {age}",
     " ago": "前",
     "gone quiet": "久未推进",
     " and {n} is waiting on someone else": "，另有 {n} 件等对方处理",
@@ -8652,8 +8654,11 @@ function stretchWords(segment) {
 function stretchItem(stretch) {
   const { segment, words, pages } = stretch;
   const range = hypnoTime(segment.start) + (segment.end - segment.start >= 5 * 60e3 ? "–" + hypnoTime(segment.end) : "");
+  // Each clause keeps together and carries its own 「·」, so a narrow line breaks only between clauses, never inside
+  // one (art director on #3408: 「提前停止」 left a lone 「止」), and never starts with a dot (#3398).
+  const clauses = words.flatMap((word, i) => [el("span", { class: "clause", text: word + (i < words.length - 1 ? " ·" : "") }), i < words.length - 1 ? " " : ""]);
   const item = el("details", { class: "stretch" }, [el("summary", {}, [el("span", { class: "stretch-time", text: range }),
-    el("span", { class: "stretch-what", text: words.join(" · ") })])]);
+    el("span", { class: "stretch-what" }, clauses.filter(Boolean))])]);
   if (pages.length) item.appendChild(el("ul", { class: "stretch-pages", "aria-label": t("Pages this stretch changed") }, [
     ...pages.slice(0, 10).map(r => el("li", {}, [el("a", { href: href(r), text: r.title })])),
     pages.length > 10 ? el("li", { class: "stretch-more", text: t("+{n} more", { n: pages.length - 10 }) }) : null].filter(Boolean)));
@@ -16259,9 +16264,11 @@ function blockerTag(thread) {
 }
 // Show an explicit deadline first, without inferring whether it was met. Something happening today or tomorrow says
 // when first and how old second (#3406: a card about a demo at 14:00 today read 「2 天」).
-function threadAge(t, r) {
-  const soon = upcomingWhen(t, r);
-  return soon ? [soon, age(t.since)].filter(Boolean).join(" · ") : [age(t.since), t.due ? dueLabel(t) : ""].filter(Boolean).join(" · ");
+function threadAge(thread, r) {
+  const soon = upcomingWhen(thread, r);
+  // Beside a time the age needs its word, or 「今天 11:41 · 15 天」 reads as two dates (art director on #3408).
+  return soon ? [soon, thread.since ? t("waiting {age}", { age: age(thread.since) }) : ""].filter(Boolean).join(" · ")
+    : [age(thread.since), thread.due ? dueLabel(thread) : ""].filter(Boolean).join(" · ");
 }
 // The days a thread's words name: 2026-11-23, 11月23日, Nov 23 or 23 November, in this year (the year of `today`).
 const MONTH_WORDS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
