@@ -5039,6 +5039,46 @@ def test_a_failed_rebuild_is_retried_at_once_when_the_install_changes(tmp_path, 
     assert reader._spawn_refresh(root, ["full"]) is True and len(started) == 1
 
 
+def test_a_build_the_upgrade_broke_mid_render_is_not_backed_off(tmp_path, monkeypatch):
+    """2026-11-22 (#3295): rc7 and rc8 showed the old page for 10 and 18 minutes after installing. A build was
+    rendering when `uv tool install --force` removed the package (FileNotFoundError on _version.py); by the time it
+    recorded its failure the new release was fully written, so the failure carried the NEW install's stamp and every
+    retry waited out REBUILD_INTERVAL. A failure only counts against the install the build began with."""
+    import subprocess
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    started = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
+
+    def upgraded_underneath(root, **options):
+        monkeypatch.setattr(reader, "_release", lambda: "9.9.9rc1")   # uv finished writing the new release meanwhile
+        raise FileNotFoundError("connectonion/_version.py")
+    monkeypatch.setattr(reader, "snapshot", upgraded_underneath)
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    with pytest.raises(FileNotFoundError):
+        reader.main([str(root), "full"])
+    assert reader.failure(root) is None                                    # not a failure of the new install
+    assert reader._spawn_refresh(root, ["full"]) is True and len(started) == 1   # rebuilt now, not in 10 minutes
+
+
+def test_the_page_served_during_an_upgrade_names_the_release_it_is_updating_to(tmp_path, monkeypatch):
+    """#3295: the old page sat there unmarked, so "not installed" and "not rebuilt yet" looked the same."""
+    reader, root = _saved_under_an_older_release(tmp_path, monkeypatch, "upgrade")
+    served, building = reader.cached_page(root, "live.html")
+    assert building and 'data-release="1.9.4"' in served
+    mark = re.search(r'<script>(\(\(\) => \{[^<]*?rem-updating.*?)</script>', served, re.S).group(1)
+    said = {}
+    for owner, browser in (("zh", "en-AU"), ("en", "en-AU")):
+        said[owner] = _run_reader_js(
+            "const node = {dataset: {release: '1.9.4'}}; const document = {getElementById: () => node};"
+            f"const window = {{REM: {json.dumps({'owner_language': owner})}}};"
+            f"const navigator = {{language: {json.dumps(browser)}}};" + mark
+            + "\nconsole.log(JSON.stringify(node.textContent));")
+    assert said == {"zh": "正在更新到 1.9.4…", "en": "Updating to 1.9.4…"}
+
+
 def test_a_manual_build_says_when_another_build_holds_the_pages(tmp_path, monkeypatch, capsys):
     """2026-11-19 (#3112): `python -m connectonion.rem.reader ROOT live full` printed nothing and changed nothing
     while the Host's own build held the lock. It says so, and that the running build saves the pages."""

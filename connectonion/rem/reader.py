@@ -5,6 +5,7 @@ that same full snapshot to an authenticated sibling endpoint.
 """
 
 import hashlib
+import html
 import json
 import os
 import posixpath
@@ -643,11 +644,14 @@ LOG_LINES = 200
 PROGRESS_SECONDS = 3.0
 # Put on a saved page served while a newer one is built; worded in the reader's
 # language, chosen as the page chooses it (uiLanguage in reader.html).
+# During an upgrade it names the release being built (data-release), so a page still drawn by the old
+# release says so instead of looking like the install did nothing (#3295).
 UPDATING = ('<p id="rem-updating" role="status" style="position:fixed;right:16px;bottom:12px;margin:0;'
             'font:12px/18px system-ui,sans-serif;color:#8a8a8a;z-index:9"></p>'
             '<script>(() => { const zh = /^zh(?:-|$)/i.test(window.REM?.owner_language || "")'
-            ' || /^zh/i.test(navigator.language || ""); document.getElementById("rem-updating").textContent'
-            ' = zh ? "正在更新…" : "Updating…"; })();</script>')
+            ' || /^zh/i.test(navigator.language || ""); const note = document.getElementById("rem-updating"),'
+            ' to = note.dataset?.release || ""; note.textContent = zh ? (to ? "正在更新到 " + to + "…" : "正在更新…")'
+            ' : (to ? "Updating to " + to + "…" : "Updating…"); })();</script>')
 
 
 # The saved pages a person reads; data.json is the live page's details, never altered.
@@ -917,10 +921,16 @@ def _unchecked(row: dict, moment: float) -> bool:
 def main(argv) -> None:
     """The detached build (python -m connectonion.rem.reader ROOT BUILD...)."""
     root = Path(argv[0])
+    begun = _install_stamp()
     try:
         ran = refresh(root, argv[1:])
     except Exception:
-        _keep_failure(root)
+        # A build an upgrade broke under it (`uv tool install --force` removes the package mid-render) is not a
+        # failure of the new install. Recorded with the new install's stamp, it backed every retry off for
+        # REBUILD_INTERVAL and the old page stayed up 10-18 minutes after rc7 and rc8 (#3295). Only a build that
+        # failed on the install it began with backs off; otherwise the next read rebuilds at once.
+        if begun is not None and _install_stamp() == begun:
+            _keep_failure(root)
         raise  # the traceback is the log's last lines
     if not ran:
         # Run by hand while the Host's build held the lock, this printed nothing and changed nothing (#3112).
@@ -981,8 +991,10 @@ def cached_page(root: Path, name: str, *, owner: bool = False, say=None) -> tupl
     # The banner is HTML, for the pages only: the details are JSON the page parses,
     # and anything after them broke every deferred page (1.9.6rc2). The open page
     # learns of a newer render from /rem/version.
-    if building and name in HTML_PAGES and saved(root, BUILDS[name]).get("version") != version:
-        text = _updating(text)
+    row = saved(root, BUILDS[name])
+    if building and name in HTML_PAGES and row.get("version") != version:
+        drawn, installed = row.get("release"), _release()
+        text = _updating(text, installed if drawn and drawn != installed else "")
     return text, building
 
 
@@ -996,9 +1008,11 @@ def _saved_page(root: Path, name: str):
     return text
 
 
-def _updating(page: str) -> str:
+def _updating(page: str, release: str = "") -> str:
+    mark = UPDATING.replace('<p id="rem-updating"', f'<p id="rem-updating" data-release="{html.escape(release)}"', 1) \
+        if release else UPDATING
     head, body, tail = page.rpartition("</body>")
-    return head + UPDATING + body + tail if body else page + UPDATING
+    return head + mark + body + tail if body else page + mark
 
 
 def _first_page(root: Path, name: str, version: list, say) -> str:

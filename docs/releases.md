@@ -21,7 +21,9 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
-Release candidate **1.9.7rc8**: rc7's reworded topic link reviews no longer re-ask the stored ones; the stale path questions migrate to page titles ([#3292](https://github.com/openonion/connectonion/pull/3292)). See [1.9.7rc8 notes](releases/1.9.7rc8.md).
+Release candidate **1.9.7rc10**: the Keys page imports with one 一键导入 (Chrome, Edge, Brave, the macOS Keychain, Apple Passwords via its CSV export, or a CSV), shows a waiting step while the system asks to 允许, and says why when the REM Host cannot show that prompt; co's own keys from `~/.co/keys.env` are listed by name ([#3316](https://github.com/openonion/connectonion/pull/3316)). See [1.9.7rc10 notes](releases/1.9.7rc10.md).
+Before it, release candidate **1.9.7rc9**: `co discord` as your own account (experimental), a system Chrome fallback that keeps other sessions' tabs, a bare `co host` that no longer stops serving silently, and `co call` that names the address it signed with. See [1.9.7rc9 notes](releases/1.9.7rc9.md).
+Before it, release candidate **1.9.7rc8**: rc7's reworded topic link reviews no longer re-ask the stored ones; the stale path questions migrate to page titles ([#3292](https://github.com/openonion/connectonion/pull/3292)). See [1.9.7rc8 notes](releases/1.9.7rc8.md).
 Before it, release candidate **1.9.7rc7**: a reader polish batch (record pages open at one width, a project page's "in Today" opens the filtered Waiting view, calendar titles clamp, the empty Keys page leads with one-click import, a topic link review names the page not its file path) and the WeChat upgrade fix — an existing install's stale wechat source now implies consent once keys are captured, and seeding matches the reader's gate, so the night both seeds and fills WeChat people. See [1.9.7rc7 notes](releases/1.9.7rc7.md).
 Before it, release candidate **1.9.7rc6**: WeChat as a co rem source that seeds people into the map and the night. See [1.9.7rc6 notes](releases/1.9.7rc6.md).
 Before it, release candidate **1.9.7rc5**: the Control Center has an admin section, shown only to admins: who joined, Remove/Block, rotate the invite without a restart, activity, health and the log. See [1.9.7rc5 notes](releases/1.9.7rc5.md).
@@ -32,7 +34,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc5'
+python -m pip install --upgrade 'connectonion==1.9.7rc10'
 ```
 
 ## Current release

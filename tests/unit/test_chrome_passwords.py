@@ -45,8 +45,9 @@ def test_read_logins_decrypts_every_row(tmp_path):
 
 def test_import_browser_files_a_page_each_and_counts_only(tmp_path, monkeypatch):
     from connectonion.rem.config import prepare
-    from connectonion.rem import vault
+    from connectonion.rem import live_host, vault
     prepare(tmp_path / "rem")
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")  # the owner's own session can show the prompt
     stored = {}
     monkeypatch.setattr(vault, "put", lambda slug, account, secret: stored.__setitem__(slug, secret))
     monkeypatch.setattr(cp, "all_logins", lambda browser: [
@@ -54,7 +55,7 @@ def test_import_browser_files_a_page_each_and_counts_only(tmp_path, monkeypatch)
         {"url": "https://bank.example.com/login", "username": "me", "password": "p@ss"},
         {"url": "", "username": "x", "password": "x"}])  # no service -> skipped
     result = keys.import_browser(tmp_path / "rem", "chrome")
-    assert result == {"filed": 2, "skipped": 1}
+    assert result == {"filed": 2, "skipped": 1, "sites": ["bank.example.com", "mail.example.com"]}
     # The value is in the vault, never in the page.
     page = (tmp_path / "rem" / "keys" / sorted((tmp_path / "rem" / "keys").iterdir())[0].name).read_text()
     assert "s3cret" not in page and "p@ss" not in page

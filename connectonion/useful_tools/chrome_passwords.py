@@ -9,11 +9,12 @@ from __future__ import annotations
 import hashlib
 import shutil
 import sqlite3
-import subprocess
 import tempfile
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+from . import macos_keychain
 
 # Chromium's fixed KDF for the macOS Safe Storage key.
 SALT = b"saltysalt"
@@ -38,11 +39,9 @@ def safe_storage_key(browser: str = "chrome") -> bytes:
     service = BROWSERS.get(browser, (None,))[0]
     if not service:
         raise ChromeError(f"Unknown browser {browser!r}")
-    done = subprocess.run(["security", "find-generic-password", "-ws", service],
-                          capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120)
-    if done.returncode != 0:
-        raise ChromeError(f"{browser}: its Safe Storage key is not in the Keychain (is {browser} installed and used?)")
-    secret = done.stdout.strip().encode()
+    # A KeychainError says which failure it was (declined, no prompt possible here, timed out) instead of the
+    # old "not in the Keychain (is it installed?)" for every one of them (#3305).
+    secret = macos_keychain.read_secret(["security", "find-generic-password", "-ws", service], service).strip().encode()
     return hashlib.pbkdf2_hmac("sha1", secret, SALT, ITERATIONS, dklen=KEY_LEN)
 
 
