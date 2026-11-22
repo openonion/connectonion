@@ -245,6 +245,7 @@ def _zone(root):
 
 def _sources_mapped(root) -> list[str]:
     """One row per source that yields pages: when it was mapped, what it made, what still waits (#3331)."""
+    from ...rem.coverage import source_coverage
     from ...rem.onboard import summary, yields
     from ...rem.service import subscriptions
     rows = []
@@ -256,6 +257,10 @@ def _sources_mapped(root) -> list[str]:
         when = done["mapped_at"][:10] if done["mapped_at"] != "never" else "never mapped"
         text = f"{when} · {made} · {done['to_investigate']} to investigate"
         rows.append(rem_look.row(f"Source {name}", text + (f" · {done['error']}" if done.get("error") else "")))
+        # How much of the source REM can read (#3353): a gap and its fix, never a silent shortfall.
+        coverage = source_coverage(name, sub)
+        if coverage and coverage["skipped"]:
+            rows.append(rem_look.follow(coverage["line"], glyph=""))
     return rows
 
 
