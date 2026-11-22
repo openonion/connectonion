@@ -328,9 +328,11 @@ def test_hundreds_of_sites_start_as_one_row_each_and_repeat_nothing(today):
     group = page.locator(".key-group[data-site='site003.test']")
     assert "1 key" in group.inner_text()
     group.locator("button").click()
-    assert "login.site003.test" in page.locator(".key-row[data-site='site003.test']").inner_text()  # differs from the group: shown
+    cells = page.locator(".key-row[data-site='site003.test'] td").all_inner_texts()
+    assert cells[1] == "login.site003.test"  # the Service cell: differs from the group, so shown
     page.locator(".key-group[data-site='site001.test'] button").click()
-    assert "site001.test" not in page.locator(".key-row[data-site='site001.test']").inner_text()  # same as the group: not repeated
+    cells = page.locator(".key-row[data-site='site001.test'] td").all_inner_texts()
+    assert cells[1] == "—"  # the Service cell: same as the group, so not repeated
     page.locator(".key-search").fill("user150@")
     assert page.locator(".key-row:visible").count() == 1 and page.locator(".key-group:visible").count() == 1
     page.locator(".key-search").fill("")
@@ -347,5 +349,6 @@ def test_a_phone_gets_a_list_with_the_account_first(today):
     entry = page.locator(".key-row[data-site='example.co.uk']").first
     assert entry.is_visible()  # 20 keys in all, and this group holds 4: open
     assert entry.locator("a").inner_text().startswith("user")
-    assert "bank.example.co.uk" in entry.locator(".key-entry-meta").inner_text()
+    # The second line is "<host> · <purpose>"; every purpose here is "sign in", so only the host is written.
+    assert entry.locator(".key-entry-meta").inner_text().split(" · ")[0] == "bank.example.co.uk"
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
