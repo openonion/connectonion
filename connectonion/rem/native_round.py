@@ -444,12 +444,12 @@ def prepare_task(root, cursor, config, directory):
     if task:
         return task
     from .night import listing
-    parked = fetch_stalls.last_night(root)
+    # A page whose mail is confirmed gone no longer waits (#3392), so it does not make the turn a failure.
+    parked = [row for row in (fetch_stalls.last_night(root) or {}).get('parked', []) if not row.get('gone')]
     reasons = [row['reason'] for row in listing(root)
                if row['kind'] == 'could_not_prepare' and 'no longer exists' in row['reason']]
-    if cursor.get('served_turn') != fetch_stalls._turn() and ((parked or {}).get('parked') or reasons):
-        pages = [f"{row['record']}: {row.get('error') or fetch_stalls.PHRASES[row['reason']]}"
-                 for row in (parked or {}).get('parked', [])]
+    if cursor.get('served_turn') != fetch_stalls._turn() and (parked or reasons):
+        pages = [f"{row['record']}: {row.get('error') or fetch_stalls.PHRASES[row['reason']]}" for row in parked]
         cursor['blocked_reason'] = 'All remaining candidates are parked: ' + '; '.join(pages + reasons)
     finish(root, cursor)
     if cursor.get('blocked_reason'):
