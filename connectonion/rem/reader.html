@@ -8500,7 +8500,10 @@ function runSegments(runs, span) {
   for (const run of runs) {
     const start = runTime(run), end = runEnd(run);
     let segment = segments[segments.length - 1];
-    if (!segment || start >= segment.end + gap) {
+    // A stuck run of 15 minutes or more is a stretch of its own, whatever the gap (#3382): folded into the work just
+    // after it, its caption read "00:52–05:57 stuck 93 min · …", stuck for five hours (art director, #3394).
+    const stuck = stuckMinutes(run) > 0;
+    if (!segment || start >= segment.end + gap || stuck || segment.stuck) {
       segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0, stuck: 0, list: [] };
       segments.push(segment);
     }

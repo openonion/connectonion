@@ -98,3 +98,19 @@ def test_the_axis_ends_at_now_not_an_hour_past_it(page_file):
         assert state["end"] <= state["asOf"] + 15 * 60e3, (state["end"] - state["asOf"]) / 60e3
     finally:
         browser.close(); api.stop()
+
+
+def test_a_stuck_loop_keeps_its_own_caption_when_work_follows_within_minutes(page_file):
+    """The next run starts five minutes after the loop ends, inside the clustering gap. The loop is still a stretch of
+    its own: one caption says stuck and skipped, the next says what the work after it did (art director, #3394)."""
+    api, browser, page = _open(page_file, 1440, 900)
+    try:
+        rows = page.evaluate("""() => [...document.querySelectorAll('#main .night-card .stretch')].map(s =>
+          [s.querySelector('.stretch-time')?.textContent || '', s.querySelector('.stretch-what')?.textContent || ''])""",
+                             isolated_context=False)
+        stuck = [what for _, what in rows if "stuck" in what]
+        assert len(stuck) == 1, rows
+        assert "read" not in stuck[0] and "rewrote" not in stuck[0], rows  # the loop's caption is only the loop
+        assert any("stuck" not in what and "read" in what for _, what in rows), rows  # the work after it has its own
+    finally:
+        browser.close(); api.stop()
