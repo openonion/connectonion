@@ -95,12 +95,20 @@ def _add_handles(notebook, record, handles):
 
 def _people(notebook, people_rows, write):
     from . import map as rem_map
+    from .threads import person_marks
     by_handle, by_name = _roster(notebook)
-    out = {"create": [], "merge": [], "known": 0, "skip": 0}
+    # The owner's 不是人 on a handle sticks: such a contact is never stubbed or merged into a page, by
+    # `co rem map` or by the night's re-map (#3339). A page already made for it is set aside by the census.
+    marks = person_marks(notebook.root)
+    out = {"create": [], "merge": [], "known": 0, "skip": 0, "not_person": 0}
     for group in rem_map._people_groups(people_rows):
         handles = [row["address"] for row in group]
         name = " ".join(str(next((r["name"] for r in group if r.get("name")), "")).split())
         sent, received = (sum(r.get(k, 0) for r in group) for k in ("sent", "received"))
+        said = {marks.get(h.casefold()) for h in handles} - {None}
+        if "not-person" in said and "person" not in said:
+            out["not_person"] += 1
+            continue
         if any(h.casefold() in by_handle for h in handles):
             out["known"] += 1
             continue

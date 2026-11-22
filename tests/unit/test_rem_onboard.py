@@ -112,7 +112,9 @@ def test_co_rem_map_dry_run_prints_what_it_would_make_and_writes_nothing(tmp_pat
     before = _tree(tmp_path)
     result = _cli(tmp_path, monkeypatch, "map", "people", "--source", "wechat", "--dry-run")
     assert result.exit_code == 0, result.output
-    assert "would create 2 people, merge 1" in result.output
+    # Each name list follows its own count (#3339): the created names, then merged with its name.
+    assert "wechat · people: would create 2: Quinn Harbour, Ines Vale" in result.output
+    assert "merged 1 (Mara Ostrowski)" in result.output
     assert "investigate people --source wechat --new" in result.output
     assert _tree(tmp_path) == before
 
