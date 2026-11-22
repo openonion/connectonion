@@ -12056,7 +12056,7 @@ function keysEnvSection(onLoad = () => {}) {
       el("p", { class: "key-import-note", text: t("They live in {where}. Values stay hidden.", { where: reply.where }) }),
       reply.error ? el("p", { class: "key-import-note", text: reply.error }) : null,
       services.length ? el("ul", { class: "keys-env-list" }, services.map(s => el("li", {}, [el("span", { class: "keys-env-service", text: s.service }),
-        el("span", { class: "keys-env-state", text: t("Connected") }), el("span", { class: "keys-env-mask", text: t("{n} keys", { n: s.count }) })]))) : null,
+        el("span", { class: "keys-env-state", text: t("Connected") }), el("span", { class: "keys-env-mask", text: s.count === 1 ? t("1 key") : t("{n} keys", { n: s.count }) })]))) : null,
       settings.length ? el("details", { class: "keys-env-settings" }, [el("summary", { text: t("Settings ({n})", { n: settings.length }) }),
         el("ul", { class: "keys-env-list" }, settings.map(name => el("li", {}, [el("code", { class: "keys-env-name", text: name })])))]) : null]
       .filter(Boolean));
@@ -12125,7 +12125,7 @@ Object.assign(UI.zh, {
   "Add one by hand": "手动添加一条", "Values go to the Keychain; the notebook keeps only what each key is.": "密码存进钥匙串，笔记本只记每条是什么。", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏",
   "{n} in the Keychain": "钥匙串里 {n} 条", "{n} in the Keychain · co's own {m}": "钥匙串里 {n} 条 · co 自己用的 {m} 项",
   "Nothing imported into the Keychain yet · co's own {m}, below": "钥匙串里还没有导入的密码 · co 自己用的 {m} 项在下面",
-  "{n} keys": "{n} 条", "Find a site or account": "找网站或账号", "Connected": "已连接", "Settings ({n})": "设置项（{n}）" });
+  "{n} keys": "{n} 条", "1 key": "1 条", "Find a site or account": "找网站或账号", "Connected": "已连接", "Settings ({n})": "设置项（{n}）" });
 function keyImporter() {
   const result = el("div", { class: "key-import-result", hidden: "" });
   const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": t("Import a password export (CSV)") });
