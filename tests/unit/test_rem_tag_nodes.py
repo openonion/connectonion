@@ -236,3 +236,74 @@ def test_the_owners_example_three_tags_link_to_their_pages_and_one_gets_a_topic_
     assert tag_nodes.commit(tmp_path, task, tag_nodes.check(tmp_path, task, {})) == ["knowledge/ai-agent.md"]
     assert "[Kai Moss](../people/kai-moss.md)" in book.read("knowledge/ai-agent.md")
     assert not book.exists("knowledge/unsw.md") and not book.exists("knowledge/kiln.md")
+
+
+# ---------- a tag page's title never carries a privacy mark (#3385) ----------
+# At the default "cover" level the reader shows a marked title as the generic "Personal", so five marked tag
+# pages (a language, a CLI, email, documents, sleep) became one repeated label and a link that opened the wrong page.
+
+@pytest.mark.parametrize("mark", ["[personal]", "[sensitive]", "［personal］"])
+def test_review_refuses_a_tag_page_whose_title_carries_a_privacy_mark(book, tmp_path, mark):
+    task = tag_nodes.prepare(book.root, "kiln-pilot", directory=tmp_path / "work")
+    Path(task["candidate"]).write_text(reply(task, NODE.replace("# Kiln pilot", f"# Kiln pilot {mark}"))["result"])
+    with pytest.raises(RemError, match="title never carries"):
+        tag_nodes.check(book.root, task, {})
+
+
+def test_a_rewrite_of_a_marked_tag_page_writes_its_title_without_the_mark(book, tmp_path):
+    book.write("knowledge/kiln-pilot.md", "# Kiln pilot [personal]\n\nAn older note on the pilot [1].\n\n## Sources\n- [1] gmail:fixture:ee01\n")
+    task = tag_nodes.prepare(book.root, "kiln-pilot", directory=tmp_path / "work")
+    Path(task["candidate"]).write_text(reply(task, NODE)["result"])
+    tag_nodes.commit(book.root, task, tag_nodes.check(book.root, task, {}))
+    page = book.read("knowledge/kiln-pilot.md")
+    assert page.splitlines()[0] == "# Kiln pilot"
+    assert page.count("\n# ") == 0  # the old marked title is not kept as a lost line
+
+
+MARKED_TAG = """# Kiln pilot [personal]
+
+The kiln pilot is a trial with Harbour Labs [1].
+
+## How they connect
+- Lena Brandt leads it [1].
+- Already private [2] [sensitive]
+
+- Tags: kiln-pilot
+
+## Pages
+- [Lena Brandt](../people/lena-brandt.md)
+
+Investigation: investigated 2026-11-20 (tag page, from 2 pages)
+
+## Sources
+- [1] gmail:fixture:aa01
+- [2] gmail:fixture:aa02
+"""
+DIARY = "# Night notes [personal]\n\nA private topic, not a tag page [1].\n\n## Sources\n- [1] gmail:fixture:ff01\n"
+
+
+def test_the_repair_unmarks_tag_titles_once_and_keeps_their_passages_private(book):
+    book.write("knowledge/kiln-pilot.md", MARKED_TAG)
+    book.write("knowledge/night-notes.md", DIARY)
+    assert tag_nodes.repair_titles(book.root) == ["knowledge/kiln-pilot.md"]
+    page = book.read("knowledge/kiln-pilot.md")
+    assert page.splitlines()[0] == "# Kiln pilot"
+    # The title's mark moves onto every prose passage, so nothing private becomes public by the repair.
+    assert "The kiln pilot is a trial with Harbour Labs [1]. [personal]" in page
+    assert "- Lena Brandt leads it [1]. [personal]" in page
+    assert "- Already private [2] [sensitive]" in page  # already marked: left as it was
+    # What code owns stays unmarked: headings, the Tags line, the member list, the stamp and the sources.
+    assert "## How they connect\n" in page and "- [Lena Brandt](../people/lena-brandt.md)\n" in page
+    assert "- [1] gmail:fixture:aa01\n" in page and "(tag page, from 2 pages)\n" in page
+    # A private topic that is not a tag's page keeps its title mark: it is private as a whole.
+    assert book.read("knowledge/night-notes.md") == DIARY
+    # Versioned and idempotent: a second build does nothing, and the version is recorded.
+    assert tag_nodes.repair_titles(book.root) == []
+    assert read_json(state_path(book.root, "tag-titles.json"), {})["version"] == tag_nodes.TITLE_REPAIR_VERSION
+
+
+def test_the_repair_keeps_the_marked_page_for_undo(book):
+    from connectonion.rem import page_versions
+    book.write("knowledge/kiln-pilot.md", MARKED_TAG)
+    tag_nodes.repair_titles(book.root)
+    assert page_versions.previous(book.root, "knowledge/kiln-pilot.md")["text"] == MARKED_TAG

@@ -17389,6 +17389,9 @@ function graphModel() {
   // One kind of point, the page (#3140): a tag only adds edges between the pages carrying it and its page.
   const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) }));
   const byId = new Map(nodes.map(n => [n.id, n]));
+  // Two masked pages never read as one (#3385: four rows said "Personal"): each keeps a stable number among them.
+  const masked = nodes.filter(n => n.private).sort((a, b) => (a.id < b.id ? -1 : 1));
+  if (masked.length > 1) masked.forEach((n, i) => { n.maskNo = i + 1; });
   const edges = source.edges.concat(source.tags?.edges || []).filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
   const adj = new Map();
   for (const e of edges) for (const [a, b] of [[e.s, e.t], [e.t, e.s]]) (adj.get(a) || adj.set(a, new Set()).get(a)).add(b);
@@ -17403,7 +17406,7 @@ function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 function graphHidden(n) { return n.private && (!n.r || privacyLevel !== "all"); }
 // The name in the reading language when the page has a current translation: its translated heading.
 function graphTitle(n) {
-  if (graphHidden(n)) return graphT("Personal");
+  if (graphHidden(n)) return graphT("Personal") + (n.maskNo ? " " + n.maskNo : "");
   const translated = uiLanguage !== "en" && /^# +(.+)$/m.exec(n.r?.translations?.[uiLanguage] || "")?.[1];
   return topicName(translated || n.r?.title || n.title || n.id).replace(" (automated candidate)", "");
 }

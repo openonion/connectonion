@@ -126,7 +126,9 @@ def atomic_write(path: Path, text: str) -> None:
 # Notebook.delete touch it; the lock's own files, rewritten or created by every
 # Host minute tick, are bookkeeping and do not (nor does the reader's full walk).
 CHANGED = "reader-changed"
-QUIET_STATE = {"maintenance-owner.json", "maintenance.lock", CHANGED}
+# tag-titles.json is the tag-title repair's version marker (#3385): a page build writes it, it changes nothing the
+# reader shows, and a page the repair rewrites touches the key itself. Counted, every first build was built twice.
+QUIET_STATE = {"maintenance-owner.json", "maintenance.lock", CHANGED, "tag-titles.json"}
 
 
 def _changed(path: Path) -> None:
