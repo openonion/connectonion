@@ -8550,10 +8550,11 @@ function hypnogram(asOf, size = "") {
     const steps = [];
     for (const run of [...segment.list].sort((a, b) => runTime(a) - runTime(b))) {
       const x0 = x(runTime(run)), x1 = Math.max(x0 + 6, x(Math.min(asOf, runEnd(run)))), stage = runStage(run), last = steps[steps.length - 1];
-      // An awake step (stopped, stuck) never merges into a dream beside it: the run after a loop may change a page,
-      // and the loop must still read as awake (#3379).
-      if (last && x0 - last.x1 < 8 && (stage === 0) === (last.stage === 0)) { last.x1 = Math.max(last.x1, x1); if (STAGE_RANK[stage] > STAGE_RANK[last.stage]) last.stage = stage; }
-      else steps.push({ x0, x1, stage });
+      const stuck = stuckMinutes(run) > 0;
+      // A stuck loop never merges with a run beside it: the run after it may change a page, and the loop must still
+      // read as awake (#3379). A brief stopped run inside a dense stretch still folds into the block (no comb).
+      if (last && x0 - last.x1 < 8 && !stuck && !last.stuck) { last.x1 = Math.max(last.x1, x1); if (STAGE_RANK[stage] > STAGE_RANK[last.stage]) last.stage = stage; }
+      else steps.push({ x0, x1, stage, stuck });
     }
     steps.forEach(({ x0, x1, stage }, i) => {
       if (i && x0 > at) go(x0, LEVEL[2]);  // dozing between two runs of the same stretch
