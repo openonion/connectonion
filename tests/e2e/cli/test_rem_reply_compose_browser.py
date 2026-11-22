@@ -75,8 +75,12 @@ def test_on_a_phone_the_writer_is_a_sheet_with_cancel_left_and_send_right(today)
 def test_the_page_behind_is_dimmed(today):
     page, _, _ = today
     _writer(page)
-    backdrop = page.evaluate("getComputedStyle(document.querySelector('dialog.writer'), '::backdrop').backgroundColor", isolated_context=False)
-    assert backdrop.startswith("rgba(18, 21, 18")
+    # The page behind is dimmed with the page's own ink, not paper on paper: dark and partly transparent.
+    rgba = page.evaluate("""() => { const c = document.createElement('canvas').getContext('2d');
+      c.fillStyle = '#ffffff'; c.fillRect(0, 0, 1, 1);
+      c.fillStyle = getComputedStyle(document.querySelector('dialog.writer'), '::backdrop').backgroundColor; c.fillRect(0, 0, 1, 1);
+      return [...c.getImageData(0, 0, 1, 1).data]; }""", isolated_context=False)
+    assert max(rgba[:3]) < 200, rgba  # white seen through it comes out clearly darker
 
 
 def test_a_click_outside_closes_an_unchanged_letter(today):
