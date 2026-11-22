@@ -87,6 +87,39 @@ step means.
 
 Dark is the same names under the two theme selectors; a page never writes a dark value of its own.
 
+### States and overlays (#3359 T1)
+
+A state is **ink or paper at an alpha**, written once in the sheet; no rule mixes its own colour (a test fails on
+any `color-mix()` outside the sheet). Dark follows because `--ink` and `--paper` flip.
+
+| Token | Value | Use |
+|---|---|---|
+| `--fill-hover` | ink 4 % | a control under the pointer |
+| `--fill-press` | ink 7 % | a control being pressed |
+| `--fill-chip` | well 50 % on paper | a tag chip, quieter than an inset |
+| `--tint-red` | red 8 % | behind a slot REM needs the owner to answer |
+| `--underline` | the text colour at 55 % | a link's underline |
+| `--overlay` | ink 40 % | behind the full-screen writer |
+| `--veil` | paper 70 % | behind a palette or a side dialog |
+
+## Motion (#3359 T1)
+
+Springs, not timers. The craft is learned from Rare UI (rareui.com) and re-derived here; no code is taken from it,
+since its repository has no licence. Each spring is a damped spring's step response sampled once into CSS
+`linear()`:
+
+| Token | Spring | Use |
+|---|---|---|
+| `--spring` | stiffness 500, damping 30 (about 6 % overshoot) | presses, toggles, a menu's pop |
+| `--spring-soft` | stiffness 150, damping 28 (no overshoot) | things that rise into place: widgets, the night card, sheets |
+
+The `--t-` durations carry the time (`--t-press` 150 ms, `--t-state` 250 ms, `--t-draw` 500 ms). With
+"reduce motion" on, or 设置 ▸ 减少动态效果, every `--t-` is 0, so nothing animates; a browser test checks it.
+
+**Next, as components migrate** (T2–T6), the sheet gains only what a rule uses: an expo-out arrival curve for
+toasts, a sheet curve, the radius steps 6 / 10 / 14 / 20 / full, and the hairline/lift edge tiers. The sheet's lint
+refuses a token nothing reads, so a token arrives with its first user.
+
 ## Tables and rows
 
 - Cell text is `--s-body`. Column heads are `--s-ui` in `--grey`.

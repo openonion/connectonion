@@ -61,6 +61,17 @@
     --heat-2: color-mix(in srgb, var(--ink) 40%, var(--paper));
     --heat-3: color-mix(in srgb, var(--ink) 66%, var(--paper));
     --heat-4: var(--ink);
+    /* States are ink at an alpha on whatever surface they sit on (#3359): no one-off color-mix() in a rule, and
+       dark mode follows by itself because --ink and --paper flip. Hover 4 %, pressed 7 %. */
+    --fill-hover: color-mix(in srgb, var(--ink) 4%, transparent);
+    --fill-press: color-mix(in srgb, var(--ink) 7%, transparent);
+    --fill-chip: color-mix(in srgb, var(--well) 50%, var(--paper)); /* a tag chip: quieter than an inset */
+    --tint-red: color-mix(in srgb, var(--red) 8%, transparent); /* behind a slot REM needs answered */
+    --underline: color-mix(in srgb, currentColor 55%, transparent); /* a link's underline, softer than its text */
+    /* Behind the full-screen writer: black, never ink, because ink turns near-white in dark mode and the backdrop
+       became a pale fog instead of dimming the page. Darker in dark mode, where the page is already dark. */
+    --overlay: rgba(0, 0, 0, .32);
+    --veil: color-mix(in srgb, var(--paper) 70%, transparent); /* behind a palette or a side dialog */
 
 
     /* type: seven sizes, two weights, one family (CJK + Latin); fonts are local on purpose */
@@ -127,7 +138,13 @@
     --t-spin: 900ms; /* one turn of a spinner while the system is asked (the Keychain's 允许) */
     --ease-out: cubic-bezier(.2, .7, .2, 1);
     --ease-even: linear; /* a spinner turns at one speed */
-    --spring: cubic-bezier(.2, .9, .25, 1.15);
+    /* Springs, not timers (#3359, after Rare UI's craft, re-derived here: no code taken). Sampled once from a
+       damped spring's step response, so a press settles like a physical thing. --spring is the snappy one
+       (stiffness 500, damping 30, mass 1: about 6% overshoot) for presses, toggles and a menu's pop; --spring-soft
+       (stiffness 150, damping 28: no overshoot) for layout and things that rise into place. The old name keeps
+       working; its bounce went from 15% to 6%. Reduced motion zeroes the --t- durations, so neither plays. */
+    --spring: linear(0, 0.076, 0.248, 0.449, 0.638, 0.795, 0.911, 0.989, 1.034, 1.054, 1.058, 1.052, 1.042, 1.03, 1.019, 1.01, 1.004, 1, 0.998, 0.997, 0.997, 0.997, 0.998, 0.998, 1);
+    --spring-soft: linear(0, 0.092, 0.26, 0.425, 0.564, 0.674, 0.758, 0.821, 0.868, 0.902, 0.928, 0.947, 0.961, 0.971, 0.979, 0.984, 0.988, 0.992, 0.994, 0.995, 0.997, 0.997, 0.998, 0.999, 1);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -147,6 +164,7 @@
       --red: #ff5a3c;
       --e-fuse: inset 0 0 0 1.5px rgba(255, 90, 60, .3);
       --scrim: rgba(15, 17, 15, .6);
+      --overlay: rgba(0, 0, 0, .55);
       --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
       --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
       --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
@@ -171,6 +189,7 @@
     --red: #ff5a3c;
     --e-fuse: inset 0 0 0 1.5px rgba(255, 90, 60, .3);
     --scrim: rgba(15, 17, 15, .6);
+    --overlay: rgba(0, 0, 0, .55);
     --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
     --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
     --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
@@ -192,7 +211,7 @@
   body { margin: 0; background: var(--paper); color: var(--ink); font: var(--s-body)/1.55 var(--font); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
   a { color: var(--ink); text-decoration: none; }
   :is(p, .person-lead, .thread .who, .pass-summary, .note li, .what, .also-on, .relation-provenance, .lead-meta, .empty) a {
-    text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); text-underline-offset: 3px;
+    text-decoration: underline; text-decoration-color: var(--underline); text-underline-offset: 3px;
   }
   a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
   :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: var(--radius); }
@@ -290,16 +309,15 @@
   /* The page behind is dimmed, not paper on paper: the owner could not tell the writer was a dialog (#3303). */
   .writer { position: relative; box-shadow: var(--e3); }
   /* Dimmed from the page's own ink (the palette is closed); at night the scrim is already dark. */
-  .writer::backdrop { background: color-mix(in srgb, var(--ink) 40%, transparent); backdrop-filter: blur(2px); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .writer::backdrop { background: var(--scrim); } }
-  :root[data-theme="dark"] .writer::backdrop { background: var(--scrim); }
+  .writer::backdrop { background: var(--overlay); backdrop-filter: blur(2px); }
   .writer { grid-template-rows: auto minmax(0, 1fr); }
   .writer-title { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 24px; border-bottom: 1px solid var(--rule); }
   .writer-title h2 { flex: 1; min-width: 0; margin: 0; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .writer-cancel, .writer-send-top { display: none; }
   .writer-close { flex: none; width: 36px; height: 36px; display: grid; place-items: center;
     border: 0; border-radius: var(--round); background: transparent; color: var(--ink); cursor: pointer; }
-  .writer-close:hover, .writer-close:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  .writer-close:hover, .writer-close:focus-visible { background: var(--fill-hover); }
+  .writer-close:active { background: var(--fill-press); }
   .writer-close svg { width: 20px; height: 20px; }
   .writer-notice { margin: 0; padding: 0 24px 14px; color: var(--red); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   .writer-notice:empty { display: none; }
@@ -322,7 +340,7 @@
   .writer-letter .mail-head { padding: 18px 24px 12px; }
   .writer-body { flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/1.65 var(--font); color: var(--ink); background: var(--paper); }
   /* An open question in the letter: a chip in its own words, the same as the card's marker; answered, the answer. */
-  .slot-chip { padding: 1px 8px; border-radius: var(--r-pill); border: 1px dashed var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--ink); cursor: pointer; white-space: normal; }
+  .slot-chip { padding: 1px 8px; border-radius: var(--r-pill); border: 1px dashed var(--red); background: var(--tint-red); color: var(--ink); cursor: pointer; white-space: normal; }
   .slot-chip.filled { border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 0; background: none; }
   .writer-actions { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--rule); }
   .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: var(--s-body)/1.6 var(--font); color: var(--grey); }
@@ -1202,7 +1220,7 @@
   .task-band { max-width: 980px; margin: 30px 0; }
   .task-band .threads { padding: 0; }
   .evidence-dialog { width: min(680px, calc(100vw - 24px)); max-height: min(760px, calc(100vh - 24px)); overflow: auto; padding: 26px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); }
-  .evidence-dialog::backdrop { background: color-mix(in srgb, var(--paper) 70%, transparent); }
+  .evidence-dialog::backdrop { background: var(--veil); }
   .evidence-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; position: sticky; top: 0; z-index: 1; background: var(--paper); }
   .evidence-top::before, .evidence-top::after { content: ""; position: absolute; left: 0; right: 0; background: inherit; pointer-events: none; }
   .evidence-top::before { bottom: 100%; height: 26px; }
@@ -1251,7 +1269,7 @@
   .msg-body blockquote { margin: 12px 0 0; border-left: 0; border-radius: var(--radius); }
   /* the original sits beside the page, or above it in a phone sheet */
   .evidence-layer[hidden] { display: none; }
-  .evidence-backdrop { position: fixed; inset: 0; z-index: 19; background: color-mix(in srgb, var(--paper) 70%, transparent); }
+  .evidence-backdrop { position: fixed; inset: 0; z-index: 19; background: var(--veil); }
   .evidence-panel { position: fixed; z-index: 20; inset: auto 0 0; max-height: 75vh; overflow: auto; overscroll-behavior: contain; padding: 12px 18px 24px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); overflow-wrap: anywhere; }
   .evidence-handle { width: 38px; height: 4px; border-radius: var(--radius); background: var(--rule); margin: 0 auto 10px; }
   .evidence-panel .evidence-top { position: sticky; top: 0; z-index: 2; background: var(--paper); border-bottom: 1px solid var(--rule); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
@@ -1773,7 +1791,7 @@
 
   .approval-header { margin-top: 20px; }
   #approval-sheet { box-sizing: border-box; width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 24px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); overflow: auto; }
-  #approval-sheet::backdrop { background: color-mix(in srgb, var(--paper) 70%, transparent); }
+  #approval-sheet::backdrop { background: var(--veil); }
   #approval-sheet header, #approval-sheet footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   #approval-sheet h2 { margin: 0; font: var(--w-regular) var(--s-head)/1.3 var(--font); }
   #approval-sheet footer { position: sticky; bottom: -24px; background: var(--paper); padding: 16px 0; border-top: 1px solid var(--rule); }
@@ -2374,7 +2392,7 @@
   /* The command palette and the shortcut sheet: one transient layer, a sheet on a phone. */
   dialog.palette { box-sizing: border-box; width: min(640px, calc(100vw - 32px)); margin: 12vh auto auto; padding: 0; border: 1px solid var(--rule); border-radius: var(--radius);
     background: var(--paper); color: var(--ink); font-family: var(--font); animation: today-rise var(--t-press) var(--ease-out) both; }
-  dialog.palette::backdrop { background: color-mix(in srgb, var(--paper) 70%, transparent); }
+  dialog.palette::backdrop { background: var(--veil); }
   .palette input { box-sizing: border-box; width: 100%; padding: 18px 20px; border: 0; border-bottom: 1px solid var(--rule); background: none; color: var(--ink); font: var(--w-regular) var(--s-body)/27px var(--font); outline: none; }
   .palette ul { list-style: none; margin: 0; padding: 6px; max-height: min(52vh, 480px); overflow: auto; }
   .palette li[role="option"] { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 12px; border-radius: var(--radius); font: var(--w-regular) var(--s-body)/22px var(--font); cursor: pointer; }
@@ -3447,7 +3465,7 @@
 
   /* sheets: settings, the palette, shortcuts */
   dialog.n3-sheet, dialog.palette { width: min(640px, calc(100vw - 28px)); margin: 70px auto auto; padding: 22px 24px; border: 0; border-radius: var(--r-card); background: var(--raised); color: var(--ink);
-    box-shadow: var(--e3); max-height: calc(100vh - 100px); overflow: auto; animation: n3-rise var(--t-draw) var(--spring) both; }
+    box-shadow: var(--e3); max-height: calc(100vh - 100px); overflow: auto; animation: n3-rise var(--t-draw) var(--spring-soft) both; }
   dialog.n3-sheet::backdrop, dialog.palette::backdrop { background: var(--scrim); backdrop-filter: blur(6px); }
   dialog.palette { padding: 8px; }
   .sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -3561,7 +3579,7 @@
   .org-mark { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--r-org); border: 1.6px solid currentColor; flex: none;
     font: var(--w-bold) var(--s-meta)/1 var(--font); color: var(--ink); }
   .org-mark.l { width: 46px; height: 46px; font: var(--w-bold) var(--s-ui)/1 var(--font); }
-  .widget { background: var(--raised); border-radius: var(--r-card); box-shadow: var(--e1); padding: 18px 20px; animation: n3-rise var(--t-draw) var(--spring) both; }
+  .widget { background: var(--raised); border-radius: var(--r-card); box-shadow: var(--e1); padding: 18px 20px; animation: n3-rise var(--t-draw) var(--spring-soft) both; }
   .wt { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
   .wt .ic { width: 15px; height: 15px; }
   .big { font: var(--w-bold) var(--s-head)/1.15 var(--font); letter-spacing: -0.02em; color: var(--ink); }
@@ -3579,7 +3597,7 @@
 
   /* ---- Today: the night chart and who waits ---- */
   .schedule-failure, .snapshot-line { margin: 0 0 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
-  .night-card { padding: 16px 24px 12px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1); animation: n3-rise var(--t-draw) var(--spring) both; }
+  .night-card { padding: 16px 24px 12px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1); animation: n3-rise var(--t-draw) var(--spring-soft) both; }
   .nh { display: flex; align-items: center; gap: 8px; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.4 var(--font); }
   .nh .ic { width: 15px; height: 15px; }
   .nh .chart-toggle { display: none; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; font: var(--w-bold) var(--s-ui)/1.4 var(--font); }
@@ -3663,7 +3681,7 @@
   .today-brief .today-threads { display: block; border: 0; }
   .today-brief .qcard { display: none; cursor: auto; }
   .today-brief .qcard.focal { display: block; padding: 24px 28px 22px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2); cursor: auto;
-    animation: n3-rise var(--t-draw) var(--spring) backwards; }  /* no fill once risen: a filled transform would hold the pinned Send bar */
+    animation: n3-rise var(--t-draw) var(--spring-soft) backwards; }  /* no fill once risen: a filled transform would hold the pinned Send bar */
   .today-brief .qcard.focal:focus-visible { outline: 0; background: var(--well); }
   .today-brief .qsent { padding: 14px 20px; margin-bottom: 14px; border-radius: var(--r-inner); background: var(--well); }
   .today-brief .qsent .lede { margin: 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.5 var(--font); }
@@ -3927,7 +3945,7 @@
   .n3-person :is(a, button).chip:hover { box-shadow: var(--e-ink); color: var(--ink); cursor: pointer; }
   .n3-person .chip .ic { width: 14px; height: 14px; }
   .n3-person .hero { display: block; margin: 0; padding: 28px 32px 24px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1);
-    animation: n3-rise var(--t-draw) var(--spring) both; }
+    animation: n3-rise var(--t-draw) var(--spring-soft) both; }
   .hero-top { display: flex; align-items: flex-start; gap: 20px; }
   .n3-person .face { background: var(--well); color: var(--ink); }
   .hero-who { flex: 1; min-width: 0; }
@@ -4136,7 +4154,7 @@
      hairline edge, 24 px tall against the button's 40. */
   .tag-links a.tag-link[href], .session-tags a.tag-link[href] { display: inline-flex; align-items: center; box-sizing: border-box;
     min-height: 24px; padding: 0 10px; border-radius: var(--r-pill); border: var(--hair) solid var(--rule);
-    background: color-mix(in srgb, var(--well) 50%, var(--paper)); color: var(--grey); text-decoration: none;
+    background: var(--fill-chip); color: var(--grey); text-decoration: none;
     overflow-wrap: anywhere; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .tag-links a.tag-link[href]:hover, .tag-links a.tag-link[href]:focus-visible,
   .session-tags a.tag-link[href]:hover, .session-tags a.tag-link[href]:focus-visible { background: var(--well); color: var(--ink); }
