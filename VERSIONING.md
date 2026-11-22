@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc11
+## Current Version: 1.9.7rc12
+Release candidate 1.9.7rc12 for 1.9.7: the Keys page lists the vault, grouped by site: above 30 keys every site
+folds to one row "<site> · N 条", search opens the matching groups, single-entry sites are one-row groups, and a
+phone shows a two-line list. co's own keys from `~/.co/keys.env` are grouped by service with settings folded, and a
+test pins that no model stage reads `keys/` pages (#3327). Tags render as quiet chips on every page kind: grey
+text, a light fill and a hairline border (#3313). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc12.md).
+
+- 1.9.7rc12 (the Keys vault grouped by site #3327; tags as quiet chips #3313).
+
+### Previous candidate: 1.9.7rc11
 Release candidate 1.9.7rc11 for 1.9.7: the Today reply card and its full-screen compose, rebuilt to one spec (#3312).
 One filled 发送 with the rest under ⋯; the letter reads in full and folds with 展开全文; a line names the message REM
 read; ‹ i/n › steps through the cards. Replies keep to the channel the person is reachable on: a draft stored on a
