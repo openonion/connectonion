@@ -719,7 +719,11 @@ class Notebook:
             raise RemError("Markdown exceeds the one-megabyte writing limit")
         if KEY_SHAPES.search(content):
             raise RemError("Refusing to write secret-shaped content (a key or token) into a notebook page")
-        if path.exists() and self.read(record) == content:
+        previous = self.read(record) if path.exists() else None
+        # A masked knowledge page keeps its number, or is given the next one, here where pages are written (#3385).
+        from .masked import numbered
+        content = numbered(self.root, record, content, previous)
+        if previous == content:
             return False
         atomic_write(path, content)
         return True

@@ -37,6 +37,8 @@ Rules:
 - Say what the pages establish, not more. Where pages disagree, say so and cite both.
 - Write in the language most of the member pages are written in.
 - Do not write a member list, a Tags line or a Sources section; code adds them.
+- The title is the tag's plain name and never carries `[personal]` or `[sensitive]`.
+  A private fact goes on its own line, and that line ends with the mark.
 - When `node-before.md` has a page, keep every cited line it has (you may
   extend or correct one, saying so with its new source); add what the members
   now show. Never drop a line.

@@ -6763,7 +6763,8 @@ function splitTrailers(text) {
     }
     if (fence) { body.push(line); continue; }
     // Code-owned lines: the Tags line is the tag row under the title (#3140), the Investigation stamp is the button's.
-    if (/^-\s*Tags:/.test(t) || /^Investigation:/.test(t)) continue;
+    // A masked page's number (masked.py) is the graph's label, not prose.
+    if (/^-\s*Tags:/.test(t) || /^Investigation:/.test(t) || /^Masked:\s*\d+\s*$/.test(t)) continue;
     if (/^(related|相关|相关页面|相关链接|相关项目|相关人物|相关决定|相关待办)[:：]/i.test(t)) related.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else if (/^(sources?|来源)[:：]/i.test(t)) sources.push(t.replace(/^[^:：]+[:：]\s*/, ""));
     else body.push(line);
@@ -17404,6 +17405,12 @@ function graphModel() {
   // One kind of point, the page (#3140): a tag only adds edges between the pages carrying it and its page.
   const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) }));
   const byId = new Map(nodes.map(n => [n.id, n]));
+  // Two masked pages never read as one (#3385: four rows said "Personal"). Each page carries its number, given once
+  // in the order pages were first masked (masked.py, "Masked: N"); the reader only reads it. A legacy page with none
+  // yet follows the highest stored number, by path, without writing anything.
+  const masked = nodes.filter(n => n.private), stored = n => +(/^Masked:[ \t]*(\d+)[ \t]*$/m.exec(n.r?.text || "")?.[1] || 0);
+  let next = Math.max(0, ...masked.map(stored));
+  for (const n of masked.sort((a, b) => (a.id < b.id ? -1 : 1))) n.maskNo = stored(n) || ++next;
   const edges = source.edges.concat(source.tags?.edges || []).filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
   const adj = new Map();
   for (const e of edges) for (const [a, b] of [[e.s, e.t], [e.t, e.s]]) (adj.get(a) || adj.set(a, new Set()).get(a)).add(b);
@@ -17418,7 +17425,8 @@ function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 function graphHidden(n) { return n.private && (!n.r || privacyLevel !== "all"); }
 // The name in the reading language when the page has a current translation: its translated heading.
 function graphTitle(n) {
-  if (graphHidden(n)) return graphT("Personal");
+  // Masking wins for a private page (#3385); a course or team code reads as one after that (#3389).
+  if (graphHidden(n)) return graphT("Personal") + (n.maskNo ? " " + n.maskNo : "");
   const coded = codedOrgName(n.r);
   if (coded) return coded;
   const translated = uiLanguage !== "en" && /^# +(.+)$/m.exec(n.r?.translations?.[uiLanguage] || "")?.[1];
