@@ -151,7 +151,7 @@ def test_the_live_reader_opens_3d_settles_and_fits_the_stage(api, built):
         after = positions_3d(page)
         assert max(moved(before[k], after[k]) for k in before) > 1, "the map animates into place, it is not frozen"
         wait_settled_3d(page)
-        cover = js(page, "() => graph3dCover(graphState.fg.graphData().nodes)")
+        cover = js(page, "() => { const n = graphState.fg.graphData().nodes; return graph3dCover(n, graph3dCentroid(n, graphState.fg.camera().position)); }")
         assert .78 <= cover <= .95, f"settled, the map fills the stage (85-90% with a margin), not a small ball: {cover:.2f}"
         smallest = js(page, """() => { const fg = graphState.fg, cam = fg.camera(); return Math.min(...fg.graphData().nodes.map(d => {
           const r = d.__threeObj.geometry.parameters.radius, a = fg.graph2ScreenCoords(d.x, d.y, d.z);
@@ -189,15 +189,32 @@ def test_search_flies_to_the_page_and_lights_it_and_zooming_in_names_more(api, b
         target = js(page, "() => GRAPH.linked.find(n => n.k === 'orgs' && n.r).id")
         title = js(page, "id => graphTitle(GRAPH.byId.get(id))", target)
         far = js(page, "id => { const d = graphState.nodes3.get(id); return graphState.fg.camera().position.distanceTo(d); }", target)
+        # Record the camera's distance to the hit every frame while it travels.
+        js(page, """id => { const d = graphState.nodes3.get(id); window.__trip = [];
+          const tick = now => { window.__trip.push([now, graphState.fg.camera().position.distanceTo(d)]); if (window.__trip.length < 90) requestAnimationFrame(tick); };
+          requestAnimationFrame(tick); }""", target)
         page.locator(".gx-search").fill(title)
         page.locator(".gx-search").press("Enter")
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(1600)
         assert js(page, "() => graphState.focus") == target
         near = js(page, "id => { const d = graphState.nodes3.get(id); return graphState.fg.camera().position.distanceTo(d); }", target)
         assert near < far * .7, f"the camera flew to the page: {far:.0f} -> {near:.0f}"
-        x, y = screen_of(page, target)
-        box = page.locator(".gx-3d").bounding_box()
-        assert abs(x - (box["x"] + box["width"] / 2)) < box["width"] * .15 and abs(y - (box["y"] + box["height"] / 2)) < box["height"] * .15
+        # The hit and its neighbours fill about 60% of the stage, and the hit never fills the screen.
+        group = js(page, """id => { const fg = graphState.fg, group = [graphState.nodes3.get(id), ...[...GRAPH.adj.get(id)].map(n => graphState.nodes3.get(n))];
+          return graph3dCover(group, graph3dCentroid(group, fg.camera().position)); }""", target)
+        assert .5 <= group <= .72, f"the hit and its neighbours frame about 60% of the stage: {group:.2f}"
+        share = js(page, """id => { const fg = graphState.fg, d = graphState.nodes3.get(id), cam = fg.camera(), r = d.__threeObj.geometry.parameters.radius;
+          const up = new cam.position.constructor(0, 1, 0).applyQuaternion(cam.quaternion).multiplyScalar(r);
+          const a = fg.graph2ScreenCoords(d.x - up.x, d.y - up.y, d.z - up.z), b = fg.graph2ScreenCoords(d.x + up.x, d.y + up.y, d.z + up.z);
+          return Math.hypot(b.x - a.x, b.y - a.y) / fg.height(); }""", target)
+        assert share <= .16, f"the hit is at most about 15% of the stage's height: {share:.2f}"
+        # Eased in and out over about 700 ms: it starts and ends slowly and moves fastest in the middle.
+        trip = js(page, "() => window.__trip")
+        moving = [(t, d) for (t, d), (_, before) in zip(trip[1:], trip) if abs(d - before) > .05]
+        assert 550 <= moving[-1][0] - moving[0][0] <= 900, f"the move lasts about 700 ms: {moving[-1][0] - moving[0][0]:.0f}"
+        steps = [abs(b[1] - a[1]) for a, b in zip(moving, moving[1:])]
+        third = max(1, len(steps) // 3)
+        assert max(steps[third:-third]) > max(steps[:third][:2] + steps[-2:]), "slow at both ends, fastest in the middle"
         assert js(page, "() => document.querySelector('.gx-3d').dataset.lit") == target, "the found page is lit"
         assert page.locator(f'.gx-3d-name[data-id="{target}"]').count() == 1, "and named"
         # Back to the whole map, then zoom in: the marks nearest the camera are named too.
@@ -209,6 +226,54 @@ def test_search_flies_to_the_page_and_lights_it_and_zooming_in_names_more(api, b
         page.locator('[data-zoom="1.4"]').click()
         page.wait_for_timeout(600)
         assert page.locator(".gx-3d-name").count() > fitted, "zoomed in, more names"
+    finally:
+        close(page)
+
+
+def test_one_outlying_mark_sits_at_the_edge_instead_of_shrinking_the_map(api, built):
+    """#3309 review: the fit reads the 95th percentile of the marks' spread, not the single farthest one."""
+    page = open_graph(api, built)
+    try:
+        wait_settled_3d(page)
+        # Pin a leaf far outside the cloud, then fit the whole map again.
+        js(page, """() => { const fg = graphState.fg, nodes = fg.graphData().nodes, c = graph3dCentroid(nodes, fg.camera().position);
+          const leaf = nodes.filter(d => GRAPH.adj.get(d.id).size === 1)[0], spread = Math.max(...nodes.map(d => Math.hypot(d.x - c.x, d.y - c.y, d.z - c.z)));
+          leaf.fx = leaf.x = c.x + spread * 3; leaf.fy = leaf.y = c.y; leaf.fz = leaf.z = c.z; window.__leaf = leaf.id; graph3dFit(true); }""")
+        page.wait_for_timeout(1200)
+        p95, whole = js(page, """() => { const fg = graphState.fg, nodes = fg.graphData().nodes, c = graph3dCentroid(nodes, fg.camera().position);
+          const xs = nodes.map(d => fg.graph2ScreenCoords(d.x, d.y, d.z).x), ys = nodes.map(d => fg.graph2ScreenCoords(d.x, d.y, d.z).y);
+          return [graph3dCover(nodes, c), Math.max((Math.max(...xs) - Math.min(...xs)) / fg.width(), (Math.max(...ys) - Math.min(...ys)) / fg.height())]; }""")
+        assert .8 <= p95 <= .95, f"the bulk of the map still fills about 87% of the stage: {p95:.2f}"
+        assert whole > 1, f"the outlier sits at or past the edge rather than shrinking everything: {whole:.2f}"
+    finally:
+        close(page)
+
+
+def test_names_follow_the_review_order_and_a_name_that_loses_is_hidden_never_cut(api, built):
+    page = open_graph(api, built)
+    try:
+        wait_settled_3d(page)
+        key = js(page, "() => graphState.fg.graphData().nodes.filter(d => d.n.k === 'projects').sort((a, b) => graphDegree(b.n) - graphDegree(a.n))[0].id")
+        order = js(page, """key => { const fg = graphState.fg, around = GRAPH.adj.get(key);
+          return graph3dNameOrder(fg.graphData().nodes, key, fg.camera().position).map(d => [d.id === key ? 0 : around.has(d.id) ? 1 : d.n.k === 'knowledge' ? 2 : 3,
+            d.id, graphDegree(d.n), fg.camera().position.distanceTo(d)]); }""", key)
+        tiers = [row[0] for row in order]
+        assert tiers == sorted(tiers) and order[0][1] == key, "the hit, then its neighbours, then tag pages, then the rest"
+        for tier in (2, 3):
+            degrees = [row[2] for row in order if row[0] == tier]
+            assert degrees == sorted(degrees, reverse=True), f"tier {tier} by degree"
+        for a, b in zip(order, order[1:]):
+            if a[0] == b[0] and (a[0] < 2 or a[2] == b[2]):
+                assert a[3] <= b[3] + 1e-6, "within a tier, nearer the camera first"
+        # Live: point at the mark; its name is shown, no two names overlap, and none is cut short.
+        point_at(page, key)
+        page.wait_for_timeout(300)
+        boxes = js(page, "() => [...document.querySelectorAll('.gx-3d-name')].map(s => { const r = s.getBoundingClientRect(); return [s.dataset.id, r.left, r.top, r.right, r.bottom, s.textContent]; })")
+        assert any(b[0] == js(page, "() => graphState.hover") for b in boxes), "the pointed mark is named"
+        for i, a in enumerate(boxes):
+            assert "…" not in a[5], a[5]
+            for b in boxes[i + 1:]:
+                assert not (a[1] < b[3] - 1 and a[3] > b[1] + 1 and a[2] < b[4] - 1 and a[4] > b[2] + 1), (a[5], b[5])
     finally:
         close(page)
 
