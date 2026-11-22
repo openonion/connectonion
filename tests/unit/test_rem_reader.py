@@ -242,6 +242,7 @@ def test_fact_list_omits_placeholder_only_fields_and_keeps_mail():
         ['Location', [{value: 'Unknown — not verified.'}]]]);
       const legacyFact = () => [], mappedContact = () => false, softBreaks = node => node;
       const changedValue = node => node, factValue = item => ({text: item.value});
+      const known = () => ({status: 'Investigated'});  // an investigated page: its gaps are 'not found' (#3381)
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         append(...nodes) { this.children.push(...nodes); }});
       const panel = (title, children) => ({title, children});
@@ -2149,6 +2150,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
       const listItems = () => [], threads = () => ({items: [], calm: false});
       const youify = text => text, inline = text => text, softBreaks = node => node, privateFallback = node => node;
       const changedValue = node => node, mappedContact = () => false, legacyFact = () => [], knownValue = Boolean;
+      const withoutWechatIds = (r, item) => item, chatActivity = () => null;  // WeChat ids: tested in the browser (#3372)
       const inCategory = () => [], orgName = page => page.title;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         get childNodes() { return this.children; },
