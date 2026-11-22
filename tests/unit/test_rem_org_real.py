@@ -100,7 +100,7 @@ def record_js(script, functions=()):
     page = TEMPLATE.read_text()
     constants = '\n'.join(re.search(r'^const ' + name + r' = .*?;$', page, re.M)[0]
                           for name in ['UNKNOWN_LINE', 'MECHANICAL', 'PLACEHOLDER', 'STAMP', 'COMMENT'])
-    return org_js(['known', 'facts', 'section', 'plainLine', 'rawSection', 'parseFacts', 'topLevelParts',
+    return org_js(['known', 'facts', 'section', 'plainLine', 'pageWords', 'rawSection', 'parseFacts', 'topLevelParts',
                    'swapLanguage', 'orgFact', 'orgRelation', 'firstSentence', 'orgTableRow',
                    'orgOpening', 'orgConnections', 'orgCoda', 'textCell', 'orgWebsite',
                    'privatePassages', 'unlabelled', 'mendCuts', 'hasPrivacy', *functions],
