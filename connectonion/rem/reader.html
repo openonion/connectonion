@@ -68,7 +68,9 @@
     --fill-chip: color-mix(in srgb, var(--well) 50%, var(--paper)); /* a tag chip: quieter than an inset */
     --tint-red: color-mix(in srgb, var(--red) 8%, transparent); /* behind a slot REM needs answered */
     --underline: color-mix(in srgb, currentColor 55%, transparent); /* a link's underline, softer than its text */
-    --overlay: color-mix(in srgb, var(--ink) 40%, transparent); /* behind the full-screen writer */
+    /* Behind the full-screen writer: black, never ink, because ink turns near-white in dark mode and the backdrop
+       became a pale fog instead of dimming the page. Darker in dark mode, where the page is already dark. */
+    --overlay: rgba(0, 0, 0, .32);
     --veil: color-mix(in srgb, var(--paper) 70%, transparent); /* behind a palette or a side dialog */
 
 
@@ -162,6 +164,7 @@
       --red: #ff5a3c;
       --e-fuse: inset 0 0 0 1.5px rgba(255, 90, 60, .3);
       --scrim: rgba(15, 17, 15, .6);
+      --overlay: rgba(0, 0, 0, .55);
       --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
       --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
       --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
@@ -186,6 +189,7 @@
     --red: #ff5a3c;
     --e-fuse: inset 0 0 0 1.5px rgba(255, 90, 60, .3);
     --scrim: rgba(15, 17, 15, .6);
+    --overlay: rgba(0, 0, 0, .55);
     --e1: 0 0 0 1px rgba(255, 255, 255, .06), 0 8px 24px -10px rgba(0, 0, 0, .6);
     --e2: 0 0 0 1px rgba(255, 255, 255, .09), 0 28px 60px -22px rgba(0, 0, 0, .8);
     --e3: 0 0 0 1px rgba(255, 255, 255, .10), 0 16px 40px -12px rgba(0, 0, 0, .8);
@@ -306,8 +310,6 @@
   .writer { position: relative; box-shadow: var(--e3); }
   /* Dimmed from the page's own ink (the palette is closed); at night the scrim is already dark. */
   .writer::backdrop { background: var(--overlay); backdrop-filter: blur(2px); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .writer::backdrop { background: var(--scrim); } }
-  :root[data-theme="dark"] .writer::backdrop { background: var(--scrim); }
   .writer { grid-template-rows: auto minmax(0, 1fr); }
   .writer-title { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 24px; border-bottom: 1px solid var(--rule); }
   .writer-title h2 { flex: 1; min-width: 0; margin: 0; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

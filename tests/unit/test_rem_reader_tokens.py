@@ -30,7 +30,19 @@ def test_state_tokens_are_ink_or_paper_at_an_alpha():
     light = _light()
     for name, percent in (('--fill-hover', 4), ('--fill-press', 7)):
         assert light[name] == f'color-mix(in srgb, var(--ink) {percent}%, transparent)', name
-    assert 'var(--ink)' in light['--overlay'] and 'var(--paper)' in light['--veil']
+    assert 'var(--paper)' in light['--veil'], 'the veil is paper, so it darkens in dark mode by itself'
+
+
+def test_the_writer_overlay_is_black_in_both_themes():
+    """Ink flips to near-white in dark mode, so an ink overlay fogged the page instead of dimming it (art
+    director, #3362). The overlay is black at an alpha, stronger in dark mode, and the same in both dark selectors."""
+    blocks = _blocks(_parts()[0])
+    light = blocks[('', ':root')]['--overlay']
+    auto = blocks[('@media (prefers-color-scheme: dark)', ':root:not([data-theme="light"])')]['--overlay']
+    forced = blocks[('', ':root[data-theme="dark"]')]['--overlay']
+    alpha = lambda value: float(re.fullmatch(r'rgba\(0, 0, 0, (\.\d+)\)', value).group(1))
+    assert auto == forced
+    assert 0.2 <= alpha(light) < alpha(auto) <= 0.7, (light, auto)
 
 
 def test_the_two_springs_are_sampled_curves():
