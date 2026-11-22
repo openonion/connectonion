@@ -29,7 +29,7 @@ def run_js(names, script):
 ])
 def test_reader_person_lead_keeps_english_punctuation_and_private_passages(text):
     """The full memory now retains the complete intro, including its privacy markup."""
-    result = run_js(['markdown', 'inline', 'privatePassages'], r'''
+    result = run_js(['markdown', 'inline', 'privatePassages', 'pageWords'], r'''
       const UNKNOWN_TEXT = /^Unknown$/, uiLanguage = 'en';
       const esc = value => value, youify = value => value;
       const tetherCitations = value => value, uncertainCitations = value => value, quoteSpans = value => value;
