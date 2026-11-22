@@ -185,7 +185,8 @@
   /* Fuse has no shadow, so rings became hairline outlines declared later with one or two classes; three
      selectors' weight lets the focus ring win without !important. #main and the Today cards are focused by
      script (tabindex=-1) and keep their own rules, as do text fields. */
-  :root :focus-visible:not([tabindex="-1"], input, textarea) { outline: var(--rule-heavy) solid var(--ink); }
+  /* A writing surface shows its caret, not a ring: inputs, textareas and the full-screen letter (contenteditable). */
+  :root :focus-visible:not([tabindex="-1"], input, textarea, [contenteditable="true"]) { outline: var(--rule-heavy) solid var(--ink); }
   code { font: var(--s-body) var(--mono); }
   .mono { font-family: var(--font); font-variant-numeric: tabular-nums; }
   svg.moon { width: 11px; height: 11px; flex-shrink: 0; color: var(--grey); vertical-align: -1px; }
@@ -272,10 +273,43 @@
   .thread-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
   /* ---- the writer: full screen, one letter ---- */
   .writer { width: min(1180px, 96vw); height: min(860px, 94vh); max-width: none; max-height: none; padding: 0; border: 0; border-radius: var(--radius); background: var(--paper); color: var(--ink); display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); overflow: hidden; }
-  .writer::backdrop { background: color-mix(in srgb, var(--paper) 70%, transparent); backdrop-filter: blur(2px); }
+  /* The page behind is dimmed, not paper on paper: the owner could not tell the writer was a dialog (#3303). */
+  .writer { position: relative; box-shadow: var(--e3); }
+  /* Dimmed from the page's own ink (the palette is closed); at night the scrim is already dark. */
+  .writer::backdrop { background: color-mix(in srgb, var(--ink) 40%, transparent); backdrop-filter: blur(2px); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .writer::backdrop { background: var(--scrim); } }
+  :root[data-theme="dark"] .writer::backdrop { background: var(--scrim); }
+  .writer { grid-template-rows: auto minmax(0, 1fr); }
+  .writer-title { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 24px; border-bottom: 1px solid var(--rule); }
+  .writer-title h2 { flex: 1; min-width: 0; margin: 0; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .writer-cancel, .writer-send-top { display: none; }
+  .writer-close { flex: none; width: 36px; height: 36px; display: grid; place-items: center;
+    border: 0; border-radius: var(--round); background: transparent; color: var(--ink); cursor: pointer; }
+  .writer-close:hover, .writer-close:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  .writer-close svg { width: 20px; height: 20px; }
+  .writer-notice { margin: 0; padding: 0 24px 14px; color: var(--red); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .writer-notice:empty { display: none; }
+  @media (max-width: 719px) {
+    .writer { grid-template-rows: auto minmax(0, 1fr) auto; }
+    /* One standard bar, 取消 · 回复 <name> · <channel> · 发送, about 56px; a long name is cut, never wrapped. */
+    .writer-title { height: 56px; padding: 0 8px; gap: 8px; }
+    .writer-title h2 { text-align: center; font-size: var(--s-ui); }
+    .writer-cancel, .writer-send-top { display: inline-flex; align-items: center; flex: none; min-height: 40px; height: 40px; padding: 0 14px; }
+    .writer-letter .mail-head { padding: 10px 16px 8px; }
+    .writer-body { padding: 12px 16px; }
+    .writer-close, .writer-actions .btn-act { display: none; }
+  }
+  .writer-did { margin: 0 0 14px; color: var(--ink); }
+  .writer-choices { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: var(--radius); }
+  .writer-choices h4 { margin: 0 0 8px; color: var(--ink); }
+  .writer-choices .owner-slot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
   .writer-letter { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--rule); }
   .writer-letter .mail-head { padding: 18px 24px 12px; }
-  .writer-body { flex: 1; min-height: 0; resize: none; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/1.65 var(--font); color: var(--ink); background: var(--paper); }
+  .writer-body { flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/1.65 var(--font); color: var(--ink); background: var(--paper); }
+  /* An open question in the letter: a chip in its own words, the same as the card's marker; answered, the answer. */
+  .slot-chip { padding: 1px 8px; border-radius: var(--r-pill); border: 1px dashed var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--ink); cursor: pointer; white-space: normal; }
+  .slot-chip.filled { border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 0; background: none; }
   .writer-actions { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--rule); }
   .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: var(--s-body)/1.6 var(--font); color: var(--grey); }
   .writer-side h3 { margin: 0 0 6px; font: var(--w-bold) var(--s-body)/1.3 var(--font); color: var(--ink); }
@@ -287,7 +321,7 @@
   .writer-msg-head { font: var(--w-bold) var(--s-meta)/1.4 var(--font); color: var(--grey); margin-bottom: 4px; }
   .writer-msg-text { white-space: pre-wrap; font: var(--s-meta)/1.55 var(--font); color: var(--grey); max-height: 14em; overflow: hidden; }
   @media (max-width: 719px) {
-    .writer { width: 100vw; height: 100dvh; border-radius: var(--radius); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+    .writer { width: 100vw; height: 100dvh; border-radius: var(--radius); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
     .writer-letter { border-right: 0; }
     .writer-side { max-height: 38dvh; border-top: 1px solid var(--rule); }
   }
@@ -297,6 +331,38 @@
   .draft-now .draft-status:empty { display: none; }
   /* ---- a reply shown as the mail it becomes ---- */
   .mail-channels { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius); background: var(--rule); margin-bottom: 6px; }
+  .mail-channels[hidden] { display: none; }
+  /* Reply card, #3312: the whole letter up to about fourteen lines, then a fade and 展开全文. */
+  /* A generous cap to notice a long letter; the script then clamps it on a line boundary (14 lines, 8 on a phone). */
+  .mail-body:not(.whole) { max-height: calc(16 * 1.6em + 28px); overflow: hidden; }
+  .mail-body.long { -webkit-mask-image: linear-gradient(var(--ink) 82%, transparent); mask-image: linear-gradient(var(--ink) 82%, transparent); }
+  .mail-unfold { margin: 0 16px 8px; }
+  .mail-actions .mail-write { margin-left: auto; color: var(--grey); }
+  .mail-actions .mail-write svg { width: 18px; height: 18px; }
+  .mail-actions .mail-write + .more-menu + .btn-act { margin-left: 0; }
+  .mail-did { margin: 0; padding: 8px 16px 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .mail-defect { margin: 0; padding: 10px 16px; border-top: 1px solid var(--rule); color: var(--red); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .mail-defect .btn-line { margin-left: 6px; min-height: 32px; padding: 0 12px; border: var(--hair) solid var(--ink); border-radius: var(--r-pill);
+    background: none; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .owner-slot.attention { animation: slot-attention var(--t-burn) var(--ease-out); border-radius: var(--radius); }
+  @keyframes slot-attention { 0%, 40% { box-shadow: var(--e-fuse); } 100% { box-shadow: none; } }
+  /* The row's buttons wait in ⋯; its talk slot and its notes stay on the row. */
+  .qcard.triage-menu .qitem .handoff-line { display: none; }
+  .more-menu .menu .handoff, .more-menu .menu .handoff-line { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+  /* ‹ 3 / 19 ›, always visible at the card's top right (#3312 G). */
+  .qhead-acts:has(.qnav) { opacity: 1; }
+  .qnav { display: inline-flex; align-items: center; gap: 2px; }
+  .qnav .qnav-step { width: 32px; height: 32px; font: var(--w-bold) var(--s-title)/var(--lh-tight) var(--font); color: var(--ink); }
+  @media (max-width: 820px), (pointer: coarse) { .qnav .qnav-step { width: 44px; height: 44px; } }
+  .qcount { min-width: 3.2em; text-align: center; color: var(--grey); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); font-variant-numeric: tabular-nums; }
+  /* On a phone nothing the owner must tap rests under fixed chrome (#3312 H): every scroll to a control (a jump to
+     REM's open question, a focus, the dock brought into view) stops above the floating tab bar. The dock is never
+     pinned over the letter (sprint 13: a bar over the draft covered what he was approving), and the tab bar stays,
+     since hiding it on Today's first screen would take the navigation away. */
+  @media (max-width: 719px) {
+    html { scroll-padding-bottom: calc(14px + 62px + 12px + env(safe-area-inset-bottom, 0px)); }
+  }
+
   .mail-channels .channel { border: 0; background: transparent; padding: 3px 10px; border-radius: var(--radius); font: var(--w-regular) var(--s-meta) var(--font); color: var(--grey); cursor: pointer; }
   .mail-channels .channel.active { background: var(--paper); color: var(--ink); font-weight: var(--w-bold); cursor: default; }
   .mailcard.chat .mail-text { font-size: var(--s-body); border-radius: var(--radius); margin: 12px 16px; padding: 12px 14px; background: var(--rule); color: var(--ink); }
@@ -326,7 +392,7 @@
     /* The first screen keeps Send in reach: the letter is clamped and the gist
        waits for the writer; the background stays, because approval needs it. */
     .mail-body.bilingual { grid-template-columns: minmax(0, 1fr); }
-    .mail-text { max-height: 7.2em; overflow: hidden; -webkit-mask-image: linear-gradient(var(--ink) 70%, transparent); mask-image: linear-gradient(var(--ink) 70%, transparent); }
+    .mail-body:not(.whole) { max-height: calc(10 * 1.6em + 28px); }
     .mail-gist { display: none; }
     .mail-why { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .mail-note { flex-basis: 100%; margin-left: 0; }
@@ -2162,7 +2228,7 @@
      screen and REM's question stays reachable in place; More or Write full screen shows it whole. */
   /* The window is the top margin and three whole lines of the letter, which is four lines of the gist beside
      it (16 and 12 at the same 1.6), so neither column shows a half line cut by the slot row under it. */
-  .qcard.focal[data-step="send"]:not(.full) .mail-body { max-height: calc(var(--u3) + 3 * var(--s-body) * var(--lh-body)); overflow: auto; overscroll-behavior: contain; }
+  /* The letter is read whole (#3312 B4): no inner scroll window cutting mid-sentence; see .mail-body.long. */
   .qcard.focal[data-step="send"]:not(.full) :is(.mail-text, .mail-gist) { padding-top: var(--u3); line-height: var(--lh-body); }
   .qcard.focal[data-step="send"]:not(.full) .mail-gist .k { margin-bottom: 0; }
   .qcard.focal.open .mail-head .mail-row { line-height: 1.35; }
@@ -2252,22 +2318,24 @@
     /* The first phone screen holds To, Subject, the letter's first lines and Send; the context line and channel
        switch wait behind More. */
     .qcard.focal[data-step="send"]:not(.full) .mailcard { display: flex; flex-direction: column; }
-    /* REM's question follows the letter, a hairline above it. */
-    .qcard.focal[data-step="send"]:not(.full) .mail-choices { order: 2; }
-    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 2; max-height: calc(var(--u3) + 2 * var(--s-body) * var(--lh-body)); }
+    /* The phone reads in the card's order (#3312 B): who → the letter (its first eight lines, no two-line clamp) →
+       the dock with REM's question and Send → status → why → what REM did. */
+    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 1; }
     .qcard.focal[data-step="send"]:not(.full) .mail-text { max-height: none; -webkit-mask-image: none; mask-image: none; }
-    .qcard.focal[data-step="send"]:not(.full) :is(.mail-why, .mail-status) { order: 3; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-dock { order: 2; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-status { order: 3; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-why { order: 4; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-did { order: 5; }
     .qcard.focal[data-step="send"]:not(.full) .mail-head .mail-channels,
     .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: none; }
     .qcard.focal[data-step="send"]:not(.full) .qitem { grid-template-columns: minmax(0, 1fr); }
     /* The reply's needed parts and Send fit the first screen: the items behind the reply, their meta and hand-off
        lines wait behind More, which stays in place of the first item. */
     .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull, .handoff)) { display: none; }
-    /* On a phone Send stays where the draft ends, right under REM's question, and comes into view with the draft.
-       It was pinned above the tab bar, and on real data it sat over the draft's first lines while the owner was
-       still reading the message above it (sprint 13); a bar that covers what it asks you to approve is worse
-       than one you scroll to. */
-    .qcard.focal.open .mail-actions { order: 3; padding: var(--u2) var(--u3) var(--u3); }
+    /* Send sits where the draft ends, right under REM's question, in the dock. It is not pinned (sprint 13: a bar
+       fixed over the draft's first lines covered what it asked him to approve); a scroll to it stops above the tab
+       bar instead (#3312 H, html scroll-padding-bottom). */
+    .qcard.focal.open .mail-actions { padding: var(--u2) var(--u3) var(--u3); }
     .qcard.open .mail-actions .btn-act { flex: 1 1 auto; }
     /* One row above the thumb: Send, full screen, Skip. Editing in the provider's drafts waits for a desk. */
     /* Buttons keep their words whole ("Skip", not "Ski / p"); a hint waiting on REM's question takes its own
@@ -4571,6 +4639,24 @@ const UI = {
     "Sends as you via {tool}": "以你的身份经 {tool} 发出",
     "Close": "关闭",
     "Write full screen": "全屏写",
+    "Switch to {channel}": "改用 {channel}",
+    "REM rewrites it as an email.": "REM 会重写成邮件。",
+    "REM rewrites it as a chat message.": "REM 会重写成聊天口吻。",
+    "Sending…": "发送中…",
+    "Reply sent": "已发送",
+    "Previous card": "上一张",
+    "Answer REM's question first: {what}": "先回答 REM 的问题：{what}",
+    "This reply was written for {channel}, but {name} can't be reached there.": "这封回复被写成了 {channel} 消息，但在 {channel} 上联系不到 {name}。",
+    "Rewrite it as an email": "改写成邮件",
+    "REM read the {date} message “{subject}” and drafted this reply.": "REM 读了 {date} 的〈{subject}〉，起草了这封回复。",
+    "REM read the thread “{subject}” and drafted this reply.": "REM 读了〈{subject}〉这段往来，起草了这封回复。",
+    "Reply to {name}": "回复 {name}",
+    "What they asked": "对方问的",
+    "What REM did": "REM 做了什么",
+    "Show the whole letter": "展开全文",
+    "REM drafted this reply from the thread.": "REM 根据这段往来起草了这封回复。",
+    "Discard your changes to this reply?": "放弃对这封回复的修改？",
+    "Answer REM's question on the right first: {what}": "先在右边回答 REM 的问题：{what}",
     "Reply body": "回信正文",
     "The thread": "往来邮件",
     "Skip": "跳过",
@@ -5032,7 +5118,7 @@ const UI = {
     "Mentioning {name}": "提及 {name}",
     "Topic": "主题",
     "Outcome": "结果",
-    "Sent": "发送于",
+    "Sent at {time}": "发送于 {time}",
     "to": "收件人",
     "Cc": "抄送",
     "Retrieved": "获取于",
@@ -6943,7 +7029,9 @@ function threadKind(entry) {
   return reply?.provider ? {kind: reply.provider, channel: sourceChannel(reply.provider), thread: reply.thread || "", mail: ["gmail", "outlook"].includes(reply.provider)} : null;
 }
 function kindBadge(entry) {
-  const kind = threadKind(entry);
+  const kind = threadKind(entry), chat = threadDraft(entry)?.channel;
+  // A reply rewritten for a chat says that chat, the same word as its draft and its footer (#3312 C).
+  if (chat && chat !== "mail") return el("span", { class: "kind-badge", text: t("{channel} reply", { channel: { lark: "Lark", whatsapp: "WhatsApp" }[chat] || chat }) });
   if (!kind) return el("span", {class: "kind-badge", text: t("Task")});
   return el("span", { class: "kind-badge" + (kind.mail ? " mail" : ""), text: kind.mail ? t("{channel} reply", { channel: kind.channel }) : kind.channel });
 }
@@ -7025,46 +7113,113 @@ function threadActions(entry, onPage = false, strip = false) {
 }
 // Full-screen writing: the letter on the left, editable; on the right what the
 // owner needs to remember, the Chinese reading, and the cited messages.
+// The full-screen writer (#3303). It reads as a dialog over a dimmed page, closes where every dialog does
+// (× top right, Esc, a click outside, each asking once if the letter changed), keeps REM's open questions on
+// the right where the owner answers them, and answers Send on its own button: 发送中… → 已发送, or the reason
+// and 重试. It used to close at once and leave a grey caption, and it refused any bracket in the letter while
+// REM's 【需要你：…】 sat in the text with nowhere to answer it, so Send looked dead (owner, 2026-11-22).
+const SLOT_SPLIT = /(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g;
 function openWriter(draft, who, onSend) {
   const to = mailbox(draft.to);
-  const body = el("textarea", { class: "writer-body", "aria-label": t("Reply body") });
-  body.value = draft.body;
+  // The letter is editable text with REM's open questions as chips in it, as on the card (#3312 F): a chip reads
+  // the question in its own words until it is answered on the right, then the answer. Bracket text never shows.
+  const body = el("div", { class: "writer-body", contenteditable: "true", role: "textbox", "aria-multiline": "true", "aria-label": t("Reply body") });
+  const parts = draft.body.split(SLOT_SPLIT), fills = {}, chips = {};
+  const isSlot = part => /^(?:\[|［|【)/.test(part);
+  for (const [i, part] of parts.entries()) {
+    if (!isSlot(part)) { if (part) body.append(document.createTextNode(part)); continue; }
+    const chip = chips[i] = el("span", { class: "slot-chip", contenteditable: "false", role: "button", tabindex: "0", "data-slot": String(i), text: slotWhat(part) });
+    chip.onclick = () => rows[slots.findIndex(([, k]) => k === i)]?.querySelector("button, input")?.focus();
+    body.append(chip);
+  }
+  // What the letter says now: its text, an answered chip as its answer, an open one as REM's slot (so Send waits).
+  const slotOf = node => node.dataset ? node.dataset.slot : node["data-slot"];
+  const letterText = () => [...body.childNodes].map(node => node.nodeType === 3 ? node.nodeValue
+    : slotOf(node) !== undefined ? fills[slotOf(node)] ?? parts[slotOf(node)]
+    : node.tagName === "BR" ? "\n" : node.innerText ?? node.textContent ?? "").join("");
+  const initial = letterText(), dirty = () => letterText() !== initial;
+  // Enter and paste stay plain text, so the letter holds only text and chips.
+  body.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); document.execCommand("insertText", false, "\n"); } });
+  body.addEventListener("paste", event => { event.preventDefault(); document.execCommand("insertText", false, event.clipboardData.getData("text/plain")); });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
-  const close = el("button", { type: "button", class: "btn-quiet", text: t("Close") });
-  const notice = el("span", { class: "mail-status", role: "status" });
+  const close = el("button", { type: "button", class: "writer-close", "aria-label": t("Close"), title: t("Close") + " (Esc)" }, [icon("x")]);
+  const notice = el("p", { class: "mail-status writer-notice", role: "status" });
   const cited = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean);
-  const dialog = el("dialog", { class: "writer" }, [
+  // REM's open questions, answered on the right: the chip in the letter shows the answer.
+  const slots = parts.map((part, i) => [part, i]).filter(([part]) => isSlot(part));
+  const rows = slots.map(([part, i]) => slotChoices(part, fills, i, () => {
+    chips[i].textContent = fills[i] ?? slotWhat(part);
+    chips[i].classList?.toggle("filled", !!fills[i]);
+    notice.textContent = "";
+  }));
+  // A chip deleted from the letter is a question the owner took out; one still there and unanswered holds Send.
+  const unanswered = () => slots.filter(([, i]) => !fills[i] && chips[i].isConnected !== false);
+  const did = el("p", { class: "writer-did", text: remDid(draft) });
+  const channel = draft.channel || "mail";
+  const channelWord = channel === "mail" ? (draft.provider === "gmail" ? "Gmail" : "Outlook") : t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel);
+  // The title bar: who it goes to and on what, × at the top right; on a phone 取消 top left and 发送 top right.
+  const cancel = el("button", { type: "button", class: "btn-quiet writer-cancel", text: t("Cancel") });
+  const sendTop = el("button", { type: "button", class: "btn-act writer-send-top", text: t("Send") });
+  const title = el("header", { class: "writer-title" }, [cancel,
+    el("h2", { text: t("Reply to {name}", { name: who?.title || to.name }) + " · " + channelWord }), sendTop, close]);
+  const dialog = el("dialog", { class: "writer " + (channel === "mail" ? "provider-" + (draft.provider || "mail") : "chat"), "aria-label": t("Reply draft") }, [
+    title,
     el("div", { class: "writer-letter" }, [
       el("div", { class: "mail-head" }, [
-        el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v", text: (who?.title || to.name) + " <" + to.address + ">" })]),
-        draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
-        el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]),
+        el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v", text: (who?.title || to.name) + (channel === "mail" ? " <" + to.address + ">" : " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || "")) })]),
+        channel === "mail" && draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
+        channel === "mail" ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })]) : null]),
       body,
-      el("div", { class: "writer-actions" }, [send, close, notice, el("span", { class: "mail-note", text: (draft.channel || "mail") === "mail"
+      el("div", { class: "writer-actions" }, [send, el("span", { class: "mail-note", text: channel === "mail"
         ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" })
         // A Lark or WhatsApp reply leaves through that chat, as the card says, never through the mailbox it answers.
-        : t("Sends as you via {tool}", { tool: draft.channel === "lark" ? "lark-cli" : "co whatsapp" }) })])]),
+        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]),
+      notice]),
     el("aside", { class: "writer-side" }, [
+      rows.length ? el("section", { class: "writer-choices" }, [el("h4", { text: t("Your call") }), ...rows]) : null,
       who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
       who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
+      draft.ask ? el("section", {}, [el("h4", { text: t("What they asked") }), el("p", { text: draft.ask })]) : null,
+      el("section", {}, [el("h4", { text: t("What REM did") }), did]),
       draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
       draft.gist ? el("section", {}, [el("h4", { text: gistTitle(draft.gist) }), el("p", { text: draft.gist })]) : null,
       cited.length ? el("section", {}, [el("h4", { text: t("The thread") }), ...cited.map(c => el("div", { class: "writer-msg" }, [
         el("div", { class: "writer-msg-head", text: [sourceSender(c), c.time ? fmtDate(calendarDay(c.time)) : ""].filter(Boolean).join(" · ") }),
         el("div", { class: "writer-msg-text", text: (c.excerpt || "").slice(0, 1200) })]))]) : null])]);
-  send.onclick = () => {
-    if (/[\[\]［］【】]/.test(body.value)) {
-      notice.textContent = t("Fill the marked part first");
-      body.focus();
+  const mayLeave = () => !dirty() || confirm(t("Discard your changes to this reply?"));
+  const leave = () => { if (mayLeave()) dialog.close(); };
+  send.onclick = async () => {
+    const left = unanswered();
+    if (left.length) {
+      notice.textContent = t("Answer REM's question on the right first: {what}", { what: slotWhat(left[0][0]) });
+      rows[slots.indexOf(left[0])]?.querySelector("button, input")?.focus();
       return;
     }
-    dialog.close(); onSend(body.value.trim() === draft.body.trim() ? undefined : body.value);
+    send.disabled = close.disabled = sendTop.disabled = true;
+    send.textContent = sendTop.textContent = t("Sending…");
+    notice.textContent = "";
+    const text = letterText();
+    const error = await onSend(text.trim() === draft.body.trim() ? undefined : text);
+    if (!error) {
+      send.textContent = sendTop.textContent = t("Reply sent");
+      setTimeout(() => dialog.close(), motionStilled() ? 0 : 700);
+      return;
+    }
+    send.disabled = close.disabled = sendTop.disabled = false;
+    send.textContent = sendTop.textContent = t("Retry");
+    notice.textContent = error;
   };
-  close.onclick = () => dialog.close();
+  close.onclick = cancel.onclick = leave;
+  sendTop.onclick = () => send.onclick();
+  // Esc is the dialog's own cancel; a changed letter asks once before it goes.
+  dialog.addEventListener("cancel", event => { if (!mayLeave()) event.preventDefault(); });
+  // A click on the dimmed page outside the letter lands on the dialog element itself.
+  dialog.addEventListener("click", event => { if (event.target === dialog) leave(); });
   dialog.addEventListener("close", () => dialog.remove());
   document.body.appendChild(dialog);
   dialog.showModal();
-  body.focus();
+  // On a phone the keyboard would cover the letter's opening; the owner taps where he wants to write.
+  if (innerWidth >= 720) body.focus();
 }
 function threadDraft(entry) {
   // No drafts, no answer: skip working out the evidence (People asks this for every person's items).
@@ -7151,7 +7306,15 @@ function chooseHint(hint, open) {
     return [k ? (zh ? "、" : ", ") : "", jump];
   }));
 }
-function replyDraftCard(draft, onSent, person) {
+// What REM did, in one line: the message it read and what it wrote, on the card and in full screen alike.
+function remDid(draft) {
+  const read = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean).at(-1);
+  const subject = (read?.subject || draft.subject || "").replace(/^\s*(?:re|fw|fwd|回复|答复|转发)\s*[:：]\s*/i, "").trim();
+  return read?.time && subject ? t("REM read the {date} message “{subject}” and drafted this reply.", { date: fmtDate(calendarDay(read.time)), subject })
+    : subject ? t("REM read the thread “{subject}” and drafted this reply.", { subject })
+    : t("REM drafted this reply from the thread.");
+}
+function replyDraftCard(draft, onSent, person, extra = {}) {
   const parts = draft.body.split(/(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g);
   const fills = {}, filled = () => parts.every((part, i) => !/^(?:\[|［|【)/.test(part) || fills[i])
     ? parts.map((part, i) => fills[i] ?? part).join("") : null;
@@ -7163,7 +7326,7 @@ function replyDraftCard(draft, onSent, person) {
     status.textContent = "";
     // An open part leaves Send clickable and only looking unready (aria-disabled): a disabled button swallowed the
     // owner's click without a word (2026-11-18, a Lark reply to the Jane card); the click now says what is missing.
-    if (REM.live) send.ariaDisabled = filled() === null ? "true" : null;
+    // Send never looks disabled (#3312 E): a click with a question open goes to it and says which one.
     hint.hidden = filled() !== null;
     const open = parts.map((part, i) => i).filter(i => isSlot(parts[i]) && !fills[i]);
     if (open.length) chooseHint(hint, open.map(i => [slotName(parts, i), rowAt[i]]));
@@ -7176,21 +7339,35 @@ function replyDraftCard(draft, onSent, person) {
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const edit = el("button", { type: "button", class: "btn-quiet edit-provider", text: t("Edit in {provider}", { provider }) });
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
-  const write = el("button", { type: "button", class: "btn-quiet mail-write", text: t("Write full screen"), "data-key": "r" });
+  const write = el("button", { type: "button", class: "ibtn mail-write", "aria-label": t("Write full screen"), title: t("Write full screen") + " · R", "data-key": "r" }, [icon("expand")]);
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
-  const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel") }, ["mail", "lark", "whatsapp"].map(name => {
-    const pill = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), text: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]) });
-    if (name !== channel) pill.onclick = () => run("redraft", undefined, name);
+  // Only channels this person can be reached on (#3302): the Host lists them from the person's page. A switch
+  // says what it does, and while REM rewrites, the pill itself says so.
+  const offered = (draft.channels?.length ? draft.channels : [channel]).filter(name => ["mail", "lark", "whatsapp"].includes(name));
+  if (!offered.includes(channel)) offered.unshift(channel);
+  const channelName = name => t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[name]);
+  const channels = el("div", { class: "mail-channels", role: "group", "aria-label": t("Reply channel"), ...(offered.length > 1 ? {} : { hidden: "" }) }, offered.map(name => {
+    const pill = el("button", { type: "button", class: "channel" + (name === channel ? " active" : ""), "aria-pressed": String(name === channel),
+      text: name === channel ? channelName(name) : t("Switch to {channel}", { channel: channelName(name) }),
+      ...(name === channel ? {} : { title: t(name === "mail" ? "REM rewrites it as an email." : "REM rewrites it as a chat message.") }) });
+    if (name !== channel) pill.onclick = () => { pill.textContent = t("Rewriting for {channel}…", { channel: channelName(name) }); run("redraft", undefined, name); };
     return pill;
   }));
   // Send is the one green action. Writing full screen stays in sight beside it: behind 更多 the owner could not find
   // it (sprint 22); editing in the mail app and Skip wait behind 更多 (D-120).
+  // Triage waits in ⋯ beside Send (#3312 B): 标为完成, 暂不处理, 忽略, 交给 Codex / Claude, and editing in the mail app.
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
-    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), skip, directSendItem(who || person)].filter(Boolean))]);
-  const actions = el("div", { class: "mail-actions" }, [more, write, hint,
+    el("div", { class: "menu" }, [extra.triage || null, ...(channel === "mail" ? [edit] : []), extra.triage ? null : skip, directSendItem(who || person)].filter(Boolean))]);
+  const actions = el("div", { class: "mail-actions" }, [hint,
       el("span", { class: "mail-note", text: channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
-        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), send]);
+        : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), write, more, send]);
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
+  let letter;
+  // Rewritten for a chat this person is not on: said so, never sent, and mail offered (#3312 C).
+  const chatName = { lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel;
+  const defectWords = t("This reply was written for {channel}, but {name} can't be reached there.", { channel: chatName, name: who?.title || to.name });
+  const backToMail = el("button", { type: "button", class: "btn-line", text: t("Rewrite it as an email") });
+  const defect = draft.channel_defect ? el("p", { class: "mail-defect", role: "alert" }, [defectWords, " ", backToMail]) : null;
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
@@ -7199,55 +7376,81 @@ function replyDraftCard(draft, onSent, person) {
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]
       : [el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }),
           el("span", { class: "addr", text: " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel]) })])])])]),
-    el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
+    letter = el("div", { class: "mail-body" + (draft.gist ? " bilingual" : "") }, [
       el("div", { class: "mail-text", ...(parts.length > 1 ? {} : {text: draft.body}) },
         // The choice row is a block of its own, so the blank lines around it would only add height.
         parts.length > 1 ? parts.map((part, i) => isSlot(part) ? (markers[i] = el("span", { class: "slot-ref", text: slotWhat(part) })) : part) : []),
       // Why this reply sits under the owner's-language reading, beside the letter, not under it.
       draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: gistTitle(draft.gist) }), el("p", { text: draft.gist }), why]) : null]),
-    draft.gist ? null : why, choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, actions, status]);
+    // The dock: REM's choices, a defect if any, and Send. On a phone it is pinned above the tab bar together, so
+    // the owner reads, picks and sends with the thumb and nothing he must tap ever sits under it (#3312 H).
+    draft.gist ? null : why, el("div", { class: "mail-dock" }, [choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, defect, actions]), status,
+    el("p", { class: "mail-did" }, [remDid(draft)])]);
+  // The letter is shown whole; past about fourteen lines it fades and 展开全文 opens the rest (#3312 B4).
+  // Measured when the letter gets its size (a card raised later is laid out later), not once at the first frame.
+  const measure = () => {
+    if (!letter.isConnected || letter.classList.contains("long") || letter.classList.contains("whole")
+      || letter.scrollHeight <= letter.clientHeight + 4) return;
+    letter.classList.add("long");
+    // The fold falls between two lines, never through one (the owner's letters were cut mid-sentence).
+    const text = letter.querySelector(".mail-text");
+    if (text) {
+      const style = getComputedStyle(text), line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.6;
+      letter.style.maxHeight = parseFloat(style.paddingTop) + (innerWidth < 720 ? 8 : 14) * line + "px";
+    }
+    const unfold = el("button", { type: "button", class: "btn-quiet mail-unfold", text: t("Show the whole letter") });
+    unfold.onclick = () => { letter.classList.remove("long"); letter.classList.add("whole"); letter.style.maxHeight = ""; unfold.remove(); };
+    letter.after(unfold);
+  };
+  if (globalThis.ResizeObserver) new ResizeObserver(measure).observe(letter);
   if (!REM.live) {
     // A snapshot cannot send (D-60): Send is shown disabled, and the page says why once, never with a command.
     actions.replaceChildren(el("button", {type: "button", class: "btn-act", disabled: "", text: t("Send")}));
     channels.replaceChildren(el("span", {text: t({mail: "Mail", lark: "Lark", whatsapp: "WhatsApp"}[channel])}));
     return draft.private ? privateFallback(el("div", {}, [el("div", {class: "private"}, [card])])) : card;
   }
-  const busy = on => { send.disabled = edit.disabled = skip.disabled = write.disabled = on; if (!on) syncChoices(); };
+  const busy = (on, sending) => {
+    send.disabled = edit.disabled = skip.disabled = write.disabled = on;
+    send.textContent = t(on && sending ? "Sending…" : "Send");
+    if (!on) syncChoices();
+  };
   syncChoices();
   const act = async (action, body, channel) => {
-    busy(true);
+    busy(true, action === "send");
     status.textContent = t(action === "redraft" ? "Rewriting for {channel}…" : "Working…", { channel: t({ mail: "Mail", lark: "Lark", whatsapp: "WhatsApp" }[channel] || "") });
     const response = await fetch("/rem/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: draft.id, action, ...(body ? { body } : {}), ...(channel ? { channel } : {}) }) });
     const result = await response.json();
     busy(false);
-    if (!response.ok) { status.textContent = result.error || t("Could not update draft"); return; }
+    if (!response.ok) return status.textContent = result.error || t("Could not update draft");
     if (action === "open") {
       status.replaceChildren(el("a", { href: result.url, target: "_blank", rel: "noopener", text: t("Continue in {provider} drafts", { provider }) }));
       window.open(result.url, "_blank", "noopener");
-      return;
+      return "";
     }
     if (action === "redraft") {
       REM.drafts = REM.drafts.map(d => d.id === draft.id ? result : d);
       card.replaceWith(replyDraftCard(result, onSent, person));
-      return;
+      return "";
     }
     const next = action === "send" ? "sent" : "discarded";
     REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: next } : d);
     card.replaceChildren(el("p", { class: "mail-done", text: t(next === "sent" ? "Sent to {name}" : "Skipped", { name: who?.title || to.name }) }));
     if (next === "sent") onSent?.();
+    return "";
   };
-  const run = (action, body, channel) => act(action, body, channel).catch(() => { busy(false); status.textContent = t("Could not update draft. Check the connection and try again."); });
+  // Every path answers with the reason it failed, or "" when it worked, so the full-screen writer can say it too.
+  const run = (action, body, channel) => act(action, body, channel).catch(() => { busy(false); return status.textContent = t("Could not update draft. Check the connection and try again."); });
   // Send is the approval: the reply waits 10 minutes with Undo (D-101). Without an approval
   // outcome for this draft the Host sends at once, and the note after it says it cannot be undone.
   const deliver = async body => {
     const item = (REM.approval_outcomes || []).find(item => item.kind === "reply" && item.draft_id === draft.id);
     if (!item) return run("send", body);
-    busy(true);
+    busy(true, true);
     status.textContent = t("Working…");
     const reply = await approvalRequest({ ids: [item.id], bodies: body ? { [item.id]: body } : {} }).catch(error => ({ error: error.message }));
     const value = (reply.results || []).find(value => value.id === item.id);
     busy(false);
-    if (reply.error || !value || value.status === "error") { status.textContent = reply.error || (value ? approvalStatus(value) : t("Could not update draft")); return; }
+    if (reply.error || !value || value.status === "error") return status.textContent = reply.error || (value ? approvalStatus(value) : t("Could not update draft"));
     REM.approval_outcomes = (REM.approval_outcomes || []).filter(other => other.id !== item.id);
     REM.approval_pending = [...(REM.approval_pending || []).filter(other => other.id !== item.id), { ...item, ...value }];
     REM.drafts = REM.drafts.map(d => d.id === draft.id ? { ...d, status: value.status } : d);
@@ -7255,21 +7458,25 @@ function replyDraftCard(draft, onSent, person) {
     card.replaceChildren(el("p", { class: "mail-done", role: "status", text: value.status === "held" && release
       ? t("Sending to {name} at {time}.", { name: who?.title || to.name, time: fmtTime(release) }) : t("Sent to {name}", { name: who?.title || to.name }) }));
     onSent?.(value.status === "held" ? { ids: [item.id], release_at: value.release_at || reply.release_at } : null);
+    return "";
   };
+  backToMail.onclick = () => run("redraft", undefined, "mail");
   send.onclick = () => {
+    if (draft.channel_defect) { status.textContent = defectWords; backToMail.focus(); return; }
     const body = filled();
     if (body === null) {
-      status.textContent = t("Fill the marked part first");
-      const first = choiceRows.find(row => row.querySelector("input") ? !row.querySelector("input").value.trim() : !row.querySelector('[aria-pressed="true"]'));
+      const open = parts.findIndex((part, i) => isSlot(part) && !fills[i]), first = rowAt[open];
+      status.textContent = t("Answer REM's question first: {what}", { what: slotName(parts, open) });
       first?.scrollIntoView({ block: "center", behavior: motionStilled() ? "auto" : "smooth" });
       first?.querySelector("input, button")?.focus({ preventScroll: true });
+      first?.classList.remove("attention"); void first?.offsetWidth; first?.classList.add("attention");
       return;
     }
     deliver(body === draft.body ? undefined : body);
   };
   write.onclick = () => {
     const base = filled() ?? draft.body;
-    openWriter({ ...draft, body: base }, who, body => deliver(body ?? (base === draft.body ? undefined : base)));
+    openWriter({ ...draft, body: base, ask: extra.ask }, who, body => deliver(body ?? (base === draft.body ? undefined : base)));
   };
   edit.onclick = () => run("open");
   skip.onclick = () => {
@@ -8059,6 +8266,7 @@ const ICONS = {
   doc: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  expand: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/>',
   ext: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
   globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
   // Service marks are Simple Icons 16.34.0 (CC0), each the published path unchanged. .ic.solid fills them with the
@@ -8779,7 +8987,7 @@ function leadAfter(card, gone) {
 // does the tick that marks all of them done at once (E). A card of one row has no tick: it would only repeat that
 // row's own Mark done (one control per row, owner 2026-11-11); E still closes it. In a snapshot it is disabled.
 // tick: false where another control on the card already closes every row (personCard says when).
-function cardHead(group, late, skippable, tick = group.entries.length > 1) {
+function cardHead(group, late, skippable, tick = group.entries.length > 1, pos = null) {
   const { r, entries } = group;
   const role = contactFields(r).find(f => f.label === "Role")?.value;
   const org = r.path === REM.owner ? "" : company(r), page = r.organisations?.length ? byPath(r.organisations[0]) : null;
@@ -8788,8 +8996,14 @@ function cardHead(group, late, skippable, tick = group.entries.length > 1) {
   const done = tick
     ? el("button", { type: "button", class: "ibtn", "aria-label": doneWord + " · E", title: doneWord + " · E", ...snapshotWhy("This is an offline snapshot; open REM to mark it.") }, [icon("check"), el("span", { text: doneWord })]) : null;
   if (done) done.onclick = event => event.currentTarget.closest(".qcard").markDone();
-  const skip = skippable ? el("button", { type: "button", class: "ibtn", "aria-label": t("Next card") + " · S", title: t("Next card") + " · S" }, [icon("skip"), el("span", { text: t("Next card") })]) : null;
-  if (skip) skip.onclick = () => dealNext(1);
+  // ‹ 3 / 19 › at the top right, always visible (#3312 G): 下一张 used to be 11 px grey text that showed on hover.
+  const step = (dir, label, key) => {
+    const button = el("button", { type: "button", class: "ibtn qnav-step", "aria-label": t(label) + " · " + key, title: t(label) + " · " + key, text: dir < 0 ? "‹" : "›" });
+    button.onclick = () => dealNext(dir);
+    return button;
+  };
+  const skip = skippable ? el("span", { class: "qnav", role: "group", "aria-label": t("Next or previous card") }, [step(-1, "Previous card", "K"),
+    pos ? el("span", { class: "qcount", text: pos.i + " / " + pos.n }) : null, step(1, "Next card", "J")]) : null;
   return el("div", { class: "qhead" }, [
     el("span", { class: "qmark" + (r.category === "orgs" ? " org" : ""), title: t(r.category === "orgs" ? "Organisation" : "Person") }),
     el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
@@ -8839,8 +9053,10 @@ function cardDraft(draft, group) {
     if ([...document.querySelectorAll('#main .today-brief .qcard[data-step="send"]')].some(other => other !== card)) todayLead = null;
     setTimeout(render, motionStilled() ? 0 : 320);
   };
+  const entry = group.entries[0], ask = morningWords(entry.t.text, entry.r, entry.t).words;
+  const close = (event, state = "done", extra = null, until = null) => closeEntries(event.currentTarget.closest(".qcard"), [entry], state, extra, until);
   return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
-    replyDraftCard(draft, sent, group.r)]);
+    replyDraftCard(draft, sent, group.r, { ask, triage: n === 1 && liveHere() ? handOff(entry, close, null, true) : null })]);
 }
 // A snapshot can show the work but not do it: one plain line per page says so, never a command (D-60).
 function snapshotLine() {
@@ -8929,13 +9145,19 @@ function hostFound() { document.getElementById("host-lost")?.remove(); }
 function liveHere() { return REM.live && location.protocol !== "file:"; }
 // mark: how this row's Mark done closes it, when the page has its own way (Today slides the row out).
 // lead: on a Today card, which of the row's controls is its one primary ("task", "done" or null); see todayStrip.
-function handOff(entry, mark, lead) {
+// inMenu: the copy of a row's strip in its reply's ⋯ (#3312 B). It talks into the row's own talk slot, so an open
+// conversation stays on the row where the owner sees it, never inside a closed menu after a redraw.
+const ROW_TALK_SLOTS = new Map();
+function handOff(entry, mark, lead, inMenu = false) {
+  const key = obligationKey(entry);
   const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark, lead);
   const show = () => line.replaceChildren(...parts());
-  const panel = el("div", { class: "talk-slot" }, [OPEN_TALKS.get(obligationKey(entry))]), line = el("div", { class: "handoff-line" }, parts());
-  line.handoffKey = obligationKey(entry); line.handoffRefresh = show;
+  const panel = inMenu ? ROW_TALK_SLOTS.get(key) || el("div", { class: "talk-slot" }) : el("div", { class: "talk-slot" }, [OPEN_TALKS.get(key)]);
+  if (!inMenu) ROW_TALK_SLOTS.set(key, panel);
+  const line = el("div", { class: "handoff-line" }, parts());
+  line.handoffKey = key; line.handoffRefresh = show;
   // What the row has to say about itself before anything is pressed: a hand-off the Host refused, a put-off that is back.
-  return el("div", { class: "handoff" }, [line, panel, handFailedNote(entry), putOffNote(entry)]);
+  return el("div", { class: "handoff" }, inMenu ? [line] : [line, panel, handFailedNote(entry), putOffNote(entry)]);
 }
 // 标为完成 sits in the strip on every row, before and after a hand-off (owner, 2026-11-11: «为什么不能标记
 // 已完成呢？标记完成不在那个里面啊»). It is the row's own setDone, so a failure or an offline save reads the
@@ -9563,7 +9785,7 @@ function talkPanel(begin) {
 }
 // The first card is open and carries the page's one green action; the others
 // show who and what, and reveal their action on hover, focus or tap.
-function personCard(group, focal, total = 1) {
+function personCard(group, focal, total = 1, index = 0) {
   const { r, entries } = group, next = groupStep(entries), late = groupLate(group);
   const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
   const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More of this card") }) : null;
@@ -9581,12 +9803,22 @@ function personCard(group, focal, total = 1) {
   // When every row is handled, that green step and the head's tick would both close all of them: the green step
   // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
-  const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
-    cardHead(group, late, total > 1, allClosed ? false : undefined), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more,
+  const triageInMenu = !!draft && entries.length === 1 && liveHere();
+  const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : "") + (triageInMenu ? " triage-menu" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
+    cardHead(group, late, total > 1, allClosed ? false : undefined, { i: index + 1, n: total }), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more,
       cardStep(entry) === "done" && !(step && closing.includes(entry)), entry === leadEntry ? leadKind : null))),
     draft ? cardDraft(draft, group) : null,
     el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)]), snapshotCloseLine()]);
   card.markDone = () => closeEntries(card, entries);
+  let touch = null;
+  card.ontouchstart = event => { touch = card.classList.contains("focal") && event.touches.length === 1 ? event.touches[0] : null; };
+  card.ontouchend = event => {
+    const end = event.changedTouches[0];
+    if (!touch || event.target.closest("textarea, input, .mail-text, .mail-channels")) return;
+    const dx = end.clientX - touch.clientX, dy = end.clientY - touch.clientY;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) dealNext(dx < 0 ? 1 : -1);
+    touch = null;
+  };
   card.reply = () => replyFrom(card);
   // With a draft open the context is two lines; More shows the rest, so Send stays on the first screen.
   if (more) more.onclick = () => { card.classList.add("full"); more.remove(); };
@@ -9765,7 +9997,7 @@ function todayEntries(entries, section = "today") {
 function todayCards(groups) {
   const sent = sentNote();
   return el("section", { class: "today-brief", "aria-label": t("Needs you") }, [groups.length || sent
-    ? el("ol", { class: "today-threads" }, [sent, ...groups.map((group, i) => personCard(group, i === 0, groups.length))])
+    ? el("ol", { class: "today-threads" }, [sent, ...groups.map((group, i) => personCard(group, i === 0, groups.length, i))])
     : el("p", { class: "quiet-line", text: t("Nothing is due in the next three days.") })]);
 }
 async function approvalRequest(payload) {
@@ -17401,7 +17633,7 @@ function mailMessage(context, quote) {
   return el("article", { class: "msg" }, [
     el("div", { class: "msg-envelope" }, [el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
         el("span", { class: "msg-address", text: mailbox(from).address })]),
-      el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? t("Sent") + " " + fmtTime(context.time) : t("Sent date unknown") })]),
+      el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? t("Sent at {time}", { time: fmtTime(context.time) }) : t("Sent date unknown") })]),
     ...(subject ? [el("p", { class: "msg-subject evidence-subject", text: subject })] : [])]),
     ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
       el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: t(label) }), ...people.map(personChip)])))] : []),

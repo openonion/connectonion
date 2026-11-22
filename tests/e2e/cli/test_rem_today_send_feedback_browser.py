@@ -35,15 +35,16 @@ def test_send_with_a_part_left_to_fill_says_so_and_takes_the_focus_there(today, 
     page, calls, _ = today
     card = _open(page, width)
     send = card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
-    # It looks unready and is not green, but it is not a dead button: the click is answered.
-    assert send.get_attribute("aria-disabled") == "true" and send.get_attribute("disabled") is None
-    assert send.evaluate("n => getComputedStyle(n).backgroundColor") not in GREEN
-    send.click(force=True)  # what a person's click does; Playwright would otherwise wait for "enabled"
-    assert card.locator(".mail-status").inner_text() == "Fill the marked part first"
+    # Send never looks disabled (#3312 E, replacing the grey aria-disabled look the owner read as "nothing happens"):
+    # a click with REM's question open names it, takes the focus there and highlights it; nothing is sent.
+    assert send.get_attribute("aria-disabled") is None and send.get_attribute("disabled") is None
+    send.click()
+    assert card.locator(".mail-status").inner_text() == "Answer REM's question first: 邮件附件 / 共享文件夹"
     assert page.evaluate("!!document.activeElement.closest('.qcard.open .owner-slot')", isolated_context=False)
+    assert card.locator(".owner-slot.attention").count() == 1
     assert not [path for path, _ in calls if path in ("/rem/approve", "/rem/draft")]
     card.locator(".owner-slot").get_by_role("button", name="共享文件夹").click()
-    assert send.get_attribute("aria-disabled") is None and card.locator(".mail-status").inner_text() == ""
+    assert card.locator(".mail-status").inner_text() == ""
 
 
 @pytest.mark.parametrize("width", [1440, 390])
@@ -101,9 +102,9 @@ def test_write_full_screen_is_in_sight_beside_send_and_opens_the_writer(today, w
 def test_the_show_more_sheet_offers_talk_as_one_row_of_ink_buttons(today, width):
     page, _, _ = today
     card = _open(page, width)
-    if width < 400:
-        card.locator(".qfull").click()  # on a phone a card with a reply keeps Show more behind More of this card
-    card.locator(".strip-more").first.click()
+    # The row's strip waits in the letter's ⋯ (#3312 B), Show more with it.
+    card.locator(".qdraft .more-menu > summary").click()
+    card.locator(".qdraft .more-menu .strip-more").click()
     sheet = page.locator("#item-context")
     talk = sheet.locator("[data-talk]")
     talk.first.wait_for()

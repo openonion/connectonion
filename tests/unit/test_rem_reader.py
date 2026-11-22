@@ -1586,7 +1586,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1610,11 +1610,12 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
       console.log(JSON.stringify({prepared, actions, fallback, discarded, pending, paused, sent: draftNote(threadDraft(entry))}));
     ''')
     assert result['prepared']['class'] == 'mailcard'
-    actions = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
-    # Send is the one green; Write full screen stays in sight beside it (sprint 22: behind 更多 the owner could not
-    # find it); editing in Gmail and Skip wait behind 更多 (D-120).
-    buttons = [actions[-1], actions[1], *actions[0]['children'][1]['children']]
-    assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
+    # [head, body, why, dock, status, what REM did]; the dock holds [choices, defect, actions] (#3312 B, H).
+    actions = result['prepared']['children'][3]['children'][2]['children']
+    # Send is the one filled button; Write full screen stays in sight beside it as an icon named by its label
+    # (sprint 22: behind 更多 the owner could not find it); editing in Gmail and Skip wait behind ⋯ (D-120).
+    buttons = [actions[-1], actions[2], *actions[3]['children'][1]['children']]
+    assert [button.get('text') or button.get('aria-label') for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
     assert result['actions']['children'][0]['text'] == 'Open the page'  # no archived thread identity
@@ -1632,7 +1633,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
-                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -1659,7 +1660,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert card['data-step'] == 'send'
     mail = card['children'][2]['children'][1]
     assert mail['class'] == 'mailcard'
-    assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
+    # Only channels the person can be reached on (#3302): a draft with no reachable chat offers its own channel alone.
+    assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail']
     assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
     # D-10: the CC row is always there, and says when nobody is copied.
     assert [cell['text'] for cell in mail['children'][0]['children'][2]['children']] == ['CC', 'No one']
@@ -1670,8 +1672,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     # Build 3b review: Why this reply sits under the owner's-language reading, beside the letter.
     why = gist['children'][2]
     assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
-    assert mail['children'][3] is None  # no question for the owner, so no choice rows above Send
-    assert mail['children'][4]['children'][-1]['text'] == 'Send'
+    assert mail['children'][3]['children'][0] is None  # no question for the owner, so no choice rows above Send
+    assert mail['children'][3]['children'][2]['children'][-1]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
     # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
@@ -3099,7 +3101,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -3115,6 +3117,8 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
       visit(card);
       console.log(JSON.stringify({card, chips: nodes.filter(node => (node.class || '').split(' ').includes('owner-slot')),
         buttons: nodes.filter(node => node.tag === 'button').map(node => node.text),
+        labels: nodes.filter(node => node.tag === 'button').map(node => node['aria-label']),
+        actions: nodes.find(node => node.class === 'mail-actions'),
         commands: nodes.filter(node => node.class === 'cmd')}));
     ''')
     assert len(result['chips']) == 2
@@ -3122,31 +3126,47 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
     assert [chip['aria-label'] for chip in result['chips']] == ['演示意见', '时间']
     assert all(chip['role'] == 'group' and chip['children'][-1]['tag'] == 'input' for chip in result['chips'])
     if live:
-        assert 'Send' in result['buttons'] and 'Write full screen' in result['buttons']
+        # Full screen is an icon beside Send, named by its label (#3312 B).
+        assert 'Send' in result['buttons'] and 'Write full screen' in result['labels']
     else:
         # D-60 (build 3b review): a snapshot shows Send disabled and no command; the page says why once.
-        assert result['buttons'] == ['Send'] and result['card']['children'][-2]['children'][0]['disabled'] == ''
+        assert result['buttons'] == ['Send'] and result['actions']['children'][0]['disabled'] == ''
         assert result['commands'] == []
 
 
 def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
+    # Full screen shows REM's open question as a chip in the letter, holds Send until it is answered on the right,
+    # then sends the letter with the answer in place and closes after saying so (#3303, #3312 F).
     function = re.search(r'function openWriter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-    result = _run_reader_js(function + r'''
-      const nodes = [], sent = [], REM = {};
-      const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children,
-        addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}}; nodes.push(node); return node;};
-      const mailbox = address => ({address, name: 'Fern'}), document = {body: {appendChild() {}}};
-      openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, body => sent.push(body));
-      const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
-      const body = nodes.find(node => node.tag === 'textarea'), dialog = nodes.find(node => node.tag === 'dialog');
-      send.onclick();
-      const blocked = {sent: sent.length, closed: !!dialog.closed, notice: nodes.some(node => node.textContent === 'Fill the marked part first')};
-      body.value = 'The demo is ready.';
-      send.onclick();
-      console.log(JSON.stringify({blocked, sent}));
+    split = re.search(r'const SLOT_SPLIT = .*?;\n', TEMPLATE.read_text()).group(0)
+    what = re.search(r'function slotWhat\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    did = re.search(r'function remDid\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(split + what + did + function + r'''
+      const nodes = [], sent = [], REM = {}, innerWidth = 1440;
+      const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children, get childNodes() { return this.children; },
+        append(child) { this.children.push(child); }, addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}, remove() {}};
+        nodes.push(node); return node;};
+      const icon = () => ({}), motionStilled = () => true, setTimeout = f => f();
+      let answer = null;
+      const slotChoices = (part, fills, i, onChange) => { answer = value => { fills[i] = value; onChange(); };
+        return {...el('span', {}, []), querySelector: () => ({focus() {}})}; };
+      const mailbox = address => ({address, name: 'Fern'});
+      const document = {body: {appendChild() {}}, createTextNode: text => ({nodeType: 3, nodeValue: text})};
+      (async () => {
+        openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, async body => { sent.push(body); return ''; });
+        const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
+        const dialog = nodes.find(node => node.tag === 'dialog'), chip = nodes.find(node => node.class === 'slot-chip');
+        await send.onclick();
+        const notice = nodes.find(node => node.class === 'mail-status writer-notice');
+        const blocked = {sent: sent.length, closed: !!dialog.closed, notice: notice.textContent, chip: chip.text};
+        answer('looks good');
+        await send.onclick();
+        console.log(JSON.stringify({blocked, sent, closed: !!dialog.closed, label: send.textContent, chip: chip.textContent}));
+      })();
     ''')
-    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': True}
-    assert result['sent'] == ['The demo is ready.']
+    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': "Answer REM's question on the right first: 意见", 'chip': '意见'}
+    assert result['sent'] == ['Feedback: looks good'] and result['chip'] == 'looks good'
+    assert result['closed'] and result['label'] == 'Reply sent'
 
 
 def test_today_reader_preserves_python_ranks_for_similar_requests_in_distinct_mail_threads(tmp_path, monkeypatch):
