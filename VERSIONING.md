@@ -400,7 +400,18 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc12
+## Current Version: 1.9.7rc13
+Release candidate 1.9.7rc13 for 1.9.7: adding a source onboards it (#3331). `co rem map [people|orgs|projects]
+--source NAME [--dry-run]` builds pages from one source without a model; each source declares the kinds it yields
+(mail: people and orgs; wechat: people; codex/claude-code: projects) and a kind it does not yield is refused
+(#3334). `co rem investigate --source NAME` runs the pages that source reaches, new ones first. `co rem sources add`
+maps a source at once, the night re-maps WeChat and any new or widened local source, created pages go first in the
+people queue, and `co rem sources` / `co rem status` show each source's map (#3335). Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc13.md).
+
+- 1.9.7rc13 (adding a source onboards it: co rem map --source #3334; auto-onboard and per-source status #3335).
+
+### Previous candidate: 1.9.7rc12
 Release candidate 1.9.7rc12 for 1.9.7: the Keys page lists the vault, grouped by site: above 30 keys every site
 folds to one row "<site> · N 条", search opens the matching groups, single-entry sites are one-row groups, and a
 phone shows a two-line list. co's own keys from `~/.co/keys.env` are grouped by service with settings folded, and a

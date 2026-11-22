@@ -21,7 +21,8 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
-Release candidate **1.9.7rc12**: the Keys page lists the vault grouped by site (above 30 keys every site folds to one row with its count, searchable, a two-line list on phone) and co's own keys grouped by service with settings folded ([#3327](https://github.com/openonion/connectonion/pull/3327)); tags render as quiet chips on every page kind ([#3313](https://github.com/openonion/connectonion/pull/3313)). See [1.9.7rc12 notes](releases/1.9.7rc12.md).
+Release candidate **1.9.7rc13**: adding a source onboards it — `co rem map [people|orgs|projects] --source NAME [--dry-run]` builds pages from one source with no model, each source declaring the kinds it yields ([#3334](https://github.com/openonion/connectonion/pull/3334)); `co rem sources add` maps it at once, the night re-maps WeChat and new or widened local sources, and per-source status shows in `co rem sources` / `co rem status` ([#3335](https://github.com/openonion/connectonion/pull/3335)). See [1.9.7rc13 notes](releases/1.9.7rc13.md).
+Before it, release candidate **1.9.7rc12**: the Keys page lists the vault grouped by site (above 30 keys every site folds to one row with its count, searchable, a two-line list on phone) and co's own keys grouped by service with settings folded ([#3327](https://github.com/openonion/connectonion/pull/3327)); tags render as quiet chips on every page kind ([#3313](https://github.com/openonion/connectonion/pull/3313)). See [1.9.7rc12 notes](releases/1.9.7rc12.md).
 Before it, release candidate **1.9.7rc11**: the Today reply card and its full-screen compose, rebuilt to one spec: one filled 发送, the letter in full, a line naming the message REM read, ‹ i/n ›, honest channels (a draft on a channel the person is not on is refused and offered 改写成邮件), send states with undo and retry, and a full screen with × top-right and clickable open questions ([#3324](https://github.com/openonion/connectonion/pull/3324)). See [1.9.7rc11 notes](releases/1.9.7rc11.md).
 Before it, release candidate **1.9.7rc10**: the Keys page imports with one 一键导入 (Chrome, Edge, Brave, the macOS Keychain, Apple Passwords via its CSV export, or a CSV), shows a waiting step while the system asks to 允许, and says why when the REM Host cannot show that prompt; co's own keys from `~/.co/keys.env` are listed by name ([#3316](https://github.com/openonion/connectonion/pull/3316)). See [1.9.7rc10 notes](releases/1.9.7rc10.md).
 Before it, release candidate **1.9.7rc9**: `co discord` as your own account (experimental), a system Chrome fallback that keeps other sessions' tabs, a bare `co host` that no longer stops serving silently, and `co call` that names the address it signed with. See [1.9.7rc9 notes](releases/1.9.7rc9.md).
@@ -36,7 +37,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc12'
+python -m pip install --upgrade 'connectonion==1.9.7rc13'
 ```
 
 ## Current release
