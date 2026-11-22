@@ -1,4 +1,4 @@
-"""The admin section of the Control Center: who is in, the invite, activity, health, log.
+"""The admin part of the Control Center: People (who is in, their activity), the invite, log.
 
 An operator hosting an agent for other people opened its Control Center and
 could manage nothing there (#3263). Who joined with the invite code, removing
@@ -76,17 +76,47 @@ def caller_activity(runs):
     return dict(sorted(callers.items(), key=lambda item: -item[1]["last"]))
 
 
+def _admins():
+    """admins.txt, without the agent's own address: that one is the agent, not a person."""
+    from ...trust.tools import load_admins
+    me = _trust_agent.get_self_address()
+    return sorted(a for a in load_admins(_trust_agent._co_dir) if a != me and "*" not in a)
+
+
+def known_names():
+    """address -> the name the operator saved for it with ``co handoff``.
+
+    The only per-address name on a Host today: trust lists hold bare addresses,
+    and CONNECT carries no profile name. The book stores names lowercased as
+    lookup keys, so an all-lowercase one is shown title-cased. A name that is
+    itself an address (an agent met through its mailbox) is no name.
+    """
+    from ....handoff.transport import contacts
+    names = {}
+    for name, entry in contacts().items():
+        if entry.get("agent") and not name.startswith("0x"):
+            names[entry["agent"].lower()] = name.title() if name.islower() else name
+    return names
+
+
 def admitted(activity):
-    """Everyone on the whitelist or contacts, once, with how and when they got in."""
-    joins, rows, seen = _joins(), [], set()
-    for level, name in (("whitelist", "whitelist"), ("contact", "contacts")):
-        for address in _list_entries(name):
+    """Everyone in, once, at their highest level: admin, then whitelist, then contact.
+
+    An admin is often on contacts.txt too (they joined before they were made
+    admin); listing the first file that held them called the owner a contact.
+    """
+    joins, names, rows, seen = _joins(), known_names(), [], set()
+    for level, addresses in (("admin", _admins()), ("whitelist", _list_entries("whitelist")),
+                             ("contact", _list_entries("contacts"))):
+        for address in addresses:
             if address.lower() in seen:
                 continue
             seen.add(address.lower())
             when, how = joins.get(address, (None, None))
+            act = activity.get(address) or {}
             rows.append({"address": address, "level": level, "joined": when, "how": how,
-                         "last_seen": (activity.get(address) or {}).get("last")})
+                         "name": names.get(address.lower()), "turns": act.get("turns", 0),
+                         "failed": act.get("failed", 0), "last_seen": act.get("last")})
     return rows
 
 
@@ -102,12 +132,15 @@ def _invite_variable():
     return next((str(c)[1:] for c in codes if str(c).startswith("$")), None)
 
 
-def health(agent_metadata, runs):
-    from .... import __version__
-    from ...relay import connection
+def health_facts(runs):
+    """What an admin's health line adds: uptime and the last failure, any caller's."""
+    if _trust_agent is None:
+        return []
+    now = time.time()
     failed = next((r for r in runs if r.get("status") in ("failed", "interrupted")), None)
-    return {"model": agent_metadata.get("model"), "version": __version__,
-            "relay": dict(connection), "started": _started, "last_error": failed}
+    last = (f"last {failed.get('status')} {_since(float(failed.get('created') or now), now)}"
+            if failed else "no recent failures")
+    return [f"up {_since(_started, now).removesuffix(' ago')}", last]
 
 
 def log_tail(lines=LOG_LINES):
@@ -180,7 +213,8 @@ def _invite_env_file(variable):
 # ---------------------------------------------------------------- render
 
 def _short(address):
-    return address if len(address) <= 18 else f"{address[:10]}…{address[-6:]}"
+    """``0x48a0…fbee``: enough to tell two people apart, short enough for a row."""
+    return address if len(address) <= 14 else f"{address[:6]}…{address[-4:]}"
 
 
 def _since(timestamp, now):
@@ -194,23 +228,19 @@ def _iso_ago(stamp, now):
 
 
 def render(agent_metadata, runs, fragments):
-    """The whole admin card, or "" when this process is not a configured Host."""
+    """``(People card, people count)``, or ``("", 0)`` when this is not a configured Host."""
     if _trust_agent is None:
-        return ""
+        return "", 0
     now = time.time()
-    activity = caller_activity(runs)
-    people = admitted(activity)
-    blocks = [
-        _people_block(people, now, fragments),
-        _invite_block(fragments),
-        _activity_block(activity, now, fragments),
-        _approvals_block(runs, now, fragments),
-        _health_block(health(agent_metadata, runs), now, fragments),
-        _log_block(fragments),
-    ]
-    return fragments["admin"].safe_substitute(
-        count=f"{len(people)} admitted",
-        blocks="\n".join(block for block in blocks if block)).strip()
+    people = admitted(caller_activity(runs))
+    names = {p["address"]: p["name"] for p in people if p["name"]}
+    rows = [_person(person, now, fragments) for person in people] or [
+        _person({"address": "", "name": "Nobody has joined yet", "level": ""}, now, fragments)]
+    extras = [_invite(fragments), _waiting(runs, names, now, fragments)]
+    html = fragments["admin"].safe_substitute(
+        count=f"{len(people)} {'person' if len(people) == 1 else 'people'}",
+        rows="\n".join(rows), extras="\n".join(e for e in extras if e)).strip()
+    return "    " + html, len(people)
 
 
 def _button(fragments, action, label, target="", tone=""):
@@ -218,95 +248,71 @@ def _button(fragments, action, label, target="", tone=""):
         action=action, target=escape(target, quote=True), label=label, tone=tone).strip()
 
 
-def _row(fragments, what, meta, actions="", mono=""):
-    return fragments["admin_row"].safe_substitute(
-        what=escape(what), meta=escape(meta), actions=actions, mono=mono).strip()
+def _sub(fragments, label, value, actions="", mono=""):
+    return fragments["admin_sub"].safe_substitute(
+        label=label, value=escape(value), actions=actions, mono=mono).strip()
 
 
-def _block(fragments, title, rows):
-    return fragments["admin_block"].safe_substitute(title=title, rows="\n".join(rows)).strip()
+def _person(person, now, fragments):
+    """One row: name or short address, role, and what they have been doing."""
+    address, level = person["address"], person["level"]
+    actions = ""
+    if level in ("whitelist", "contact"):
+        actions = (_button(fragments, "remove", "Remove", address)
+                   + _button(fragments, "block", "Block", address, "danger"))
+    return fragments["person"].safe_substitute(
+        what=escape(person["name"] or _short(address)), mono="" if person["name"] else "mono",
+        role=level, meta=escape(" · ".join(_person_meta(person, now))), actions=actions).strip()
 
 
-def _people_block(people, now, fragments):
-    if not people:
-        return _block(fragments, "Admitted", [_row(fragments, "Nobody has joined yet", "")])
-    rows = []
-    for person in people:
-        meta = [person["level"]]
-        if person["how"]:
-            meta.append(person["how"])
-        if person["joined"]:
+def _person_meta(person, now):
+    meta = [_short(person["address"])] if person["name"] and person["address"] else []
+    turns = person.get("turns")
+    if turns:
+        meta.append(f"{turns} turn{'s' if turns != 1 else ''}")
+    if person.get("failed"):
+        meta.append(f"{person['failed']} failed")
+    if person.get("last_seen"):
+        meta.append(f"seen {_since(person['last_seen'], now)}")
+    elif person["level"] in ("whitelist", "contact"):
+        meta.append("not seen yet")
+        if person.get("joined"):
             meta.append(f"joined {_iso_ago(person['joined'], now)}")
-        meta.append(f"seen {_since(person['last_seen'], now)}" if person["last_seen"] else "not seen")
-        actions = (_button(fragments, "remove", "Remove", person["address"])
-                   + _button(fragments, "block", "Block", person["address"], "danger"))
-        rows.append(_row(fragments, person["address"], " · ".join(meta), actions, "mono"))
-    return _block(fragments, f"Admitted · {len(people)}", rows)
+    # "added" is the record's word for "no reason given": it says nothing.
+    if person.get("how") not in (None, "added") and person["level"] != "admin":
+        meta.append(person["how"])
+    return meta
 
 
-def _invite_block(fragments):
-    variable = _invite_variable()
-    if variable is None:
+def _invite(fragments):
+    if _invite_variable() is None:
         return ""
     codes = invite_codes()
     if codes:
-        actions = (_button(fragments, "rotate_invite", "Rotate")
+        actions = (_button(fragments, "rotate_invite", "New code")
                    + _button(fragments, "invite_off", "Turn off", tone="danger"))
-        row = _row(fragments, codes[0], "On · give it only to people you let in", actions, "mono")
-    else:
-        row = _row(fragments, "Off", "Nobody can join with a code",
-                   _button(fragments, "rotate_invite", "Turn on"))
-    return _block(fragments, "Invite code", [row])
+        return _sub(fragments, "Invite code", codes[0], actions, "mono")
+    return _sub(fragments, "Invite code", "Off · nobody can join with a code",
+                _button(fragments, "rotate_invite", "Turn on", tone="primary"))
 
 
-def _activity_block(activity, now, fragments):
-    if not activity:
-        return ""
-    rows = []
-    for owner, row in activity.items():
-        meta = f"{row['turns']} turn{'s' if row['turns'] != 1 else ''}"
-        if row["failed"]:
-            meta += f" · {row['failed']} failed"
-        if row["last"]:
-            meta += f" · {_since(row['last'], now)}"
-        rows.append(_row(fragments, _short(owner), meta, mono="mono"))
-    return _block(fragments, "Activity by caller", rows)
-
-
-def _approvals_block(runs, now, fragments):
+def _waiting(runs, names, now, fragments):
+    """Runs any caller left waiting for an admin's approval, by who and when."""
     from .control_center import _run_owner
     waiting = [r for r in runs if r.get("status") == "waiting_approval"]
     if not waiting:
         return ""
-    rows = [_row(fragments, _short(_run_owner(r) or "local"),
-                 f"asked {_since(float(r.get('created') or now), now)} · answer it in that chat",
-                 mono="mono") for r in waiting]
-    return _block(fragments, "Waiting for approval", rows)
+    who = ", ".join(names.get(_run_owner(r) or "", _short(_run_owner(r) or "local")) for r in waiting)
+    oldest = min(float(r.get("created") or now) for r in waiting)
+    return _sub(fragments, f"Waiting for approval · asked {_since(oldest, now)} · answer it in that chat", who)
 
 
-def _health_block(facts, now, fragments):
-    relay = facts["relay"]
-    if relay["state"] == "never":
-        relay_text = "not connected"
-    else:
-        relay_text = f"{relay['state']} · {_since(relay['since'], now)}"
-    failed = facts["last_error"]
-    last_error = "none recent"
-    if failed:
-        last_error = f"{failed.get('status')} · {_since(float(failed.get('created') or now), now)}"
-    rows = [("Model", facts["model"] or "unknown"), ("Version", facts["version"]),
-            ("Relay", relay_text),
-            ("Up", _since(facts["started"], now).replace(" ago", "") if facts["started"] else "unknown"),
-            ("Last error", last_error)]
-    return _block(fragments, "Health", [
-        fragments["diag"].safe_substitute(label=label, value=escape(str(value)), **{"class": ""}).strip()
-        for label, value in rows])
-
-
-def _log_block(fragments):
+def render_log(fragments):
+    """The log tail behind one disclosure: forty lines do not fit on one."""
+    if _trust_agent is None:
+        return ""
     lines = log_tail()
     if lines is None:
-        return _block(fragments, "Log", [_row(fragments, "This Host keeps no log file",
-                                              "its service writes the console output")])
+        return '<p>No log file here: the service manager keeps the console output.</p>'
     return fragments["admin_log"].safe_substitute(
         count=f"last {len(lines)} lines", text=escape("\n".join(lines))).strip()

@@ -4,17 +4,73 @@
 > JavaScript, routes, external assets, and the typed Chat bridge after it has been
 > uploaded and independently reviewed. See [control-center.md](control-center.md).
 
-Every hosted agent has a **Control Center** beside the conversation. The Host renders
-a current day-zero view—identity, quick actions, recent activity, searchable
-capabilities, and diagnostics—before you type anything.
+Every hosted agent has a **Control Center** beside the conversation. When the agent
+has not written its own page, the Host renders the starter, top to bottom:
+
+1. **Header**: the agent's initial, name, the `summary:` from `.co/host.yaml`, and one
+   quiet line: `5 skills · 4 people · model` (the people count is shown to admins only).
+2. **Status**: the agent's own live numbers from `.co/status.json`, when it writes one
+   (see below).
+3. **Skills**: every published skill as a tile; one tap starts a chat with it.
+4. **People** (admins only): everyone admitted, with a name when one is known, a role
+   badge (`admin`, `whitelist`, `contact`), a short address `0x48a0…fbee`, how many turns
+   they ran and when they were last seen, Remove / Block, and the invite code with
+   New code / Turn off.
+5. **Recent**: the viewer's own last five runs, with the prompt, status and duration.
+6. **Health**: one line (model · version · relay · trust; admins also see uptime and
+   the last failure), then the agent's full address.
+
+People and Recent sit side by side from 900px wide; below that everything is one column.
 A custom page is the single file `.co/control_center.html`.
 
 **Each client sees its own activity.** The starter's "Recent" list is rendered
 for the connecting client's verified address: it shows the runs that address
-started and nobody else's, admins included. The "Scheduled" section is operator
-configuration and is shown only to an admin. A custom `.co/control_center.html` is
-served as written to every client, so do not put anything in it that a visitor
-should not read.
+started and nobody else's, **admins included** (#696: the prompt text is verbatim).
+An admin sees everyone's activity as counts and times on the People rows, never
+their prompts. The "Scheduled" section is operator configuration and is shown only
+to an admin. A custom `.co/control_center.html` is served as written to every
+client, so do not put anything in it that a visitor should not read.
+
+**Where People names come from.** The name the operator saved for that address with
+`co handoff` (`~/.co/handoff/contacts.json` on the Host). Trust lists hold bare
+addresses and a connecting client sends no profile name, so anyone else is shown by
+short address.
+
+## Status: `.co/status.json`
+
+An agent that has something to report right now (a queue, a count, what is overdue)
+writes `.co/status.json`, and the starter shows it first, above Skills, to every
+admitted viewer:
+
+```json
+{
+  "title": "Front desk now",
+  "updated_at": "2026-11-22T19:42:48+11:00",
+  "metrics": [
+    {"label": "Open requests", "value": 23},
+    {"label": "Overdue", "value": 6, "tone": "bad"},
+    {"label": "Awaiting reply", "value": 2, "tone": "warn"}
+  ],
+  "lists": [
+    {"title": "Most overdue", "items": [
+      {"text": "#2041 Hot water out in unit 7", "meta": "Harbour Dental · due 18 Nov", "tone": "bad"}
+    ]}
+  ]
+}
+```
+
+- `metrics` render as a row of big numbers; `lists` as compact lists, text on the left
+  and `meta` on the right.
+- `tone` is `good`, `warn` or `bad`, or absent. Anything else is ignored.
+- `updated_at` (ISO 8601) is shown as "updated 4m ago".
+- `href` is accepted and ignored: the sandbox cancels links out, so a link would be
+  dead text that looks clickable.
+- Every string is escaped; the file cannot inject markup.
+- No file, no block. A file that is not valid JSON, or not an object, shows one quiet
+  line naming the problem; the rest of the page renders as usual.
+- A run that rewrites `status.json` re-sends the page after that run, the same as a
+  run that rewrites `control_center.html`. Nothing polls it: write it from the agent's
+  turns or a `.co/schedule.yaml` entry.
 
 The HTML snapshot is not the source of truth for a running task. It does not receive
 thinking, approval, input-wait, Stop, failure, or completion frames. The client owns
@@ -116,11 +172,10 @@ skill-row and group markup along with it.
 
 ### It scales with the agent
 
-A dozen skills or fewer are listed flat — collapsing six items hides them behind a
-click for nothing. Past that they're grouped by the family already in their names
-(`lark-base`, `lark-doc`, `lark-sheets` → **lark**), with the count on each group and
-the first one open. Names that share no prefix with two others land in **other**. A
-115-skill agent is one screen you can scan instead of a list you have to scroll.
+A dozen skills or fewer are shown as tiles, all of them. Past that the first eight are
+shown, the rest sit behind one "N more skills" control, and a search box appears above
+them. The list is alphabetical, so families such as `lark-base` and `lark-doc` land
+together without a header.
 
 Skill names are shown verbatim, because that's what you type to run one — `/lark-base`,
 not "Lark Base".
@@ -259,9 +314,11 @@ One frame, client-opaque to the relay:
 }
 ```
 
-For one preview cycle after the rename the Host also sends the same frame again as
-`DASHBOARD_SNAPSHOT`, its name before 1.9.7rc15, so O Chat builds from before the rename
-keep rendering. A client that reads both should treat them as the same page.
+The Host also sends the same frame again as `DASHBOARD_SNAPSHOT`, its name before
+1.9.7rc15. @connectonion/react still reads only that name, so the Host keeps sending it
+until openonion/connectonion-react#116 ships and O Chat pins that release; dropping it
+sooner would blank every Control Center. A client that reads both should treat them as
+the same page.
 
 See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 
@@ -278,7 +335,6 @@ See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 | `control_center_path()` | `.co/control_center.html`, or an older name if that is what exists |
 | `render_starter(agent_metadata, viewer=EVERYONE)` | The day-zero HTML, from `starter.html`; `EVERYONE` is for in-process rendering only |
 | `published_skills(skills)` | The project-tree skills a starter may offer as buttons |
-| `group_skills(skills)` | `(families, loose)` split by name prefix, for long lists |
 | `MAX_CONTROL_CENTER_BYTES` | 128 MiB HTML cap; 256 MiB transport envelope |
 
 The path is resolved against the project directory captured at host startup, not the

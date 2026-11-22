@@ -3,230 +3,256 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>$name · Control Center</title>
+<title>$name</title>
 <style>
-  /* Shared Control Center tokens. The page is self-contained: no remote assets,
-     scripts, inline handlers, or navigation. The chat bridge owns declarative
-     data-ochat-* controls; plain HTML remains usable when that bridge is absent. */
+  /* The O Chat light style: warm neutrals, white cards, one green. The green
+     (#22d27a) is a fill under dark ink, never a text colour on white -- it is
+     too light to read there; text that must say "green" uses --cc-accent-ink.
+     Self-contained: no remote assets, scripts, inline handlers or navigation.
+     The chat bridge owns the declarative data-ochat-* controls. */
   :root {
     color-scheme: light dark;
-    --cc-bg: #f7f8f6;
+    --cc-bg: #fafaf9;
     --cc-surface: #ffffff;
-    --cc-surface-raised: #f0f2ee;
-    --cc-text: #171a17;
-    --cc-muted: #505650;
-    --cc-subtle: #626962;
-    --cc-border: #d9ddd7;
-    --cc-accent: #14733a;
-    --cc-accent-soft: #e2f3e7;
+    --cc-raised: #f5f5f4;
+    --cc-text: #1c1917;
+    --cc-muted: #57534e;
+    --cc-subtle: #6f6a66;
+    --cc-border: #e7e5e4;
+    --cc-green: #22d27a;
+    --cc-on-green: #0b2416;
+    --cc-green-soft: #e9faf1;
+    --cc-accent-ink: #13703f;
     --cc-danger: #b42318;
-    --cc-focus: #075985;
-    --cc-radius-sm: 10px;
-    --cc-radius-md: 14px;
-    --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
+    --cc-danger-soft: #fdf0ee;
+    --cc-warn: #9a5b00;
+    --cc-warn-soft: #fdf5e6;
+    --cc-focus: #0b2416;
+    --cc-radius: 12px;
+    --cc-radius-sm: 8px;
+    --cc-shadow: 0 1px 2px rgba(20, 20, 19, .04);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --cc-bg: #111411;
-      --cc-surface: #191d19;
-      --cc-surface-raised: #222722;
-      --cc-text: #f1f5f1;
-      --cc-muted: #bbc4bb;
-      --cc-subtle: #aeb7ae;
-      --cc-border: #343b34;
-      --cc-accent: #62d68a;
-      --cc-accent-soft: #173d25;
+      --cc-bg: #121211;
+      --cc-surface: #1b1b1a;
+      --cc-raised: #252523;
+      --cc-text: #f5f5f4;
+      --cc-muted: #c4c0bc;
+      --cc-subtle: #aaa5a0;
+      --cc-border: #33322f;
+      --cc-green-soft: #12301f;
+      --cc-accent-ink: #5fe39e;
       --cc-danger: #ff8a80;
-      --cc-focus: #7dd3fc;
-      --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
+      --cc-danger-soft: #3a1d1a;
+      --cc-warn: #f5c060;
+      --cc-warn-soft: #33281a;
+      --cc-focus: #5fe39e;
+      --cc-shadow: none;
     }
   }
   * { box-sizing: border-box; }
   html { background: var(--cc-bg); }
   body {
     margin: 0;
-    padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
+    padding: clamp(24px, 5vw, 48px) 16px 56px;
     background: var(--cc-bg);
     color: var(--cc-text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.5;
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   html, body { max-width: 100%; overflow-x: clip; }
-  main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
-  main { width: min(100%, 860px); margin: 0 auto; }
-  button, input, summary { font: inherit; }
-  button, summary { min-height: 44px; }
-  :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
+  main { display: grid; gap: 20px; width: min(100%, 920px); margin: 0 auto; }
+  main > *, .columns > *, .activity > * { width: 100%; min-width: 0; max-width: 100%; }
+  button, summary { font: inherit; min-height: 44px; }
+  :focus-visible { outline: 2px solid var(--cc-focus); outline-offset: 2px; }
+  p { margin: 0; }
 
-  .masthead { display: grid; gap: 18px; margin-bottom: 18px; }
-  .eyebrow {
-    margin: 0 0 5px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .11em; text-transform: uppercase;
-  }
-  .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  /* Header: who this agent is, then one quiet line of facts. No eyebrow: the
+     pane around this page is already titled Control Center. */
+  .head { display: flex; align-items: center; gap: 16px; padding: 4px 0 8px; }
   .mark {
-    flex: none; display: grid; place-items: center; width: 42px; height: 42px;
-    border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
-    font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
+    flex: none; display: grid; place-items: center; width: 52px; height: 52px;
+    border-radius: 14px; background: var(--cc-green); color: var(--cc-on-green);
+    font-size: 22px; font-weight: 750; text-transform: uppercase; user-select: none;
   }
-  h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
-  .tagline { margin: 9px 0 0; max-width: 64ch; font-size: 14px; color: var(--cc-muted); }
-  .tagline:empty { display: none; }
-  .sub { margin: 7px 0 0; color: var(--cc-subtle); font-size: 12px; }
+  .head-text { min-width: 0; }
+  h1 { margin: 0; font-size: clamp(24px, 5vw, 30px); line-height: 1.15; letter-spacing: -.02em; overflow-wrap: anywhere; }
+  .tagline { margin-top: 4px; max-width: 62ch; color: var(--cc-muted); font-size: 15px; }
+  .tagline:empty, .facts:empty { display: none; }
+  .facts { margin-top: 6px; color: var(--cc-subtle); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 
-  .grid { display: grid; gap: 14px; }
-  .stack { margin-top: 14px; }
   .card {
-    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
+    padding: 18px 20px; border: 1px solid var(--cc-border); border-radius: var(--cc-radius);
     background: var(--cc-surface); box-shadow: var(--cc-shadow);
   }
-  .card-pad { padding: 16px; }
-  .section-title {
-    margin: 0 0 10px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .09em; text-transform: uppercase;
-  }
+  .card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .section-title { margin: 0; font-size: 15px; font-weight: 680; letter-spacing: -.01em; }
+  .note { margin-left: auto; color: var(--cc-subtle); font-size: 12px; text-align: right; }
 
-  .now { display: flex; align-items: flex-start; gap: 11px; }
-  .now strong { display: block; font-size: 15px; }
-  .now p { margin: 2px 0 0; color: var(--cc-muted); font-size: 13px; }
+  /* Status: the agent's own .co/status.json, first because it is what the
+     agent is doing now. Big numbers, then compact lists. Tones colour the
+     number or a small dot, never a whole card. */
+  .status { display: grid; gap: 14px; }
+  .status > *, .status-lists > *, .metrics > * { min-width: 0; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .metric { padding: 12px 14px; border-radius: var(--cc-radius-sm); background: var(--cc-raised); }
+  .metric .value { display: block; font-size: 28px; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .metric .label { display: block; margin-top: 4px; color: var(--cc-muted); font-size: 12.5px; }
+  .metric.tone-good { background: var(--cc-green-soft); }
+  .metric.tone-good .value { color: var(--cc-accent-ink); }
+  .metric.tone-warn { background: var(--cc-warn-soft); }
+  .metric.tone-warn .value { color: var(--cc-warn); }
+  .metric.tone-bad { background: var(--cc-danger-soft); }
+  .metric.tone-bad .value { color: var(--cc-danger); }
+  .status-lists { display: grid; gap: 14px; }
+  .status-list h3 { margin: 0 0 4px; color: var(--cc-subtle); font-size: 12.5px; font-weight: 600; }
+  .status-item { display: flex; align-items: baseline; gap: 12px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 13px; }
+  .status-list h3 + .status-item { border-top: 0; }
+  .status-item .text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-item .meta { flex: none; max-width: 50%; color: var(--cc-subtle); font-size: 12px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-item .text::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%;
+    background: var(--cc-border); vertical-align: 1px;
+  }
+  .status-item.tone-bad .text::before { background: var(--cc-danger); }
+  .status-item.tone-warn .text::before { background: var(--cc-warn); }
+  .status-item.tone-good .text::before { background: var(--cc-green); }
+  .metrics:not(:has(*)), .status-lists:not(:has(*)) { display: none; }
+  .status-problem { padding: 0 4px; color: var(--cc-subtle); font-size: 12.5px; }
 
-  /* One action per row. At the pane width this page is written for the three
-     columns already collapsed; at desktop width they did not, and the card there
-     is about 460px — roughly 150px per action, which wrapped the names and cut
-     every description mid-word, an ellipsis landing wherever the pixels ran out.
-     A row fits the name and two readable lines under it at every width this page
-     is served at. */
-  .quick { display: grid; gap: 6px; align-content: start; }
-  .quick .skill {
-    min-height: 62px; padding: 11px 32px 11px 13px;
-    border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
+  /* Skills: tiles, each one tap to start a chat with that skill. */
+  .tiles { display: grid; gap: 10px; }
+  .skill, .restricted-skill {
+    position: relative; display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    width: 100%; min-width: 0; max-width: 100%; min-height: 72px; padding: 12px 36px 12px 14px;
+    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
+    background: var(--cc-surface); color: var(--cc-text); text-align: left; overflow: hidden;
   }
-  .quick .skill::after { right: 14px; }
-  .quick .skill .desc {
-    white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  }
-
-  .skill {
-    position: relative; display: flex; flex-direction: column; justify-content: center;
-    width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
-    border: 0; border-radius: var(--cc-radius-sm); background: transparent;
-    color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
-  }
+  .skill { cursor: pointer; }
   .skill::after {
-    content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
+    content: ""; position: absolute; right: 16px; top: 50%; width: 7px; height: 7px;
     border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
     transform: translateY(-50%) rotate(45deg);
   }
-  .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
-  .skill:active { background: var(--cc-accent-soft); }
-  .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
-  .skill .desc {
-    min-width: 0; max-width: 100%; margin-top: 3px; color: var(--cc-muted); font-size: 12px;
-    line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .skill:hover, .skill:focus-visible { border-color: var(--cc-green); background: var(--cc-green-soft); }
+  .skill:hover::after { border-color: var(--cc-accent-ink); }
+  .skill:active { background: var(--cc-green); color: var(--cc-on-green); }
+  .skill .name, .restricted-skill .name { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+  .skill .name::before { content: "/"; color: var(--cc-subtle); font-weight: 500; margin-right: 1px; }
+  .skill .desc, .restricted-skill .desc {
+    min-width: 0; max-width: 100%; color: var(--cc-muted); font-size: 12.5px; line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .skill .desc:empty { display: none; }
-
-  details.card { overflow: clip; }
-  details.card > summary {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
-  }
-  details.card > summary::-webkit-details-marker { display: none; }
-  details.card > summary::after {
-    content: ""; flex: none; width: 8px; height: 8px;
-    border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
-    transform: rotate(45deg) translate(-2px, 2px);
-  }
-  details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
-  .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
-  .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
-  co-filter { display: block; min-height: 44px; margin-top: 12px; }
-  .rows { display: grid; gap: 2px; margin-top: 8px; }
-  .more { margin-top: 7px; }
+  .restricted-skill { background: var(--cc-raised); border-style: dashed; padding-right: 14px; }
+  co-filter { display: block; min-height: 44px; margin-bottom: 12px; }
+  .more { margin-top: 10px; }
   .more > summary {
     display: flex; align-items: center; justify-content: center; padding: 8px 12px;
     border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
-    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 680;
+    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 13px; font-weight: 600;
   }
   .more > summary::-webkit-details-marker { display: none; }
-  .more[open] > .rows { margin-top: 7px; }
+  .more[open] > .tiles { margin-top: 10px; }
   .lbl-less { display: none; }
   .more[open] .lbl-more { display: none; }
   .more[open] .lbl-less { display: inline; }
-  .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
-  .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
-  code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
+  .empty { padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-raised); color: var(--cc-muted); font-size: 13px; }
+  code { padding: 1px 5px; border-radius: 5px; background: var(--cc-green-soft); font-size: .92em; }
 
-  .activity { display: grid; gap: 10px; }
-  .sec { padding: 14px 16px; }
-  .sec > h2 { margin: 0 0 6px; font-size: 12px; }
-  .act { display: flex; align-items: baseline; gap: 8px; min-height: 38px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
-  .act:first-of-type { border-top: 0; }
-  .act .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .act .meta { flex: none; color: var(--cc-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  /* People and the recent runs sit side by side on a wide pane, People first. A page
+     with only one of them gives it the whole width. */
+  .columns { display: grid; gap: 20px; align-items: start; }
+  .columns:not(:has(*)) { display: none; }
+  .activity { display: grid; gap: 20px; }
+
+  /* A run is two lines -- what was asked, then how it went -- so the prompt
+     keeps the whole width of a half-width column instead of sharing it. */
+  .act { display: grid; gap: 2px; min-height: 44px; padding: 10px 0; border-top: 1px solid var(--cc-border); }
+  .card-head + .act { border-top: 0; padding-top: 2px; }
+  .act .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .act .meta { color: var(--cc-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .act .meta::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%;
+    background: var(--cc-border); vertical-align: 1px;
+  }
+  .act .live { color: var(--cc-accent-ink); font-weight: 650; }
+  .act .live::before { background: var(--cc-green); }
   .act .bad { color: var(--cc-danger); }
-  .act .live { color: var(--cc-accent); font-weight: 680; }
+  .act .bad::before { background: var(--cc-danger); }
 
-  .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
-  .diag { display: grid; grid-template-columns: minmax(76px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
-  .diag:first-child { border-top: 0; }
-  .diag dt { color: var(--cc-subtle); }
-  .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
-  .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
-
-  /* Admin: rendered only into an admin's page (admin_home.py), folded like
-     Diagnostics so the Home still opens on the card, not on a console. */
-  .admin-body { padding: 0 16px 14px; border-top: 1px solid var(--cc-border); }
-  .admin-block { padding-top: 12px; }
-  .admin-block > h3 { margin: 0 0 4px; color: var(--cc-subtle); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
-  .admin-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
-  .admin-row:first-of-type { border-top: 0; }
-  .admin-row .who { flex: 1 1 220px; min-width: 0; }
-  .admin-row .who strong { display: block; font-weight: 650; overflow-wrap: anywhere; }
-  .admin-row .who strong.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; }
-  .admin-row .who span { display: block; color: var(--cc-subtle); font-size: 11.5px; }
-  .admin-row .who span:empty { display: none; }
+  .person { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--cc-border); }
+  .card-head + .person { border-top: 0; padding-top: 2px; }
+  .person .who { flex: 1 1 200px; min-width: 0; }
+  .person .line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .person strong { min-width: 0; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .person strong.mono { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .person .meta { margin-top: 2px; color: var(--cc-subtle); font-size: 12.5px; }
+  .person .meta:empty { display: none; }
+  .role {
+    flex: none; padding: 1px 8px; border: 1px solid var(--cc-border); border-radius: 999px;
+    color: var(--cc-muted); font-size: 11.5px; font-weight: 600; line-height: 18px;
+  }
+  .role:empty { display: none; }
+  .role.admin { border-color: var(--cc-green); background: var(--cc-green); color: var(--cc-on-green); }
+  .role.whitelist { border-color: transparent; background: var(--cc-green-soft); color: var(--cc-accent-ink); }
   .admin-actions { display: flex; gap: 6px; }
   .admin-actions:empty { display: none; }
   .admin-btn {
-    min-height: 34px; padding: 4px 12px; border: 1px solid var(--cc-border); border-radius: 8px;
-    background: var(--cc-surface-raised); color: var(--cc-text); font-size: 12px; font-weight: 680; cursor: pointer;
+    min-height: 34px; padding: 4px 12px; border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
+    background: var(--cc-surface); color: var(--cc-text); font-size: 12.5px; font-weight: 600; cursor: pointer;
   }
-  .admin-btn:hover { border-color: var(--cc-accent); }
+  .admin-btn:hover { border-color: var(--cc-text); }
+  .admin-btn.primary { border-color: var(--cc-green); background: var(--cc-green); color: var(--cc-on-green); }
   .admin-btn.danger { color: var(--cc-danger); }
   .admin-btn.danger:hover { border-color: var(--cc-danger); }
-  .admin-block .diag:first-of-type { border-top: 0; }
-  .admin-log > summary { padding: 12px 0 4px; cursor: pointer; color: var(--cc-subtle); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
-  .admin-log pre {
-    max-height: 320px; margin: 6px 0 0; padding: 10px; overflow: auto; border-radius: var(--cc-radius-sm);
-    background: var(--cc-surface-raised); font: 10.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  .sub {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 14px -20px -18px;
+    padding: 14px 20px; border-top: 1px solid var(--cc-border); border-radius: 0 0 var(--cc-radius) var(--cc-radius);
+    background: var(--cc-raised);
   }
-  .restricted-skill { display: flex; flex-direction: column; min-height: 44px; justify-content: center; padding: 8px 12px; }
-  .restricted-skill .name { font-size: 13.5px; font-weight: 700; }
-  .restricted-skill .desc { color: var(--cc-muted); font-size: 12px; }
+  .sub + .sub { margin-top: 18px; }
+  .sub .who { flex: 1 1 200px; min-width: 0; }
+  .sub .label { display: block; color: var(--cc-subtle); font-size: 12px; }
+  .sub .value { font-weight: 650; overflow-wrap: anywhere; }
+  .sub .value.mono { font: 650 14px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .02em; }
 
-  @media (min-width: 640px) {
-    .masthead { grid-template-columns: 1fr auto; align-items: end; }
-    /* Two columns only when there are two cards. An Agent that has published
-       nothing renders no Quick actions card, and the second column stayed
-       declared: the Workspace note sat at 40% width beside an empty half. Day
-       zero is exactly when an Agent has no published skills, so that was the
-       first thing `co host` showed most people. */
-    .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; }
-    .overview:not(:has(.quick)) { grid-template-columns: 1fr; }
-    .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
+  /* Health: one line, no accordion. */
+  .health { display: grid; gap: 4px; padding: 4px 4px 0; color: var(--cc-subtle); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .health .line::before {
+    content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%;
+    background: var(--cc-border); vertical-align: 0;
+  }
+  .health .up::before { background: var(--cc-green); }
+  .addr { font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; user-select: all; }
+  .log > summary { min-height: 32px; cursor: pointer; color: var(--cc-subtle); font-size: 12.5px; }
+  .log pre {
+    max-height: 320px; margin: 6px 0 0; padding: 12px; overflow: auto; border: 1px solid var(--cc-border);
+    border-radius: var(--cc-radius-sm); background: var(--cc-surface);
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+
+  @media (min-width: 560px) {
+    .tiles { grid-template-columns: 1fr 1fr; }
+    .status-lists { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 28px; }
+  }
+  @media (min-width: 900px) {
+    .tiles { grid-template-columns: 1fr 1fr 1fr; }
+    .columns:has(> .people):has(> .activity) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   }
   @media (max-width: 520px) {
-    body { padding-inline: 10px; }
-    .quick .skill { min-height: 56px; }
-    .act { align-items: flex-start; flex-direction: column; gap: 1px; }
-    .act .what { white-space: normal; }
-    .diag { grid-template-columns: 1fr; gap: 2px; }
+    .card { padding: 16px; }
+    .sub { margin: 14px -16px -16px; padding: 14px 16px; }
+    .card-head { flex-wrap: wrap; }
+    .note { margin-left: 0; flex-basis: 100%; text-align: left; }
+    .status-item { flex-wrap: wrap; gap: 0 12px; }
+    .status-item .text { flex-basis: 100%; white-space: normal; }
+    .status-item .meta { max-width: 100%; padding-left: 15px; text-align: left; }
+    .act .what { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   }
   @media (prefers-reduced-motion: no-preference) {
-    .skill, summary { transition: background-color .14s ease, border-color .14s ease; }
+    .skill, .admin-btn, summary { transition: background-color .14s ease, border-color .14s ease; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
@@ -235,36 +261,28 @@
 </head>
 <body>
   <main>
-    <header class="masthead">
-      <div>
-        <p class="eyebrow">Control Center</p>
-        <div class="identity"><span class="mark" aria-hidden="true">$initial</span><h1>$name</h1></div>
-        $address
+    <header class="head">
+      <span class="mark" aria-hidden="true">$initial</span>
+      <div class="head-text">
+        <h1>$name</h1>
         <p class="tagline">$tagline</p>
+        <p class="facts">$subtitle</p>
       </div>
     </header>
+$status
 
-    <div class="grid overview">
-      <section class="card card-pad" aria-labelledby="workspace-title">
-        <h2 class="section-title" id="workspace-title">Workspace</h2>
-        <div class="now"><div><strong>Use Chat for live status</strong><p>Current tasks, approvals, and results stay in the conversation.</p></div></div>
-      </section>
-    </div>
+    <section class="card skills" aria-labelledby="skills-title">
+      <div class="card-head"><h2 class="section-title" id="skills-title">Skills</h2><span class="note">$capability_count</span></div>
+      <div id="capability-list">
+$body
+      </div>
+    </section>
 
-    <div class="grid stack">
+    <div class="columns">
 $admin
 $activity
-      <details class="card capabilities">
-        <summary><span>Capabilities</span><span class="count">$capability_count</span></summary>
-        <div class="details-body">
-          <co-filter target="#capability-list" placeholder="Search capabilities"></co-filter>
-          <div class="capability-rows" id="capability-list">
-$body
-          </div>
-        </div>
-      </details>
-$diagnostics
     </div>
+$health
   </main>
 </body>
 </html>
@@ -276,63 +294,76 @@ Placeholders use string.Template syntax; do not use dollar signs elsewhere.
 
 <template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
 
-<template id="list"><div class="rows">
+<template id="list"><div class="tiles">
 $rows
   </div></template>
 
+<template id="filter"><co-filter target="#capability-list" placeholder="Search skills"></co-filter></template>
+
 <template id="more"><details class="more">
     <summary><span class="lbl-more">$count more skill$plural</span><span class="lbl-less">Show fewer</span></summary>
-    <div class="rows">
+    <div class="tiles">
 $rows
     </div>
   </details></template>
 
-<template id="empty"><section class="empty">
-    <p>No published skills yet. Add one to <code>.co/skills/</code> and it appears here.</p>
-  </section></template>
+<template id="empty"><p class="empty">No published skills yet. Add one to <code>.co/skills/</code> and it appears here.</p></template>
 
-<template id="quick"><section class="card card-pad" aria-labelledby="quick-title">
+<template id="quick"><section class="card" aria-labelledby="quick-title">
     <h2 class="section-title" id="quick-title">Quick actions</h2>
-    <div class="quick">
+    <div class="tiles">
 $rows
     </div>
   </section></template>
 
-<template id="activity"><section class="card sec">
-    <h2 class="section-title">$title</h2>
+<template id="activity"><section class="card">
+    <div class="card-head"><h2 class="section-title">$title</h2><span class="note">$note</span></div>
 $rows
   </section></template>
 
 <template id="act"><div class="act"><span class="what">$what</span><span class="meta $tone">$meta</span></div></template>
 
-<template id="diagnostics"><details class="card diagnostics-card">
-    <summary><span>Diagnostics</span><span class="count">Host details</span></summary>
-    <dl class="diagnostics">
+<template id="restricted"><div class="restricted-skill"><span class="name">$name</span><span class="desc">Allowed by restricted: in host.yaml. Ask for it in chat.</span></div></template>
+
+<template id="status"><section class="card status" aria-labelledby="status-title">
+      <div class="card-head"><h2 class="section-title" id="status-title">$title</h2><span class="note">$updated</span></div>
+      <div class="metrics">
+$metrics
+      </div>
+      <div class="status-lists">
+$lists
+      </div>
+    </section></template>
+
+<template id="metric"><div class="metric $tone"><span class="value">$value</span><span class="label">$label</span></div></template>
+
+<template id="status_list"><div class="status-list"><h3>$title</h3>
+$items
+        </div></template>
+
+<template id="status_item"><div class="status-item $tone"><span class="text">$text</span><span class="meta">$meta</span></div></template>
+
+<template id="status_problem"><p class="status-problem">$problem</p></template>
+
+<template id="health"><footer class="health">
+      <p class="line $tone">$facts</p>
+      $address
+      $log
+    </footer></template>
+
+<template id="admin"><section class="card people" id="admin">
+        <div class="card-head"><h2 class="section-title">People</h2><span class="note">$count · only admins see this</span></div>
 $rows
-    </dl>
-  </details></template>
+$extras
+      </section></template>
 
-<template id="diag"><div class="diag"><dt>$label</dt><dd class="$class">$value</dd></div></template>
+<template id="person"><div class="person"><div class="who"><p class="line"><strong class="$mono">$what</strong><span class="role $role">$role</span></p><p class="meta">$meta</p></div><div class="admin-actions">$actions</div></div></template>
 
-<template id="restricted"><div class="restricted-skill"><span class="name">$name</span><span class="desc">Allowed by restricted: in host.yaml</span></div></template>
-
-<template id="admin"><details class="card admin" id="admin">
-        <summary><span>Admin</span><span class="count">$count · only admins see this</span></summary>
-        <div class="admin-body">
-$blocks
-        </div>
-      </details></template>
-
-<template id="admin_block"><section class="admin-block">
-          <h3>$title</h3>
-$rows
-        </section></template>
-
-<template id="admin_row"><div class="admin-row"><div class="who"><strong class="$mono">$what</strong><span>$meta</span></div><div class="admin-actions">$actions</div></div></template>
+<template id="admin_sub"><div class="sub"><div class="who"><span class="label">$label</span><span class="value $mono">$value</span></div><div class="admin-actions">$actions</div></div></template>
 
 <template id="admin_button"><button class="admin-btn $tone" type="button" data-ochat-admin="$action" data-ochat-target="$target">$label</button></template>
 
-<template id="admin_log"><details class="admin-log">
-          <summary>Log · $count</summary>
-          <pre>$text</pre>
-        </details></template>
+<template id="admin_log"><details class="log">
+        <summary>Log · $count</summary>
+        <pre>$text</pre>
+      </details></template>
