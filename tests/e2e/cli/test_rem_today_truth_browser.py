@@ -161,7 +161,8 @@ def test_the_hint_names_the_choice_left_and_a_tap_goes_to_it(today):
     page.evaluate(DRAFT, True, isolated_context=False)
     card = page.locator(".qcard.open")
     hint, send = card.locator(".choose-hint"), card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
-    assert hint.inner_text() == "1 choice left: 邮件附件 / 共享文件夹" and send.is_disabled()
+    # Send never looks disabled (#3312 E); the hint still names what is left.
+    assert hint.inner_text() == "1 choice left: 邮件附件 / 共享文件夹" and not send.is_disabled()
     # The letter's own label names the slot when it has one.
     page.evaluate("""() => { REM.drafts[0].body = 'Hi Ines,\\n\\nFormat: 【需要你：PDF / CSV】\\n\\nAvery'; REM.approval_outcomes[0].body = REM.drafts[0].body; render(); }""",
                   isolated_context=False)
