@@ -149,6 +149,8 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
     elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import", "/rem/keys/env"):
         await _keys(scope, receive, send, root, headers)
+    elif scope["method"] == "POST" and scope["path"] == "/rem/source-fix":
+        await _source_fix(receive, send, headers)
     elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/person", "/rem/investigate", "/rem/direct-send"):
         await _action(scope, receive, send, root, headers)
     else:
@@ -360,6 +362,30 @@ async def _action(scope, receive, send, root, headers):
             or scope["path"] in ("/rem/talk", "/rem/translate-all")):
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
+
+
+async def _source_fix(receive, send, headers):
+    """Today's 补全微信 button (#3353): start a fix that needs the owner in his own Terminal, or hand back the command.
+
+    Like every /rem route only this computer reaches it, with the page's cookie. The body names a fix kind from a
+    fixed list (rem.coverage.FIX_COMMANDS), never a command, so nothing the page sends is ever run."""
+    from ...rem.coverage import open_fix
+    from ...rem.files import RemError
+    if headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        await _reply(send, 415, "application/json required")
+        return
+    try:
+        body = json.loads(await read_body(receive, 1024) or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
+        return
+    kind = body.get("fix") if isinstance(body, dict) and isinstance(body.get("fix"), str) else ""
+    try:
+        result = await asyncio.to_thread(open_fix, kind)
+    except RemError as error:
+        await _reply(send, 400, json.dumps({"error": str(error)}), "application/json")
+        return
+    await _reply(send, 200, json.dumps(result), "application/json")
 
 
 async def _keys(scope, receive, send, root, headers):

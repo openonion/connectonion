@@ -51,6 +51,7 @@ def record(root, subscriptions: dict) -> list[dict]:
     from .files import state_path, write_json
     from datetime import datetime, timezone
     found = [{"source": c["source"], "line": c["line"], "line_en": c["line_en"], "fix": c["skipped"][0]["fix"],
+              "fix_kind": fix_kind(c), "found": c["found"], "read": c["read"],
               "unread": len(c["skipped"]), "missing_keys": c["missing_keys"]} for c in gaps(subscriptions)]
     write_json(state_path(root, "coverage.json"), {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                                                    "gaps": found})
@@ -61,3 +62,39 @@ def stored(root) -> list[dict]:
     """The gaps the last night found; [] before the first check."""
     from .files import read_json, state_path
     return read_json(state_path(root, "coverage.json"), {}).get("gaps", [])
+
+
+# The one-click fixes Today's line offers, by kind. Fixed commands only: the request names a kind, never a command.
+FIX_COMMANDS = {"key_capture": "co wechat key capture"}
+
+
+def fix_kind(coverage: dict) -> str:
+    """Which button fixes a gap: a new key capture when databases lack keys, else the phone-migration steps."""
+    return "key_capture" if any(s["fix"] == "co wechat key capture" for s in coverage["skipped"]) else "phone_migration"
+
+
+def open_fix(kind: str, *, session=None, runner=None, folder=None) -> dict:
+    """Start a fix that needs the owner, in his own Terminal; or say plainly how to start it himself.
+
+    A key capture opens a WeChat copy he must log into, so it can't run headless inside the Host. From the owner's
+    GUI (Aqua) session the Host writes a one-line .command file and `open -a Terminal` runs it: no AppleScript, so no
+    Automation prompt. A Host restarted by an upgrade runs in launchd's Background session (#3317) and cannot show
+    windows; then, or if `open` fails, the reply carries the command for the page to copy ("在终端里粘贴运行").
+    """
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    from .files import RemError
+    from .live_host import launch_session
+    if kind not in FIX_COMMANDS:
+        raise RemError(f"Unknown fix {kind!r}")
+    command = FIX_COMMANDS[kind]
+    if (session or launch_session)() != "Aqua":
+        return {"opened": False, "command": command, "why": "background"}
+    script = Path(folder or tempfile.mkdtemp(prefix="co-rem-fix-")) / "co-rem-fix.command"
+    script.write_text(f"#!/bin/zsh -l\n{command}\n")
+    script.chmod(0o700)
+    done = (runner or subprocess.run)(["open", "-a", "Terminal", str(script)], capture_output=True, text=True, timeout=15)
+    if done.returncode != 0:
+        return {"opened": False, "command": command, "why": "open failed"}
+    return {"opened": True, "command": command}

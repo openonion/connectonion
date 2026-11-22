@@ -3749,6 +3749,8 @@
   .approve-all:hover:not(:disabled) { background: var(--well); }
   .closed { display: flex; align-items: center; gap: 8px; padding: 4px 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .coverage-fix { white-space: nowrap; }
+  .coverage-gap { flex-wrap: wrap; }
+  .coverage-note { flex-basis: 100%; }
   .closed .ic { width: 15px; height: 15px; }
   .closed .link-btn { margin-left: auto; }
   #night-sheet .night-done h2 { display: none; }
@@ -4570,7 +4572,7 @@ const UI = {
     "Searching for relevant context": "正在查资料", "Context search completed": "资料查完了", "Context search failed": "查资料失败",
     "Using a provider tool": "正在用工具", "Provider tool completed": "工具用完了", "Provider tool failed": "工具失败了",
     "{agent} finished": "{agent} 做完了",
-    "{agent} stopped before finishing": "{agent} 没做完就停了", "(+{n} more)": "（另有 {n} 个源）",
+    "{agent} stopped before finishing": "{agent} 没做完就停了", "(+{n} more)": "（另有 {n} 个源）", "WeChat has {n}\u00a0chat databases it can't read yet ({read} of {found} read)": "微信还有 {n}\u00a0个聊天库读不了（已读 {read}/{found}）", "Many WeChat chats are still only on your phone": "微信里很多聊天还只在手机上", "About 2 minutes; you log in once in the WeChat window that opens": "约 2 分钟，需要在弹出的微信里登录一次", "Complete WeChat →": "补全微信 →", "Copied. Paste it into Terminal and run it: {command}": "已复制，在终端里粘贴运行：{command}", "Opened in Terminal: log in once in the WeChat window it opens": "已在终端打开：在弹出的微信里登录一次", "Move chat history from your phone →": "从手机迁移聊天记录 →", "On your phone: WeChat → Me → Settings → Chats → Chat history migration & backup": "在手机上：微信 → 我 → 设置 → 聊天 → 聊天记录迁移与备份", "Choose Migrate → to this computer, and pick the chats (or all)": "选「迁移 → 迁移到电脑」，勾选要迁移的聊天（或全部）", "Keep both on the same Wi-Fi until it finishes": "手机和电脑连同一个 Wi-Fi，等它迁完", "REM reads the new history at the next night run": "REM 会在下一次夜跑读入新的聊天记录",
     "See result": "看结果",
     "Draft with this reply": "用这个回复起草", "Retry": "重试", "Clear failed runs": "清除失败记录",
     "Reply draft prepared": "回复草稿已准备好", "Open reply draft": "查看回复草稿",
@@ -10805,17 +10807,42 @@ function nightSummary(runs, marks) {
 function todaySide(counts) {
   return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine(), coverageLine()].filter(Boolean));
 }
-// What last night could not read, with the one step that fixes it (#3353): e.g. WeChat history migrated after the
-// last key capture sat in databases REM had no key for, and the owner had to notice. Only a step that needs him is
-// asked; the line names the command, and the rest REM does itself.
+// What last night could not read, and one button that fixes it (#3353). Plain words, not internals (art director):
+// "微信还有 10 个聊天库读不了（已读 2/12）". A key capture needs the owner to log into a WeChat copy, so the
+// button opens his Terminal running it; a Host in launchd's Background session (#3317) can't open windows, so
+// then it copies the command and says so. The phone-migration case opens the steps instead.
 function coverageLine() {
-  const gap = (REM.coverage_gaps || [])[0];
+  const gaps = REM.coverage_gaps || [], gap = gaps[0];
   if (!gap) return null;
-  const more = (REM.coverage_gaps || []).length - 1;
-  const [said, command] = (uiLanguage === "zh" ? gap.line : gap.line_en || gap.line).split(" → ");
-  return el("div", { class: "closed coverage-gap", role: "status" }, [icon("clock"),
-    el("span", {}, [said + (more > 0 ? " " + t("(+{n} more)", { n: more }) : ""),
-      command ? el("span", { class: "mono coverage-fix", text: " → " + command }) : null])]);
+  const more = gaps.length - 1, unread = Math.max((gap.found || 0) - (gap.read || 0), 0);
+  const said = gap.fix_kind === "key_capture"
+    ? t("WeChat has {n}\u00a0chat databases it can't read yet ({read} of {found} read)", { n: unread, read: gap.read, found: gap.found })
+    : t("Many WeChat chats are still only on your phone");
+  const note = el("span", { class: "meta coverage-note", text: gap.fix_kind === "key_capture"
+    ? t("About 2 minutes; you log in once in the WeChat window that opens") : "" });
+  let action;
+  if (gap.fix_kind === "key_capture") {
+    action = el("button", { type: "button", class: "link-btn coverage-fix", text: t("Complete WeChat →") });
+    const copy = command => {
+      navigator.clipboard?.writeText(command);
+      note.textContent = t("Copied. Paste it into Terminal and run it: {command}", { command });
+    };
+    action.onclick = async () => {
+      if (!liveHere()) return copy(gap.fix);
+      action.disabled = true;
+      const reply = await hostPost("/rem/source-fix", { fix: "key_capture" });
+      action.disabled = false;
+      if (reply.ok && reply.opened) note.textContent = t("Opened in Terminal: log in once in the WeChat window it opens");
+      else copy(reply.command || gap.fix);
+    };
+  } else {
+    action = el("details", { class: "coverage-steps" }, [el("summary", { class: "link-btn coverage-fix", text: t("Move chat history from your phone →") }),
+      el("ol", {}, [t("On your phone: WeChat → Me → Settings → Chats → Chat history migration & backup"),
+        t("Choose Migrate → to this computer, and pick the chats (or all)"), t("Keep both on the same Wi-Fi until it finishes"),
+        t("REM reads the new history at the next night run")].map(step => el("li", { text: step })))]);
+  }
+  return el("div", { class: "closed coverage-gap", role: "status" }, [icon("ellipsis"),
+    el("span", { class: "coverage-said" }, [said + (more > 0 ? " " + t("(+{n} more)", { n: more }) : "")]), action, note]);
 }
 // What is next, on the first screen beside the cards (rc34 hunt: the calendar sat ~989px down). The cards stay
 // first; this is the calendar's head, not a second calendar: it reuses agendaEntries and agDetail.
