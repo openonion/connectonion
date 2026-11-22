@@ -8443,6 +8443,7 @@ function hypnoTime(t) {
 // size "mid" is Today's desktop chart, "short" a phone's: two-thirds and half the height, so the first card's Send
 // stays in reach (D-10; owner, 2026-11-22: «手机上压缩时间轴»).
 const SLEEP_STAGES = ["Awake", "REM sleep", "Light sleep", "Deep sleep"];
+const STAGE_RANK = [1, 3, 2];  // which stage a merged cluster of runs shows: REM over light sleep over a stopped run
 function runStage(run) {
   if (FAILED.test(String(run.outcome || ""))) return 0;
   return (run.changed || []).length ? 1 : 2;
@@ -8463,16 +8464,23 @@ function hypnogram(asOf, size = "") {
   if (size) LEVEL.forEach(y => svg.push('<line class="lv" x1="4" y1="' + y + '" x2="' + (W - 4) + '" y2="' + y + '"/>'));
   let path = "M4," + DEEP, at = 4, level = DEEP;
   const rem = [];
-  const go = (toX, y) => { toX = Math.max(at, Math.min(W - 4, toX)); if (y !== level) path += " L" + at.toFixed(1) + "," + y; path += " L" + toX.toFixed(1) + "," + y; at = toX; level = y; };
+  const num = v => String(+v.toFixed(1));  // 996, not 996.0
+  const go = (toX, y) => { toX = Math.max(at, Math.min(W - 4, toX)); if (y !== level) path += " L" + num(at) + "," + y; path += " L" + num(toX) + "," + y; at = toX; level = y; };
   for (const segment of segments) {
     go(x(segment.start), DEEP);
+    // Runs closer than a few units apart are one step at the highest stage among them (REM over light over awake's
+    // absence), so a dense stretch reads as one block, not a comb.
+    const steps = [];
     for (const run of [...segment.list].sort((a, b) => runTime(a) - runTime(b))) {
-      const x0 = Math.max(at, x(runTime(run))), x1 = Math.max(x0 + 6, x(Math.min(asOf, runEnd(run))));
-      if (x0 > at) go(x0, LEVEL[2]);  // dozing between two runs of the same stretch
-      const stage = runStage(run);
-      go(x1, LEVEL[stage]);
-      if (stage === 1) rem.push("M" + x0.toFixed(1) + "," + LEVEL[1] + " L" + Math.min(W - 4, x1).toFixed(1) + "," + LEVEL[1]);
+      const x0 = x(runTime(run)), x1 = Math.max(x0 + 6, x(Math.min(asOf, runEnd(run)))), stage = runStage(run), last = steps[steps.length - 1];
+      if (last && x0 - last.x1 < 8) { last.x1 = Math.max(last.x1, x1); if (STAGE_RANK[stage] > STAGE_RANK[last.stage]) last.stage = stage; }
+      else steps.push({ x0, x1, stage });
     }
+    steps.forEach(({ x0, x1, stage }, i) => {
+      if (i && x0 > at) go(x0, LEVEL[2]);  // dozing between two runs of the same stretch
+      go(x1, LEVEL[stage]);
+      if (stage === 1) rem.push("M" + Math.max(4, x0).toFixed(1) + "," + LEVEL[1] + " L" + Math.min(W - 4, x1).toFixed(1) + "," + LEVEL[1]);
+    });
     const x0 = x(segment.start), x1 = Math.min(W - 4, Math.max(x0 + 6, x(Math.min(asOf, segment.end))));
     const range = time(segment.start) + "–" + time(segment.end);
     if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: LEVEL[0], title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
