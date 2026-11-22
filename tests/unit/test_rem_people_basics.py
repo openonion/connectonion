@@ -132,7 +132,7 @@ def test_people_coverage_counts_qualifying_archive_correspondents_without_pages(
     data = snapshot(tmp_path)
     assert data["people_coverage"] == {"total": 2, "covered": 1, "missing": 1}
     assert status(tmp_path)["people_coverage"] == data["people_coverage"]
-    shown = rem_status.dashboard(tmp_path, status(tmp_path), lambda args: "co rem " + " ".join(args))
+    shown = rem_status.card(tmp_path, status(tmp_path), lambda args: "co rem " + " ".join(args))
     from rich.text import Text
     plain = Text.from_markup(shown).plain
     assert "50%" in next(line for line in plain.splitlines() if "People" in line)

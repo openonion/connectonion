@@ -120,7 +120,7 @@ def test_exec_failure_records_the_reason_and_status_shows_it(tmp_path, monkeypat
     monkeypatch.setattr(rem_status, 'notebook', lambda *args: {})
     for name in ('_header', '_waiting', '_today', '_notebook', '_mailboxes', '_archive', '_budget', '_last_runs'):
         monkeypatch.setattr(rem_status, name, lambda *args: [])
-    rendered = rem_status.dashboard(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')
+    rendered = rem_status.card(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')
     from rich.text import Text
     plain = Text.from_markup(rendered).plain
     assert receipt['reason'] in plain
@@ -150,7 +150,7 @@ def test_exec_status_shows_startup_time(tmp_path, monkeypatch, result, seconds):
     monkeypatch.setattr(rem_status, 'notebook', lambda *args: {})
     for name in ('_header', '_waiting', '_today', '_notebook', '_mailboxes', '_archive', '_budget', '_last_runs'):
         monkeypatch.setattr(rem_status, name, lambda *args: [])
-    rendered = Text.from_markup(rem_status.dashboard(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')).plain
+    rendered = Text.from_markup(rem_status.card(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')).plain
     if seconds is None:
         assert 'Codex startup' not in rendered
     else:

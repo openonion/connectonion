@@ -239,8 +239,8 @@ async def republish_authenticated_connection(data, send_msg, conn, storage,
 
     # The physical browser socket is new even though the logical relay
     # connection is not. Force the current Home snapshot onto that socket.
-    from .dashboard import send_dashboard
-    await send_dashboard(send_msg, session_id, conn, force=True)
+    from .control_center import send_control_center_page
+    await send_control_center_page(send_msg, session_id, conn, force=True)
     console.print(
         f"[green]↻ REATTACH[/green] agent_address={conn['agent_address'][:16]}... "
         f"session={session_id[:8]}... status={status}"
@@ -374,7 +374,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
 
     # A Recent Chat index must not create a blank conversation merely by
     # looking for existing ones. This authenticated capability socket skips
-    # registry, mode initialization, dashboard, and durable session creation;
+    # registry, mode initialization, Control Center, and durable session creation;
     # it accepts only the individually signed Session Sync extension frames.
     if session_sync_only:
         # The public relay adds a top-level session_id to route every socket.
@@ -538,7 +538,7 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     if mode_is_admin is not None:
         conn["mode_is_admin"] = mode_is_admin
     # Home is rendered for this verified identity: its own turns, and the
-    # schedule only for an admin (dashboard.EVERYONE explains why).
+    # schedule only for an admin (control_center.EVERYONE explains why).
     trust_for_home = route_handlers.get("trust_agent") if route_handlers is not None else None
     conn["is_admin"] = bool(trust_for_home and trust_for_home.is_admin(agent_address))
 
@@ -571,10 +571,10 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     if route_handlers is not None:
         await _send_agent_profile(send_msg, route_handlers, session_id)
 
-    # Push the current dashboard.html so Home paints immediately, before any input.
+    # Push the current control_center.html so Home paints immediately, before any input.
     # This connection has seen nothing yet, so it always sends when a file exists.
-    from .dashboard import send_dashboard
-    await send_dashboard(send_msg, session_id, conn)
+    from .control_center import send_control_center_page
+    await send_control_center_page(send_msg, session_id, conn)
 
     if status == "running" and resume_running:
         return resume_forwarding(

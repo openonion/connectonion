@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from connectonion.network.host.ws_router import admin_home, dashboard as dash
+from connectonion.network.host.ws_router import admin_home, control_center as dash
 from connectonion.network.host.ws_router.control_center import handle_control_center
 from connectonion.network.trust import TrustAgent
 
@@ -137,7 +137,7 @@ class TestCommands:
         result = next(f for f in frames if f["type"] == "CONTROL_CENTER_RESULT")
         assert result["ok"] is True
         assert host.get_level(GUEST) == "stranger"
-        snapshot = next(f for f in frames if f["type"] == "DASHBOARD_SNAPSHOT")
+        snapshot = next(f for f in frames if f["type"] == "CONTROL_CENTER_SNAPSHOT")
         assert GUEST not in snapshot["html"].split("Admitted")[1].split("</details>")[0]
 
     @pytest.mark.asyncio
@@ -152,7 +152,7 @@ class TestCommands:
         assert frames[-1]["ok"] is False
         assert frames[-1]["error"]["code"] == "PermissionError"
         assert host.get_level(OTHER) == "stranger"
-        assert not any(f["type"] == "DASHBOARD_SNAPSHOT" for f in frames)
+        assert not any(f["type"] == "CONTROL_CENTER_SNAPSHOT" for f in frames)
 
     @pytest.mark.asyncio
     async def test_an_admin_cannot_be_removed_or_blocked_from_here(self, host):
