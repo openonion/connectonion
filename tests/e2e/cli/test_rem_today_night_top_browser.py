@@ -217,3 +217,96 @@ def test_a_busy_night_rises_and_falls_through_the_stages(page_file):
         assert page.locator("#main .night-card .stretch").count() + page.locator("#main .night-card .stretch-all").count() >= 3
     finally:
         browser.close(); api.stop()
+
+
+STUCK_NIGHT = """() => {
+  // Tonight on rc18 (#3379): one tag task retried every 15 minutes from 01:12, parked at 03:00, then translations and
+  // a tag run that changed one page. The loop must read as awake, never as REM.
+  const end = new Date(REM.as_of).getTime(), at = h => new Date(end + h * HOUR).toISOString(), runs = [];
+  runs.push({run_id: 'stuck', phase: 'tag', started_at: at(-3.6), finished_at: at(-1.8), items: 0, changed: [], outcome: 'parked'});
+  runs.push({run_id: 'after', phase: 'tag', started_at: at(-1.78), finished_at: at(-1.77), items: 0, changed: ['people/mara-ostrowski.md'], outcome: 'completed'});
+  for (let i = 0; i < 6; i++) runs.push({run_id: 'tr' + i, phase: 'daily-translation', started_at: at(-1.75 + i * 0.1),
+    finished_at: at(-1.7 + i * 0.1), items: 0, changed: [], outcome: 'completed'});
+  REM.logs = runs.reverse(); render();
+}"""
+
+
+def test_a_stuck_loop_reads_as_awake_and_says_so(page_file):
+    """A parked task's 108 minutes of retries are the night stuck awake: the trace stays at the Awake level over it,
+    and the stretch under it says how long it was stuck and that it was skipped (#3379)."""
+    api, browser, page = _open(page_file, 1440, 900)
+    try:
+        page.evaluate(STUCK_NIGHT, isolated_context=False)
+        state = page.evaluate("""() => {
+          const svg = document.querySelector('#main .night-card .hypno svg'), W = 1000;
+          const d = svg.querySelector('.trace').getAttribute('d'), pts = d.replace('M', 'L').split('L').slice(1).map(p => p.split(',').map(Number));
+          const levels = [...document.querySelectorAll('#main .night-card .hypno .lvl')].map(s => parseFloat(s.style.top));
+          const run = REM.logs.find(r => r.run_id === 'stuck'), s = hypnoScale(new Date(REM.as_of).getTime());
+          const mid = s.x((runTime(run) + runEnd(run)) / 2);
+          // The trace's level at the middle of the loop: the last point at or before it.
+          const y = pts.filter(([x]) => x <= mid).pop()[1];
+          const dot = document.querySelector('#main .night-card .hypno .dot.changed'), box = document.querySelector('#main .night-card .hypno').getBoundingClientRect();
+          const dotX = dot ? W * (dot.getBoundingClientRect().left + dot.getBoundingClientRect().width / 2 - box.left) / box.width : null;
+          return {y, levels, rem: svg.querySelector('path.rem')?.getAttribute('d') || '', mid, dotX, loopEnd: s.x(runEnd(run)),
+                  words: [...document.querySelectorAll('#main .night-card .stretch-what')].map(n => n.textContent)};
+        }""", isolated_context=False)
+        assert state["y"] == state["levels"][0], state  # Awake, not REM sleep
+        rem = state["rem"]
+        for part in rem.split("M")[1:]:
+            x0, x1 = float(part.split(",")[0]), float(part.split("L")[1].split(",")[0])
+            assert not (x0 <= state["mid"] <= x1), state  # no REM stroke over the loop
+        assert any("stuck" in w and "skipped automatically" in w for w in state["words"]), state["words"]
+        assert state["dotX"] is not None and state["dotX"] >= state["loopEnd"] - 8, state  # the changed-page dot is not over the loop
+    finally:
+        browser.close(); api.stop()
+
+
+def test_the_desk_title_says_which_cards_its_pager_pages_through(page_file):
+    """«18 件在等你» over ‹ 1 / 2 ›: when the deck deals fewer cards than wait, the title names the set (#3379)."""
+    for width, height, mobile in ((1440, 900, False), (390, 844, True)):
+        api, browser, page = _open(page_file, width, height, mobile=mobile)
+        try:
+            # Live rc18: 18 waited, most held by an agent at work, and the deck dealt two cards. Hold the rest the same way.
+            page.evaluate("""() => { const base = threadCounts; window.threadCounts = () => ({...base(), mine: base().mine + 14}); render(); }""",
+                          isolated_context=False)
+            state = page.evaluate("""() => ({mine: threadCounts().mine, cards: document.querySelectorAll('#main .deck .qcard').length,
+              pager: document.querySelector('#main .qcount')?.textContent || '',
+              scope: document.querySelector('#main .desk-head .count-scope')?.textContent || ''})""", isolated_context=False)
+            n = state["pager"].split("/")[-1].strip() if state["pager"] else ""
+            assert n and int(n) < state["mine"], state
+            assert n in state["scope"], (width, state)
+            head = page.locator("#main .deck > .desk-head").bounding_box()
+            assert head["height"] < (32 if mobile else 60), "still one line"
+        finally:
+            browser.close(); api.stop()
+
+
+def test_the_desk_title_adds_nothing_when_every_waiting_item_has_a_card(page_file):
+    api, browser, page = _open(page_file, 1440, 900)
+    try:
+        assert page.locator("#main .desk-head .count-scope").count() == 0
+    finally:
+        browser.close(); api.stop()
+
+
+def test_a_phone_names_awake_only_when_tonight_reaches_it(page_file):
+    """On a phone an unnamed top level read as REM (art director on #3382): the phone names the levels the curve uses,
+    so a stuck stretch brings 清醒's label, and a night that never woke has none."""
+    api, browser, page = _open(page_file, 390, 844, mobile=True)
+    try:
+        page.evaluate(STUCK_NIGHT, isolated_context=False)
+        levels = page.locator("#main .night-card .hypno .lvl").all_inner_texts()
+        assert "Awake" in levels and "Deep sleep" in levels, levels
+        page.evaluate("""() => { const end = new Date(REM.as_of).getTime(), at = h => new Date(end + h * HOUR).toISOString();
+          REM.logs = [{run_id: 'calm', phase: 'investigate', started_at: at(-3), finished_at: at(-2.9), items: 4, changed: ['people/mara-ostrowski.md'], outcome: 'completed'}];
+          render(); }""", isolated_context=False)
+        levels = page.locator("#main .night-card .hypno .lvl").all_inner_texts()
+        assert "Awake" not in levels and "REM sleep" in levels and "Deep sleep" in levels, levels
+        page.evaluate(STUCK_NIGHT, isolated_context=False)
+        boxes = [page.locator("#main .night-card .hypno .lvl").nth(i).bounding_box()
+                 for i in range(page.locator("#main .night-card .hypno .lvl").count())]
+        assert len(boxes) == 2, boxes  # two names fit; four on 8px levels overlapped
+        for a, b in zip(boxes, boxes[1:]):
+            assert a["y"] + a["height"] <= b["y"] + 0.5, boxes  # the labels never overlap
+    finally:
+        browser.close(); api.stop()
