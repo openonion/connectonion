@@ -22,7 +22,7 @@ REM = get_command(app).commands["rem"]
 ROOT_COMMANDS = ["init", "map", "collect", "investigate", "deepen", "enrich", "muse", "abstract", "decisions", "translate", "tag", "catchup",
                  "open", "list", "show", "search", "start", "stop", "status", "task", "exec", "next", "submit",
                  "sources", "config", "logs", "morning", "doctor", "history"]
-ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "reflect", "reflections", "propose", "review", "capture",
+ADVANCED = ["scan", "backfill", "map-skills", "import", "stub", "merge", "person", "reflect", "reflections", "propose", "review", "capture",
             "projects"]
 OLD_NAMES = {"unfinished": "investigate", "people": "list people --aliases", "daily": "sync",
              "subscriptions": "sources", "subscribe": "sources add", "unsubscribe": "sources remove",

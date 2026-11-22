@@ -2222,6 +2222,27 @@ def make_rem_app(factory):
 
         _handle(ctx, operation, ["list"])
 
+    @rem.command("person", cls=V("co rem person"))
+    def person_mark(ctx: typer.Context, handle: str = typer.Argument(..., metavar="HANDLE"),
+                    not_person: bool = typer.Option(False, "--not-person"),
+                    person: bool = typer.Option(False, "--person"),
+                    reset: bool = typer.Option(False, "--reset")):
+        # The reader's 不是人 / 是人 from the command line (#3355): an agent can classify a contact too.
+        from ...rem.files import RemError, person_handle
+        from ...rem.threads import mark_person
+
+        def operation(root):
+            if sum((not_person, person, reset)) != 1:
+                raise RemError("Choose one: --not-person, --person or --reset")
+            value = handle.strip()
+            if not person_handle(value):
+                raise RemError("HANDLE is one mail address or chat handle (a WeChat or WhatsApp id), never a pattern")
+            mark = False if not_person else True if person else None
+            marks = mark_person(root, value, person=mark)
+            return {"handle": value.casefold(), "person": mark, "mark": marks.get(value.casefold(), "rules")}, ["list", "people"]
+
+        _handle(ctx, operation, ["list", "people"])
+
     # -------------------------------------------------------- Keep it current
 
     @rem.command("history", cls=V("co rem history"))
@@ -3046,7 +3067,7 @@ def make_rem_app(factory):
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
     order = ("init map collect investigate deepen enrich muse abstract decisions translate tag catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
-             "advanced scan backfill map-skills stub merge reflect reflections propose review capture "
+             "advanced scan backfill map-skills stub merge person reflect reflections propose review capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

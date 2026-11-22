@@ -274,3 +274,31 @@ def all_messages(db_storage: Path, known: dict) -> list[dict]:
                              "text": text.strip(), "sender": sender, "sender_name": known.get(sender, sender),
                              "kind": "text" if kind == 1 else "system" if kind == 10000 else "media"})
     return rows
+
+
+# WeChat's contact table mixes three things the owner thinks of differently (#3355): friends he added
+# (local_type 1), people he only shares a group with (local_type 3), and groups / official accounts.
+def contact_kind(username: str, local_type) -> str:
+    """friend, group, account (an official or service account), or other (seen in a group, not a friend)."""
+    if username.endswith("@chatroom"):
+        return "group"
+    if username.startswith("gh_"):
+        return "account"
+    return "friend" if local_type == 1 else "other"
+
+
+def contacts(contact_conn: sqlite3.Connection, owner: str = "") -> list[dict]:
+    """Every row of the contact table as {username, name, remark, nick_name, alias, kind}, the owner left out.
+
+    name is what the owner sees: his remark, else their nickname, else the username."""
+    columns = {row[1] for row in contact_conn.execute("PRAGMA table_info(contact)")}
+    alias = "alias" if "alias" in columns else "''"
+    local_type = "local_type" if "local_type" in columns else "0"
+    rows = []
+    for r in contact_conn.execute(f"SELECT username, remark, nick_name, {alias}, {local_type} FROM contact"):
+        username = r[0] or ""
+        if not username or username == owner:
+            continue
+        rows.append({"username": username, "name": r[1] or r[2] or username, "remark": r[1] or "",
+                     "nick_name": r[2] or "", "alias": r[3] or "", "kind": contact_kind(username, r[4])})
+    return rows
