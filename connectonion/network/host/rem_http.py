@@ -93,6 +93,11 @@ def _session_ended(headers: dict) -> str:
             f'<button type="button" onclick="location.reload()">{again}</button></main></body></html>')
 
 
+def _graph_3d_url() -> str:
+    from ...rem.reader import GRAPH_3D_URL
+    return GRAPH_3D_URL
+
+
 def _same(given: str, token: str) -> bool:
     return bool(given) and hmac.compare_digest(given.encode(), token.encode())
 
@@ -125,6 +130,11 @@ async def handle_rem_http(scope, receive, send, routes):
         name = "live.html" if scope["path"] == "/rem" else "data.json"
         page, _ = await asyncio.to_thread(cached_page, root, name)
         await _reply(send, 200, page, "text/html" if name == "live.html" else "application/json")
+    elif scope["method"] == "GET" and scope["path"] == _graph_3d_url():
+        # The 3D graph's engine (#3309), pinned and vendored: only the live reader asks for it, the first time
+        # the knowledge graph opens in 3D. Signed in like every other reader path.
+        from ...rem.reader import GRAPH_3D
+        await _reply(send, 200, await asyncio.to_thread(GRAPH_3D.read_text, encoding="utf-8"), "text/javascript")
     elif scope["method"] == "GET" and scope["path"] == "/rem/version":
         from ...rem.reader import latest
         await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
