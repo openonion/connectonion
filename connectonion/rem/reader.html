@@ -8419,8 +8419,15 @@ function sameClaim(before, after) {
   for (const word of current) if (word === old[at]) at++;
   return at === old.length;
 }
+// The page's detailed logs are only the latest 21 runs; night_runs is the whole pass in brief (#3391). Detailed rows win,
+// the brief ones fill in the start of the night, so the curve begins with the night and not 90 minutes before dawn.
+function passRuns() {
+  const detailed = REM.logs || REM.brief_logs || [], key = run => run.started_at + "|" + (run.phase || "");
+  const seen = new Set(detailed.map(key));
+  return [...detailed, ...(REM.night_runs || []).filter(run => !seen.has(key(run)))];
+}
 function lastPass() {
-  const logs = (REM.logs || REM.brief_logs || []).filter(run => !isNaN(runTime(run)));
+  const logs = passRuns().filter(run => !isNaN(runTime(run)));
   if (!logs.length) return null;
   const latest = Math.max(...logs.map(runTime));
   // One pass is every run in the evening-to-morning stretch before the latest one.
@@ -8523,7 +8530,9 @@ function hypnoScale(asOf) {
   const runs = (lastPass()?.runs || []).filter(run => runTime(run) <= asOf).sort((a, b) => runTime(a) - runTime(b));
   const W = 1000, finished = runs.length ? Math.min(asOf, Math.max(...runs.map(runEnd))) : asOf;
   const start = Math.floor((runs.length ? runTime(runs[0]) : asOf - 4 * HOUR) / HOUR) * HOUR - HOUR / 2;
-  const end = Math.max(start + HOUR, Math.ceil(finished / HOUR) * HOUR + HOUR / 2);
+  // The axis ends just after the last run, never an hour past it: rounding up to the hour plus half an hour drew an
+  // empty hour after "now" (#3391). A run still going ends the axis at now.
+  const end = Math.max(start + HOUR, Math.min(asOf, finished) + 10 * 60e3);
   return { runs, W, finished, start, end, segments: runSegments(runs, end - start), x: t => 4 + (W - 8) * (t - start) / (end - start) };
 }
 function hypnoTime(t) {

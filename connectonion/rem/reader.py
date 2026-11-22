@@ -411,6 +411,9 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "coverage_gaps": coverage_gaps(root) if local else [],
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
+            # The whole last pass for Today's curve (#3391): `logs` keeps only the latest 21 runs, so on a busy
+            # night the curve began 90 minutes before dawn and a stuck stretch at 01:12 fell off its left edge.
+            "night_runs": night_runs(logs),
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
             "counts": counts(root, found),
             "owner": owner,
@@ -517,6 +520,27 @@ def _today_data(data: dict) -> dict:
             brief['translation_failures'] = sum(page.get('outcome') == 'failed' for page in run.get('pages', []))
     shell['reviews'] = data.get('reviews', [])
     return shell
+
+
+# A night of 15-minute slots with several runs each stays far below this; a runaway loop cannot bloat the page.
+NIGHT_RUNS_MAX = 400
+NIGHT_CHANGED_MAX = 40
+
+
+def night_runs(logs: list[dict]) -> list[dict]:
+    """The latest pass (every run in the 18 hours before the newest one, as lastPass() in the reader counts it),
+    newest first, as start, end, outcome, phase, items and changed pages: what the sleep curve draws, no transcripts."""
+    if not logs:
+        return []
+    latest = datetime.fromisoformat(logs[0]["started_at"])
+    rows = []
+    for run in logs[:NIGHT_RUNS_MAX]:
+        if (latest - datetime.fromisoformat(run["started_at"])).total_seconds() > 18 * 3600:
+            break
+        row = {key: run[key] for key in ("started_at", "finished_at", "phase", "items") if key in run}
+        row.update(outcome=seen_outcome(run), changed=list(run.get("changed") or [])[:NIGHT_CHANGED_MAX])
+        rows.append(row)
+    return rows
 
 
 def _failure_reasons(error: str) -> list[str]:
