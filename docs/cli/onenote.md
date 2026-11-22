@@ -48,6 +48,34 @@ co onenote read "Week 5"
 co onenote create "Lab notes" "Week 6" "From a script"
 ```
 
+
+## Read selected pages through the REM source CLI
+
+```bash
+co onenote changes --since 2026-01-01T00:00:00Z --json
+co onenote show "0-example!123" --json
+```
+
+These read-only commands use the approved Microsoft account, notebook, section
+and explicit page IDs for a REM notebook. They default to `~/.co/rem`; pass
+`--root` for another notebook. Approval belongs to `co rem sources`. The
+generic source configuration and caller in #3249 must supply the approved
+selection before these commands can be used on a fresh notebook.
+
+- `changes` returns a JSON array of `id`, `version`, `time` and `title`.
+  The cutoff is exclusive and must include a timezone. It looks up only the
+  selected IDs and reads metadata only. An empty array means the selected
+  pages were checked successfully and none changed.
+- `show` returns a single JSON object with the same metadata plus `text`,
+  `author` and the original OneNote web `link`. Microsoft Graph v1.0
+  does not expose the page author, so `author` is `null`. Images and
+  attachments are never fetched.
+- The Graph modification timestamp is also the version. This version cannot
+  distinguish edits for which Graph returns the same timestamp.
+- Command failures exit 1 with a JSON `error` object on stderr and no data
+  on stdout. The commands use the existing Microsoft sign-in with a OneNote
+  read-capable grant. They do not start sign-in or save page copies.
+
 ## For agents
 
 ```python
@@ -70,11 +98,3 @@ credentials, refresh and throttling retries as `Outlook()`.
 | `OneNote refused this sign-in (HTTP 401)` | Run `co auth microsoft` to obtain `Notes.ReadWrite` for a personal account. |
 | `No section named …` | `co onenote ls` for the exact names and ids |
 | `Several sections are named …` | pass the section id instead |
-
-
-## Selected pages as a REM source
-
-Use [native OneNote connection](onenote-native-connection.md) for automatic intake
-after approval. [Source commands](onenote-source.md) provide read-only discovery,
-manual daily imports, exports and recovery. `co onenote ls --json` lists notebook
-metadata for scripts. Existing browsing and create behavior remain available.

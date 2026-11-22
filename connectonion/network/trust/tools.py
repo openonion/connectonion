@@ -289,6 +289,14 @@ def promote_to_contact(client_id: str, co_dir: Path = None, reason: str = None) 
     return f"{client_id} promoted to contact."
 
 
+def record_join(client_id: str, co_dir: Path = None, how: str = "") -> None:
+    """How someone got in (invite code, payment), for the Control Center's admitted list.
+
+    Separate from promote_to_contact, so its one-argument form (which tests and
+    operators' own TrustAgent subclasses replace) stays as it was."""
+    _record_change("joined", client_id, list_file("contacts", co_dir), how)
+
+
 def admit_for_handoffs(client_id: str, co_dir: Path = None, reason: str = None) -> str:
     """Stranger → handoffs only: someone whose handoff you accepted (Aaron, 2026-10-13: "接收方的话 它是
     需要有些限制的"). They exchange handoffs and questions with you through the agent inbox, but a Host

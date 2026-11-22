@@ -29,6 +29,11 @@ import websockets
 # at the exact moment a connection drops.
 import websockets.exceptions
 
+# This process's relay socket, for the admin's Control Center (#3263): whether it
+# is open and since when. Set by serve_once, the one place a connection begins
+# and ends; "never" until a Host with a relay has tried.
+connection = {"state": "never", "since": None, "url": None}
+
 
 async def connect(relay_url: str | None = None):
     """
@@ -274,11 +279,15 @@ async def serve_once(
     it before connecting also means a bad key spins the supervisor without
     ever attempting a connection, which reports the wrong failure.
     """
+    import time
+
     ws = await connect(relay_url)
+    connection.update(state="connected", since=time.time(), url=relay_url)
     try:
         await serve_loop(ws, make_announce(), addr_data=addr_data,
                          session_handler=session_handler)
     finally:
+        connection.update(state="disconnected", since=time.time())
         try:
             await ws.close()
         except Exception:
@@ -327,6 +336,14 @@ async def serve_loop(
     while True:
         try:
             msg = await recv_relay_msg(websocket, timeout=heartbeat_interval)
+
+            if msg.get("type") == "ERROR" and msg.get("original_type") == "ANNOUNCE":
+                # The relay keeps no registration for a refused announce, and the
+                # heartbeat would resend the same one: unreachable while it looks
+                # healthy (#3125). SystemExit passes host()'s reconnect loop,
+                # which retries only Exception, and stops the process.
+                raise SystemExit(f"[host] The relay rejected this agent's announce: {msg.get('error')}. "
+                                 f"Nobody can reach it through {relay_url or 'the relay'} until that is fixed.")
 
             if msg.get("type") == "ERROR":
                 console.print(f"{prefix} [red]Relay error: {msg.get('error')}[/red]")

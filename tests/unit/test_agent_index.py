@@ -85,7 +85,7 @@ class TestGenerated:
 
     def test_size_stays_small(self):
         block = agent_index.block(agent_index.generate(app))
-        assert len(block.splitlines()) <= 65
+        assert len(block.splitlines()) <= 70  # one line per top-level command; obsidian and asana made 66
         assert len(block) <= 12_000          # ~3k tokens at 4 chars a token
 
 

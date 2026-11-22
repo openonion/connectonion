@@ -44,8 +44,13 @@ def _prepare_profile(runtime: Path) -> None:
     from ..rem.files import atomic_write
     from .commands.init import handle_init
     fresh = not (runtime/'.co'/'host.yaml').exists()
-    runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
-    runtime.chmod(0o700)
+    if sys.platform == 'win32':
+        # mode=0o700 sets an owner-only ACL on Windows; from an elevated shell the owner
+        # is Administrators and the logon task's limited token cannot read the profile.
+        runtime.mkdir(parents=True, exist_ok=True)
+    else:
+        runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
+        runtime.chmod(0o700)
     handle_init(ai=None, key=None, template=None, description=None,
                 yes=True, force=False, path=runtime)
     path = runtime/'.co'/'host.yaml'

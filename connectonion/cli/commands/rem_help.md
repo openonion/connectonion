@@ -915,7 +915,7 @@ Back:     co rem --help
 
 ```
 Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp and selected OneNote pages. Showing is read-only.
+whatsapp. Showing is read-only.
 
 Usage:    co rem sources
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
@@ -928,7 +928,7 @@ Example:  co rem sources add whatsapp --chat 120363411567190840@g.us
 
 Effects:  add/remove change settings only. Bodies are read later, by sync, after start.
           remove stops future reads; pages already written stay.
-Subcommands: co rem sources connect --help, co rem sources add --help, co rem sources remove --help
+Subcommands: co rem sources add --help, co rem sources remove --help
 Next:     co rem sync --dry-run
 Back:     co rem --help
 ```
@@ -1556,32 +1556,4 @@ Example: co rem morning --dry-run
          co rem --root /tmp/fern-rem morning
 Next: co rem open
 Back: co rem --help
-```
-
-
-## co rem sources connect
-
-```
-Connect selected OneNote pages for automatic reads after REM approval.
-
-Usage:    co rem sources connect [NAME] [--config FILE]
-Example:  co rem sources connect onenote
-          co rem sources connect onenote --config onenote-scope.yaml
-
-  NAME           onenote; omit to choose an installed source in a local terminal
-  --config FILE  YAML/JSON scope for scripts; no credentials
-  --help         Show this help without connecting or writing
-
-Without --config, choose notebooks, sections and page IDs in a local terminal.
-q cancels. Scripts require NAME and --config. Setup reads metadata only, makes
-no model calls and does not approve reading page bodies. Uses the existing
-co auth microsoft authorization and refresh; never hand-set OAuth fields.
-Scope: {notebook: NOTEBOOK_ID, section: SECTION_ID, pages: [PAGE_ID]}
-
-After approval, init and sync reread the selected bodies, including unchanged
-timestamps. Existing REM timers dispatch sync. Page media stay metadata-only.
-No new scheduler, Reader refresh loop or OneNote writes are installed.
-
-Next:     co rem init --no-start
-Back:     co rem sources --help
 ```

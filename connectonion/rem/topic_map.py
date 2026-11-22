@@ -17,7 +17,7 @@ HEALTH = re.compile(r'\b(?:health|asthma|illness|medication|therapy|diabetes|can
 PERSONAL = re.compile(r'\b(?:family|personal|visa|immigration|legal|lawsuit|divorce)\b|家庭|家人|签证|移民|法律|私人|个人财务', re.I)
 REQUEST = re.compile(r'\b(?:remember|learn)\s+(.+?)(?:[.!?。\n]|$)|(?:记住|记下|学习)\s*(.+?)(?:[。！？\n]|$)', re.I)
 DAY = re.compile(r'\b\d{4}-\d{2}-\d{2}\b')
-SOURCE_ID = re.compile(r'\b(?:gmail|outlook|codex|claude-code|telegram|feishu|lark|discord|slack|whatsapp|file|manual):[^\s,;，；)\]]+')
+SOURCE_ID = re.compile(r'\b(?:gmail|outlook|codex|claude-code|telegram|feishu|lark|discord|slack|whatsapp|wechat|file|manual):[^\s,;，；)\]]+')
 
 
 def _plain(text):
@@ -319,8 +319,12 @@ def map_topics(notebook: Notebook, *, rows=None) -> tuple[list[dict], list[str]]
             updated = text.replace('\n', '\n' + alias_line + '\n', 1)
         if updated != text:
             notebook.write(row['record'], updated)
+        def _named(rec):
+            # The question is read by the owner, so name the page, not its file path (people/…-fb3e61a907.md).
+            aliases = topic_aliases(notebook.read(rec))
+            return aliases[0] if aliases else rec
         proposals = [{'kind': 'link', 'subjects': [row['record'], d['record']],
-                      'question': f"Does {d['record']} concern this topic?", 'basis': d['sentence']}
+                      'question': f"Does {_named(d['record'])} concern this topic?", 'basis': d['sentence']}
                      for d in row['doubtful']]
         for proposal in proposals:
             ingest(notebook.root, [proposal])

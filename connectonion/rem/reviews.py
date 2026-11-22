@@ -11,6 +11,27 @@ def listing(root: Path) -> list[dict]:
     return read_json(state_path(root, "reviews.json"), [])
 
 
+def _match(rows: list[dict], kind: str, subjects: list[str], question: str):
+    """The stored review this proposal repeats, or None.
+
+    A link is the same link whatever its wording: #3286 changed a topic link's question from the
+    page path to its title, and matching on the text re-asked every stored link (36 became 77 on a
+    real notebook) and would re-ask decided ones too. A question is still matched on its words.
+    A pending link found under old wording takes the new wording, so stale path questions migrate.
+    """
+    for row in rows:
+        if row['kind'] != kind or set(row['subjects']) != set(subjects):
+            continue
+        if kind == 'link':
+            if row['status'] == 'pending' and row['question'] != question:
+                row['question'] = question
+                row['_reworded'] = True
+            return row
+        if row['question'] == question:
+            return row
+    return None
+
+
 def propose(root: Path, kind: str, subjects: list[str], question: str, basis: str) -> dict:
     if kind not in ("question", "link") or not question.strip() or not basis.strip():
         raise RemError("Review requires question/link, a question and evidence basis")
@@ -21,10 +42,12 @@ def propose(root: Path, kind: str, subjects: list[str], question: str, basis: st
             raise RemError("Review subjects must be existing pages")
     with maintenance_lock(root):
         rows = listing(root)
-        # A rejected exact proposal must not repeatedly demand attention.
-        for row in rows:
-            if row['kind'] == kind and set(row['subjects']) == set(subjects) and row['question'] == question:
-                return row
+        # A rejected proposal must not repeatedly demand attention.
+        found = _match(rows, kind, subjects, question)
+        if found:
+            if found.pop('_reworded', False):
+                write_json(state_path(root, "reviews.json"), rows)
+            return found
         row = dict(id=uuid.uuid4().hex, kind=kind, subjects=subjects, question=question,
                    basis=basis, status="pending", created_at=datetime.now(timezone.utc).isoformat())
         rows.append(row)
@@ -87,19 +110,21 @@ def ingest(root: Path, candidates: list[dict]) -> list[dict]:
     if not isinstance(candidates, list):
         candidates = []
     rows = listing(root)
-    created, dropped = [], []
+    created, dropped, reworded = [], [], False
     for candidate in candidates[:2]:
         problem = _problem(root, candidate)
         if problem:
             dropped.append({'candidate': candidate, 'reason': problem})
             continue
         kind, subjects = candidate['kind'], candidate['subjects']
-        if any(r['kind'] == kind and set(r['subjects']) == set(subjects) and r['question'] == candidate['question'] for r in rows):
+        found = _match(rows, kind, subjects, candidate['question'])
+        if found:
+            reworded = found.pop('_reworded', False) or reworded
             continue
         row = dict(candidate, id=uuid.uuid4().hex, status='pending', created_at=datetime.now(timezone.utc).isoformat())
         rows.append(row)
         created.append(row)
-    if created:
+    if created or reworded:
         write_json(state_path(root, 'reviews.json'), rows)
     if dropped:
         write_json(state_path(root, 'reviews-dropped.json'), read_json(state_path(root, 'reviews-dropped.json'), []) + dropped)

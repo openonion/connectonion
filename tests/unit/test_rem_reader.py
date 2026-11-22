@@ -31,7 +31,7 @@ def _run_reader_js(script):
     if "liveHere =" not in script and "function liveHere" not in script:
         script = "function liveHere() { return true; }\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
-    script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
+    script = "const UI = {en: {}}; let uiLanguage = 'en'; let privacyLevel = 'cover';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -2089,6 +2089,7 @@ def test_fact_citations_stay_with_the_last_word_or_chinese_character(value, tail
     result = _run_reader_js(function + r'''
       const inline = text => text, softBreaks = node => node;
       const citeChip = n => '<a class="cite">' + n + '</a>';
+      const citeChips = ns => ns.map(n => citeChip(n)).join('');
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         get firstChild() { return this.children[0]; }, get childNodes() { return this.children; },
         appendChild(node) { this.children.push(node); }});
@@ -5046,3 +5047,34 @@ def test_rem_version_says_whether_a_newer_page_is_being_built(tmp_path, monkeypa
     assert reader.latest(root)["building"] is False
     monkeypatch.setattr(reader, "_rebuild_stale", lambda root, name, version, owner=False: True)
     assert reader.latest(root)["building"] is True
+
+
+def test_two_citations_on_the_same_day_are_one_chip_not_the_date_twice():
+    """A fact cited twice on one day printed "11月8日 11月8日" (rc44 hunt); different days stay two chips."""
+    page = TEMPLATE.read_text()
+    function = re.search(r'function citeChips\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const dates = {'1': 'Nov 8', '2': 'Nov 8', '3': 'Oct 26'};
+      const byPath = path => ({path}), citationDate = (r, n) => dates[n];
+      const citeChip = n => '[' + dates[n] + ']', citeRun = ns => '[' + dates[ns[0]] + ' +' + (ns.length - 1) + ']';
+      console.log(JSON.stringify({same: citeChips(['1', '2'], 'projects/x.md'), other: citeChips(['1', '3'], 'projects/x.md')}));
+    ''')
+    assert result['same'] == '[Nov 8 +1]'
+    assert result['other'] == '[Nov 8][Oct 26]'
+
+
+@pytest.mark.parametrize('level, expect', [('cover', 'A sensitive item (covered)'), ('all', 'The user owes Fernhill the evidence')])
+def test_a_today_line_whose_every_clause_is_labelled_says_so_and_show_all_keeps_every_word(level, expect):
+    """rc44 hunt: at Cover sensitive a fully labelled open line left only "— due 9 Dec." on Today."""
+    page = TEMPLATE.read_text()
+    names = ['morningWords']  # the privacy helpers come with _run_reader_js
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    line = ('The user owes Fernhill the evidence, the answers and the calculation — “We will reply.” (2026-11-13) [sensitive] [3]; '
+            '“Records follow.” (2026-11-13) [sensitive] [3] — due 2026-12-09 [sensitive] [4][5].')
+    result = _run_reader_js(functions + r'''
+      privacyLevel = ''' + json.dumps(level) + r''';
+      const threadWords = text => text, withoutDateClutter = text => text, plainLine = text => text, capFirst = text => text;
+      console.log(JSON.stringify(morningWords(''' + json.dumps(line) + r''', {path: 'orgs/fernhill.md'}, {due: '2026-12-09'})));
+    ''')
+    assert expect in result['words']
+    assert '[sensitive]' not in result['words']

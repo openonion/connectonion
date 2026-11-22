@@ -688,6 +688,7 @@
   .chip { font: var(--s-meta) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 2px 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .chip .d { color: var(--grey); margin-left: 6px; }
   .page-foot { max-width: 66ch; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .unfilled-sections { color: var(--grey); font: var(--s-ui) var(--font); margin-top: var(--u4); }
   .page-foot .when { color: var(--grey); font: var(--s-ui)/1.5 var(--font); }
   .btn-action, .eyebrow-path { font: var(--s-ui) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; }
   .eyebrow-path { font: var(--s-ui) var(--font); }
@@ -2384,6 +2385,9 @@
   .cal-ev.cal-microsoft { border-left-color: var(--grey); }
   .cal-ev:hover, .cal-ev:focus-visible { box-shadow: var(--e-ink); outline: none; }
   .cal-ev-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; }
+  /* A long mail-quote title would wrap into a wall of lines filling the block; clamp a timed event's title
+     to two lines (the full text stays on its detail panel). .short and .cal-suggest keep their one nowrap line. */
+  .cal-ev:not(.short):not(.cal-suggest) .cal-ev-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; min-width: 0; }
   .cal-ev.short .cal-ev-title { white-space: nowrap; }
   .cal-ev-time, .cal-ev-where { color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cal-ev.short .cal-ev-time, .cal-ev:not(.tall) .cal-ev-where { display: none; }
@@ -2455,7 +2459,7 @@
   .cal-row-bar.cal-event .cal-row-time { color: inherit; grid-row: 2; }
   .cal-row-time { color: var(--grey); font-size: var(--s-ui); }
   .cal-row.late .cal-row-time { color: var(--red); }
-  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; }
+  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; }
   .cal-row-where { grid-column: 2; color: var(--grey); font-size: var(--s-ui); overflow-wrap: anywhere; }
   .cal-row-bar.cal-event .cal-row-where { grid-column: 1; color: inherit; }
   @media (max-width: 640px) {
@@ -2826,6 +2830,11 @@
 
 <style id="org-article-style">
   main:has(> .ov-page.ov-r6) { max-width: 800px; }
+  /* A skill page renders a bare .record-focus with no .ov-page wrapper, so it fell through to main's
+     1180px default: 1080px wide and offset left, while every other record kind sits in an 800px frame
+     (#3231). Put it in the same frame so all record pages open at one width. */
+  main:has(> .record-focus.skills) { max-width: 800px; }
+  main:has(> .record-focus.skills) > .record-focus.skills { max-width: 720px; margin-inline: auto; }
   .ov.ov-page.ov-r6 { max-width: 720px; margin-inline: auto; }
   main:has(> .ov-page.ov-r6) > .deep-note { max-width: 720px; margin-inline: auto; }
   .ov-page .ov-stage { display: block; }
@@ -2991,7 +3000,10 @@
   .gx-link-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--rule); }
   .gx-link-row > .gx-glyph { margin-top: 4px; }
   .gx-row-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-  .gx-row-name a { font-weight: var(--w-bold); white-space: nowrap; }
+  /* A linked page's name wraps: a knowledge page is often named by a whole question, and kept on one line it
+     widened the page to 402px on a 390px phone. Its count beside it stays on one line and truncates. */
+  .gx-row-name a { font-weight: var(--w-bold); min-width: 0; overflow-wrap: anywhere; }
+  .gx-row-name { flex-wrap: wrap; }
   .gx-row-name a:hover { text-decoration: underline; text-underline-offset: 4px; }
   .gx-row-name small { color: var(--grey); font-size: var(--s-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gx-link-row p { color: var(--grey); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -3375,7 +3387,6 @@
 
   /* phone: the rail and the ⌘K bar give way to a floating tab bar */
   .tabbar { display: none; }
-  body.evidence-open .tabbar { visibility: hidden; }
   @media (max-width: 640px) {
     .app { display: block; padding-bottom: 84px; }
     .rail { position: static; height: 0; padding: 0; width: 0; overflow: visible; }
@@ -3768,7 +3779,10 @@
     :is(.qcard, .stale, .quiet-list) .handoff-line { gap: 0; margin-left: -8px; }
     :is(.qcard, .stale, .quiet-list) .handoff-line > .sep { display: none; }
     :is(.qcard, .stale, .quiet-list) .handoff-line > .sep:has(+ :is([data-agent="codex"], .handed)) { display: block; flex-basis: 100%; height: 0; overflow: hidden; }
-    :is(.qcard, .stale, .quiet-list) .handoff-line :is(.btn-quiet, .talk-menu > summary, .handed) { padding: 0 8px; white-space: nowrap; }
+    :is(.qcard, .stale, .quiet-list) .handoff-line :is(.btn-quiet, .talk-menu > summary) { padding: 0 8px; white-space: nowrap; }
+    /* The finished line is a sentence ("Codex 做完了 · …summary"), not a button: it wraps. Kept on one line it widened
+       Today to 1174px on a 390px phone, and the phone zoomed the whole page out. */
+    :is(.qcard, .stale, .quiet-list) .handoff-line .handed { padding: 0 8px; flex: 1 1 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
     /* The closes and the hand-offs are full touch targets on a phone, disabled in a snapshot or not (#2990); .qkind
        outranks the card's compact 28px strip above. */
     :is(.qcard .qkind, .stale, .quiet-list, .threads) .handoff-line :is(.strip-done, .strip-later, .strip-ignore, .strip-more, .later-choice, .later-cancel, [data-agent]) { min-height: 44px; }
@@ -3915,6 +3929,9 @@
   /* The profile card: a fact box of four groups under one hairline; label above value, on the 4px grid. */
   /* Keys (#3137): the add form and import under one disclosure; a key page's facts read like a profile card. */
   .key-adder { margin: 8px 0 20px; }
+  .key-importers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  .key-import-lead { color: var(--grey); font: var(--s-ui) var(--font); margin: 6px 0 0; }
+  .key-import-primary { color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); margin: 6px 0 10px; }
   .key-adder > summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   .key-add { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .key-add input { min-width: 0; flex: 1 1 180px; height: 40px; padding: 0 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
@@ -4794,11 +4811,6 @@ const UI = {
     "What you typed": "你的输入",
     "Final reply": "最终回复",
     "Original conversation": "原始对话",
-    "Open in OneNote ↗": "在 OneNote 中打开 ↗",
-    "Source information could not be read": "无法读取来源信息",
-    "Source record not found in this local snapshot": "此快照中未找到来源记录",
-    "Only an API address is available; no web link": "只有 API 地址，没有可打开的网页链接",
-    "Source link unavailable": "来源链接不可用",
     "Messages": "消息",
     "Details": "详情",
     "Folder": "文件夹",
@@ -5523,7 +5535,7 @@ Object.assign(UI.zh, { "Show all": "全部显示", "Cover sensitive": "遮住敏
   "Personal and sensitive passages are shown.": "私人和敏感内容都显示。",
   "Personal shown; each sensitive passage is covered until you tap it.": "私人内容显示；每段敏感内容先遮住，点一下才显示。",
   "Personal and sensitive passages are taken out, for sharing your screen.": "私人和敏感内容都拿掉，适合共享屏幕。",
-  "Sensitive · tap to show": "敏感 · 点一下显示", "Sensitive": "敏感", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
+  "Sensitive · tap to show": "敏感 · 点一下显示", "A sensitive item (covered)": "一件敏感的事（已遮住，在「显示」里选全部显示可看）", "Sensitive": "敏感", "All": "全部", "Covered": "遮敏感", "Public": "公开", "Display": "显示", "Language": "语言", "1 passage hidden": "1 处已隐藏", "{n} passages hidden": "{n} 处已隐藏" });
 const PRIVACY_WORDS = { all: ["Show all", "Personal and sensitive passages are shown.", "All"],
   cover: ["Cover sensitive", "Personal shown; each sensitive passage is covered until you tap it.", "Covered"],
   public: ["Public only", "Personal and sensitive passages are taken out, for sharing your screen.", "Public"] };
@@ -5893,7 +5905,7 @@ function sourceChannel(kind) {
   // left a web source's card with its header alone (rc35 hunt).
   kind = String(kind || "");
   if (!kind) return "";
-  return t(({ gmail: "Gmail", outlook: "Outlook", onenote: "OneNote", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp", web: "Web" })[kind]
+  return t(({ gmail: "Gmail", outlook: "Outlook", codex: "Session", claude: "Session", "project-source": "Repo", whatsapp: "WhatsApp", web: "Web" })[kind]
     || (/^(codex|claude)[- ]/.test(kind) ? "Session" : kind.charAt(0).toUpperCase() + kind.slice(1)));
 }
 // A web source is named for a person, never by its URL-encoded query (rc35 hunt: "duckduckgo.com/?q=%22…"): a saved
@@ -5942,6 +5954,13 @@ function citationDate(r, n) {
   const text = citationSource(r, n), context = (REM.source_context || {})[citationId(r, n)];
   const day = context?.time ? calendarDay(context.time) : /\d{4}-\d{2}-\d{2}/.exec(text)?.[0];
   return day ? fmtDate(day) : t("source {n}", { n });
+}
+// A value's citations: one chip each, or one run when there are more than two or when two would print the
+// same date side by side ("11月8日 11月8日" on a project fact, rc44 hunt).
+function citeChips(ns, from) {
+  const r = byPath(from);
+  const same = ns.length === 2 && citationDate(r, ns[0]) === citationDate(r, ns[1]);
+  return ns.length > 2 || same ? citeRun(ns, from) : ns.map(n => citeChip(n, from)).join("");
 }
 function citeRun(ns, from) {
   return citeChip(ns[0], from, true, false, ns);
@@ -6330,6 +6349,22 @@ function sourceChips(text) {
   return chips;
 }
 
+// A mapped page's unanswered sections, each a heading over "Unknown — not investigated yet", filled a skill page
+// with one empty section after another (rc48 hunt: 9 of 16). They fold into one line at the end that names them;
+// a section with anything else in it stays where it is.
+function foldUnfilled(note) {
+  const empty = [];
+  for (const h of [...note.querySelectorAll(":scope > h2")]) {
+    const body = [];
+    for (let n = h.nextElementSibling; n && n.tagName !== "H2"; n = n.nextElementSibling) body.push(n);
+    const words = body.map(n => n.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
+    if (!words.length || !words.every(w => UNFILLED_LINE.test(w.replace(/^[-*•]\s*/, "")))) continue;
+    empty.push(h.textContent.trim());
+    h.remove(); body.forEach(n => n.remove());
+  }
+  if (empty.length) note.appendChild(el("p", { class: "unfilled-sections", text: t("Still unknown: ") + empty.join(" · ") }));
+  return empty;
+}
 // ---------- what a page knows (#1836) ----------
 // A mapped page is a template: every heading is there and most answers are
 // "Unknown — not investigated yet". Shown as written, every page led with what
@@ -7303,7 +7338,7 @@ function sourceList(r) {
   return out;
 }
 function sourceId(text, plain = false) {
-  return plain && !/^source-ref:/.test(text) ? "" : /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
+  return plain ? "" : /^([a-z][\w-]*:[^\n]+?)(?=\s+[—–]\s+|\s*$)/i.exec(text)?.[1] || "";
 }
 // #3104: a source row says what the thing is — a mail's subject, a session's title, a file's name — never
 // its hash. The raw id stays in the row's tooltip. {n, id, kind, title, who, channel, day}
@@ -8546,8 +8581,14 @@ function withoutDateClutter(text, { since = "", due = "" } = {}) {
     .replace(/\s+([.!?。！？])/g, "$1").trim()
     .replace(/\u0005(\d+)\u0005/g, (_, i) => quotes[i]);
 }
+// A Today line whose every clause is labelled: at Cover sensitive, taking the passages out left only "— due 9 Dec."
+// (rc44 hunt), so the row says what it is instead. At Show all the labels go and every word stays (owner,
+// 2026-11-20: "全部显示的时候，应该把这些都显示出来").
 function morningWords(text, r, thread = {}) {
-  text = unlabelled(text);
+  const labelled = hasPrivacy(text);
+  text = privacyLevel === "all" ? String(text).replace(/\s*[\[［](?:personal|sensitive)[\]］]/gi, "") : unlabelled(text);
+  const left = text.replace(/\[W?\d{1,3}\]|[\[［](?:personal|sensitive)[\]］]/gi, "").replace(/[—–-]?\s*due\s+\d{4}-\d{2}-\d{2}/gi, "").replace(/[\s—–\-.,;:。，；：]+/g, "");
+  if (labelled && !/[\p{L}\p{N}]/u.test(left)) return { words: t("A sensitive item (covered)"), context: "", covered: true };
   const cites = [...new Set(text.match(/\[W?\d{1,3}\]/g) || [])].join(" ");
   const words = withoutDateClutter(plainLine(capFirst(threadWords(text, r))), thread);
   return { words, context: cites };
@@ -11164,7 +11205,7 @@ function profileValue(item, r, label, copy) {
     el("span", { html: inline(item.value, r.path) }), done]);
   const say = words => { done.textContent = t(words); button.classList.add("done"); setTimeout(() => button.classList.remove("done"), 1600); };
   button.onclick = () => navigator.clipboard ? navigator.clipboard.writeText(value).then(() => say("Copied"), () => say("Copy failed")) : say("Select and copy");
-  const cites = item.citations.length ? el("span", { class: "pc-cites", html: item.citations.length > 2 ? citeRun(item.citations, r.path) : item.citations.map(n => citeChip(n, r.path)).join("") }) : null;
+  const cites = item.citations.length ? el("span", { class: "pc-cites", html: citeChips(item.citations, r.path) }) : null;
   // The qualifier and sources sit outside the button, so they wrap with each other and not alone under it.
   const after = item.qualifier || cites ? el("span", { class: "pc-after" }, [item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null, cites]) : null;
   const node = noted(el("span", { class: "pc-item" }, [softBreaks(button), after]));
@@ -11881,7 +11922,7 @@ function category(c) {
 // where the value is, never the value.
 Object.assign(UI.zh, { "Service": "服务", "Account": "账号", "Purpose": "用途", "Used in": "用在", "Rotated": "最近更换", "Expires": "到期",
   "Who else has it": "还有谁知道", "Created": "建立", "Link": "链接", "Vault": "保存在",
-  "Add a key": "添加钥匙", "Import a password export (CSV)": "导入密码导出文件（CSV）", "Password or key": "密码或密钥",
+  "Add a key": "添加钥匙", "Import a password export (CSV)": "导入密码导出文件（CSV）", "Import a CSV export": "导入 CSV 文件", "Password or key": "密码或密钥", "Importing from {name} — approve the Keychain prompt…": "正在从 {name} 导入——请在钥匙串弹窗里点允许…", "Filed {n} keys from {name}; {m} had no password.": "从 {name} 导入了 {n} 条，{m} 条没有密码。", "One-click import. Values go to the Keychain; the notebook keeps only what each key is.": "一键导入。密码存进钥匙串，笔记本只记每条是什么。", "Import from a browser in one click — no typing.": "从浏览器一键导入，不用手打。",
   "Save to the Keychain": "存进钥匙串", "Copy": "复制", "Show": "显示", "Hide": "隐藏",
   "Copied · cleared from the clipboard in 30 s": "已复制 · 30 秒后从剪贴板清除",
   "The value is in this Mac's Keychain. Copy it from the reader on this Mac.": "密码在这台电脑的钥匙串里，只能在这台电脑上的阅读器里复制。",
@@ -11894,7 +11935,9 @@ function keysView() {
   const main = document.getElementById("main"), items = inCategory("keys").sort((a, b) => a.title.localeCompare(b.title));
   main.textContent = "";
   const head = el("div", { class: "category-head" }, [el("h1", { text: label("keys") }), items.length ? el("span", { class: "mono", text: String(items.length) }) : null]);
-  main.append(head, liveHere() ? keyAdder() : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
+  // With no keys yet, open the adder so the one-click import buttons are the first thing seen, not hidden
+  // inside a collapsed "Add a key" disclosure. Once there are keys, keep it collapsed so it doesn't nag.
+  main.append(head, liveHere() ? keyAdder(!items.length) : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
   if (!items.length) { main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export.")); return; }
   const cols = ["Service", "Account", "Purpose", "Used in", "Rotated"];
   main.appendChild(el("div", { class: "sheet-scroll keys-sheet", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("keys") }) }, [
@@ -11902,7 +11945,7 @@ function keysView() {
       el("tbody", {}, items.map(r => el("tr", {}, [el("td", { class: "name" }, [el("a", { href: href(r), text: r.title })]),
         ...cols.slice(1).map(col => el("td", {}, [textCell(keyFact(r, col))]))])))])]));
 }
-function keyAdder() {
+function keyAdder(open = false) {
   const field = (name, type = "text") => el("input", { type, name, placeholder: t(name), "aria-label": t(name), autocomplete: type === "password" ? "new-password" : "off" });
   const service = field("Service"), account = field("Account"), secret = field("Password or key", "password"), purpose = field("Purpose");
   const status = el("p", { class: "key-status", role: "status" });
@@ -11924,8 +11967,30 @@ function keyAdder() {
     status.textContent = reply.ok ? t("Filed {n} keys; {m} rows had no password. Delete the export file now: it holds every password in plain text.", { n: reply.filed, m: reply.skipped })
       : reply.error || t("Could not do that. Try again.");
   };
-  return el("details", { class: "key-adder" }, [el("summary", { text: t("Add a key") }), form,
-    el("label", { class: "key-import" }, [el("span", { text: t("Import a password export (CSV)") }), file]), status]);
+  const fromBrowser = (browser, label) => {
+    const button = el("button", { type: "button", class: "btn-action", text: label });
+    button.onclick = async () => {
+      button.disabled = true;
+      status.textContent = t("Importing from {name} — approve the Keychain prompt…", { name: label });
+      const reply = await hostPost("/rem/keys/import", { source: browser });
+      button.disabled = false;
+      status.textContent = reply.ok ? t("Filed {n} keys from {name}; {m} had no password.", { n: reply.filed, m: reply.skipped, name: label })
+        : reply.error || t("Could not do that. Try again.");
+    };
+    return button;
+  };
+  const importers = el("div", { class: "key-importers" }, [
+    fromBrowser("chrome", "Chrome"), fromBrowser("edge", "Edge"), fromBrowser("brave", "Brave"),
+    el("label", { class: "key-import" }, [el("span", { text: t("Import a CSV export") }), file])]);
+  const summary = el("summary", { text: t("Add a key") });
+  const safety = () => el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") });
+  if (open) {
+    // No keys yet: lead with the one-click importers — he wants to click, not type. The manual form stays below.
+    return el("details", { class: "key-adder", open: "" }, [summary,
+      el("p", { class: "key-import-primary", text: t("Import from a browser in one click — no typing.") }),
+      importers, safety(), form, status]);
+  }
+  return el("details", { class: "key-adder" }, [summary, form, safety(), importers, status]);
 }
 function keyPage(r) {
   const rows = ["Service", "Account", "Purpose", "Who else has it", "Used in", "Created", "Rotated", "Expires", "Link", "Vault"]
@@ -13028,9 +13093,12 @@ function projectLiveLate(r) {
 }
 function projectTodayCount(r) { return (REM.today_queue || []).filter(row => row.record === r.path && !row.closed && !row.quiet).length; }
 function projectTodayLink(r, words) {
-  const link = el("a", { class: "project-today-link", href: "#", text: words });
-  link.onclick = () => { todayLead = r.path; };
-  return link;
+  // A project's open items live in Today under their correspondents, never as one project card in the reply deck,
+  // so this opens the Waiting view filtered to the project — the very place and filter id ("project:" + title)
+  // that project's own chip uses there (openTags/openChips) — instead of the deck. todayLead could only reorder
+  // the deck, which holds no card keyed to a project, so a project page's "N open items are in Today" line used to
+  // land on an unrelated card or an empty, off-screen panel (#3165). One shared filter, same as every chip.
+  return el("a", { class: "project-today-link", href: "#view=open&tag=" + encodeURIComponent("project:" + r.title), text: words });
 }
 
 // ---- the head: the page's name and its three views ----
@@ -14731,7 +14799,7 @@ function factValue(item, from) {
   const value = el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? t("read from the page's prose, not its Facts") : "" }, [
     el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null]);
   if (!item.citations.length) return value;
-  const cites = el("span", { html: item.citations.length > 2 ? citeRun(item.citations, from) : item.citations.map(n => citeChip(n, from)).join("") });
+  const cites = el("span", { html: citeChips(item.citations, from) });
   softBreaks(value);
   const walker = document.createTreeWalker(value.firstChild, NodeFilter.SHOW_TEXT);
   let last;
@@ -14913,7 +14981,8 @@ function localizedRelation(link, currentPath) {
 // ("Wren runs the venue at Fernhill ." on a related-page card, rc36 dates fixer).
 function closeStripped(text) { return String(text).replace(/[ \t]+(?=[.,;:!?。，；：！？])/g, "").replace(/[ \t]{2,}/g, " "); }
 function relationCard(link, currentPath = "") {
-  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis && closeStripped(link.basis);
+  // A basis taken from an Insight line keeps its writer's prefix ("Changed: …"); the card shows the sentence.
+  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis && closeStripped(link.basis).replace(/^(?:Now|Pattern|At stake|Changed|现在|规律|关键所在|变化|利害|模式)[:：]\s*/i, "");
   const labelled = link.private || hasPrivacy(basis || "");
   const labels = { linked: "Linked from this page", "linked from": "Links here",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
@@ -15373,6 +15442,7 @@ function record(path, heading) {
     if (li.querySelector(".private") && !rest.textContent.trim()) li.classList.add("private-item");
   });
 
+  foldUnfilled(note);
   const headings = [...note.querySelectorAll("h2, h3, h4, h5, h6")];
   const ids = new Set(), toc = [];
   for (const h of headings) {
@@ -15448,7 +15518,8 @@ function record(path, heading) {
   }
 
   const foot = el("div", { class: "page-foot" });
-  const pathBtn = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: t("Copy the file path") });
+  // The raw path is for the owner's terminal, not for reading: the button says what it does; the path is its tooltip.
+  const pathBtn = el("button", { class: "btn-action copy-path", type: "button", text: t("Copy the file path"), title: r.path });
   pathBtn.onclick = () => copyToClipboard(REM.root + "/" + r.path, pathBtn, t("Path copied"));
   const copyMd = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: t("Copy the page as written, unknowns included") });
   copyMd.onclick = () => copyToClipboard(r.text, copyMd, t("Markdown copied"));
@@ -16945,7 +17016,7 @@ function entryRail(r, text) {
   return parts.length ? el("aside", { class: "gx-rail", "aria-label": graphT("About") }, parts) : null;
 }
 function entryFoot(r) {
-  const path = el("button", { class: "eyebrow-path", type: "button", text: r.path, title: t("Copy the file path") });
+  const path = el("button", { class: "btn-action copy-path", type: "button", text: t("Copy the file path"), title: r.path });
   path.onclick = () => copyToClipboard(REM.root + "/" + r.path, path, t("Path copied"));
   const copy = el("button", { class: "btn-action", type: "button", text: t("Copy Markdown"), title: t("Copy the page as written, unknowns included") });
   copy.onclick = () => copyToClipboard(r.text, copy, t("Markdown copied"));
@@ -17347,14 +17418,6 @@ function evidenceOriginal(context, quote) {
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     ...(context.truncated ? [el("p", { class: "evidence-meta", text: t("This archived excerpt is truncated; find searches only the text shown.") })] : [])]);
 }
-function onenoteSourceLink(context) {
-  const available = context.status === "resolved" && context.link === "ok" && /^https:\/\/[^\s]+$/i.test(context.url || "");
-  if (available) return el("a", { class: "evidence-open-file", href: context.url, target: "_blank", rel: "noopener noreferrer", text: t("Open in OneNote ↗") });
-  const message = context.status === "error" ? "Source information could not be read"
-    : context.status === "not_found" ? "Source record not found in this local snapshot"
-    : context.link === "api_only" ? "Only an API address is available; no web link" : "Source link unavailable";
-  return el("p", { class: "evidence-meta", text: t(message) });
-}
 function sourceIdentity(context) {
   const from = context.participants?.from;
   const sender = (Array.isArray(from) ? from[0] : from) || context.sender || "";
@@ -17394,7 +17457,6 @@ function openEvidence(r, number, trigger, { fromList = false } = {}) {
     show.onclick = () => { closeEvidence(); band.closest("details")?.setAttribute("open", ""); band.reveal(numbers); };
     panel.appendChild(show);
   }
-  if (context?.source === "onenote") panel.appendChild(onenoteSourceLink(context));
   const sessionSource = sourceId(source.text, source.plain);
   const session = (REM.records || []).find(record => record.category === "sessions" && record.session_messages?.some(message => message.source === sessionSource));
   if (session) {

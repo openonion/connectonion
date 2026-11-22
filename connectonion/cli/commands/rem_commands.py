@@ -1219,8 +1219,6 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
             root, confirm=lambda summary: _start_consent(ctx, summary, yes=yes), mail=mail,
             report_unchanged=sys.stdin.isatty())
         sources = subscriptions(root)
-        from ...rem.remote_sources import refresh_initial
-        remote_reads = refresh_initial(root, sources) if run_state["consented"] and not estimate_only else {}
         clients, errors = {}, []
         for kind in sorted(selected):
             try:
@@ -1235,7 +1233,6 @@ def init_rem_flow(ctx, *, days=MAP_DAYS, skills_dir=(), mine=(), mail=(), name="
                                skill_directories=skills_dir or None, mine=owned, source_errors=errors,
                                absent=_absent_mail(selected, available, failed, sources, bool(mail)), name=name,
                                capture_sources=True, progress=progress, session_days=days)
-            result["remote_reads"] = remote_reads
             run_state["result"] = result
             if not estimate_only:
                 from ...rem.sessions import import_sessions
@@ -2489,14 +2486,9 @@ def make_rem_app(factory):
         from ...rem.service import set_window, toggle_source
 
         def operation(root):
-            if name == "onenote" and (since or only or force):
-                from ...rem.files import RemError
-                raise RemError("OneNote reads selected pages; --since/--only/--force do not apply")
             subscription = toggle_source(root, name, True, project=project, about=about,
                                          since=since or "60d", chats=chat)
             result = {"subscription": subscription, "enabled": True}
-            if name == "onenote":
-                return result, ["init", "--no-investigate", "--no-start"]
             if since and not (project or about):
                 result.update(set_window(root, subscription, since, narrow=only, force=force))
             if chat:
@@ -2515,22 +2507,6 @@ def make_rem_app(factory):
             return {"subscription": name, "enabled": bool(source.get("enabled")),
                     **({"chats": source.get("chats") or []} if chat else {})}, ["sources"]
         _handle(ctx, operation, ["sources"])
-
-    @sources_app.command("connect", cls=V("co rem sources connect"))
-    def connect_source(ctx: typer.Context, name: str = typer.Argument(""),
-                       config: Optional[Path] = typer.Option(None, "--config")):
-        from ...rem.remote_sources import connect, KINDS
-        from ...rem.remote_wizard import interactive
-        if not name:
-            if config is not None or not interactive():
-                raise typer.BadParameter("Choose NAME; scripts also require --config FILE")
-            from importlib.util import find_spec
-            from click import Choice
-            choices = [kind for kind in KINDS if find_spec(f"connectonion.rem.{kind}_remote")]
-            if not choices:
-                raise typer.BadParameter("No remote source feature is installed")
-            name = typer.prompt("Connect source", type=Choice(choices))
-        _handle(ctx, lambda root: (connect(root, name, config), ["init", "--no-start"]), ["sources"])
 
     @sources_app.command("add", cls=V("co rem sources add"))
     def add_source(ctx: typer.Context, name: str = typer.Argument(...),

@@ -18,8 +18,7 @@ from .store_messages import archived_message
 
 REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
 CITATION = re.compile(r"\[(W?\d{1,3})\]")
-SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+((?:[a-z][\w-]*:|[^\n]+?#onenote:)[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
-SOURCE_ID = re.compile(r"^((?:[a-z][\w-]*:|[^\n]+?#onenote:)[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I)
+SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
 WIKILINK = re.compile(r"\[\[((?:orgs|people|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
@@ -129,13 +128,6 @@ def source_definitions(sources: str) -> list[tuple[str, str]]:
     listed = re.findall(r'^\s*(?:- )?\[(W?\d+)\]\s*:?(.*)$', sources, re.M)
     numbered = re.split(r'^(?:## |Investigation:)', sources, maxsplit=1, flags=re.M)[0]
     return listed + re.findall(r'^[ \t]*(\d+)\.[ \t]+(\S[^\n]*)$', numbered, re.M)
-
-
-def source_references(text: str) -> list[tuple[str, str]]:
-    """Typed IDs from the source definitions accepted by validation and the Reader."""
-    sources = re.split(r'^## Sources[ \t]*\r?$', text, maxsplit=1, flags=re.M)[-1]
-    return [(number, match[1]) for number, description in source_definitions(sources)
-            if (match := SOURCE_ID.match(description.strip()))]
 
 
 def _not_sources(text: str) -> str:
@@ -348,7 +340,7 @@ def tag_layer(nodes: list[dict], paths: dict, vocabulary: dict) -> dict:
 
 
 def _source_ids(records: list[dict]) -> set[str]:
-    numbered = {source for row in records for _, source in source_references(row["text"])}
+    numbered = {source for row in records for _, source in SOURCE.findall(row["text"])}
     sessions = {source for row in records if row.get("category") == "sessions"
                 for source in re.findall(rf"^- ({SESSION_SOURCE_PATTERN})$",
                                          row["text"].partition("\n## Sources\n")[2], re.M)}
@@ -359,7 +351,7 @@ def _budget_order(records: list[dict], ids: set[str]) -> list[str]:
     """What a reader clicks first: a claim's numbered sources, mail among them, then the
     typed lines a session page lists. Sorted by id, 8,000 session lines spent the budget
     before the first gmail: or outlook: citation."""
-    numbered = {source for row in records for _, source in source_references(row["text"])}
+    numbered = {source for row in records for _, source in SOURCE.findall(row["text"])}
     return sorted(ids, key=lambda source: (source not in numbered,
                                            source.split(":", 1)[0] not in ("gmail", "outlook"), source))
 
@@ -416,8 +408,6 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     """
     from .evidence import research_contexts
     research = research_contexts(root, records, private=private)
-    from .source_links import SourceRecords
-    imported = SourceRecords(root)
     ids = _source_ids(records)
     file = state_path(root, "rem.db")
     if not ids or file.is_symlink():
@@ -439,8 +429,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                 from .skill_runs import instruction_context, skill_record_context
                 context = (instruction_context(root, source) or skill_record_context(root, source)
                            or repository_context(root, source, private) or retained_session_context(root, source, private)
-                           or github_context(root, source) or attachment_context(root, source) or research.get(source)
-                           or imported.context(source, private))
+                           or github_context(root, source) or attachment_context(root, source) or research.get(source))
                 if context:
                     output[source] = {**context, 'excerpt': context['excerpt'][:budget],
                                       'truncated': context['truncated'] or len(context['excerpt']) > budget}

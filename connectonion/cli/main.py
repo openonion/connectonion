@@ -3132,21 +3132,167 @@ app.add_typer(linear_app, name="linear")
 # Canny feedback boards (#2050): our own commands on Canny's REST API.
 from .commands.canny_commands import canny_app
 app.add_typer(canny_app, name="canny")
+# Asana: our own commands on Asana's REST API, with ASANA_ACCESS_TOKEN.
+from .commands.asana_commands import asana_app
+app.add_typer(asana_app, name="asana")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
 
 
+# Obsidian: local Markdown notes with explicit folder selection.
+obsidian_app = _typer_app(
+    help="Browse Obsidian vaults and list, read, or search Markdown notes. Read-only.\n\n"
+         "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
+         "The list is read-only. If a vault is available, the output suggests a command to browse it. "
+         "Use --folder to choose where to look for notes.\n\n"
+         "All Obsidian commands work offline.\n\n"
+         "Exit 0 means the list loaded, even if it is empty. "
+         "Exit 1 means the list could not be read or its row numbers could not be saved. "
+         "Exit 2 means an argument is invalid. Check the error and this help.",
+    epilog='Example:  co obsidian\n\n'
+           'Example:\n\nco obsidian ls --vault Personal --folder Course',
+    invoke_without_command=True,
+)
+app.add_typer(obsidian_app, name="obsidian")
+
+
+@obsidian_app.callback(invoke_without_command=True)
+def _obsidian_default(ctx: typer.Context):
+    """List all registered vaults when no Obsidian subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        from .commands.obsidian_commands import handle_obsidian_vaults
+        handle_obsidian_vaults()
+
+
+@obsidian_app.command("vaults", epilog="Example:  co obsidian vaults\n\nExample:  co obsidian vaults --json")
+def _obsidian_vaults(
+    json_output: bool = typer.Option(
+        False, "--json", help="Print all registered vaults as JSON and send the suggested next command to stderr."
+    ),
+):
+    """List numbered vaults with their paths, availability and open status. Read-only.
+
+    The list checks which vault folders exist without opening notes. A closed
+    vault can still be read. If a vault is available, the output suggests a
+    command to list its folders.
+    Use a number from the latest list, for example co obsidian ls --vault 1.
+    The number works for 15 minutes. A unique vault name or path also works.
+
+    Exit 0 means the list loaded, even if it is empty. If it is empty, open a
+    vault in Obsidian or give ls its path.
+    Exit 1 means the vault list could not be read or its row numbers could
+    not be saved. See the error message.
+    Exit 2 means an argument is invalid. Check this help for valid options.
+    """
+    from .commands.obsidian_commands import handle_obsidian_vaults
+    handle_obsidian_vaults(json_output=json_output)
+
+
+@obsidian_app.command("ls", short_help="List a vault's folders or the Markdown notes in selected folders. Read-only.",
+                      epilog='Example:  co obsidian ls --vault 1\n\n'
+                             'Example:  co obsidian ls --vault Personal --folder 1')
+def _obsidian_ls(
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault row, unique registered name, or path; omit when only one is available"),
+    folders: List[str] = typer.Option(None, "--folder", help="Folder row or vault-relative path; repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many notes, most recently modified first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print the result as JSON; no row numbers are saved"),
+):
+    """List a vault's folders or the Markdown notes in selected folders. Read-only.
+
+    With no --folder, the command lists folders and Markdown filenames at the
+    top of the vault. When folders are listed, the output suggests a command
+    to list notes in the first folder.
+    Pass a number from that vault's latest folder list or a path such as
+    Course to --folder. For a folder named 1, use --folder ./1.
+
+    With --folder, shows the latest 20 notes by default. Use -n up to 250.
+    Numbered rows show filenames, with a parent path when a name repeats.
+    Row numbers work for 15 minutes. JSON output does not save them.
+
+    Exit 0 means the list loaded. If it is empty, check the folder selection.
+    Exit 1 means a file or vault could not be read, or the list could not be
+    saved. The error message shows what to do next.
+    Exit 2 means the arguments or selection are invalid. Check this help or
+    choose a vault by its path if several vaults have the same name.
+    """
+    from .commands.obsidian_commands import handle_obsidian_ls
+    handle_obsidian_ls(vault=vault, folders=folders or (), last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("read", epilog="Example:  co obsidian read 1\n\n"
+                                    "Example:  co obsidian read Course/Note.md --folder Course")
+def _obsidian_read(
+    ref: str = typer.Argument(..., help="Note path, exact filename title, or row number from ls or search"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path for an explicit scope"),
+    folders: List[str] = typer.Option(None, "--folder", help="Vault-relative folder; required for a note path or title; repeat to select several"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID shown by ls or search (lasts 15 minutes)"),
+    json_output: bool = typer.Option(False, "--json", help="Print the full note record as JSON"),
+    raw: bool = typer.Option(False, "--raw", help="Show original Markdown in a terminal"),
+):
+    """Read a note by row number, path or exact filename title. Read-only.
+
+    Use a note number from ls with --folder, or from search.
+    Numbers from a folder list do not select notes. Note rows last 15 minutes.
+    If the list suggests a read command with --listing, copy it to use those
+    same note numbers even after you list or search again.
+    You can read a row without giving its vault or folders again. If you
+    give --vault with a row, also give its --folder. Both must match the list.
+    For a path or title, give --folder and use --vault if several vaults are
+    available.
+
+    The terminal shows formatted Markdown. Use --raw for the original text
+    or --json for the full note record. Piped output is raw by default.
+    The suggested search command goes to stderr, so it stays out of the note text.
+
+    Exit 0 means the note was read.
+    Exit 1 means the note could not be found or read. Use its path if several
+    notes have the same title.
+    Exit 2 means the arguments or selection are invalid, or the row expired.
+    Check the vault and folders or list notes again.
+    """
+    from .commands.obsidian_commands import handle_obsidian_read
+    handle_obsidian_read(ref, vault=vault, folders=folders or (), listing=listing, json_output=json_output, raw=raw)
+
+
+@obsidian_app.command("search", epilog='Example:\n\nco obsidian search "logic lecture" --folder Course')
+def _obsidian_search(
+    query: str = typer.Argument(..., help="All terms must match; quote phrases inside the query for an exact phrase"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many matches, title matches first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print search hits as JSON; no row numbers are saved"),
+):
+    """Search selected notes across title, body, tags, properties and links. Read-only.
+
+    All query terms must match, ignoring case. The example finds notes matching
+    both logic and lecture. Quotes inside the query keep a phrase together.
+    A query can match any field. Use co obsidian read with --json to check
+    a tag, property or link in a matching note.
+
+    Shows at most 20 matches by default, with title matches first. Row numbers
+    work for 15 minutes. JSON output does not save them. Repeat --folder to
+    search several folders.
+
+    Exit 0 means the search completed. If nothing matched, try a simpler query
+    in the same folders.
+    Exit 1 means a file or vault could not be read, or the list of matches
+    could not be saved. The error message shows what to do next.
+    Exit 2 means the query, arguments or selection are invalid. Check this help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_search
+    handle_obsidian_search(query, vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
+
+
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.
 onenote_app = _typer_app(
-    help="Your OneNote pages. With no subcommand, show recent pages; ls lists notebooks. source imports selected pages read-only. create writes a new page. Next: co onenote source --help",
+    help="Your OneNote pages. Bare co onenote shows recent pages; ls shows notebooks. Reading is Read-only.",
     epilog='Example:  co onenote ls && co onenote pages 2 && co onenote read 1',
     invoke_without_command=True,
 )
 app.add_typer(onenote_app, name="onenote")
-
-from .commands.onenote_source_commands import register_onenote_source
-register_onenote_source(onenote_app, _typer_app)
 
 
 @onenote_app.callback(invoke_without_command=True)
@@ -3158,11 +3304,10 @@ def _onenote_default(ctx: typer.Context):
 
 
 @onenote_app.command("ls", epilog="Example:  co onenote ls")
-def _onenote_ls(show_ids: bool = typer.Option(False, "--ids", help="Also show full section IDs for scripts"),
-                as_json: bool = typer.Option(False, "--json", help="Output notebook metadata as JSON")):
+def _onenote_ls(show_ids: bool = typer.Option(False, "--ids", help="Also show full section IDs for scripts")):
     """List notebooks with numbered sections for pages/create. Read-only."""
     from .commands.onenote_commands import handle_onenote_ls
-    handle_onenote_ls(show_ids=show_ids, as_json=as_json)
+    handle_onenote_ls(show_ids=show_ids)
 
 
 @onenote_app.command("pages", epilog='Example:  co onenote pages')
@@ -3191,6 +3336,36 @@ def _onenote_create(section: str = typer.Argument(..., help="Section number from
     """Create a page in a section numbered by ls; never changes an existing one. Prints its id and link. Writes to OneNote."""
     from .commands.onenote_commands import handle_onenote_create
     handle_onenote_create(section, title, text, listing=listing)
+
+
+@onenote_app.command(
+    "changes",
+    epilog=('Example: co onenote changes --since 2026-01-01T00:00:00Z --json'
+            '\n\nNext: co onenote show <id> --json'),
+)
+def _onenote_changes(
+    since: str = typer.Option(..., "--since", help="Exclusive ISO 8601 timestamp with timezone"),
+    output_json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+    root: Optional[Path] = typer.Option(None, "--root", help="REM notebook with source approval"),
+):
+    """List changed metadata for approved OneNote pages. Read-only."""
+    from .commands.onenote_commands import handle_onenote_source
+    handle_onenote_source("changes", since, root, output_json)
+
+
+@onenote_app.command(
+    "show",
+    epilog=('Example: co onenote show "0-example!123" --json'
+            '\n\nNext: co onenote changes --since 2026-01-01T00:00:00Z --json'),
+)
+def _onenote_show(
+    page_id: str = typer.Argument(..., help="Exact approved OneNote page ID"),
+    output_json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+    root: Optional[Path] = typer.Option(None, "--root", help="REM notebook with source approval"),
+):
+    """Read one approved OneNote page by its stable ID. Read-only."""
+    from .commands.onenote_commands import handle_onenote_source
+    handle_onenote_source("show", page_id, root, output_json)
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.

@@ -77,9 +77,9 @@ def claude_projects_root() -> Path:
 # coding sessions older than half a year describe work that has moved on, while
 # mail keeps its value for years (people, commitments, what was agreed).
 DEFAULT_LOOKBACK_DAYS = 60
-MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
+MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730, "wechat": 730}
 # Every kind a subscription can be consented for and read.
-READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS, "onenote")
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
 
 
 def subscriptions(root: Path) -> dict:
@@ -87,6 +87,7 @@ def subscriptions(root: Path) -> dict:
     if not isinstance(saved, dict):
         raise RemError("Invalid subscriptions file; preserve it for diagnosis")
     since = (now() - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
+    _wechat_ready = (Path.home() / ".co" / "wechat" / "keys.json").is_file()
     defaults = {
         "codex": {"id": "codex", "kind": "codex", "root": str(codex_sessions_root()),
                   "project": None, "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["codex"],
@@ -107,12 +108,24 @@ def subscriptions(root: Path) -> dict:
                      "enabled": False, "consented": False,
                      "adapter": "available" if (chat_home("whatsapp") / "received.jsonl").is_file()
                      else "waiting for co whatsapp listen"},
+        # Off until chosen. Unlike WhatsApp it needs no listener: `co wechat sync` reads WeChat for Mac's own
+        # databases each time, and "*" reads every one-to-one chat (people), never a group unless named.
+        # On by default once WeChat's keys are captured (co wechat key capture): reading your own WeChat
+        # locally is reversible, so context-over-control means do it, not ask (co rem sources remove wechat undoes it).
+        "wechat": {"id": "wechat", "kind": "wechat", "root": str(chat_home("wechat")), "chats": ["*"],
+                   "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["wechat"],
+                   "enabled": _wechat_ready, "consented": _wechat_ready,
+                   "adapter": "available" if _wechat_ready else "waiting for co wechat"},
     }
     defaults.update(saved)
-    defaults.setdefault("onenote", {"id": "onenote", "kind": "onenote",
-                                   "root": str(root.resolve() / "docs/onenote"),
-                                   "enabled": False, "consented": False,
-                                   "adapter": "available", "since": None})
+    # Capturing WeChat's keys IS the local, reversible consent (#3279): keys present means the source is
+    # enabled and consented, even for a subscription stored before #3281 with consented:False, so it is one
+    # source of truth and a page we seed is a page we fill (#3289). An explicit `co rem sources remove wechat`
+    # (unsubscribed) is respected and stays off.
+    wechat = defaults.get("wechat")
+    if _wechat_ready and wechat and not wechat.get("unsubscribed"):
+        wechat["enabled"] = True
+        wechat["consented"] = True
     return defaults
 
 
@@ -153,7 +166,6 @@ def approve_sources(root: Path, *, mail=()) -> None:
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
                                                       "authorized_at": now().isoformat(),
-                                                      "summary_mail": list(mail),
                                                       "summary_value": consent_summary(root, mail=mail),
                                                       "summary": summary_fingerprint(root, mail=mail)})
 
@@ -183,11 +195,6 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
-        if name == "onenote" and enabled:
-            from .onenote_imports import identity
-            declared = identity(root)
-            if declared != sources[name].get("import_identity"):
-                sources[name].update(import_identity=declared, consented=False)
         if project or about:
             if name not in KINDS:
                 raise RemError(f"A scope narrows a coding source ({', '.join(KINDS)}), not {name}")
@@ -206,7 +213,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise RemError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -219,7 +226,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
             sources[name]["chats"] = sorted(chosen)
             enabled = bool(chosen)
         elif enabled and sources[name].get("kind") in CHAT_KINDS and not sources[name].get("chats"):
-            raise RemError("Name the chats to read: --chat <id>, from `co whatsapp chats`")
+            raise RemError(f"Name the chats to read: --chat <id>, from `co {sources[name].get('kind')} chats`")
         sources[name]["enabled"] = enabled
         # "Never subscribed" and "the user said stop" both read as enabled=False;
         # only the second forbids an explicit investigation from reading it.
@@ -258,9 +265,7 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     with maintenance_lock(root):
         sources = subscriptions(root)
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
-        if name == "onenote":
-            raise RemError("OneNote reads selected page snapshots; --since does not apply")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
         since = now() - timedelta(days=days)
         current = sources[name].get("since")
@@ -1034,19 +1039,12 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             chats = source.get("chats") or []
             state = (f"will read {len(chats)} chat(s), both sides, the agent's own replies left out"
                      if source.get("adapter") == "available" else source["adapter"])
-        elif source.get("kind") == "onenote":
-            state = ("will automatically read selected OneNote pages on init and sync after approval"
-                     if source.get("remote") else "will read selected local OneNote imports")
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
-        if source.get("kind") == "onenote":
-            sources[name]["import_identity"] = source.get("import_identity")
-            if source.get("remote"):
-                sources[name]["remote"] = source["remote"]
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
@@ -1089,7 +1087,7 @@ def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
         previous = read_json(state_path(root, "consent.json"), {})
         write_json(state_path(root, "consent.json"), {
             **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
-            "granted_by": "init", "summary_mail": [], "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
+            "granted_by": "init", "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
 
 
 def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
@@ -1331,10 +1329,7 @@ def run_sync(root: Path, *, source: str = "", with_person: str = "", dry_run: bo
             name: (pending_metadata(sub, progress.get(name, {})) if sub.get("kind") in KINDS
                    else {"chats": sub.get("chats") or [], "body_reads": False,
                          "source_available": sub.get("adapter") == "available"}
-                   if sub.get("kind") in CHAT_KINDS else {"body_reads": False, "remote_polling": False,
-                         "remote_collection_configured": bool(sub.get("remote")),
-                         "import_identity": sub.get("import_identity")}
-                   if sub.get("kind") == "onenote" else {"candidate_files": None, "message_count": None, "body_reads": False,
+                   if sub.get("kind") in CHAT_KINDS else {"candidate_files": None, "message_count": None, "body_reads": False,
                          "source_available": mail_available(sub["kind"]),
                          "cursor": progress.get(name, {}).get("cursor") or sub.get("since")})
             for name, sub in _selected_sources(root, source).items()},
@@ -1627,9 +1622,6 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         if len(items) >= max_items or remaining <= 0:
             break
         try:
-            if subscription.get("kind") == "onenote" and not with_person:
-                from .remote_sources import refresh
-                refresh(root, subscription)
             if subscription.get("kind") in MAIL_KINDS:
                 try:
                     client = mail_client(subscription["kind"])
@@ -1640,9 +1632,6 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                     raise RemError(f"Mailbox configuration could not be loaded; run `co auth {provider}`") from error
                 batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
                                      remaining, client, only=with_person)
-            elif subscription.get("kind") == "onenote" and not with_person:
-                from .onenote_imports import collect_onenote
-                batch = collect_onenote(root, subscription, progress.get(name, {}), 1, remaining)
             elif with_person:
                 continue  # a person is a mail concept; a coding session has no correspondent
             elif subscription.get("kind") in CHAT_KINDS:
@@ -1741,7 +1730,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                                   for page in item["feedback_pending_targets"]))
     elif runner is None or runner is run_stage:
         from .leads import cooling, nothing_new, page_leads, project_writer_pages
-        found = [] if kind == "onenote" else page_leads(Notebook(root), items)
+        found = page_leads(Notebook(root), items)
         writer, resting = project_writer_pages(Notebook(root), found), cooling(root, found)
         passed = writer + resting
         current = [lead for lead in found if lead not in passed and nothing_new(Notebook(root), lead, items)]

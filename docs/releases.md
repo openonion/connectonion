@@ -19,21 +19,61 @@ no `AsyncClient`, and every remote agent call crashed.
   overflow the OIP frame limit. If a target read fails, the command says
   "nothing was written" and stops before loading any cookies ([#2887](https://github.com/openonion/connectonion/issues/2887)).
 
+## Current preview
+
+Release candidate **1.9.7rc8**: rc7's reworded topic link reviews no longer re-ask the stored ones; the stale path questions migrate to page titles ([#3292](https://github.com/openonion/connectonion/pull/3292)). See [1.9.7rc8 notes](releases/1.9.7rc8.md).
+Before it, release candidate **1.9.7rc7**: a reader polish batch (record pages open at one width, a project page's "in Today" opens the filtered Waiting view, calendar titles clamp, the empty Keys page leads with one-click import, a topic link review names the page not its file path) and the WeChat upgrade fix — an existing install's stale wechat source now implies consent once keys are captured, and seeding matches the reader's gate, so the night both seeds and fills WeChat people. See [1.9.7rc7 notes](releases/1.9.7rc7.md).
+Before it, release candidate **1.9.7rc6**: WeChat as a co rem source that seeds people into the map and the night. See [1.9.7rc6 notes](releases/1.9.7rc6.md).
+Before it, release candidate **1.9.7rc5**: the Control Center has an admin section, shown only to admins: who joined, Remove/Block, rotate the invite without a restart, activity, health and the log. See [1.9.7rc5 notes](releases/1.9.7rc5.md).
+Before it, release candidate **1.9.7rc4**: WeChat as a co rem source, and one-click key import from Chrome/Edge/Brave. See [1.9.7rc4 notes](releases/1.9.7rc4.md).
+Before it, release candidate **1.9.7rc3**: `restricted: env` passes named Host variables to the tools, and the caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. See [1.9.7rc3 notes](releases/1.9.7rc3.md).
+Before it, release candidate **1.9.7rc2**: `co wechat` reads WeChat 4.1 for Mac with one command to get the keys; bare `co wechat` lists your chats. See [1.9.7rc2 notes](releases/1.9.7rc2.md).
+Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from host.yaml, no silent co/ model, `co obsidian`
+and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.7rc5'
+```
+
 ## Current release
 
-Stable **1.9.5** is the default production channel. A fresh install works again (typer 0.29.0
+Stable **1.9.6** is the default production channel. `co init` starts the Host and leaves it running on
+macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through
+your logged-in Claude Code with no API key. REM gets the new desk, a knowledge graph, three privacy
+levels and hand-offs you can watch; `co send` / `co receive` move files between agents; `co wechat`
+reads your own WeChat for Mac history locally. See [1.9.6 notes](releases/1.9.6.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.6).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.6'
+```
+
+## Previous stable
+
+Stable **1.9.5**: A fresh install works again (typer 0.29.0
 broke every `co` command; it is capped below 0.29); REM reads each slot's mail while the Codex weekly
 floor holds investigation work; nothing in the reader asks you to copy a command. See
 [1.9.5 notes](releases/1.9.5.md) and the
 [GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.5).
 
-```bash
-python -m pip install --upgrade 'connectonion==1.9.5'
-```
+Stable **1.9.4** was a hotfix on 1.9.3, in which the first
+`co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
+waits on a build; a saved page opens at once marked "Updating…". See
+[1.9.4 notes](releases/1.9.4.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
 
-## Current preview
+## Previous previews
 
-Release candidate **1.9.6rc41**: rc39 and rc40, published. See [1.9.6rc41 notes](releases/1.9.6rc41.md).
+The candidates for 1.9.6:
+
+Release candidate **1.9.6rc48**: REM related cards drop the writer's prefix; the page foot says Copy the file path. See [1.9.6rc48 notes](releases/1.9.6rc48.md).
+Before it, release candidate **1.9.6rc47**: on a phone, a linked page named by a long question wraps instead of widening the page. See [1.9.6rc47 notes](releases/1.9.6rc47.md).
+Before it, release candidate **1.9.6rc46**: a Windows background Host counts as running only when it answers, and a Host the relay refuses stops with the reason. See [1.9.6rc46 notes](releases/1.9.6rc46.md).
+Before it, release candidate **1.9.6rc45**: on a phone, Today no longer zooms out when a finished hand-off has a long summary; a `claude-code` Host names a missing Claude login. See [1.9.6rc45 notes](releases/1.9.6rc45.md).
+Before it, release candidate **1.9.6rc44**: global `co init` on Windows from an elevated shell starts a working Host, `claude-code` by default when it is logged in. See [1.9.6rc44 notes](releases/1.9.6rc44.md).
+Before it, release candidate **1.9.6rc43**: the Windows logon Host starts when co was set up from an elevated shell. See [1.9.6rc43 notes](releases/1.9.6rc43.md).
+Before it, release candidate **1.9.6rc42**: rc39 to rc41, published. See [1.9.6rc42 notes](releases/1.9.6rc42.md).
+Before it, release candidate **1.9.6rc41** (tagged, not published): See [1.9.6rc41 notes](releases/1.9.6rc41.md).
 Before it, release candidate **1.9.6rc40** (tagged, not published): rc39's changes, published, plus `co init` that skips the background Host on Linux
 without a systemd user session. See [1.9.6rc40 notes](releases/1.9.6rc40.md).
 Before it, release candidate **1.9.6rc39** (tagged, not published): `co init` starts the Host on macOS, Linux and Windows, and `model: claude-code` in
@@ -149,20 +189,6 @@ knows. Lists and the other records keep their old layouts until phases 2 and 3. 
 **1.9.6rc1** made Today's open reply show whole lines on a desktop and start on screen on a phone.
 Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
 [1.9.6rc1 notes](releases/1.9.6rc1.md).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.6rc36'
-```
-
-## Previous stable
-
-Stable **1.9.4** was a hotfix on 1.9.3, in which the first
-`co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
-waits on a build; a saved page opens at once marked "Updating…". See
-[1.9.4 notes](releases/1.9.4.md) and the
-[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
-
-## Previous previews
 
 Release candidate **1.9.5rc1**: nothing in the reader asks you to copy a command any more; a page that
 waited while you typed says "Updates waiting" and keeps your words; a headless `co claude run`
