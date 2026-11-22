@@ -3623,10 +3623,10 @@
   .stretches { position: relative; height: calc(var(--row, 1) * 28px); margin: 2px 0 4px; }
   /* A phone: the three biggest stretches in one row that scrolls sideways, under a curve two-thirds as tall. */
   /* A phone: at most three stretches listed under the chart, one line each, then 全部 → (art director on #3371). */
-  .stretches.stacked { height: auto; display: grid; gap: 0; margin-left: -64px; }
+  .stretches.stacked { height: auto; display: grid; gap: 8px; margin: 4px 0 0 -64px; }
   /* One text line each, 24px to tap (WCAG 2.5.8), not the 44px buttons get: three 44px rows would push the first
      card's Send off a phone's first screen (D-10). */
-  #main .stretches.stacked .stretch > summary { min-height: 24px; padding-block: 0; align-items: center; }
+  #main .stretches.stacked .stretch > summary { min-height: 24px; padding-block: 0; margin-left: 0; align-items: center; }  /* the whole row is the target */
   /* Its hour labels go: each stretch under it says its own times. */
   .night-card .hypno.short { height: 32px; margin: 4px 0 2px; }
   .hypno.short svg { height: 32px; }
@@ -3636,6 +3636,9 @@
   /* One line for who is waiting (sprint T3: «一行 N 件是你的»): the count at title size and the faces beside it, each
      face's days to its right, so the curve and the first card's Send share the first screen (D-10). */
   .desk-head { margin: 0 0 12px; }
+  .desk-head.plain { margin: 0 0 8px; }
+  .desk-head.plain .count-line, .desk-head.plain .count-line .count { font: var(--w-regular) var(--s-body)/var(--lh-ui) var(--font); letter-spacing: 0; }
+  .desk-head.plain .count-line .count { font-weight: var(--w-bold); }
   .desk-head .nb.solo .faces { flex-direction: row; align-items: center; }
   :is(.night-card, .desk-head) .nb.solo .faces { padding: 2px 0 0; gap: 16px; }
   :is(.night-card, .desk-head) .count-line .count { font-size: var(--s-head); }
@@ -3656,12 +3659,6 @@
     .night-card .frow { padding: 0 4px; margin: 0 -4px; }
     /* The 看 keeps its 44px target; the line it sits on stays one text line tall and the target overhangs it. */
     .nh-handled { display: flex; align-items: center; height: 18px; }
-    .night-card.phone .nh { gap: 8px; }
-    .night-card.phone .nh .nb.solo { flex: 1; min-width: 0; }
-    .night-card.phone .nh .faces { gap: 8px; padding: 0; border-top: 0; }
-    .night-card.phone .nh .count-line .count { font-size: var(--s-ui); letter-spacing: 0; }
-    .night-card.phone .nh .count-line { gap: 4px; flex-wrap: nowrap; }
-    .night-card.phone .nh .deal .dd { display: none; }
     .night-card.phone .stretches .stretch-all { justify-self: start; margin: 4px 0; }
   }
   .stretch { position: absolute; top: calc(var(--row, 0) * 28px); max-width: 40%; }
@@ -11068,24 +11065,24 @@ function nightWords() {
 // Today opens with the night (#3311, owner 2026-11-22: the sleep curve stays on top, it is REM's signature): the
 // curve, the work under it on the same clock, what REM handled, and what it could not read, then who waits.
 // Who is waiting is the desk's title, over its first card (art director on #3371): the night block speaks only of
-// the night. A phone has no room for a second line, so there it shares 昨夜's line inside the night card.
+// the night, on a phone too, where 昨夜's line says 昨夜 and nothing else.
 function waitingLine(groups, current, ticked) {
   return el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [countLine(ticked), groups.length ? faceStrip(groups, current) : null])]);
 }
+// A phone says it in one plain line with no faces (art director, #3371): the card's own ‹ 1/4 › already counts and
+// deals, and the four circles would cost 发送 its place on the first screen (D-10).
 function deskHead(groups, current, ticked) {
-  if (typeof window !== "undefined" && window.innerWidth <= 640) return null;
+  if (typeof window !== "undefined" && window.innerWidth <= 640) return el("div", { class: "desk-head plain" }, [countLine(ticked)]);
   return el("div", { class: "desk-head" }, [waitingLine(groups, current, ticked)]);
 }
 function nightCard(groups, current, ticked) {
   const words = nightWords(), asOf = new Date(REM.as_of).getTime() || Date.now();
   const gap = coverageLine(), handled = nightLine(), phone = typeof window !== "undefined" && window.innerWidth <= 640;
-  const people = phone ? waitingLine(groups, current, ticked) : null;
   // What REM settled for him rides the heading's line, so the chart and the first card's Send both fit the first
-  // screen (D-10). On a phone the waiting line takes the heading's line (deskHead draws nothing there) and the
-  // settled line ends the stretch list.
+  // screen (D-10). On a phone the settled line follows the cards (todaySide).
   const timeline = nightTimeline(asOf);
   return el("section", { class: "night-card card sparse" + (phone ? " phone" : ""), "aria-label": t("Last night") }, [
-    phone ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), people])
+    phone ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") })])
       : words || handled ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), words ? el("span", { class: "night-sum", text: words }) : null,
         handled ? el("span", { class: "nh-handled" }, [handled]) : null]) : null,
     timeline,

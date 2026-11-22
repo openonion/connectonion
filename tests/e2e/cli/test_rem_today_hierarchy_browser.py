@@ -61,6 +61,24 @@ def test_the_rails_numbers_are_worded_controls(today, size):
     assert "approve" not in others.inner_text().lower()
 
 
+def _raise(page, path):
+    """Deal a card onto the desk: by its face on a wide screen, by the card's own Next card on a phone, which
+    has no faces since sprint T3 (art director, #3371: the card's ‹ 1/4 › already counts)."""
+    face = page.locator(f'.deal[data-path="{path}"]')
+    if face.count() and face.first.is_visible():
+        face.first.click()
+        return
+    for _ in range(page.locator(".today-brief .qcard").count()):
+        if page.locator(".today-brief .qcard.focal").get_attribute("data-path") == path:
+            return
+        page.locator(".today-brief .qcard.focal").get_by_role("button", name="Next card").first.click()
+    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == path
+
+
+def _paths(page):
+    return [card.get_attribute("data-path") for card in page.locator(".today-brief .qcard").all()]
+
+
 @pytest.mark.parametrize("size", SIZES)
 def test_the_header_and_the_badge_say_the_same_number_and_the_people_are_a_subset_in_words(today, size):
     page, _, _ = today
@@ -91,8 +109,8 @@ def test_every_card_has_one_primary_and_the_three_closes_are_words_without_a_hov
     page.mouse.move(1, size[1] - 1)
     cards = page.locator(".today-brief .qcard")
     assert cards.count() >= 3
-    for i in range(cards.count()):
-        page.locator(".deal").nth(i).click()
+    for path in _paths(page):
+        _raise(page, path)
         page.mouse.move(1, size[1] - 1)
         card = page.locator(".today-brief .qcard.focal")
         assert len(_primaries(card)) == 1, (i, _primaries(card))

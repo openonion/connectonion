@@ -4153,7 +4153,8 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
     assert page.locator('#main .count-line .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
     assert 'Start with' not in page.locator('.night-card').inner_text()
-    assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
+    if width > 640:  # a phone has no faces since sprint T3; the card's own age line says it (asserted above)
+        assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
     assert page.locator('.others .waiting-more').get_attribute('href') == '#view=open'

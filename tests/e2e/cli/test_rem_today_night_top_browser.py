@@ -90,10 +90,26 @@ def test_a_phone_lists_at_most_three_stretches_one_whole_line_each(page_file):
         assert 1 <= len(rows) <= 3, rows
         for row in rows:
             assert row["h"] < 36 and not row["clipped"], row
+        # 24px rows are accepted (D-10) only if the whole row is the target and rows stand at least 8px apart.
+        geo = page.evaluate("""() => {
+          const lane = document.querySelector('#main .night-card .stretches.stacked').getBoundingClientRect();
+          const boxes = [...document.querySelectorAll('#main .night-card .stretches.stacked .stretch > summary')].map(s => s.getBoundingClientRect());
+          const hit = boxes.map(b => document.elementFromPoint(b.right - 4, b.top + b.height / 2)?.closest('summary') !== null);
+          return {lane: [lane.left, lane.right], rows: boxes.map(b => [b.left, b.right, b.top, b.bottom]), hit};
+        }""", isolated_context=False)
+        for left, right, _, _ in geo["rows"]:
+            assert abs(left - geo["lane"][0]) <= 1 and abs(right - geo["lane"][1]) <= 1, geo  # full width
+        assert all(geo["hit"]), geo  # a tap at the row's far end, past the words, still lands on it
+        for (_, _, _, bottom), (_, _, top, _) in zip(geo["rows"], geo["rows"][1:]):
+            assert round(top - bottom) >= 8, geo  # subpixel layout reads 8px as 7.99
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
-        # The waiting line shares 昨夜's line on a phone, and nothing draws it a second time above the cards.
-        assert page.locator("#main .night-card .nh .count-line").count() == 1
-        assert page.locator("#main .desk-head").count() == 0
+        # 昨夜's line says only 昨夜 (art director, #3371): who is waiting is the desk's one plain line, no faces.
+        assert page.locator("#main .night-card .count-line, #main .night-card .deal").count() == 0
+        assert page.locator("#main .night-card .nh").inner_text().strip() == "Last night"
+        head = page.locator("#main .deck > .desk-head.plain")
+        assert head.count() == 1 and head.locator(".deal, .face").count() == 0
+        assert head.bounding_box()["height"] < 32, "one line"
+        assert head.bounding_box()["y"] + head.bounding_box()["height"] <= page.locator("#main .qcard").first.bounding_box()["y"] + 1
     finally:
         browser.close(); api.stop()
 
@@ -168,5 +184,36 @@ def test_a_codex_debt_row_has_one_primary_the_three_closes_and_no_eight_links(pa
             assert page.evaluate("document.activeElement.classList.contains('row-more-btn')", isolated_context=False)
         else:
             assert "Show more" in outside, outside
+    finally:
+        browser.close(); api.stop()
+
+
+BUSY_NIGHT = """() => {
+  // Seven stretches across a night: reading only, rewriting pages, one stopped run; dense runs inside each.
+  const end = new Date(REM.as_of).getTime(), runs = [];
+  const plan = [[-9.5, 3, 0], [-8, 2, 1], [-6.6, 4, 0], [-5.2, 3, 1], [-3.9, 2, 0], [-2.4, 5, 1], [-0.9, 3, 1]];
+  plan.forEach(([hours, n, changes], k) => { for (let i = 0; i < n; i++) {
+    const at = end + hours * HOUR + i * 4 * 60e3;
+    runs.push({run_id: 'busy-' + k + '-' + i, started_at: new Date(at).toISOString(), finished_at: new Date(at + 150e3).toISOString(),
+      items: 6, changed: changes ? ['people/mara-ostrowski.md'] : [], outcome: k === 4 && i === 1 ? 'failed' : 'completed'});
+  } });
+  REM.logs = runs.reverse(); render();
+}"""
+
+
+def test_a_busy_night_rises_and_falls_through_the_stages(page_file):
+    """Seven stretches: the chart climbs to REM where pages changed, to light sleep where it only read, and sinks to
+    deep sleep between them, the rhythm reviewers asked to see (art director, #3371)."""
+    api, browser, page = _open(page_file, 1440, 900)
+    try:
+        page.evaluate(BUSY_NIGHT, isolated_context=False)
+        d = page.locator("#main .night-card .hypno .trace").get_attribute("d")
+        ys = [float(p.split(",")[1]) for p in d.replace("M", "L").split("L")[1:]]
+        levels = sorted(set(ys))
+        assert len(levels) >= 3, levels  # deep, light and REM at least
+        sinks = sum(1 for a, b in zip(ys, ys[1:]) if b > a and b == max(ys))
+        assert sinks >= 6, (sinks, d)  # back to deep sleep between stretches
+        assert page.locator("#main .night-card .hypno path.rem").count() == 1
+        assert page.locator("#main .night-card .stretch").count() + page.locator("#main .night-card .stretch-all").count() >= 3
     finally:
         browser.close(); api.stop()
