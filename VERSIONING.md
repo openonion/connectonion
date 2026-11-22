@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc19
+## Current Version: 1.9.7rc20
+Release candidate 1.9.7rc20 for 1.9.7: the tag-page title never carries a privacy mark: a page check refuses one, the page build moves an old mark onto the page's passages once, and a masked page reads 个人事项 1, 2 …, numbered once in the order it was first masked (#3386, #3385); course and team codes read 课程 3900 / 团队 … wherever an organisation's name shows (#3389, #3388); a mail Outlook or Gmail says is gone is asked for once more a day later, then the night stops waiting and says so instead of promising 会再试 (#3393, #3392); Today's night curve carries the whole night, not the last 21 runs, a stuck stretch keeps its own caption and the axis ends after the last run (#3394, #3391). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc20.md).
+
+- 1.9.7rc20 (masked tag titles #3386/#3385; course-code org names #3389/#3388; gone-mail retry truth #3393/#3392; whole-night curve #3394/#3391).
+
+### Previous candidate: 1.9.7rc19
 Release candidate 1.9.7rc19 for 1.9.7: the night's sleep curve tells the truth: a parked or stuck stretch draws as 清醒, captioned 卡住 N 分钟 · 已自动跳过, and the phone names the highest level the night reached; the desk title counts what the cards show (#3382, #3379); an uninvestigated WeChat friend's facts card no longer prints the raw WeChat id and says the rest comes with investigation (#3381, #3372); the upgrade backfill is versioned, so the retitle and the first/last-chat fields reach notebooks already backfilled on rc17 (#3380, #3368). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc19.md).
 
 - 1.9.7rc19 (Today curve truth #3382/#3379; WeChat facts card #3381/#3372; versioned backfill #3380/#3368).
