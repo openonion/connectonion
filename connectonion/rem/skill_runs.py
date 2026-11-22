@@ -217,16 +217,32 @@ def investigate_skill_page(root: Path, record: str, directories: list[Path]) -> 
             'status': 'skill page investigated; execution quality is only as verified as its cited evidence'}
 
 
+class SkillNotInstalled(RemError):
+    """The skill's SKILL.md is no longer on this machine: nothing to investigate, and map-skills cannot add it."""
+
+
+def source_file(page: str) -> Path | None:
+    """The installed SKILL.md a skill page names, or None when it names none or the file is gone."""
+    source = re.search(r'^- File: (.+)$', page, re.M)
+    path = Path(source[1]).expanduser() if source else None
+    return path if path is not None and path.is_file() else None
+
+
+def installed(notebook: Notebook, record: str) -> bool:
+    return notebook.exists(record) and source_file(notebook.read(record)) is not None
+
+
 def prepare(root, record, directories, *, directory, lock_held=False):
     notebook = Notebook(root)
+    # Checked before anything is written: 2026-11-23 the run-evidence block was rewritten on every
+    # turn and then the turn died here, so the page changed under a job that could never start (#3402).
+    path = source_file(notebook.read(record))
+    if path is None:
+        raise SkillNotInstalled(f'{record}: the skill file is no longer installed on this machine')
+    if path.stat().st_size > 1_000_000:
+        raise RemError(f'Skill source exceeds 1 MB: {path}')
     evidence = investigate_skill_runs(root, record, directories, lock_held=lock_held)
     page = notebook.read(record)
-    source = re.search(r'^- File: (.+)$', page, re.M)
-    if source is None:
-        raise RemError(f'{record} has no installed source file; run co rem map-skills first')
-    path = Path(source[1]).expanduser()
-    if not path.is_file() or path.stat().st_size > 1_000_000:
-        raise RemError(f'Skill source is missing or exceeds 1 MB: {path}')
     stamp = datetime.now(timezone.utc).isoformat()
     body = path.read_text(encoding='utf-8')
     source_id = 'skill-source:' + hashlib.sha256(body.encode()).hexdigest()[:16]
