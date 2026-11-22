@@ -43,9 +43,10 @@ def test_the_keys_list_says_what_each_secret_is_and_never_its_value(today, width
     page, calls, answers = today
     _with_keys(page, width)
     assert page.locator(".rail a[href='#c=keys'], #nav a[href='#c=keys']").count() >= 1 or width < 400
-    table = page.locator(".keys-sheet table")
-    assert table.locator("tbody tr").count() == 2
-    assert "push to the pilot repo" in table.inner_text() and SECRET not in page.content()
+    # #3326: rows are grouped by site, and a phone gets a list instead of a table, so count the key rows themselves.
+    sheet = page.locator(".keys-sheet")
+    assert sheet.locator(".key-row").count() == 2
+    assert "push to the pilot repo" in sheet.inner_text() and SECRET not in page.content()
     page.locator(".key-adder > summary").click()
     answers["/rem/keys/add"] = lambda body: (200, {"page": "keys/notion-me.md"})
     form = page.locator(".key-add")
@@ -65,7 +66,7 @@ def test_a_key_page_copies_and_shows_through_the_host_and_forgets_the_value(toda
     page, calls, answers = today
     _with_keys(page, width)
     answers["/rem/keys/reveal"] = lambda body: (200, {"secret": SECRET})
-    page.locator(".keys-sheet a", has_text="GitHub").click()
+    page.locator(".keys-sheet a", has_text="mara@example.test").click()  # #3326: a key row leads with its account
     head = page.locator(".key-page .page-head")
     head.wait_for()
     assert "mara@example.test" in page.locator(".key-facts").inner_text() and SECRET not in page.content()
@@ -86,7 +87,7 @@ def test_a_snapshot_shows_the_rows_and_says_where_the_value_is(today):
     _with_keys(page, 390, live=False)
     assert page.locator(".key-adder").count() == 0
     assert "Keychain" in page.locator("#main").inner_text()
-    page.locator(".keys-sheet a", has_text="GitHub").click()
+    page.locator(".keys-sheet a", has_text="mara@example.test").click()  # #3326: a key row leads with its account
     assert page.locator(".key-page .page-head button").count() == 0
     assert "Copy it from the reader on this Mac" in page.locator(".key-page").inner_text()
     _shot(page, "snapshot", 390)
@@ -295,3 +296,55 @@ def test_the_empty_line_shows_when_there_is_nothing_at_all(today):
     _empty_keys(page)
     page.locator("#main .empty").first.wait_for(state="visible")
     assert "No keys yet" in page.locator("#main").inner_text()
+
+
+
+def _many_sites(page, width=1440, n=210):
+    """An import of n sites, one login each, every purpose "sign in": the shape a real browser import has."""
+    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
+    page.evaluate("""([n]) => {
+      REM.live = true;
+      REM.records = REM.records.filter(r => r.category !== 'keys');
+      for (let i = 0; i < n; i++) {
+        const host = i % 3 === 0 ? `login.site${String(i).padStart(3, '0')}.test` : `site${String(i).padStart(3, '0')}.test`;
+        REM.records.push({path: `keys/m${i}.md`, category: 'keys', title: host, written: true,
+          text: `# ${host}\n\n## Facts\n- Service: ${host}\n- Account: user${i}@example.test\n- Purpose: sign in\n`});
+      }
+      if (!REM.categories.includes('keys')) REM.categories.push('keys');
+      KNOWN.clear(); FACTS.clear(); location.hash = '#c=keys'; render();
+    }""", [n], isolated_context=False)
+
+
+def test_hundreds_of_sites_start_as_one_row_each_and_repeat_nothing(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _many_sites(page)
+    groups = page.locator(".key-group")
+    assert groups.count() == 210  # a single-entry site is a group like the rest, not a loose row
+    sites = groups.evaluate_all("rows => rows.map(r => r.dataset.site)")
+    assert sites == sorted(sites)
+    assert page.locator(".key-row:visible").count() == 0  # every group starts folded above 30 keys
+    assert "Purpose" not in page.locator(".keys-sheet thead th").all_inner_texts()  # every value was "sign in"
+    group = page.locator(".key-group[data-site='site003.test']")
+    assert "1 key" in group.inner_text()
+    group.locator("button").click()
+    assert "login.site003.test" in page.locator(".key-row[data-site='site003.test']").inner_text()  # differs from the group: shown
+    page.locator(".key-group[data-site='site001.test'] button").click()
+    assert "site001.test" not in page.locator(".key-row[data-site='site001.test']").inner_text()  # same as the group: not repeated
+    page.locator(".key-search").fill("user150@")
+    assert page.locator(".key-row:visible").count() == 1 and page.locator(".key-group:visible").count() == 1
+    page.locator(".key-search").fill("")
+    assert page.locator(".key-group:visible").count() == 210
+
+
+def test_a_phone_gets_a_list_with_the_account_first(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _vault(page, 390)
+    sheet = page.locator(".keys-sheet")
+    assert sheet.locator("table").count() == 0 and sheet.locator(".key-list").count() == 1
+    entry = page.locator(".key-row[data-site='example.co.uk']").first
+    assert entry.is_visible()  # 20 keys in all, and this group holds 4: open
+    assert entry.locator("a").inner_text().startswith("user")
+    assert "bank.example.co.uk" in entry.locator(".key-entry-meta").inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
