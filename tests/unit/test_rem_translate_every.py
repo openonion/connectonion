@@ -266,3 +266,17 @@ def test_a_crashed_holder_or_a_reused_pid_never_blocks_the_night_or_a_new_run(no
     result = CliRunner().invoke(app, ["rem", "--root", str(notebook), "translate", "--all"])
     assert result.exit_code == 0, result.output
     assert calls == ["# Avery Lin"] and not state_path(notebook, "translate-all.json").exists()
+
+
+def test_a_status_read_never_translates_nor_rebuilds_the_reader(notebook, tmp_path_factory, monkeypatch):
+    # #3349: the reader used to send this read on every page load. It must stay a read: no model turn, no job, and
+    # no reader rebuild (whose reload would ask again).
+    calls, rebuilds = [], []
+    monkeypatch.setattr("connectonion.rem.runner.run_task", fake_translator(calls))
+    monkeypatch.setattr("connectonion.rem.reader.owner_changed", lambda root: rebuilds.append(root) or True)
+    call = _host(notebook, tmp_path_factory.mktemp("co"))
+    for _ in range(3):
+        status, body = call({"action": "status", "language": "zh"})
+        assert status == 200 and json.loads(body)["state"] == "idle"
+    time.sleep(0.3)
+    assert calls == [] and rebuilds == []
