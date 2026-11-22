@@ -3942,6 +3942,12 @@
   .key-import-chooser:not([hidden]) { display: flex; flex-wrap: wrap; gap: 8px; }  /* a display here would beat [hidden] */
   .key-source { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); cursor: pointer; }
   .key-source:hover, .key-source:focus-visible { border-color: var(--ink); }
+  .key-source:disabled { opacity: 0.5; cursor: default; border-color: var(--rule); }
+  .key-import-title { margin: 6px 0 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-importers > .key-import-note { margin: 0 0 4px; }
+  .key-manual { margin-top: 16px; }
+  .key-manual > summary { cursor: pointer; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-manual[open] > summary { margin-bottom: 8px; }
   .key-source small { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); }
   .key-import-wait, .key-import-result { box-sizing: border-box; width: 100%; max-width: 560px; padding: 12px 14px; border: var(--hair) solid var(--rule); border-radius: var(--radius); }
   .key-import-wait:not([hidden]) { display: flex; align-items: center; gap: 12px; }
@@ -3959,7 +3965,7 @@
   .keys-env-list { list-style: none; padding: 0; margin: 8px 0 0; }
   .keys-env-list li { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 0; border-bottom: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .keys-env-name { color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
-  .keys-env-mask, .keys-env-where { color: var(--grey); }
+  .keys-env-mask { color: var(--grey); }
   .key-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
   .key-value { padding: 4px 8px; border-radius: var(--r-cell); background: var(--well); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
   .key-page .key-facts { columns: 1; max-width: 720px; margin-top: 20px; }
@@ -11984,7 +11990,7 @@ function keysEnvSection() {
       el("p", { class: "key-import-note", text: t("They live in {where}. Values stay hidden.", { where: reply.where }) }),
       reply.error ? el("p", { class: "key-import-note", text: reply.error }) : null,
       el("ul", { class: "keys-env-list" }, names.map(name => el("li", {}, [el("code", { class: "keys-env-name", text: name }),
-        el("span", { class: "keys-env-mask", "aria-label": t("hidden"), text: "••••••" }), el("span", { class: "keys-env-where", text: reply.where })])))]
+        el("span", { class: "keys-env-mask", "aria-label": t("hidden"), text: "••••••" })])))]
       .filter(Boolean));
     box.hidden = false;
   });
@@ -12008,10 +12014,11 @@ function keyAdder(open = false) {
   const safety = () => el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") });
   const importer = keyImporter();
   if (open) {
-    // No keys yet: lead with the one-click import — he wants to click, not type. The manual form stays below.
-    return el("details", { class: "key-adder", open: "" }, [summary,
-      el("p", { class: "key-import-primary", text: t("Import from a browser in one click — no typing.") }),
-      importer, safety(), form, status]);
+    // No keys yet: the import is the page's one action (he wants to click, not type). Typing one in by hand is the
+    // folded fallback, and its save is an outline button so nothing competes with the sources (#3305 review).
+    save.className = "btn-action";
+    const manual = el("details", { class: "key-manual" }, [el("summary", { text: t("Add one by hand") }), form, status]);
+    return el("details", { class: "key-adder", open: "" }, [summary, importer, safety(), manual]);
   }
   return el("details", { class: "key-adder" }, [summary, form, safety(), importer, status]);
 }
@@ -12046,14 +12053,19 @@ Object.assign(UI.zh, {
   "Apple's Passwords app doesn't let other programs read it. In Passwords, choose File → Export All Passwords…, save the CSV, then pick it here:":
     "Apple 的「密码」App 不让其他程序直接读取。在「密码」App 里选 文件 → 导出所有密码…，存成 CSV，再在这里选这个文件：",
   "Pick a password export from 1Password, LastPass, Bitwarden, Chrome or Safari:": "选一个从 1Password、LastPass、Bitwarden、Chrome 或 Safari 导出的密码文件：",
-  "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏" });
+  "Add one by hand": "手动添加一条", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏" });
 function keyImporter() {
   const result = el("div", { class: "key-import-result", hidden: "" });
   const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": t("Import a password export (CSV)") });
   const waiting = el("div", { class: "key-import-wait", role: "status", hidden: "" });
-  const chooser = el("div", { class: "key-import-chooser", role: "group", "aria-label": t("Import from"), hidden: "" });
-  const trigger = el("button", { type: "button", class: "btn-act key-import-open", "aria-expanded": "false", text: t("One-click import") });
-  const show = node => { for (const part of [chooser, waiting, result]) part.hidden = part !== node && !(node === result && part === chooser); };
+  // 一键导入 is the heading and the sources ARE its buttons, always in view: a button that opened them did nothing
+  // visible once they were shown (#3305 review). A wait disables them so one prompt is asked at a time.
+  const chooser = el("div", { class: "key-import-chooser", role: "group", "aria-label": t("Import from") });
+  const show = node => {
+    waiting.hidden = node !== waiting;
+    result.hidden = node !== result;
+    for (const button of chooser.querySelectorAll("button")) button.disabled = node === waiting;
+  };
   const outcome = (reply, name) => {
     result.textContent = "";
     if (reply.ok) {
@@ -12077,7 +12089,7 @@ function keyImporter() {
   const run = async (body, name, hint) => {
     let cancelled = false;
     const cancel = el("button", { type: "button", class: "btn-quiet", text: t("Cancel") });
-    cancel.onclick = () => { cancelled = true; show(chooser); };
+    cancel.onclick = () => { cancelled = true; show(null); };
     waiting.textContent = "";
     waiting.append(el("span", { class: "key-spin", "aria-hidden": "true" }),
       el("div", {}, [el("p", { class: "key-import-head", text: t("Waiting for you to click Allow in the Keychain prompt…") }),
@@ -12108,8 +12120,8 @@ function keyImporter() {
   chooser.append(source("chrome", "Chrome"), source("edge", "Edge"), source("brave", "Brave"),
     source("keychain", t("macOS Keychain"), t("asks once per password")), source("apple", t("Apple Passwords"), t("via a CSV export")),
     source("csv", t("A CSV export")));
-  trigger.onclick = () => { const opening = chooser.hidden; show(opening ? chooser : null); trigger.setAttribute("aria-expanded", String(opening)); };
-  return el("div", { class: "key-importers" }, [trigger, chooser, waiting, result]);
+  return el("div", { class: "key-importers" }, [el("h2", { class: "key-import-title", text: t("One-click import") }),
+    el("p", { class: "key-import-note", text: t("Import from a browser in one click — no typing.") }), chooser, waiting, result]);
 }
 function keyPage(r) {
   const rows = ["Service", "Account", "Purpose", "Who else has it", "Used in", "Created", "Rotated", "Expires", "Link", "Vault"]

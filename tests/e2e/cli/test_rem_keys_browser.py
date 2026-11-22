@@ -104,23 +104,26 @@ def _empty_keys(page, width=1440, live=True):
 
 
 def test_the_import_buttons_are_visible_on_an_empty_keys_page(today):
-    # P大 opened Keys with no keys and saw no button (#3287); then wanted ONE 一键导入 that offers the sources (#3305).
+    # P大 opened Keys with no keys and saw no button (#3287); then wanted one 一键导入 offering the sources (#3305).
+    # The art director: one filled action on the page, and the sources ARE the buttons (no button that opens them).
     page, calls, answers = today
     _empty_keys(page)
     adder = page.locator(".key-adder")
     assert adder.count() == 1
     assert adder.evaluate("el => el.open") is True  # open by default when there are no keys
-    trigger = page.locator(".key-import-open")
-    assert trigger.is_visible()  # seen without clicking the summary
-    # He wants to click, not type: the one-click import leads, the manual form sits below it.
-    assert trigger.bounding_box()["y"] < page.locator(".key-add input[name=Service]").bounding_box()["y"]
-    assert page.locator(".key-import-primary").is_visible()
-    assert not page.locator(".key-source", has_text="Chrome").is_visible()
-    trigger.click()
+    assert page.locator(".key-import-title").is_visible()
     for name in ("Chrome", "Edge", "Brave"):
-        assert page.locator(".key-source", has_text=name).is_visible()
+        assert page.locator(".key-source", has_text=name).is_visible()  # seen without a click
     assert page.locator(".key-source[data-source=keychain]").is_visible()
     assert page.locator(".key-source[data-source=apple]").is_visible()
+    # Typing one by hand is folded away below the sources, and nothing on the page is a filled button.
+    manual = page.locator(".key-manual")
+    assert not manual.evaluate("el => el.open") and not page.locator(".key-add input[name=Service]").is_visible()
+    assert page.locator(".key-source", has_text="Chrome").bounding_box()["y"] < manual.bounding_box()["y"]
+    assert page.locator(".key-adder .btn-act").count() == 0
+    manual.locator("summary").click()
+    assert page.locator(".key-add input[name=Service]").is_visible()
+    assert "btn-action" in page.locator(".key-add button[type=submit]").get_attribute("class")
     SHOTS.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(SHOTS / "keys-empty-open-1440.png"))
 
@@ -131,7 +134,7 @@ def test_the_adder_stays_collapsed_once_there_are_keys(today):
     _with_keys(page, 1440)
     adder = page.locator(".key-adder")
     assert not adder.evaluate("el => el.open")  # collapsed by default
-    assert not page.locator(".key-import-open").is_visible()
+    assert not page.locator(".key-source", has_text="Chrome").is_visible()
 
 
 
@@ -158,12 +161,12 @@ def test_choosing_chrome_shows_the_wait_on_the_keychain_prompt_then_what_was_imp
     page, calls, answers = today
     _empty_keys(page, width)
     _held_import(page)
-    page.locator(".key-import-open").click()
     page.locator(".key-source", has_text="Chrome").click()
     wait = page.locator(".key-import-wait")
     wait.wait_for()
     assert wait.is_visible() and wait.locator(".key-spin").count() == 1
     assert wait.locator("button").is_visible()  # a cancel
+    assert not page.locator(".key-source", has_text="Edge").is_enabled()  # one prompt at a time
     assert page.evaluate("window.importBody", isolated_context=False) == {"source": "chrome"}
     _import_shot(page, "waiting", width)
     page.evaluate("window.importAnswer({ok: true, code: 200, filed: 3, skipped: 1, sites: ['bank.example.test', 'mail.example.test', 'nas.example.test']})",
@@ -180,7 +183,6 @@ def test_a_host_outside_the_login_session_says_so_prominently_with_the_one_fix(t
     page, calls, answers = today
     _empty_keys(page, width)
     _held_import(page)
-    page.locator(".key-import-open").click()
     page.locator(".key-source", has_text="Chrome").click()
     page.locator(".key-import-wait").wait_for()
     page.evaluate("window.importAnswer({ok: false, code: 409, reason: 'no_gui', error: 'outside your login session'})", isolated_context=False)
@@ -197,10 +199,9 @@ def test_cancel_returns_to_the_sources_and_a_late_answer_is_ignored(today):
     page, calls, answers = today
     _empty_keys(page)
     _held_import(page)
-    page.locator(".key-import-open").click()
     page.locator(".key-source", has_text="Brave").click()
     page.locator(".key-import-wait button").click()
-    assert page.locator(".key-source", has_text="Brave").is_visible() and not page.locator(".key-import-wait").is_visible()
+    assert page.locator(".key-source", has_text="Brave").is_enabled() and not page.locator(".key-import-wait").is_visible()
     page.evaluate("window.importAnswer({ok: true, code: 200, filed: 1, skipped: 0, sites: ['x.example.test']})", isolated_context=False)
     page.wait_for_timeout(100)
     assert page.locator(".key-import-result.ok").count() == 0 or not page.locator(".key-import-result.ok").is_visible()
@@ -209,7 +210,6 @@ def test_cancel_returns_to_the_sources_and_a_late_answer_is_ignored(today):
 def test_apple_passwords_says_how_to_export_and_offers_the_file(today):
     page, calls, answers = today
     _empty_keys(page)
-    page.locator(".key-import-open").click()
     page.locator(".key-source[data-source=apple]").click()
     panel = page.locator(".key-import-csv")
     panel.wait_for()
