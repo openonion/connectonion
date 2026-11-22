@@ -4129,6 +4129,9 @@
   .inv-line button, .inv-line a { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline;
     text-underline-offset: 3px; text-decoration-thickness: var(--hair); cursor: pointer; }
   .inv-line .inv-fail { color: var(--red); }
+  .inv-line .inv-kept { color: var(--grey); }
+  .inv-line .inv-kept, .inv-line .inv-more { display: inline-block; }  /* a clause breaks between clauses, never inside one */
+  .inv-detail { margin: 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-align: right; }
   .inv-steps { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 16px; margin: 0; padding: 0; list-style: none;
     color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
   .inv-steps li { display: inline-flex; align-items: center; gap: 6px; }
@@ -5570,7 +5573,7 @@ const UI = {
     "{n} installed copies — open to compare sources": "{n} 份安装副本 — 打开比较来源",
     "{n} of the most-used skill's {m}": "{n} 次，使用最多的技能为 {m} 次",
     "Missing or duplicate citation: {detail}": "缺失或重复的引用：{detail}",
-    "Unused citation: {detail}": "未使用的引用：{detail}",
+    "Unused citation: {detail}": "稿子列了第 {detail} 条来源，正文却没有用到",
     "Citation has no identifiable source: {detail}": "引用没有可识别的来源：{detail}",
     "Missing fact field: {detail}": "缺少事实字段：{detail}",
     "Preserve mapped project metadata: {detail}": "保留已映射的项目元数据：{detail}",
@@ -12262,6 +12265,11 @@ Object.assign(UI.zh, { "Investigate": "调查", "Up to date": "已是最新", "N
   "A rewrite is ready · {before} → {after} characters": "整页重写稿已就绪 · {before} → {after} 字",
   "Replace the page": "替换页面", "Discard": "丢弃", "Rewrite discarded": "已丢弃重写稿",
   "The investigation stopped: {why}": "调查没有完成：{why}", "The investigation stopped": "调查没有完成",
+  "The draft did not pass the page check; the page is unchanged": "这次调查的稿子没通过检查，页面保持原样",
+  "What the check found": "检查发现了什么",
+  "it will try once more tonight": "今晚会再试一次",
+  "Tried {n} times and it never passed, so it is paused": "试了 {n} 次都没通过，已暂停",
+  "press Investigate to try again": "想再试就点调查",
   "Could not do that: {why}": "没有做成：{why}",
   "This is a snapshot: investigate from the live reader.": "这是快照：请在实时阅读器里调查。" });
 const INV_STEPS = { write: "Write", append: "Append", rewrite: "Rewrite", enrich: "Web follow-up" };
@@ -12403,11 +12411,28 @@ function invStage(stage) {
 }
 // A finished run is said for half a day after it ends, then the head goes back to the page's state.
 function invRecent(run) { return run.result !== "running" && Date.now() - Date.parse(run.finished_at || run.started_at) < 12 * 3600 * 1000; }
+// A stopped run says why in one sentence. A draft the page check refused (#2235 follow-up) says so in the
+// owner's words; what the check found is a detail behind a fold, and never a file name or path.
+function invFailed(run) {
+  // What happens next comes from the refusal ledger the night retries from (page_runs.next_step), never guessed.
+  const next = run.reason_kind === "rejected" ? run.next : null;
+  const why = next?.kind === "parked" ? t("Tried {n} times and it never passed, so it is paused", { n: next.tries })
+    : run.reason_kind === "rejected" ? t("The draft did not pass the page check; the page is unchanged")
+    : run.reason ? t("The investigation stopped: {why}", { why: INV_REASONS[run.reason_kind] ? t(INV_REASONS[run.reason_kind]) : run.reason })
+    : t("The investigation stopped");
+  const then = next?.kind === "parked" ? t("press Investigate to try again") : next?.kind === "retry" ? t("it will try once more tonight") : "";
+  const line = el("p", { class: "inv-line", role: "status" }, [el("span", { class: run.reason_kind === "rejected" ? "inv-kept" : "inv-fail", text: why }),
+    then ? el("span", { class: "inv-more inv-kept", text: "\u00a0· " + then }) : null]);
+  if (run.reason_kind !== "rejected" || !run.detail) return [line];
+  const detail = el("p", { class: "inv-detail", hidden: "", text: refusalReason(String(run.detail)) });
+  const open = el("button", { type: "button", "aria-expanded": "false", text: t("What the check found") });
+  open.onclick = () => { detail.hidden = !detail.hidden; open.setAttribute("aria-expanded", String(!detail.hidden)); };
+  line.append(el("span", { class: "inv-more" }, ["\u00a0· ", open]));  // the dot wraps with its button, never alone
+  return [line, detail];
+}
 function invResult(r, s, paint) {
   const run = s.run;
-  if (run.result === "failed") return [el("p", { class: "inv-line", role: "status" }, [el("span", { class: "inv-fail",
-    text: run.reason ? t("The investigation stopped: {why}", { why: INV_REASONS[run.reason_kind] ? t(INV_REASONS[run.reason_kind]) : run.reason })
-      : t("The investigation stopped") })])];
+  if (run.result === "failed") return invFailed(run);
   if (run.mode === "rewrite") return [];
   const added = run.added_lines || [], count = run.added_count ?? added.length;
   const words = !run.changed ? t("Nothing new to add") : count === 1 ? t("Updated · 1 line added")
