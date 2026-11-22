@@ -2578,13 +2578,24 @@ def make_rem_app(factory):
 
     @sources_app.callback(invoke_without_command=True)
     def inspect_sources(ctx: typer.Context):
+        from ...rem.coverage import source_coverage
         from ...rem.onboard import summary, yields
         from ...rem.service import subscriptions
         if ctx.invoked_subcommand is None:
-            # Each source also says which kinds of page it yields (#3331): what `co rem map --source` builds.
-            _handle(ctx, lambda root: ({name: {**sub, "yields": ", ".join(yields(sub)) or "nothing to map yet",
-                                               **({"mapped": summary(root, name)} if yields(sub) else {})}
-                                        for name, sub in subscriptions(root).items()}, ["sync", "--dry-run"]), ["config"])
+            # Each source also says which kinds of page it yields (#3331), and how much of it REM can read (#3353):
+            # a gap (e.g. WeChat databases with no key) shows here with its fix instead of being skipped silently.
+            def shown(root):
+                rows = {}
+                for name, sub in subscriptions(root).items():
+                    coverage = source_coverage(name, sub)
+                    rows[name] = {**sub, "yields": ", ".join(yields(sub)) or "nothing to map yet",
+                                  **({"mapped": summary(root, name)} if yields(sub) else {}),
+                                  **({"coverage": coverage["line"], "found": coverage["found"], "read": coverage["read"],
+                                      "missing_keys": coverage["missing_keys"],
+                                      "skipped": [f"{s['item']}: {s['reason']}" for s in coverage["skipped"]]}
+                                     if coverage else {})}
+                return rows, ["sync", "--dry-run"]
+            _handle(ctx, shown, ["config"])
 
     def _add_source(ctx, name, chat, project, about, since, only, force):
         from ...rem.service import set_window, toggle_source

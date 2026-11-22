@@ -360,6 +360,22 @@ def _quit_wechat() -> None:
     time.sleep(1)
 
 
+def merge_captured(keys: dict, lines: list, salts: set) -> set:
+    """Add captured "<hmac salt> <key>" lines to `keys` (by database salt) and return the salts newly seen.
+
+    Keys already saved are kept: a later capture, e.g. after migrating chat history, only adds (#3351).
+    """
+    import re
+    found = set()
+    # Only "<32 hex> <64 hex>" lines are captures; the hook writes nothing else, but a torn write is possible.
+    for salt, key in (line.split() for line in lines if re.fullmatch(r"[0-9a-f]{32} [0-9a-f]{64}", line.strip())):
+        db = bytes(b ^ 0x3A for b in bytes.fromhex(salt)).hex()
+        if db in salts:
+            keys[db] = "x'" + key + "'"
+            found.add(db)
+    return found
+
+
 def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = False) -> int:
     """Quit WeChat, open the re-signed copy under lldb, record each database's key by salt, restore WeChat.
 
@@ -393,12 +409,7 @@ def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = Fa
         found = set()
         for _ in range(wait_seconds // 3):
             time.sleep(3)
-            for line in capture.read_text().splitlines() if capture.is_file() else []:
-                salt, _, key = line.partition(" ")
-                db = bytes(b ^ 0x3A for b in bytes.fromhex(salt)).hex()
-                if db in salts:
-                    keys[db] = "x'" + key + "'"
-                    found.add(db)
+            found |= merge_captured(keys, capture.read_text().splitlines() if capture.is_file() else [], salts)
             console.print(f"\r  {len(found)} of {len(salts)} databases", end="")
             if found >= salts:
                 break
@@ -417,7 +428,10 @@ def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = Fa
         if not keep_copy and DEBUG_COPY.is_dir():
             import shutil
             shutil.rmtree(DEBUG_COPY, ignore_errors=True)
-    _save_key_map(keys)
+    before = len(salts & set(_key_map()))
+    _save_key_map(keys)  # merged into the saved map: earlier keys are kept (#3351)
+    total = len(salts & set(keys))
+    console.print(f"新抓到 {max(total - before, 0)} 个，共 {total} 个 / {len(salts)} 个数据库有密钥")
     if not found:
         console.print("[yellow]No keys appeared.[/yellow] The copy has to log in for WeChat to open its databases. "
                       "Run co wechat key capture again and log in on the window it opens.")
@@ -488,7 +502,11 @@ def recent(ctx: typer.Context, limit: int = typer.Option(20, "--limit", help="Ho
     KEY_DIR.mkdir(parents=True, exist_ok=True)
     LISTING.write_text(json.dumps({"at": time.time(), "chats": [r["username"] for r in rows]}))
     os.chmod(LISTING, 0o600)
-    console.print("\nNext: co wechat read 1  (a number above, or a name)")
+    # What this list could not see: databases with no key (e.g. history migrated after the last capture, #3351).
+    coverage = engine.message_coverage(db_storage)
+    console.print("\n" + engine.coverage_line(coverage))
+    console.print("Next: " + (engine.KEY_FIX + "  (unlock the databases above)" if coverage["skipped"]
+                              else "co wechat read 1  (a number above, or a name)"))
 
 
 def _who(db_storage: Path, who: str, known: dict) -> str | None:
@@ -557,11 +575,15 @@ def search(words: str = typer.Argument(..., help="Text to look for in messages")
         console.print(f"No messages contain {words}.")
 
 
-@wechat_app.command("tables", epilog="Example:  co wechat tables")
-def tables():
-    """List each WeChat database with its tables and row counts, for raw access. Read-only."""
+@wechat_app.command("tables", epilog="Example:  co wechat tables  |  co wechat tables --json")
+def tables(as_json: bool = typer.Option(False, "--json", help="Print chat-database coverage as JSON: found, read, skipped, missing_keys")):
+    """List each WeChat database with its tables and row counts, then how many chat databases can be read. Read-only."""
+    import json
     from ...useful_tools import wechat as engine
     db_storage = _ready()
+    if as_json:
+        print(json.dumps(engine.message_coverage(db_storage), ensure_ascii=False))
+        return
     opened = 0
     for path in engine.message_dbs(db_storage):
         conn = _open(path)
@@ -571,9 +593,13 @@ def tables():
         opened += 1
         listing = ", ".join(f"{name}({rows})" for name, rows in engine.tables(conn)) or "(no tables)"
         console.print(f"[bold]{path.name}[/bold]: {listing}")
+    coverage = engine.message_coverage(db_storage)
+    console.print("\n" + engine.coverage_line(coverage))
     if not opened:
         console.print("[yellow]No key opens any WeChat database yet.[/yellow] Run:  co wechat key capture")
         raise typer.Exit(2)
+    if coverage["skipped"]:
+        console.print("Next: " + engine.KEY_FIX)
 
 
 @wechat_app.command("decrypt", epilog="Example:  co wechat decrypt --out ~/wechat-plain")

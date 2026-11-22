@@ -5609,7 +5609,6 @@ function untranslatedPages() {
 // What the language line says (the rc34 check: the top bar had grown to "369 页还没有中文版 · 翻译 · 遮住敏感 · EN"):
 // the parts live in the language badge's menu and in the phone's 显示 menu; the bar itself shows only a count.
 function langParts() {
-  if (liveHere() && uiLanguage === "zh" && !translateAllAsked) { translateAllAsked = true; translateAllSend("status"); }
   const job = translateAllJob || {}, busy = ["starting", "running", "stopping"].includes(job.state);
   // The Host's count, once it has answered: it knows which pages already read in Chinese; until then, the page's own.
   const known = job.total != null, total = known ? job.total : (REM.records || []).filter(r => r.written).length;
@@ -5670,6 +5669,7 @@ function refreshDisplayLang(parts) {
 function toggleLangMenu(open) {
   const box = document.getElementById("lang-progress"), badge = box.querySelector(".lang-badge"), shown = box.querySelector(".lang-menu");
   if (shown || open === false) { shown?.remove(); badge?.setAttribute("aria-expanded", "false"); return; }
+  askTranslateStatus();
   const menu = el("div", { class: "lang-menu", role: "menu", "aria-label": t("Language") }, langParts().parts);
   box.appendChild(menu);
   badge.setAttribute("aria-expanded", "true");
@@ -5685,6 +5685,7 @@ function renderDisplayMenu() {
 function toggleDisplayMenu(open) {
   const button = document.getElementById("display-menu"), host = button.parentElement, shown = host.querySelector(".display-pop");
   if (shown || open === false) { shown?.remove(); button.setAttribute("aria-expanded", "false"); return; }
+  askTranslateStatus();
   const lang = ["zh", "en"].map(code => {
     const item = el("button", { type: "button", role: "menuitemradio", "aria-checked": String(uiLanguage === code), text: code === "zh" ? "中文" : "English" });
     // Focus goes back to the 显示 button, where the keyboard was before the menu opened.
@@ -8540,6 +8541,7 @@ function renderTabbar(active) {
     tab("people", "users", label("people"), "#c=people"), search, toggle);
 }
 function openSettings() {
+  askTranslateStatus();
   const sheet = document.getElementById("settings");
   if (!sheet.open) sheet.showModal();
 }
@@ -10364,11 +10366,19 @@ let translateAllJob = null, translateAllPoll = null, translateAllAsked = false, 
 function translateAllLanguage() {
   return /^zh(?:-|$)/i.test(REM.owner_language || "") ? REM.owner_language : "zh";
 }
+// Opening the reader asks the Host nothing (#3349): the job's state is read once, when the owner opens a control that
+// starts or follows it (Settings, the language menu, the phone's 显示 menu). It used to be read on every page load and
+// every reload: a POST that makes the Host count the whole translation queue (seconds on a real notebook), three times
+// in one hunt session with no click. Until the owner opens one, the counts are the page's own.
+function askTranslateStatus() {
+  if (!liveHere() || translateAllAsked) return;
+  translateAllAsked = true;
+  translateAllSend("status");
+}
 function translateAll() {
   if (!liveHere() || !(uiLanguage === "zh" || /^zh(?:-|$)/i.test(REM.owner_language || ""))) return null;
   const box = el("span", { class: "translate-all", role: "status", "aria-live": "polite" });
   drawTranslateAll(box);
-  if (!translateAllAsked) { translateAllAsked = true; translateAllSend("status"); }
   return box;
 }
 function drawTranslateAll(box) {
