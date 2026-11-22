@@ -127,13 +127,14 @@ def test_send_is_the_only_green_and_sits_well_inside_the_first_screen(today, siz
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
     assert send.is_visible()
     assert _box_inside(page, send, 16), (send.bounding_box(), size)
-    # The fill-in box is a row of choices above Send, outside the letter's scroll window, built from the slot's
-    # own words; until it is answered Send waits, with a plain hint (build 3b re-review).
+    # The fill-in box is a row of choices above Send, built from the slot's own words, with a plain hint until it is
+    # answered. Send never looks disabled (#3312 E replaces the grey "waiting" Send the owner read as dead): it is the
+    # card's one filled button from the start, and a click with the choice open goes to it.
     choose = page.locator(".qcard.open .mail-choices .owner-slot")
     assert choose.get_attribute("role") == "group" and _box_inside(page, choose, 0)
     assert choose.get_by_role("button").all_inner_texts() == ["邮件附件", "共享文件夹"]
-    assert send.is_disabled() and page.locator(".qcard.open .choose-hint").is_visible()
-    assert _greens(page) == []
+    assert not send.is_disabled() and page.locator(".qcard.open .choose-hint").is_visible()
+    assert _greens(page) == ["Send"]
     choose.get_by_role("button", name="邮件附件").click()
     assert send.is_enabled() and not page.locator(".qcard.open .choose-hint").is_visible()
     assert "邮件附件" in page.locator(".qcard.open .mail-text .slot-ref").inner_text()
@@ -623,9 +624,9 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     card = page.locator(".today-brief .qcard.open")
     slot = card.locator(".owner-slot input")
     slot.fill("Thursday afternoon")
-    row = card.locator(".qitem").first
-    row.hover()
-    row.locator(".strip-more").click()  # the talk's choices are in the item's second level (#3072)
+    # The talk's choices are in the item's second level (#3072), reached from the letter's ⋯ (#3312 B).
+    card.locator(".qdraft .more-menu > summary").click()
+    card.locator(".qdraft .more-menu .strip-more").click()
     page.locator('#item-context [data-talk="codex"]').click()
     talk = page.get_by_role("textbox", name="Your message")
     talk.fill("Draft it short")
@@ -684,7 +685,7 @@ def _cut(page, text, clip):
 
 @pytest.mark.parametrize("size", [(1440, 1000), (390, 844)])
 @pytest.mark.parametrize("lang", ["zh", "en"])
-def test_the_letter_scrolls_in_its_own_window_and_the_slot_row_never_covers_it(today, size, lang):
+def test_the_letter_is_read_whole_and_the_slot_row_never_covers_it(today, size, lang):
     page, _, _ = today
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.evaluate(OVERDUE, isolated_context=False)
@@ -697,9 +698,13 @@ def test_the_letter_scrolls_in_its_own_window_and_the_slot_row_never_covers_it(t
     assert _apart(body.bounding_box(), slot.bounding_box()), (body.bounding_box(), slot.bounding_box())
     columns = [letter] + ([card.locator(".mail-gist")] if card.locator(".mail-gist").is_visible() else [])
     assert [cut for column in columns for cut in _cut(page, column, body)] == []
-    # The letter is read by scrolling inside its window, to its last line.
-    assert body.evaluate("node => node.scrollHeight > node.clientHeight")
-    body.evaluate("node => { node.scrollTop = node.scrollHeight; }")
+    # The letter is read whole, with no inner scroll window (#3312 B4 replaces the three-line window that cut the
+    # owner's letter mid-sentence): a short letter shows to its last line; a long one fades and opens whole.
+    unfold = card.get_by_role("button", name="展开全文" if lang == "zh" else "Show the whole letter")
+    if body.evaluate("node => node.scrollHeight > node.clientHeight + 4"):
+        unfold.wait_for()  # a letter longer than its first screen always offers the rest
+        unfold.click()
+    assert body.evaluate("node => node.scrollHeight <= node.clientHeight + 4")
     last = page.evaluate("""node => { const r = document.createRange(); r.selectNodeContents(node);
       const lines = [...r.getClientRects()].filter(l => l.height > 0); return lines.at(-1).bottom; }""",
                          letter.element_handle(), isolated_context=False)
