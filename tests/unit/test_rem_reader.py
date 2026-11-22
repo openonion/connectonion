@@ -242,6 +242,7 @@ def test_fact_list_omits_placeholder_only_fields_and_keeps_mail():
         ['Location', [{value: 'Unknown — not verified.'}]]]);
       const legacyFact = () => [], mappedContact = () => false, softBreaks = node => node;
       const changedValue = node => node, factValue = item => ({text: item.value});
+      const known = () => ({status: 'Investigated'});  // an investigated page: its gaps are 'not found' (#3381)
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         append(...nodes) { this.children.push(...nodes); }});
       const panel = (title, children) => ({title, children});

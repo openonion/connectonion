@@ -744,6 +744,8 @@
   .cite.cite-flash, a.cite.flash { background: var(--well); }
   .factlist .fact-tail .qual { white-space: normal; }
   .fact-missing { margin: var(--u2) 0 0; color: var(--grey); font: var(--s-ui)/var(--lh-body) var(--font); }
+  .fact-pending summary { cursor: pointer; width: fit-content; }
+  .fact-pending p { margin: var(--u1) 0 0; }
   .evidence-in-sources { margin-top: var(--u3); }
 
   /* where it stands: a status block */
@@ -5035,7 +5037,7 @@ const UI = {
     "Source kinds": "来源类型", "Web": "网页", "Mail — original not in this snapshot": "邮件（原文不在此快照中）",
     "Filter sources…": "筛选来源…", "Filter sources": "筛选来源", "No source matches.": "没有匹配的来源。",
     "Cited {n}×": "被引 {n} 处", "Jump to the lines that cite it": "跳到引用它的句子",
-    "Show in sources": "在来源中查看", "REM investigation": "REM 调查", "{n} not found": "{n} 项未找到",
+    "Show in sources": "在来源中查看", "REM investigation": "REM 调查", "{n} not found": "{n} 项未找到", "{n} more once investigated": "其余 {n} 项，调查后补上",
     "Insight": "洞察", "Who they are": "他们是谁", "Why they are here": "为什么在这里", "Our relationship": "我们的关系",
     "History": "往来经过", "How they communicate": "沟通方式", "How the user writes to them": "你怎么给他们写信",
     "How you write to them": "你怎么给他们写信", "Cadence": "往来节奏", "Uncertainties": "不确定之处",
@@ -16063,7 +16065,13 @@ function factList(r) {
     dl.append(el("dt", { text: t("Mail") }), el("dd", {}, [el("span", { class: "val mono", text: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }) })]));
   }
   if (!filled && !(r.category === "people" && r.mail)) return null;
-  const none = notFound.length ? el("p", { class: "fact-missing", title: notFound.join(" · "), text: t("{n} not found", { n: notFound.length }) + ": " + notFound.join(" · ") }) : null;
+  // "Not found" means REM looked. On a page not investigated yet nobody has (art director on #3381): the rest is
+  // what investigation fills in, its list folded; known(r).status is the page's own investigated-or-not signal.
+  const pending = known(r).status === "Mapped";
+  const none = !notFound.length ? null : pending
+    ? el("details", { class: "fact-missing fact-pending" }, [el("summary", { text: t("{n} more once investigated", { n: notFound.length }) }),
+      el("p", { text: notFound.join(" · ") })])
+    : el("p", { class: "fact-missing", title: notFound.join(" · "), text: t("{n} not found", { n: notFound.length }) + ": " + notFound.join(" · ") });
   return panel("Facts", [el("p", { class: "fill mono", text: t("{n} of {m} known", { n: filled, m: order.length - idOnly }) }), dl, none]);
 }
 function daysSince(day) {

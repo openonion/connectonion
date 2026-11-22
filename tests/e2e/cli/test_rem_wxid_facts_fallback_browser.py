@@ -68,9 +68,9 @@ def reader(request, tmp_path, monkeypatch):
     assert not errors, errors
 
 
-def _open(page, record):
+def _open(page, record, ready=".r4-name"):
     page.goto(BASE + "#r=" + record.replace("/", "%2F"))
-    page.wait_for_selector(".r4-name")
+    page.wait_for_selector(ready)
     # Every fold open, so a section that hides the id until clicked is checked too.
     page.evaluate("() => document.querySelectorAll('details').forEach(d => d.open = true)")
     page.wait_for_timeout(150)
@@ -105,4 +105,30 @@ def test_the_facts_card_counts_no_id_and_gives_the_chat_date(reader):
     assert "1 of" in text                                              # the one known fact: when you last talked
     assert "Last contact" in text and "3 days ago" in text             # the chat's date, said as the reader says dates
     missing = page.locator(".fact-missing")
-    assert not missing.count() or "Last contact" not in missing.inner_text()
+    assert not missing.count() or "Last contact" not in missing.evaluate("node => node.textContent")
+
+
+def test_a_page_not_investigated_says_the_rest_comes_with_investigation(reader):
+    """"Not found" means REM looked; on a page nobody has investigated it would be a lie (art director, #3381)."""
+    page = reader
+    _open(page, "people/wren-pike.md")
+    page.evaluate("() => document.querySelectorAll('.fact-pending').forEach(d => d.open = false)")
+    panel = page.locator(".panel:has(.factlist)")
+    text = panel.inner_text()
+    assert "not found" not in text.lower()
+    assert "1 of 14 known" in text
+    pending = panel.locator("details.fact-pending")
+    assert pending.count() == 1 and not pending.evaluate("node => node.open")    # the list is folded by default
+    assert pending.locator("summary").inner_text().strip() == "13 more once investigated"
+    pending.locator("summary").click()
+    assert "Email" in pending.inner_text()
+
+
+def test_an_investigated_page_still_says_not_found(reader):
+    page = reader
+    _open(page, "orgs/fernhill-labs.md", ready=".panel:has(.factlist)")
+    panel = page.locator(".panel:has(.factlist)")
+    assert panel.count() == 1
+    assert panel.locator(".fact-pending").count() == 0
+    missing = panel.locator(".fact-missing")
+    assert missing.count() == 1 and "not found" in missing.inner_text()   # REM looked: it says so
