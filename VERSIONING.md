@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc21
+## Current Version: 1.9.7rc22
+Release candidate 1.9.7rc22 for 1.9.7: a tag or search view never scrolls sideways: a privacy curtain's cap is a length, not a width (#3407, #3404); Today says when before how old, says each event once, and fits a phone without a caption running off the card (#3408, #3406, #3379); a facts card keeps a short value whole and its labels speak Chinese (#3409, #3405). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc22.md).
+
+- 1.9.7rc22 (tag/search overflow #3407/#3404; Today time-first and phone fit #3408/#3406/#3379; facts card values and labels #3409/#3405).
+
+### Previous candidate: 1.9.7rc21
 Release candidate 1.9.7rc21 for 1.9.7: a draft the page check refused says the page is unchanged, in the owner's words, and what happens next from the night's own retry ledger: 今晚会再试一次, or 已暂停 after N tries (#3398, #2235); one night, one count: Today's 昨夜 heading adds up the curve's own stretches, the side line says 待办, and the Codex line no longer sounds like one task both running and stopped (#3399, #3396); an organisation's connections give the line that links the pair, or say plainly which page names which, and the owner's own people are no longer drawn inside a client's org tree (#3400, #3397); a job that can never be prepared is set aside and the round goes on: a skill page whose skill is no longer installed stopped every background round from 06:15, and Today now says when one error keeps stopping the night (#3403, #3402). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc21.md).
 
 - 1.9.7rc21 (refused-draft line #3398/#2235; one night one count #3399/#3396; org connection reasons #3400/#3397; unpreparable jobs parked #3403/#3402).
