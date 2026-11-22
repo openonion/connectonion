@@ -409,19 +409,29 @@ def states(root: Path, records: list[str]) -> dict[str, dict]:
 # ---------- tag titles carry no privacy mark (#3385) ----------
 # Before #3385 a model could put `[personal]` in a tag page's title. At the default "cover" level the reader shows
 # such a title as the generic "Personal", so five marked tag pages (a language, a CLI, email, documents, sleep)
-# became one repeated label and a link to one opened another. The repair runs once per version on the page build,
-# local only, with no model; the title's mark moves onto each prose passage, so nothing private turns public.
-TITLE_REPAIR_VERSION = 1
-TITLE_REPAIR = "tag-titles.json"
+# became one repeated label and a link to one opened another. The page build repairs them, local only, with no model;
+# the title's mark moves onto each prose passage, so nothing private turns public. It keeps no marker: it changes
+# only a marked tag title, and review refuses new ones, so it is idempotent by construction, and a notebook with
+# nothing to repair is never written (opening before start creates nothing).
 STAMP = re.compile(r"(?m)^Investigation:[^\n]*\(tag page\b")
 CODE_OWNED = re.compile(r"^(?:#|- Tags:|Investigation:|- \[[^\]]*\]\(\.\./|- \[W?\d+\] )")
 
 
-def _tag_pages(root: Path) -> list[str]:
-    """The notebook's tag pages: a knowledge page this stage wrote, or the page a tag names as its node."""
-    book = Notebook(root)
-    named = {node_record(root, slug) for slug in tags.vocabulary(root)}
-    return [r for r in book.list("knowledge") if r in named or STAMP.search(book.read(r))]
+def _marked_tag_pages(root: Path) -> list[str]:
+    """Tag pages whose title carries a privacy mark: a knowledge page this stage wrote, or a tag's named node.
+    Only each page's first line is read until one is marked, and a missing folder is never created."""
+    folder = root / "knowledge"
+    if not folder.is_dir():
+        return []
+    marked = []
+    for path in sorted(folder.glob("*.md")):
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            if PRIVATE.search(handle.readline()):
+                marked.append(f"knowledge/{path.name}")
+    if not marked:
+        return []
+    book, named = Notebook(root), {node_record(root, slug) for slug in tags.vocabulary(root)}
+    return [r for r in marked if r in named or STAMP.search(book.read(r))]
 
 
 def _unmarked(text: str) -> str:
@@ -435,19 +445,13 @@ def _unmarked(text: str) -> str:
 
 
 def repair_titles(root: Path) -> list[str]:
-    """Once per TITLE_REPAIR_VERSION: take the privacy mark off every tag page's title. The pages it changed."""
+    """Take the privacy mark off every tag page's title (#3385). The pages it changed; nothing is written otherwise."""
     from . import page_versions
-    marker = state_path(root, TITLE_REPAIR)
-    if read_json(marker, {}).get("version", 0) >= TITLE_REPAIR_VERSION:
-        return []
     book, changed = Notebook(root), []
-    for record in _tag_pages(root):
+    for record in _marked_tag_pages(root):
         before = book.read(record)
-        if not PRIVATE.search(before.partition("\n")[0]):
-            continue
         after = _unmarked(before)
         if book.write(record, after) is not False:
             page_versions.keep_previous(root, record, before, after)
             changed.append(record)
-    write_json(marker, {"version": TITLE_REPAIR_VERSION, "changed": changed})
     return changed

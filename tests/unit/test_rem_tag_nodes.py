@@ -297,9 +297,21 @@ def test_the_repair_unmarks_tag_titles_once_and_keeps_their_passages_private(boo
     assert "- [1] gmail:fixture:aa01\n" in page and "(tag page, from 2 pages)\n" in page
     # A private topic that is not a tag's page keeps its title mark: it is private as a whole.
     assert book.read("knowledge/night-notes.md") == DIARY
-    # Versioned and idempotent: a second build does nothing, and the version is recorded.
+    # Idempotent: a second build finds no marked tag title and writes nothing.
     assert tag_nodes.repair_titles(book.root) == []
-    assert read_json(state_path(book.root, "tag-titles.json"), {})["version"] == tag_nodes.TITLE_REPAIR_VERSION
+
+
+def test_the_repair_writes_nothing_where_there_is_nothing_to_repair(tmp_path, book):
+    # A notebook that does not exist yet stays absent (opening before start creates nothing).
+    missing = tmp_path / "not-started"
+    assert tag_nodes.repair_titles(missing) == [] and not missing.exists()
+    # A notebook with only unmarked pages: no state file appears, no page changes.
+    book.write("knowledge/kiln-pilot.md", NODE)
+    before = book.read("knowledge/kiln-pilot.md")
+    state = sorted(p.name for p in (book.root / ".state").iterdir())
+    assert tag_nodes.repair_titles(book.root) == []
+    assert book.read("knowledge/kiln-pilot.md") == before
+    assert sorted(p.name for p in (book.root / ".state").iterdir()) == state
 
 
 def test_the_repair_keeps_the_marked_page_for_undo(book):

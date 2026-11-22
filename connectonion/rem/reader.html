@@ -17389,9 +17389,16 @@ function graphModel() {
   // One kind of point, the page (#3140): a tag only adds edges between the pages carrying it and its page.
   const nodes = source.nodes.map(n => ({ ...n, k: graphKind(n.kind), r: records.get(n.id) }));
   const byId = new Map(nodes.map(n => [n.id, n]));
-  // Two masked pages never read as one (#3385: four rows said "Personal"): each keeps a stable number among them.
-  const masked = nodes.filter(n => n.private).sort((a, b) => (a.id < b.id ? -1 : 1));
-  if (masked.length > 1) masked.forEach((n, i) => { n.maskNo = i + 1; });
+  // Two masked pages never read as one (#3385: four rows said "Personal"). Each keeps its own number, taken from
+  // its path, never from sort order: a new private page never renumbers the others. A rare clash moves only the
+  // later path on to the next free number.
+  const taken = new Set();
+  for (const n of nodes.filter(n => n.private).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    let no = graphMaskNumber(n.id);
+    while (taken.has(no)) no = no === 999 ? 100 : no + 1;
+    taken.add(no);
+    n.maskNo = no;
+  }
   const edges = source.edges.concat(source.tags?.edges || []).filter(e => byId.has(e.source) && byId.has(e.target)).map(e => ({ s: e.source, t: e.target, k: e.kind }));
   const adj = new Map();
   for (const e of edges) for (const [a, b] of [[e.s, e.t], [e.t, e.s]]) (adj.get(a) || adj.set(a, new Set()).get(a)).add(b);
@@ -17399,6 +17406,12 @@ function graphModel() {
   const sim = graphLayout(linked, edges, byId);
   GRAPH = { source: REM.graph, nodes, byId, edges, adj, linked, sim, isolated: nodes.filter(n => !adj.has(n.id)) };
   return GRAPH;
+}
+// A masked page's number, 100-999, from its path alone (FNV-1a): the same page keeps it on every build.
+function graphMaskNumber(id) {
+  let hash = 2166136261;
+  for (const ch of String(id)) hash = Math.imul(hash ^ ch.codePointAt(0), 16777619);
+  return 100 + ((hash >>> 0) % 900);
 }
 function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
 // A labelled-private record keeps its name only on this Mac and only while passages are shown.

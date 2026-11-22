@@ -104,3 +104,30 @@ def test_two_masked_pages_never_share_one_label(page):
     page.reload()
     page.locator(".gx-map canvas").wait_for()
     assert page.evaluate("() => graphModel().nodes.filter(graphHidden).map(graphTitle)", isolated_context=False) == masked
+
+
+def masked_labels(page):
+    return page.evaluate("() => Object.fromEntries(graphModel().nodes.filter(graphHidden).map(n => [n.id, graphTitle(n)]))",
+                         isolated_context=False)
+
+
+def test_a_new_private_page_never_renumbers_the_others(page, tmp_path):
+    """The art director's rule on #3386: 「个人事项 1」 never becomes 2. A number belongs to its page."""
+    page, uri, root = page
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.reader import render
+    page.locator('#nav a[href="#c=knowledge"]').click()
+    page.locator(".gx-map canvas").wait_for()
+    before = masked_labels(page)
+    # A private page whose path sorts before both, linked so it draws: an ordinal would shift every label.
+    nb = Notebook(root)
+    nb.write("knowledge/aaa-early.md", "# Early [personal]\n\nA third private topic [1].\n\n## Sources\n- [1] gmail:m1\n")
+    nb.write("people/mara-ostrowski.md", nb.read("people/mara-ostrowski.md").replace(
+        "## Sources", "- Also [Early](../knowledge/aaa-early.md) [1].\n\n## Sources"))
+    path = tmp_path / "reader-2.html"
+    path.write_text(render(root, local=True), encoding="utf-8")
+    page.goto(path.as_uri() + "#c=knowledge")
+    page.locator(".gx-map canvas").wait_for()
+    after = masked_labels(page)
+    assert len(after) == 3 and len(set(after.values())) == 3, after
+    assert {k: after[k] for k in before} == before
