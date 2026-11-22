@@ -130,7 +130,10 @@ def test_a_wechat_page_labels_its_id_wechat_and_says_when_you_last_chatted(reade
     page.wait_for_selector(".hero-meta")
     assert "WeChat · 14 messages in 90 days" in page.locator(".hero-meta").inner_text()
     labels = page.locator("#main .pc-k, #main .pc-label, #main dt").all_inner_texts()
-    assert any("WeChat" in label for label in labels) and not any(label.strip() == "Handle" for label in labels)
+    # #3346 kept the id from reading as a generic "Handle"; #3372 then moved the raw wxid out of the header into
+    # ⋯ → Copy WeChat ID, so the header neither shows it nor labels it Handle.
+    assert not any(label.strip() == "Handle" for label in labels)
+    assert "wxid_" not in page.locator("header.person-head").inner_text()
     page.goto(BASE + "#r=people%2Ffriend-0001-wechat.md")
     page.wait_for_selector(".hero-meta")
     assert "WeChat friend · no chats yet" in page.locator(".hero-meta").inner_text()
