@@ -27,7 +27,10 @@ pytestmark = pytest.mark.skipif(
 VIEWS = ["", "#c=people", "#c=orgs", "#c=projects", "#c=skills", "#r=people%2Fmara-ostrowski.md",
          "#r=people%2Fquinn-alder.md", "#r=projects%2Fharbour.md", "#r=orgs%2Ffernhill-labs.md",
          "#r=skills%2Fcatalog%2Fweekly-brief.md", "#q=pilot", "#q=mara", "#r=people%2Favery-lin.md", "#c=opportunities", "#reviews=1",
-         "#view=activity"]
+         "#view=activity",
+         # Search and tag views (#3404: a tag chip's view scrolled sideways on the owner's notebook; the reproduction
+         # with a curtained quotation is test_rem_search_overflow_browser.py).
+         "#q=tag:pilot", "#q=fernhill", "#q=Mara%20pilot"]
 
 
 

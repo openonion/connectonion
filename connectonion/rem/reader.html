@@ -3457,9 +3457,14 @@
   /* A curtain inside a sentence is one word-sized bar on the sentence's own line (rc35 hunt: the label rode in front of
      the hidden words, the bar outgrew the passage and could not wrap, and the word before it hung at a line end). The
      bar is as long as the passage up to a cap, so a long secret does not announce its length; it wraps like a word;
-     its label sits inside it instead of adding width. */
-  :root.privacy-cover span.curtain:not(.lifted) { display: inline-block; position: relative; max-width: min(12em, 100%); overflow: hidden;
+     its label sits inside it instead of adding width.
+     The cap is a length, not min(12em, 100%) (#3404): a percentage cannot resolve while a flex row measures its items,
+     so Chrome sized the bar by its whole unwrapped passage (2,000 px for a quoted sentence) and the 等你处理 line of a
+     tag or search result could not shrink below it; the page scrolled sideways. 12em fits every column the reader
+     draws, down to a 390 px phone, and the min-width: 0 below lets any row holding a bar shrink to its column. */
+  :root.privacy-cover span.curtain:not(.lifted) { display: inline-block; position: relative; max-width: 12em; overflow: hidden;
     white-space: nowrap; vertical-align: bottom; line-height: inherit; }
+  .hits .open > :not(.k) { min-width: 0; overflow-wrap: anywhere; }
   :root.privacy-cover span.curtain:not(.lifted)::before { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center;
     max-width: 100%; overflow: hidden; content: attr(data-curtain-short); }
   .privacy-count { margin: 8px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
