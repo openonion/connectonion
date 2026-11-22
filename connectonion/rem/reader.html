@@ -4074,14 +4074,29 @@
   .pc-v a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
   .pc-v .qual { margin-left: 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); white-space: nowrap; }
   .pc-inline { display: flex; flex-wrap: wrap; gap: 0 4px; }
-  /* Tags (#3093): words that link to their tag page, never pills on a record page (maps, not CTAs). */
-  .tag-links { display: flex; flex-wrap: wrap; gap: 0 12px; }
-  .page-tags { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 6px 0 0; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  /* Tags (#3093, reversed by #3308): the owner asked why a tag doesn't look like a tag («为什么看起来不像标签»), so a
+     tag is a quiet chip, a soft tint with regular weight, no shadow and no button affordance. The spirit of
+     "maps, not CTAs" stays: nothing about a tag asks to be clicked; it is a label you can follow. #3231's privacy
+     colours will be modifiers on .tag-link (e.g. .tag-link.is-personal / .is-sensitive), not a second style. */
+  .tag-links { display: flex; flex-wrap: wrap; gap: 6px; }
+  .page-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 0; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .page-tags-label { color: var(--grey); }
   /* The switch keeps its width when its bold tab changes (#3140's longer names moved it 3 px). */
   .knowledge-switch .theme-btn { flex-direction: column; justify-content: center; }
   .knowledge-switch .theme-btn::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: var(--w-bold); }
-  .tag-link { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  /* A tag row is a <p>, and the prose rule `:is(p, .thread .who, …) a` underlines every link in a paragraph at (0,2,1):
+     :is() takes its most specific argument. A bare .tag-link (0,1,0) lost and still read as an underlined word, so the
+     chip is `.tag-links a.tag-link[href]` (0,3,1), which wins wherever the two rules sit in the sheet. */
+  /* Art director, #3313: a solid --well pill in body ink was the 调查 button's exact material, and at 390 two rows of tags
+     above 调查 read as one button group. A tag is quieter than any action: second ink, a fill lighter than --well, a
+     hairline edge, 24 px tall against the button's 40. */
+  .tag-links a.tag-link[href], .session-tags a.tag-link[href] { display: inline-flex; align-items: center; box-sizing: border-box;
+    min-height: 24px; padding: 0 10px; border-radius: var(--r-pill); border: var(--hair) solid var(--rule);
+    background: color-mix(in srgb, var(--well) 50%, var(--paper)); color: var(--grey); text-decoration: none;
+    overflow-wrap: anywhere; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .tag-links a.tag-link[href]:hover, .tag-links a.tag-link[href]:focus-visible,
+  .session-tags a.tag-link[href]:hover, .session-tags a.tag-link[href]:focus-visible { background: var(--well); color: var(--ink); }
+  .tag-links a.tag-link[href]:focus-visible, .session-tags a.tag-link[href]:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .tag-bar { margin: 0 0 16px; }
   .tag-hit { margin: 0 0 16px; }
   .tag-written { max-width: 720px; margin: 8px 0 24px; padding-bottom: 16px; border-bottom: var(--hair) solid var(--rule); }
@@ -15134,7 +15149,7 @@ function sessionRecord(r, heading) {
       project ? el("span", { class: "sep", text: "/" }) : null, project ? el("a", { href: href(project), text: project.title }) : null]),
     el("header", { class: "page-head" }, [el("h1", { text: r.title }), sessionFactsLine(r),
       // The shared tag row when the session's tags are in the vocabulary; its own session filter links otherwise.
-      pageTagRow(r) || el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { href: sessionHash({ tag }), text: tag })))]),
+      pageTagRow(r) || el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { class: "tag-link", href: sessionHash({ tag }), text: tag })))]),
     el("section", { class: "session-summary" }, [summary ? el("h2", { text: t("Summary") }) : null,
       el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || t("Not summarised yet") + " — " + unlabelled(r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
     attachment.node,
