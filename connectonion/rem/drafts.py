@@ -118,11 +118,36 @@ def listing(root, *, include_pending=False, records=None):
     for row in candidates(root, refresh_index=False, **({'records': records} if records is not None else {})):
         saved = read_json(path(root, row['id']), {})
         if saved.get('version') == row['version'] and (include_pending or saved.get('status') not in ('discarded', 'skipped')):
-            found.append({**saved, "private": saved.get("private", False) or row["private"]})
+            found.append({**saved, "private": saved.get("private", False) or row["private"],
+                          "channels": reachable_channels(root, row, saved)})
         elif include_pending:
             found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private', 'version')} |
                          {'status': 'skipped' if saved.get('version') == row['version'] else 'pending'})
     return found
+
+
+# A chat channel is offered only where this person can be reached on it (#3302). Chats are read live and
+# never stored (#3249), so the index cannot show a WhatsApp or Lark thread; the person's own page can: a cited
+# source from that chat, or a handle the page names for it. WhatsApp also needs the number the send goes to.
+CHAT_EVIDENCE = {'whatsapp': re.compile(r'\bwhatsapp:|^- (?:Handles|Phone):.*\bwhatsapp\b', re.I | re.M),
+                 'lark': re.compile(r'\b(?:lark|feishu):|^- Handles:.*\b(?:lark|feishu|飞书)\b', re.I | re.M)}
+
+
+def reachable_channels(root, row, saved):
+    """The channels this reply can honestly go out on: its own thread's first, then chats with evidence."""
+    channels = ['mail']
+    record = _identities(root, row)['person'].get('page')
+    book = Notebook(root)
+    text = book.read(record) if record and book.exists(record) else ''
+    phone = saved.get('phone') or _phone({'facts': text})
+    if phone and CHAT_EVIDENCE['whatsapp'].search(text):
+        channels.append('whatsapp')
+    if CHAT_EVIDENCE['lark'].search(text):
+        channels.append('lark')
+    # A draft already rewritten for a channel keeps it, so the card can show what it is.
+    if saved.get('channel') in CHANNELS and saved['channel'] not in channels:
+        channels.append(saved['channel'])
+    return channels
 
 
 def owner_skill(name):

@@ -1659,7 +1659,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert card['data-step'] == 'send'
     mail = card['children'][2]['children'][1]
     assert mail['class'] == 'mailcard'
-    assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
+    # Only channels the person can be reached on (#3302): a draft with no reachable chat offers its own channel alone.
+    assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail']
     assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
     # D-10: the CC row is always there, and says when nobody is copied.
     assert [cell['text'] for cell in mail['children'][0]['children'][2]['children']] == ['CC', 'No one']
@@ -3130,23 +3131,33 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
 
 
 def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
+    # Full screen asks for REM's open question by name and keeps the letter open; once the question is gone from
+    # the letter, Send goes out and the writer closes after saying so (#3303).
     function = re.search(r'function openWriter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-    result = _run_reader_js(function + r'''
+    split = re.search(r'const SLOT_SPLIT = .*?;\n', TEMPLATE.read_text()).group(0)
+    what = re.search(r'function slotWhat\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(split + what + function + r'''
       const nodes = [], sent = [], REM = {};
       const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children,
-        addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}}; nodes.push(node); return node;};
+        addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}, remove() {}}; nodes.push(node); return node;};
+      const icon = () => ({}), motionStilled = () => true;
+      const slotChoices = () => ({...el('span', {}, []), querySelector: () => ({focus() {}})}), setTimeout = f => f();
       const mailbox = address => ({address, name: 'Fern'}), document = {body: {appendChild() {}}};
-      openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, body => sent.push(body));
-      const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
-      const body = nodes.find(node => node.tag === 'textarea'), dialog = nodes.find(node => node.tag === 'dialog');
-      send.onclick();
-      const blocked = {sent: sent.length, closed: !!dialog.closed, notice: nodes.some(node => node.textContent === 'Fill the marked part first')};
-      body.value = 'The demo is ready.';
-      send.onclick();
-      console.log(JSON.stringify({blocked, sent}));
+      (async () => {
+        openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, async body => { sent.push(body); return ''; });
+        const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
+        const body = nodes.find(node => node.tag === 'textarea'), dialog = nodes.find(node => node.tag === 'dialog');
+        await send.onclick();
+        const notice = nodes.find(node => node.class === 'mail-status writer-notice');
+        const blocked = {sent: sent.length, closed: !!dialog.closed, notice: notice.textContent};
+        body.value = 'The demo is ready.';
+        await send.onclick();
+        console.log(JSON.stringify({blocked, sent, closed: !!dialog.closed, label: send.textContent}));
+      })();
     ''')
-    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': True}
+    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': "Answer REM's question on the right first: 意见"}
     assert result['sent'] == ['The demo is ready.']
+    assert result['closed'] and result['label'] == 'Reply sent'
 
 
 def test_today_reader_preserves_python_ranks_for_similar_requests_in_distinct_mail_threads(tmp_path, monkeypatch):
