@@ -489,3 +489,62 @@ def test_the_link_review_question_names_the_page_not_its_file_path(tmp_path):
     review, = listing(tmp_path)
     assert 'people/ellis.md' not in review['question']
     assert 'Ellis' in review['question']
+
+
+def _stored_link(tmp_path, record, status):
+    # A link review stored before #3286, worded with the page path.
+    import json
+    from connectonion.rem.files import state_path
+    path = state_path(tmp_path, 'reviews.json')
+    rows = json.loads(path.read_text()) if path.is_file() else []
+    rows.append({'id': 'old', 'kind': 'link', 'subjects': [record, 'people/ellis.md'],
+                 'question': 'Does people/ellis.md concern this topic?', 'basis': 'Heat storage was mentioned.',
+                 'status': status, 'created_at': '2026-11-01T00:00:00+00:00'})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows))
+
+
+def test_an_upgrade_keeps_one_review_per_link_and_rewords_the_pending_one(tmp_path):
+    # rc7 changed the wording; a stored pending link must not be asked a second time (36 became 77 live).
+    from connectonion.rem.topic_map import map_topics
+    from connectonion.rem.reviews import listing
+    notebook = Notebook(tmp_path)
+    path = topic(notebook)
+    path.write_text(path.read_text() + '\n- Heat batteries | heat storage | projects/cove.md | user, 2026-01-20, gmail:source4 | Heat batteries store energy.\n')
+    notebook.write('people/ellis.md', '# Ellis\nHeat storage was mentioned.\n')
+    rows, _ = map_topics(notebook)
+    record = rows[0]['record']
+    (tmp_path / '.state' / 'reviews.json').unlink()
+    _stored_link(tmp_path, record, 'pending')
+    map_topics(notebook)
+    review, = listing(tmp_path)
+    assert review['id'] == 'old'
+    assert review['question'] == 'Does Ellis concern this topic?'
+    assert '_reworded' not in review
+
+
+def test_a_decided_link_is_not_asked_again_under_new_wording(tmp_path):
+    from connectonion.rem.topic_map import map_topics
+    from connectonion.rem.reviews import listing
+    notebook = Notebook(tmp_path)
+    path = topic(notebook)
+    path.write_text(path.read_text() + '\n- Heat batteries | heat storage | projects/cove.md | user, 2026-01-20, gmail:source4 | Heat batteries store energy.\n')
+    notebook.write('people/ellis.md', '# Ellis\nHeat storage was mentioned.\n')
+    rows, _ = map_topics(notebook)
+    record = rows[0]['record']
+    (tmp_path / '.state' / 'reviews.json').unlink()
+    _stored_link(tmp_path, record, 'rejected')
+    map_topics(notebook)
+    review, = listing(tmp_path)
+    assert review['status'] == 'rejected'
+    assert review['question'] == 'Does people/ellis.md concern this topic?'  # a decided record is history
+
+
+def test_questions_still_match_on_their_words(tmp_path):
+    from connectonion.rem.reviews import propose, listing
+    notebook = Notebook(tmp_path)
+    notebook.write('people/ellis.md', '# Ellis\n')
+    propose(tmp_path, 'question', ['people/ellis.md'], 'Where does Ellis work?', 'a basis')
+    propose(tmp_path, 'question', ['people/ellis.md'], 'When did you meet Ellis?', 'a basis')
+    propose(tmp_path, 'question', ['people/ellis.md'], 'Where does Ellis work?', 'a basis')
+    assert len(listing(tmp_path)) == 2
