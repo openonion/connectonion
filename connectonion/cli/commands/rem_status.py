@@ -243,6 +243,22 @@ def _zone(root):
     return notebook_zone(read_config(root))
 
 
+def _sources_mapped(root) -> list[str]:
+    """One row per source that yields pages: when it was mapped, what it made, what still waits (#3331)."""
+    from ...rem.onboard import summary, yields
+    from ...rem.service import subscriptions
+    rows = []
+    for name, sub in subscriptions(root).items():
+        if not (sub.get("enabled") and sub.get("consented") and yields(sub)):
+            continue
+        done = summary(root, name)
+        made = ", ".join(f"{n} {kind}" for kind, n in done["created"].items() if n) or "no new pages"
+        when = done["mapped_at"][:10] if done["mapped_at"] != "never" else "never mapped"
+        text = f"{when} · {made} · {done['to_investigate']} to investigate"
+        rows.append(rem_look.row(f"Source {name}", text + (f" · {done['error']}" if done.get("error") else "")))
+    return rows
+
+
 def _private_unwritten(root) -> int:
     """Mapped private projects require a named-page request, not a category write (#2079)."""
     from ...rem.files import Notebook
@@ -340,6 +356,8 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
     if coverage.get("missing"):
         lines.append(rem_look.follow(style.muted(
             f"{coverage['missing']} people you write to have no page yet"), glyph=""))
+    for line in _sources_mapped(root):
+        lines.append(line)
     if private := _private_unwritten(root):
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
     scheduled = bool(value.get("next_run") and value.get("worker", {}).get("enabled"))

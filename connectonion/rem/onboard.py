@@ -207,3 +207,86 @@ def touched(root: Path, source_rows: list[dict]) -> dict:
                             if r.get("kind") == "person" and r.get("address", "").casefold() in by_handle)
     new = [r for r in records if _mapped_only(notebook.read(r))]
     return {"new": new, "existing": [r for r in records if r not in new]}
+
+
+# ---- onboarding: adding a source maps it, and the pages it touched are investigated first (#3331, part 2) ----
+STATE = "onboard.json"               # per source: when it was mapped, with what scope, and what it made
+ASKED = "people/onboarded.json"      # people pages onboarding touched; the people queue takes them first
+# Read on this machine with no network, so the night may map them; they also grow on their own (new chat
+# contacts), so they are mapped again every night. Mail and coding sources are mapped by init, by
+# `co rem sources add` and by `co rem map`: a mail map is a 180-day metadata scan over the network.
+NIGHTLY = ("wechat",)
+
+
+def _scope(sub: dict) -> str:
+    import json
+    return json.dumps({key: sub.get(key) for key in ("since", "chats", "project", "about")}, sort_keys=True,
+                      default=str)
+
+
+def due(root: Path, subs: dict, *, night: bool) -> list[str]:
+    """Sources to map now: never mapped, widened since, or (at night) the local ones that grow on their own."""
+    done = read_json(state_path(root, STATE), {})
+    names = []
+    for name, sub in subs.items():
+        if not (sub.get("enabled") and sub.get("consented") and yields(sub)):
+            continue
+        if night and sub.get("kind") not in NIGHTLY:
+            continue
+        if name not in done or done[name].get("scope") != _scope(sub) or sub.get("kind") in NIGHTLY:
+            names.append(name)
+    return names
+
+
+def queue_first(root: Path, source: str, records: list[str]) -> None:
+    from .files import write_json
+    from .service import now
+    asked = read_json(state_path(root, ASKED), {})
+    for record in records:
+        asked.setdefault(record, {"source": source, "at": now().isoformat()})
+    write_json(state_path(root, ASKED), asked)
+
+
+def onboard(root: Path, name: str, sub: dict, days: int) -> dict:
+    """Map one source, put the people pages it touched first in the queue, and record that it was mapped."""
+    from .files import write_json
+    from .service import now
+    result = plan(root, rows(root, name, sub, days), yields(sub), write=True)
+    people = result.get("people", {"create": [], "merge": []})
+    queue_first(root, name, [row["record"] for row in (*people["create"], *people["merge"])])
+    done = read_json(state_path(root, STATE), {})
+    done[name] = {"mapped_at": now().isoformat(), "scope": _scope(sub),
+                  "created": {kind: len(out["create"]) for kind, out in result.items()},
+                  "merged": len(people["merge"])}
+    write_json(state_path(root, STATE), done)
+    return result
+
+
+def run_due(root: Path, subs: dict, *, night: bool, days: int | None = None, only=()) -> list[str]:
+    """Onboard every due source (or only the named ones); the records it created. An unreadable source is
+    recorded where `co rem sources` shows it, not fatal."""
+    from .files import MAP_DAYS, write_json
+    created = []
+    for name in (n for n in due(root, subs, night=night) if not only or n in only):
+        try:
+            result = onboard(root, name, subs[name], days or MAP_DAYS)
+        except (RemError, OSError) as error:
+            # One unreadable source must not stop the round; the reason stays where `co rem sources` shows it.
+            done = read_json(state_path(root, STATE), {})
+            done.setdefault(name, {})["error"] = f"{type(error).__name__}: {error}"[:300]
+            write_json(state_path(root, STATE), done)
+            continue
+        created += [row["record"] if isinstance(row, dict) else row for out in result.values() for row in out["create"]]
+    return created
+
+
+def summary(root: Path, name: str) -> dict:
+    """What `co rem sources` shows for one source: when it was mapped, what it made, what still waits."""
+    from .people_pages import _stamp
+    done = read_json(state_path(root, STATE), {}).get(name, {})
+    investigated = read_json(state_path(root, "people/investigated.json"), {})
+    waiting = [record for record, asked in read_json(state_path(root, ASKED), {}).items()
+               if asked.get("source") == name and not (_stamp(investigated.get(record)) and
+                                                       _stamp(investigated.get(record)) > _stamp(asked["at"]))]
+    return {"mapped_at": done.get("mapped_at") or "never", "created": done.get("created", {}),
+            "to_investigate": len(waiting), **({"error": done["error"]} if done.get("error") else {})}

@@ -2563,11 +2563,12 @@ def make_rem_app(factory):
 
     @sources_app.callback(invoke_without_command=True)
     def inspect_sources(ctx: typer.Context):
-        from ...rem.onboard import yields
+        from ...rem.onboard import summary, yields
         from ...rem.service import subscriptions
         if ctx.invoked_subcommand is None:
             # Each source also says which kinds of page it yields (#3331): what `co rem map --source` builds.
-            _handle(ctx, lambda root: ({name: {**sub, "yields": ", ".join(yields(sub)) or "nothing to map yet"}
+            _handle(ctx, lambda root: ({name: {**sub, "yields": ", ".join(yields(sub)) or "nothing to map yet",
+                                               **({"mapped": summary(root, name)} if yields(sub) else {})}
                                         for name, sub in subscriptions(root).items()}, ["sync", "--dry-run"]), ["config"])
 
     def _add_source(ctx, name, chat, project, about, since, only, force):
@@ -2583,6 +2584,11 @@ def make_rem_app(factory):
                 # A new chat is not read until `start` has shown it and the user agreed.
                 result["chats"] = chat
                 return result, ["start"]
+            # Adding a source onboards it (#3331): an approved source is mapped now, its pages queued first.
+            from ...rem.onboard import run_due, summary
+            from ...rem.service import subscriptions
+            if run_due(root, subscriptions(root), night=False, only=(name,)) is not None:
+                result["mapped"] = summary(root, name)
             return result, ["sync", "--dry-run"]
         _handle(ctx, operation, ["sources"])
 
