@@ -81,6 +81,7 @@ def test_round_nine_browser_fixture_retains_all_four_context_disclosures(tmp_pat
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nconst REM = ' + json.dumps(data) + ';\n' + r'''
       const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/;
       const byPath = path => REM.records.find(r => r.path === path);
+      const codedOrgName = () => null, pageName = page => page?.title;  // course/team codes: tested in the browser
       const KNOWN = new Map(), FACTS = new Map(), render = () => {};
       const projectSessions = () => null, fmtDate = value => value;
       const localizedRelation = link => link, relationCard = () => ({tag: 'card'});
@@ -2154,6 +2155,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
       const changedValue = node => node, mappedContact = () => false, legacyFact = () => [], knownValue = Boolean;
       const withoutWechatIds = (r, item) => item, chatActivity = () => null;  // WeChat ids: tested in the browser (#3372)
       const inCategory = () => [], orgName = page => page.title;
+      const codedOrgName = () => null, pageName = page => page?.title;  // course/team codes: tested in the browser
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         get childNodes() { return this.children; },
         get textContent() { return (this.text || this.html || '') + this.children.map(n => typeof n === 'string' ? n : n?.textContent || '').join(''); },
@@ -2288,6 +2290,7 @@ def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback()
         '# Fernhill Labs\n## People here\n- [Theo Park](../people/theo-park.md) — 代表试点团队确认了计划 [2].\n\n## Sources\n- [2] mail:invented'}};
       const person = {path: 'people/theo-park.md', title: 'Theo Park', category: 'people'};
       const byPath = path => [origin, person].find(r => r.path === path), href = r => r.path;
+      const pageName = page => page.title;  // course/team codes: tested in the browser
       const youify = text => text, singular = () => '', inline = text => text;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
@@ -2327,6 +2330,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
         basis: 'Theo Park and Mia Chen reviewed the pilot plan.', sources: ['2']}));
       const byPath = path => [origin, theo, mia].find(r => r.path === path);
       const known = r => ({intro: r === mia ? '负责核对试点团队的下一步安排。' : '负责试点。'}), facts = () => ({});
+      const pageName = page => page.title;  // course/team codes: tested in the browser
       const youify = text => text, inline = text => text, singular = () => '', href = r => r.path;
       const originalMark = () => ({text: '原文'});
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
@@ -2724,7 +2728,7 @@ def test_conversation_reopens_at_the_cited_message_instead_of_old_scroll_positio
       const dialog = {scrollTop: 999, append() {}, appendChild() {}, addEventListener() {}, showModal() {}, querySelector: () => cited};
       const document = {getElementById: () => dialog};
       const el = (tag, attrs, children) => ({tag, ...attrs, children, focus() {}});
-      const byPath = () => null, sourceSender = () => 'You';
+      const byPath = () => null, sourceSender = () => 'You', pageName = page => page?.title;
       const conversationFor = () => ({subject: 'Example', cited_ids: ['example:3'], messages: [{id: 'example:3', sender: 'You', excerpt: 'Cited example.'}]});
       openConversation({}, 'example', {focus() {}});
       console.log(JSON.stringify({scrollTop: dialog.scrollTop, scrolls}));
