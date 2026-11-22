@@ -67,7 +67,7 @@ my-agent/           ← found, because .co/ is here
 
 With no `.co/` above you, the custom-file lookup starts where the agent was started.
 
-**Older names still work.** Until 1.9.7rc13 the page was called `dashboard.html`, and
+**Older names still work.** Before 1.9.7rc15 the page was called `dashboard.html`, and
 before that it lived in the project root. The Host looks for, in order:
 
 1. `.co/control_center.html`
@@ -260,7 +260,7 @@ One frame, client-opaque to the relay:
 ```
 
 For one preview cycle after the rename the Host also sends the same frame again as
-`DASHBOARD_SNAPSHOT`, its name until 1.9.7rc13, so O Chat builds from before the rename
+`DASHBOARD_SNAPSHOT`, its name before 1.9.7rc15, so O Chat builds from before the rename
 keep rendering. A client that reads both should treat them as the same page.
 
 See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.

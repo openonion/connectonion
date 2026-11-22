@@ -1004,7 +1004,7 @@ The HTML is agent-authored and untrusted: clients render it in a sandboxed ifram
 scripting and network access blocked. Files over 128 MiB are replaced by an
 explanatory page. See [control-center-page.md](control-center-page.md).
 
-Until the next preview after 1.9.7rc13, each snapshot is followed by an identical
+Until the next preview after 1.9.7rc15, each snapshot is followed by an identical
 frame typed `DASHBOARD_SNAPSHOT`, the pre-rename name, for older clients.
 
 #### WIKI_READ / WIKI_RESULT

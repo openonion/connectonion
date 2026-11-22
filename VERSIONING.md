@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc14
+## Current Version: 1.9.7rc15
+Release candidate 1.9.7rc15 for 1.9.7: the agent's page is called the Control Center everywhere (#3336). The Host
+serves `.co/control_center.html`, then `.co/dashboard.html`, then a root `dashboard.html`, and `co host` prints a
+one-line rename hint when an old name is in use. The snapshot frame is `CONTROL_CENTER_SNAPSHOT`; each one is followed
+by an identical `DASHBOARD_SNAPSHOT` for one preview cycle so older O Chat builds keep rendering. The builtin skill is
+`control-center`. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc15.md).
+
+- 1.9.7rc15 (Control Center rename: control_center.html, CONTROL_CENTER_SNAPSHOT, control-center skill #3336).
+
+### Previous candidate: 1.9.7rc14
 Release candidate 1.9.7rc14 for 1.9.7: owner-facing text names pages instead of raw `[[…md]]` paths and the record
 breadcrumb is only as wide as its text (#3338); the knowledge graph is alive, 3D in the live reader with Three.js and
 3d-force-graph vendored and served by the Host on first 3D open, and a live, draggable 2D graph on phone and with
