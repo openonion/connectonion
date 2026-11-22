@@ -330,7 +330,7 @@ Client                                    Server
 Three things follow from this shape, and each one is a mistake a client can make:
 
 **The answer arrives before the first message.** A client that opens the socket on a
-landing page — to receive `DASHBOARD_SNAPSHOT`, say — already has the gate's answer in hand
+landing page — to receive `CONTROL_CENTER_SNAPSHOT`, say — already has the gate's answer in hand
 before the reader types anything. There is no need to send a message and watch it be
 refused, and no need to guess from `/info`: that endpoint is anonymous and tells an admin
 exactly what it tells a stranger, so a client that gates on it puts a code prompt in front
@@ -351,7 +351,7 @@ A real capture of a first-time visitor on a gated agent, all on one socket:
 
 ```
 ONBOARD_REQUIRED → ONBOARD_SUCCESS → CONNECTED → AGENT_PROFILE
-→ DASHBOARD_SNAPSHOT → (INPUT) → … → OUTPUT → SESSION_STATUS
+→ CONTROL_CENTER_SNAPSHOT → (INPUT) → … → OUTPUT → SESSION_STATUS
 ```
 
 See [../features/trust.md](../features/trust.md) for configuring `onboard` in `trust.md`.
@@ -413,7 +413,7 @@ Sync frame is still independently signed using the v2 command envelope.
 A client that needs only the Recent Chat index may include
 `payload.session_sync_only: 1` with that extension request and omit `session_id`
 and `session`. Host answers CONNECTED with `status: "index"` and creates no
-registry entry, mode record, dashboard subscription, or blank conversation.
+registry entry, mode record, Control Center subscription, or blank conversation.
 Only signed Session Sync frames are valid on that capability socket.
 When the public relay adds a top-level socket routing `session_id`, Host ignores
 that transport-owned value only on this relay index connection; a direct client
@@ -984,26 +984,28 @@ look at: the relay rejects the whole ANNOUNCE when the profile fails validation,
 `host()` exits with the reason: `The relay rejected this agent's announce: <reason>`. The
 contract is documented in `oo-api/docs/relay-announce-profile.md`.
 
-#### DASHBOARD_SNAPSHOT
+#### CONTROL_CENTER_SNAPSHOT
 
-The agent's Control Center HTML (customized through the compatible
-`dashboard.html` filename) for the client to render beside chat. Sent right after
+The agent's Control Center HTML (`.co/control_center.html`, or the bundled starter)
+for the client to render beside chat. Sent right after
 `CONNECTED` so the Control Center paints before any input, and again after
-`OUTPUT` when the run changed the file. Agents without a `dashboard.html` never send
-it, and the frame is skipped when the file hasn't changed since this connection last
+`OUTPUT` when the run changed the file. The frame is skipped when the file hasn't changed since this connection last
 saw it.
 
 ```json
 {
-  "type": "DASHBOARD_SNAPSHOT",
+  "type": "CONTROL_CENTER_SNAPSHOT",
   "html": "<!DOCTYPE html>…",
   "session_id": "550e8400-..."
 }
 ```
 
 The HTML is agent-authored and untrusted: clients render it in a sandboxed iframe with
-scripting and network access blocked. Files over 2MB are not sent. See
-[dashboard.md](dashboard.md).
+scripting and network access blocked. Files over 128 MiB are replaced by an
+explanatory page. See [control-center-page.md](control-center-page.md).
+
+Until the next preview after 1.9.7rc13, each snapshot is followed by an identical
+frame typed `DASHBOARD_SNAPSHOT`, the pre-rename name, for older clients.
 
 #### WIKI_READ / WIKI_RESULT
 

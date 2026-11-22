@@ -1,18 +1,18 @@
-"""Unit tests for the Host-side dashboard delivery (network/host/ws_router/dashboard.py)."""
+"""Unit tests for the Host-side Control Center page delivery (network/host/ws_router/control_center.py)."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from connectonion.network.host.ws_router import dashboard as dashboard_module
-from connectonion.network.host.ws_router.dashboard import (
-    MAX_DASHBOARD_BYTES,
-    ensure_dashboard,
+from connectonion.network.host.ws_router import control_center as dashboard_module
+from connectonion.network.host.ws_router.control_center import (
+    MAX_CONTROL_CENTER_BYTES,
+    ensure_control_center,
     published_skills,
-    read_dashboard_snapshot,
+    read_control_center_snapshot,
     render_starter,
-    send_dashboard,
+    send_control_center_page,
 )
 
 # These tests are about the file, not about who reads it; render as an admin
@@ -41,7 +41,7 @@ def no_personal_starter(tmp_path, monkeypatch):
 @pytest.fixture
 def in_tmp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # ensure_dashboard anchors the module-level project dir at startup; clear it so
+    # ensure_control_center anchors the module-level project dir at startup; clear it so
     # each test resolves against its own tmp_path instead of a previous test's.
     monkeypatch.setattr(dashboard_module, "_project_dir", None)
     # Same for the metadata the starter is rendered from: leaking one test's agent
@@ -54,25 +54,25 @@ def test_no_file_means_the_starter_not_no_home(in_tmp):
     """Not having customised a Home is a state, not an absence. This used to
     answer None, which is why the starter had to be written to disk on first
     boot — and why every agent's Home then froze at that version."""
-    ensure_dashboard({"name": "Maren", "skills": []})
+    ensure_control_center({"name": "Maren", "skills": []})
 
-    frame = read_dashboard_snapshot(viewer=OWNER_VIEW)
+    frame = read_control_center_snapshot(viewer=OWNER_VIEW)
     assert frame and "Maren" in frame["html"]
-    assert read_dashboard_snapshot("sid", viewer=OWNER_VIEW)["session_id"] == "sid"
+    assert read_control_center_snapshot("sid", viewer=OWNER_VIEW)["session_id"] == "sid"
 
 
 def test_read_snapshot_returns_frame(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>hi</h1>", encoding="utf-8")
-    frame = read_dashboard_snapshot(viewer=OWNER_VIEW)
-    assert frame == {"type": "DASHBOARD_SNAPSHOT", "html": "<h1>hi</h1>"}
+    frame = read_control_center_snapshot(viewer=OWNER_VIEW)
+    assert frame == {"type": "CONTROL_CENTER_SNAPSHOT", "html": "<h1>hi</h1>"}
 
 
 def test_read_snapshot_stamps_session_id(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>hi</h1>", encoding="utf-8")
-    frame = read_dashboard_snapshot("abc", viewer=OWNER_VIEW)
+    frame = read_control_center_snapshot("abc", viewer=OWNER_VIEW)
     assert frame["session_id"] == "abc"
     # No session_id when not provided (direct path)
-    assert "session_id" not in read_dashboard_snapshot(viewer=OWNER_VIEW)
+    assert "session_id" not in read_control_center_snapshot(viewer=OWNER_VIEW)
 
 
 def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
@@ -80,8 +80,8 @@ def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
         {"name": "daily-brief", "description": "d", "location": "project"},
         {"name": "meeting_prep", "description": "d", "location": "project"},
     ]}
-    ensure_dashboard(meta)
-    html = read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
+    ensure_control_center(meta)
+    html = read_control_center_snapshot(viewer=OWNER_VIEW)["html"]
     assert "Maren" in html
     assert 'data-ochat-skill="daily-brief"' in html
     assert 'data-ochat-skill="meeting_prep"' in html
@@ -91,7 +91,7 @@ def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
 
 def test_ensure_dashboard_does_not_clobber_existing(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>custom</h1>", encoding="utf-8")
-    ensure_dashboard({"name": "X", "skills": []})
+    ensure_control_center({"name": "X", "skills": []})
     assert (in_tmp / "dashboard.html").read_text(encoding="utf-8") == "<h1>custom</h1>"
 
 
@@ -269,7 +269,7 @@ def test_render_starter_escapes_agent_name():
     assert "&lt;script&gt;" in html
 
 
-# --- Integration: the two emit points actually send DASHBOARD_SNAPSHOT ---
+# --- Integration: the two emit points actually send CONTROL_CENTER_SNAPSHOT ---
 
 
 @pytest.mark.asyncio
@@ -288,10 +288,10 @@ async def test_establish_connection_sends_snapshot_after_connected(in_tmp):
     await establish_connection({}, "0xabc", send_msg, conn, storage, registry)
 
     types = [m["type"] for m in sent]
-    assert "CONNECTED" in types and "DASHBOARD_SNAPSHOT" in types
+    assert "CONNECTED" in types and "CONTROL_CENTER_SNAPSHOT" in types
     # snapshot comes AFTER connected
-    assert types.index("DASHBOARD_SNAPSHOT") > types.index("CONNECTED")
-    snap = next(m for m in sent if m["type"] == "DASHBOARD_SNAPSHOT")
+    assert types.index("CONTROL_CENTER_SNAPSHOT") > types.index("CONNECTED")
+    snap = next(m for m in sent if m["type"] == "CONTROL_CENTER_SNAPSHOT")
     assert snap["html"] == "<h1>home</h1>" and "session_id" in snap
 
 
@@ -325,30 +325,30 @@ async def test_forward_sends_snapshot_after_output(in_tmp):
     await forward_agent_msgs_to_client(send_msg, FakeIO(), "sid", result_holder=result_holder, conn={}, storage=None)
 
     types = [m["type"] for m in sent]
-    assert "OUTPUT" in types and "DASHBOARD_SNAPSHOT" in types
-    assert types.index("DASHBOARD_SNAPSHOT") > types.index("OUTPUT")
+    assert "OUTPUT" in types and "CONTROL_CENTER_SNAPSHOT" in types
+    assert types.index("CONTROL_CENTER_SNAPSHOT") > types.index("OUTPUT")
 
 
 # --- Size cap: an agent-authored file must degrade to "no Home", not stall the host ---
 
 
 def test_read_snapshot_explains_oversized_file(in_tmp, monkeypatch):
-    monkeypatch.setattr(dashboard_module, "MAX_DASHBOARD_BYTES", 1024)
-    (in_tmp / "dashboard.html").write_text("x" * (dashboard_module.MAX_DASHBOARD_BYTES + 1), encoding="utf-8")
-    assert "128 MiB" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
+    monkeypatch.setattr(dashboard_module, "MAX_CONTROL_CENTER_BYTES", 1024)
+    (in_tmp / "dashboard.html").write_text("x" * (dashboard_module.MAX_CONTROL_CENTER_BYTES + 1), encoding="utf-8")
+    assert "128 MiB" in read_control_center_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_read_snapshot_accepts_file_at_the_limit(in_tmp, monkeypatch):
-    monkeypatch.setattr(dashboard_module, "MAX_DASHBOARD_BYTES", 1024)
-    (in_tmp / "dashboard.html").write_text("x" * dashboard_module.MAX_DASHBOARD_BYTES, encoding="utf-8")
-    assert read_dashboard_snapshot(viewer=OWNER_VIEW)["html"] == "x" * dashboard_module.MAX_DASHBOARD_BYTES
+    monkeypatch.setattr(dashboard_module, "MAX_CONTROL_CENTER_BYTES", 1024)
+    (in_tmp / "dashboard.html").write_text("x" * dashboard_module.MAX_CONTROL_CENTER_BYTES, encoding="utf-8")
+    assert read_control_center_snapshot(viewer=OWNER_VIEW)["html"] == "x" * dashboard_module.MAX_CONTROL_CENTER_BYTES
 
 
 def test_read_snapshot_survives_an_unreadable_path(in_tmp, capsys):
     # dashboard.html is agent-authored, so it can be a directory, a broken symlink,
     # or binary. stat() succeeds on some of those; the read is what fails.
     (in_tmp / "dashboard.html").mkdir()
-    assert "Could not read" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
+    assert "Could not read" in read_control_center_snapshot(viewer=OWNER_VIEW)["html"]
     assert "Could not read" in capsys.readouterr().err
 
 
@@ -361,9 +361,11 @@ async def test_send_dashboard_sends_to_a_fresh_connection(in_tmp):
     sent = []
     conn = {}
 
-    await send_dashboard(AsyncMock(side_effect=lambda m: sent.append(m)), "sid", conn)
+    await send_control_center_page(AsyncMock(side_effect=lambda m: sent.append(m)), "sid", conn)
 
-    assert [m["type"] for m in sent] == ["DASHBOARD_SNAPSHOT"]
+    # The pre-#3336 frame name follows for one preview cycle, for older O Chat builds.
+    assert [m["type"] for m in sent] == ["CONTROL_CENTER_SNAPSHOT", "DASHBOARD_SNAPSHOT"]
+    assert sent[0]["html"] == sent[1]["html"] == "<h1>home</h1>"
 
 
 @pytest.mark.asyncio
@@ -373,10 +375,10 @@ async def test_send_dashboard_skips_an_unchanged_file(in_tmp):
     send_msg = AsyncMock(side_effect=lambda m: sent.append(m))
     conn = {}
 
-    await send_dashboard(send_msg, "sid", conn)
-    await send_dashboard(send_msg, "sid", conn)  # nothing touched the file
+    await send_control_center_page(send_msg, "sid", conn)
+    await send_control_center_page(send_msg, "sid", conn)  # nothing touched the file
 
-    assert len(sent) == 1
+    assert [m["type"] for m in sent] == ["CONTROL_CENTER_SNAPSHOT", "DASHBOARD_SNAPSHOT"]
 
 
 @pytest.mark.asyncio
@@ -387,11 +389,12 @@ async def test_send_dashboard_resends_after_the_agent_rewrites_it(in_tmp):
     send_msg = AsyncMock(side_effect=lambda m: sent.append(m))
     conn = {}
 
-    await send_dashboard(send_msg, "sid", conn)
+    await send_control_center_page(send_msg, "sid", conn)
     path.write_text("<h1>after the run</h1>", encoding="utf-8")
-    await send_dashboard(send_msg, "sid", conn)
+    await send_control_center_page(send_msg, "sid", conn)
 
-    assert [m["html"] for m in sent] == ["<h1>before</h1>", "<h1>after the run</h1>"]
+    pages = [m["html"] for m in sent if m["type"] == "CONTROL_CENTER_SNAPSHOT"]
+    assert pages == ["<h1>before</h1>", "<h1>after the run</h1>"]
 
 
 @pytest.mark.asyncio
@@ -400,16 +403,17 @@ async def test_send_dashboard_gives_each_connection_its_own_snapshot(in_tmp):
     sent = []
     send_msg = AsyncMock(side_effect=lambda m: sent.append(m))
 
-    await send_dashboard(send_msg, "sid-1", {})  # two separate clients
-    await send_dashboard(send_msg, "sid-2", {})
+    await send_control_center_page(send_msg, "sid-1", {})  # two separate clients
+    await send_control_center_page(send_msg, "sid-2", {})
 
-    assert len(sent) == 2  # dedup is per connection, never global
+    # dedup is per connection, never global
+    assert [m["session_id"] for m in sent if m["type"] == "CONTROL_CENTER_SNAPSHOT"] == ["sid-1", "sid-2"]
 
 
 @pytest.mark.asyncio
 async def test_send_dashboard_sends_nothing_when_there_is_no_file(in_tmp):
     sent = []
-    await send_dashboard(AsyncMock(side_effect=lambda m: sent.append(m)), "sid", {})
+    await send_control_center_page(AsyncMock(side_effect=lambda m: sent.append(m)), "sid", {})
     assert sent == []
 
 
@@ -430,11 +434,11 @@ def test_published_skills_excludes_unpublished_locations():
 def test_starter_has_no_buttons_for_unpublished_skills(in_tmp):
     # A client validates every button against the published profile, which carries
     # project-tree skills only — so these must not become buttons at all.
-    ensure_dashboard({"name": "Solo", "skills": [
+    ensure_control_center({"name": "Solo", "skills": [
         {"name": "my-notes", "description": "", "location": "user"},
         {"name": "dashboard", "description": "", "location": "builtin"},
     ]})
-    html = read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
+    html = read_control_center_snapshot(viewer=OWNER_VIEW)["html"]
     assert 'data-ochat-skill="' not in html
     assert ".co/skills/" in html  # falls back to the empty state
 
@@ -476,13 +480,13 @@ def test_starter_skill_names_match_what_the_profile_publishes():
 
 
 def test_ensure_dashboard_anchors_the_directory_against_later_chdir(in_tmp, tmp_path, monkeypatch):
-    ensure_dashboard({"name": "Anchored", "skills": []})
+    ensure_control_center({"name": "Anchored", "skills": []})
 
     elsewhere = tmp_path.parent / "elsewhere"
     elsewhere.mkdir(exist_ok=True)
     monkeypatch.chdir(elsewhere)  # a tool or plugin wanders off
 
-    assert "Anchored" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
+    assert "Anchored" in read_control_center_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_ensure_dashboard_takes_an_explicit_project_dir(tmp_path, monkeypatch):
@@ -490,10 +494,10 @@ def test_ensure_dashboard_takes_an_explicit_project_dir(tmp_path, monkeypatch):
     project = tmp_path / "project"
     project.mkdir()
 
-    ensure_dashboard({"name": "Explicit", "skills": []}, project_dir=project)
+    ensure_control_center({"name": "Explicit", "skills": []}, project_dir=project)
 
     assert dashboard_module._project_dir == project
-    assert dashboard_module.dashboard_path() == project / ".co" / "dashboard.html"
+    assert dashboard_module.control_center_path() == project / ".co" / "dashboard.html"
 
 
 def test_a_read_only_project_still_gets_a_home(in_tmp, monkeypatch):
@@ -504,9 +508,9 @@ def test_a_read_only_project_still_gets_a_home(in_tmp, monkeypatch):
         raise PermissionError("read-only file system")
     monkeypatch.setattr(Path, "write_text", refuse)
 
-    ensure_dashboard({"name": "Locked", "skills": []})
+    ensure_control_center({"name": "Locked", "skills": []})
 
-    assert "Locked" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
+    assert "Locked" in read_control_center_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_the_starter_template_ships_in_the_wheel():
@@ -532,7 +536,7 @@ def test_starting_a_host_writes_no_file(in_tmp):
     """The whole point. A file written once is a fossil of the starter that
     happened to be installed that day, and nothing ever refreshes it."""
     (in_tmp / ".co").mkdir()
-    ensure_dashboard({"name": "Maren", "skills": []})
+    ensure_control_center({"name": "Maren", "skills": []})
 
     assert not (in_tmp / ".co" / "dashboard.html").exists()
     assert not (in_tmp / "dashboard.html").exists()
@@ -546,9 +550,9 @@ def test_the_project_is_found_from_a_subdirectory(in_tmp, monkeypatch):
     nested.mkdir(parents=True)
     monkeypatch.chdir(nested)
 
-    ensure_dashboard({"name": "Maren", "skills": []})
+    ensure_control_center({"name": "Maren", "skills": []})
 
-    assert dashboard_module.dashboard_path() == in_tmp / ".co" / "dashboard.html"
+    assert dashboard_module.control_center_path() == in_tmp / ".co" / "control_center.html"
 
 
 def test_an_existing_root_dashboard_is_still_served(in_tmp):
@@ -557,11 +561,44 @@ def test_an_existing_root_dashboard_is_still_served(in_tmp):
     (in_tmp / ".co").mkdir()
     (in_tmp / "dashboard.html").write_text("<h1>mine</h1>", encoding="utf-8")
 
-    ensure_dashboard({"name": "Maren", "skills": []})
+    ensure_control_center({"name": "Maren", "skills": []})
 
-    assert dashboard_module.dashboard_path() == in_tmp / "dashboard.html"
-    assert read_dashboard_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>mine</h1>"
+    assert dashboard_module.control_center_path() == in_tmp / "dashboard.html"
+    assert read_control_center_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>mine</h1>"
     assert not (in_tmp / ".co" / "dashboard.html").exists()  # not moved, not copied
+
+
+def test_control_center_html_is_the_page(in_tmp):
+    (in_tmp / ".co").mkdir()
+    (in_tmp / ".co" / "control_center.html").write_text("<h1>new</h1>", encoding="utf-8")
+
+    assert dashboard_module.control_center_path() == in_tmp / ".co" / "control_center.html"
+    assert read_control_center_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>new</h1>"
+
+
+def test_a_project_with_only_the_old_name_keeps_its_page(in_tmp, capsys):
+    """#3336: a .co/dashboard.html written before the rename is still served,
+    untouched, and co host says once how to rename it."""
+    (in_tmp / ".co").mkdir()
+    (in_tmp / ".co" / "dashboard.html").write_text("<h1>mine</h1>", encoding="utf-8")
+
+    ensure_control_center({"name": "Maren", "skills": []})
+
+    assert read_control_center_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>mine</h1>"
+    assert not (in_tmp / ".co" / "control_center.html").exists()
+    assert "rename" in "".join(capsys.readouterr())
+
+
+def test_the_new_name_wins_over_the_old_one(in_tmp, capsys):
+    (in_tmp / ".co").mkdir()
+    (in_tmp / "dashboard.html").write_text("<h1>oldest</h1>", encoding="utf-8")
+    (in_tmp / ".co" / "dashboard.html").write_text("<h1>old</h1>", encoding="utf-8")
+    (in_tmp / ".co" / "control_center.html").write_text("<h1>new</h1>", encoding="utf-8")
+
+    ensure_control_center({"name": "Maren", "skills": []})
+
+    assert read_control_center_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>new</h1>"
+    assert "rename" not in "".join(capsys.readouterr())
 
 
 def test_the_co_copy_wins_when_both_exist(in_tmp):
@@ -569,14 +606,14 @@ def test_the_co_copy_wins_when_both_exist(in_tmp):
     (in_tmp / "dashboard.html").write_text("<h1>old</h1>", encoding="utf-8")
     (in_tmp / ".co" / "dashboard.html").write_text("<h1>current</h1>", encoding="utf-8")
 
-    assert read_dashboard_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>current</h1>"
+    assert read_control_center_snapshot(viewer=OWNER_VIEW)["html"] == "<h1>current</h1>"
 
 
 def test_an_agent_outside_a_project_still_gets_a_home(in_tmp):
     """No .co/ anywhere above, and nowhere to write one — still a Home."""
-    ensure_dashboard({"name": "Loose", "skills": []})
+    ensure_control_center({"name": "Loose", "skills": []})
 
-    assert "Loose" in read_dashboard_snapshot(viewer=OWNER_VIEW)["html"]
+    assert "Loose" in read_control_center_snapshot(viewer=OWNER_VIEW)["html"]
 
 
 def test_a_personal_starter_template_replaces_the_bundled_one(in_tmp, monkeypatch, tmp_path):
@@ -678,7 +715,7 @@ def test_an_operator_override_without_the_new_field_still_renders(tmp_path,
     """~/.co/starter.html replaces the bundled template. One written before this
     change has no $address in it, and must keep working — losing the address is
     their layout's business; raising KeyError is ours."""
-    from connectonion.network.host.ws_router import dashboard
+    from connectonion.network.host.ws_router import control_center as dashboard
 
     home = tmp_path / "home"
     (home / ".co").mkdir(parents=True)
@@ -699,14 +736,14 @@ def test_dashboard_above_old_limit_preserves_unicode_and_scripts(in_tmp):
     html = '<!doctype html><style>.x{color:red}</style><script>let a=1;</script>' + '房源价格🌍' * 300000
     assert len(html.encode()) > 2 * 1024 * 1024
     (in_tmp / 'dashboard.html').write_text(html, encoding='utf-8')
-    frame = read_dashboard_snapshot('large', viewer=OWNER_VIEW)
-    assert frame == {'type': 'DASHBOARD_SNAPSHOT', 'html': html, 'session_id': 'large'}
+    frame = read_control_center_snapshot('large', viewer=OWNER_VIEW)
+    assert frame == {'type': 'CONTROL_CENTER_SNAPSHOT', 'html': html, 'session_id': 'large'}
 
 
 def test_encoding_expansion_returns_visible_error(in_tmp, monkeypatch):
     monkeypatch.setattr(dashboard_module, 'MAX_WEBSOCKET_MESSAGE_BYTES', 65540)
     (in_tmp / 'dashboard.html').write_text('<p>large envelope</p>')
-    assert 'transport envelope' in read_dashboard_snapshot(viewer=OWNER_VIEW)['html']
+    assert 'transport envelope' in read_control_center_snapshot(viewer=OWNER_VIEW)['html']
 
 
 @pytest.mark.asyncio
@@ -714,10 +751,10 @@ async def test_failed_delivery_can_retry_unchanged_dashboard(in_tmp):
     (in_tmp / 'dashboard.html').write_text('<p>retry</p>')
     conn = {}
     with pytest.raises(OSError):
-        await send_dashboard(AsyncMock(side_effect=OSError('disconnected')), 's', conn)
+        await send_control_center_page(AsyncMock(side_effect=OSError('disconnected')), 's', conn)
     deliver = AsyncMock()
-    await send_dashboard(deliver, 's', conn)
-    deliver.assert_awaited_once()
+    await send_control_center_page(deliver, 's', conn)
+    assert deliver.await_count == 2  # the page, and its pre-#3336 copy
 
 
 def test_the_page_opens_on_a_card_not_on_skills():

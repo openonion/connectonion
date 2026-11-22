@@ -102,7 +102,7 @@ DRIVEN_NEXT = "End your turn: the co rem exec that started this task takes the n
 def _emit(ctx, value, arguments, *, failed=False, draw=None, code=1):
     """Print a result and its Next line: styled in a terminal, the same words anywhere else.
 
-    `draw` turns a result into markup of its own (status's dashboard); any
+    `draw` turns a result into markup of its own (status's card); any
     other result is `render`'s text with commands, counts and errors marked.
     """
     from ..style import next_line
@@ -256,10 +256,10 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     _emit(ctx, value, arguments, failed=failed, draw=draw)
 
 
-def _dashboard(ctx, verbose=False, show_private=False):
-    """How status draws its result: a small dashboard, internals only with --verbose (#1996)."""
-    from .rem_status import dashboard
-    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose,
+def _card(ctx, verbose=False, show_private=False):
+    """How status draws its result: a small status card, internals only with --verbose (#1996)."""
+    from .rem_status import card
+    return lambda value: card(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose,
                                    show_private=show_private)
 
 
@@ -1606,7 +1606,7 @@ def make_rem_app(factory):
                 def operation(root):
                     result = status(root)
                     return result, ["investigate"] if result["configured"] else ["init"]
-                _handle(ctx, operation, ["config"], draw=_dashboard(ctx))
+                _handle(ctx, operation, ["config"], draw=_card(ctx))
 
     V = verbatim
 
@@ -2279,12 +2279,12 @@ def make_rem_app(factory):
         def operation(root):
             value = status(root, include_quota=True)
             # Keep the CLI's JSON contract; translation coverage is drawn in
-            # the dashboard and consumed separately by the notebook reader.
+            # the status card and consumed separately by the notebook reader.
             if ctx.obj["json"]:
                 value.pop("translation_coverage", None)
             return value, status_next(value)
         _handle(ctx, operation, ["config"],
-                draw=_dashboard(ctx, verbose, show_private))
+                draw=_card(ctx, verbose, show_private))
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days, *, collect_only=False):
         from ...rem.files import RemError

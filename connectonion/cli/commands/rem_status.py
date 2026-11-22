@@ -1,4 +1,4 @@
-"""`co rem status` as a small dashboard (#1996).
+"""`co rem status` as a small status card (#1996).
 
 Status printed every field it had: the schedule times twice, the launchd
 plist, "Known attempts / Total attempts" three times, a whole run record --
@@ -21,7 +21,7 @@ CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisa
               ("sessions", "Agent sessions"))
 
 
-def dashboard(root, value: dict, spell, *, verbose: bool = False, show_private: bool = False) -> str:
+def card(root, value: dict, spell, *, verbose: bool = False, show_private: bool = False) -> str:
     """The status result as markup (the plain text is the same markup read without its styles).
 
     `spell` turns arguments into the command as this user types it (`_next`).

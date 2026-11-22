@@ -81,7 +81,7 @@ class TestContentStaysWritable:
     worse trade than the hole."""
 
     @pytest.mark.parametrize("path", [
-        ".co/dashboard.html",
+        ".co/control_center.html",
         ".co/logs/agent.log",
         ".co/docs/notes.md",
         ".co/skills/mine/SKILL.md",
@@ -223,7 +223,7 @@ class TestTheAgentsOwnLoopIsCoveredToo:
         assert allowed is False
 
     def test_the_agent_can_still_write_its_home_page(self):
-        allowed, _reason = self._approve("write", {"file_path": ".co/dashboard.html"}, OPEN)
+        allowed, _reason = self._approve("write", {"file_path": ".co/control_center.html"}, OPEN)
 
         assert allowed is True
 

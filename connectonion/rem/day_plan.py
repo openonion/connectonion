@@ -184,7 +184,7 @@ def _event_text(row):
 
 
 def text(plan, today):
-    """The same saved facts as words for status (its dashboard joins the lines)."""
+    """The same saved facts as words for status (its card joins the lines)."""
     day = next((day for day in plan['days'] if day['date'] == today), plan['days'][0])
     lines = ['Your day (' + day['date'] + ')']
     if day['date'] != today:

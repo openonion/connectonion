@@ -318,10 +318,10 @@ EOF
 ### 3. Built-in Skill (Shipped with ConnectOnion)
 
 The default set is deliberately customer-facing: `install-connectonion`, `co-browser`,
-`co-mail-and-drive`, `topup`, and `dashboard` (the compatibility skill name for editing
-the agent's [Control Center](../network/dashboard.md)). The first three keep their one canonical body in
+`co-mail-and-drive`, `topup`, and `control-center` (for editing
+the agent's [Control Center](../network/control-center-page.md)). The first three keep their one canonical body in
 `connectonion/useful_skills/`; an explicit allowlist loads them as defaults. `topup` and
-`dashboard` live in `connectonion/cli/co_ai/skills/builtin/`.
+`control-center` live in `connectonion/cli/co_ai/skills/builtin/`.
 
 Contributor workflows (`commit`, `review-pr`, `ship-feature`) remain copyable from
 `useful_skills/` but are not put in every customer's prompt. Their skill frontmatter does

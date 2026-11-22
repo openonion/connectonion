@@ -802,7 +802,7 @@ Options:  --verbose   Show full run details, worker status, token counts and
           --show-private  Print [sensitive] passages and full links. By default the
                       day plan, calendar and run reasons hide each sensitive
                       passage as [hidden] and show a link as its host, so the
-                      dashboard is safe to share; --json is unchanged.
+                      status card is safe to share; --json is unchanged.
 Next:     co rem logs   (details of each run)
 Back:     co rem --help
 ```
