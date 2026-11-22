@@ -95,7 +95,7 @@ def today(tmp_path, monkeypatch):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
         yield page, calls, answers
         browser.close()
     assert not errors, errors
@@ -164,7 +164,7 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     page, _, _ = today
     page.evaluate(OVERDUE, isolated_context=False)
     faces = page.locator(".deal")
-    headline = page.locator(".night-card .count").inner_text()
+    headline = page.locator("#main .count-line .count").inner_text()
     people = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
     assert faces.evaluate_all(FACES) == people  # no draft: one order
     # The large number is the badge's (sprint 14 #4); the faces beside it are where to start, and no sentence
@@ -411,7 +411,7 @@ def test_the_owner_is_never_a_person_waiting(today):
     paths = page.locator(".deal").evaluate_all(FACES)
     assert owner not in paths and "people/tomas-reyes.md" in paths
     assert page.locator(f'.qcard[data-path="{owner}"]').count() == 0
-    assert int(page.locator(".night-card .count").inner_text()) == len(paths)
+    assert int(page.locator("#main .count-line .count").inner_text()) == len(paths)
     assert "Your page" not in page.locator(".night-card").inner_text()
     page.locator(".closed .link-btn").click()  # 看: what REM did overnight, every name
     assert page.locator('#night-sheet .night-done li[data-kind="could_not_prepare"] b').inner_text() == "Could not draft for 1 person"
@@ -498,7 +498,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
-    before = int(page.locator(".night-card .count").inner_text())
+    before = int(page.locator("#main .count-line .count").inner_text())
     # The Host holds a Send for ten minutes. A decades-long fake hold overflows
     # the browser timer and keeps replacing Undo before a real click can land.
     release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
@@ -511,7 +511,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     path, body = calls[-1]
     assert path == "/rem/approve" and body["ids"] == ["reply:ines"]
     assert "共享文件夹" in body["bodies"]["reply:ines"] and "【" not in body["bodies"]["reply:ines"]
-    assert int(page.locator(".night-card .count").inner_text()) == before - 1
+    assert int(page.locator("#main .count-line .count").inner_text()) == before - 1
     assert page.locator('.deal[data-path="people/ines-halvorsen.md"]').count() == 0
     assert page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
     note = page.locator(".qsent")
@@ -520,7 +520,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     note.get_by_role("button", name="Undo", exact=True).click()
     page.locator('.qcard[data-path="people/ines-halvorsen.md"]').wait_for()
     assert calls[-1][1] == {"action": "undo", "ids": ["reply:ines"]}
-    assert int(page.locator(".night-card .count").inner_text()) == before
+    assert int(page.locator("#main .count-line .count").inner_text()) == before
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
 
 
@@ -603,7 +603,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     assert page.evaluate("location.hash", isolated_context=False) == "#c=people"
     assert toggle.get_attribute("aria-expanded") == "false" and not links.first.is_visible()
     page.goto(BASE)
-    page.locator(".night-card .count").wait_for()
+    page.locator("#main .count-line .count").wait_for()
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)

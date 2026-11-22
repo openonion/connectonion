@@ -254,7 +254,7 @@ def reader(tmp_path, monkeypatch):
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri())
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
         yield page, path.as_uri()
         browser.close()
         assert not errors, errors
@@ -303,8 +303,9 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
       }).reverse();
       render();
     }""", isolated_context=False)
-    page.locator('.night-details summary').click()
-    band = page.locator('.night-details .night')
+    # Since sprint T3 the full band lives in Activity; Today's own chart heads the night card (#3311).
+    page.evaluate('() => { location.hash = "#view=activity"; render(); }', isolated_context=False)
+    band = page.locator('.night').first
     hypno = band.locator('.hypno')
     assert hypno.locator('.dot.changed').count() == 2
     assert hypno.locator('.dot.woke').count() == 1
@@ -313,7 +314,8 @@ def test_night_hypnogram_clusters_dense_runs(reader, width):
                         hypno.locator('.dot.changed').first.get_attribute('title'))
     assert '2 runs stopped early' in hypno.locator('.dot.woke').get_attribute('title')
     assert '22 runs in 2 stretches' in hypno.get_attribute('aria-label')
-    assert hypno.locator('.trace').get_attribute('d').count(' L') == 9  # Four edges per dip, then the baseline.
+    # A sleep chart since sprint T3: each dense stretch is one step to its stage and back, never a comb of 20 runs.
+    assert hypno.locator('.trace').get_attribute('d').count(' L') <= 10
     dots = [dot.bounding_box() for dot in hypno.locator('.dot').all()]
     for n, a in enumerate(dots):
         for b in dots[n + 1:]:
@@ -335,8 +337,8 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     total = page.locator('#nav .n.waiting').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert int(total) > 0 and page.locator('.night-card .count').text_content() == total
-    assert page.locator('.night-card .count-words').text_content() == 'things waiting on you'
+    assert int(total) > 0 and page.locator('#main .count-line .count').text_content() == total
+    assert page.locator('#main .count-words').text_content() == 'things waiting on you'
     assert 'Start with' not in page.locator('.night-card').inner_text()
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
@@ -347,13 +349,15 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     page.locator('.week-details summary').click()
     assert set(page.locator('.week a').all_inner_texts()) >= {'Mara Ostrowski', 'Harbour', 'Fernhill Labs'}
     assert page.locator(".recall").count() == 0  # sprint 14: no "what should you remember" card without a reason
-    assert page.locator(".night-details").count() == 1
-    page.locator(".night-details summary").click()
-    night = page.locator(".night-details .night")
+    # Today's chart heads the night card and no longer hides in a fold (sprint T3, #3311); the whole band is in Activity.
+    assert page.locator(".night-card .hypno").count() == 1 and page.locator("#processing .hypno").count() == 0
+    page.evaluate('() => { location.hash = "#view=activity"; render(); }', isolated_context=False)
+    night = page.locator(".night").first
     assert "46 items" in night.inner_text() and "4 pages" in night.inner_text()
     assert night.locator(".hypno .dot.changed").count() == 1
     assert night.locator('.hypno .dot.dawn').count() == 1
     assert set(night.locator(".changes a").all_inner_texts()) == {"Mara Ostrowski", "Harbour", "Fernhill Labs", "Avery Lin"}  # runs, and stamps of the night
+    page.evaluate('() => { location.hash = ""; render(); }', isolated_context=False)
     # The full ledger keeps both directions, yours first.
     page.locator('.others .waiting-more').click()
     bands = page.locator(".task-band")
@@ -602,7 +606,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     page, _ = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(path.as_uri())
-    assert page.locator('.night-card .count').is_visible()
+    assert page.locator('#main .count-line .count').is_visible()
     assert page.locator('.first-map').is_visible()
     assert page.locator(".first-map h2").inner_text().endswith(" records mapped")
     assert page.locator(".first-map .morning-time").inner_text() == "0 memories written"
@@ -1350,7 +1354,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert 'See all 0' not in primary.inner_text()
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
-    heading = page.locator('.night-card .count-line').inner_text()
+    heading = page.locator('#main .count-line').inner_text()
     assert heading.split('\n') == ([str(mine), 'thing waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
@@ -2103,7 +2107,7 @@ def test_failed_init_is_visible_and_keyboard_reachable(reader, tmp_path, monkeyp
     assert 'No memory pages were written' in brief.inner_text()
     assert 'Your notebook was just built' not in brief.inner_text()
     assert brief.locator('.cmd').count() == 0
-    stopped = page.locator('.night-details .hypno .dot.woke')
+    stopped = page.locator('.night-card .hypno .dot.woke')  # the chart heads Today since sprint T3
     assert stopped.count() == 1
     assert '2 runs stopped early' in stopped.get_attribute('title')
     link = brief.get_by_role('link', name='Review failed runs →')
@@ -3076,15 +3080,13 @@ def test_last_pass_band_has_equal_insets_and_complete_trace_in_both_views(reader
     # More than 2,400 path units: the old fixed dash pattern cut off later runs.
     page.evaluate('''() => {
       REM.as_of = '2026-10-01T12:00:00Z';
-      REM.logs = Array.from({length: 16}, (_, i) => ({
+      REM.logs = Array.from({length: 20}, (_, i) => ({  // 20 steps: the stage chart's trace passes 2,400 units
         run_id: 'fixture-' + i, started_at: new Date(Date.UTC(2026, 9, 1, 0, i * 30)).toISOString(),
         seconds: 60, outcome: 'done', items: 100, changed: ['people/avery-lin.md']
       })); render();
     }''', isolated_context=False)
-    for fragment in ('', '#view=activity'):
+    for fragment in ('#view=activity',):  # Today's chart is the night card's since sprint T3; the band is Activity's
         page.evaluate('fragment => { location.hash = fragment; render(); }', fragment, isolated_context=False)
-        if not fragment:
-            page.locator('#processing > summary').click()
         band = page.locator('.night').first
         main_box, box = page.locator('#main').bounding_box(), band.bounding_box()
         assert abs((box['x'] - main_box['x']) - (main_box['x'] + main_box['width'] - box['x'] - box['width'])) <= 1
@@ -3092,7 +3094,7 @@ def test_last_pass_band_has_equal_insets_and_complete_trace_in_both_views(reader
         trace = band.locator('.trace')
         assert trace.evaluate('node => node.getTotalLength()') > 2400
         assert trace.get_attribute('pathLength') == '1'
-        assert trace.get_attribute('d').endswith('L996,14')
+        assert trace.get_attribute('d').endswith('L996,72')  # back to deep sleep at the right edge (stage chart)
         # Finish its animation; normalised dashes must cover every path segment.
         trace.evaluate("node => node.getAnimations().forEach(a => a.finish())")
         assert trace.evaluate("node => getComputedStyle(node).strokeDashoffset") == '0px'
@@ -4057,7 +4059,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(html.as_uri())
-        page.locator('.night-card .count').wait_for()
+        page.locator('#main .count-line .count').wait_for()
 
         def no_private_words():
             visible = page.locator('body').inner_text()
@@ -4149,9 +4151,10 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard').count() == 1
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
-    assert page.locator('.night-card .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
+    assert page.locator('#main .count-line .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
     assert 'Start with' not in page.locator('.night-card').inner_text()
-    assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
+    if width > 640:  # a phone has no faces since sprint T3; the card's own age line says it (asserted above)
+        assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
     assert page.evaluate('todayEntries(threadEntries()).length', isolated_context=False) == 6
     assert page.locator('.others .waiting-more').get_attribute('href') == '#view=open'
@@ -4165,11 +4168,9 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('#nav .n.waiting').inner_text() == '7'  # items, not people (TOP10 #9), said once: in the sidebar
     assert 'items waiting on you' not in page.locator('.waiting-more').inner_text()
     assert page.locator('.week-details').get_attribute('open') is None
-    assert page.locator('.night-details').get_attribute('open') is None
     assert page.locator('.category-cards').count() == 0
-    page.locator('#processing > summary').click()
-    assert page.locator('.night-details').get_attribute('open') is not None
-    assert page.locator('.night-details .night').is_visible()
+    # The night's chart is open at the top of Today, not in the processing fold (sprint T3, #3311).
+    assert page.locator('.night-card .hypno').is_visible() and page.locator('#processing .hypno').count() == 0
     assert page.evaluate(r'''() => {
       const keys = [...document.querySelectorAll('.qcard .today-who')].map(a => a.textContent);
       return document.documentElement.scrollWidth <= innerWidth && keys.length === 1;
@@ -4581,8 +4582,10 @@ def test_round10_first_build_and_translation_notice(reader, tmp_path, language):
     else:
         assert notice.is_hidden()
     page.locator('#processing > summary').click()
-    assert page.locator('.night-title').inner_text() == ('首次建立' if language == 'zh' else 'First build')
     assert ('昨夜' if language == 'zh' else 'Last night') not in page.locator('#processing').inner_text()
+    # The night's band, titled for a first build, is Activity's since sprint T3.
+    page.evaluate('() => { location.hash = "#view=activity"; render(); }', isolated_context=False)
+    assert page.locator('.night-title').first.inner_text() == ('首次建立' if language == 'zh' else 'First build')
     page.goto(uri + '#view=changes')
     assert page.locator('.empty .lead').inner_text() == (
         '暂无变化 — 这是首次建立。' if language == 'zh' else 'No changes yet — this is the first build.')
@@ -6093,7 +6096,8 @@ def test_today_says_what_rem_did_overnight_beside_who_is_waiting(reader, width):
       render();
     }""", isolated_context=False)
     done = page.locator("#night-sheet .night-done")
-    line = page.locator(".side .closed")
+    # In the night block on a wide screen since sprint T3; on a phone it follows the queue, so Send stays in reach (D-10).
+    line = page.locator(".night-card .closed, .side .closed").first
     assert line.inner_text().startswith("REM handled 3 things overnight")
     line.locator(".link-btn").click()
     assert page.locator("#night-title").inner_text() == "What REM did overnight"
