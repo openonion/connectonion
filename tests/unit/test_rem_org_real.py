@@ -80,7 +80,7 @@ def test_mapped_connection_is_just_its_linked_name(summary):
     # #3397: a connection with no written reason says only how the pages meet, never a placeholder or another page's summary.
     row = result['children'][1]['children']
     assert row[0] == {'tag': 'a', 'href': '#orgs/field.md', 'text': 'Field studio', 'children': []}
-    assert row[2]['class'] == 'ov-conn-kind' and row[2]['text'] == 'Organisation · Links here'
+    assert row[2]['class'] == 'ov-conn-kind' and row[2]['text'] == 'Organisation · Mentioned on this page'
     assert summary not in str(row)
 
 

@@ -22,6 +22,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
 BASE = "http://rem.test/"
 SHOTS = Path(os.environ.get("REM_PR_SHOTS", "/tmp/rem-org-relations-shots"))
 CLIENT, OWN, FUND, MATE = "orgs/fernhill-labs.md", "orgs/quillmoor.md", "orgs/willowmere-fund.md", "people/kit-brennan.md"
+TRAIL = "projects/lumen-trail.md"
 SOURCES = "\n## Sources\n- [1] gmail:fixture:9 — 2026-09-01\n"
 VERSION_NOTE = "Changed: the shared snapshot was 2.1.0a4; a later 2.2rc1 needs opting in"
 
@@ -33,6 +34,8 @@ def _notebook(root, now):
     book = Notebook(root)
     book.write(OWN, "# Quillmoor\n\n## Facts\n- Kind: own_company [1]\n- What they do: Agent tools [1]\n" + SOURCES)
     book.write(FUND, "# Willowmere Fund\n\n## Facts\n- Kind: investor [1]\n- What they do: Research grants [1]\n" + SOURCES)
+    # A project whose own page names the client; the client page never mentions it back.
+    book.write(TRAIL, "# Lumen Trail\n\n## Facts\n- Organisation: [Fernhill Labs](../orgs/fernhill-labs.md) [1]\n" + SOURCES)
     book.write(MATE, "# Kit Brennan\n\n## Facts\n- Company: [Quillmoor](../orgs/quillmoor.md) [1]\n"
                      "- Role: Co-founder [1]\n" + SOURCES)
     owner = book.read("people/avery-lin.md")
@@ -98,9 +101,10 @@ def test_connections_never_show_a_version_note_and_a_reasonless_row_says_how_the
     rows = page.locator("#main .ov-connections p").all_inner_texts()
     assert rows, "the client page lists its connections"
     assert not [row for row in rows if "Changed" in row or "2.1.0a4" in row], rows
-    fund = [row for row in rows if row.startswith("Willowmere Fund")]
-    assert fund and "Willowmere Fund —" in fund[0] and "Related" not in fund[0], rows
-    assert page.locator("#main .ov-connections .ov-conn-kind").count() >= 1
+    # The review (#3400): no 链接, and the direction said in plain words, kind word first.
+    assert "Willowmere Fund — 组织 · 这页里提到过" in rows, rows
+    assert "Lumen Trail — 项目 · 它的页面提到这里" in rows, rows
+    assert not [row for row in rows if "链接" in row], rows
     _shot(page, "org-connections", width)
 
 
@@ -118,9 +122,13 @@ def test_the_owners_cofounder_is_your_side_not_inside_the_clients_tree(reader, w
     root = page.locator("#main .ov-org-tree [role=treeitem][aria-level='1']").first
     inside = root.locator("[role=treeitem]").all_inner_texts()
     assert not [text for text in inside if "Kit Brennan" in text], inside
-    yours = page.locator("#main .ov-org-tree .ov-trow[data-kind=yours]")
-    assert yours.inner_text().strip() == "你这边的联系人"
-    mates = page.locator("#main .ov-org-tree [role=treeitem][aria-level='1']").nth(1).locator("[role=treeitem]").all_inner_texts()
-    assert any("Kit Brennan" in text for text in mates), mates
+    # Outside the company's tree, under a light heading with no fold: not one of its departments (#3400 review).
+    assert page.locator("#main .ov-org-tree [role=tree] [aria-level='1']").count() == 1
+    heading = page.locator("#main .ov-org-tree .ov-yours-h")
+    assert heading.inner_text().strip() == "你这边对接的人"
+    yours = page.locator("#main .ov-org-tree .ov-yours")
+    assert yours.locator("[aria-expanded], .ov-twisty, [role=treeitem]").count() == 0
+    assert yours.evaluate("node => !node.closest('[role=tree]')")
+    assert any("Kit Brennan" in text for text in yours.locator("li").all_inner_texts())
     assert page.locator("#main .ov-opening").inner_text().count("Kit Brennan") == 0
     _shot(page, "org-tree-yours", width)
