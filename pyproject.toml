@@ -51,7 +51,7 @@ dependencies = [
     "qrcode>=8.2",
     "mnemonic>=0.20",
     "questionary>=2.0.0",
-    "websockets>=11.0.0",
+    "websockets>=14.0",  # 14 is the asyncio client whose connect() takes additional_headers (co discord as a user)
     "google-auth>=2.0.0",
     "google-api-python-client>=2.0.0",
     # httpx 1.0 (on PyPI as 1.0.dev6 since before 1.8.8) removes HTTPError,

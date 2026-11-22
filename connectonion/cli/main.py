@@ -2492,8 +2492,26 @@ app.add_typer(_people_verbs(_inbox_group("feishu", "Feishu bot as an inbox: list
 app.add_typer(_people_verbs(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "lark"), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
-app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
-              short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
+# `link` (experimental) makes every verb act as the owner's own account instead.
+_discord_app = _inbox_group(
+    "discord", "Experimental: Discord as an inbox: listen, receive, send, reply. Sends as your bot, "
+               "or as your own account after co discord link (against Discord's terms; try a throwaway account first).")
+
+
+@_discord_app.command("link", epilog="Example:  co discord link --yes  |  co discord link --token --yes  |  "
+                                     "pbpaste | co discord link --token --yes")
+def _discord_link(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Accept the terms-of-service warning without the prompt"),
+    token: bool = typer.Option(False, "--token",
+                               help="Paste a token instead of scanning a QR: hidden input, or stdin when piped"),
+):
+    """Experimental: link your own Discord account, so listen, receive, send and reply act as you. Shows a QR for the Discord phone app. Writes the token to ~/.co/inbox/discord/user-session.json (mode 0600). Automating a user account is against Discord's terms and can get it limited or terminated: try a throwaway account first."""
+    from .commands.discord_commands import handle_link
+    handle_link(yes=yes, token=token)
+
+
+app.add_typer(_discord_app, name="discord",
+              short_help="Experimental: Discord as an inbox, as your bot or your own account.")
 # Slack over Socket Mode: the same outbound-WebSocket shape as Discord, the same
 # dependency. Experimental for 1.8.9: tested against fakes, never a live workspace.
 # Beside the inbox, four read verbs on Slack's Web API (#2051), for what was said

@@ -58,7 +58,9 @@ def reactions_enabled() -> bool:
 # the module is imported by name only when someone asks for that provider.
 # Telegram is plain HTTPS through `requests`, so it needs no extra at all.
 PROVIDERS = {
-    "discord": ("connectonion.inbox.discord", "Discord", {}),  # websockets: a core dependency
+    # websockets: a core dependency. account() picks your own account when one
+    # is linked (`co discord link`, experimental) and the bot otherwise.
+    "discord": ("connectonion.inbox.discord_user", "account", {}),
     "feishu": ("connectonion.inbox.feishu", "Feishu", {"domain": "feishu"}),
     "lark": ("connectonion.inbox.feishu", "Feishu", {"domain": "lark"}),
     "whatsapp": ("connectonion.inbox.whatsapp", "WhatsApp", {}),
