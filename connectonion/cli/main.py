@@ -378,19 +378,19 @@ def host(
     serve: bool = typer.Option(False, '--serve', help="Run the Host in this terminal with the built-in agent; host.yaml's model: picks codex, claude-code or a model name"),
     agent_file: Optional[Path] = typer.Option(None, '--agent', exists=True, dir_okay=False, help="Run your own agent.py as the Host instead of the built-in agent"),
     background: bool = typer.Option(False, '--background', help='Install/start the background service (launchd on macOS, systemd on Linux); co init does this for you'),
-    status: bool = typer.Option(False, '--status', help='Read-only: the background service and process, as JSON; no device-ready claim'),
+    status: bool = typer.Option(False, '--status', help='Read-only: print service and process status as JSON without running readiness checks'),
     stop: bool = typer.Option(False, '--stop', help='Stop and disable the background service across login'),
     uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove the background service; preserve agent, identity, memory and logs'),
     native_codex: bool = typer.Option(False, '--native-codex', hidden=True, help='Pre-#3170: serve native Codex from this profile; set model: codex instead'),
 ):
     """Show the always-on Host that co init started, or manage it. With no option: its status. --serve runs it in this terminal; --agent runs your own agent.py.
 
-    Upgrading from 1.9.6: a bare `co host` no longer serves a project. In a project
-    nothing serves, it exits 1 and names the command; scripts and logon tasks
-    should run `co host --serve` (built-in agent) or `co host --agent agent.py`.
+    Upgrading from 1.9.6: a bare `co host` no longer serves a project. If no Host is running
+    for the project, bare `co host` exits 1 and prints the start command; use
+    `co host --serve` or `co host --agent agent.py` in scripts.
 
-    One host serves everything: the agent over HTTP, WebSocket and the relay, REM for you, and the
-    channels in .co/host.yaml's listen:. The agent is the built-in one unless you pass --agent.
+    The Host exposes your agent over HTTP, WebSocket and the channels listed under listen: in
+    .co/host.yaml. It also serves REM, your private notebook of what you have worked on, to you only. The agent is the built-in one unless you pass --agent.
     """
     import os
     import subprocess
@@ -872,9 +872,9 @@ def call(
 ):
     """Run one command on a remote agent and print the result (no LLM). Runs it there as bash.
 
-    Signs as this project's .co/keys when it has one (and says so on stderr),
-    else as ~/.co. --global signs as ~/.co; --co-dir DIR signs with DIR/keys.
-    A refusal names the address it signed with and where the key came from.
+    Signs with the project key in .co/keys if there is one (and says so on stderr),
+    else with your key in ~/.co. Use --global to force ~/.co, or --co-dir DIR for
+    another folder. A refusal names the address it signed with and its folder.
 
     Everything after the address runs on the remote agent as a shell command,
     if the allow list in its .co/host.yaml permits it:
