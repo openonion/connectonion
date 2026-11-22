@@ -100,7 +100,12 @@ def test_wechat_activity_fills_the_columns_and_marks_the_source(reader):
     page, width = reader
     _people(page)
     row = page.locator(".people-table tbody tr", has_text="Wren Pike")
-    assert "WeChat" in row.inner_text()                              # where the person comes from
+    # Only the rarer source is marked (#3368): with most rows from one source, its mark on every row says nothing.
+    # Here WeChat friends outnumber mail people overall (most rest in the folds), so mail is the marked one and
+    # a WeChat row carries no mark.
+    marks = page.evaluate("() => [...document.querySelectorAll('.people-table tbody tr .src-mark')].map(m => m.textContent)")
+    assert set(marks) == {"Mail"}, marks
+    assert row.locator(".src-mark").count() == 0
     if width > 500:
         cells = [cell.strip() for cell in row.locator("td").all_inner_texts()]
         assert "14" in cells                                         # 90-day messages from WeChat
