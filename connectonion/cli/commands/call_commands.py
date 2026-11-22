@@ -27,7 +27,7 @@ USAGE = (
     "  --timeout SEC     seconds to wait for the result (default 60)\n"
     "  --relay URL       relay server (default: configured backend)\n"
     "  --global, -g      sign as your global identity (~/.co), not this project's\n"
-    "  --co-dir DIR      sign with the key in DIR/keys (a .co folder)\n"
+    "  --co-dir DIR      sign with the key in DIR/keys\n"
     "\n"
     "Inside a project with its own .co/keys, co call signs as that project and\n"
     "says so on stderr; elsewhere it signs as ~/.co. A refusal names the address\n"
