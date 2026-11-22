@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc15
+## Current Version: 1.9.7rc16
+Release candidate 1.9.7rc16 for 1.9.7: REM gets faster and WeChat-complete: the same-person check and the whole-notebook scans run once per build (`co rem status` ~20 s → ~11 s on 1,352 people, #3365); every WeChat friend gets a page, chats are read from the full-text index too, and the People table counts WeChat activity, folds friends without recent chats and labels the id 微信 (#3357, #3346); a wrong-channel reply is rewritten on the thread's own channel and full screen holds send until it is (#3358); every source reports its coverage and Today names what REM can't read with one button (#3354, #3356); opening the reader no longer asks for translation status (#3352); one token sheet for states and motion (#3362); 3D graph fit and search refinements (#3342). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc16.md).
+
+- 1.9.7rc16 (scan perf #3365; every WeChat friend + WeChat activity in People #3357/#3346; wrong-channel redraft #3358; source coverage #3354/#3356; no translate-status on open #3352; token sheet #3362; 3D refine #3342).
+
+### Previous candidate: 1.9.7rc15
 Release candidate 1.9.7rc15 for 1.9.7: the agent's page is called the Control Center everywhere (#3336). The Host
 serves `.co/control_center.html`, then `.co/dashboard.html`, then a root `dashboard.html`, and `co host` prints a
 one-line rename hint when an old name is in use. The snapshot frame is `CONTROL_CENTER_SNAPSHOT`; each one is followed
