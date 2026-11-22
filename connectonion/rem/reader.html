@@ -3930,6 +3930,12 @@
     color: var(--ink); background: var(--raised); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); text-decoration: none; }
   .open-chips .chip.on { background: var(--ink); color: var(--paper); }
   .open-chips .chip-n { color: var(--grey); }
+  /* Each chip row says what it filters (#3157): 来源 / 标签. */
+  .open-chips .bar-label { align-self: center; margin-right: 4px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .open-chips .chip-more { display: flex; flex-wrap: wrap; gap: 8px; }
+  .open-chips .chip-more > summary { cursor: pointer; list-style: none; }
+  .open-chips .chip-more > summary::-webkit-details-marker { display: none; }
+  .open-chips .chip-more-list { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
   .open-chips .chip.on .chip-n { color: inherit; }
   .bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 18px; }
   .bulk-bar .bulk-done { min-height: 44px; padding: 0 18px; border: 0; border-radius: var(--r-pill); box-shadow: var(--e-ring); background: var(--raised); color: var(--ink);
@@ -6079,7 +6085,7 @@ function href(r) { return r.path?.startsWith("tag:") ? tagHref(r.path.slice(4)) 
 // its queue row's tags. Resolution follows tags.resolve in Python: slug, then normalised label, then an alias.
 Object.assign(UI.zh, { "1 page with this tag is new or changed": "有 1 个带这个标签的页面是新的或改过", "{n} pages with this tag are new or changed": "有 {n} 个带这个标签的页面是新的或改过", "Open the tag page →": "打开标签页 →", "Tag page": "标签页", "Tags": "标签", "Tag": "标签", "Tag: {label}": "标签：{label}", "1 page carries this tag": "1 页带这个标签",
   "{n} pages carry this tag": "{n} 页带这个标签", "No page carries this tag yet": "还没有页面带这个标签", "No such tag": "没有这个标签",
-  "Filter by tag": "按标签筛选", "All": "全部", "Tag {label}": "标签 {label}" });
+  "Filter by tag": "按标签筛选", "All": "全部", "Tag {label}": "标签 {label}", "More tags": "更多" });
 function tagNorm(text) {
   return String(text || "").trim().toLowerCase().replace(/^tag:/, "").replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
@@ -6096,7 +6102,12 @@ function tagHref(slug) {
   const page = REM.tags?.[slug]?.page, r = page && byPath(page);
   return r ? href(r) : "#q=" + encodeURIComponent("tag:" + slug);
 }
-function tagged(records, slug) { return slug ? records.filter(r => (r.tags || []).includes(slug)) : records; }
+// A merged chip (#3157: one company under a short and a full name) filters by any of its tags: "acme,acme-foods".
+function tagged(records, slug) {
+  if (!slug) return records;
+  const slugs = String(slug).split(",");
+  return records.filter(r => (r.tags || []).some(tag => slugs.includes(tag)));
+}
 // A page's tags as quiet links, each to its tag page; nothing when it has none.
 function tagLinks(r, said = []) {
   // A page is never its own tag (rc34 hunt: an organisation's row listed the organisation): the tag that names this
@@ -6150,17 +6161,66 @@ function tagPage(slug) {
   }
 }
 // A list's tag chips: the tags its pages carry, with counts, most used first; one tap filters, a second clears.
+// The row is labelled (#3157, P大: "筛选两排都叫『全部』，我刚点的是哪个全部？"). A chip leads with a name a person
+// reads: a course or project code (digits, capitals, dashes) or a bare domain goes by its organisation's or tag page's
+// own title when the notebook has one, and otherwise waits under 更多 instead of heading the row. One company under
+// a short and a full name is one chip.
+const CHIP_CODE = /^(?=\S*\d)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/, CHIP_DOMAIN = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
+function chipCoded(name) { return CHIP_CODE.test(name) || CHIP_DOMAIN.test(name); }
+function orgForDomain(domain) {
+  const d = domain.toLowerCase(), dashed = d.replace(/\./g, "-");
+  return inCategory("orgs").find(org => org.path.split("/").pop().replace(/\.md$/, "").replace(/-[0-9a-f]{6,}$/, "") === dashed
+    || (rawSection(org, "Domains") || "").toLowerCase().includes(d)) || null;
+}
+function chipName(slug) {
+  const label = tagLabel(slug).trim();
+  if (!chipCoded(label)) return { name: label, readable: true };
+  const page = REM.tags?.[slug]?.page ? byPath(REM.tags[slug].page) : tagWritten(slug);
+  const title = String(page?.title || "").trim();
+  if (title && !chipCoded(title)) return { name: title, readable: true };
+  const org = CHIP_DOMAIN.test(label) ? orgForDomain(label) : null;
+  return org ? { name: orgName(org), readable: true } : { name: label, readable: false };
+}
+const CHIP_SUFFIX = /\b(?:pty|ltd|limited|inc|llc|corp|corporation|co|company|gmbh|pte)\b\.?/gi;
+function chipSameCompany(a, b) {
+  const page = slug => REM.tags?.[slug]?.page || "", kind = slug => REM.tags?.[slug]?.kind || "";
+  if (page(a.slug).startsWith("orgs/") && page(a.slug) === page(b.slug)) return true;
+  if (kind(a.slug) !== "org" || kind(b.slug) !== "org") return false;
+  const norm = name => name.toLowerCase().replace(CHIP_SUFFIX, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return norm(a.name) === norm(b.name) || startsWords(a.name, b.name) || startsWords(b.name, a.name);
+}
 function tagBar(c, records) {
-  const counts = new Map();
-  for (const r of records) for (const slug of r.tags || []) if (REM.tags?.[slug]) counts.set(slug, (counts.get(slug) || 0) + 1);
+  const members = new Map();
+  for (const r of records) for (const slug of r.tags || []) if (REM.tags?.[slug]) (members.get(slug) || members.set(slug, new Set()).get(slug)).add(r.path);
   const active = route().tag;
-  const chips = [...counts].filter(([slug, n]) => n > 1 || slug === active).sort((a, b) => b[1] - a[1]).slice(0, 12);
-  if (!chips.length) return null;
+  const chips = [];
+  for (const [slug, paths] of [...members].sort((a, b) => b[1].size - a[1].size)) {
+    const chip = { slug, paths: new Set(paths), ...chipName(slug) };
+    const same = chip.readable && chips.find(other => other.readable && chipSameCompany(other, chip));
+    if (!same) { chips.push({ ...chip, slugs: [slug] }); continue; }
+    same.slugs.push(slug);
+    for (const path of paths) same.paths.add(path);
+    if (chip.name.length > same.name.length) same.name = chip.name;
+  }
+  const keyOf = chip => chip.slugs.join(",");
+  const shown = chips.filter(chip => chip.paths.size > 1 || keyOf(chip) === active || chip.slugs.includes(active));
+  const readable = shown.filter(chip => chip.readable).sort((a, b) => b.paths.size - a.paths.size).slice(0, 12);
+  const coded = shown.filter(chip => !chip.readable).sort((a, b) => b.paths.size - a.paths.size);
+  if (!readable.length && !coded.length) return null;
   const base = "#c=" + c;
+  const link = chip => {
+    const on = keyOf(chip) === active || (chip.slugs.length === 1 && chip.slugs[0] === active);
+    return el("a", { class: "chip" + (on ? " on" : ""), href: on ? base : base + "&tag=" + encodeURIComponent(keyOf(chip)),
+      "aria-current": on ? "true" : null, title: chip.slugs.map(tagLabel).join(" · ") }, [chip.name, " ", el("span", { class: "chip-n", text: String(chip.paths.size) })]);
+  };
+  const more = coded.length ? el("details", { class: "chip-more" + (coded.some(chip => keyOf(chip) === active || chip.slugs.includes(active)) ? " on" : "") }, [
+    el("summary", { class: "chip" }, [t("More tags"), " ", el("span", { class: "chip-n", text: String(coded.length) })]),
+    el("div", { class: "chip-more-list" }, coded.map(link))]) : null;
+  if (more?.classList.contains("on")) more.open = true;
   return el("nav", { class: "open-chips tag-bar", "aria-label": t("Filter by tag") }, [
+    el("span", { class: "bar-label", text: t("Tags") }),
     el("a", { class: "chip" + (active ? "" : " on"), href: base, "aria-current": active ? null : "true", text: t("All") }),
-    ...chips.map(([slug, n]) => el("a", { class: "chip" + (slug === active ? " on" : ""), href: slug === active ? base : base + "&tag=" + encodeURIComponent(slug),
-      "aria-current": slug === active ? "true" : null }, [tagLabel(slug), " ", el("span", { class: "chip-n", text: String(n) })]))]);
+    ...readable.map(link), more]);
 }
 const TAG_LISTS = ["people", "orgs", "projects", "skills", "decisions", "principles"];
 function calendarDay(iso) {
@@ -12569,7 +12629,9 @@ const blank = value => value === "" || value == null ? null : value;
 // A sort key of null is a blank: it goes last whichever way the column is sorted.
 const PEOPLE_COLUMNS = [
   { key: "name", label: "Name", sort: d => addressTitle(d.r) ? "\uffff" + d.r.title : d.r.title, cell: d => personNameCell(d) },
-  { key: "org", label: "Organisation", sort: d => blank(d.org?.name), cell: d => d.org ? personOrgCell(d.org) : textCell("") },
+  // A nameless mailbox shows its address once, muted, in the name cell; the organisation cell stays empty (#3157).
+  { key: "org", label: "Organisation", sort: d => addressTitle(d.r) ? null : blank(d.org?.name),
+    cell: d => d.org && !addressTitle(d.r) ? personOrgCell(d.org) : textCell("") },
   { key: "last", label: "Last contact", num: true, desc: true, sort: d => blank(d.f.last), cell: d => dateCell(d.f.last, mappedContact(d.r)) },
   { key: "m90", label: "Messages · 90 days", num: true, desc: true, sort: d => blank(d.rel?.messages_90d),
     cell: d => d.rel?.messages_90d == null ? textCell("") : el("span", { class: "mono", text: String(d.rel.messages_90d) }) },
@@ -12752,6 +12814,7 @@ function sourceBar() {
   const link = (src, words) => el("a", { class: "chip" + (src === active ? " on" : ""), href: src && src !== active ? "#c=people&src=" + src : "#c=people",
     "aria-current": src === active ? "true" : null }, [words, ...(src ? [" ", el("span", { class: "chip-n", text: String(counts[src]) })] : [])]);
   return el("nav", { class: "open-chips source-bar", "aria-label": t("Source") }, [
+    el("span", { class: "bar-label", text: t("Source") }),
     link("", t("All")), link("wechat", t("WeChat")), link("mail", t("Mail"))]);
 }
 function category(c) {
