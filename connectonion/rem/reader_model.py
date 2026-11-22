@@ -71,17 +71,43 @@ def _org_roster(org: dict) -> set[str]:
     return set(notebook_links(org['path'], '\n'.join(lines)))
 
 
+def _parent_chain(org: dict, orgs: dict) -> set[str]:
+    """The org and its cited Parent chain: a course's roster may place a person whose Company is its university."""
+    chain, path = set(), org['path']
+    while path in orgs and path not in chain:
+        chain.add(path)
+        parents = [link for value in orgs[path]['facts'].get('Parent', []) if value['citations']
+                   for link in notebook_links(path, value['value']) if link.startswith('orgs/')]
+        path = parents[0] if len(parents) == 1 else ''
+    return chain
+
+
 def organisation_members(records: list[dict], owner: str) -> None:
-    """Only listed people and explicit affiliations populate the org roster."""
+    """Only listed people and explicit affiliations populate the org roster.
+
+    A roster is the org page's claim (someone on its threads). A person whose OWN page names a
+    different company is not drawn into this org by it (#3397: the owner's co-founder sat inside a
+    client's tree because she was on the thread). The owner's own people named there are the org's
+    `your_side`: the contacts on the owner's side of the relationship.
+    """
     people = [row for row in records if row['category'] == 'people' and row['path'] != owner
               and not (row.get('service') or row.get('needs_review'))]
-    for org in records:
-        if org['category'] != 'orgs':
-            continue
-        roster = _org_roster(org)
+    orgs = {row['path']: row for row in records if row['category'] == 'orgs'}
+    own = {person['path']: set(person['organisations']) for person in people}
+    owner_row = next((row for row in records if row['path'] == owner), {})
+    owner_orgs = set(owner_row.get('organisations', [])) | {path for path, org in orgs.items() if org.get('kind') == 'own_company'}
+    for org in orgs.values():
+        roster, chain = _org_roster(org), _parent_chain(org, orgs)
+        org['your_side'] = []
         for person in people:
-            if person['path'] in roster and org['path'] not in person['organisations']:
+            if person['path'] not in roster or org['path'] in person['organisations']:
+                continue
+            elsewhere = own[person['path']] and not own[person['path']] & chain
+            if elsewhere and own[person['path']] & owner_orgs and not chain & owner_orgs:
+                org['your_side'].append(person['path'])
+            elif not elsewhere:
                 person['organisations'].append(org['path'])
+    for org in orgs.values():
         linked = [row for row in records if org['path'] in row.get('organisations', [])
                   and not (row.get('service') or row.get('needs_review')) and row['path'] != owner]
         for category in ('people', 'projects'):
