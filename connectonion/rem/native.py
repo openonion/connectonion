@@ -208,6 +208,15 @@ def _inputs(root, task, directory, *, handler):
     return {str(path): _input_hash(root, path) for path in sorted(paths)}
 
 
+def _inputs_changed(root, task):
+    """True when a pending task can no longer be submitted: what it was prepared from changed."""
+    inputs = _inputs(root, task["task"], Path(task["directory"]), handler=task["handler"])
+    # Older tasks also saved unrelated notebook files; apply today's input scope.
+    return (any(not _input_matches(root, task, Path(path), digest)
+                for path, digest in task["inputs"].items() if path in inputs)
+            or task["source_view"] != _source_view(root, task["task"], handler=task["handler"]))
+
+
 def _audit_progress(task):
     from .project_claim_review import audit_progress, rejected_checkpoints
     directory = Path(task["material"])
@@ -781,6 +790,12 @@ def _resume(root, cursor, task, *, discard, scheduled=False):
         _accept(root, cursor, task, committed if committed is not None else _recovered_result(root, task))
     elif service.now() - datetime.fromisoformat(task["created_at"]) > timedelta(days=1):
         return _discard(root, cursor, task, "stale: older than the daily window")
+    elif scheduled and task.get("status") == "pending" and _inputs_changed(root, task):
+        # 2026-11-23: its submit can only fail "Task input changed", and handing it back made
+        # every 15-minute turn of a night submit it again. It is parked and the round goes on.
+        task.setdefault("refusals", [])
+        _park(root, task, "its input changed after it was prepared", cursor=cursor)
+        return [f"Parked {task['id']}: its input changed after it was prepared"]
     return []
 
 
@@ -998,11 +1013,7 @@ def _submit(root, task_id, *, usage):
             return _accept(root, cursor, task, committed)
         if _promoted(root, task):
             return _accept(root, cursor, task, _recovered_result(root, task))
-        inputs = _inputs(root, task["task"], Path(task["directory"]), handler=task["handler"])
-        # Older tasks also saved unrelated notebook files; apply today's input scope.
-        if (any(not _input_matches(root, task, Path(path), digest)
-                for path, digest in task["inputs"].items() if path in inputs)
-                or task["source_view"] != _source_view(root, task["task"], handler=task["handler"])):
+        if _inputs_changed(root, task):
             raise TaskFault("Task input changed; preserve the current notebook. Run co rem next --discard")
         result = _check_submission(root, task)
         if result.get("outcome") in ("refused", "parked"):
@@ -1210,7 +1221,7 @@ def _batch_material(task, items):
     return [item for item in items if item.get("role") != "page"]
 
 
-def _park(root, task, why):
+def _park(root, task, why, *, cursor=None):
     """Set the task aside for a later day, recorded with its reasons; the round moves on."""
     from .catchup import number
     from .refusals import material_sources, remember_refusal, short_cause
@@ -1227,7 +1238,7 @@ def _park(root, task, why):
         items = task["task"].get("items", [])
         remember_refusal(root, task["record"], material_sources(items), reason, stage="parked", parked=True,
                          candidate=candidate, material=_batch_material(task, items))
-    _discard(root, read_json(state_path(root, "round.json"), {}), task, reason, outcome="parked",
+    _discard(root, cursor if cursor is not None else read_json(state_path(root, "round.json"), {}), task, reason, outcome="parked",
              refusals=[refusal[:300] for refusal in task["refusals"]], record=task.get("record"),
              candidate=candidate, parked_night=number(root), cause=cause)
     _leave_job(root, task)
