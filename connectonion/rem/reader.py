@@ -425,6 +425,11 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     data['ignored_senders'] = ignored_senders(root) if local else {}
     from .threads import person_marks
     data['person_marks'] = person_marks(root) if local else {}
+    # Address-book friends with nothing to read yet: People folds them out of the table (#3347).
+    from .onboard import activity, idle
+    data['idle_people'] = idle(root)
+    # When the owner last talked with each WeChat person: People's columns and its 90-day fold (#3346).
+    data['chat_activity'] = activity(root)
     # The owner's calendars as the night saved them; a shared page carries none of his meetings.
     from .calendar import upcoming
     data['calendar'] = upcoming(root, records, owner) if local else None

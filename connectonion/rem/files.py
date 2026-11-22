@@ -498,8 +498,10 @@ class Notebook:
         # stage had, and sends the paid stage looking for it.
         # Addresses are not names: seeded into Also known as too, 64 of 295 pages
         # in the 1.9.2b3 run said nothing there but the Email line again.
+        # An address is a real mail address only: a WeCom contact's WeChat id ends "@openim" and is a handle, not
+        # mail; written to Handles alone it never reached the roster and the night stubbed that friend again (#3347).
         seeded = {"Handles": ", ".join(handles),
-                  "Also known as": ", ".join(handle for handle in handles if "@" not in handle)}
+                  "Also known as": ", ".join(handle for handle in handles if not EMAIL.fullmatch(handle))}
         seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
         lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Facts"]
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]

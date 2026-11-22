@@ -898,6 +898,11 @@
   .contact-directory th, .contact-directory td { padding: 8px 9px; border-bottom: 1px solid var(--rule); text-align: left; }
   .contact-directory th { color: var(--grey); font: var(--w-bold) var(--s-ui) var(--font); text-transform: none; letter-spacing: 0; }
   .contact-directory td:last-child, .contact-directory th:last-child { text-align: right; }
+  /* WeChat folds (#3347): one line per person, no card frame on any width. */
+  .friend-list { list-style: none; margin: 0; padding: 0; }
+  .friend-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 9px; border-bottom: var(--hair) solid var(--rule); font-size: var(--s-ui); }
+  .friend-list .when { color: var(--grey); white-space: nowrap; }
+  .src-mark { margin-left: 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); white-space: nowrap; }
   .contact-directory .candidate-name { font-weight: var(--w-bold); }
   .contact-directory .candidate-email { color: var(--grey); font: var(--s-ui) var(--font); }
   .contact-directory button { cursor: pointer; }
@@ -5293,6 +5298,17 @@ const UI = {
     "{n} other contacts": "另有 {n} 位联系人",
     "Last activity": "最近动态",
     "{n} other contacts found in mail": "邮件中发现的其他联系人：{n} 位",
+    "Others seen in mail · {n}": "邮件里出现过的其他人 · {n} 位",
+    "WeChat friends · no chats · {n}": "微信好友 · 暂无聊天 {n} 位",
+    "WeChat friends · not in 90 days · {n}": "微信好友 · 近 90 天没聊过 {n} 位",
+    "WeChat friends you have chatted with, but not in the last 90 days. Each keeps its page.": "和你在微信上聊过、但近 90 天没聊过的好友。每人都有自己的页面。",
+    "WeChat": "微信",
+    "WeChat · {n} messages in 90 days": "微信 · 近 90 天 {n} 条",
+    "WeChat friend · no chats yet": "微信好友 · 暂无聊天",
+    "In your WeChat address book, with no chats on this Mac yet. REM investigates each one once a chat or a mail arrives.": "在你的微信通讯录里，这台 Mac 上还没有和他们的聊天记录。一有聊天或邮件，REM 就会调查。",
+    "Find a friend…": "查找好友…",
+    "No chats yet": "暂无聊天",
+    "WeChat friends table": "微信好友表",
     "{n} possible contacts are held for review, outside this list.": "{n} 位可能的联系人待审核，暂未列入此表。",
     "{n} service or institutional senders are excluded from People.": "已排除 {n} 个服务或机构发件人。",
     "Companies, teams, and groups we correspond with": "有往来的公司、团队与组织",
@@ -5932,9 +5948,28 @@ function listedRecords() { return REM.records.filter(r => !privateTopicHidden(r)
 function inCategory(category) { return listedRecords().filter(r => r.category === category && (category !== "people" || r.path !== REM.owner)); }
 // A list shows what the address's tag filter keeps (#3093): the list views read their rows through this.
 function listRows(category) {
-  const { tag, category: shown, record, query } = route();
+  const { tag, category: shown, record, query, src } = route();
   const all = inCategory(category);
-  return tag && shown === category && !record && !query && TAG_LISTS.includes(category) ? tagged(all, tag) : all;
+  const rows = tag && shown === category && !record && !query && TAG_LISTS.includes(category) ? tagged(all, tag) : all;
+  // 来源 (#3346): People by where the owner talks with them, mail or WeChat.
+  return category === "people" && src && shown === category ? rows.filter(r => personSources(r).includes(src)) : rows;
+}
+// WeChat beside mail on People (#3346, #3347): when the owner last talked with someone on WeChat, and whether a page
+// is an address-book friend with nothing to read yet. The night's map keeps both (onboard.activity / onboard.idle).
+function chatActivity(r) { return (REM.chat_activity || {})[r.path] || null; }
+function restingFriends() { return REM._resting || (REM._resting = new Set(REM.idle_people || [])); }
+function wechatPage(r) { return !!chatActivity(r) || restingFriends().has(r.path); }
+function personSources(r) {
+  return [recordEmails(r).length || r.mail?.mails ? "mail" : "", wechatPage(r) ? "wechat" : ""].filter(Boolean);
+}
+const isoDay = value => (String(value || "").match(/\d{4}-\d{2}-\d{2}/) || [""])[0];
+// A WeChat-only friend the owner has not talked with in 90 days: People keeps the table for recent contact.
+function quietFriend(r) {
+  const chat = chatActivity(r);
+  if (!chat || personSources(r).includes("mail")) return false;
+  const asOf = REM.as_of || "";
+  if (REM._quiet?.asOf !== asOf) REM._quiet = { asOf, cutoff: calendarDay(new Date(Date.parse(asOf || new Date().toISOString()) - 90 * 864e5).toISOString()) };
+  return calendarDay(chat.last) < REM._quiet.cutoff;
 }
 function peopleExclusions() {
   const people = REM.records.filter(r => r.category === "people");
@@ -6036,7 +6071,11 @@ function calendarDay(iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
   const d = new Date(iso);
   if (isNaN(d)) return "";
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: REM.status?.timezone || "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  // One formatter per time zone: building one per call made a 1,400-person People table measurably slower (#3346).
+  const zone = REM.status?.timezone || "UTC";
+  // Kept on the function itself, so it travels with calendarDay wherever the function is used alone.
+  if (calendarDay.zone !== zone) Object.assign(calendarDay, { zone, format: new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }) });
+  const parts = calendarDay.format.formatToParts(d);
   const part = type => parts.find(p => p.type === type).value;
   return part("year") + "-" + part("month") + "-" + part("day");
 }
@@ -8355,7 +8394,7 @@ function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), related: params.get("related") || "", heading: params.get("h"),
     view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
-    ...Object.fromEntries(["find", "agent", "when", "from", "to", "person", "tag", "outcome"].map(key => [key, params.get(key) || ""])) };
+    ...Object.fromEntries(["find", "agent", "when", "from", "to", "person", "tag", "outcome", "src"].map(key => [key, params.get(key) || ""])) };
 }
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
@@ -8651,7 +8690,8 @@ function row(r, opts) {
   const meta = (opts && opts.kind) ? singular(r.category) : r.category === "people" ? company(r) : "";
   const li = el("li", {}, [
     el("div", { class: "t" }, [
-      el("span", {}, [el("a", { href: href(r), text: r.title }), updatedMarker(r), meta ? el("span", { class: "meta", text: meta }) : null, statusPill(r)]),
+      el("span", {}, [el("a", { href: href(r), text: r.title }), updatedMarker(r), meta ? el("span", { class: "meta", text: meta }) : null,
+        r.category === "people" && restingFriends().has(r.path) ? el("span", { class: "meta", text: t("No chats yet") }) : null, statusPill(r)]),
       el("span", { class: "when", text: shortDate(k.last) })])]);
   // A page's Tags line is shown by its tag row, never as its summary (#3140: tag-page members read "Tags: pilot").
   const raw = /^\s*(?:\*\*)?(?:Tags|标签)(?:\*\*)?\s*[:：]/i.test(k.summary || "") ? "" : k.summary;
@@ -11315,7 +11355,7 @@ function contactDirectory() {
   const coverage = REM.contact_coverage || {};
   if (!candidates.length && !coverage.incomplete) return null;
   const details = el("details", { class: "contact-directory" });
-  details.appendChild(el("summary", { text: t("{n} other contacts found in mail", { n: candidates.length }) }));
+  details.appendChild(el("summary", { text: t("Others seen in mail · {n}", { n: candidates.length }) }));
   const body = el("div", { class: "directory-body" });
   body.appendChild(el("p", { class: "directory-note", text:
     t("Found in {scope}. These headers have not established a person or a memory page. Search here before deciding whom REM should investigate.", { scope: t(coverage.scope || "mail") }) }));
@@ -11568,14 +11608,20 @@ function personMeta(r, late) {
   const parsed = parseFacts(r), have = label => (parsed.has(label) ? parsed.get(label) : legacyFact(r, label)).filter(item => knownValue(item.value));
   const place = have("Location")[0], last = have("Last contact")[0];
   const lastValue = last ? plainLine(oneDate(last).value) : "";
-  const lastText = /^\d{4}-\d{2}-\d{2}$/.test(lastValue) ? fmtDate(lastValue) : lastValue || (mappedContact(r) && known(r).last ? fmtDate(known(r).last) : "");
+  let lastText = /^\d{4}-\d{2}-\d{2}$/.test(lastValue) ? fmtDate(lastValue) : lastValue || (mappedContact(r) && known(r).last ? fmtDate(known(r).last) : "");
+  // WeChat says what the night knows for free (#3346): when you last chatted and how much lately, or that there is
+  // nothing to read yet for an address-book friend.
+  const chat = chatActivity(r);
+  if (chat && calendarDay(chat.last) >= (isoDay(lastValue) || "")) lastText = fmtDate(calendarDay(chat.last));
+  const wechat = chat ? el("span", { text: t("WeChat · {n} messages in 90 days", { n: chat.n90 || 0 }) })
+    : restingFriends().has(r.path) ? el("span", { text: t("WeChat friend · no chats yet") }) : null;
   // The place keeps its privacy mark, so a [personal] location hides with the others (the facts panel that used to
   // guard it is gone from person pages, #3131).
   const parts = [place ? el("span", { class: "hero-place", html: inline(place.value, r.path) }) : null,
     lastText ? el("span", { text: t("Last contact {when}", { when: lastText }) }) : null,
     r.mail?.mails ? el("span", { title: t("{n} · {received} in, {sent} out", { n: r.mail.mails, received: r.mail.received, sent: r.mail.sent }),
       text: t(r.mail.mails === 1 ? "1 mail" : "{n} mails", { n: r.mail.mails }) }) : null,
-    personTodayLink(r, late)].filter(Boolean);
+    wechat, personTodayLink(r, late)].filter(Boolean);
   return parts.length ? el("p", { class: "hero-meta" }, parts) : null;
 }
 // Who they are in one line of words: role, organisation (→ its page) and units (→ theirs). These are said here
@@ -11643,7 +11689,9 @@ function profileCard(r) {
   const places = new Map(), linked = new Set();
   const once = item => { const key = urlKey(item.value); if (!/[./]/.test(key) || !linked.has(key)) { linked.add(key); return true; } return false; };
   for (const item of handles.filter(once)) {
-    const [label, pic] = contactPlace(item, ["Handle", "at"]);
+    // On a page the WeChat map made, or one with WeChat chats, a bare handle is a WeChat id (#3346): 微信, not 账号.
+    const wechatId = /^wxid_|@openim$/i.test(plainLine(item.value)) || (wechatPage(r) && !/@/.test(plainLine(item.value)));
+    const [label, pic] = contactPlace(item, wechatId ? ["WeChat", "brand-wechat"] : ["Handle", "at"]);
     places.set(label, { pic, values: [...(places.get(label)?.values || []), { item: label === item.qualifier ? { ...item, qualifier: "" } : item, copy: true }] });
   }
   for (const item of have("Links").filter(once)) {
@@ -12204,8 +12252,17 @@ function openItems(r, f = facts(r)) {
 }
 // One row's values, worked out once per draw: sorting and cells read these, never recompute them.
 function peopleRow(r) {
-  const f = facts(r);
-  return { r, f, open: openItems(r, f), org: personOrg(r), rel: relation(r), status: known(r).status };
+  const base = facts(r), chat = chatActivity(r);
+  let f = base, rel = relation(r);
+  if (chat) {
+    // The later of mail and WeChat is the last contact; the 90-day count is both together (#3346).
+    const day = calendarDay(chat.last), mail = isoDay(base.last);
+    const later = !mail || day >= mail;
+    f = later ? { ...base, last: day } : base;
+    rel = { ...(rel || {}), messages_90d: (rel?.messages_90d || 0) + (chat.n90 || 0),
+      last_from_you: later ? chat.mine : rel?.last_from_you };
+  }
+  return { r, f, open: openItems(r, base), org: personOrg(r), rel, status: known(r).status, src: personSources(r) };
 }
 // #3157: a page titled by an address is a person whose name REM does not know; it never reads as a name.
 function addressTitle(r) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(r.title || "").trim()); }
@@ -12213,7 +12270,8 @@ function personNameCell(d) {
   const name = addressTitle(d.r)
     ? el("a", { href: href(d.r), class: "nm-unknown", title: d.r.title }, [el("span", { text: t("Name unknown") }), el("span", { class: "nm-address", text: d.r.title })])
     : el("a", { href: href(d.r), title: d.r.title, text: d.r.title });
-  return el("span", { class: "nm" }, [name, updatedMarker(d.r), notPersonButton(d.r, true)]);
+  const marks = (d.src || []).map(src => el("span", { class: "src-mark", text: t(src === "wechat" ? "WeChat" : "Mail") }));
+  return el("span", { class: "nm" }, [name, ...marks, updatedMarker(d.r), notPersonButton(d.r, true)]);
 }
 // The organisation's name only; where it came from ("(their signature)") is its tooltip (#3157).
 function personOrgCell(org) {
@@ -12294,7 +12352,37 @@ function peopleFoot() {
   const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
     held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
     service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
-  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory(), machineDirectory()]);
+  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory(), friendFold("resting"), friendFold("quiet"), machineDirectory()]);
+}
+// WeChat friends under the table, collapsed (#3347, #3346): "resting" have nothing to read yet, "quiet" have chats but
+// none in 90 days. One line per person, the name and, for quiet ones, when they last talked; each opens its page.
+function friendFold(which) {
+  const people = listRows("people").filter(r => which === "resting" ? restingFriends().has(r.path) : quietFriend(r))
+    .sort(which === "quiet" ? (a, b) => (chatActivity(b).last || "").localeCompare(chatActivity(a).last || "") : (a, b) => a.title.localeCompare(b.title));
+  if (!people.length) return null;
+  const summary = which === "resting" ? "WeChat friends · no chats · {n}" : "WeChat friends · not in 90 days · {n}";
+  const details = el("details", { class: "contact-directory friend-directory" });
+  details.appendChild(el("summary", { text: t(summary, { n: people.length }) }));
+  const find = el("input", { type: "search", class: "directory-find", "aria-label": t("Find a friend…"), placeholder: t("Find a friend…") });
+  const list = el("ul", { class: "friend-list", "aria-label": t("WeChat friends table") });
+  const more = el("button", { type: "button", class: "directory-more", text: t("Show more contacts") });
+  let limit = 100;
+  const draw = () => {
+    const needle = find.value.trim().toLowerCase();
+    const matched = people.filter(r => !needle || r.title.toLowerCase().includes(needle));
+    list.replaceChildren(...matched.slice(0, limit).map(r => el("li", {}, [el("a", { href: href(r), text: r.title }),
+      which === "quiet" ? el("span", { class: "when", text: shortDate(chatActivity(r).last) }) : null])));
+    more.hidden = matched.length <= limit;
+  };
+  find.oninput = () => { limit = 100; draw(); };
+  more.onclick = () => { limit += 100; draw(); };
+  draw();
+  details.appendChild(el("div", { class: "directory-body" }, [
+    el("p", { class: "directory-note", text: t(which === "resting"
+      ? "In your WeChat address book, with no chats on this Mac yet. REM investigates each one once a chat or a mail arrives."
+      : "WeChat friends you have chatted with, but not in the last 90 days. Each keeps its page.") }),
+    find, list, more]));
+  return details;
 }
 function peopleView(items, config = {}) {
   const columns = config.columns || PEOPLE_COLUMNS, state = config.state || PEOPLE_SORT;
@@ -12365,11 +12453,26 @@ function categoryCount(c, counts, total) {
 function tagBarInto(c) {
   if (!TAG_LISTS.includes(c)) return;
   const main = document.getElementById("main"), bar = tagBar(c, inCategory(c));
-  if (!bar || main.querySelector(".tag-bar")) return;
-  // Right under the heading row (the title and its finder), above the rows it filters.
   const title = main.querySelector(".category-head") || main.querySelector("h1");
   const head = title && title.parentElement !== main && !title.classList.contains("category-head") ? title.parentElement : title;
-  head ? head.after(bar) : main.prepend(bar);
+  // 来源 sits right under the heading on People (#3346), the tag chips under it.
+  const sources = c === "people" && !main.querySelector(".source-bar") ? sourceBar() : null;
+  if (sources) head ? head.after(sources) : main.prepend(sources);
+  if (!bar || main.querySelector(".tag-bar")) return;
+  // Right under the heading row (the title and its finder), above the rows it filters.
+  const after = sources || head;
+  after ? after.after(bar) : main.prepend(bar);
+}
+// 来源: People from mail or from WeChat (#3346); shown once both are there. One tap filters, a second clears.
+function sourceBar() {
+  const people = inCategory("people"), active = route().src;
+  const counts = { wechat: people.filter(r => personSources(r).includes("wechat")).length,
+    mail: people.filter(r => personSources(r).includes("mail")).length };
+  if (!counts.wechat || !counts.mail) return null;
+  const link = (src, words) => el("a", { class: "chip" + (src === active ? " on" : ""), href: src && src !== active ? "#c=people&src=" + src : "#c=people",
+    "aria-current": src === active ? "true" : null }, [words, ...(src ? [" ", el("span", { class: "chip-n", text: String(counts[src]) })] : [])]);
+  return el("nav", { class: "open-chips source-bar", "aria-label": t("Source") }, [
+    link("", t("All")), link("wechat", t("WeChat")), link("mail", t("Mail"))]);
 }
 function category(c) {
   if (c === "keys") { keysView(); return; }
@@ -12382,7 +12485,12 @@ function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   const items = listRows(c);
-  if (c === "people") { peopleView(items); return; }
+  if (c === "people") {
+    // The table keeps people in recent contact; WeChat friends with nothing to read yet (#3347) and those not talked
+    // with in 90 days (#3346) fold under it instead of filling it with dashes.
+    peopleView(items.filter(r => !restingFriends().has(r.path) && !quietFriend(r)));
+    return;
+  }
   // The page names itself and nothing more (#2994): the order and the cards say what a sentence used to. The
   // count stays as a number beside the name; Skills puts it in its finder instead.
   const counts = (REM.counts || {})[c];
