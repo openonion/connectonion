@@ -147,7 +147,7 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import", "/rem/keys/env"):
         await _keys(scope, receive, send, root, headers)
     elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/person", "/rem/investigate", "/rem/direct-send"):
         await _action(scope, receive, send, root, headers)
@@ -379,16 +379,30 @@ async def _keys(scope, receive, send, root, headers):
     operations = {"add": lambda: {"page": keys.add(root, text("service"), text("account"), text("secret"),
                                                    purpose=text("purpose"), link=text("link"))},
                   "reveal": lambda: {"secret": keys.reveal(root, text("page"))},
-                  "import": (lambda: keys.import_browser(root, text("source"))) if text("source") else (lambda: keys.import_csv(root, text("csv")))}
+                  "import": _key_import(keys, root, text("source"), text("csv")),
+                  # co's own credentials: names and where the file is, never a value (#3305).
+                  "env": lambda: keys.env_names()}
     try:
         result = await asyncio.to_thread(operations[action])
     except RemError as error:
-        await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
+        # The reason (no_gui, denied, timeout, ...) is what the reader turns into what to do (#3305). Not "code":
+        # the reader's hostPost already uses that name for the HTTP status.
+        reason = {"reason": error.code} if getattr(error, "code", "") else {}
+        await _reply(send, 409, json.dumps({"error": str(error), **reason}), "application/json")
         return
-    if action != "reveal":
+    if action not in ("reveal", "env"):
         from ...rem.reader import owner_changed
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result), "application/json")  # SECURITY_HEADERS carry no-store
+
+
+def _key_import(keys, root, source: str, csv_text: str):
+    """The import one /rem/keys/import body asks for: a browser, the macOS login keychain, or a CSV export."""
+    if source == "keychain":
+        return lambda: keys.import_keychain(root)
+    if source:
+        return lambda: keys.import_browser(root, source)
+    return lambda: keys.import_csv(root, csv_text)
 
 
 def _talk(root, body):

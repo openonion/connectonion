@@ -326,7 +326,8 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False, phone: st
                 inbox.log(f"returned {released} stale message(s) to new/")
 
     threading.Thread(target=sweep, daemon=True).start()
-    errors.print(f"listening · {inbox.root}", style="dim")
+    acting = getattr(p, "acting_as", None)
+    errors.print(f"listening · {inbox.root}" + (f" · as {acting()}" if acting else ""), style="dim")
 
     def terminated(signum, frame):
         # SIGTERM used to end the process with no line at all: the log showed
@@ -732,6 +733,10 @@ def handle_check(name: str) -> None:
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
     console.print(f"{style.ok('✓')} {escape(name)} configured · {escape(listener)} · "
                   f"{style.count(len(inbox.unread()))} unread · {style.path(inbox.root)}")
+    acting = getattr(p, "acting_as", None)
+    if acting:
+        # Which account a send goes out as: the bot, or the owner's own.
+        console.print(f"  acting as {escape(acting())}")
     stale = version_line(name, inbox, pid, installed=installed_version()) if pid else ""
     if stale:
         errors.print(stale, style="yellow")
