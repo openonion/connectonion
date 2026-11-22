@@ -788,9 +788,21 @@ def _saved_names(name: str):
 
 
 def _named(record: dict, saved) -> dict:
-    """The record with the owner's saved name for its sender, when there is one."""
+    """The record with the owner's saved name for its sender, and what it replies to.
+
+    A message received before #3226 was stored without `reply_to`; the log adds
+    it from `quoted` so an old reply reads like a new one.
+    """
+    from ...inbox.store import reply_line
     chosen = saved(record.get("sender", ""))
-    return {**record, "sender_name": chosen} if chosen else record
+    line = "" if "reply_to" in record else reply_line(record.get("quoted"), record.get("kind") or "text")
+    if not (chosen or line):
+        return record
+    named = {**record, **({"sender_name": chosen} if chosen else {})}
+    if line:
+        named = {key: value for pair in named.items() for key, value in
+                 ([pair, ("reply_to", line)] if pair[0] == "text" else [pair])}
+    return named
 
 
 def handle_ls(name: str) -> None:
