@@ -1701,9 +1701,9 @@ def trust_level(
     handle_trust_level(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist  |  co trust add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust add {EXAMPLE_ADDRESS} --global")
+@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist  |  co trust add whatsapp:+61400000001  |  co trust add whatsapp:120363000000000000@g.us  |  co trust add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust add {EXAMPLE_ADDRESS} --global")
 def trust_add(
-    address: str = typer.Argument(..., help="Full 0x address of the agent to allow"),
+    address: str = typer.Argument(..., help="Full 0x address of the agent to allow, or whatsapp:+<phone> / whatsapp:<id>@g.us"),
     whitelist: bool = typer.Option(False, "-w", "--whitelist", help="Add to whitelist instead of contacts"),
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
     global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
@@ -1726,7 +1726,7 @@ def trust_remove(
 
 @trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"  |  co trust block {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust block {EXAMPLE_ADDRESS} --global')
 def trust_block(
-    address: str = typer.Argument(..., help="Address to block"),
+    address: str = typer.Argument(..., help="0x address, or whatsapp:+<phone> / whatsapp:<id>@g.us, to block"),
     reason: str = typer.Option("", "-r", "--reason", help="Reason for blocking"),
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
     global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
@@ -1753,9 +1753,9 @@ admin_app = _typer_app(help="Addresses that may command your agent (super admin 
 trust_app.add_typer(admin_app, name="admin")
 
 
-@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}  |  co trust admin add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin add {EXAMPLE_ADDRESS} --global")
+@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}  |  co trust admin add whatsapp:+61400000000  |  co trust admin add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin add {EXAMPLE_ADDRESS} --global")
 def admin_add(
-    address: str = typer.Argument(..., help="Full 0x address of the new admin"),
+    address: str = typer.Argument(..., help="Full 0x address of the new admin, or whatsapp:+<phone>"),
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
     global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
 ):

@@ -53,6 +53,8 @@ console = Console()
 
 # An agent address is an Ed25519 public key: 0x and 64 hex digits.
 ADDRESS = re.compile(r"^0x[0-9a-fA-F]{64}$")
+# A WhatsApp person by phone (E.164, what an owner knows) or a group by id (#3340).
+CHANNEL_IDENTITY = re.compile(r"^whatsapp:(\+[1-9][0-9]{6,14}|[0-9]+(-[0-9]+)?@g\.us)$")
 
 
 def trust_target(co_dir=None, global_: bool = False):
@@ -74,10 +76,11 @@ def _require_address(address: str) -> None:
     `admin remove`) is not checked, so an entry an older version stored can
     still be taken out.
     """
-    if ADDRESS.match(address or ""):
+    if ADDRESS.match(address or "") or CHANNEL_IDENTITY.match(address or ""):
         return
-    console.print(f"\n[red]✗ {address!r} is not an agent address.[/red] "
-                  "An address is 0x followed by 64 hex digits.\n")
+    console.print(f"\n[red]✗ {address!r} is not an agent address or a WhatsApp identity.[/red] "
+                  "An address is 0x followed by 64 hex digits; a WhatsApp person is "
+                  "whatsapp:+<country code and number>, a group whatsapp:<id>@g.us.\n")
     raise typer.Exit(2)
 
 

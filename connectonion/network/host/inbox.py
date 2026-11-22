@@ -50,6 +50,7 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
     from ...inbox import provider as provider_for
     from ...inbox.consumer import serve_with_listener
     from ...inbox.settings import configured_channels
+    from ..trust.channel import admits, channel_level, host_policy
 
     stop = threading.Event()
     threads: list = []
@@ -59,12 +60,27 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
             console.print(f"[dim][inbox][/dim] {message}")
 
     def _handler(channel, inbox, provider):
+        # Read when a channel with identities is served, after host.yaml parsed.
+        policy = host_policy(co_dir) if hasattr(provider, "caller_identity") else None
+
         def answer(message) -> None:
             if not channel.answers(message):
                 inbox.log(f"{message.id} not addressed to us; nothing to answer")
                 return
 
             from .http_router import input_handler
+
+            requester = {"address": f"{channel.provider}:{message.sender}", "level": "open"}
+            if policy is not None:
+                # The same lists and host.yaml trust as a web caller (#3340);
+                # the session identifies the sender, never the message text.
+                identity = provider.caller_identity(message.sender)
+                level = channel_level(identity, provider.chat_identity(message.chat), co_dir)
+                if not admits(level, policy):
+                    inbox.log(f"{message.id} from {identity or message.sender} is {level} "
+                              f"under host.yaml trust; not answered")
+                    return
+                requester = {"address": identity, "level": level}
 
             session_id = session_id_for(channel.provider, message)
             prompt = message.text
@@ -74,10 +90,9 @@ def create_inbox_lifespan(co_dir: Path, create_agent, storage, result_ttl: int,
                 create_agent, storage, prompt, result_ttl,
                 session={
                     "session_id": session_id,
-                    # Recorded, not checked: 1.8.5 answers anyone who can
-                    # address the bot, and the allowlist in #1479 wants this
-                    # field to already exist when it arrives.
-                    "requester": {"address": f"{channel.provider}:{message.sender}", "level": "open"},
+                    # Checked above for a channel with identities; recorded only
+                    # for one without (Feishu, Telegram, ...), as since 1.8.5.
+                    "requester": requester,
                     "via": channel.provider,
                 },
             )

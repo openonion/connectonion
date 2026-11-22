@@ -267,7 +267,7 @@ Rules take a tool name (`Read`) or a command rule (`Bash(<command>:*)`,
 `Bash(<command> *)`, `Bash(<exact command>)`; `PowerShell(...)` the same).
 Other rule patterns, such as file paths, are refused. On Windows, write the
 command as the claude CLI's shell runs it, e.g. `Bash(python tool.py:*)`.
-Without `restricted:` nothing changes.
+Without `restricted:` nothing changes. A trust level can add tools for its own callers (`admin: {allowed_tools: [...]}`); see [Who may do what](who-may-do-what.md), which also covers WhatsApp senders.
 
 ### REM and channels
 

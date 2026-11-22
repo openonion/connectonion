@@ -14,6 +14,11 @@ echo "on it" | co whatsapp reply 3EB0A1
 co whatsapp consume -- claude -p       # one command per message, stdout is the reply
 ```
 
+In a project with `.co/host.yaml`, `consume` answers only the senders that its
+`trust:` admits, and tells the command who the sender is (`CO_CALLER_ADDRESS`,
+`CO_CALLER_TRUST`). Add people with `co trust add whatsapp:+<phone>`; see
+[Who may do what](../network/who-may-do-what.md).
+
 ## Read this before you link a number
 
 This links a **companion device**, the same mechanism as WhatsApp Web: the
