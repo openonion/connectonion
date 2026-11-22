@@ -171,6 +171,20 @@ def verified_accounts(contact_conn: sqlite3.Connection) -> set[str]:
     return {row["username"] for row in contact_conn.execute("SELECT username FROM contact WHERE verify_flag != 0")}
 
 
+def friends(contact_conn: sqlite3.Connection) -> list[dict]:
+    """The owner's address book: contacts with local_type 1, as {username, remark, nick_name}.
+
+    WeChat 4.1 for Mac keeps everyone it has ever seen in `contact`; local_type 1 is a friend the owner added,
+    3 is someone only met in a group (#3347). Groups and official accounts are the caller's to leave out. A table
+    without the column (another WeChat version) has no address book to offer, rather than everyone as a friend.
+    """
+    columns = {row[1] for row in contact_conn.execute("PRAGMA table_info(contact)")}
+    if "local_type" not in columns:
+        return []
+    return [{"username": row["username"], "remark": row["remark"] or "", "nick_name": row["nick_name"] or ""}
+            for row in contact_conn.execute("SELECT username, remark, nick_name FROM contact WHERE local_type = 1")]
+
+
 def sessions(session_conn: sqlite3.Connection, known: dict[str, str], limit: int = 30) -> list[dict]:
     """Recent conversations, newest first: who, the last message's summary, its time and the unread count."""
     rows = session_conn.execute(

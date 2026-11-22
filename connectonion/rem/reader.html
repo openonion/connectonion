@@ -5267,6 +5267,10 @@ const UI = {
     "{n} other contacts": "另有 {n} 位联系人",
     "Last activity": "最近动态",
     "{n} other contacts found in mail": "邮件中发现的其他联系人：{n} 位",
+    "{n} WeChat friends with no chats yet": "微信好友 · 暂无聊天记录 {n} 位",
+    "In your WeChat address book, with no chats on this Mac yet. REM investigates each one once a chat or a mail arrives.": "在你的微信通讯录里，这台 Mac 上还没有和他们的聊天记录。一有聊天或邮件，REM 就会调查。",
+    "Find a friend…": "查找好友…",
+    "WeChat friends table": "微信好友表",
     "{n} possible contacts are held for review, outside this list.": "{n} 位可能的联系人待审核，暂未列入此表。",
     "{n} service or institutional senders are excluded from People.": "已排除 {n} 个服务或机构发件人。",
     "Companies, teams, and groups we correspond with": "有往来的公司、团队与组织",
@@ -12195,7 +12199,34 @@ function peopleFoot() {
   const notes = [missing ? t("{n} people you write to have no page yet", { n: missing }) : "",
     held ? t("{n} possible contacts are held for review, outside this list.", { n: held }) : "",
     service ? t("{n} service or institutional senders are excluded from People.", { n: service }) : ""].filter(Boolean);
-  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory(), machineDirectory()]);
+  return el("div", { class: "r4-foot" }, [notes.length ? el("p", { class: "held-note", text: notes.join(" · ") }) : null, contactDirectory(), friendDirectory(), machineDirectory()]);
+}
+// Address-book friends with no chat on this Mac and no mail (#3347): pages exist, nothing to read yet, so they
+// fold here instead of filling the table with dashes. Each opens its page; a chat or a mail brings it back.
+function friendDirectory() {
+  const idle = new Set(REM.idle_people || []);
+  const friends = REM.records.filter(r => r.category === "people" && idle.has(r.path)).sort((a, b) => a.title.localeCompare(b.title));
+  if (!friends.length) return null;
+  const details = el("details", { class: "contact-directory friend-directory" });
+  details.appendChild(el("summary", { text: t("{n} WeChat friends with no chats yet", { n: friends.length }) }));
+  const find = el("input", { type: "search", class: "directory-find", "aria-label": t("Find a friend…"), placeholder: t("Find a friend…") });
+  const tbody = el("tbody");
+  const more = el("button", { type: "button", class: "directory-more", text: t("Show more contacts") });
+  let limit = 100;
+  const draw = () => {
+    const needle = find.value.trim().toLowerCase();
+    const matched = friends.filter(r => !needle || r.title.toLowerCase().includes(needle));
+    tbody.textContent = "";
+    for (const r of matched.slice(0, limit)) tbody.appendChild(el("tr", {}, [el("td", {}, [el("a", { href: href(r), text: r.title })])]));
+    more.hidden = matched.length <= limit;
+  };
+  find.oninput = () => { limit = 100; draw(); };
+  more.onclick = () => { limit += 100; draw(); };
+  draw();
+  details.appendChild(el("div", { class: "directory-body" }, [
+    el("p", { class: "directory-note", text: t("In your WeChat address book, with no chats on this Mac yet. REM investigates each one once a chat or a mail arrives.") }),
+    find, el("div", { class: "directory-scroll", role: "region", tabindex: "0", "aria-label": t("WeChat friends table") }, [el("table", {}, [tbody])]), more]));
+  return details;
 }
 function peopleView(items, config = {}) {
   const columns = config.columns || PEOPLE_COLUMNS, state = config.state || PEOPLE_SORT;
@@ -12283,7 +12314,12 @@ function category(c) {
   const main = document.getElementById("main");
   main.textContent = "";
   const items = listRows(c);
-  if (c === "people") { peopleView(items); return; }
+  if (c === "people") {
+    // Friends with nothing to read yet live in their own fold under the table (#3347), not as rows of dashes.
+    const idle = new Set(REM.idle_people || []);
+    peopleView(items.filter(r => !idle.has(r.path)));
+    return;
+  }
   // The page names itself and nothing more (#2994): the order and the cards say what a sentence used to. The
   // count stays as a number beside the name; Skills puts it in its finder instead.
   const counts = (REM.counts || {})[c];

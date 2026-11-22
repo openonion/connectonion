@@ -25,6 +25,7 @@ def test_wechat_people_keeps_named_one_to_one_chats_only(monkeypatch):
     monkeypatch.setattr(engine, "owner_username", lambda d: "wxid_me")
     monkeypatch.setattr(engine, "names", lambda conn: {"wxid_mara": "Mara", "123@chatroom": "Group", "gh_news": "News"})
     monkeypatch.setattr(engine, "verified_accounts", lambda conn: set())  # #3339: none verified here
+    monkeypatch.setattr(engine, "friends", lambda conn: [])  # #3347: no address book here; chats only
     monkeypatch.setattr(engine, "all_messages", lambda d, known: [
         {"chat": "wxid_mara", "chat_name": "Mara", "sender": "wxid_mara"},
         {"chat": "wxid_mara", "chat_name": "Mara", "sender": "wxid_me"},

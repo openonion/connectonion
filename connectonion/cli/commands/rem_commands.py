@@ -213,6 +213,10 @@ def _map_summary(report: dict, dry_run: bool) -> str:
             lines.append("  " + " · ".join(rest))
             if out["create"] and kind == "people":
                 made.append(name)
+    from ...rem.onboard import sync_hint
+    hint = next((h for kinds in report.values() for out in kinds.values() if (h := sync_hint(out))), "")
+    if hint:
+        lines.append(hint)  # once: few of the owner's WeChat friends have chats on this Mac (#3347)
     if dry_run:
         lines.append("Dry run: nothing was written.")
     elif made:

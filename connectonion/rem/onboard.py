@@ -82,8 +82,9 @@ def _roster(notebook):
 def _add_handles(notebook, record, handles):
     """Give an existing page the handles it is reachable on in the new source; prose is untouched."""
     lines = notebook.read(record).split("\n")
-    for label, wanted in (("Also known as", [h for h in handles if "@" not in h]),
-                          ("Email", [h for h in handles if "@" in h])):
+    from .files import EMAIL
+    for label, wanted in (("Also known as", [h for h in handles if not EMAIL.fullmatch(h)]),
+                          ("Email", [h for h in handles if EMAIL.fullmatch(h)])):
         index = next((i for i, line in enumerate(lines) if line.startswith(f"- {label}:")), None)
         if not wanted or index is None:
             continue
@@ -91,6 +92,14 @@ def _add_handles(notebook, record, handles):
         have = [] if value in ("", "Unknown") else [v.strip() for v in value.split(",")]
         lines[index] = f"- {label}: " + ", ".join(dict.fromkeys([*have, *wanted]))
     notebook.write(record, "\n".join(lines))
+
+
+def _rank(group) -> int:
+    """Which new pages are worth reading first (#3347): chats on this machine, then friends the owner named, then
+    the rest of the address book."""
+    if sum(r.get("sent", 0) + r.get("received", 0) for r in group):
+        return 0
+    return 1 if any(r.get("remark") for r in group) else 2
 
 
 def _people(notebook, people_rows, write):
@@ -112,18 +121,23 @@ def _people(notebook, people_rows, write):
         if any(h.casefold() in by_handle for h in handles):
             out["known"] += 1
             continue
+        # A friend in the owner's address book is worth a page with no messages: he added them (#3347).
+        friend = all(r.get("friend") for r in group)
         if (not name or all(rem_map._notice(r) for r in group) or rem_map._service(group)
-                or not rem_map.worth_a_page(sent, received)):
+                or not (friend or rem_map.worth_a_page(sent, received))):
             out["skip"] += 1
             continue
         record = by_name.get(name.casefold()) if len(name.split()) >= 2 else None
+        rank = _rank(group)
         if record:
-            out["merge"].append({"name": name, "record": record, "handles": handles})
+            # An existing page already has material from elsewhere (mail); the new handle adds to it.
+            out["merge"].append({"name": name, "record": record, "handles": handles, "rank": rank, "material": True})
             if write:
                 _add_handles(notebook, record, handles)
         else:
             record = rem_map._record("people", name, handles[0])
-            out["create"].append({"name": name, "record": record, "handles": handles})
+            out["create"].append({"name": name, "record": record, "handles": handles, "rank": rank,
+                                  "material": sent + received > 0})
             emails = ", ".join(h for h in handles if "@" in h)
             if write:
                 notebook.stub_person(record, name, handles, **({"email": emails} if emails else {}))
@@ -203,7 +217,21 @@ def plan(root: Path, source_rows: list[dict], kinds: tuple, *, write: bool) -> d
     for kind in KIND_WORDS:
         if kind in kinds:
             result[kind] = APPLY[kind](notebook, [r for r in source_rows if ROW_KIND.get(r.get("kind")) == kind], write)
+    friends = [r for r in source_rows if r.get("friend")]
+    if "people" in result and friends:
+        # How much of the address book this machine holds chats for: the map says how to sync more (#3347).
+        result["people"]["friends"] = len(friends)
+        result["people"]["chats"] = sum(1 for r in friends if r.get("sent", 0) + r.get("received", 0))
     return result
+
+
+def sync_hint(out: dict) -> str:
+    """One line when WeChat for Mac holds chats for few of the owner's friends: how to bring the rest over."""
+    friends, chats = out.get("friends", 0), out.get("chats", 0)
+    if not friends or chats * 4 >= friends:
+        return ""
+    return (f"Only {chats} of {friends} WeChat friends have chats on this Mac. To give REM more, on your phone: "
+            "WeChat → 设置 → 聊天 → 聊天记录迁移与备份 → 迁移到电脑.")
 
 
 def touched(root: Path, source_rows: list[dict]) -> dict:
@@ -213,8 +241,9 @@ def touched(root: Path, source_rows: list[dict]) -> dict:
     by_handle, _ = _roster(notebook)
     records = dict.fromkeys(by_handle[r["address"].casefold()] for r in source_rows
                             if r.get("kind") == "person" and r.get("address", "").casefold() in by_handle)
-    new = [r for r in records if _mapped_only(notebook.read(r))]
-    return {"new": new, "existing": [r for r in records if r not in new]}
+    resting = set(idle(root))
+    new = [r for r in records if r not in resting and _mapped_only(notebook.read(r))]
+    return {"new": new, "existing": [r for r in records if r not in new and r not in resting]}
 
 
 # ---- onboarding: adding a source maps it, and the pages it touched are investigated first (#3331, part 2) ----
@@ -246,26 +275,52 @@ def due(root: Path, subs: dict, *, night: bool) -> list[str]:
     return names
 
 
-def queue_first(root: Path, source: str, records: list[str]) -> None:
+def queue_first(root: Path, source: str, records: list) -> None:
+    """Put pages first in the people queue. A record may come as a dict with `rank` (0 chats, 1 named friend,
+    2 the rest) and `material` (False: nothing to read yet, so it is not investigated at all, #3347)."""
     from .files import write_json
     from .service import now
     asked = read_json(state_path(root, ASKED), {})
-    for record in records:
-        asked.setdefault(record, {"source": source, "at": now().isoformat()})
+    for item in records:
+        record = item if isinstance(item, str) else item["record"]
+        entry = asked.setdefault(record, {"source": source, "at": now().isoformat()})
+        if not isinstance(item, str):
+            entry.update(rank=item.get("rank", 0), material=item.get("material", True))
     write_json(state_path(root, ASKED), asked)
+
+
+def idle(root: Path) -> list[str]:
+    """Pages onboarding made with nothing to read yet (an address-book friend with no chat on this machine).
+    They stay 待了解 and cost no investigation until a chat or a mail arrives (#3347)."""
+    return [record for record, asked in read_json(state_path(root, ASKED), {}).items() if asked.get("material") is False]
+
+
+def _wake(root: Path, source: str, source_rows: list[dict]) -> None:
+    """A friend whose page was idle and who now has a chat here becomes worth reading, first."""
+    resting = set(idle(root))
+    if not resting:
+        return
+    by_handle, _ = _roster(Notebook(root))
+    woken = [{"record": by_handle[r["address"].casefold()], "rank": 0, "material": True} for r in source_rows
+             if r.get("sent", 0) + r.get("received", 0) and by_handle.get(r.get("address", "").casefold()) in resting]
+    if woken:
+        queue_first(root, source, woken)
 
 
 def onboard(root: Path, name: str, sub: dict, days: int) -> dict:
     """Map one source, put the people pages it touched first in the queue, and record that it was mapped."""
     from .files import write_json
     from .service import now
-    result = plan(root, rows(root, name, sub, days), yields(sub), write=True)
+    source_rows = rows(root, name, sub, days)
+    result = plan(root, source_rows, yields(sub), write=True)
     people = result.get("people", {"create": [], "merge": []})
-    queue_first(root, name, [row["record"] for row in (*people["create"], *people["merge"])])
+    queue_first(root, name, [*people["create"], *people["merge"]])
+    _wake(root, name, source_rows)
     done = read_json(state_path(root, STATE), {})
     done[name] = {"mapped_at": now().isoformat(), "scope": _scope(sub),
                   "created": {kind: len(out["create"]) for kind, out in result.items()},
-                  "merged": len(people["merge"])}
+                  "merged": len(people["merge"]),
+                  **({"chats": {"friends": people["friends"], "chats": people["chats"]}} if people.get("friends") else {})}
     write_json(state_path(root, STATE), done)
     return result
 
@@ -296,5 +351,10 @@ def summary(root: Path, name: str) -> dict:
     waiting = [record for record, asked in read_json(state_path(root, ASKED), {}).items()
                if asked.get("source") == name and not (_stamp(investigated.get(record)) and
                                                        _stamp(investigated.get(record)) > _stamp(asked["at"]))]
+    asked = read_json(state_path(root, ASKED), {})
+    resting = [record for record, entry in asked.items() if entry.get("source") == name and entry.get("material") is False]
+    waiting = [record for record in waiting if record not in set(resting)]
+    hint = sync_hint(done.get("chats", {}))
     return {"mapped_at": done.get("mapped_at") or "never", "created": done.get("created", {}),
-            "to_investigate": len(waiting), **({"error": done["error"]} if done.get("error") else {})}
+            "to_investigate": len(waiting), **({"no_chats_yet": len(resting)} if resting else {}),
+            **({"hint": hint} if hint else {}), **({"error": done["error"]} if done.get("error") else {})}

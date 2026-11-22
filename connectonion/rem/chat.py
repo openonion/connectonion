@@ -160,12 +160,14 @@ def _wechat_streams():
 
 
 def wechat_people(min_messages: int = 1) -> list[dict]:
-    """Candidate people from WeChat for Mac: one row per one-to-one chat with a real name and messages.
+    """Candidate people from WeChat for Mac: every friend in the address book, plus anyone with a one-to-one chat.
 
     Shape matches the map's mail rows ({address, name, mails, sent, received}), with the bare WeChat id as
     the address so investigation's handle match finds the chat (its correspondent is that id). Read-only.
-    Groups, official and verified accounts (brands, companies, services) and service chats are left out.
-    Returns [] when WeChat isn't readable.
+    `friend` marks an address-book friend (worth a page with no messages: the owner added them, #3347) and
+    `remark` one the owner named. Counts come from the chats this Mac holds, else 0: WeChat for Mac keeps only
+    what was synced to it, so most friends have none here. Groups, official and verified accounts (brands,
+    companies, services), service chats and people only met in groups are left out. [] when WeChat isn't readable.
     """
     from ..useful_tools import wechat as engine
     db_storage = engine.db_storage_in_use()
@@ -176,6 +178,7 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
             db_storage / "contact" / "contact.db", engine.key_for(db_storage / "contact" / "contact.db")))
         known = engine.names(contacts)
         verified = engine.verified_accounts(contacts)
+        book = engine.friends(contacts)
     except Exception:
         return []
     owner = engine.owner_username(db_storage)
@@ -188,14 +191,24 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
         c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0})
         c["mails"] += 1
         c["sent" if row["sender"] == owner else "received"] += 1
+    friend_ids = {f["username"] for f in book}
+    remarked = {f["username"] for f in book if f["remark"].strip()}
     people = []
     for chat, c in counts.items():
         name = (c["name"] or "").strip()
         # A real name, not the raw id and not a group/service; the id is the handle, the name titles the page.
         if c["mails"] < min_messages or not name or name == chat:
             continue
-        people.append({"address": chat, "name": name, "mails": c["mails"],
-                       "sent": c["sent"], "received": c["received"], "kind": "wechat"})
+        people.append({"address": chat, "name": name, "mails": c["mails"], "sent": c["sent"],
+                       "received": c["received"], "kind": "wechat", "friend": chat in friend_ids,
+                       "remark": chat in remarked})
+    # The rest of the address book: a friend with no chat on this Mac is still someone the owner knows (#3347).
+    for f in book:
+        chat, name = f["username"], (f["remark"] or f["nick_name"]).strip()
+        if chat in counts or not _one_to_one(chat) or chat == owner or chat in verified or not name or name == chat:
+            continue
+        people.append({"address": chat, "name": name, "mails": 0, "sent": 0, "received": 0, "kind": "wechat",
+                       "friend": True, "remark": chat in remarked})
     return people
 
 
