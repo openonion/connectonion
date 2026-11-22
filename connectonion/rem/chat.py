@@ -196,33 +196,15 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
 
 
 def seed_chat_people(root, subscriptions: dict) -> list[str]:
-    """Nightly: create a people page for each new two-way chat contact (WeChat) not already on the notebook.
+    """The WeChat people pages a map of that source creates; the generic onboarding step does the work (#3331).
 
-    Additive and local, no model and no network. The id is the handle, so the night's investigation then
-    reads the chat into the page. Merging a chat contact into an existing same-named mail page is left to
-    the full `co rem map`; here a contact whose id is already a handle, anywhere, is skipped.
+    Kept for its callers: additive and local, no model and no network. A contact already on a page by handle
+    is left alone, a full-name match gains the WeChat id, the rest get mapped pages.
     """
-    from .files import Notebook
-    from . import map as rem_map
-    rows = []
-    for sub in (subscriptions or {}).values():
-        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
-            rows += wechat_people()
-    if not rows:
-        return []
-    notebook = Notebook(root)
-    known_handles = {alias.casefold() for person in notebook.people() for alias in person.get("aliases", [])}
+    from . import onboard
     created = []
-    for group in rem_map._people_groups(rows):
-        first = group[0]
-        sent = sum(r.get("sent", 0) for r in group)
-        received = sum(r.get("received", 0) for r in group)
-        handle = first["address"]
-        name = " ".join(str(first.get("name") or "").split())
-        if not name or handle.casefold() in known_handles or not rem_map.worth_a_page(sent, received):
-            continue
-        record = rem_map._record("people", name, handle)
-        if notebook.stub_person(record, name, [handle]):
-            known_handles.add(handle.casefold())
-            created.append(record)
+    for name, sub in (subscriptions or {}).items():
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
+            people = onboard.plan(root, onboard.rows(root, name, sub, 0), ("people",), write=True)["people"]
+            created += [row["record"] for row in people["create"]]
     return created

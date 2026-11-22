@@ -136,7 +136,29 @@ def queue(root: Path, *, recent_days: int = RECENT_DAYS, now: datetime | None = 
                      "recent": last >= cutoff, "mails": row.get("mails") or 0,
                      "sent": row.get("sent") or 0, "received": row.get("received") or 0,
                      "last_investigated": investigated.isoformat() if investigated else None})
-    return sorted(rows, key=lambda r: rank(r, now))
+    _onboarded_first(root, rows, done, excluded, notebook)
+    return sorted(rows, key=lambda r: (not r.get("onboarded"), rank(r, now)))
+
+
+def _onboarded_first(root, rows, done, excluded, notebook):
+    """Pages a newly added source just made or reached go first, in full, until investigated after that (#3331).
+
+    A page new from a chat has no mail activity and would sit at the end; a page that only gained a handle has
+    nothing "new" by mail and would never be queued. Full reads the new source's whole window; a page
+    investigated before is still appended to, never rewritten (#3105).
+    """
+    from .onboard import ASKED
+    queued = {row["record"]: row for row in rows}
+    for record, asked in read_json(state_path(root, ASKED), {}).items():
+        stamped = _stamp(done.get(record))
+        if record in excluded or not notebook.exists(record) or (stamped and stamped > _stamp(asked.get("at"))):
+            continue
+        row = queued.get(record)
+        if row is None:
+            row = {"record": record, "last_activity": "", "recent": True, "mails": 0, "sent": 0, "received": 0,
+                   "last_investigated": None}
+            rows.append(row)
+        row.update(mode="full", days=FIRST_WINDOW_DAYS, onboarded=asked.get("source", ""))
 
 
 def estimate(rows: list[dict]) -> dict:

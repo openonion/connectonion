@@ -133,3 +133,64 @@ def test_co_rem_investigate_lists_a_sources_pages_new_first(tmp_path, monkeypatc
     value = json.loads(result.output)
     value = value["data"]
     assert len(value["new"]) == 2 and value["existing"] == [MAIL_PERSON]
+
+
+# ---- part 2: adding a source onboards it, at night and on `co rem sources add` ----
+
+def _patch_wechat(monkeypatch):
+    monkeypatch.setattr("connectonion.rem.chat.wechat_people", lambda *a, **k: [{**r, "kind": "wechat"} for r in CONTACTS])
+
+
+def test_the_night_onboards_a_new_chat_source_and_its_pages_go_first(tmp_path, monkeypatch):
+    from connectonion.rem import people_pages
+    _notebook(tmp_path)
+    _patch_wechat(monkeypatch)
+    created = onboard.run_due(tmp_path, SUBS, night=True)
+    assert len(created) == 2
+    first = people_pages.queue(tmp_path)[:3]
+    assert {row["record"] for row in first} == {*created, MAIL_PERSON}   # 2 new pages, 1 append
+    assert all(row["onboarded"] == "wechat" and row["mode"] == "full" for row in first)
+
+
+def test_a_second_night_makes_nothing_new(tmp_path, monkeypatch):
+    _notebook(tmp_path)
+    _patch_wechat(monkeypatch)
+    onboard.run_due(tmp_path, SUBS, night=True)
+    asked = (tmp_path / ".state" / "people" / "onboarded.json").read_text()
+    assert onboard.run_due(tmp_path, SUBS, night=True) == []
+    assert (tmp_path / ".state" / "people" / "onboarded.json").read_text() == asked
+
+
+def test_the_night_maps_only_local_sources_and_sources_add_maps_any(tmp_path):
+    subs = {**SUBS, "gmail": {"kind": "gmail", "enabled": True, "consented": True},
+            "codex": {"kind": "codex", "enabled": True, "consented": True}}
+    assert onboard.due(tmp_path, subs, night=True) == ["wechat"]
+    assert sorted(onboard.due(tmp_path, subs, night=False)) == ["codex", "gmail", "wechat"]
+
+
+def test_a_widened_source_is_due_again(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    gmail = {"kind": "gmail", "enabled": True, "consented": True, "since": "60d"}
+    write_json(state_path(tmp_path, onboard.STATE), {"gmail": {"mapped_at": "2026-11-01", "scope": onboard._scope(gmail)}})
+    assert onboard.due(tmp_path, {"gmail": gmail}, night=False) == []
+    assert onboard.due(tmp_path, {"gmail": {**gmail, "since": "1y"}}, night=False) == ["gmail"]
+
+
+def test_a_page_leaves_the_front_once_investigated_after_onboarding(tmp_path, monkeypatch):
+    from connectonion.rem import people_pages
+    from connectonion.rem.files import state_path, write_json
+    _notebook(tmp_path)
+    _patch_wechat(monkeypatch)
+    onboard.run_due(tmp_path, SUBS, night=True)
+    write_json(state_path(tmp_path, "people/investigated.json"), {MAIL_PERSON: "2099-01-01T00:00:00+00:00"})
+    front = [row["record"] for row in people_pages.queue(tmp_path) if row.get("onboarded")]
+    assert MAIL_PERSON not in front and len(front) == 2
+    assert onboard.summary(tmp_path, "wechat")["to_investigate"] == 2
+
+
+def test_an_unreadable_source_is_recorded_not_fatal(tmp_path, monkeypatch):
+    def broken(*a, **k):
+        raise RemError("WeChat keys are not readable")
+    monkeypatch.setattr("connectonion.rem.chat.wechat_people", broken)
+    assert onboard.run_due(tmp_path, SUBS, night=True) == []
+    assert "not readable" in onboard.summary(tmp_path, "wechat")["error"]
