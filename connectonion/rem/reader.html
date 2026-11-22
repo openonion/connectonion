@@ -3641,6 +3641,7 @@
   .desk-head.plain { margin: 0 0 8px; }
   .desk-head.plain .count-line, .desk-head.plain .count-line .count { font: var(--w-regular) var(--s-body)/var(--lh-ui) var(--font); letter-spacing: 0; }
   .desk-head.plain .count-line .count { font-weight: var(--w-bold); }
+  .count-line .count-scope { font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); color: var(--grey); margin-left: 6px; }
   .desk-head .nb.solo .faces { flex-direction: row; align-items: center; }
   :is(.night-card, .desk-head) .nb.solo .faces { padding: 2px 0 0; gap: 16px; }
   :is(.night-card, .desk-head) .count-line .count { font-size: var(--s-head); }
@@ -4659,6 +4660,8 @@ const UI = {
     "Most urgent: {name}, ": "最急的是 {name}，",
     "First in line: {name}.": "排在最前的是 {name}。",
     "{n} items waiting on you": "{n} 件等你处理",
+    "stuck {n} min · skipped automatically": "卡住 {n} 分钟 · 已自动跳过",
+    "· start with this one": "· 先看这 1 张", "· start with these {k}": "· 先看这 {k} 张",
     "{n} waiting on you": "{n} 件等你处理",
     "Who is waiting, and how late": "谁在等你，晚了多久",
     "No due date": "没有约定日期",
@@ -8375,6 +8378,15 @@ function sheet(c, items) {
 // ---------- the night: what the last pass did ----------
 const HOUR = 3600e3, DAY_MS = 24 * HOUR;
 const FAILED = /^(failed|abandoned|error|refused|timeout)/i;
+// A task the night set aside after it could not finish (rc18, #3377): "parked" spans every turn it was retried, so
+// on the curve it is the time the night was stuck awake, never part of a dream (#3379: a 108-minute loop drew as REM).
+const STUCK = /^(parked|discarded)/i;
+const STUCK_MINUTES = 15;
+function stuckMinutes(run) {
+  if (!STUCK.test(String(run.outcome || ""))) return 0;
+  const minutes = Math.round((runEnd(run) - runTime(run)) / 60e3);
+  return minutes >= STUCK_MINUTES ? minutes : 0;
+}
 function runTime(run) { return new Date(run.started_at).getTime(); }
 function runEnd(run) {
   const end = run.finished_at ? new Date(run.finished_at).getTime() : runTime(run) + 1000 * (run.seconds || 0);
@@ -8466,7 +8478,7 @@ function runSegments(runs, span) {
     const start = runTime(run), end = runEnd(run);
     let segment = segments[segments.length - 1];
     if (!segment || start >= segment.end + gap) {
-      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0, list: [] };
+      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0, stuck: 0, list: [] };
       segments.push(segment);
     }
     segment.list.push(run);
@@ -8475,6 +8487,7 @@ function runSegments(runs, span) {
     segment.changed += (run.changed || []).length;
     segment.runs++;
     segment.failed += Number(FAILED.test(String(run.outcome || "")));
+    segment.stuck += stuckMinutes(run);
   }
   return segments;
 }
@@ -8509,7 +8522,7 @@ function hypnoTime(t) {
 const SLEEP_STAGES = ["Awake", "REM sleep", "Light sleep", "Deep sleep"];
 const STAGE_RANK = [1, 3, 2];  // which stage a merged cluster of runs shows: REM over light sleep over a stopped run
 function runStage(run) {
-  if (FAILED.test(String(run.outcome || ""))) return 0;
+  if (FAILED.test(String(run.outcome || "")) || STUCK.test(String(run.outcome || ""))) return 0;
   return (run.changed || []).length ? 1 : 2;
 }
 function hypnogram(asOf, size = "") {
@@ -8537,7 +8550,9 @@ function hypnogram(asOf, size = "") {
     const steps = [];
     for (const run of [...segment.list].sort((a, b) => runTime(a) - runTime(b))) {
       const x0 = x(runTime(run)), x1 = Math.max(x0 + 6, x(Math.min(asOf, runEnd(run)))), stage = runStage(run), last = steps[steps.length - 1];
-      if (last && x0 - last.x1 < 8) { last.x1 = Math.max(last.x1, x1); if (STAGE_RANK[stage] > STAGE_RANK[last.stage]) last.stage = stage; }
+      // An awake step (stopped, stuck) never merges into a dream beside it: the run after a loop may change a page,
+      // and the loop must still read as awake (#3379).
+      if (last && x0 - last.x1 < 8 && (stage === 0) === (last.stage === 0)) { last.x1 = Math.max(last.x1, x1); if (STAGE_RANK[stage] > STAGE_RANK[last.stage]) last.stage = stage; }
       else steps.push({ x0, x1, stage });
     }
     steps.forEach(({ x0, x1, stage }, i) => {
@@ -8548,7 +8563,11 @@ function hypnogram(asOf, size = "") {
     const x0 = x(segment.start), x1 = Math.min(W - 4, Math.max(x0 + 6, x(Math.min(asOf, segment.end))));
     const range = time(segment.start) + "–" + time(segment.end);
     if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: LEVEL[0], title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
-    if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: LEVEL[1], title: range + " · " + t("{n} runs · {m} pages changed", { n: segment.runs, m: segment.changed }) });
+    if (segment.stuck) markers.push({ kind: "woke", left: 100 * x0 / W, top: LEVEL[0], title: range + " · " + t("stuck {n} min · skipped automatically", { n: segment.stuck }) });
+    // The dot sits over the runs that changed pages, not the stretch's middle: after a loop the middle is the loop (#3379).
+    const wrote = segment.list.filter(run => (run.changed || []).length);
+    const wroteAt = wrote.length ? (x(runTime(wrote[0])) + x(Math.min(asOf, runEnd(wrote[wrote.length - 1])))) / 2 : (x0 + x1) / 2;
+    if (segment.changed) markers.push({ kind: "changed", left: 100 * Math.min(W - 4, wroteAt) / W, top: LEVEL[1], title: range + " · " + t("{n} runs · {m} pages changed", { n: segment.runs, m: segment.changed }) });
   }
   go(W - 4, DEEP);
   svg.push('<path class="area" d="' + path + " L" + (W - 4) + "," + H + " L4," + H + ' Z"/>', '<path class="trace" pathLength="1" d="' + path + '"/>');
@@ -8569,7 +8588,8 @@ function stretchWords(segment) {
     if (/translat/.test(run.phase || "")) translated += changed; else rewrote += changed;
     if ((run.phase || "sync") === "sync" || !changed) read += Number(run.items) || 0;
   }
-  return [read ? t(read === 1 ? "read {n} item" : "read {n} items", { n: num(read) }) : null,
+  return [segment.stuck ? t("stuck {n} min · skipped automatically", { n: segment.stuck }) : null,
+    read ? t(read === 1 ? "read {n} item" : "read {n} items", { n: num(read) }) : null,
     rewrote ? t(rewrote === 1 ? "rewrote {n} page" : "rewrote {n} pages", { n: rewrote }) : null,
     translated ? t(translated === 1 ? "translated {n} page" : "translated {n} pages", { n: translated }) : null,
     segment.failed ? t("{n} runs stopped early", { n: segment.failed }) : null].filter(Boolean);
@@ -11043,11 +11063,14 @@ function faceStrip(groups, current) {
 // The one "waiting on you" number is the rail badge's: the items in Waiting on you that need the owner, so the
 // header, the badge and the list never disagree (sprint 14 #4). The faces beside it are the people to start with;
 // their place and size say so, and the line "start with these N people" went (owner, 2026-11-13, #2994).
-function countLine(ticked) {
+function countLine(ticked, cards = 0) {
   const mine = threadCounts().mine;
   if (!mine) return el("h1", { class: "count-line" }, [el("b", { class: "count", text: "0" }), el("span", { class: "count-words", text: t("Nobody is waiting on you today.") })]);
   return el("h1", { class: "count-line" }, [el("b", { class: "count" + (ticked ? " ticked" : ""), text: String(mine) }),
-    el("span", { class: "count-words", text: t(mine === 1 ? "thing waiting on you" : "things waiting on you") })]);
+    el("span", { class: "count-words", text: t(mine === 1 ? "thing waiting on you" : "things waiting on you") }),
+    // The deck deals fewer cards than the count; the title says which set its ‹ 1 / k › pages through (#3379:
+    // «18 件在等你» over a card reading ‹ 1 / 2 ›, two numbers and nothing joining them).
+    cards && cards < mine ? el("span", { class: "count-scope", text: t(cards === 1 ? "· start with this one" : "· start with these {k}", { k: cards }) }) : null]);
 }
 // On a phone the chart folds under its title; the title opens it.
 function chartToggle() {
@@ -11074,12 +11097,12 @@ function nightWords() {
 // Who is waiting is the desk's title, over its first card (art director on #3371): the night block speaks only of
 // the night, on a phone too, where 昨夜's line says 昨夜 and nothing else.
 function waitingLine(groups, current, ticked) {
-  return el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [countLine(ticked), groups.length ? faceStrip(groups, current) : null])]);
+  return el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [countLine(ticked, groups.length), groups.length ? faceStrip(groups, current) : null])]);
 }
 // A phone says it in one plain line with no faces (art director, #3371): the card's own ‹ 1/4 › already counts and
 // deals, and the four circles would cost 发送 its place on the first screen (D-10).
 function deskHead(groups, current, ticked) {
-  if (typeof window !== "undefined" && window.innerWidth <= 640) return el("div", { class: "desk-head plain" }, [countLine(ticked)]);
+  if (typeof window !== "undefined" && window.innerWidth <= 640) return el("div", { class: "desk-head plain" }, [countLine(ticked, groups.length)]);
   return el("div", { class: "desk-head" }, [waitingLine(groups, current, ticked)]);
 }
 function nightCard(groups, current, ticked) {

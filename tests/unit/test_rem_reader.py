@@ -1722,13 +1722,14 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
     })();''')
     # The number is the badge's (items waiting on you, sprint 14 #4); the faces beside it are the people to start
     # with, and no sentence says so (owner, 2026-11-13, #2994).
-    assert result['count'] == ['5', 'things waiting on you']
+    # Three cards for five items: the title names the set the deck's ‹ 1 / 3 › pages through (#3379).
+    assert result['count'] == ['5', 'things waiting on you', '· start with these 3']
     # Days overdue in red under the face, the ring burnt; a face with nothing overdue says its age and has no burn.
     assert result['faces'] == [['false', '2 d', 'dd late', True], ['true', '1 d', 'dd late', True], ['false', 'new', 'dd', False]]
     assert result['quiet'] == ['0', 'Nobody is waiting on you today.']
     # Since sprint T3 the waiting line is the desk's title (waitingLine), no longer a row of the night card.
     assert result['solo'] == 'nb solo'
-    assert result['zh'] == ['5', '件在等你'] and result['zhLate'] == '2 天'
+    assert result['zh'] == ['5', '件在等你', '· 先看这 3 张'] and result['zhLate'] == '2 天'
     assert result['date'] == 'Tue, 20 October'
     assert result['find'] == '查找'
 
@@ -1765,7 +1766,8 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
         headline: waitingLine(personGroups(today), null).children[0].children[0]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert _words(result.pop('headline')) == '7things waiting on you'
+    # One card for seven asks, and the title says so (#3379).
+    assert _words(result.pop('headline')) == '7things waiting on you· start with this one'
     assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
