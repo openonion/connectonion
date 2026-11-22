@@ -640,7 +640,8 @@ Back:     co rem --help
 ## co rem map
 
 ```
-Make pages for what one source holds. Each source yields its own kinds of page:
+Create people, org or project pages from one enabled source, without calling a model.
+Each source yields its own kinds of page:
 gmail and outlook yield people and orgs, wechat yields people, codex and
 claude-code yield projects. Calls no model; adds pages and handles, never
 removes or rewrites what a page says. A person already on a page from another
@@ -656,8 +657,8 @@ Example:  co rem map people --source wechat --dry-run
 Writes:   new pages under people/, orgs/ or projects/, and handles on existing
           people pages. Read-only with --dry-run.
 Next:     co rem investigate people --source NAME --new
-          While the nightly schedule is on, the night investigates new pages first,
-          and a run's Next is: co rem status
+          If the nightly schedule is on, new pages are investigated automatically,
+          first in the queue; check progress with co rem status
 Back:     co rem --help
 ```
 

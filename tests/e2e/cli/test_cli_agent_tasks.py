@@ -52,6 +52,6 @@ def test_map_then_investigate_wechat():
 
 
 def test_recover_after_migrating_chat_history():
-    capture = page("wechat", "key", "capture")
+    capture = " ".join(page("wechat", "key", "capture").split())  # a page wraps its sentences
     assert "migrate chat history" in capture and "keeping the keys saved before" in capture
     assert "Allow" in capture and "QR" in capture  # what the one question really asks of the owner

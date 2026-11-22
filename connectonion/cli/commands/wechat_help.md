@@ -143,14 +143,15 @@ Back:     co wechat --help
 ## co wechat key
 
 ```
-WeChat database keys. WeChat 4.1 encrypts each database with its own key, which
-exists only while WeChat opens it. With no command, says how many keys are saved.
-Read-only unless you run capture or set.
+Check, capture or save the WeChat 4.1 database keys; with no command, says how many
+are saved. WeChat encrypts each database with its own key, which exists only while
+WeChat opens it. Read-only unless you run capture or set.
 
 Usage:    co wechat key
           co wechat key COMMAND
 Example:  co wechat key  |  co wechat key capture
 
+Commands
   capture       Capture the key of every database on this Mac; merges with the saved ones.
   set           Save one key you already have.
 
@@ -162,8 +163,9 @@ Back:     co wechat --help
 ## co wechat key capture
 
 ```
-Writes the key of every WeChat database on this Mac to ~/.co/wechat/keys.json
-(owner-only), keeping the keys saved before. Quits and reopens WeChat.
+Save the keys that let co read your WeChat messages: writes the key of every
+database on this Mac to ~/.co/wechat/keys.json (owner-only), keeping the keys saved
+before. Run it on first setup and whenever new databases appear. Quits and reopens WeChat.
 
 Run it the first time, and again whenever WeChat has new databases: after you
 migrate chat history from your phone, or when co wechat tables lists a database

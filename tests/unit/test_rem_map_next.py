@@ -29,4 +29,4 @@ def test_with_the_schedule_on_the_run_says_status_as_the_page_does(tmp_path, mon
     monkeypatch.setattr("connectonion.rem.service.worker_state", lambda root: {"enabled": True})
     monkeypatch.setattr("connectonion.rem.schedule.default_scheduler", lambda root: Installed())
     assert rem_commands._owner_next(tmp_path, FOLLOW) == ["status"]
-    assert "co rem status" in _next_lines() and "nightly schedule" in _next_lines()
+    assert "co rem status" in _next_lines() and "nightly schedule is on" in _next_lines()
