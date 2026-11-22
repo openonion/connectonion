@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc18
+## Current Version: 1.9.7rc19
+Release candidate 1.9.7rc19 for 1.9.7: the night's sleep curve tells the truth: a parked or stuck stretch draws as 清醒, captioned 卡住 N 分钟 · 已自动跳过, and the phone names the highest level the night reached; the desk title counts what the cards show (#3382, #3379); an uninvestigated WeChat friend's facts card no longer prints the raw WeChat id and says the rest comes with investigation (#3381, #3372); the upgrade backfill is versioned, so the retitle and the first/last-chat fields reach notebooks already backfilled on rc17 (#3380, #3368). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc19.md).
+
+- 1.9.7rc19 (Today curve truth #3382/#3379; WeChat facts card #3381/#3372; versioned backfill #3380/#3368).
+
+### Previous candidate: 1.9.7rc18
 Release candidate 1.9.7rc18 for 1.9.7: the night can no longer loop on one task: a tag page that cannot be tagged alone waits instead of raising after the others were written, and a scheduled next parks a task whose input changed (#3377, #3376); Today opens with the night as a sleep curve, the night's work under it and one primary action per card (#3371); a WeChat-only person page says when you last talked, the 90-day count and who wrote last, with the raw WeChat id moved into ⋯ (#3374, #3372); the People filters are labelled 来源 and 标签 and course codes read as names (#3373); `co wechat` and `co rem` help speak to the AI that runs them (#3361). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc18.md).
 
 - 1.9.7rc18 (night loop fix #3377/#3376; Today sleep curve #3371; WeChat person header #3374; People filter labels #3373; CLI help for the AI #3361).
