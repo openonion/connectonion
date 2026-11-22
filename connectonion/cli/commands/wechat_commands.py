@@ -35,7 +35,9 @@ DOCS = "docs/wechat-read.md"
 wechat_app = typer.Typer(
     cls=_OneSuggestion,
     help="Read your own WeChat for Mac chats on this Mac (read-only). Run co wechat on its own: the first time it "
-         "sets up what is missing, then it lists your recent chats. macOS only. Nothing is sent.",
+         "sets up what is missing, then it lists your recent chats. It ends with a coverage line: how many chat "
+         "databases it found, how many a key opens, and any it cannot read with the fix (co wechat key capture). "
+         "macOS only. Nothing is sent.",
     no_args_is_help=False,
     invoke_without_command=True,
     epilog="Example:  co wechat  |  co wechat read 1  |  co wechat search 合同",
