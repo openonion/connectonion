@@ -40,7 +40,13 @@ def test_full_screen_shows_the_defect_and_holds_send(today, width):
     dialog.wait_for()
     band = dialog.locator(".writer-defect")
     assert band.is_visible() and "can't be reached there" in band.inner_text()
-    send = dialog.locator(".writer-send-top" if width < 720 else ".writer-actions .btn-act")
+    # The fix is the one filled action; Send is paused and says why; the footer agrees with the band (#3348 review).
+    assert band.get_by_role("button", name="Rewrite it as an email").get_attribute("class") == "btn-act"
+    send = dialog.locator(".writer-send-top" if width < 720 else ".writer-actions button").first
+    assert "btn-act" not in send.get_attribute("class") and "btn-quiet" in send.get_attribute("class")
+    if width >= 720:
+        actions = dialog.locator(".writer-actions").inner_text()
+        assert "Rewrite it before sending" in actions and "lark-cli" not in actions and "rewritten as an email" in actions
     send.click()
     page.wait_for_timeout(300)
     assert "can't be reached there" in dialog.locator(".writer-notice").inner_text()
@@ -73,3 +79,13 @@ def test_a_reply_rem_rewrote_says_so_on_the_card_and_in_full_screen(today):
     dialog = page.locator("dialog.writer[open]")
     dialog.wait_for()
     assert "earlier draft was written for Lark" in dialog.locator(".writer-defect").inner_text()
+
+
+def test_on_the_card_the_fix_is_primary_and_the_footer_agrees(today):
+    page, calls, _ = today
+    card = _open(page, DEFECT, 1440)
+    assert card.locator(".mail-defect").get_by_role("button", name="Rewrite it as an email").get_attribute("class") == "btn-act"
+    send = card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
+    assert "btn-quiet" in send.get_attribute("class")
+    actions = card.locator(".mail-actions").inner_text()
+    assert "Rewrite it before sending" in actions and "lark-cli" not in actions
