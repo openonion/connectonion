@@ -776,7 +776,28 @@ def schedule_failure(root: Path) -> dict | None:
             **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
                 'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
                 'code_error': _code_error_streak(failures),
-                'same_error': _same_error_streak(failures)} if failures else {})}
+                'same_error': _same_error_streak(failures),
+                **({'stuck': _stuck_on(root, failures[0].get('reason') or '')} if _same_error_streak(failures) else {})}
+               if failures else {})}
+
+
+STUCK_KINDS = {'skills/catalog/': 'skill', 'people/': 'person', 'orgs/': 'org', 'projects/': 'project'}
+
+
+def _stuck_on(root: Path, reason: str) -> dict:
+    """What the repeated error stopped on, and whether REM really set it aside (#3402).
+
+    `skipped` is read from the refusals ledger (parked) or the round's skipped list, never assumed:
+    Today says 已经跳过 only when one of them shows it."""
+    match = re.search(r"\b((?:skills/catalog|people|orgs|projects)/[\w.-]+\.md)\b", reason)
+    record = match[1] if match else ''
+    kind = next((kind for prefix, kind in STUCK_KINDS.items() if record.startswith(prefix)), 'page')
+    from .refusals import refused_pages
+    parked = bool(record) and str(refused_pages(root).get(record, {}).get('parked', '')).startswith('preparation refused')
+    skipped = bool(record) and any(row.get('record') == record
+                                   for row in read_json(state_path(root, 'round.json'), {}).get('skipped', []))
+    return {'kind': kind, 'skipped': parked or skipped,
+            'not_installed': kind == 'skill' and ('no installed source file' in reason or 'no longer installed' in reason)}
 
 
 # Not stuck: these turns end on the weather, and the next fire does continue.

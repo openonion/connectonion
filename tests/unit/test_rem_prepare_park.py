@@ -106,9 +106,24 @@ def _failed_turns(root, reasons):
     write_json(state_path(root, "last-turn.json"), turn)
 
 
-def test_the_same_error_three_turns_running_is_counted_as_stuck(tmp_path, rem_clock):
-    _failed_turns(tmp_path, ["skills/catalog/a.md has no installed source file; run co rem map-skills first"] * 5)
-    assert service.schedule_failure(tmp_path)["same_error"] == 5
+GONE = "skills/catalog/a.md has no installed source file; run co rem map-skills first"
+
+
+def test_the_same_error_three_turns_running_is_counted_as_stuck_and_names_what(tmp_path, rem_clock):
+    _failed_turns(tmp_path, [GONE] * 5)
+    warning = service.schedule_failure(tmp_path)
+    assert warning["same_error"] == 5
+    # Nothing in the ledger says it was set aside: never claimed as skipped.
+    assert warning["stuck"] == {"kind": "skill", "skipped": False, "not_installed": True}
+
+
+def test_skipped_is_read_from_the_ledger_not_assumed(tmp_path, rem_clock):
+    from connectonion.rem.refusals import remember_refusal
+    _failed_turns(tmp_path, ["people/ivy.md has a malformed Handles line"] * 4)
+    assert service.schedule_failure(tmp_path)["stuck"] == {"kind": "person", "skipped": False, "not_installed": False}
+    remember_refusal(tmp_path, "people/ivy.md", [], "preparation refused: people/ivy.md has a malformed Handles line",
+                     stage="investigate", parked=True)
+    assert service.schedule_failure(tmp_path)["stuck"]["skipped"] is True
 
 
 @pytest.mark.parametrize("reasons", [
@@ -121,17 +136,34 @@ def test_weather_and_different_errors_are_not_stuck(tmp_path, rem_clock, reasons
     assert not service.schedule_failure(tmp_path).get("same_error")
 
 
-@pytest.mark.parametrize("language,said,calm", [
-    ("zh", "最近 5 轮都停在同一个问题上", "不需要你做什么"),
-    ("en", "the last 5 turns stopped on the same problem", "nothing is needed from you")], ids=["zh", "en"])
-def test_today_does_not_promise_a_retry_will_fix_the_same_error(language, said, calm):
+def _today(language, stuck):
     from connectonion.rem.reader import TEMPLATE
     from tests.unit.test_rem_reader import _run_reader_js
     function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
     script = f'uiLanguage = {json.dumps(language)}; const REM = {{status: {{timezone: "UTC"}}}};\n' + function
     script += '\nconsole.log(JSON.stringify(turnTrouble(' + json.dumps({
         "code": "repeated_failure", "failures": 5, "same_error": 5, "since": "2026-11-22T19:15:05+00:00",
-        "evidence": "skills/catalog/a.md has no installed source file; run co rem map-skills first"}) + ')));'
-    output = _run_reader_js(script)
-    assert said in output and calm not in output
+        "evidence": GONE, **({"stuck": stuck} if stuck is not None else {})}) + ')));'
+    return _run_reader_js(script)
+
+
+@pytest.mark.parametrize("language,stuck,said,not_said", [
+    ("zh", {"kind": "skill", "skipped": True, "not_installed": True},
+     "有一个技能页的技能已经不在了，最近 5 轮都停在它上面（自 ", "重试解决不了"),
+    ("zh", {"kind": "skill", "skipped": False, "not_installed": True},
+     "有一个技能页的技能已经不在了，最近 5 轮都停在它上面（自 ", "已经跳过"),
+    ("zh", {"kind": "person", "skipped": True, "not_installed": False},
+     "有一个人物页准备不了，最近 5 轮都停在它上面（自 ", "要修好它得等新版本"),
+    ("zh", {"kind": "person", "skipped": False, "not_installed": False}, "重试解决不了它，要等修复它的新版本", "已经跳过"),
+    ("zh", None, "最近 5 轮都停在同一个错误上", "已经跳过"),
+    ("en", {"kind": "skill", "skipped": True, "not_installed": True},
+     "A skill page's skill is no longer installed; the last 5 turns stopped on it", "Retrying"),
+    ("en", {"kind": "org", "skipped": False, "not_installed": False}, "An organisation page cannot be prepared", "set it aside"),
+], ids=["zh-skill-skipped", "zh-skill-stuck", "zh-person-skipped", "zh-person-stuck", "zh-unknown", "en-skill-skipped", "en-org-stuck"])
+def test_today_names_what_is_stuck_and_says_skipped_only_when_it_was(language, stuck, said, not_said):
+    output = _today(language, stuck)
+    assert said in output and not_said not in output, output
+    assert "不需要你做什么" not in output and "nothing is needed from you" not in output
     assert "map-skills" not in output and "skills/catalog" not in output
+    if stuck and stuck["skipped"]:
+        assert ("REM 已经跳过它，其余工作照常" if language == "zh" else "REM has set it aside and the rest goes on") in output
