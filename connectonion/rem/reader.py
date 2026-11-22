@@ -205,7 +205,7 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
 
 
 def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
-    """The page build's data; the whole-notebook tag scans run once in it (tags.held, #3347)."""
+    """The page build's data; the whole-notebook tag scans run once in it (tags.held)."""
     from .tags import held
     with held(root):
         return _snapshot(root, local=local, today=today)

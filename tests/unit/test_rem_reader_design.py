@@ -31,7 +31,10 @@ def test_both_themes_define_every_colour_token():
     colours = set(re.findall(r"(--[\w-]+): (?:#[\da-f]{6}|rgba\([^)]*\));", light))
     # #3309: the 3D knowledge graph's four kinds, the one place hue names a kind (tag pages take the accent).
     kinds = {f"--kind-{kind}" for kind in ("people", "orgs", "projects", "notes")}
-    assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim"} | kinds
+    # #3362 (art director): the full-screen writer's backdrop is black at an alpha in both themes, never ink, which
+    # turns near-white at night; so it is a colour defined in light and dark like the rest.
+    assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim",
+                       "--overlay"} | kinds
     # #3144: the accent is ink, so it inverts at night like every other colour (it was one green in both themes, D-123).
     # The shadows are drawn in colour too (a dark hairline on paper, a light one at night), so they change with it.
     shadows = {"--e1", "--e2", "--e3", "--e-fuse", "--e-green"}
