@@ -172,3 +172,62 @@ def test_activity_keeps_the_earliest_chat_and_a_one_line_preview(tmp_path):
     # One line, and no bracket the reader would take for a citation or a privacy mark.
     assert entry["preview"] == "See you at the harbour 1 personal"
     assert len(preview_line("字" * 200)) == 80 and preview_line("字" * 200).endswith("…")
+
+
+# --- #3368 reopened: the backfill is versioned, so a release that adds to it reaches notebooks it already ran on.
+# Found live on rc18: rc17's backfill had run, so rc18's retitle and its first/preview activity fields never ran,
+# and no real page showed 最早… or 对方最后说 although every fixture did.
+
+ROWS_V2 = [{**ROWS[0], "first": "2024-03-05T09:00:00+00:00", "preview": "See you at the dock"}, *ROWS[1:],
+           {"address": "wxid_caret", "name": "Pia Nolan", "mails": 2, "sent": 1, "received": 1, "friend": True,
+            "remark": True, "last": "2026-11-19T10:00:00+00:00", "last_mine": True, "n90": 2}]
+
+
+def _marked_by_an_older_release(root):
+    """rc17's state: the source backfilled, with the activity file in its old shape and a bare-punctuation title."""
+    from connectonion.rem.files import write_json
+    book = _old_map(root)
+    book.stub_person("people/caret.md", "^ ^", ["wxid_caret"])
+    write_json(state_path(root, onboard.STATE), {"wechat": {"mapped_at": "2026-11-21T00:00:00+00:00",
+                                                           "backfilled": True}})
+    write_json(state_path(root, onboard.ACTIVITY), {"wxid_quinn": {"last": "2026-11-20T10:00:00+00:00",
+                                                                   "mine": False, "n90": 6, "total": 6}})
+    return book
+
+
+def test_a_notebook_backfilled_by_an_older_release_gets_the_new_fields_and_the_retitle_once(tmp_path, monkeypatch):
+    book = _marked_by_an_older_release(tmp_path)
+    _source(monkeypatch, ROWS_V2)
+    assert onboard.backfill(tmp_path) == ["wechat"]
+    quinn = read_json(state_path(tmp_path, onboard.ACTIVITY), {})["wxid_quinn"]
+    assert quinn["first"].startswith("2024-03-05") and quinn["preview"] == "See you at the dock"
+    assert "^ ^" not in book.read("people/caret.md").splitlines()[0]
+    done = read_json(state_path(tmp_path, onboard.STATE), {})["wechat"]
+    assert done["backfill_version"] == onboard.BACKFILL_VERSION
+    assert onboard.backfill(tmp_path) == []          # at the current version: not re-run
+
+
+def test_a_source_mapped_by_the_current_release_is_not_backfilled(tmp_path, monkeypatch):
+    _old_map(tmp_path)
+    _source(monkeypatch, ROWS_V2)
+    onboard.onboard(tmp_path, "wechat", SUBS["wechat"], 30)
+    calls = []
+    real = onboard.rows
+    monkeypatch.setattr(onboard, "rows", lambda *a, **k: calls.append(1) or real(*a, **k))
+    assert onboard.backfill(tmp_path) == [] and calls == []
+
+
+def test_changing_what_the_backfill_writes_needs_a_version_bump():
+    """Pinned per version. Changed what backfill(), record_activity() or _retitle_known() do? Bump
+    onboard.BACKFILL_VERSION and add its line here: notebooks the old backfill already ran on only get the change
+    if the marker says they are behind (#3368)."""
+    import hashlib
+    import inspect
+    body = "".join(inspect.getsource(f) for f in (onboard.backfill, onboard.record_activity, onboard._retitle_known))
+    pinned = {2: (("first", "last", "mine", "n90", "preview", "total"), PINNED_SOURCE)}
+    fields, digest = pinned[onboard.BACKFILL_VERSION]
+    assert tuple(sorted(onboard.ACTIVITY_FIELDS)) == fields
+    assert hashlib.sha256(body.encode()).hexdigest()[:16] == digest, "backfill changed: bump BACKFILL_VERSION"
+
+
+PINNED_SOURCE = "460551c4b62f4af8"
