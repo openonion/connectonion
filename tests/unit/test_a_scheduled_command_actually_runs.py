@@ -151,7 +151,7 @@ class TestHomeShowsWhatTheEntryDoes:
         """Through the real `scheduled_entries`, which reads the schedule module
         rather than reparsing the file — so the page and the scheduler cannot
         disagree about what an entry means."""
-        from connectonion.network.host.ws_router import dashboard
+        from connectonion.network.host.ws_router import control_center as dashboard
 
         monkeypatch.setattr(dashboard, "_co", lambda: co_dir)
         entries, _problems = dashboard.scheduled_entries()

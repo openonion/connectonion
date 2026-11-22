@@ -17640,50 +17640,108 @@ function graph3dSize() {
 function graph3dFit(whole = false) {
   const fg = graphState.fg;
   if (!fg) return;
-  const ms = graphReduced() ? 0 : 700, id = whole ? "" : graphState.focus, d = id && graphState.nodes3?.get(id);
+  const id = whole ? "" : graphState.focus, d = id && graphState.nodes3?.get(id);
   const camera = fg.camera(), from = camera.position.clone();
   const marks = fg.graphData().nodes.filter(n => n.x !== undefined);
   if (!marks.length) return;
-  const mid = axis => (Math.min(...marks.map(n => n[axis])) + Math.max(...marks.map(n => n[axis]))) / 2;
-  const centre = from.clone().set(mid("x"), mid("y"), mid("z"));
-  if (d && d.x !== undefined) {
-    // Search and focus come at the mark from outside the cloud, along the line from its centre through the mark,
-    // so the found page sits on the near side with nothing in front of it, and its neighbours around it.
-    const mark = from.clone().set(d.x, d.y, d.z), out = mark.clone().sub(centre);
-    if (out.length() < 1) out.copy(from).sub(centre);
-    out.setLength(Math.max(160, (graphState.fitDist3 || 600) * .55));
-    return fg.cameraPosition({ x: mark.x + out.x, y: mark.y + out.y, z: mark.z + out.z }, { x: mark.x, y: mark.y, z: mark.z }, ms);
-  }
-  const turn = camera.quaternion.clone();
-  const toward = from.clone().sub(centre).normalize();
-  if (!toward.lengthSq()) toward.set(0, 0, 1);
-  // Try the camera at a distance, measure how much of the stage the marks cover, and scale: three passes land
-  // within a few percent of the target. The camera is put back before the eased move, so nothing jumps.
-  let dist = from.distanceTo(centre) || 600;
+  const centre = graph3dCentroid(marks, from);
+  if (d && d.x !== undefined) return graph3dFlyTo(d, centre);
+  const toward = from.clone().sub(centre);
+  if (toward.lengthSq() < 1e-6) toward.set(0, 0, 1);
+  toward.normalize();
+  // The bulk (95th percentile) fills about 87% of the inner area; every mark, its size included, stays inside it.
+  const need = () => Math.max(graph3dCover(marks, centre) / .87, graph3dCover(marks, centre, 1, true));
+  const dist = graph3dDistance(centre, toward, need, from.distanceTo(centre) || 600);
+  graphState.fitDist3 = dist;
+  graph3dMove(centre.clone().addScaledVector(toward, dist), centre);
+}
+function graph3dCentroid(marks, like) {
+  const c = like.clone().set(0, 0, 0);
+  for (const n of marks) { c.x += n.x; c.y += n.y; c.z += n.z; }
+  return c.multiplyScalar(1 / marks.length);
+}
+// The distance from `aim`, looking along `toward`, at which `need()` comes to 1 (it scales with the distance):
+// measured, not guessed (three passes), then the camera is put back, so the eased move starts where it stands.
+function graph3dDistance(aim, toward, need, start) {
+  const camera = graphState.fg.camera(), from = camera.position.clone(), turn = camera.quaternion.clone();
+  let dist = start;
   for (let pass = 0; pass < 3; pass++) {
-    camera.position.copy(centre).addScaledVector(toward, dist);
-    camera.lookAt(centre);
+    camera.position.copy(aim).addScaledVector(toward, dist);
+    camera.lookAt(aim);
     camera.updateMatrixWorld();
-    const cover = graph3dCover(marks);
-    if (!cover) break;
-    dist *= cover / .87;
+    const scale = need();
+    if (!scale) break;
+    dist *= scale;
   }
   camera.position.copy(from);
   camera.quaternion.copy(turn);
   camera.updateMatrixWorld();
-  graphState.fitDist3 = dist;
-  const to = centre.clone().addScaledVector(toward, dist);
-  fg.cameraPosition({ x: to.x, y: to.y, z: to.z }, { x: centre.x, y: centre.y, z: centre.z }, ms);
+  return dist;
+}
+// Search and focus (#3309 review): the hit and its one-hop neighbours fill about 60% of the stage, seen from
+// outside the cloud along the line from its centre through the hit, never so close the hit fills the screen.
+function graph3dFlyTo(d, centre) {
+  // A search is a touch too: the slow turn stops, or it would carry the found page away.
+  graphState.rotate3 = false;
+  graphState.fg.controls().autoRotate = false;
+  const camera = graphState.fg.camera(), hit = camera.position.clone().set(d.x, d.y, d.z);
+  const group = [d, ...[...(GRAPH.adj.get(d.id) || [])].map(id => graphState.nodes3.get(id)).filter(n => n && n.x !== undefined)];
+  const aim = graph3dCentroid(group, hit), toward = hit.clone().sub(centre);
+  if (toward.length() < 1) toward.copy(camera.position).sub(centre);
+  toward.normalize();
+  const radius = d.__threeObj?.geometry?.parameters?.radius || 6;
+  const nearest = 2 * radius / (.15 * 2 * Math.tan(camera.fov * Math.PI / 360));  // the hit at most 15% of the stage's height
+  const dist = group.length > 1 ? graph3dDistance(aim, toward, () => graph3dCover(group, aim, 1, true) / .6, (graphState.fitDist3 || 600) * .5) : nearest * 2;
+  graph3dMove(aim.clone().addScaledVector(toward, Math.max(dist, nearest)), aim);
+}
+// One camera move, eased in and out over 700 ms; reduced motion jumps. A newer move replaces one still running.
+function graph3dMove(to, aim) {
+  const fg = graphState.fg, camera = fg.camera(), controls = fg.controls();
+  cancelAnimationFrame(graphState.move3);
+  if (graphReduced()) return fg.cameraPosition({ x: to.x, y: to.y, z: to.z }, { x: aim.x, y: aim.y, z: aim.z }, 0);
+  const from = camera.position.clone(), look = controls.target.clone(), started = performance.now();
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+  graphState.moving3 = true;
+  const step = now => {
+    if (graphState.fg !== fg) return;
+    const t = Math.min(1, (now - started) / 700), k = ease(t), at = from.clone().lerp(to, k), on = look.clone().lerp(aim, k);
+    fg.cameraPosition({ x: at.x, y: at.y, z: at.z }, { x: on.x, y: on.y, z: on.z }, 0);
+    if (t < 1) graphState.move3 = requestAnimationFrame(step);
+    else graphState.moving3 = false;
+  };
+  graphState.move3 = requestAnimationFrame(step);
 }
 // How much of the stage the marks take up: the larger of their height and width shares.
-function graph3dCover(marks) {
+// How much of the stage the marks take up around `aim`: twice their 95th-percentile offset from it on each axis,
+// so one outlying mark may sit at the edge instead of shrinking the whole map to fit it (#3309 review).
+// The inner area the 3D map is fitted into, in stage pixels (#3309 review): room for the legend line and 12 px
+// under it at the top, 12 px in from every other edge. Outliers may touch it; none sits on the legend or is cut.
+function graph3dRoom() {
   const fg = graphState.fg, W = fg.width(), H = fg.height();
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const n of marks) {
-    const at = fg.graph2ScreenCoords(n.x, n.y, n.z);
-    x0 = Math.min(x0, at.x); x1 = Math.max(x1, at.x); y0 = Math.min(y0, at.y); y1 = Math.max(y1, at.y);
+  const holder = document.querySelector(".gx-map .gx-3d"), key = document.querySelector(".gx-map .gx-key3d");
+  let top = 12;
+  if (holder && key && key.offsetParent) {
+    const k = key.getBoundingClientRect(), h = holder.getBoundingClientRect();
+    top = Math.max(0, k.bottom - h.top) + k.height + 12;
   }
-  return W && H ? Math.max((y1 - y0) / H, (x1 - x0) / W) : 0;
+  return { left: 12, top, right: W - 12, bottom: H - 12 };
+}
+// How far the marks reach toward the inner area's edges around `aim`, as a share of the room on each side (1 is
+// touching): the given quantile of the marks, so the 95th percentile lets one outlier stand apart from the fit,
+// and `edges` adds each mark's drawn radius so a whole sphere is counted, not its centre.
+function graph3dCover(marks, aim, quantile = .95, edges = false) {
+  const fg = graphState.fg, room = graph3dRoom();
+  if (!marks.length || room.right <= room.left || room.bottom <= room.top) return 0;
+  const camera = fg.camera(), H = fg.height(), tan = Math.tan(camera.fov * Math.PI / 360);
+  const centre = fg.graph2ScreenCoords(aim.x, aim.y, aim.z);
+  const reach = marks.map(n => {
+    const at = fg.graph2ScreenCoords(n.x, n.y, n.z), dx = at.x - centre.x, dy = at.y - centre.y;
+    const r = edges ? (n.__threeObj?.geometry?.parameters?.radius || 4) * H / (2 * tan * Math.max(1, camera.position.distanceTo(n))) : 0;
+    const across = dx >= 0 ? (dx + r) / Math.max(1, room.right - centre.x) : (r - dx) / Math.max(1, centre.x - room.left);
+    const down = dy >= 0 ? (dy + r) / Math.max(1, room.bottom - centre.y) : (r - dy) / Math.max(1, centre.y - room.top);
+    return Math.max(across, down);
+  }).sort((a, b) => a - b);
+  return reach[Math.min(reach.length - 1, Math.floor(reach.length * quantile))];
 }
 function graph3dZoom(by) {
   const fg = graphState.fg;
@@ -17750,6 +17808,15 @@ function graph3dPaint() {
 // Names ride above the 3D map: the pointed or focused mark first, then the knowledge entries, the busiest
 // records and the focused mark's neighbours, each only where it overlaps no name already placed. A private page
 // shows its name only when pointed at, and then only as "Personal".
+// Who keeps a name when names collide (#3309 review): the search hit or pointed mark, then its neighbours, then
+// tag pages by degree, then everything else by degree; within a tier the mark nearer the camera first. A name that
+// loses is hidden, never cut short and never drawn over another.
+function graph3dNameOrder(candidates, key, camera) {
+  const around = key ? GRAPH.adj.get(key) || new Set() : new Set();
+  const tier = d => d.id === key ? 0 : around.has(d.id) ? 1 : d.n.k === "knowledge" ? 2 : 3;
+  const degree = d => tier(d) >= 2 ? graphDegree(d.n) : 0;
+  return [...candidates].sort((a, b) => tier(a) - tier(b) || degree(b) - degree(a) || camera.distanceToSquared(a) - camera.distanceToSquared(b));
+}
 function graph3dNames() {
   const fg = graphState.fg, layer = document.querySelector(".gx-map .gx-3d-names");
   if (!fg || !layer) return;
@@ -17760,15 +17827,13 @@ function graph3dNames() {
   const zoom = graphState.fitDist3 ? graphState.fitDist3 / camera.distanceTo(fg.controls().target) : 1;
   const near = zoom < 1.15 ? new Set() : new Set(nodes.filter(d => !graphHidden(d.n))
     .sort((a, b) => camera.distanceToSquared(a) - camera.distanceToSquared(b)).slice(0, Math.round(6 * zoom * zoom)).map(d => d.id));
-  const rank = d => d.id === key ? 0 : d.n.k === "knowledge" ? 1 : hubs.has(d.id) ? 2 : around.has(d.id) ? 3 : 4;
-  const wanted = nodes.filter(d => d.id === key || (!graphHidden(d.n) && (hubs.has(d.id) || around.has(d.id) || near.has(d.id))))
-    .sort((a, b) => rank(a) - rank(b) || graphDegree(b.n) - graphDegree(a.n));
+  const wanted = graph3dNameOrder(nodes.filter(d => d.id === key || (!graphHidden(d.n) && (hubs.has(d.id) || around.has(d.id) || near.has(d.id)))), key, camera);
   const W = layer.clientWidth, H = layer.clientHeight, shown = new Map([...layer.children].map(span => [span.dataset.id, span])), placed = [];
   for (const d of wanted) {
-    const at = fg.graph2ScreenCoords(d.x, d.y, d.z), title = graphTitle(d.n);
-    // A hub or the pointed mark says its whole name, wrapped to two lines as on the 2D map; others one line.
-    const whole = d.id === key || hubs.has(d.id);
-    const lines = whole ? graphLines(title, Math.max(28, Math.ceil(graphWidth(title) / 2) + 2), 2).lines : [graphShort(title, 28)];
+    const at = fg.graph2ScreenCoords(d.x, d.y, d.z), title = graphTitle(d.n), whole = d.id === key || hubs.has(d.id);
+    // Every name is whole, wrapped to two lines as on the 2D map; one that would need cutting takes one long line.
+    const wrapped = graphLines(title, Math.max(28, Math.ceil(graphWidth(title) / 2) + 2), 2);
+    const lines = wrapped.text.endsWith("…") ? [title] : wrapped.lines;
     const box = [at.x + 8, at.y - 11, at.x + 22 + Math.max(...lines.map(graphWidth)) * 7, at.y - 11 + lines.length * 17 + 4];
     if (box[0] < 0 || box[2] > W || box[1] < 0 || box[3] > H) continue;
     if (d.id !== key && placed.some(other => graphBoxesMeet(box, other))) continue;

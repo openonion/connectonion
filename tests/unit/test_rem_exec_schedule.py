@@ -456,7 +456,7 @@ def test_exec_turn_whose_only_submission_was_refused_and_last_next_stalled_is_no
 
 def test_status_counts_turns_that_produced_nothing_and_idle_turns_end_the_count(tmp_path, monkeypatch):
     from rich.text import Text
-    from connectonion.cli.commands.rem_status import _today, dashboard
+    from connectonion.cli.commands.rem_status import _today, card as dashboard
     from connectonion.rem import service
     for _ in range(2):
         _turn_of(tmp_path, monkeypatch, [_stalled_next(tmp_path)])

@@ -9,7 +9,7 @@ Two rules hold it together:
 - It is rendered into the starter Home only for a socket whose verified address
   is in admins.txt (``viewer["is_admin"]``, decided at CONNECT by the trust
   agent). A non-admin socket is sent none of it -- there is no hidden markup to
-  unhide. A custom ``dashboard.html`` cannot do this: one file is served the same
+  unhide. A custom ``control_center.html`` cannot do this: one file is served the same
   to every admitted caller.
 - Its buttons only *ask*. ``run`` re-checks the caller against admins.txt when
   the signed command arrives and acts through the trust agent, the same calls
@@ -65,7 +65,7 @@ def _joins():
 
 def caller_activity(runs):
     """Per verified caller: turns, failures, latest time. Never the prompt text."""
-    from .dashboard import _run_owner
+    from .control_center import _run_owner
     callers = {}
     for run in runs:
         owner = _run_owner(run) or "local"
@@ -113,7 +113,7 @@ def health(agent_metadata, runs):
 def log_tail(lines=LOG_LINES):
     if not _log_path or not Path(_log_path).is_file():
         return None
-    from .dashboard import _tail_lines
+    from .control_center import _tail_lines
     return [raw.decode("utf-8", "replace") for raw in reversed(_tail_lines(Path(_log_path), lines))]
 
 
@@ -184,7 +184,7 @@ def _short(address):
 
 
 def _since(timestamp, now):
-    from .dashboard import _ago
+    from .control_center import _ago
     return _ago(now - timestamp)
 
 
@@ -274,7 +274,7 @@ def _activity_block(activity, now, fragments):
 
 
 def _approvals_block(runs, now, fragments):
-    from .dashboard import _run_owner
+    from .control_center import _run_owner
     waiting = [r for r in runs if r.get("status") == "waiting_approval"]
     if not waiting:
         return ""

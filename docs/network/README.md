@@ -11,7 +11,7 @@ Connect and collaborate between agents with automatic reliability and recovery.
 - [io.md](io.md) - Stream events and communicate with clients
 - [session-reconnect.md](session-reconnect.md) - WebSocket reconnection and session recovery
 - [control-center.md](control-center.md) - Build the full Web Control Center and wire its buttons to Chat
-- [dashboard.md](dashboard.md) - Understand the compatible legacy HTML snapshot
+- [control-center-page.md](control-center-page.md) - The Control Center page: `.co/control_center.html` and the starter
 
 ## Key Features
 

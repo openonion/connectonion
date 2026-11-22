@@ -345,7 +345,7 @@ def _build_agent_profile(agent_metadata: dict, directory: str | None = None) -> 
     # and a listing shows the card (alias, bio, address), never the skills.
     if directory == "listed":
         profile["listed"] = True
-    from .ws_router.dashboard import first_sentence
+    from .ws_router.control_center import first_sentence
     bio = first_sentence(agent_metadata.get("tagline"), limit=140)
     if bio:
         profile["bio"] = bio
@@ -362,8 +362,8 @@ def _build_agent_profile(agent_metadata: dict, directory: str | None = None) -> 
     # claude-project (.claude/skills). user (~/.co/skills), claude-user (~/.claude/skills)
     # are the operator's personal toolboxes and builtin is framework noise; none may leak
     # into the public directory. Allowlist, so an unknown future category stays private.
-    # Every client-facing skill list (this profile, the starter dashboard) draws from it,
-    # so a dashboard button can't name a skill the client will refuse to run.
+    # Every client-facing skill list (this profile, the starter Control Center) draws from it,
+    # so a Control Center button can't name a skill the client will refuse to run.
     from ...useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
     profile["skills"] = [
         {"name": s["name"], "description": s.get("description", "")}
@@ -1376,8 +1376,8 @@ def host(
     # Rendered here and not earlier: the Home shows the address and the trust
     # level, and neither exists until this point. Called above, it rendered a
     # page missing both and nothing said so.
-    from .ws_router.dashboard import ensure_dashboard
-    ensure_dashboard(agent_metadata)
+    from .ws_router.control_center import ensure_control_center
+    ensure_control_center(agent_metadata)
 
     # co_dir, not the default: host(co_dir=...) must put the sessions there too.
     storage = provider_station.storage if provider_station is not None else SessionStorage(co_dir / "session_results.jsonl")
@@ -1389,7 +1389,7 @@ def host(
         storage.reconcile_interrupted()
     # And drop what no reader can see: superseded records, and sessions past
     # their TTL that are not running. The file is append-only otherwise, and a
-    # live agent was at 17 MB for 222 sessions — every dashboard open reparses
+    # live agent was at 17 MB for 222 sessions — every Control Center open reparses
     # all of it.
     storage.compact()
 
@@ -1575,9 +1575,9 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     agent_metadata["address"] = get_agent_address(sample)
     agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
 
-    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
-    from .ws_router.dashboard import ensure_dashboard
-    ensure_dashboard(agent_metadata)
+    # Give the agent a polished Home on day zero (no-op if control_center.html exists).
+    from .ws_router.control_center import ensure_control_center
+    ensure_control_center(agent_metadata)
 
     # The storage directory is the project boundary available to create_app().
     # Resolve it before trust construction so authorization and replay state

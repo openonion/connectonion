@@ -4,7 +4,7 @@ The starter's "Recent" list is read from .co/session_results.jsonl, which holds
 every caller's turns with the prompt verbatim. It used to be rendered once for
 everyone, so a stranger on `trust: open` -- or a contact on the default
 `careful` -- connected and read the owner's recent prompts in their first
-DASHBOARD_SNAPSHOT. That is the one thing #696 promised a second identity could
+CONTROL_CENTER_SNAPSHOT. That is the one thing #696 promised a second identity could
 no longer see.
 """
 
@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from connectonion.network.host.ws_router import dashboard as dash
+from connectonion.network.host.ws_router import control_center as dash
 
 OWNER = "0x" + "a" * 64
 VISITOR = "0x" + "b" * 64
@@ -44,7 +44,7 @@ def snapshot_for(address, is_admin=False):
         sent.append(frame)
 
     conn = {"agent_address": address, "is_admin": is_admin}
-    asyncio.run(dash.send_dashboard(send, "s1", conn, force=True))
+    asyncio.run(dash.send_control_center_page(send, "s1", conn, force=True))
     return sent[0]["html"]
 
 
@@ -82,4 +82,4 @@ def test_the_schedule_is_shown_to_an_admin_only(project):
 
 def test_a_socket_path_cannot_forget_who_it_renders_for():
     with pytest.raises(TypeError):
-        dash.read_dashboard_snapshot("s1")
+        dash.read_control_center_snapshot("s1")

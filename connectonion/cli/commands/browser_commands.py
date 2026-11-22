@@ -189,7 +189,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
         args = [*args[:-1], sys.stdin.read()]
     if engine_mode == "onion" and _starts_a_session(args):
         # Before the spend, not in the receipt. The Airbnb round of 2026-09-12
-        # ran an authenticated host dashboard on the paid engine for 40 minutes,
+        # ran an authenticated host Control Center on the paid engine for 40 minutes,
         # then finished the same work on the free one with the logins intact —
         # nothing anywhere had said which engine was about to bill (#1510).
         print(

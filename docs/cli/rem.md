@@ -675,7 +675,7 @@ never were. Those are bounded by the daily call cap
 `co rem status` and that budget hold use one number: the points counted from
 the run logs when status is asked, not the sentence a past round saved.
 
-`co rem status` keeps its existing dashboard and adds five stage lines in the
+`co rem status` keeps its existing status card and adds five stage lines in the
 order above. Each says what is waiting (a count) and when that stage last ran
 in the notebook's timezone (a date or `never`). Counts come from saved source
 metadata and the existing investigation, deepen, captured-decision and
@@ -3087,7 +3087,7 @@ as before.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
-  The dashboard says what a point is under the line.
+  The status card says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - **Past the floor, translation and tagging go on to a ceiling.** A translate or
   tag turn is a minute of a small model; the floor held them with investigation, so
