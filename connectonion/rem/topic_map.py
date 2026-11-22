@@ -319,8 +319,12 @@ def map_topics(notebook: Notebook, *, rows=None) -> tuple[list[dict], list[str]]
             updated = text.replace('\n', '\n' + alias_line + '\n', 1)
         if updated != text:
             notebook.write(row['record'], updated)
+        def _named(rec):
+            # The question is read by the owner, so name the page, not its file path (people/…-fb3e61a907.md).
+            aliases = topic_aliases(notebook.read(rec))
+            return aliases[0] if aliases else rec
         proposals = [{'kind': 'link', 'subjects': [row['record'], d['record']],
-                      'question': f"Does {d['record']} concern this topic?", 'basis': d['sentence']}
+                      'question': f"Does {_named(d['record'])} concern this topic?", 'basis': d['sentence']}
                      for d in row['doubtful']]
         for proposal in proposals:
             ingest(notebook.root, [proposal])
