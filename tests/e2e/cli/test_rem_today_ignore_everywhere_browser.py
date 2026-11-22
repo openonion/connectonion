@@ -67,6 +67,9 @@ def test_a_row_handed_to_codex_still_says_ignore(today, size):
     page.evaluate("""() => { const row = REM.today_queue.find(row => row.section === 'today');
       row.task = {id: 'a'.repeat(32), agent: 'codex', result: 'completed', record: 'people/ines-halvorsen.md'}; }""", isolated_context=False)
     _at(page, size)
+    # Work an agent holds is dealt behind the people waiting (sprint T3, #3312), so raise its card first.
+    page.locator('.deal[data-path="people/ines-halvorsen.md"]').first.click()
+    page.mouse.move(0, 0)
     handed = page.locator(".today-brief .qcard.focal .qitem").filter(has=page.locator(".handed"))
     assert handed.count() == 1
     _says_the_closes(handed)

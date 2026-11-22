@@ -101,10 +101,11 @@ def test_the_side_line_the_sheet_and_the_overnight_section_tell_the_same_number(
         o('no_reply', 'people/ines-halvorsen.md', 6), o('could_not_prepare', 'people/quinn-alder.md', 7)];
       render();
     }""", isolated_context=False)
-    assert page.locator(".side .closed").inner_text().startswith("REM handled 6 things overnight")
+    # The line sits in the night card since sprint T3 (#3311): the night's own block says what it settled.
+    assert page.locator(".night-card .closed").inner_text().startswith("REM handled 6 things overnight")
     assert page.locator(".overnight .night-tally").inner_text() == (
         "REM handled 6 things overnight: 3 things have a reply drafted; prepared 1 task; 2 things need no reply.")
-    page.locator(".side .closed .link-btn").click()
+    page.locator(".night-card .closed .link-btn").click()
     lines = page.locator('#night-sheet .night-done li:not([data-kind="could_not_prepare"]) b').all_inner_texts()
     assert sum(int(line.split()[1] if line.startswith("Prepared") else line.split()[0]) for line in lines) == 6, lines
     page.keyboard.press("Escape")

@@ -3609,6 +3609,78 @@
   .nh .legend { margin-left: 8px; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); opacity: 0; transition: opacity var(--t-press) var(--ease-out); }
   .night-card:hover .legend, .night-card:focus-within .legend { opacity: 1; }
   .nb { display: flex; align-items: center; gap: 28px; }
+  /* The night under its curve (#3311): the curve on a light card, its dots in ink; each stretch's words hang under its
+     dip on the same clock, one row each, and a stretch opens to the pages it changed as a small floating list. */
+  .night-line { position: relative; margin: 4px 0 0; }
+  .night-card .hypno { margin: 6px 0 2px; }
+  .night-card .hypno .dot, .night-card .hypno .dawn { background: var(--ink); }
+  .night-card .hypno .dot.woke { background: var(--pencil); }
+  .stretches { position: relative; height: calc(var(--row, 1) * 28px); margin: 2px 0 4px; }
+  /* A phone: the three biggest stretches in one row that scrolls sideways, under a curve two-thirds as tall. */
+  .stretches.stacked { height: auto; display: flex; gap: 4px 16px; overflow-x: auto; scrollbar-width: none; }
+  /* Its hour labels go: each stretch under it says its own times. */
+  .night-card .hypno.short { height: 32px; margin: 4px 0 0; }
+  .hypno.short svg { height: 32px; }
+  .hypno.short .day { display: none; }
+  .stretches.stacked { margin: 0; }
+  /* On a phone the stretches under the curve already say what the night did, so the heading keeps only its name. */
+  @media (max-width: 640px) { .night-card .nh .night-sum { display: none; } }
+  /* One line for who is waiting (sprint T3: «一行 N 件是你的»): the count at title size and the faces beside it, each
+     face's days to its right, so the curve and the first card's Send share the first screen (D-10). */
+  .night-card .nb.solo .faces { padding: 2px 0 0; gap: 16px; }
+  .night-card .count-line .count { font-size: var(--s-head); }
+  .night-card .count-line .count-words { font-size: var(--s-ui); }
+  .night-card .frow { align-items: center; }
+  .night-card .deal { flex-direction: row; gap: 6px; padding: 4px 8px 4px 4px; border-radius: var(--r-pill); }
+  .night-card .deal .face.l { width: 30px; height: 30px; }
+  /* The desktop curve at two-thirds height too: the dips still read, its hours stay under it. */
+  .night-card .hypno.mid { height: 72px; }
+  .hypno.mid svg { height: 56px; }
+  .hypno.mid .day { top: 58px; }
+  .nh-handled { margin-left: auto; min-width: 0; }
+  .nh-handled .closed { padding: 0; line-height: var(--lh-ui); }
+  @media (max-width: 640px) {
+    .night-card .nh { min-height: 0; }
+    .night-card .deal { padding: 2px 6px 2px 2px; }
+    .night-card .nb.solo .faces { padding: 0; }
+    .night-card .frow { padding: 0 4px; margin: 0 -4px; }
+    /* The 看 keeps its 44px target; the line it sits on stays one text line tall and the target overhangs it. */
+    .nh-handled { display: flex; align-items: center; height: 18px; }
+    .night-card.phone .nh { gap: 8px; }
+    .night-card.phone .nh .nb.solo { flex: 1; min-width: 0; }
+    .night-card.phone .nh .faces { gap: 8px; padding: 0; border-top: 0; }
+    .night-card.phone .nh .count-line .count { font-size: var(--s-ui); letter-spacing: 0; }
+    .night-card.phone .nh .count-line { gap: 4px; flex-wrap: nowrap; }
+    .night-card.phone .nh .deal .dd { display: none; }
+    .night-card.phone .stretches .nh-handled { flex: none; height: auto; }
+    .night-card.phone .stretches .stretch-all { flex: none; align-self: center; margin: 0; }
+  }
+  .stretch { position: absolute; top: calc(var(--row, 0) * 28px); max-width: 40%; }
+  .stretch.from-right .stretch-pages { left: auto; right: 0; }
+  .stretches.stacked .stretch { position: static; flex: none; max-width: none; }
+  .stretch > summary { display: flex; gap: 6px; padding: 2px 8px; margin-left: -8px; overflow: hidden; border-radius: var(--r-pill); color: var(--ink);
+    white-space: nowrap; text-overflow: ellipsis; cursor: pointer; list-style: none; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .stretch > summary::-webkit-details-marker { display: none; }
+  .stretch > summary:hover, .stretch[open] > summary { background: var(--fill-hover); }
+  .stretch-time { flex: none; color: var(--grey); font-variant-numeric: tabular-nums; }
+  .stretch-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .stretch-pages { position: absolute; z-index: 3; top: 100%; left: 0; min-width: 240px; max-width: 360px; margin: 4px 0 0; padding: 8px 12px;
+    list-style: none; background: var(--raised); border-radius: var(--r-inner); box-shadow: var(--e2); }
+  .stretches.stacked .stretch-pages { position: static; min-width: 0; padding: 2px 0 6px 12px; box-shadow: none; background: none; }
+  .stretch-pages li { padding: 2px 0; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .stretch-pages a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .stretch-more { color: var(--grey); }
+  .stretch-all { display: inline-block; margin: 0 0 4px; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
+    text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .night-foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 24px; margin: 4px 0 8px; }
+  .night-foot > .closed { margin: 0; }
+  .night-unread { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+  .night-unread-k { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .night-unread .coverage-gap { margin: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .night-card .hypno .trace { stroke-dasharray: 1; animation: hypno-draw var(--t-night) var(--spring-soft) both; }
+    @keyframes hypno-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  }
   /* A sparse three nights (nightSparse): one grey line under the title, and the people waiting take the row. */
   .nh .nt { flex: none; white-space: nowrap; }
   .nh .night-sum { margin-left: 8px; min-width: 0; color: var(--grey); font: var(--w-regular) var(--s-meta)/1.4 var(--font); }
@@ -3769,9 +3841,20 @@
   .pair-cell.waiting-more { order: 1; display: flex; align-items: center; min-height: 32px; color: var(--ink); font: var(--w-regular) var(--s-ui)/1.4 var(--font);
     text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
   .pair-cell.waiting-more:hover { text-decoration-color: var(--ink); }
-  .approve-all { min-height: 40px; padding: 0 16px; border: 1px solid var(--ink); border-radius: var(--radius); background: none; color: var(--ink);
-    font: var(--w-bold) var(--s-ui)/1.3 var(--font); cursor: pointer; }
-  .approve-all:hover:not(:disabled) { background: var(--well); }
+  /* A batch approval is never the darkest thing on Today (#3312): a hairline outline in regular weight; the card's 发送 leads. */
+  .approve-all { min-height: 40px; padding: 0 16px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: none; color: var(--ink);
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .approve-all:hover:not(:disabled) { border-color: var(--ink); background: var(--fill-hover); }
+  .row-more { position: relative; display: inline-block; }
+  .row-more > summary { padding: 0 6px; border-radius: var(--r-pill); color: var(--grey); cursor: pointer; list-style: none;
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .row-more > summary::-webkit-details-marker { display: none; }
+  .row-more > summary:hover, .row-more[open] > summary { color: var(--ink); background: var(--fill-hover); }
+  .row-more-menu { position: absolute; z-index: 4; top: 100%; left: 0; display: grid; justify-items: start; gap: 2px; min-width: 180px; margin-top: 4px; padding: 6px;
+    background: var(--raised); border-radius: var(--r-inner); box-shadow: var(--e2); }
+  .row-more-menu > * { width: 100%; text-align: left; padding: 6px 8px; border-radius: var(--r-cell); }
+  .row-more-menu > button:hover { background: var(--fill-hover); }
+  .task-line { display: inline-flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
   .closed { display: flex; align-items: center; gap: 8px; padding: 4px 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
   .coverage-fix { white-space: nowrap; }
   .coverage-gap { flex-wrap: wrap; }
@@ -4904,6 +4987,9 @@ const UI = {
     "Hide labelled passages": "隐藏已标记段落",
     "Also hides raw excerpts; other details stay visible.": "也会隐藏原始摘录，其他信息仍可见。",
     "Last night": "昨夜",
+    "read {n} item": "读了 {n} 项", "read {n} items": "读了 {n} 项", "rewrote {n} page": "改写了 {n} 页", "rewrote {n} pages": "改写了 {n} 页",
+    "translated {n} page": "翻译了 {n} 页", "translated {n} pages": "翻译了 {n} 页", "Pages this stretch changed": "这一段改动的页面",
+    "All →": "全部 →", "Still unread": "还有什么没读到", "More actions": "更多操作",
     "The last pass": "上次更新",
     "What changed overnight": "昨夜的变化",
     "This week": "本周",
@@ -8306,9 +8392,10 @@ function runSegments(runs, span) {
     const start = runTime(run), end = runEnd(run);
     let segment = segments[segments.length - 1];
     if (!segment || start >= segment.end + gap) {
-      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0 };
+      segment = { start, end, items: 0, changed: 0, runs: 0, failed: 0, list: [] };
       segments.push(segment);
     }
+    segment.list.push(run);
     segment.end = Math.max(segment.end, end);
     segment.items += Number(run.items) || 0;
     segment.changed += (run.changed || []).length;
@@ -8327,20 +8414,30 @@ function runMarkers(markers) {
   return dots.join("");
 }
 // The trace groups nearby runs; dots mark changed pages and stopped runs.
-function hypnogram(asOf) {
+// One time axis for the curve and for the night's work drawn under it (#3311): both read this, so a stretch's
+// words sit under the dip they describe.
+function hypnoScale(asOf) {
   const runs = (lastPass()?.runs || []).filter(run => runTime(run) <= asOf).sort((a, b) => runTime(a) - runTime(b));
-  const W = 1000, H = 84, TOP = 14, FLOOR = 72;
-  const finished = runs.length ? Math.min(asOf, Math.max(...runs.map(runEnd))) : asOf;
+  const W = 1000, finished = runs.length ? Math.min(asOf, Math.max(...runs.map(runEnd))) : asOf;
   const start = Math.floor((runs.length ? runTime(runs[0]) : asOf - 4 * HOUR) / HOUR) * HOUR - HOUR / 2;
   const end = Math.max(start + HOUR, Math.ceil(finished / HOUR) * HOUR + HOUR / 2);
-  const segments = runSegments(runs, end - start), markers = [];
-  const x = t => 4 + (W - 8) * (t - start) / (end - start);
+  return { runs, W, finished, start, end, segments: runSegments(runs, end - start), x: t => 4 + (W - 8) * (t - start) / (end - start) };
+}
+function hypnoTime(t) {
+  return new Date(t).toLocaleTimeString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
+}
+// size "mid" is Today's desktop curve, "short" a phone's: the same night at two-thirds or half the height so the first card's Send stays in reach (owner,
+// 2026-11-22: «手机上压缩时间轴»).
+function hypnogram(asOf, size = "") {
+  const short = size === "short", mid = size === "mid";
+  const { runs, W, finished, start, end, segments, x } = hypnoScale(asOf);
+  const H = short ? 32 : mid ? 56 : 84, TOP = short ? 6 : mid ? 10 : 14, FLOOR = short ? 28 : mid ? 50 : 72, markers = [];
   const pct = v => (100 * v / W).toFixed(2) + "%";
-  const time = t => new Date(t).toLocaleTimeString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
+  const time = hypnoTime;
   const svg = ['<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">'];
   const over = [], step = Math.max(HOUR, Math.ceil((end - start) / (6 * HOUR)) * HOUR);
   for (let t = Math.ceil(start / HOUR) * HOUR; t < end; t += step) {
-    svg.push('<line class="grid" x1="' + x(t).toFixed(1) + '" y1="4" x2="' + x(t).toFixed(1) + '" y2="80"/>');
+    svg.push('<line class="grid" x1="' + x(t).toFixed(1) + '" y1="4" x2="' + x(t).toFixed(1) + '" y2="' + (H - 4) + '"/>');
     over.push('<span class="day" style="left:' + pct(x(t)) + '">' + esc(time(t)) + "</span>");
   }
   let path = "M4," + TOP;
@@ -8350,13 +8447,83 @@ function hypnogram(asOf) {
     const depth = segment.failed === segment.runs ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
     path += " L" + x0.toFixed(1) + "," + TOP + " L" + x0.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + TOP;
     const range = time(segment.start) + "–" + time(segment.end);
-    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: 6, title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
+    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: TOP - 8, title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
     if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + t("{n} runs · {m} pages changed", { n: segment.runs, m: segment.changed }) });
   }
   path += " L" + (W - 4) + "," + TOP;
   svg.push('<path class="trace" pathLength="1" d="' + path + '"/>', "</svg>");
-  if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:14px" title="' + esc(t("Last run ended {time}", { time: fmtTime(new Date(finished).toISOString()) })) + '"></span>');
-  return '<div class="hypno" role="img" aria-label="' + t("{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending", { n: runs.length, m: segments.length }) + '">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
+  if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:' + TOP + 'px" title="' + esc(t("Last run ended {time}", { time: fmtTime(new Date(finished).toISOString()) })) + '"></span>');
+  return '<div class="hypno' + (size ? " " + size : "") + '" role="img" aria-label="' + t("{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending", { n: runs.length, m: segments.length }) + '">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
+}
+// The night under its curve (#3311, owner 2026-11-22: «那个线的下面，就是晚上做事情的时候»): each stretch's work sits
+// under the dip it made, on the curve's own time axis (hypnoScale), and opens to the pages it changed. Up to three
+// rows; a phone keeps the three biggest stretches in time order. 全部 → opens the whole night in Activity.
+function stretchWords(segment) {
+  let read = 0, rewrote = 0, translated = 0;
+  for (const run of segment.list) {
+    const changed = (run.changed || []).filter(path => byPath(path)).length;
+    if (/translat/.test(run.phase || "")) translated += changed; else rewrote += changed;
+    if ((run.phase || "sync") === "sync" || !changed) read += Number(run.items) || 0;
+  }
+  return [read ? t(read === 1 ? "read {n} item" : "read {n} items", { n: num(read) }) : null,
+    rewrote ? t(rewrote === 1 ? "rewrote {n} page" : "rewrote {n} pages", { n: rewrote }) : null,
+    translated ? t(translated === 1 ? "translated {n} page" : "translated {n} pages", { n: translated }) : null,
+    segment.failed ? t("{n} runs stopped early", { n: segment.failed }) : null].filter(Boolean);
+}
+function stretchItem(stretch) {
+  const { segment, words, pages } = stretch;
+  const range = hypnoTime(segment.start) + (segment.end - segment.start >= 5 * 60e3 ? "–" + hypnoTime(segment.end) : "");
+  const item = el("details", { class: "stretch" }, [el("summary", {}, [el("span", { class: "stretch-time", text: range }),
+    el("span", { class: "stretch-what", text: words.join(" · ") })])]);
+  if (pages.length) item.appendChild(el("ul", { class: "stretch-pages", "aria-label": t("Pages this stretch changed") }, [
+    ...pages.slice(0, 10).map(r => el("li", {}, [el("a", { href: href(r), text: r.title })])),
+    pages.length > 10 ? el("li", { class: "stretch-more", text: t("+{n} more", { n: pages.length - 10 }) }) : null].filter(Boolean)));
+  // One open at a time, and Escape folds it back: a stretch's pages float over the rows under it.
+  item.addEventListener("toggle", () => {
+    if (item.open) for (const other of item.parentElement?.querySelectorAll(".stretch[open]") || []) if (other !== item) other.open = false;
+  });
+  item.addEventListener("keydown", event => { if (event.key === "Escape" && item.open) { item.open = false; item.querySelector("summary").focus(); } });
+  return item;
+}
+// tail: what a phone appends to the stretches row (REM's settled line), so it costs no line of its own.
+function nightTimeline(asOf, tail = null) {
+  const scale = hypnoScale(asOf);
+  if (!scale.runs.length) return null;
+  const wrap = el("div", { class: "night-line" });
+  const narrow = window.innerWidth <= 640;
+  wrap.insertAdjacentHTML("beforeend", hypnogram(asOf, narrow ? "short" : "mid"));
+  const stretches = scale.segments.map(segment => ({ segment, words: stretchWords(segment), weight: segment.items + 4 * segment.changed,
+    pages: [...new Set(segment.list.flatMap(run => run.changed || []))].map(byPath).filter(r => r && r.path !== "skills/catalog/index.md") }))
+    .filter(stretch => stretch.words.length);
+  const lane = el("div", { class: "stretches" + (narrow ? " stacked" : "") }), rows = [];
+  let placed = 0;
+  const chosen = narrow ? [...stretches].sort((a, b) => b.weight - a.weight).slice(0, 3).sort((a, b) => a.segment.start - b.segment.start) : stretches;
+  for (const stretch of chosen) {
+    const item = stretchItem(stretch);
+    // Where its dip runs on the curve, as a share of the width: what the words line up under (and what tests read).
+    item.dataset.from = (100 * scale.x(stretch.segment.start) / scale.W).toFixed(2);
+    item.dataset.to = (100 * scale.x(Math.min(asOf, stretch.segment.end)) / scale.W).toFixed(2);
+    if (!narrow) {
+      // A stretch near the right edge hangs from its right end instead, so its words are never cut by the card.
+      const at = Math.max(0, Math.min(100, 100 * scale.x(stretch.segment.start) / scale.W)), right = at > 58;
+      const left = right ? Math.max(0, at - 40) : at;
+      let row = rows.findIndex(end => end <= left);
+      if (row < 0) { if (rows.length >= 3) continue; row = rows.length; rows.push(0); }
+      rows[row] = right ? 101 : left + 40;
+      if (right) { item.style.right = Math.max(0, 100 - 100 * scale.x(stretch.segment.end) / scale.W - 2).toFixed(2) + "%"; item.classList.add("from-right"); }
+      else item.style.left = left.toFixed(2) + "%";
+      item.style.setProperty("--row", row);
+    }
+    lane.appendChild(item);
+    placed++;
+  }
+  lane.style.setProperty("--row", Math.max(1, rows.length));  // on the lane: how many rows; each item sets its own
+  wrap.appendChild(lane);
+  const all = placed < stretches.length ? el("a", { class: "stretch-all", href: "#view=activity", text: t("All →") }) : null;
+  // On a phone, 全部 → and REM's settled line ride the same sideways row as the stretches.
+  if (narrow) lane.append(...[all, tail].filter(Boolean));
+  else if (all) wrap.appendChild(all);
+  return wrap;
 }
 function nightBand(showActivityLink = true) {
   const pass = lastPass(), band = el("section", { class: "night", "aria-label": t("The last pass") });
@@ -9343,7 +9510,10 @@ function liveHere() { return REM.live && location.protocol !== "file:"; }
 const ROW_TALK_SLOTS = new Map();
 function handOff(entry, mark, lead, inMenu = false) {
   const key = obligationKey(entry);
-  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark) : handButtons(entry, show, panel, mark, lead);
+  // A Today card's handed row: one primary step, the three closes in words, the rest under a worded More (#3312).
+  // An unhanded row already has one lead and its hand-offs stay visible words (D-100), so it keeps its strip.
+  const compact = !!mark && !inMenu;
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark, compact) : handButtons(entry, show, panel, mark, lead);
   const show = () => line.replaceChildren(...parts());
   const panel = inMenu ? ROW_TALK_SLOTS.get(key) || el("div", { class: "talk-slot" }) : el("div", { class: "talk-slot" }, [OPEN_TALKS.get(key)]);
   if (!inMenu) ROW_TALK_SLOTS.set(key, panel);
@@ -9493,6 +9663,26 @@ function tidyDotsSoon() { cancelAnimationFrame(tidyFrame); tidyFrame = requestAn
 if (typeof MutationObserver === "function" && typeof document !== "undefined" && document.getElementById?.("main")) {
   new MutationObserver(tidyDotsSoon).observe(document.getElementById("main"), { childList: true, subtree: true });
   addEventListener("resize", tidyDotsSoon);
+}
+// One primary step per Today card, the rest one click away (#3312, sprint T3): the card offers the step that moves it
+// on, bold, and the three closes stay in words beside it (owner, 2026-11-11/12: «标记完成不在那个里面啊», «忽略和标记
+// 完成很重要»; the Ignore-everywhere tests pin it). Everything else, the agents, the terminal, the result, take back,
+// show more, waits under a worded 更多操作 disclosure; Escape and a click outside fold it back. The Codex to-do rows had
+// eight links in one line (Mac rc11 pass); now it is the status, one step, the three closes and 更多操作.
+function oneAction(status, primary, keep, rest) {
+  const others = [...new Set(rest)].filter(node => node && node !== primary && !keep.includes(node));
+  primary?.classList?.add("strip-lead");
+  const more = others.length ? el("details", { class: "row-more" }, [
+    el("summary", { class: "row-more-btn", text: t("More actions") }),  // a word, never a bare glyph (D-100)
+    el("div", { class: "row-more-menu" }, others)]) : null;
+  more?.addEventListener?.("keydown", event => { if (event.key === "Escape" && more.open) { more.open = false; more.querySelector("summary").focus(); } });
+  if (more && !oneAction.listening && typeof document !== "undefined" && document.addEventListener) {
+    oneAction.listening = true;  // one page-wide listener: a click outside folds any open ⋯ back
+    document.addEventListener("click", event => {
+      for (const open of document.querySelectorAll(".row-more[open]")) if (!open.contains(event.target)) open.open = false;
+    });
+  }
+  return [...(status ? [status] : []), ...dotted([primary, ...keep.filter(node => node !== primary), more])];
 }
 function handButtons(entry, show, panel, mark, lead) {
   const status = el("span", { class: "handoff-status", role: "status" });
@@ -9765,7 +9955,7 @@ function openContext(entry, talk) {
 }
 // Codex is working · Stop · Take back, then Codex finished · See result · Take back; it follows the run by itself.
 // The three closes stay first, as before the hand-off (D-100's order).
-function handState(entry, show, panel, mark) {
+function handState(entry, show, panel, mark, compact = false) {
   const task = rowTask(entry), agent = AGENT_NAMES[task.agent || "codex"] || task.agent, active = ACTIVE_TASK.includes(task.result);
   const status = taskStatusNode(task);
   const act = (action, label) => {
@@ -9788,6 +9978,14 @@ function handState(entry, show, panel, mark) {
   const work = [status, by, primary, ...actions, entry.ask ? null : moreButton(entry, talkMenu(entry, panel))];
   // The closes stay on every row, before and after the run (owner, 2026-11-11/12: mark done, not now, ignore in words).
   const closes = stripDone(entry, mark);
+  if (compact && closes.length) {
+    // The one step: a drafted reply to open, the result to read, the stopped run to carry on (or retry); while it
+    // runs there is nothing to press but the status says what it is doing.
+    const resume = actions.find(node => node?.classList?.contains("task-resume"));
+    const lead = active ? null : primary || (task.result === "completed" ? see : resume) || closes[0];
+    return oneAction(el("span", { class: "task-line" }, [status, by].filter(Boolean)), lead, closes, [...actions, primary, see,
+      entry.ask ? null : moreButton(entry, talkMenu(entry, panel))]);
+  }
   return dotted([...closes, ...work]);
 }
 // 让 Codex 查 (#2909): automatic investigations skip a private project, so the owner asks here. The same
@@ -10511,7 +10709,12 @@ function deckOrder(groups) {
   const complete = sendable.find(([, next]) => !/[\[［【]/.test(threadDraft(next.entry)?.body || ""));
   const ready = (complete || sendable[0] || [-1])[0];
   const first = lead >= 0 ? lead : Math.max(0, ready);
-  return [...groups.slice(first), ...groups.slice(0, first)];
+  const ordered = [...groups.slice(first), ...groups.slice(0, first)];
+  if (lead >= 0) return ordered;  // a card the owner raised stays where he put it
+  // People waiting on him come before work an agent already holds (#3312): a handed-off item that is not overdue
+  // goes behind the cards only he can answer (Mac rc11 pass: two Codex rows pushed the first reply below the fold).
+  const agentWork = group => group.entries.every(entry => handed(rowTask(entry))) && !group.entries.some(entry => overdueDays(entry.t));
+  return [...ordered.filter(group => !agentWork(group)), ...ordered.filter(agentWork)];
 }
 // Deal another card: the faces, J/K and Skip only change which card is raised; nothing is written and nothing
 // is drawn again. Every card is already in the page, so what was typed in any of them stays where it was.
@@ -10761,12 +10964,24 @@ function nightWords() {
   if (!runs.length && !rises.length) return null;
   return parts.length ? parts.join(uiLanguage === "zh" ? "，" : ", ") : t("nothing new to do");
 }
+// Today opens with the night (#3311, owner 2026-11-22: the sleep curve stays on top, it is REM's signature): the
+// curve, the work under it on the same clock, what REM handled, and what it could not read, then who waits.
 function nightCard(groups, current, ticked) {
-  const n = groups.length, count = countLine(ticked), words = nightWords();
-  return el("section", { class: "night-card card sparse", "aria-label": t("Last night") }, [
-    words ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), el("span", { class: "night-sum", text: words })]) : null,
+  const n = groups.length, count = countLine(ticked), words = nightWords(), asOf = new Date(REM.as_of).getTime() || Date.now();
+  const gap = coverageLine(), handled = nightLine(), phone = typeof window !== "undefined" && window.innerWidth <= 640;
+  const people = el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])]);
+  // What REM settled for him rides the heading's line, so the curve and the first card's Send both fit the first
+  // screen (D-10). A phone has no room for a row of faces under the curve: the faces take the heading's line and the
+  // settled line ends the stretches row.
+  const timeline = nightTimeline(asOf, phone && handled ? el("span", { class: "nh-handled" }, [handled]) : null);
+  return el("section", { class: "night-card card sparse" + (phone ? " phone" : ""), "aria-label": t("Last night") }, [
+    phone ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), people, timeline ? null : handled])
+      : words || handled ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), words ? el("span", { class: "night-sum", text: words }) : null,
+        handled ? el("span", { class: "nh-handled" }, [handled]) : null]) : null,
+    timeline,
+    gap ? el("div", { class: "night-foot" }, [el("div", { class: "night-unread" }, [el("span", { class: "night-unread-k", text: t("Still unread") }), gap])]) : null,
     nightStall(),
-    el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])]),
+    phone ? null : people,
     // System health is the night's own business (#3156): one quiet line in its card, never above the work.
     scheduleFailure()]);
 }
@@ -10904,7 +11119,7 @@ function nightSummary(runs, marks) {
 // The side column: what others owe and what can be approved at once, what REM did overnight. 「关于 X，有什么值得
 // 记住？」 left Today in sprint 14: it picked a page REM already knew well, gave no reason and took no answer.
 function todaySide(counts) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine(), coverageLine()].filter(Boolean));
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts)].filter(Boolean));
 }
 // What last night could not read, and one button that fixes it (#3353). Plain words, not internals (art director):
 // "微信还有 10 个聊天库读不了（已读 2/12）". A key capture needs the owner to log into a WeChat copy, so the
@@ -11124,7 +11339,7 @@ function todayFolds(entries, counts) {
     .sort(byActivity).slice(0, 6);
   const recentFold = recent.length && !week.length ? el("details", { class: "week-details recent-details fold" }, [
     el("summary", { text: t("Recently active") }), el("ul", { class: "hits cols" }, recent.map(r => row(r, { kind: true })))]) : null;
-  const processing = el("details", { id: "processing", class: "night-details fold" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary(), nightBand()]);
+  const processing = el("details", { id: "processing", class: "night-details fold" }, [el("summary", { text: t("How co rem processed the last pass") }), passSummary()]);
   return el("div", { class: "desk-more" }, [morningBrief(), connectionReview(), quietThreads(entries, true), weekPages, recentFold, processing,
     maintenance(REM.status || {})].filter(Boolean));
 }
