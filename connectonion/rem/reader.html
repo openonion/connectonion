@@ -1007,8 +1007,8 @@
 
   /* ---- facts: a definition list, empty fields visible (#2068) ---- */
   .panel .fill { margin: -6px 0 10px; font-size: var(--s-ui); color: var(--grey); }
-  .factlist { display: grid; grid-template-columns: minmax(80px, min-content) minmax(0, 1fr); gap: 0; margin: 0; }
-  .factlist dt { font: var(--w-bold) var(--s-ui)/1.5 var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); overflow-wrap: normal; }
+  .factlist { display: grid; grid-template-columns: fit-content(42%) minmax(6em, 1fr); gap: 0; margin: 0; }
+  .factlist dt { min-width: 80px; font: var(--w-bold) var(--s-ui)/1.5 var(--font); letter-spacing: 0; text-transform: none; color: var(--grey); padding: 7px 12px 7px 0; border-top: 1px solid var(--rule); overflow-wrap: normal; }
   .factlist dd { margin: 0; padding: 5px 0 6px; border-top: 1px solid var(--rule); font-size: var(--s-ui); min-width: 0; overflow-wrap: anywhere; position: relative; display: flex; flex-direction: column; gap: 2px; }
   .factlist dt:first-of-type, .factlist dd:first-of-type { border-top: 0; }
   .factlist dd.none { color: var(--grey); font-size: var(--s-ui); }
@@ -5101,6 +5101,8 @@ const UI = {
     "Website": "网站",
     "Legal entity": "法律主体",
     "Your contacts": "你的联系人",
+    // Org facts lines the page skills write; the Organisations table already names them (#3405).
+    "Kind": "类别", "Parent": "上级组织", "To you": "与你的关系", "You are": "你的身份",
     "— not found": "— 未找到",
     "— map date shown above": "— 映射日期见上方",
     "Email": "邮箱",
@@ -16167,9 +16169,15 @@ function factValue(item, from) {
   if (!last) { value.appendChild(cites); return value; }
   // The marks stay with the end of the last word; a long word keeps only its last 12 characters with them, so the
   // rest can wrap (#2942: a whole long word held on one line ran past the screen).
-  const tail = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*\s*$/u.exec(last.data) || /\S{1,12}\s*$/.exec(last.data);
+  // A Chinese tail is the last two characters, so no character is left alone on a line (#3405: 「团」 over 「队」).
+  const tail = /(?:[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][^\p{L}\p{N}\s]*){1,2}\s*$/u.exec(last.data) || /\S{1,12}\s*$/.exec(last.data);
   const range = document.createRange();
-  range.setStart(last, tail.index);
+  // A short value goes whole (about four Chinese characters wide), and a link moves as one: cutting 「课程 1234」
+  // made two links (#3405, rc20 hunt).
+  const link = last.parentElement.closest("a");
+  const wide = [...last.data.trim()].reduce((w, c) => w + (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(c) ? 1 : 0.55), 0);
+  if (link && value.contains && value.contains(link) && link.textContent.trim().length <= 24) range.setStartBefore(link);
+  else range.setStart(last, wide <= 4 ? 0 : tail.index);
   range.setEnd(value, value.childNodes.length);
   value.appendChild(el("span", { class: "fact-tail" }, [range.extractContents(), cites]));
   return value;
