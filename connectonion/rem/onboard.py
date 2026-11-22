@@ -272,6 +272,10 @@ def record_activity(root: Path, source_rows: list[dict]) -> None:
         for row in source_rows if row.get("last")})
 
 
+# The fields record_activity writes: the person header reads first and preview (#3374).
+ACTIVITY_FIELDS = ("last", "mine", "n90", "total", "first", "preview")
+
+
 def activity(root: Path) -> dict:
     """{people record: chat activity} for the pages that carry a chat handle with messages (#3346)."""
     found = read_json(state_path(root, ACTIVITY), {})
@@ -397,7 +401,8 @@ def _record(root: Path, name: str, sub: dict, result: dict, source_rows: list[di
     done = read_json(state_path(root, STATE), {})
     done[name] = {"mapped_at": now().isoformat(), "scope": _scope(sub),
                   "created": {kind: len(out["create"]) for kind, out in result.items()},
-                  "merged": len(people["merge"]), **({"backfilled": True} if backfilled else {}),
+                  "merged": len(people["merge"]), "backfill_version": BACKFILL_VERSION,
+                  **({"backfilled": True} if backfilled else {}),
                   **({"chats": {"friends": people["friends"], "chats": people["chats"]}} if people.get("friends") else {})}
     write_json(state_path(root, STATE), done)
 
@@ -435,17 +440,24 @@ def held_pages(root: Path, sub: dict) -> int:
                if any(ours(handle) for handle in (*person["aliases"], *person["emails"])))
 
 
+# What the backfill does, numbered. A source's onboarding record keeps the version that last wrote it; a release
+# whose backfill writes new fields or fixes more bumps this, so notebooks an older backfill (or map) already
+# reached get it once more on the next page build. rc17's backfill had run, so rc18's retitle and the
+# first/preview fields never reached the owner's notebook (#3368). Records with no version are version 1.
+BACKFILL_VERSION = 2
+
+
 def backfill(root: Path) -> list[str]:
     """After an upgrade: a local source that already holds pages but has no activity or onboarding record (pages
     made by an older map) gets both now, read from this machine with no model and no network, without making
-    pages (#3368). It runs at most once per source; the night and `co rem map` keep it current after that."""
+    pages (#3368). It runs once per source per BACKFILL_VERSION; the night and `co rem map` keep it current after."""
     from .files import MAP_DAYS
     from .service import subscriptions
     done = read_json(state_path(root, STATE), {})
     filled = []
     for name, sub in subscriptions(root).items():
         if (sub.get("kind") not in NIGHTLY or not (sub.get("enabled") and sub.get("consented"))
-                or name in done or not held_pages(root, sub)):
+                or done.get(name, {}).get("backfill_version", 1) >= BACKFILL_VERSION or not held_pages(root, sub)):
             continue
         source_rows = rows(root, name, sub, MAP_DAYS)
         if not source_rows:
