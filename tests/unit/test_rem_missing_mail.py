@@ -94,22 +94,56 @@ def test_night_cited_original_is_parked_once(notebook, monkeypatch, site, status
     assert calls == [site]
 
 
-def test_second_turn_leaves_missing_page_parked_until_page_changes(notebook, monkeypatch):
-    book = Notebook(notebook)
-    book.stub_person('people/ivy.md', 'Ivy')
+def _park_missing(notebook, job):
     def missing(key):
         raise gone()
     with pytest.raises(MissingMail) as caught:
         read_mail(missing, 'mail-1', provider='gmail')
-    job = {'record': 'people/ivy.md', 'kind': 'person'}
     fetch_stalls.park(notebook, job, caught.value)
+
+
+def test_second_turn_leaves_missing_page_parked_until_page_changes(notebook, monkeypatch):
+    # A mailbox's 404 is checked once more a day later (#3392), never every turn (#3073).
+    book = Notebook(notebook)
+    book.stub_person('people/ivy.md', 'Ivy')
+    job = {'record': 'people/ivy.md', 'kind': 'person'}
+    _park_missing(notebook, job)
     moment = service.now()
     monkeypatch.setenv('CO_REM_TURN_ID', 'second-turn')
-    monkeypatch.setattr(service, 'now', lambda: moment + timedelta(days=2))
+    monkeypatch.setattr(service, 'now', lambda: moment + timedelta(hours=12))
     assert native_round._with_parked(notebook, [job]) == []
     assert fetch_stalls.due(notebook) == {}
     book.write(job['record'], book.read(job['record']) + '\nNew mail arrived.\n')
     assert native_round._with_parked(notebook, [job]) == [job]
+
+
+def test_a_missing_mail_is_checked_once_more_the_next_day_then_rem_stops_waiting(notebook, monkeypatch):
+    # #3392: "6 项在等 Outlook，会再试" for a week, while nothing would ever try again.
+    Notebook(notebook).stub_person('people/ivy.md', 'Ivy')
+    job = {'record': 'people/ivy.md', 'kind': 'person'}
+    _park_missing(notebook, job)
+    moment = service.now()
+    night = fetch_stalls.last_night(notebook)
+    assert [row.get('gone') for row in night['parked']] == [False] and night['gone'] == 0
+    monkeypatch.setattr(service, 'now', lambda: moment + timedelta(hours=25))
+    assert fetch_stalls.due(notebook) == {'people/ivy.md': job}  # the promised retry happens
+    _park_missing(notebook, job)  # still gone a day later: believed
+    monkeypatch.setattr(service, 'now', lambda: moment + timedelta(days=30))
+    assert fetch_stalls.due(notebook) == {}  # no retry is promised, and none is made
+    night = fetch_stalls.last_night(notebook)
+    assert [row['gone'] for row in night['parked']] == [True] and night['gone'] == 1
+    assert night['parked'][0]['name'] == 'Gmail'
+
+
+def test_a_missing_mail_parked_before_the_retry_existed_gets_its_one_check(notebook, monkeypatch):
+    # The owner's ledger: entries set aside on 2026-11-16, never due by time since.
+    Notebook(notebook).stub_person('people/ivy.md', 'Ivy')
+    job = {'record': 'people/ivy.md', 'kind': 'person'}
+    _park_missing(notebook, job)
+    ledger = read_json(state_path(notebook, fetch_stalls.LEDGER), {})
+    ledger['items']['people/ivy.md']['retry_at'] = (service.now() - timedelta(days=6)).isoformat()
+    write_json(state_path(notebook, fetch_stalls.LEDGER), ledger)
+    assert fetch_stalls.due(notebook) == {'people/ivy.md': job}
 
 
 def test_every_candidate_parked_is_a_failed_turn_with_reason(notebook, monkeypatch):

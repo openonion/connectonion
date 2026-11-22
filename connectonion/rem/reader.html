@@ -5715,6 +5715,9 @@ const UI = {
     "timed out": "超时", "mail deleted or moved": "信件已删除或移走", "server error": "服务器出错", "network down": "网络不通",
     "authorization expired": "授权已过期", "permission denied": "没有权限", "throttled": "被限流", "request refused": "请求被拒", "unavailable": "暂时不可用",
     "tries again from {when}": "{when} 起再试", "tries again next round": "下一轮再试",
+    "Original mail is no longer in {provider} · not waiting": "原邮件已不在 {provider} · 不再等",
+    "1 page cites mail no longer in {provider}; REM stopped waiting for it": "1 页引用的邮件已不在 {provider}，不再等",
+    "{n} pages cite mail no longer in {provider}; REM stopped waiting for them": "{n} 页引用的邮件已不在 {provider}，不再等",
     "Around today": "今天的其他事",
     "See": "看", "REM handled 1 thing overnight": "昨夜 REM 处理了 1 件", "REM handled {n} things overnight": "昨夜 REM 处理了 {n} 件",
     "Skip to the next card": "跳到下一张", "Contact rhythm": "往来节奏", "In Today · {n} days overdue": "今天 · 逾期 {n} 天", "Relationships": "关系",
@@ -11147,11 +11150,15 @@ function nightCard(groups, current, ticked) {
 const STALL_WHY = { timeout: "timed out", not_found: "mail deleted or moved", server: "server error", network: "network down",
   auth: "authorization expired", denied: "permission denied", throttled: "throttled", refused: "request refused", unavailable: "unavailable" };
 function stallSentence(s) {
-  const values = { provider: s.provider, why: t(STALL_WHY[s.reason] || "unavailable"), times: s.times, n: s.pages };
+  // A page whose mail the mailbox denied twice is not retried (#3392): it is never counted as "will try again".
+  const waits = s.pages - (s.gone || 0);
+  const values = { provider: s.provider, why: t(STALL_WHY[s.reason] || "unavailable"), times: s.times, n: waits };
+  if (!waits) return t(s.gone === 1 ? "1 page cites mail no longer in {provider}; REM stopped waiting for it"
+    : "{n} pages cite mail no longer in {provider}; REM stopped waiting for them", { provider: s.provider, n: s.gone });
   if (s.stopped) return t("Last night {provider} failed ({why}); REM stopped asking it for that turn and did the rest", values);
   if (s.times >= 3 && s.pages === 1) return t("Last night REM got stuck on {provider}: {why} {times} times; it set that page aside and did the rest", values);
-  if (!s.times) return t(s.pages === 1 ? "1 page waits for {provider}; REM will try again" : "{n} pages wait for {provider}; REM will try again", values);
-  return t(s.pages === 1 ? "Last night 1 page was set aside because {provider} {why}; REM will try again"
+  if (!s.times) return t(waits === 1 ? "1 page waits for {provider}; REM will try again" : "{n} pages wait for {provider}; REM will try again", values);
+  return t(waits === 1 ? "Last night 1 page was set aside because {provider} {why}; REM will try again"
     : "Last night {n} pages were set aside because {provider} {why}; REM will try again", values);
 }
 function nightStall() {
@@ -11163,7 +11170,8 @@ function nightStall() {
   const rows = (s.parked || []).filter(row => byPath(row.record)).map(row => {
     const r = byPath(row.record), at = Date.parse(row.retry_at);
     return el("li", {}, [el("a", { href: href(r), text: r.title }),
-      el("span", { class: "meta", text: at > now ? t("tries again from {when}", { when: when(at) }) : t("tries again next round") })]);
+      el("span", { class: "meta", text: row.gone ? t("Original mail is no longer in {provider} · not waiting", { provider: row.name || s.provider })
+        : at > now ? t("tries again from {when}", { when: when(at) }) : t("tries again next round") })]);
   });
   return el("details", { class: "night-stall" }, [el("summary", { text: stallSentence(s) }), rows.length ? el("ul", {}, rows) : null]);
 }
