@@ -75,6 +75,23 @@ act on that project instead. Your own `agent.py` is the special case: it needs
 `--agent`. A service installed before 1.9.6 that runs a bare `co host` in a
 project with `agent.py` keeps serving it.
 
+### Upgrading from 1.9.6: scripts that run a bare `co host`
+
+Before 1.9.7 a bare `co host` served the project. Now it shows status. So a
+script or a logon task written then (a Windows `run-host.cmd` that calls
+`co host`, for example) would print status and leave the agent offline. To make
+that visible, a bare `co host` in a project folder whose Host is not running
+exits `1` and names the command to use instead:
+
+```
+Not serving this project: since 1.9.7 a bare co host only shows status. To serve it: co host --serve
+```
+
+Change the script to `co host --serve` (built-in agent) or
+`co host --agent agent.py` (your own agent.py). The services that `co host
+--background` and `co init` install already call these. The status of the
+always-on Host (`co host` outside a project) still exits `0`.
+
 `--agent` runs the file with the Python that co itself runs on. That is the
 whole difference from `python agent.py`, and it matters on a machine where co
 came from the one-line installer: co then lives in its own environment, and the

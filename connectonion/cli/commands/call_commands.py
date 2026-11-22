@@ -3,7 +3,7 @@ Purpose: `co call <address> <command...>` — run ONE command on a remote agent 
 LLM-Note:
   Dependencies: imports from [sys, shlex, base64, pathlib, connectonion.connect (RemoteAgent), connectonion.address (load local signing keys)] | imported by [cli/main.py via call()] | tested by [tests/unit/test_cli_call.py]
   Data flow: handle_call(args) → parse leading --out/--timeout/--relay options → first non-option token = address, everything after = the remote command VERBATIM → shlex.join → connect(address, keys).call("bash", command=...) → ExecResult → print text (or save an image result to --out / screenshot.png and print the path)
-  State/Effects: loads local identity from .co (project) then ~/.co to sign the request | opens a WebSocket to the remote agent (direct or via relay) | may write an image file | writes to stdout/stderr
+  State/Effects: signs with --co-dir/--global if given, else the project .co then ~/.co; names that address on stderr when it is not ~/.co and on every refusal | opens a WebSocket to the remote agent (direct or via relay) | may write an image file | writes to stdout/stderr
   Integration: exposes handle_call(args: list[str]) -> int (exit code) | mirrors handle_browser's thin-handler + exit-code contract (0 ok · 1 failure · 2 usage) | the remote symmetry of `co browser`: `co browser take_screenshot` locally == `co call <addr> co browser take_screenshot` remotely
   Performance: one WebSocket round-trip per call | endpoint resolution cached inside RemoteAgent for the process
   Errors: usage errors → stderr + exit 2 | connection/tool errors → stderr + exit 1 | the remote gates the command against ITS .co/host.yaml whitelist, so a non-whitelisted command comes back as an error result
@@ -26,6 +26,12 @@ USAGE = (
     "  --out PATH        save an image result (screenshot) to PATH; else ./screenshot.png\n"
     "  --timeout SEC     seconds to wait for the result (default 60)\n"
     "  --relay URL       relay server (default: configured backend)\n"
+    "  --global, -g      sign as your global identity (~/.co), not this project's\n"
+    "  --co-dir DIR      sign with the key in DIR/keys (a .co folder)\n"
+    "\n"
+    "Inside a project with its own .co/keys, co call signs as that project and\n"
+    "says so on stderr; elsewhere it signs as ~/.co. A refusal names the address\n"
+    "it signed with and where the key came from.\n"
     "\n"
     "Everything AFTER the address is the remote command, verbatim. It runs on the\n"
     "remote agent, gated by ITS .co/host.yaml permission whitelist — `co ...`\n"
@@ -51,6 +57,42 @@ def _load_keys():
     return _this_callers_identity()
 
 
+def _keys_in(co_dir):
+    """The key in an explicitly chosen .co folder (--global or --co-dir)."""
+    from connectonion import address
+
+    return address.load(Path(co_dir))
+
+
+def _is_global(keys) -> bool:
+    """Whether these keys are the user's own ~/.co identity, not a project's."""
+    from connectonion.environment import global_config_dir
+
+    return Path(keys.get("source", global_config_dir())).resolve() == global_config_dir()
+
+
+def _signed_as(keys) -> str:
+    """One line naming who the remote saw: the address and the folder its key came from.
+
+    A project's own .co/keys silently won over ~/.co, so a call that worked from
+    ~ was refused as a stranger inside a project and nothing said why (#3182, #3298).
+    """
+    if not keys:
+        return "sent unsigned: no .co/keys here or in ~/.co. Next: co init"
+    line = f"signed as {keys.get('address')} from {keys.get('source')}/keys"
+    if _is_global(keys):
+        return line
+    return f"{line} (this project's key; --global signs as your global identity)"
+
+
+def _refused(message: str, signer: str) -> int:
+    """Print why the call failed, then who signed it unless that was already said."""
+    print(message, file=sys.stderr)
+    if signer:
+        print(signer, file=sys.stderr)
+    return 1
+
+
 def handle_call(args) -> int:
     """Send one command to a remote agent's direct-exec path, print the result.
 
@@ -66,7 +108,7 @@ def handle_call(args) -> int:
         return 0
 
     # Consume leading local options; stop at the first non-flag token (the address).
-    out, timeout, relay_url = None, 60.0, None
+    out, timeout, relay_url, co_dir = None, 60.0, None, None
     i = 0
     while i < len(args) and args[i].startswith("-"):
         opt = args[i]
@@ -91,6 +133,14 @@ def handle_call(args) -> int:
                 print("usage: --relay needs a url", file=sys.stderr)
                 return 2
             relay_url, i = val, i + 2
+        elif opt in ("--global", "-g"):
+            from connectonion.environment import global_config_dir
+            co_dir, i = global_config_dir(), i + 1
+        elif opt == "--co-dir":
+            if val is None:
+                print("usage: --co-dir needs a .co folder", file=sys.stderr)
+                return 2
+            co_dir, i = Path(val).expanduser().resolve(), i + 2
         else:
             print(f"unknown option '{opt}' (options go before the address)", file=sys.stderr)
             return 2
@@ -107,8 +157,19 @@ def handle_call(args) -> int:
         return 2
     command = shlex.join(command_tokens)
 
+    keys = _keys_in(co_dir) if co_dir else _load_keys()
+    if co_dir and not keys:
+        print(f"{co_dir} has no keys/agent.key. Next: co init, or pick another --co-dir",
+              file=sys.stderr)
+        return 2
+    # Say who is calling once: up front for a project's key, else on a refusal.
+    signer = _signed_as(keys)
+    if keys and not _is_global(keys):
+        print(signer, file=sys.stderr)
+        signer = ""
+
     from connectonion import connect
-    kwargs = {"keys": _load_keys()}
+    kwargs = {"keys": keys}
     if relay_url:
         kwargs["relay_url"] = relay_url
 
@@ -116,12 +177,10 @@ def handle_call(args) -> int:
         remote = connect(address, **kwargs)
         result = remote.call("bash", command=command, timeout=timeout)
     except Exception as e:
-        print(f"connection failed: {e}", file=sys.stderr)
-        return 1
+        return _refused(f"connection failed: {e}", signer)
 
     if not result.ok:
-        print(result.error or "remote call failed", file=sys.stderr)
-        return 1
+        return _refused(result.error or "remote call failed", signer)
 
     # An image result (a screenshot) is base64 — writing it to the terminal would
     # flood it, so save to a file and print the path (script-friendly).

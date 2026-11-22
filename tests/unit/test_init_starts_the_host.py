@@ -132,6 +132,50 @@ def test_an_agent_py_in_a_terminal_is_not_served_without_agent(profile, tmp_path
     assert "co host --agent agent.py" in result.output
 
 
+def _project_nothing_serves(tmp_path, monkeypatch, agent_py=False):
+    project = tmp_path / "project"
+    (project / ".co").mkdir(parents=True)
+    (project / ".co" / "host.yaml").write_text("name: shop\nport: 8200\n")
+    if agent_py:
+        (project / "agent.py").write_text("raise SystemExit('must not run')\n")
+    monkeypatch.setattr("connectonion.cli.host_service.host_service", lambda target, **kw: FakeService(running=False))
+    import os
+    monkeypatch.setattr(os, "execve", lambda *a: pytest.fail("bare co host served in a terminal"))
+    monkeypatch.chdir(project)
+
+
+def test_a_script_running_bare_co_host_in_a_project_fails_and_names_serve(profile, tmp_path, monkeypatch):
+    """#3297: a logon task's `co host` printed status, exited 0, and the agent stayed offline."""
+    _project_nothing_serves(tmp_path, monkeypatch)
+    result = CliRunner().invoke(app, ["host"])  # no terminal, host.yaml and no agent.py
+    assert result.exit_code == 1, result.output
+    assert "co host --serve" in result.output.splitlines()[-1]
+
+
+def test_a_windows_console_task_with_agent_py_fails_and_names_agent(profile, tmp_path, monkeypatch):
+    """A console window is a terminal to isatty(), so the TTY check alone let it exit 0."""
+    _project_nothing_serves(tmp_path, monkeypatch, agent_py=True)
+    monkeypatch.setattr(cli, "_in_terminal", lambda: True)
+    result = CliRunner().invoke(app, ["host"])
+    assert result.exit_code == 1, result.output
+    assert "co host --agent agent.py" in result.output.splitlines()[-1]
+
+
+def test_bare_co_host_in_a_project_served_in_the_background_is_fine(profile, tmp_path, monkeypatch):
+    _project_nothing_serves(tmp_path, monkeypatch)
+    monkeypatch.setattr("connectonion.cli.host_service.host_service", lambda target, **kw: FakeService())
+    result = CliRunner().invoke(app, ["host"])
+    assert result.exit_code == 0, result.output
+    assert "Running in the background (pid 77)" in result.output
+
+
+def test_bare_co_host_status_for_the_always_on_host_still_exits_0_when_stopped(profile, monkeypatch):
+    monkeypatch.setattr("connectonion.cli.host_service.host_service", lambda target, **kw: FakeService(running=False))
+    result = CliRunner().invoke(app, ["host"])
+    assert result.exit_code == 0, result.output
+    assert "Next: co host --background" in result.output
+
+
 def test_agent_runs_your_own_agent_py(tmp_path, monkeypatch):
     import os
     (tmp_path / "agent.py").write_text("# synthetic")

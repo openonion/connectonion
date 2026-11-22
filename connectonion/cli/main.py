@@ -325,8 +325,8 @@ def _host_target() -> Path:
     return profile_dir()
 
 
-def _print_host_status(target: Path) -> None:
-    """The human summary `co host` prints: is it running, what it serves, how to stop it."""
+def _print_host_status(target: Path) -> bool:
+    """The human summary `co host` prints: is it running, what it serves, how to stop it. Returns whether it runs."""
     import yaml
 
     from .co_ai.native_host import configured_model
@@ -334,14 +334,14 @@ def _print_host_status(target: Path) -> None:
     config_path = target/'.co'/'host.yaml'
     if not config_path.is_file():
         console.print("No Host is set up yet. Next: co init", markup=False)
-        return
+        return False
     config = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
     agent = 'agent.py' if (target/'agent.py').is_file() else f"built-in, model {configured_model(target/'.co')}"
     try:
         state = host_service(target).status()
     except HostServiceError as error:
         console.print(f"Host: {target}\nServes: {agent}\n{error}", markup=False)
-        return
+        return False
     if state['running']:
         line = f"Running in the background (pid {state['pid']})"
     elif state['configured']:
@@ -351,6 +351,25 @@ def _print_host_status(target: Path) -> None:
     console.print(f"Host: {target}\nServes: {agent}\nPort: {config.get('port', 8000)}\n{line}\n"
                   "Stop: co host --stop  ·  Run in this terminal: co host --serve  ·  Details: co host --status",
                   markup=False)
+    return bool(state['running'])
+
+
+def _show_host_or_fail(target: Path) -> None:
+    """Bare `co host`: print the status; exit 1 when it names a project nothing serves.
+
+    Before 1.9.7 a bare `co host` served the project, so a script or a Windows
+    logon task written then (run-host.cmd: `co host`) printed status, exited 0
+    and left the agent offline (#3297). A console window counts as a terminal,
+    so the TTY check alone cannot catch it; a non-zero exit and the replacement
+    command can.
+    """
+    from .mac_bootstrap import profile_dir
+    if _print_host_status(target) or target == profile_dir():
+        return
+    command = 'co host --agent agent.py' if (target/'agent.py').is_file() else 'co host --serve'
+    console.print(f"Not serving this project: since 1.9.7 a bare co host only shows status. To serve it: {command}",
+                  markup=False)
+    raise typer.Exit(1)
 
 
 @app.command(epilog="Example:  co host  |  co host --serve  |  co host --stop  |  co host --agent agent.py")
@@ -365,6 +384,10 @@ def host(
     native_codex: bool = typer.Option(False, '--native-codex', hidden=True, help='Pre-#3170: serve native Codex from this profile; set model: codex instead'),
 ):
     """Show the always-on Host that co init started, or manage it. With no option: its status. --serve runs it in this terminal; --agent runs your own agent.py.
+
+    Upgrading from 1.9.6: a bare `co host` no longer serves a project. In a project
+    nothing serves, it exits 1 and names the command; scripts and logon tasks
+    should run `co host --serve` (built-in agent) or `co host --agent agent.py`.
 
     One host serves everything: the agent over HTTP, WebSocket and the relay, REM for you, and the
     channels in .co/host.yaml's listen:. The agent is the built-in one unless you pass --agent.
@@ -414,9 +437,7 @@ def host(
         if Path("agent.py").is_file() and not _in_terminal():
             agent_file = Path("agent.py")
         else:
-            _print_host_status(_host_target())
-            if Path("agent.py").is_file():
-                console.print("This folder has an agent.py. To serve it: co host --agent agent.py", markup=False)
+            _show_host_or_fail(_host_target())
             return
     # install.sh puts co in a uv tool environment the system python cannot import from (#2438).
     env = {**os.environ, **({"AGENT_PORT": str(port)} if port else {})}
@@ -845,11 +866,15 @@ def proxy(
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-             epilog="Example:  co call 0x3d40... co status")
+             epilog="Example:  co call 0x3d40... co status  |  co call --global 0x3d40... co status")
 def call(
-    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),
+    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] [--global | --co-dir DIR] <address> <command...>"),
 ):
     """Run one command on a remote agent and print the result (no LLM). Runs it there as bash.
+
+    Signs as this project's .co/keys when it has one (and says so on stderr),
+    else as ~/.co. --global signs as ~/.co; --co-dir DIR signs with DIR/keys.
+    A refusal names the address it signed with and where the key came from.
 
     Everything after the address runs on the remote agent as a shell command,
     if the allow list in its .co/host.yaml permits it:
