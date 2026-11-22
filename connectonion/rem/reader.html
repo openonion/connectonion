@@ -356,6 +356,8 @@
   .mail-actions .mail-write + .more-menu + .btn-act { margin-left: 0; }
   .mail-did { margin: 0; padding: 8px 16px 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .mail-defect { margin: 0; padding: 10px 16px; border-top: 1px solid var(--rule); color: var(--red); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .mail-redrafted { margin: 0; padding: 10px 16px; border-top: 1px solid var(--rule); color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .writer-defect { border-top: 0; border-bottom: 1px solid var(--rule); }
   .mail-defect .btn-line { margin-left: 6px; min-height: 32px; padding: 0 12px; border: var(--hair) solid var(--ink); border-radius: var(--r-pill);
     background: none; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
   .owner-slot.attention { animation: slot-attention var(--t-burn) var(--ease-out); border-radius: var(--radius); }
@@ -4725,6 +4727,7 @@ const UI = {
     "Answer REM's question first: {what}": "先回答 REM 的问题：{what}",
     "This reply was written for {channel}, but {name} can't be reached there.": "这封回复被写成了 {channel} 消息，但在 {channel} 上联系不到 {name}。",
     "Rewrite it as an email": "改写成邮件",
+    "REM rewrote this as an email: the earlier draft was written for {channel}, but {name} isn't on {channel}.": "REM 已改写为邮件：原草稿写成了 {channel}，但 {name} 没有 {channel}。",
     "REM read the {date} message “{subject}” and drafted this reply.": "REM 读了 {date} 的〈{subject}〉，起草了这封回复。",
     "REM read the thread “{subject}” and drafted this reply.": "REM 读了〈{subject}〉这段往来，起草了这封回复。",
     "Reply to {name}": "回复 {name}",
@@ -7218,7 +7221,17 @@ function threadActions(entry, onPage = false, strip = false) {
 // and 重试. It used to close at once and leave a grey caption, and it refused any bracket in the letter while
 // REM's 【需要你：…】 sat in the text with nowhere to answer it, so Send looked dead (owner, 2026-11-22).
 const SLOT_SPLIT = /(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g;
-function openWriter(draft, who, onSend) {
+// Where a reply goes and whether it can honestly go there: the card and full screen read this one answer (#3348).
+// A draft written for a chat the person is not on is a defect (never sent); one REM already rewrote says so.
+function replyChannel(draft, name) {
+  const channel = draft.channel || "mail";
+  const chat = value => ({ lark: "Lark", whatsapp: "WhatsApp" }[value] || value);
+  return { channel, defect: !!draft.channel_defect,
+    defectWords: t("This reply was written for {channel}, but {name} can't be reached there.", { channel: chat(channel), name }),
+    note: draft.redrafted_from && !draft.channel_defect
+      ? t("REM rewrote this as an email: the earlier draft was written for {channel}, but {name} isn't on {channel}.", { channel: chat(draft.redrafted_from), name }) : "" };
+}
+function openWriter(draft, who, onSend, onFix) {
   const to = mailbox(draft.to);
   // The letter is editable text with REM's open questions as chips in it, as on the card (#3312 F): a chip reads
   // the question in its own words until it is answered on the right, then the answer. Bracket text never shows.
@@ -7254,6 +7267,11 @@ function openWriter(draft, who, onSend) {
   // A chip deleted from the letter is a question the owner took out; one still there and unanswered holds Send.
   const unanswered = () => slots.filter(([, i]) => !fills[i] && chips[i].isConnected !== false);
   const did = el("p", { class: "writer-did", text: remDid(draft) });
+  const reach = replyChannel(draft, who?.title || mailbox(draft.to).name);
+  const fix = el("button", { type: "button", class: "btn-line", text: t("Rewrite it as an email") });
+  fix.onclick = () => { dialog.close(); onFix?.(); };
+  const band = reach.defect ? el("p", { class: "mail-defect writer-defect", role: "alert" }, [reach.defectWords, " ", fix])
+    : reach.note ? el("p", { class: "mail-redrafted writer-defect", role: "status", text: reach.note }) : null;
   const channel = draft.channel || "mail";
   const channelWord = channel === "mail" ? (draft.provider === "gmail" ? "Gmail" : "Outlook") : t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel);
   // The title bar: who it goes to and on what, × at the top right; on a phone 取消 top left and 发送 top right.
@@ -7263,7 +7281,7 @@ function openWriter(draft, who, onSend) {
     el("h2", { text: t("Reply to {name}", { name: who?.title || to.name }) + " · " + channelWord }), sendTop, close]);
   const dialog = el("dialog", { class: "writer " + (channel === "mail" ? "provider-" + (draft.provider || "mail") : "chat"), "aria-label": t("Reply draft") }, [
     title,
-    el("div", { class: "writer-letter" }, [
+    el("div", { class: "writer-letter" }, [band,
       el("div", { class: "mail-head" }, [
         el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v", text: (who?.title || to.name) + (channel === "mail" ? " <" + to.address + ">" : " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || "")) })]),
         channel === "mail" && draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
@@ -7288,6 +7306,8 @@ function openWriter(draft, who, onSend) {
   const mayLeave = () => !dirty() || confirm(t("Discard your changes to this reply?"));
   const leave = () => { if (mayLeave()) dialog.close(); };
   send.onclick = async () => {
+    // The same rule as the card: a reply written for a chat this person is not on never leaves (#3348).
+    if (reach.defect) { notice.textContent = reach.defectWords; fix.focus(); return; }
     const left = unanswered();
     if (left.length) {
       notice.textContent = t("Answer REM's question on the right first: {what}", { what: slotWhat(left[0][0]) });
@@ -7463,10 +7483,10 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
   let letter;
   // Rewritten for a chat this person is not on: said so, never sent, and mail offered (#3312 C).
-  const chatName = { lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel;
-  const defectWords = t("This reply was written for {channel}, but {name} can't be reached there.", { channel: chatName, name: who?.title || to.name });
+  const reach = replyChannel(draft, who?.title || to.name), defectWords = reach.defectWords;
   const backToMail = el("button", { type: "button", class: "btn-line", text: t("Rewrite it as an email") });
-  const defect = draft.channel_defect ? el("p", { class: "mail-defect", role: "alert" }, [defectWords, " ", backToMail]) : null;
+  const defect = reach.defect ? el("p", { class: "mail-defect", role: "alert" }, [defectWords, " ", backToMail])
+    : reach.note ? el("p", { class: "mail-redrafted", role: "status", text: reach.note }) : null;
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
@@ -7561,7 +7581,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   };
   backToMail.onclick = () => run("redraft", undefined, "mail");
   send.onclick = () => {
-    if (draft.channel_defect) { status.textContent = defectWords; backToMail.focus(); return; }
+    if (reach.defect) { status.textContent = defectWords; backToMail.focus(); return; }
     const body = filled();
     if (body === null) {
       const open = parts.findIndex((part, i) => isSlot(part) && !fills[i]), first = rowAt[open];
@@ -7575,7 +7595,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   };
   write.onclick = () => {
     const base = filled() ?? draft.body;
-    openWriter({ ...draft, body: base, ask: extra.ask }, who, body => deliver(body ?? (base === draft.body ? undefined : base)));
+    openWriter({ ...draft, body: base, ask: extra.ask }, who, body => deliver(body ?? (base === draft.body ? undefined : base)), () => backToMail.click());
   };
   edit.onclick = () => run("open");
   skip.onclick = () => {
