@@ -3966,11 +3966,15 @@
   /* A tag row is a <p>, and the prose rule `:is(p, .thread .who, …) a` underlines every link in a paragraph at (0,2,1):
      :is() takes its most specific argument. A bare .tag-link (0,1,0) lost and still read as an underlined word, so the
      chip is `.tag-links a.tag-link[href]` (0,3,1), which wins wherever the two rules sit in the sheet. */
-  .tag-links a.tag-link[href], .session-tags a.tag-link[href] { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px;
-    border-radius: var(--r-pill); background: var(--well); color: var(--ink); text-decoration: none; overflow-wrap: anywhere;
-    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  /* Art director, #3313: a solid --well pill in body ink was the 调查 button's exact material, and at 390 two rows of tags
+     above 调查 read as one button group. A tag is quieter than any action: second ink, a fill lighter than --well, a
+     hairline edge, 24 px tall against the button's 40. */
+  .tag-links a.tag-link[href], .session-tags a.tag-link[href] { display: inline-flex; align-items: center; box-sizing: border-box;
+    min-height: 24px; padding: 0 10px; border-radius: var(--r-pill); border: var(--hair) solid var(--rule);
+    background: color-mix(in srgb, var(--well) 50%, var(--paper)); color: var(--grey); text-decoration: none;
+    overflow-wrap: anywhere; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .tag-links a.tag-link[href]:hover, .tag-links a.tag-link[href]:focus-visible,
-  .session-tags a.tag-link[href]:hover, .session-tags a.tag-link[href]:focus-visible { background: color-mix(in srgb, var(--ink) 10%, var(--well)); }
+  .session-tags a.tag-link[href]:hover, .session-tags a.tag-link[href]:focus-visible { background: var(--well); color: var(--ink); }
   .tag-links a.tag-link[href]:focus-visible, .session-tags a.tag-link[href]:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .tag-bar { margin: 0 0 16px; }
   .tag-hit { margin: 0 0 16px; }
