@@ -343,6 +343,7 @@ def test_a_phone_gets_a_list_with_the_account_first(today):
     _vault(page, 390)
     sheet = page.locator(".keys-sheet")
     assert sheet.locator("table").count() == 0 and sheet.locator(".key-list").count() == 1
+    assert page.locator(".key-group[data-site='10.0.0.1']").count() == 1  # an IP keeps its first octet (not "0.0.1")
     entry = page.locator(".key-row[data-site='example.co.uk']").first
     assert entry.is_visible()  # 20 keys in all, and this group holds 4: open
     assert entry.locator("a").inner_text().startswith("user")

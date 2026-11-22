@@ -4046,7 +4046,7 @@
   .key-row td.name { padding-left: 24px; }
   /* A phone gets a list (#3326): the account on line one, host and purpose muted on line two. */
   .key-list { list-style: none; padding: 0; margin: 0; }
-  .key-list .key-group { padding: 10px 0 6px; border-bottom: var(--hair) solid var(--rule); }
+  .key-list .key-group { padding: 0; border-bottom: var(--hair) solid var(--rule); }
   .key-entry { display: flex; flex-direction: column; gap: 2px; padding: 8px 0 8px 20px; border-bottom: var(--hair) solid var(--rule); }
   .key-entry a { color: var(--ink); overflow-wrap: anywhere; }
   .key-entry-meta { color: var(--grey); overflow-wrap: anywhere; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
@@ -12216,8 +12216,11 @@ Object.assign(UI.zh, { "Service": "服务", "Account": "账号", "Purpose": "用
 function keyFact(r, label) { return plainLine(((parseFacts(r).get(label) || [])[0] || {}).value || "").replace(/^Unknown$/, ""); }
 // The site a key belongs to, for grouping (#3326): an import of 335 browser logins is mostly one page per origin, so
 // the list groups by registrable domain (accounts.google.com and mail.google.com are both google.com).
+// The page title, not the Service fact: plainLine reads a leading "10." as a list number, so an IP like 10.0.0.1
+// came back as "0.0.1" (#3327). The title is the imported origin as written.
+function keyHost(r) { return r.title || keyFact(r, "Service"); }
 function keySite(r) {
-  const raw = (keyFact(r, "Service") || r.title || "").toLowerCase().replace(/^[a-z]+:\/\//, "").split(/[\/?#\s]/)[0].replace(/:\d+$/, "");
+  const raw = (keyHost(r) || "").toLowerCase().replace(/^[a-z]+:\/\//, "").split(/[\/?#\s]/)[0].replace(/:\d+$/, "");
   if (!raw.includes(".") || /^[\d.]+$/.test(raw)) return raw || r.title;
   const parts = raw.split(".").filter(Boolean);
   const country = parts.length > 2 && parts.at(-1).length === 2 && /^(co|com|org|net|gov|edu|ac)$/.test(parts.at(-2));
@@ -12258,7 +12261,7 @@ function keysTable(items) {
   for (const r of items) groups.set(keySite(r), [...(groups.get(keySite(r)) || []), r]);
   const sites = [...groups.keys()].sort((a, b) => a.localeCompare(b));
   const many = items.length > KEY_MANY, phone = matchMedia("(max-width: 719px)").matches;
-  const entry = r => ({ r, site: keySite(r), account: keyFact(r, "Account") || r.title, host: keyFact(r, "Service") || r.title,
+  const entry = r => ({ r, site: keySite(r), account: keyFact(r, "Account") || r.title, host: keyHost(r),
     purpose: keyFact(r, "Purpose"), used: keyFact(r, "Used in"), rotated: keyFact(r, "Rotated") });
   const all = items.map(entry);
   const varies = field => new Set(all.map(e => e[field])).size > 1;
