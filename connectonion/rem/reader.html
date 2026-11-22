@@ -36,6 +36,13 @@
   :root {
     color-scheme: light;
     --paper: #ffffff; /* the only canvas colour */
+    /* The 3D knowledge graph's kinds (#3309): every mark there is a sphere, so colour carries what shape does in 2D. Muted, never a call to action. */
+    --kind-knowledge: #b8732a;
+    --kind-people: #4f7aa8;
+    --kind-orgs: #3d8a68;
+    --kind-projects: #7a60bf;
+    --kind-notes: #808892;
+    --kind-sessions: #a9afb6;
     --raised: #ffffff; /* cards and widgets: in light mode depth comes from shadow only */
     --ink: #121512;
     --grey: #636863; /* second ink: meta, labels, quiet icons */
@@ -126,6 +133,12 @@
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --paper: #0f110f;
+      --kind-knowledge: #e0a35a;
+      --kind-people: #82a9d6;
+      --kind-orgs: #6fbf98;
+      --kind-projects: #a993e6;
+      --kind-notes: #9aa1aa;
+      --kind-sessions: #6f757c;
       --raised: #181b18;
       --ink: #eef0ed;
       --grey: #9aa09a;
@@ -146,6 +159,12 @@
   :root[data-theme="dark"] {
     color-scheme: dark;
     --paper: #0f110f;
+    --kind-knowledge: #e0a35a;
+    --kind-people: #82a9d6;
+    --kind-orgs: #6fbf98;
+    --kind-projects: #a993e6;
+    --kind-notes: #9aa1aa;
+    --kind-sessions: #6f757c;
     --raised: #181b18;
     --ink: #eef0ed;
     --grey: #9aa09a;
@@ -2882,6 +2901,17 @@
   .gx-stage { position: relative; flex: 1; min-height: 0; margin: 0 -40px; }
   .gx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
   .gx-canvas:focus-visible { outline: 1.5px solid var(--ink); outline-offset: -2px; }
+  .gx-canvas[hidden] { display: none; }
+  /* The 3D map (#3309) fills the stage left of the panel; names ride above it, never catching the pointer. */
+  .gx-3d, .gx-3d-names { position: absolute; top: 0; bottom: 0; left: 0; }
+  .gx-3d { overflow: hidden; touch-action: none; }
+  .gx-3d:focus-visible { outline: 1.5px solid var(--ink); outline-offset: -2px; }
+  .gx-3d-names { pointer-events: none; overflow: hidden; }
+  .gx-3d-name { position: absolute; left: 0; top: 0; padding: 1px 6px; margin: -10px 0 0 10px; border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); white-space: nowrap; }
+  .gx-3d-name.hub { font-weight: var(--w-bold); }
+  .gx-dims { display: flex; gap: 2px; align-self: center; }
+  .gx-dims button { min-width: 36px; height: 30px; padding: 0 8px; color: var(--grey) !important; font: var(--w-regular) var(--s-ui) var(--font) !important; border-radius: var(--radius) !important; }
+  .gx-dims button[aria-pressed="true"] { background: var(--rule) !important; color: var(--ink) !important; }
   .gx-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 48px; }
   .gx-says { max-width: 880px; margin: 0 0 12px !important; font: var(--w-regular) var(--s-body)/var(--lh-read) var(--font); color: var(--ink); }
   .gx-key { white-space: nowrap; font-weight: var(--w-bold); }
@@ -3118,8 +3148,9 @@
     .gx-panel[hidden] { display: none; }
     .gx-topics { padding: 4px 16px 40px; }
     .gx-says { font-size: var(--s-body); line-height: var(--lh-body); }
-    .gx-bar { width: 100%; }
-    .gx-find { width: 100%; }
+    /* The 2D/3D switch sits beside the search, not on a row of its own: the phone's map and panel are budgeted to the tab bar. */
+    .gx-bar { width: 100%; flex-wrap: nowrap; gap: 12px; margin-bottom: 4px; } /* its 44 px targets make the row 8 px taller than the search */
+    .gx-find { width: auto; flex: 1; min-width: 0; }
     .gx-tabs, .gx-foot { display: none; }
     .gx-stage { flex: none; height: 320px; margin: 0 -16px; }
     .gx-canvas { touch-action: pan-y; }
@@ -4144,6 +4175,7 @@
   <div class="foot" id="foot"></div>
 </dialog>
 <script id="graph-d3">/*__D3__*/</script>
+<script type="text/plain" id="graph-3d-src">/*__GRAPH_3D__*/</script>
 <script>
 "use strict";
 const REM = /*__REM_DATA__*/null;
@@ -16064,6 +16096,7 @@ function loadDetails() {
 // One layout over every real link, kept still so the owner learns where things sit; a search
 // or a click turns it into the neighbourhood of one record (art direction, knowledge round 1).
 const GRAPH_UI_ZH = {
+  "Show the map in 2D": "用平面图显示", "Show the map in 3D": "用立体图显示",
   "Knowledge graph": "知识图谱", "Knowledge": "知识", "People": "人物", "Organisations": "组织", "Projects": "项目",
   "Skills · decisions": "技能 · 决定", "Sessions": "会话", "All": "全部", "People and orgs": "人和组织",
   "Tags": "标签", "Tag": "标签", "1 tag": "1 个标签", "{n} tags": "{n} 个标签",
@@ -16148,8 +16181,8 @@ function graphModel() {
   const adj = new Map();
   for (const e of edges) for (const [a, b] of [[e.s, e.t], [e.t, e.s]]) (adj.get(a) || adj.set(a, new Set()).get(a)).add(b);
   const linked = nodes.filter(n => adj.has(n.id));
-  graphLayout(linked, edges, byId);
-  GRAPH = { source: REM.graph, nodes, byId, edges, adj, linked, isolated: nodes.filter(n => !adj.has(n.id)) };
+  const sim = graphLayout(linked, edges, byId);
+  GRAPH = { source: REM.graph, nodes, byId, edges, adj, linked, sim, isolated: nodes.filter(n => !adj.has(n.id)) };
   return GRAPH;
 }
 function graphDegree(n) { return GRAPH.adj.get(n.id)?.size || 0; }
@@ -16200,7 +16233,7 @@ function graphHubs(nodes, degree, count = GRAPH_LABELS) {
 // d3-force from a fixed start is deterministic: the same notebook always lands in the same place. A mark that
 // will carry a name keeps clear ground around it, so its label has somewhere to sit that is not another mark.
 function graphLayout(nodes, edges, byId) {
-  if (!nodes.length || typeof d3 === "undefined") return;
+  if (!nodes.length || typeof d3 === "undefined") return null;
   const links = edges.map(e => ({ source: e.s, target: e.t, k: e.k }));
   const size = new Map(nodes.map(n => [n.id, 0]));
   for (const l of links) for (const id of [l.source, l.target]) size.set(id, size.get(id) + 1);
@@ -16208,7 +16241,7 @@ function graphLayout(nodes, edges, byId) {
   // Entries last: the last strip cleared in a pass is the surest to be clear, and an entry is always named.
   const named = [...graphHubs(nodes, n => size.get(n.id)), ...nodes.filter(n => n.k === "knowledge")];
   const room = graphNameRoom(nodes, named, radius);
-  d3.forceSimulation(nodes)
+  const sim = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(links).id(d => d.id).distance(l => l.k === "topic" ? 90 : 46).strength(l => l.k === "topic" ? .06 : .5))
     .force("charge", d3.forceManyBody().strength(-80).distanceMax(460))
     .force("x", d3.forceX().strength(.022)).force("y", d3.forceY().strength(.06))
@@ -16216,6 +16249,8 @@ function graphLayout(nodes, edges, byId) {
     .force("names", room).stop().tick(320);
   // The other forces have the last word in a tick and can leave a mark in a strip: the strips have it here.
   for (let pass = 0; pass < 6; pass++) room();
+  // Kept, stopped and settled: a drag wakes it, so a pulled mark tows what it links (#3309).
+  return sim.alpha(0);
 }
 // A force that keeps the strip to the right of a named mark empty, where its name is written: any other mark
 // in the strip is pushed out above or below it. The strip is as long as the name at the map's fitted size.
@@ -16241,7 +16276,7 @@ function graphNameRoom(nodes, named, radius) {
 }
 
 // ---------- the view ----------
-const graphState = { focus: "", depth: 1, tab: "all", T: null, near1: new Set(), near2: new Set() };
+const graphState = { focus: "", depth: 1, tab: "all", T: null, near1: new Set(), near2: new Set(), dim: "2d", hover: "", drag: null, dragged: false, fg: null, frameMs: [] };
 function graphVisible(n) {
   if (!GRAPH.adj.has(n.id)) return false;
   const tab = graphState.tab;
@@ -16288,17 +16323,24 @@ function graphView() {
   // they link directly, which is the Knowledge filter; with no entry yet it draws everything.
   graphState.tab = graphPhone() && model.linked.some(n => n.k === "knowledge") ? "knowledge" : "all";
   graphFocusSets();
+  graph3dStop();
+  graphState.dim = graphDimFor();
+  graphState.hover = "";
   const box = el("div", { class: "gx gx-map" }, [graphHead(model), el("div", { class: "gx-stage" }, [el("canvas", { class: "gx-canvas", "aria-label": graphT("Knowledge graph"), role: "img", tabindex: "0" }),
     el("div", { class: "gx-tip", hidden: "" })]), el("div", { class: "gx-foot" }, [graphLegend(model), graphZoom()]), el("aside", { class: "gx-panel", "aria-live": "polite" })]);
   main.appendChild(box);
   if (!model.linked.length) { box.querySelector(".gx-stage").replaceWith(el("p", { class: "gx-empty", text: graphT("Nothing links here yet") })); return; }
   graphListen();
+  // WebGL that will not start (no GPU, blocked, a lost context) leaves the 2D map, never a blank stage.
+  if (graphState.dim === "3d" && !graph3dStart(box)) graphState.dim = "2d";
+  graphDimsShow();
   graphBind(box);
   graphPanel();
   graphResize();
   graphFit();
   graphReturn();
   graphDraw();
+  if (graphState.dim === "2d") graphLive();
 }
 function graphHead(model) {
   const search = el("input", { type: "search", class: "gx-search", placeholder: graphT("Search people, organisations, knowledge"), "aria-label": graphT("Search people, organisations, knowledge"), autocomplete: "off" });
@@ -16306,7 +16348,7 @@ function graphHead(model) {
     el("button", { type: "button", role: "tab", "data-tab": key, "aria-selected": String(key === "all"), text: graphT(name) })));
   return el("header", { class: "gx-head" }, [el("div", { class: "gx-top" }, [knowledgeHead("graph"),
     el("div", { class: "gx-bar" }, [el("div", { class: "gx-find" }, [search, el("button", { type: "button", class: "gx-clear", "aria-label": graphT("Clear focus"), text: "✕", hidden: "" }),
-      el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs])]), graphSays(model)]);
+      el("ul", { class: "gx-results", role: "listbox", hidden: "" })]), tabs, graphDims()])]), graphSays(model)]);
 }
 function graphKey(k, n) { return el("span", { class: "gx-key" }, [graphGlyph(k, 13), graphCount(k, n)]); }
 function graphListed(parts) {
@@ -16367,6 +16409,7 @@ function graphResize() {
   canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
   canvas.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
   graphState.W = rect.width; graphState.H = rect.height;
+  if (graphState.dim === "3d") graph3dSize();
 }
 function graphMark(ctx, n, x, y, r, colours) {
   if (n.private) r = Math.max(r, GRAPH_PRIVATE_MIN);
@@ -16396,9 +16439,12 @@ function graphColours() {
   return Object.fromEntries(Object.entries(GRAPH_TONE).map(([role, token]) => [role, graphCss(token)]));
 }
 function graphDraw() {
+  if (graphState.dim === "3d") { graph3dPaint(); graph3dNames(); return; }
   const canvas = graphCanvas();
   if (!canvas) return;
+  const started = performance.now();
   const ctx = canvas.getContext("2d"), T = graphState.T, colours = graphColours(), { focus, near1, near2, preview } = graphState;
+  const lit = graphLit();
   ctx.save();
   ctx.clearRect(0, 0, graphState.W, graphState.H);
   ctx.translate(T.x, T.y); ctx.scale(T.k, T.k);
@@ -16407,19 +16453,22 @@ function graphDraw() {
     if (!graphVisible(a) || !graphVisible(b)) continue;
     const on = (focus && (e.s === focus || e.t === focus)) || (preview && (e.s === preview || e.t === preview));
     const outer = focus && !on && ((near1.has(e.s) && near2.has(e.t)) || (near2.has(e.s) && near1.has(e.t)));
-    ctx.globalAlpha = on ? .75 : outer ? .3 : focus ? .04 : 1;
-    ctx.strokeStyle = on ? colours.ink : e.k === "topic" ? colours.topicEdge : colours.edge;
+    const pointed = lit && lit.has(e.s) && lit.has(e.t) && (e.s === graphState.hover || e.t === graphState.hover);
+    ctx.globalAlpha = (on || pointed ? .75 : outer ? .3 : focus ? .04 : 1) * (lit && !pointed ? .25 : 1);
+    ctx.strokeStyle = on || pointed ? colours.ink : e.k === "topic" ? colours.topicEdge : colours.edge;
     ctx.lineWidth = (on ? 1.3 : .8) / Math.sqrt(T.k);
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
   const order = GRAPH.linked.filter(graphVisible).sort((a, b) => graphAlpha(a) - graphAlpha(b) || graphRadius(a) - graphRadius(b));
   for (const n of order) {
-    ctx.globalAlpha = graphAlpha(n);
+    ctx.globalAlpha = graphAlpha(n) * graphHoverAlpha(n, lit);
     graphMark(ctx, n, n.x, n.y, graphRadius(n), colours);
     if (n.id === focus || n.id === preview) { ctx.beginPath(); ctx.arc(n.x, n.y, graphRadius(n) + 6 / T.k, 0, 2 * Math.PI); ctx.lineWidth = 1.5 / T.k; ctx.strokeStyle = colours.ink; ctx.stroke(); }
   }
   ctx.restore();
   graphLabels(ctx, order, colours);
+  graphState.frameMs.push(performance.now() - started);
+  if (graphState.frameMs.length > 240) graphState.frameMs.shift();
 }
 // Which marks carry a name (#3085): every knowledge entry, then the most-linked other records: twelve when the
 // whole map is fitted, more as he zooms in (the count grows with the area the zoom opens). A phone's fitted map
@@ -16508,6 +16557,7 @@ function graphStage() {
 }
 // Fit what is shown, leaving room for the heading above, the panel at the right and the legend below.
 function graphFit() {
+  if (graphState.dim === "3d") return graph3dFit();
   const { focus, near1, near2, W, H } = graphState, phone = graphPhone();
   const ids = focus ? new Set([focus, ...near1, ...near2]) : null;
   const points = GRAPH.linked.filter(n => ids ? ids.has(n.id) : graphVisible(n));
@@ -16532,25 +16582,37 @@ function graphBind(box) {
   const canvas = box.querySelector(".gx-canvas");
   // On a phone one finger scrolls the page past the map; two fingers move and zoom it.
   const fingers = event => !graphPhone() || !event.touches || event.touches.length > 1;
-  graphState.zoom = d3.zoom().scaleExtent([.2, 8]).filter(event => (!event.ctrlKey || event.type === "wheel") && !event.button && fingers(event))
+  // A press on a mark picks the mark up (#3309); a press on paper pans.
+  graphState.zoom = d3.zoom().scaleExtent([.2, 8]).filter(event => (!event.ctrlKey || event.type === "wheel") && !event.button && fingers(event)
+      && !(event.type === "mousedown" && graphHit(event)))
     .on("zoom", event => { graphState.T = event.transform; graphDraw(); });
   d3.select(canvas).call(graphState.zoom).on("dblclick.zoom", null);
   // One click opens the record's page (#3095: focusing it and then pressing Open was two). Pointing at a mark is
   // what previews it in the panel; a click on empty paper lets go of whatever was focused.
-  canvas.addEventListener("click", event => { const n = graphHit(event); if (n) graphOpen(n); else graphFocus(""); });
-  canvas.addEventListener("mousemove", event => { const n = graphHit(event); graphTip(event, n); graphPoint(n); });
+  canvas.addEventListener("click", event => {
+    if (graphState.dragged) { graphState.dragged = false; return; }
+    const n = graphHit(event); if (n) graphOpen(n); else graphFocus("");
+  });
+  canvas.addEventListener("mousemove", event => {
+    if (graphState.drag) return;
+    const n = graphHit(event); graphTip(event, n); graphPoint(n); graphHover(n);
+  });
+  graphDragBind(canvas);
   canvas.addEventListener("keydown", event => { if (event.key === "Enter" && graphState.focus) graphOpen(GRAPH.byId.get(graphState.focus)); });
-  canvas.addEventListener("mouseleave", () => { box.querySelector(".gx-tip").hidden = true; });
+  canvas.addEventListener("mouseleave", () => { box.querySelector(".gx-tip").hidden = true; if (!graphState.drag) graphHover(null); });
   for (const button of box.querySelectorAll("[data-zoom]")) button.onclick = () => {
     const by = Number(button.dataset.zoom);
+    if (graphState.dim === "3d") return graph3dZoom(by);
     if (by) d3.select(canvas).transition().duration(matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160).call(graphState.zoom.scaleBy, by);
     else { graphFit(); graphDraw(); }
   };
   for (const tab of box.querySelectorAll("[data-tab]")) tab.onclick = () => {
     graphState.tab = tab.dataset.tab;
     box.querySelectorAll("[data-tab]").forEach(other => other.setAttribute("aria-selected", String(other === tab)));
+    if (graphState.dim === "3d") graph3dData();
     graphDraw();
   };
+  for (const button of box.querySelectorAll("[data-dim]")) button.onclick = () => graphChooseDim(button.dataset.dim);
   graphSearchBind(box);
 }
 function graphTip(event, n) {
@@ -16574,6 +16636,7 @@ function graphOpen(n) {
 function graphReturn() {
   const left = graphState.left;
   graphState.left = null;
+  if (graphState.dim === "3d") return;
   if (!left || left.focus !== graphState.focus || left.width !== innerWidth) return;
   graphState.T = left.T;
   d3.select(graphCanvas()).call(graphState.zoom.transform, left.T);
@@ -16710,11 +16773,351 @@ function graphListen() {
   if (graphState.listening) return;
   graphState.listening = true;
   addEventListener("resize", () => { if (document.querySelector(".gx-map .gx-canvas")) { graphResize(); graphFit(); graphDraw(); } });
+  document.addEventListener("visibilitychange", () => {
+    const fg = graphState.fg;
+    if (fg) document.hidden ? fg.pauseAnimation() : fg.resumeAnimation();
+    if (document.hidden) GRAPH?.sim?.stop();
+  });
   addEventListener("keydown", event => {
     if (event.key === "/" && document.querySelector(".gx-map") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
       event.preventDefault(); event.stopImmediatePropagation(); document.querySelector(".gx-search").focus();
     }
   }, true);
+}
+
+// ---------- the map moves (#3309) ----------
+// Owner, 2026-11-22: «乱七八糟一团……不能拽着一个东西动». The map is live: a mark can be picked up and what it
+// links follows it, pointing at a mark lights its neighbourhood, and on a computer that can draw it the map is
+// three-dimensional and turns slowly until he touches it. Reduced motion keeps every result and drops the motion.
+function graphReduced() { return matchMedia("(prefers-reduced-motion: reduce)").matches; }
+// The pointed mark and what it links, or null: the 2D draw and the 3D paint both fade everything else.
+function graphLit() {
+  const id = graphState.hover;
+  return id ? new Set([id, ...(GRAPH.adj.get(id) || [])]) : null;
+}
+// A mark outside the pointed neighbourhood fades but stays where a pointer can reach it (graphHit ignores this).
+function graphHoverAlpha(n, lit = graphLit()) { return !lit || lit.has(n.id) ? 1 : .3; }
+function graphHover(n) {
+  const id = n ? n.id : "";
+  if (id === graphState.hover) return;
+  graphState.hover = id;
+  const stage = graphState.dim === "3d" ? document.querySelector(".gx-map .gx-3d") : graphCanvas();
+  if (stage) stage.dataset.hover = id;
+  graphDraw();
+}
+// The 2D simulation was settled once and kept: each tick a drag causes is drawn.
+function graphLive() {
+  const sim = GRAPH.sim;
+  if (!sim) return;
+  sim.on("tick.draw", () => {
+    if (graphState.dim !== "2d" || !graphCanvas()) return sim.stop();
+    graphDraw();
+  });
+}
+function graphDragBind(canvas) {
+  const at = event => {
+    const rect = canvas.getBoundingClientRect(), T = graphState.T;
+    return [T.invertX(event.clientX - rect.left), T.invertY(event.clientY - rect.top)];
+  };
+  const pick = (n, point) => {
+    graphState.drag = { n, x: point.clientX, y: point.clientY, moved: false };
+    n.fx = n.x; n.fy = n.y;
+    graphHover(n);
+  };
+  const move = point => {
+    const drag = graphState.drag;
+    if (!drag) return;
+    // A press that never moves is a click: the map is only woken once the mark is really pulled.
+    if (!drag.moved && Math.hypot(point.clientX - drag.x, point.clientY - drag.y) > 3) {
+      drag.moved = true;
+      if (!graphReduced()) GRAPH.sim?.alphaTarget(.3).restart();
+    }
+    [drag.n.fx, drag.n.fy] = at(point);
+    if (graphReduced()) { drag.n.x = drag.n.fx; drag.n.y = drag.n.fy; graphDraw(); }
+  };
+  const drop = () => {
+    const drag = graphState.drag;
+    if (!drag) return;
+    graphState.drag = null;
+    graphState.dragged = drag.moved;
+    drag.n.fx = drag.n.fy = null;
+    if (!drag.moved) return;
+    // Reduced motion settles in one step and draws the result; otherwise the map eases back on its own.
+    if (graphReduced()) { GRAPH.sim?.tick(80); graphDraw(); } else GRAPH.sim?.alphaTarget(0);
+  };
+  canvas.addEventListener("mousedown", event => {
+    if (event.button || graphState.dim !== "2d") return;
+    const n = graphHit(event);
+    if (n) { event.preventDefault(); pick(n, event); }
+  });
+  addEventListener("mousemove", event => { if (graphState.drag) move(event); });
+  addEventListener("mouseup", drop);
+  // On a phone a long press picks a mark up; a finger that moves first is scrolling the page past the map.
+  let hold = null;
+  const letGo = () => { clearTimeout(hold?.timer); hold = null; };
+  canvas.addEventListener("touchstart", event => {
+    letGo();
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0], n = graphHit(touch);
+    if (!n) return;
+    hold = { clientX: touch.clientX, clientY: touch.clientY };
+    hold.timer = setTimeout(() => { if (hold) pick(n, hold); }, 450);
+  }, { passive: true });
+  canvas.addEventListener("touchmove", event => {
+    const touch = event.touches[0];
+    if (graphState.drag) { event.preventDefault(); move(touch); return; }
+    if (hold && Math.hypot(touch.clientX - hold.clientX, touch.clientY - hold.clientY) > 8) letGo();
+  }, { passive: false });
+  canvas.addEventListener("touchend", () => { letGo(); drop(); });
+  canvas.addEventListener("touchcancel", () => { letGo(); drop(); });
+}
+
+// ---------- 2D or 3D ----------
+const GRAPH_DIM_KEY = "co-rem-graph-dim";
+let GRAPH_WEBGL = null;
+function graphWebGL() {
+  if (GRAPH_WEBGL === null) {
+    const probe = document.createElement("canvas");
+    GRAPH_WEBGL = !!(probe.getContext("webgl2") || probe.getContext("webgl"));
+  }
+  return GRAPH_WEBGL;
+}
+function graphChosenDim() {
+  try { return localStorage.getItem(GRAPH_DIM_KEY) || ""; } catch { return ""; }
+}
+// A computer opens in 3D; a phone and reduced motion open the 2D map; the owner's own choice wins either way.
+function graphDimFor() {
+  const chosen = graphChosenDim();
+  if (chosen === "2d" || !graphWebGL()) return "2d";
+  if (chosen === "3d") return "3d";
+  return graphPhone() || graphReduced() ? "2d" : "3d";
+}
+function graphDims() {
+  return el("div", { class: "gx-dims", role: "group", "aria-label": graphT("Knowledge graph") },
+    [["2d", "2D", "Show the map in 2D"], ["3d", "3D", "Show the map in 3D"]].map(([dim, text, name]) =>
+      el("button", { type: "button", "data-dim": dim, "aria-pressed": "false", "aria-label": graphT(name), title: graphT(name), text })));
+}
+function graphDimsShow() {
+  for (const button of document.querySelectorAll(".gx-map [data-dim]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.dim === graphState.dim));
+    if (button.dataset.dim === "3d" && !graphWebGL()) button.disabled = true;
+  }
+}
+function graphChooseDim(dim) {
+  try { localStorage.setItem(GRAPH_DIM_KEY, dim); } catch { /* a private window keeps no choice; this view still switches */ }
+  graphState.left = null;
+  graphView();
+}
+
+// ---------- the 3D map (#3309) ----------
+// three.js and d3-force-3d, bundled as one pinned build (vendor/3d-force-graph-1.80.2.min.js, licences beside it),
+// sit in the page as inert text and run the first time the map opens in 3D: no other page parses them, and
+// nothing is fetched.
+const GRAPH_3D_TONE = { knowledge: "--kind-knowledge", people: "--kind-people", orgs: "--kind-orgs", projects: "--kind-projects", notes: "--kind-notes", sessions: "--kind-sessions" };
+function graph3dLibrary() {
+  if (typeof ForceGraph3D === "function") return ForceGraph3D;
+  const source = document.getElementById("graph-3d-src")?.textContent || "";
+  if (!source.trim() || source.includes("__GRAPH_3D__")) return null;
+  const script = document.createElement("script");
+  script.textContent = source;
+  document.head.appendChild(script);
+  return typeof ForceGraph3D === "function" ? ForceGraph3D : null;
+}
+function graph3dTones() {
+  const tones = Object.fromEntries(Object.entries(GRAPH_3D_TONE).map(([kind, token]) => [kind, graphCss(token)]));
+  return { ...tones, bg: graphCss("--paper"), ink: graphCss("--ink"), edge: graphCss("--grey"), topicEdge: graphCss("--rule") };
+}
+// The 2D layout gives each mark its x and y; depth comes from its name, so the same notebook opens the same way.
+function graph3dDepth(id) {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.codePointAt(0)) | 0;
+  return ((h % 160) + 160) % 160 - 80;
+}
+function graph3dStart(box) {
+  const make = graph3dLibrary();
+  if (!make) return false;
+  const stage = box.querySelector(".gx-stage");
+  const holder = el("div", { class: "gx-3d", tabindex: "0", role: "img", "aria-label": graphT("Knowledge graph") });
+  const names = el("div", { class: "gx-3d-names", "aria-hidden": "true" });
+  stage.append(holder, names);
+  let fg;
+  try {
+    fg = make({ controlType: "orbit" })(holder);
+  } catch (error) {
+    // A WebGL context the browser refuses: the 2D map is drawn instead (the caller falls back).
+    console.warn("REM: the 3D map could not start; drawing the 2D map.", error);
+    holder.remove(); names.remove();
+    return false;
+  }
+  const tones = graph3dTones(), reduced = graphReduced();
+  graphState.fg = fg;
+  graphState.nodes3 = new Map();
+  graphState.hubs3 = new Set([...graphHubs(GRAPH.linked, graphDegree, 8).map(n => n.id), ...GRAPH.linked.filter(n => n.k === "knowledge").map(n => n.id)]);
+  graphState.rotate3 = !reduced;
+  graphState.settled3 = false;
+  graphState.fitted3 = false;
+  box.querySelector(".gx-canvas").hidden = true;
+  fg.backgroundColor(tones.bg).showNavInfo(false)
+    .nodeId("id").nodeRelSize(3).nodeResolution(14)
+    .nodeVal(d => 1 + graphDegree(d.n) * (d.n.k === "knowledge" ? 1.6 : 1))
+    .nodeColor(d => tones[d.n.k] || tones.notes)
+    .nodeOpacity(.95)
+    .nodeLabel(() => "")
+    .linkColor(l => l.k === "topic" ? tones.topicEdge : tones.edge)
+    .linkOpacity(.45).linkWidth(0)
+    .onNodeHover(d => { holder.style.cursor = d ? "pointer" : ""; graph3dRotate(!d); graphHover(d ? d.n : null); })
+    .onNodeClick(d => graphOpen(d.n))
+    // A released mark rejoins the map rather than staying pinned where it was dropped.
+    .onNodeDragEnd(d => { d.fx = d.fy = d.fz = undefined; })
+    .onBackgroundClick(() => { if (graphState.focus) graphFocus(""); })
+    .onEngineTick(graph3dNames)
+    .onEngineStop(() => { graphState.settled3 = true; if (!graphState.fitted3) { graphState.fitted3 = true; graph3dFit(); } })
+    .d3AlphaDecay(.028)
+    .warmupTicks(reduced ? 400 : 0).cooldownTicks(reduced ? 0 : Infinity);
+  // d3-force-3d's defaults (charge -30, link 30) pull a notebook into a tight ball; the 2D map's spacing reads.
+  fg.d3Force("charge").strength(-90).distanceMax(500);
+  fg.d3Force("link").distance(l => l.k === "topic" ? 70 : 36);
+  graph3dData();
+  const controls = fg.controls();
+  controls.autoRotate = graphState.rotate3;
+  controls.autoRotateSpeed = .45;
+  controls.addEventListener("change", graph3dNames);
+  // The slow turn is for a map nobody is touching: the first press or scroll stops it for good.
+  const still = () => { graphState.rotate3 = false; controls.autoRotate = false; };
+  holder.addEventListener("pointerdown", still);
+  holder.addEventListener("wheel", still, { passive: true });
+  holder.addEventListener("keydown", event => { if (event.key === "Enter" && graphState.focus) graphOpen(GRAPH.byId.get(graphState.focus)); });
+  clearInterval(graphState.watch3);
+  graphState.watch3 = setInterval(() => { if (!holder.isConnected) graph3dStop(); }, 1000);
+  return true;
+}
+function graph3dStop() {
+  clearInterval(graphState.watch3);
+  const fg = graphState.fg;
+  graphState.fg = null;
+  graphState.nodes3 = null;
+  graphState.hubs3 = null;
+  if (!fg) return;
+  fg.pauseAnimation();
+  fg._destructor?.();
+}
+// A pointed mark stops the turn so it does not drift out from under the pointer.
+function graph3dRotate(on) {
+  const fg = graphState.fg;
+  if (fg) fg.controls().autoRotate = on && graphState.rotate3;
+}
+// What the filters show, keeping each mark's object (and so its place) across a change of filter.
+function graph3dData() {
+  const fg = graphState.fg;
+  if (!fg) return;
+  const shown = GRAPH.linked.filter(graphVisible), ids = new Set(shown.map(n => n.id)), kept = graphState.nodes3;
+  const nodes = shown.map(n => kept.get(n.id) || kept.set(n.id, { id: n.id, n, x: n.x, y: n.y, z: graph3dDepth(n.id) }).get(n.id));
+  const links = GRAPH.edges.filter(e => ids.has(e.s) && ids.has(e.t)).map(e => ({ source: e.s, target: e.t, k: e.k }));
+  fg.graphData({ nodes, links });
+}
+function graph3dSize() {
+  const fg = graphState.fg, holder = document.querySelector(".gx-map .gx-3d"), names = document.querySelector(".gx-map .gx-3d-names");
+  if (!fg || !holder) return;
+  const right = graphPanelWidth() ? graphPanelWidth() + 24 : 0;
+  for (const box of [holder, names]) box.style.right = right + "px";
+  const rect = holder.getBoundingClientRect();
+  fg.width(rect.width).height(rect.height);
+}
+function graph3dFit(whole = false) {
+  const fg = graphState.fg;
+  if (!fg) return;
+  const ms = graphReduced() ? 0 : 700, id = whole ? "" : graphState.focus, d = id && graphState.nodes3?.get(id);
+  if (!d || d.x === undefined) return fg.zoomToFit(ms, 16);
+  const r = Math.hypot(d.x, d.y, d.z) || 1, far = 1 + 170 / r;
+  fg.cameraPosition({ x: d.x * far, y: d.y * far, z: d.z * far }, { x: d.x, y: d.y, z: d.z }, ms);
+}
+function graph3dZoom(by) {
+  const fg = graphState.fg;
+  if (!fg) return;
+  if (!by) return graph3dFit(true);
+  const camera = fg.camera().position, target = fg.controls().target, k = 1 / by;
+  fg.cameraPosition({ x: target.x + (camera.x - target.x) * k, y: target.y + (camera.y - target.y) * k, z: target.z + (camera.z - target.z) * k },
+    undefined, graphReduced() ? 0 : 200);
+}
+// three-forcegraph shares one material per colour; each mark gets its own once, so fading one fades only it.
+// Knowledge entries and the busiest records carry a soft halo, drawn from the mark's own classes.
+function graph3dOwn() {
+  const fg = graphState.fg;
+  if (!fg) return;
+  const { nodes, links } = fg.graphData();
+  for (const d of nodes) {
+    const mark = d.__threeObj;
+    if (!mark?.material || mark.userData.own) continue;
+    mark.material = mark.material.clone();
+    mark.userData.own = true;
+    if (graphState.hubs3.has(d.id)) graph3dGlow(mark);
+  }
+  for (const l of links) {
+    const line = l.__lineObj;
+    if (!line?.material || line.userData.own) continue;
+    line.material = line.material.clone();
+    line.userData.own = true;
+  }
+}
+function graph3dGlow(mark) {
+  const Halo = mark.constructor, Paint = mark.material.constructor;
+  const paint = new Paint({ transparent: true, opacity: .16, depthWrite: false });
+  paint.color.copy(mark.material.color);
+  const halo = new Halo(mark.geometry, paint);
+  halo.scale.multiplyScalar(1.9);
+  halo.userData.halo = true;
+  mark.add(halo);
+  if (mark.material.emissive) mark.material.emissive.copy(mark.material.color).multiplyScalar(.3);
+}
+// Pointing at a mark (or a focused one) keeps it and its neighbours bright and fades the rest.
+function graph3dPaint() {
+  const fg = graphState.fg;
+  if (!fg) return;
+  graph3dOwn();
+  const key = graphState.hover || graphState.focus, lit = key ? new Set([key, ...(GRAPH.adj.get(key) || [])]) : null;
+  const { nodes, links } = fg.graphData();
+  for (const d of nodes) {
+    const mark = d.__threeObj;
+    if (!mark?.userData.own) continue;
+    const on = !lit || lit.has(d.id);
+    mark.material.transparent = true;
+    mark.material.opacity = on ? .95 : .12;
+    for (const child of mark.children) if (child.userData.halo) child.material.opacity = on ? .16 : .02;
+  }
+  for (const l of links) {
+    const line = l.__lineObj;
+    if (!line?.userData.own) continue;
+    const ends = [l.source?.id ?? l.source, l.target?.id ?? l.target];
+    line.material.transparent = true;
+    line.material.opacity = !lit ? .45 : ends.includes(key) ? .9 : .04;
+  }
+  const holder = document.querySelector(".gx-map .gx-3d");
+  if (holder) holder.dataset.lit = key || "";
+}
+// Names ride above the 3D map: the pointed or focused mark first, then the knowledge entries, the busiest
+// records and the focused mark's neighbours, each only where it overlaps no name already placed. A private page
+// shows its name only when pointed at, and then only as "Personal".
+function graph3dNames() {
+  const fg = graphState.fg, layer = document.querySelector(".gx-map .gx-3d-names");
+  if (!fg || !layer) return;
+  graph3dOwn();
+  const key = graphState.hover || graphState.focus, around = key ? GRAPH.adj.get(key) || new Set() : new Set(), hubs = graphState.hubs3;
+  const rank = d => d.id === key ? 0 : d.n.k === "knowledge" ? 1 : hubs.has(d.id) ? 2 : 3;
+  const wanted = fg.graphData().nodes.filter(d => d.x !== undefined && (d.id === key || (!graphHidden(d.n) && (hubs.has(d.id) || around.has(d.id)))))
+    .sort((a, b) => rank(a) - rank(b) || graphDegree(b.n) - graphDegree(a.n));
+  const W = layer.clientWidth, H = layer.clientHeight, shown = new Map([...layer.children].map(span => [span.dataset.id, span])), placed = [];
+  for (const d of wanted) {
+    const at = fg.graph2ScreenCoords(d.x, d.y, d.z), text = graphShort(graphTitle(d.n), 28);
+    const box = [at.x + 8, at.y - 11, at.x + 22 + graphWidth(text) * 7, at.y + 9];
+    if (box[0] < 0 || box[2] > W || box[1] < 0 || box[3] > H) continue;
+    if (d.id !== key && placed.some(other => graphBoxesMeet(box, other))) continue;
+    placed.push(box);
+    let span = shown.get(d.id);
+    if (span) shown.delete(d.id);
+    else layer.appendChild(span = el("span", { class: "gx-3d-name" + (hubs.has(d.id) ? " hub" : ""), "data-id": d.id, text }));
+    span.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px)`;
+  }
+  for (const span of shown.values()) span.remove();
 }
 
 // ---------- topics: the list, and a topic page as a record ----------

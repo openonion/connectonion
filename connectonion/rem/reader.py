@@ -27,6 +27,10 @@ TEMPLATE = Path(__file__).with_name("reader.html")
 PLACEHOLDER = "/*__REM_DATA__*/null"
 # The graph's layout and zoom, pinned and inlined so the page never fetches a script.
 D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"
+# The 3D knowledge graph (#3309): three.js + d3-force-3d, bundled as one pinned UMD build. It is inlined as an
+# inert text block and run only when the graph first opens in 3D, so every other page pays no parse cost and the
+# reader never fetches a script. Licences: vendor/3d-force-graph-1.80.2.LICENSES.md.
+GRAPH_3D = Path(__file__).with_name("vendor") / "3d-force-graph-1.80.2.min.js"
 BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
@@ -544,7 +548,8 @@ def _page(full: dict, *, live: bool) -> str:
     if PLACEHOLDER not in template:
         raise RuntimeError("reader.html has lost its data placeholder")
     page = template.replace(PLACEHOLDER, data, 1).replace('/*__REM_DETAIL__*/', detail, 1)
-    return page.replace('/*__D3__*/', D3.read_text(encoding='utf-8'), 1)
+    page = page.replace('/*__D3__*/', D3.read_text(encoding='utf-8'), 1)
+    return page.replace('/*__GRAPH_3D__*/', GRAPH_3D.read_text(encoding='utf-8'), 1)
 
 
 def _script_json(data: dict) -> str:

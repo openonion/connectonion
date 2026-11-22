@@ -21,6 +21,12 @@ HEAT = "Heat storage for off-grid dairy barns in cold valleys"
 BUSIEST = "Barn retrofit for the upper valley dairies"
 
 
+
+# The 3D map is the desktop default (#3309) and has its own tests (test_rem_live_graph_browser.py). These pages
+# pin the 2D map, which a phone, reduced motion and the owner's 2D choice still draw, so its labels, marks
+# and canvas keep their coverage.
+PIN_2D = "try { localStorage.setItem('co-rem-graph-dim', '2d'); } catch (e) {}"
+
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
     from rem_graph_notebook import build
@@ -42,6 +48,7 @@ def browser():
 
 def open_graph(browser, uri, width=1440, hash_="#c=knowledge", language="en"):
     page = browser.new_page(viewport={"width": width, "height": 900 if width > 400 else 844}, locale="en-US", has_touch=width < 400)
+    page.add_init_script(PIN_2D)
     page.errors = []
     page.on("pageerror", lambda error: page.errors.append(str(error)))
     page.route("http*://**/*", lambda route: route.abort())

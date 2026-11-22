@@ -73,6 +73,11 @@ A 4px grid: every gap and padding is a multiple of 4. The named steps are `--u1`
 | `--green` | #22d27a | **the one accent.** Reserved for the single primary action of a screen. A page of records has none, so it has no green |
 | `--red` | #c02a17 | overdue, and nothing else |
 
+The **3D knowledge graph** is the one place hue names a kind (#3309): there every mark is a sphere, so colour does
+the work shape does on the 2D map. `--kind-knowledge`, `--kind-people`, `--kind-orgs`, `--kind-projects`,
+`--kind-notes` and `--kind-sessions` are muted, are never a call to action, and are read only by the 3D graph
+(`GRAPH_3D_TONE`); nothing else on any page may use them.
+
 How much of something there was is said in **steps of ink, never in hue**: `--heat-0` (nothing, the well),
 `--heat-1`, `--heat-2`, `--heat-3`, `--heat-4` (all of the ink). They are mixed from ink and paper, so the dark
 theme follows without a second set. A strip that uses them always says in words what is counted and what a
