@@ -11,6 +11,7 @@ const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
   append(...nodes) { this.children.push(...nodes); },
   appendChild(node) { this.children.push(node); },
   get childElementCount() { return this.children.length; }});
+const pageName = page => page.title;  // course/team codes: tested in the browser
 const orgT = text => text, t = text => text;
 const orgSummary = text => text || '';
 '''

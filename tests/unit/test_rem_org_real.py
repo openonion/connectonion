@@ -14,6 +14,7 @@ const el = (tag, attrs = {}, children = []) => ({tag, ...attrs,
 let uiLanguage = 'en';
 const orgT = (text, values={}) => text.replace(/\{(\w+)\}/g, (_,key)=>values[key]);
 const t = orgT;
+const pageName = page => page.title;  // course/team codes: tested in the browser
 const orgProse = text => text || null;
 '''
 
