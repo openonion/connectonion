@@ -109,7 +109,7 @@ def _people(notebook, people_rows, write):
     # The owner's 不是人 on a handle sticks: such a contact is never stubbed or merged into a page, by
     # `co rem map` or by the night's re-map (#3339). A page already made for it is set aside by the census.
     marks = person_marks(notebook.root)
-    out = {"create": [], "merge": [], "known": 0, "skip": 0, "not_person": 0}
+    out = {"create": [], "merge": [], "known": 0, "skip": 0, "not_person": 0, "retitled": []}
     for group in rem_map._people_groups(people_rows):
         handles = [row["address"] for row in group]
         name = " ".join(str(next((r["name"] for r in group if r.get("name")), "")).split())
@@ -120,6 +120,9 @@ def _people(notebook, people_rows, write):
             continue
         if any(h.casefold() in by_handle for h in handles):
             out["known"] += 1
+            record = next(by_handle[h.casefold()] for h in handles if h.casefold() in by_handle)
+            if _retitle(notebook, record, name, write):
+                out["retitled"].append(record)
             continue
         # A friend in the owner's address book is worth a page with no messages: he added them (#3347).
         friend = all(r.get("friend") for r in group)
@@ -144,6 +147,19 @@ def _people(notebook, people_rows, write):
             by_name[name.casefold()] = record
         by_handle.update({h.casefold(): record for h in handles})
     return out
+
+
+def _retitle(notebook, record, name, write) -> bool:
+    """A page titled by a nickname with no letter, digit or CJK in it (".", "^ ^", a filler blank) takes the
+    source's better title, which is the remark or a plain placeholder (#3368). Handles and prose are untouched."""
+    from .chat import usable_name
+    lines = notebook.read(record).split("\n")
+    title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else ""
+    if not name or usable_name(title) or name == title:
+        return False
+    if write:
+        notebook.write(record, "\n".join([f"# {name}", *lines[1:]]))
+    return True
 
 
 def _orgs(notebook, org_rows, write):
@@ -344,22 +360,86 @@ def _wake(root: Path, source: str, source_rows: list[dict]) -> None:
         queue_first(root, source, woken)
 
 
-def onboard(root: Path, name: str, sub: dict, days: int) -> dict:
-    """Map one source, put the people pages it touched first in the queue, and record that it was mapped."""
+def onboard(root: Path, name: str, sub: dict, days: int, kinds: tuple = ()) -> dict:
+    """Map one source, put the people pages it touched first in the queue, and record that it was mapped. The
+    night, `co rem sources add` and `co rem map` all come here, so each leaves the same state behind (#3368)."""
+    source_rows = rows(root, name, sub, days)
+    result = plan(root, source_rows, kinds or yields(sub), write=True)
+    _record(root, name, sub, result, source_rows)
+    return result
+
+
+def _record(root: Path, name: str, sub: dict, result: dict, source_rows: list[dict], *, backfilled=False) -> None:
+    """After a map: the touched people pages go first in the queue, idle friends with a new chat wake, pages the
+    source already held but the queue never saw are queued by rank, and the source is marked mapped."""
     from .files import write_json
     from .service import now
-    source_rows = rows(root, name, sub, days)
-    result = plan(root, source_rows, yields(sub), write=True)
     people = result.get("people", {"create": [], "merge": []})
     queue_first(root, name, [*people["create"], *people["merge"]])
+    _queue_unseen(root, name, source_rows)
     _wake(root, name, source_rows)
     done = read_json(state_path(root, STATE), {})
     done[name] = {"mapped_at": now().isoformat(), "scope": _scope(sub),
                   "created": {kind: len(out["create"]) for kind, out in result.items()},
-                  "merged": len(people["merge"]),
+                  "merged": len(people["merge"]), **({"backfilled": True} if backfilled else {}),
                   **({"chats": {"friends": people["friends"], "chats": people["chats"]}} if people.get("friends") else {})}
     write_json(state_path(root, STATE), done)
-    return result
+
+
+def _queue_unseen(root: Path, name: str, source_rows: list[dict]) -> None:
+    """Pages a source reaches by handle that the people queue has never been told about: made by an older map
+    that recorded nothing (rc14's WeChat map), queued now by the same rank as new ones (#3368)."""
+    asked = read_json(state_path(root, ASKED), {})
+    by_handle, _ = _roster(Notebook(root))
+    seen, unseen = set(asked), []
+    for row in source_rows:
+        record = by_handle.get(row.get("address", "").casefold())
+        if row.get("kind") != "person" or not record or record in seen:
+            continue
+        seen.add(record)
+        talked = row.get("sent", 0) + row.get("received", 0) > 0
+        unseen.append({"record": record, "rank": 0 if talked else (1 if row.get("remark") else 2), "material": talked})
+    if unseen:
+        queue_first(root, name, unseen)
+
+
+def held_pages(root: Path, sub: dict) -> int:
+    """How many people pages carry a handle of this source's kind: chat ids for a chat source, mail addresses for
+    a mailbox. Status shows it, so a source with pages never reads as "never mapped" (#3368)."""
+    from .files import EMAIL
+    if "people" not in yields(sub):
+        return 0
+    if sub.get("kind") in NIGHTLY:
+        # A WeChat id is wxid_… or one the activity file knows; a one-word alias ("Ostrowski") is not.
+        known = {h.casefold() for h in read_json(state_path(root, ACTIVITY), {})}
+        ours = lambda h: h.casefold().startswith("wxid_") or h.casefold() in known   # noqa: E731
+    else:
+        ours = EMAIL.fullmatch
+    return sum(1 for person in Notebook(root).people()
+               if any(ours(handle) for handle in (*person["aliases"], *person["emails"])))
+
+
+def backfill(root: Path) -> list[str]:
+    """After an upgrade: a local source that already holds pages but has no activity or onboarding record (pages
+    made by an older map) gets both now, read from this machine with no model and no network, without making
+    pages (#3368). It runs at most once per source; the night and `co rem map` keep it current after that."""
+    from .files import MAP_DAYS
+    from .service import subscriptions
+    done = read_json(state_path(root, STATE), {})
+    filled = []
+    for name, sub in subscriptions(root).items():
+        if (sub.get("kind") not in NIGHTLY or not (sub.get("enabled") and sub.get("consented"))
+                or name in done or not held_pages(root, sub)):
+            continue
+        source_rows = rows(root, name, sub, MAP_DAYS)
+        if not source_rows:
+            continue
+        record_activity(root, source_rows)
+        result = plan(root, source_rows, yields(sub), write=False)
+        result.get("people", {}).update(create=[], merge=[])    # counted only: a page build makes no pages
+        _record(root, name, sub, result, source_rows, backfilled=True)
+        filled.append(name)
+    return filled
 
 
 def run_due(root: Path, subs: dict, *, night: bool, days: int | None = None, only=()) -> list[str]:
@@ -392,7 +472,13 @@ def summary(root: Path, name: str) -> dict:
     resting = [record for record, entry in asked.items() if entry.get("source") == name and entry.get("material") is False]
     waiting = [record for record in waiting if record not in set(resting)]
     hint, found = sync_hint(done.get("chats", {})), coverage(done.get("chats", {}))
-    return {"mapped_at": done.get("mapped_at") or "never", "created": done.get("created", {}),
+    held = 0
+    if not done.get("mapped_at"):
+        from .service import subscriptions
+        sub = subscriptions(root).get(name, {})
+        held = held_pages(root, sub) if sub else 0
+    mapped = done.get("mapped_at") or ("earlier" if held else "never")
+    return {"mapped_at": mapped, "created": done.get("created", {}), "pages": held,
             "to_investigate": len(waiting), **({"coverage": found} if found else {}),
             **({"no_chats_yet": len(resting)} if resting else {}),
             **({"hint": hint} if hint else {}), **({"error": done["error"]} if done.get("error") else {})}
