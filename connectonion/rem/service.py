@@ -806,6 +806,13 @@ def _unmatched_marks(root: Path) -> int:
 
 
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
+    """The notebook's status; its whole-notebook scans (census, tags) run once in it (tags.held)."""
+    from .tags import held
+    with held(root):
+        return _status(root, include_quota=include_quota, include_coverage=include_coverage)
+
+
+def _status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
     """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
     from .translate import coverage as translation_coverage

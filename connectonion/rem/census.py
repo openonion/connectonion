@@ -159,7 +159,19 @@ def is_machine(title, text, emails, row, automated, marks, orgs, handles=()) -> 
 
 
 def pages(root: Path, *, records: list[dict] | None = None) -> dict:
-    """{record: {category, written, last, held, service, duplicate}} for every counted page."""
+    """{record: {category, written, last, held, service, duplicate}} for every counted page.
+
+    Read once per page build or status (tags.held): `co rem status` called it eight times, each reading every
+    page, at 1,352 people. Every caller gets its own copy of the rows, so one caller's edits never reach another.
+    """
+    if records is not None:
+        return _pages(root, records=records)
+    from .tags import once
+    found = once(root, "census_pages", lambda: _pages(root, records=None))
+    return {record: dict(row) for record, row in found.items()}
+
+
+def _pages(root: Path, *, records: list[dict] | None = None) -> dict:
     from .map import needs_review
     notebook = Notebook(root)
     state = read_json(state_path(root, "map.json"), {})
