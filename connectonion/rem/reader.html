@@ -275,7 +275,7 @@
   .hypno .grid { stroke: var(--grey); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 2 4; }
   .hypno .trace { fill: none; stroke-dashoffset: 0; stroke-linejoin: round; vector-effect: non-scaling-stroke; stroke: var(--pencil); stroke-width: 1.6; stroke-linecap: round; }
   .hypno .area { fill: var(--pencil); opacity: 0.13; }
-  .hypno .day { position: absolute; top: 88px; padding-left: 4px; color: var(--grey); white-space: nowrap; font: var(--s-meta) var(--font); }
+  .hypno .day, .hypno .lvl { position: absolute; top: 88px; padding-left: 4px; color: var(--grey); white-space: nowrap; font: var(--s-meta) var(--font); }
   .hypno .dot { position: absolute; border-radius: var(--round); background: var(--paper); width: 6px; height: 6px; margin: -3px 0 0 -3px; }
   .hypno .dot.woke { background: var(--grey); }
   .night .legend { font: var(--s-meta) var(--font); color: var(--grey); display: flex; gap: 16px; flex-wrap: wrap; }
@@ -3611,28 +3611,38 @@
   .nb { display: flex; align-items: center; gap: 28px; }
   /* The night under its curve (#3311): the curve on a light card, its dots in ink; each stretch's words hang under its
      dip on the same clock, one row each, and a stretch opens to the pages it changed as a small floating list. */
-  .night-line { position: relative; margin: 4px 0 0; }
+  /* The stage names hang in a gutter left of the chart, so the chart and the stretches under it share one clock. */
+  .night-line { position: relative; margin: 4px 0 0; padding-left: 64px; }
+  .hypno .lvl { left: -64px; top: 0; padding: 0; transform: translateY(-50%); }
+  .night-card .hypno .area { fill: var(--pencil); opacity: 0.1; }
+  .hypno .lv { stroke: var(--rule); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .hypno .rem { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
   .night-card .hypno { margin: 6px 0 2px; }
   .night-card .hypno .dot, .night-card .hypno .dawn { background: var(--ink); }
   .night-card .hypno .dot.woke { background: var(--pencil); }
   .stretches { position: relative; height: calc(var(--row, 1) * 28px); margin: 2px 0 4px; }
   /* A phone: the three biggest stretches in one row that scrolls sideways, under a curve two-thirds as tall. */
-  .stretches.stacked { height: auto; display: flex; gap: 4px 16px; overflow-x: auto; scrollbar-width: none; }
+  /* A phone: at most three stretches listed under the chart, one line each, then 全部 → (art director on #3371). */
+  .stretches.stacked { height: auto; display: grid; gap: 0; margin-left: -64px; }
+  /* One text line each, 24px to tap (WCAG 2.5.8), not the 44px buttons get: three 44px rows would push the first
+     card's Send off a phone's first screen (D-10). */
+  #main .stretches.stacked .stretch > summary { min-height: 24px; padding-block: 0; align-items: center; }
   /* Its hour labels go: each stretch under it says its own times. */
-  .night-card .hypno.short { height: 32px; margin: 4px 0 0; }
+  .night-card .hypno.short { height: 32px; margin: 4px 0 2px; }
   .hypno.short svg { height: 32px; }
   .hypno.short .day { display: none; }
-  .stretches.stacked { margin: 0; }
   /* On a phone the stretches under the curve already say what the night did, so the heading keeps only its name. */
   @media (max-width: 640px) { .night-card .nh .night-sum { display: none; } }
   /* One line for who is waiting (sprint T3: «一行 N 件是你的»): the count at title size and the faces beside it, each
      face's days to its right, so the curve and the first card's Send share the first screen (D-10). */
-  .night-card .nb.solo .faces { padding: 2px 0 0; gap: 16px; }
-  .night-card .count-line .count { font-size: var(--s-head); }
-  .night-card .count-line .count-words { font-size: var(--s-ui); }
-  .night-card .frow { align-items: center; }
-  .night-card .deal { flex-direction: row; gap: 6px; padding: 4px 8px 4px 4px; border-radius: var(--r-pill); }
-  .night-card .deal .face.l { width: 30px; height: 30px; }
+  .desk-head { margin: 0 0 12px; }
+  .desk-head .nb.solo .faces { flex-direction: row; align-items: center; }
+  :is(.night-card, .desk-head) .nb.solo .faces { padding: 2px 0 0; gap: 16px; }
+  :is(.night-card, .desk-head) .count-line .count { font-size: var(--s-head); }
+  :is(.night-card, .desk-head) .count-line .count-words { font-size: var(--s-ui); }
+  :is(.night-card, .desk-head) .frow { align-items: center; }
+  :is(.night-card, .desk-head) .deal { flex-direction: row; gap: 6px; padding: 4px 8px 4px 4px; border-radius: var(--r-pill); }
+  :is(.night-card, .desk-head) .deal .face.l { width: 30px; height: 30px; }
   /* The desktop curve at two-thirds height too: the dips still read, its hours stay under it. */
   .night-card .hypno.mid { height: 72px; }
   .hypno.mid svg { height: 56px; }
@@ -3652,12 +3662,11 @@
     .night-card.phone .nh .count-line .count { font-size: var(--s-ui); letter-spacing: 0; }
     .night-card.phone .nh .count-line { gap: 4px; flex-wrap: nowrap; }
     .night-card.phone .nh .deal .dd { display: none; }
-    .night-card.phone .stretches .nh-handled { flex: none; height: auto; }
-    .night-card.phone .stretches .stretch-all { flex: none; align-self: center; margin: 0; }
+    .night-card.phone .stretches .stretch-all { justify-self: start; margin: 4px 0; }
   }
   .stretch { position: absolute; top: calc(var(--row, 0) * 28px); max-width: 40%; }
   .stretch.from-right .stretch-pages { left: auto; right: 0; }
-  .stretches.stacked .stretch { position: static; flex: none; max-width: none; }
+  .stretches.stacked .stretch { position: static; max-width: none; }
   .stretch > summary { display: flex; gap: 6px; padding: 2px 8px; margin-left: -8px; overflow: hidden; border-radius: var(--r-pill); color: var(--ink);
     white-space: nowrap; text-overflow: ellipsis; cursor: pointer; list-style: none; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .stretch > summary::-webkit-details-marker { display: none; }
@@ -4990,6 +4999,7 @@ const UI = {
     "read {n} item": "读了 {n} 项", "read {n} items": "读了 {n} 项", "rewrote {n} page": "改写了 {n} 页", "rewrote {n} pages": "改写了 {n} 页",
     "translated {n} page": "翻译了 {n} 页", "translated {n} pages": "翻译了 {n} 页", "Pages this stretch changed": "这一段改动的页面",
     "All →": "全部 →", "Still unread": "还有什么没读到", "More actions": "更多操作",
+    "Awake": "清醒", "REM sleep": "快速眼动", "Light sleep": "浅睡", "Deep sleep": "深睡",
     "The last pass": "上次更新",
     "What changed overnight": "昨夜的变化",
     "This week": "本周",
@@ -8426,33 +8436,55 @@ function hypnoScale(asOf) {
 function hypnoTime(t) {
   return new Date(t).toLocaleTimeString(uiLanguage === "zh" ? "zh-CN" : "en-GB", { hour: "2-digit", minute: "2-digit", timeZone: REM.status?.timezone || "UTC" });
 }
-// size "mid" is Today's desktop curve, "short" a phone's: the same night at two-thirds or half the height so the first card's Send stays in reach (owner,
-// 2026-11-22: «手机上压缩时间轴»).
+// A sleep chart, not a timeline (art director on #3371: «快速眼动期 and 深睡期 must be visible»). Each run is a step
+// to its stage: a run that changed pages is REM (dreaming: the night rewrote what it knew, drawn heavier), a run that
+// only read is light sleep, a run that stopped early woke him; between runs of one stretch the night dozes in light
+// sleep, and between stretches it sinks to deep sleep. The levels are named at the left when the chart is Today's.
+// size "mid" is Today's desktop chart, "short" a phone's: two-thirds and half the height, so the first card's Send
+// stays in reach (D-10; owner, 2026-11-22: «手机上压缩时间轴»).
+const SLEEP_STAGES = ["Awake", "REM sleep", "Light sleep", "Deep sleep"];
+function runStage(run) {
+  if (FAILED.test(String(run.outcome || ""))) return 0;
+  return (run.changed || []).length ? 1 : 2;
+}
 function hypnogram(asOf, size = "") {
   const short = size === "short", mid = size === "mid";
   const { runs, W, finished, start, end, segments, x } = hypnoScale(asOf);
-  const H = short ? 32 : mid ? 56 : 84, TOP = short ? 6 : mid ? 10 : 14, FLOOR = short ? 28 : mid ? 50 : 72, markers = [];
+  const H = short ? 32 : mid ? 56 : 84, LEVEL = short ? [4, 12, 20, 28] : mid ? [6, 20, 34, 50] : [10, 28, 48, 72], DEEP = LEVEL[3], markers = [];
   const pct = v => (100 * v / W).toFixed(2) + "%";
   const time = hypnoTime;
   const svg = ['<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">'];
   const over = [], step = Math.max(HOUR, Math.ceil((end - start) / (6 * HOUR)) * HOUR);
   for (let t = Math.ceil(start / HOUR) * HOUR; t < end; t += step) {
-    svg.push('<line class="grid" x1="' + x(t).toFixed(1) + '" y1="4" x2="' + x(t).toFixed(1) + '" y2="' + (H - 4) + '"/>');
+    svg.push('<line class="grid" x1="' + x(t).toFixed(1) + '" y1="2" x2="' + x(t).toFixed(1) + '" y2="' + (H - 2) + '"/>');
     over.push('<span class="day" style="left:' + pct(x(t)) + '">' + esc(time(t)) + "</span>");
   }
-  let path = "M4," + TOP;
+  // Each stage is a faint band line, so even a quiet night reads as levels of sleep and not a flat timeline.
+  if (size) LEVEL.forEach(y => svg.push('<line class="lv" x1="4" y1="' + y + '" x2="' + (W - 4) + '" y2="' + y + '"/>'));
+  let path = "M4," + DEEP, at = 4, level = DEEP;
+  const rem = [];
+  const go = (toX, y) => { toX = Math.max(at, Math.min(W - 4, toX)); if (y !== level) path += " L" + at.toFixed(1) + "," + y; path += " L" + toX.toFixed(1) + "," + y; at = toX; level = y; };
   for (const segment of segments) {
+    go(x(segment.start), DEEP);
+    for (const run of [...segment.list].sort((a, b) => runTime(a) - runTime(b))) {
+      const x0 = Math.max(at, x(runTime(run))), x1 = Math.max(x0 + 6, x(Math.min(asOf, runEnd(run))));
+      if (x0 > at) go(x0, LEVEL[2]);  // dozing between two runs of the same stretch
+      const stage = runStage(run);
+      go(x1, LEVEL[stage]);
+      if (stage === 1) rem.push("M" + x0.toFixed(1) + "," + LEVEL[1] + " L" + Math.min(W - 4, x1).toFixed(1) + "," + LEVEL[1]);
+    }
     const x0 = x(segment.start), x1 = Math.min(W - 4, Math.max(x0 + 6, x(Math.min(asOf, segment.end))));
-    const weight = segment.items + 4 * segment.changed;
-    const depth = segment.failed === segment.runs ? TOP + 8 : TOP + 12 + (FLOOR - TOP - 12) * Math.min(1, Math.log1p(weight) / Math.log1p(120));
-    path += " L" + x0.toFixed(1) + "," + TOP + " L" + x0.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + depth.toFixed(1) + " L" + x1.toFixed(1) + "," + TOP;
     const range = time(segment.start) + "–" + time(segment.end);
-    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: TOP - 8, title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
-    if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: depth.toFixed(0), title: range + " · " + t("{n} runs · {m} pages changed", { n: segment.runs, m: segment.changed }) });
+    if (segment.failed) markers.push({ kind: "woke", left: 100 * x0 / W, top: LEVEL[0], title: range + " · " + t("{n} runs stopped early", { n: segment.failed }) });
+    if (segment.changed) markers.push({ kind: "changed", left: 100 * (x0 + x1) / (2 * W), top: LEVEL[1], title: range + " · " + t("{n} runs · {m} pages changed", { n: segment.runs, m: segment.changed }) });
   }
-  path += " L" + (W - 4) + "," + TOP;
-  svg.push('<path class="trace" pathLength="1" d="' + path + '"/>', "</svg>");
-  if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:' + TOP + 'px" title="' + esc(t("Last run ended {time}", { time: fmtTime(new Date(finished).toISOString()) })) + '"></span>');
+  go(W - 4, DEEP);
+  svg.push('<path class="area" d="' + path + " L" + (W - 4) + "," + H + " L4," + H + ' Z"/>', '<path class="trace" pathLength="1" d="' + path + '"/>');
+  if (rem.length) svg.push('<path class="rem" d="' + rem.join(" ") + '"/>');
+  svg.push("</svg>");
+  // The stage names at the left; a phone keeps the two that make it a night: REM and deep sleep.
+  if (size) LEVEL.forEach((y, i) => { if (!short || i === 1 || i === 3) over.push('<span class="lvl" style="top:' + y + 'px">' + esc(t(SLEEP_STAGES[i])) + "</span>"); });
+  if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:' + DEEP + 'px" title="' + esc(t("Last run ended {time}", { time: fmtTime(new Date(finished).toISOString()) })) + '"></span>');
   return '<div class="hypno' + (size ? " " + size : "") + '" role="img" aria-label="' + t("{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending", { n: runs.length, m: segments.length }) + '">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }
 // The night under its curve (#3311, owner 2026-11-22: «那个线的下面，就是晚上做事情的时候»): each stretch's work sits
@@ -8485,8 +8517,7 @@ function stretchItem(stretch) {
   item.addEventListener("keydown", event => { if (event.key === "Escape" && item.open) { item.open = false; item.querySelector("summary").focus(); } });
   return item;
 }
-// tail: what a phone appends to the stretches row (REM's settled line), so it costs no line of its own.
-function nightTimeline(asOf, tail = null) {
+function nightTimeline(asOf) {
   const scale = hypnoScale(asOf);
   if (!scale.runs.length) return null;
   const wrap = el("div", { class: "night-line" });
@@ -8520,8 +8551,8 @@ function nightTimeline(asOf, tail = null) {
   lane.style.setProperty("--row", Math.max(1, rows.length));  // on the lane: how many rows; each item sets its own
   wrap.appendChild(lane);
   const all = placed < stretches.length ? el("a", { class: "stretch-all", href: "#view=activity", text: t("All →") }) : null;
-  // On a phone, 全部 → and REM's settled line ride the same sideways row as the stretches.
-  if (narrow) lane.append(...[all, tail].filter(Boolean));
+  // On a phone 全部 → closes the list, at its left edge; on a wide screen it sits under the rows.
+  if (narrow && all) lane.append(all);
   else if (all) wrap.appendChild(all);
   return wrap;
 }
@@ -9672,7 +9703,9 @@ if (typeof MutationObserver === "function" && typeof document !== "undefined" &&
 function oneAction(status, primary, keep, rest) {
   const others = [...new Set(rest)].filter(node => node && node !== primary && !keep.includes(node));
   primary?.classList?.add("strip-lead");
-  const more = others.length ? el("details", { class: "row-more" }, [
+  // One thing left over is shown as itself: a menu holding one item is a click for nothing (art director, #3371).
+  if (others.length === 1) return [...(status ? [status] : []), ...dotted([primary, ...keep.filter(node => node !== primary), others[0]])];
+  const more = others.length > 1 ? el("details", { class: "row-more" }, [
     el("summary", { class: "row-more-btn", text: t("More actions") }),  // a word, never a bare glyph (D-100)
     el("div", { class: "row-more-menu" }, others)]) : null;
   more?.addEventListener?.("keydown", event => { if (event.key === "Escape" && more.open) { more.open = false; more.querySelector("summary").focus(); } });
@@ -10897,7 +10930,7 @@ function overview() {
   shownCount = groups.length;
   main.append(...whyNotes(), ...[snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
     todayNextLine(),
-    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [deskHead(groups, cards[0]?.r.path, ticked), todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
     // The calendar is part of Today, under the cards (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个
     // component，而不是单独的一个 category»); the day plan's proposals are its suggested blocks, not a list on top.
     todayCalendar(), staleWidget(todayEntries(entries).filter(staleEntry)), closedToday(), todoSection(), todayFolds(entries, counts)].filter(Boolean));
@@ -10966,22 +10999,30 @@ function nightWords() {
 }
 // Today opens with the night (#3311, owner 2026-11-22: the sleep curve stays on top, it is REM's signature): the
 // curve, the work under it on the same clock, what REM handled, and what it could not read, then who waits.
+// Who is waiting is the desk's title, over its first card (art director on #3371): the night block speaks only of
+// the night. A phone has no room for a second line, so there it shares 昨夜's line inside the night card.
+function waitingLine(groups, current, ticked) {
+  return el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [countLine(ticked), groups.length ? faceStrip(groups, current) : null])]);
+}
+function deskHead(groups, current, ticked) {
+  if (typeof window !== "undefined" && window.innerWidth <= 640) return null;
+  return el("div", { class: "desk-head" }, [waitingLine(groups, current, ticked)]);
+}
 function nightCard(groups, current, ticked) {
-  const n = groups.length, count = countLine(ticked), words = nightWords(), asOf = new Date(REM.as_of).getTime() || Date.now();
+  const words = nightWords(), asOf = new Date(REM.as_of).getTime() || Date.now();
   const gap = coverageLine(), handled = nightLine(), phone = typeof window !== "undefined" && window.innerWidth <= 640;
-  const people = el("div", { class: "nb solo" }, [el("div", { class: "faces" }, [count, n ? faceStrip(groups, current) : null])]);
-  // What REM settled for him rides the heading's line, so the curve and the first card's Send both fit the first
-  // screen (D-10). A phone has no room for a row of faces under the curve: the faces take the heading's line and the
-  // settled line ends the stretches row.
-  const timeline = nightTimeline(asOf, phone && handled ? el("span", { class: "nh-handled" }, [handled]) : null);
+  const people = phone ? waitingLine(groups, current, ticked) : null;
+  // What REM settled for him rides the heading's line, so the chart and the first card's Send both fit the first
+  // screen (D-10). On a phone the waiting line takes the heading's line (deskHead draws nothing there) and the
+  // settled line ends the stretch list.
+  const timeline = nightTimeline(asOf);
   return el("section", { class: "night-card card sparse" + (phone ? " phone" : ""), "aria-label": t("Last night") }, [
-    phone ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), people, timeline ? null : handled])
+    phone ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), people])
       : words || handled ? el("div", { class: "nh" }, [icon("moon"), el("span", { class: "nt", text: t("Last night") }), words ? el("span", { class: "night-sum", text: words }) : null,
         handled ? el("span", { class: "nh-handled" }, [handled]) : null]) : null,
     timeline,
     gap ? el("div", { class: "night-foot" }, [el("div", { class: "night-unread" }, [el("span", { class: "night-unread-k", text: t("Still unread") }), gap])]) : null,
     nightStall(),
-    phone ? null : people,
     // System health is the night's own business (#3156): one quiet line in its card, never above the work.
     scheduleFailure()]);
 }
@@ -11119,7 +11160,10 @@ function nightSummary(runs, marks) {
 // The side column: what others owe and what can be approved at once, what REM did overnight. 「关于 X，有什么值得
 // 记住？」 left Today in sprint 14: it picked a page REM already knew well, gave no reason and took no answer.
 function todaySide(counts) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts)].filter(Boolean));
+  // A phone has no room in the night card for what REM settled (D-10: Send stays in the first screen), so there it
+  // stays here, under the cards, as before sprint T3.
+  const phone = typeof window !== "undefined" && window.innerWidth <= 640;
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), phone ? nightLine() : null].filter(Boolean));
 }
 // What last night could not read, and one button that fixes it (#3353). Plain words, not internals (art director):
 // "微信还有 10 个聊天库读不了（已读 2/12）". A key capture needs the owner to log into a WeChat copy, so the

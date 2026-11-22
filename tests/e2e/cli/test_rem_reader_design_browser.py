@@ -254,7 +254,7 @@ def reader(tmp_path, monkeypatch):
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri())
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
         yield page, path.as_uri()
         browser.close()
         assert not errors, errors
@@ -335,8 +335,8 @@ def test_home_opens_on_what_to_remember_and_what_is_owed(reader):
     total = page.locator('#nav .n.waiting').inner_text()
     whos = page.locator('.today-brief .today-who').all_inner_texts()
     assert whos == ['Inès Halvorsen', 'Mara Ostrowski', 'Fernhill Labs', 'Harbour']
-    assert int(total) > 0 and page.locator('.night-card .count').text_content() == total
-    assert page.locator('.night-card .count-words').text_content() == 'things waiting on you'
+    assert int(total) > 0 and page.locator('#main .count-line .count').text_content() == total
+    assert page.locator('#main .count-words').text_content() == 'things waiting on you'
     assert 'Start with' not in page.locator('.night-card').inner_text()
     assert page.locator('.qcard').first.locator('.qage').inner_text() == '12 days · due Oct 3'
     assert 'Data-sharing addendum' in page.locator('.qcard[data-path="people/mara-ostrowski.md"] .words').first.inner_text()
@@ -602,7 +602,7 @@ def test_first_map_shows_results_next_step_and_held_count_on_phone(reader, tmp_p
     page, _ = reader
     page.set_viewport_size({"width": 375, "height": 812})
     page.goto(path.as_uri())
-    assert page.locator('.night-card .count').is_visible()
+    assert page.locator('#main .count-line .count').is_visible()
     assert page.locator('.first-map').is_visible()
     assert page.locator(".first-map h2").inner_text().endswith(" records mapped")
     assert page.locator(".first-map .morning-time").inner_text() == "0 memories written"
@@ -1350,7 +1350,7 @@ def test_empty_and_partial_waiting_states_show_only_open_counts(reader, mine, th
     assert 'See all 0' not in primary.inner_text()
     assert page.locator('.waiting-intro').count() == 0
     assert page.locator('.qcard').count() == bool(mine)
-    heading = page.locator('.night-card .count-line').inner_text()
+    heading = page.locator('#main .count-line').inner_text()
     assert heading.split('\n') == ([str(mine), 'thing waiting on you'] if mine else ['0', 'Nobody is waiting on you today.'])
     assert ' 0 ' not in primary.inner_text()
     # Your own total is the sidebar's number, not repeated here (TOP10 #9, polish); what others owe has its own widget.
@@ -4057,7 +4057,7 @@ Investigation: mapped 2026-09-01 · investigated 2026-10-01 (outlook)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(html.as_uri())
-        page.locator('.night-card .count').wait_for()
+        page.locator('#main .count-line .count').wait_for()
 
         def no_private_words():
             visible = page.locator('body').inner_text()
@@ -4149,7 +4149,7 @@ def test_round7_home_brief_today_limits_search_and_progressive_disclosure(reader
     assert page.locator('.qcard').count() == 1
     assert page.locator('.qcard .qitem').count() >= 5
     assert page.locator('.qcard .qage').inner_text() == '2 days overdue'
-    assert page.locator('.night-card .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
+    assert page.locator('#main .count-line .count').text_content() == page.locator('#nav .n.waiting').inner_text()  # the badge's (sprint 14)
     assert 'Start with' not in page.locator('.night-card').inner_text()
     assert page.locator('.deal .dd').inner_text() == '2 d'  # the face says its days overdue
     # The access decision cites [4], whose message predates its prose date; its age follows the evidence and it leaves Today.
