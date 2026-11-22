@@ -8574,8 +8574,11 @@ function hypnogram(asOf, size = "") {
   svg.push('<path class="area" d="' + path + " L" + (W - 4) + "," + H + " L4," + H + ' Z"/>', '<path class="trace" pathLength="1" d="' + path + '"/>');
   if (rem.length) svg.push('<path class="rem" d="' + rem.join(" ") + '"/>');
   svg.push("</svg>");
-  // The stage names at the left; a phone keeps the two that make it a night: REM and deep sleep.
-  if (size) LEVEL.forEach((y, i) => { if (!short || i === 1 || i === 3) over.push('<span class="lvl" style="top:' + y + 'px">' + esc(t(SLEEP_STAGES[i])) + "</span>"); });
+  // The stage names at the left. A phone's levels stand 8px apart, too close for four words, so it names two: the
+  // highest level tonight's curve reached and 深睡 (art director on #3382: an unnamed top level read as REM, so a
+  // stuck night says 清醒 there; a calm night says 快速眼动, as before).
+  const top = Math.min(...(path.match(/,(\d+(?:\.\d+)?)/g) || [",0"]).map(v => Number(v.slice(1))).filter(y => LEVEL.includes(y)), DEEP);
+  if (size) LEVEL.forEach((y, i) => { if (!short || y === top || y === DEEP) over.push('<span class="lvl" style="top:' + y + 'px">' + esc(t(SLEEP_STAGES[i])) + "</span>"); });
   if (runs.length) over.push('<span class="dot dawn" style="left:' + pct(x(finished)) + ';top:' + DEEP + 'px" title="' + esc(t("Last run ended {time}", { time: fmtTime(new Date(finished).toISOString()) })) + '"></span>');
   return '<div class="hypno' + (size ? " " + size : "") + '" role="img" aria-label="' + t("{n} runs in {m} stretches in the last pass; white dots mark pages changed; grey marks stopped runs; amber marks the last run ending", { n: runs.length, m: segments.length }) + '">' + svg.join("") + over.join("") + runMarkers(markers) + "</div>";
 }

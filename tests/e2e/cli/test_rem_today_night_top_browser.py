@@ -287,3 +287,26 @@ def test_the_desk_title_adds_nothing_when_every_waiting_item_has_a_card(page_fil
         assert page.locator("#main .desk-head .count-scope").count() == 0
     finally:
         browser.close(); api.stop()
+
+
+def test_a_phone_names_awake_only_when_tonight_reaches_it(page_file):
+    """On a phone an unnamed top level read as REM (art director on #3382): the phone names the levels the curve uses,
+    so a stuck stretch brings 清醒's label, and a night that never woke has none."""
+    api, browser, page = _open(page_file, 390, 844, mobile=True)
+    try:
+        page.evaluate(STUCK_NIGHT, isolated_context=False)
+        levels = page.locator("#main .night-card .hypno .lvl").all_inner_texts()
+        assert "Awake" in levels and "Deep sleep" in levels, levels
+        page.evaluate("""() => { const end = new Date(REM.as_of).getTime(), at = h => new Date(end + h * HOUR).toISOString();
+          REM.logs = [{run_id: 'calm', phase: 'investigate', started_at: at(-3), finished_at: at(-2.9), items: 4, changed: ['people/mara-ostrowski.md'], outcome: 'completed'}];
+          render(); }""", isolated_context=False)
+        levels = page.locator("#main .night-card .hypno .lvl").all_inner_texts()
+        assert "Awake" not in levels and "REM sleep" in levels and "Deep sleep" in levels, levels
+        page.evaluate(STUCK_NIGHT, isolated_context=False)
+        boxes = [page.locator("#main .night-card .hypno .lvl").nth(i).bounding_box()
+                 for i in range(page.locator("#main .night-card .hypno .lvl").count())]
+        assert len(boxes) == 2, boxes  # two names fit; four on 8px levels overlapped
+        for a, b in zip(boxes, boxes[1:]):
+            assert a["y"] + a["height"] <= b["y"] + 0.5, boxes  # the labels never overlap
+    finally:
+        browser.close(); api.stop()
