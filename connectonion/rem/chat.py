@@ -160,6 +160,30 @@ def _wechat_streams():
     return (("other", other), ("user", mine))
 
 
+# Characters that render as nothing or as a blank: Hangul fillers and zero-width marks people put in WeChat names.
+_FILLERS = frozenset("\u3164\u115f\u1160\uffa0\u200b\u200c\u200d\u2060\ufeff")
+
+
+def usable_name(text: str) -> bool:
+    """A name worth titling a page: at least one letter, digit or CJK character, not only punctuation, blanks or
+    emoticons. WeChat nicknames such as ".", "...", "^ ^", "。" or a filler blank are not (#3368)."""
+    import unicodedata
+    return any(unicodedata.category(ch)[0] in "LN" and ch not in _FILLERS for ch in text or "")
+
+
+def wechat_title(username: str, *names: str) -> str:
+    """The first usable of the owner's remark and the contact's nickname; else a plain placeholder with a short
+    hint, never the raw id. "" when the contact has no name at all (left out, as before)."""
+    # A "name" that is only the raw id is no name: such a contact is left out, as before.
+    tried = [name for name in (" ".join((n or "").split()) for n in names) if name != username]
+    for name in tried:
+        if usable_name(name):
+            return name
+    if not any(tried):
+        return ""
+    return f"微信好友（无名字 · …{username[-4:]}）"
+
+
 def wechat_people(min_messages: int = 1) -> list[dict]:
     """Candidate people from WeChat for Mac: every friend in the address book, plus anyone with a one-to-one chat.
 
@@ -201,9 +225,11 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
         c["n90"] += at >= cutoff
     friend_ids = {f["username"] for f in book}
     remarked = {f["username"] for f in book if f["remark"].strip()}
+    by_user = {f["username"]: f for f in book}
     people = []
     for chat, c in counts.items():
-        name = (c["name"] or "").strip()
+        entry = by_user.get(chat)
+        name = wechat_title(chat, entry["remark"], entry["nick_name"]) if entry else wechat_title(chat, c["name"] or "")
         # A real name, not the raw id and not a group/service; the id is the handle, the name titles the page.
         if c["mails"] < min_messages or not name or name == chat:
             continue
@@ -212,7 +238,7 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
                        "remark": chat in remarked, "last": c["last"], "last_mine": c["last_mine"], "n90": c["n90"]})
     # The rest of the address book: a friend with no chat on this Mac is still someone the owner knows (#3347).
     for f in book:
-        chat, name = f["username"], (f["remark"] or f["nick_name"]).strip()
+        chat, name = f["username"], wechat_title(f["username"], f["remark"], f["nick_name"])
         if chat in counts or not _one_to_one(chat) or chat == owner or chat in verified or not name or name == chat:
             continue
         people.append({"address": chat, "name": name, "mails": 0, "sent": 0, "received": 0, "kind": "wechat",

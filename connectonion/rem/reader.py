@@ -426,7 +426,10 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .threads import person_marks
     data['person_marks'] = person_marks(root) if local else {}
     # Address-book friends with nothing to read yet: People folds them out of the table (#3347).
-    from .onboard import activity, idle
+    from .onboard import activity, backfill, idle
+    if local:
+        # Pages made by an older map have no activity or onboarding record; fill them once, locally (#3368).
+        backfill(root)
     data['idle_people'] = idle(root)
     # When the owner last talked with each WeChat person: People's columns and its 90-day fold (#3346).
     data['chat_activity'] = activity(root)

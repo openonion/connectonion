@@ -12479,13 +12479,26 @@ function peopleRow(r) {
   }
   return { r, f, open: openItems(r, base), org: personOrg(r), rel, status: known(r).status, src: personSources(r) };
 }
+// Mark only the rarer source (#3368): with most rows from WeChat, "微信" on every row says nothing, so the few
+// mail people carry the mark instead (and the reverse). One source alone, or a tie, marks nothing.
+let minorityMemo = null;
+function minoritySource() {
+  const people = inCategory("people"), key = people.length + ":" + (people[0]?.path || "");
+  if (minorityMemo?.key === key) return minorityMemo.src;
+  const n = { wechat: 0, mail: 0 };
+  for (const r of people) for (const src of personSources(r)) if (src in n) n[src] += 1;
+  const src = n.wechat && n.mail && n.wechat !== n.mail ? (n.wechat < n.mail ? "wechat" : "mail") : null;
+  minorityMemo = { key, src };
+  return src;
+}
 // #3157: a page titled by an address is a person whose name REM does not know; it never reads as a name.
 function addressTitle(r) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(r.title || "").trim()); }
 function personNameCell(d) {
   const name = addressTitle(d.r)
     ? el("a", { href: href(d.r), class: "nm-unknown", title: d.r.title }, [el("span", { text: t("Name unknown") }), el("span", { class: "nm-address", text: d.r.title })])
     : el("a", { href: href(d.r), title: d.r.title, text: d.r.title });
-  const marks = (d.src || []).map(src => el("span", { class: "src-mark", text: t(src === "wechat" ? "WeChat" : "Mail") }));
+  const rare = minoritySource();
+  const marks = (d.src || []).filter(src => src === rare).map(src => el("span", { class: "src-mark", text: t(src === "wechat" ? "WeChat" : "Mail") }));
   return el("span", { class: "nm" }, [name, ...marks, updatedMarker(d.r), notPersonButton(d.r, true)]);
 }
 // The organisation's name only; where it came from ("(their signature)") is its tooltip (#3157).
