@@ -11,6 +11,7 @@ Experimental: its commands may still change between 1.9.x releases.
 
 Build (once)
   init          Build the notebook from mail and coding sessions, then offer daily updates.
+  map           Make pages for what one source holds: people, orgs, projects. No model.
 Collect — read new mail and sessions
   collect       Read one batch of new material into the notebook.
 Investigate — fill pages from originals
@@ -628,6 +629,28 @@ Next:     co rem investigate tags   (when tag pages are due)
 Back:     co rem --help
 ```
 
+## co rem map
+
+```
+Make pages for what one source holds. Each source yields its own kinds of page:
+gmail and outlook yield people and orgs, wechat yields people, codex and
+claude-code yield projects. Calls no model; adds pages and handles, never
+removes or rewrites what a page says. A person already on a page from another
+source gets the new handle added to that page.
+
+Usage:    co rem map [people|orgs|projects|knowledge] --source NAME [--dry-run]
+          co rem map people          people from every enabled source
+Example:  co rem map people --source wechat --dry-run
+          --source    a source from co rem sources (enabled and approved)
+          --dry-run   print what it would create and merge; writes nothing
+          KIND        only this kind; refused when the source doesn't yield it
+
+Writes:   new pages under people/, orgs/ or projects/, and handles on existing
+          people pages. Read-only with --dry-run.
+Next:     co rem investigate people --source NAME --new
+Back:     co rem --help
+```
+
 ## co rem list
 
 ```
@@ -776,8 +799,7 @@ Output:   One line each: the state and next run; open threads waiting on you;
 Options:  --verbose   Show full run details, worker status, token counts and
                       coverage, schedule times and internal diagnostic fields.
                       Also explain investigation points, the weekly usage unit.
-          --show-private
-                      Print [sensitive] passages and full links. By default the
+          --show-private  Print [sensitive] passages and full links. By default the
                       day plan, calendar and run reasons hide each sensitive
                       passage as [hidden] and show a link as its host, so the
                       dashboard is safe to share; --json is unchanged.
@@ -915,7 +937,7 @@ Back:     co rem --help
 
 ```
 Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp. Showing is read-only.
+whatsapp, wechat. Showing is read-only and lists the page kinds each source yields.
 
 Usage:    co rem sources
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
