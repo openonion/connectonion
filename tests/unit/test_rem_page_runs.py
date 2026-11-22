@@ -216,3 +216,31 @@ def test_a_failed_run_older_than_the_pages_last_change_is_not_shown(root):
     stamp = datetime(2026, 10, 5, tzinfo=timezone.utc).timestamp()
     os.utime(page, (stamp, stamp))
     assert page_runs.states(root, [PAGE], mail_days={})[PAGE]["run"] is None
+
+
+# #2235 follow-up (2026-11-23): a rejected draft showed "Candidate rejected, kept at candidate.md: Unused
+# citation: 41" under a project title. The reason is a plain sentence; the checker's words are a detail,
+# and no path or file name reaches the reader.
+REJECTED = "Candidate rejected, kept at /Users/someone/.co/rem/.state/tasks/abc/candidate.md: Unused citation: 41"
+
+
+def test_a_rejected_draft_is_said_plainly_with_the_checks_words_as_a_detail():
+    said = page_runs.explain(REJECTED)
+    assert said["reason_kind"] == "rejected"
+    assert "candidate" not in said["reason"].lower() and "/" not in said["reason"]
+    assert said["detail"] == "Unused citation: 41"
+
+
+def test_an_unknown_reason_never_carries_a_local_path():
+    said = page_runs.explain("Something broke reading /Users/someone/.co/rem/.state/tasks/abc/notes.md today")
+    assert said["reason_kind"] == "other" and "/Users" not in said["reason"] and "notes.md" not in said["reason"]
+
+
+def test_a_receipt_saved_with_the_raw_rejection_is_read_plainly(root):
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append"], "result": "failed",
+                                                    "started_at": "2026-10-01T23:00:00+00:00", "finished_at": "2026-10-02T00:20:00+00:00",
+                                                    "before_sha256": page_runs._sha(INVESTIGATED),
+                                                    "reason": REJECTED, "reason_kind": "other"})
+    run = page_runs.status(root, PAGE)
+    assert run["reason_kind"] == "rejected" and run["detail"] == "Unused citation: 41"
+    assert "candidate" not in run["reason"].lower()

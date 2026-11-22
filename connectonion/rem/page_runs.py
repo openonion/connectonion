@@ -138,13 +138,25 @@ REASONS = [
 ]
 
 
+# A draft the page check refused (#2235 follow-up, 2026-11-23): the runner's own words named the kept
+# candidate's path ("Candidate rejected, kept at …/candidate.md: Unused citation: 41") and reached a project's
+# head as they were. The owner gets a sentence; the checker's words stay as a detail, without the path.
+REJECTED = re.compile(r"Candidate rejected(?:, kept at \S+?)?: (.+)$")
+
+
 def explain(message: str) -> dict:
-    """{"reason": a plain sentence, "reason_kind": what kind}: never a list or a traceback."""
+    """{"reason": a plain sentence, "reason_kind": what kind}: never a list, a traceback or a local path.
+    A refused draft also carries "detail", the check's words."""
+    from .refusals import LOCAL_PATH
     message = " ".join(str(message or "").split())
     for kind, pattern, sentence in REASONS:
         if match := pattern.search(message):
             return {"reason": sentence.format(*match.groups()), "reason_kind": kind}
-    return {"reason": (message[:300] or "The investigation stopped without saying why."), "reason_kind": "other"}
+    if match := REJECTED.search(message):
+        return {"reason": "The draft did not pass the page check, so nothing on the page changed.",
+                "reason_kind": "rejected", "detail": LOCAL_PATH.sub("", match.group(1)).strip()[:300]}
+    plain = " ".join(LOCAL_PATH.sub("", message).split())
+    return {"reason": (plain[:300] or "The investigation stopped without saying why."), "reason_kind": "other"}
 
 
 def _unlisted(reason: str) -> str:
@@ -165,8 +177,12 @@ def _unlisted(reason: str) -> str:
 def _readable(receipt: dict, progress: list[dict]) -> dict:
     """A failed receipt's reason as a sentence and a kind (#3155): receipts written before rc28 kept the raw text.
     The run's own recorded error is preferred when the stored reason says nothing (a progress line)."""
-    if receipt.get("result") != "failed" or receipt.get("reason_kind"):
+    if receipt.get("result") != "failed":
         return {}
+    if receipt.get("reason_kind"):
+        # Receipts saved before a kind existed for their words (a refused draft, before rc21) are read again.
+        said = explain(receipt.get("reason")) if receipt["reason_kind"] == "other" else {}
+        return said if said.get("reason_kind", "other") != "other" else {}
     for error in [row["error"] for row in progress if row.get("error")] + [_unlisted(receipt.get("reason"))]:
         said = explain(error)
         if said["reason_kind"] != "other" or (error and not error.startswith("Investigation: ")):
