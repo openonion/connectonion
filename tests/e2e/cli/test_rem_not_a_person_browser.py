@@ -136,3 +136,27 @@ def test_the_person_page_has_the_button_in_its_action_column(reader):
     button = page.locator(".hero-acts .not-person")
     button.wait_for()
     assert _topmost(page, button) and button.bounding_box()["height"] >= 44
+
+
+QI_WEN = ("# Qi Wen\n\nQi Wen asked about renting the studio [1].\n\n## Contact\n- Handles: wxid_qiwen [1]\n"
+          "- Also known as: Qi Wen\n- Role: Unknown\n\n## Sources\n- [1] wechat:wxid_qiwen — invented\n")
+
+
+def test_a_wechat_only_page_has_not_a_person_and_it_marks_the_wechat_id(reader):
+    # #3339: a page with no mail address (a WeChat contact) had no button, since the mark took only an address.
+    page, root, calls, width = reader
+    (root / "people/qi-wen.md").write_text(QI_WEN)
+    assert "Qi Wen" in _people(page)
+    row = page.locator(".people-table tbody tr", has_text="Qi Wen")
+    row.hover() if width > 500 else None
+    button = row.locator(".not-person")
+    assert _topmost(page, button)
+    button.click()
+    page.wait_for_function("() => (document.getElementById('done-notice')?.innerText || '').startsWith('Moved out of People')", timeout=5000)
+    assert calls[-1] == ("/rem/person", {"address": "wxid_qiwen", "person": False})   # the handle, never the name
+    assert "not-person wxid_qiwen" in (root / ".state" / "people-marks.txt").read_text()
+    # After a reload the notebook agrees: out of People, in agents and services with 是人 to take it back.
+    assert "Qi Wen" not in _people(page)
+    page.locator(".machine-directory summary").click()
+    back = page.locator(".machine-directory tr", has_text="wxid_qiwen").locator(".is-person")
+    assert _topmost(page, back)

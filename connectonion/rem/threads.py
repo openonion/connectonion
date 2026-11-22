@@ -371,13 +371,14 @@ PERSON_MARKS_HEAD = ("# Who is and is not a person in REM People: the owner's wo
 
 
 def person_marks(root):
-    """{address: 'person' or 'not-person'}, addresses casefolded; the last line for an address wins."""
-    from .files import EMAIL
+    """{handle: 'person' or 'not-person'}: mail addresses and chat handles, casefolded; the last line wins."""
+    from .files import person_handle
     file = state_path(root, PERSON_MARKS)
     found = {}
     for line in file.read_text(encoding='utf-8').splitlines() if file.is_file() else []:
         mark = re.match(r'\s*(?:\d{4}-\d{2}-\d{2}\s+)?(not-person|person)\s+(\S+)', line)
-        if mark and not line.lstrip().startswith('#') and EMAIL.fullmatch(mark[2]):
+        # A mail address or a chat handle (a WeChat id): a WeChat-only contact can be 不是人 too (#3339).
+        if mark and not line.lstrip().startswith('#') and person_handle(mark[2]):
             found[mark[2].casefold()] = mark[1]
     return found
 

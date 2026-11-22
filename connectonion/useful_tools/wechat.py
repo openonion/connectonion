@@ -159,6 +159,14 @@ def names(contact_conn: sqlite3.Connection) -> dict[str, str]:
             for row in contact_conn.execute("SELECT username, remark, nick_name FROM contact")}
 
 
+def verified_accounts(contact_conn: sqlite3.Connection) -> set[str]:
+    """Usernames WeChat marks as verified (verify_flag set): official accounts, brands, companies and services.
+
+    On the owner's 4.1 contact table people carry verify_flag 0; a verified account carries a non-zero flag.
+    """
+    return {row["username"] for row in contact_conn.execute("SELECT username FROM contact WHERE verify_flag != 0")}
+
+
 def sessions(session_conn: sqlite3.Connection, known: dict[str, str], limit: int = 30) -> list[dict]:
     """Recent conversations, newest first: who, the last message's summary, its time and the unread count."""
     rows = session_conn.execute(

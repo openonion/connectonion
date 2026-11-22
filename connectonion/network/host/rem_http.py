@@ -291,10 +291,12 @@ async def _action(scope, receive, send, root, headers):
         operation = lambda: {"ignored": threads.ignore_sender(root, body["address"], ignored=body["ignored"])}
     elif scope["path"] == "/rem/person":
         from ...rem.files import EMAIL
-        # 不是人 / 是人 for one address, or null to let the rules decide again; never a domain.
+        # 不是人 / 是人 for one address or chat handle (a WeChat id, #3339), or null to let the rules decide again;
+        # never a domain or a pattern.
+        from ...rem.files import person_handle
         if (not isinstance(body.get("address"), str) or len(body["address"]) > 254
-                or not EMAIL.fullmatch(body["address"]) or body.get("person") not in (True, False, None)):
-            await _reply(send, 400, json.dumps({"error": "Expected one mail address and person true, false or null"}), "application/json")
+                or not person_handle(body["address"]) or body.get("person") not in (True, False, None)):
+            await _reply(send, 400, json.dumps({"error": "Expected one mail address or chat handle and person true, false or null"}), "application/json")
             return
         operation = lambda: {"marks": threads.mark_person(root, body["address"], person=body["person"])}
     elif scope["path"] == "/rem/direct-send":

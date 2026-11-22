@@ -164,22 +164,26 @@ def wechat_people(min_messages: int = 1) -> list[dict]:
 
     Shape matches the map's mail rows ({address, name, mails, sent, received}), with the bare WeChat id as
     the address so investigation's handle match finds the chat (its correspondent is that id). Read-only.
-    Groups, official accounts and service chats are left out. Returns [] when WeChat isn't readable.
+    Groups, official and verified accounts (brands, companies, services) and service chats are left out.
+    Returns [] when WeChat isn't readable.
     """
     from ..useful_tools import wechat as engine
     db_storage = engine.db_storage_in_use()
     if db_storage is None or not engine.KEY_MAP.is_file():
         return []
     try:
-        known = engine.names(engine.open_readonly(engine.decrypt_db(
-            db_storage / "contact" / "contact.db", engine.key_for(db_storage / "contact" / "contact.db"))))
+        contacts = engine.open_readonly(engine.decrypt_db(
+            db_storage / "contact" / "contact.db", engine.key_for(db_storage / "contact" / "contact.db")))
+        known = engine.names(contacts)
+        verified = engine.verified_accounts(contacts)
     except Exception:
         return []
     owner = engine.owner_username(db_storage)
     counts = {}
     for row in engine.all_messages(db_storage, known):
         chat = row["chat"]
-        if not _one_to_one(chat) or chat == owner:
+        # A verified account (verify_flag set: a brand, a company or a service) is not a person (#3339).
+        if not _one_to_one(chat) or chat == owner or chat in verified:
             continue
         c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0})
         c["mails"] += 1

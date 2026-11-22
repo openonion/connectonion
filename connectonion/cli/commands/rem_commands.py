@@ -193,17 +193,32 @@ def _decoding(trace):
 
 
 def _map_summary(report: dict, dry_run: bool) -> str:
-    """`co rem map` in words: per source and kind, what it made or would make; names on the owner's own terminal."""
+    """`co rem map` in words: per source and kind, each count with its own names; names on the owner's terminal.
+
+    The names follow the count they belong to: a release check once read "not worth a page 10: <15 names>" as the
+    skipped contacts when they were the created ones (#3339)."""
     verb = "would create" if dry_run else "created"
-    lines = []
+    named = lambda rows: ", ".join(names[:20]) + (" …" if len(names) > 20 else "") if (names := [  # noqa: E731
+        row["name"] if isinstance(row, dict) else str(row) for row in rows]) else ""
+    lines, made = [], []
     for name, kinds in report.items():
         for kind, out in kinds.items():
-            names = [row["name"] if isinstance(row, dict) else str(row) for row in out["create"]]
-            line = (f"{name}: {verb} {len(out['create'])} {kind}, merge {len(out['merge'])}, "
-                    f"already there {out['known']}, not worth a page {out['skip']}")
-            lines.append(line + (": " + ", ".join(names[:20]) + (" …" if len(names) > 20 else "") if names else ""))
+            created = named(out["create"])
+            lines.append(f"{name} · {kind}: {verb} {len(out['create'])}" + (f": {created}" if created else ""))
+            merged = named(out["merge"])
+            rest = [f"merged {len(out['merge'])}" + (f" ({merged})" if merged else ""),
+                    f"already there {out['known']}", f"not worth a page {out['skip']}"]
+            if out.get("not_person"):
+                rest.append(f"not a person by your mark {out['not_person']}")
+            lines.append("  " + " · ".join(rest))
+            if out["create"] and kind == "people":
+                made.append(name)
     if dry_run:
         lines.append("Dry run: nothing was written.")
+    elif made:
+        # Next stays `status` while the schedule writes (_owner_next); the line says what happens to the new pages.
+        lines.append(f"New pages are first in the queue; the night investigates them. Now instead: "
+                     f"co rem investigate people --source {made[0]} --new")
     return "\n".join(lines) or "No enabled source yields that kind."
 
 

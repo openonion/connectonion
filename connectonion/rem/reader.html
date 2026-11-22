@@ -11047,6 +11047,17 @@ Object.assign(UI.zh, { "Not a person": "不是人", "A person": "是人", "Moved
 function recordEmails(r) {
   return [...new Set((String(facts(r).email || "").match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []).map(address => address.toLowerCase()))];
 }
+// What 不是人 marks: the page's addresses, or on a page with none (WeChat only) the chat handles on its Handles
+// line, the same rule the census reads (#3339). Never names: Also known as holds names too.
+function recordMarkHandles(r) {
+  const emails = recordEmails(r);
+  if (emails.length) return emails;
+  // facts() keeps a fixed set of fields; the Handles line is read from the parsed facts themselves.
+  const line = [...parseFacts(r)].find(([label]) => label.toLowerCase() === "handles");
+  const value = line ? line[1].map(item => item.value).join(", ") : "";
+  return [...new Set(value.replace(/\s*\[[^\]]*\]/g, "").split(/[,;]\s*/).map(h => h.trim().toLowerCase())
+    .filter(h => /^[a-z][a-z0-9_-]{4,63}$/.test(h)))];
+}
 async function savePersonMark(addresses, person) {
   for (const address of addresses) {
     const reply = await hostPost("/rem/person", { address, person });
@@ -11063,7 +11074,7 @@ function personMarkNotice(words, undo) {
   button.focus({ preventScroll: true });
 }
 function notPersonButton(r, compact = false) {
-  const addresses = recordEmails(r);
+  const addresses = recordMarkHandles(r);
   if (!liveHere() || !addresses.length || r.path === REM.owner) return null;
   const button = el("button", { type: "button", class: "not-person" + (compact ? " compact" : ""), title: t("Not a person: an assistant, a bot or a service"), text: t("Not a person") });
   const out = async () => {
@@ -11085,7 +11096,7 @@ function notPersonButton(r, compact = false) {
 // Where an assistant or service waits: a folded group under People, each with 是人 to bring it back.
 function machineDirectory() {
   const marks = REM.person_marks || {};
-  const pages = REM.records.filter(r => r.category === "people" && r.service && (r.agent || recordEmails(r).some(address => marks[address] === "not-person")));
+  const pages = REM.records.filter(r => r.category === "people" && r.service && (r.agent || recordMarkHandles(r).some(address => marks[address] === "not-person")));
   const contacts = (REM.contact_candidates || []).filter(row => row.machine);
   if (!pages.length && !contacts.length) return null;
   const back = (row, addresses, done, undone) => {
@@ -11105,8 +11116,8 @@ function machineDirectory() {
     };
     return button;
   };
-  const rows = [...pages.map(r => el("tr", {}, [el("td", {}, [el("a", { href: href(r), text: r.title })]), el("td", { text: recordEmails(r).join(", ") }),
-      el("td", {}, [back(r.title, recordEmails(r), () => { r.service = false; }, () => { r.service = true; })])])),
+  const rows = [...pages.map(r => el("tr", {}, [el("td", {}, [el("a", { href: href(r), text: r.title })]), el("td", { text: recordMarkHandles(r).join(", ") }),
+      el("td", {}, [back(r.title, recordMarkHandles(r), () => { r.service = false; }, () => { r.service = true; })])])),
     ...contacts.map(row => el("tr", {}, [el("td", { text: row.name || row.email }), el("td", { text: row.email }),
       el("td", {}, [back(row.name || row.email, [row.email.toLowerCase()], () => { row.machine = false; }, () => { row.machine = true; })])]))];
   return el("details", { class: "contact-directory machine-directory" }, [
