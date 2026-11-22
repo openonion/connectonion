@@ -52,6 +52,10 @@ def prepare(root, config, *, scheduled, carry=None):
     # own (WeChat contacts), and puts the people pages it made or reached first in the investigation queue.
     from .onboard import run_due
     basics_changed += run_due(root, sources, night=True)
+    # How much of each source REM can read (#3353): a gap (e.g. WeChat databases with no key after a history
+    # migration) is stored for Today's one line, instead of being found later by the owner.
+    from .coverage import record as record_coverage
+    record_coverage(root, sources)
     # Skill call counts are a script over the session files, like the basics above:
     # only init and `co rem skills map` ran it, so counts froze on the day of init (#2950).
     from .skill_map import map_skills

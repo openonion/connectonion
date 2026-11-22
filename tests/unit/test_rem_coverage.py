@@ -34,3 +34,24 @@ def test_status_shows_the_gap_under_the_source_row(tmp_path, monkeypatch):
     (root / ".state").mkdir(parents=True)
     rows = "\n".join(rem_status._sources_mapped(root))
     assert "缺 2" in rows and "co wechat key capture" in rows
+
+
+def test_too_few_friends_with_chats_is_a_gap_with_the_phone_fix(tmp_path, monkeypatch):
+    storage = _storage(tmp_path, monkeypatch, keyed=1, unkeyed=0)
+    monkeypatch.setattr(wechat, "db_storage_in_use", lambda: storage)
+    monkeypatch.setattr(wechat, "text_coverage", lambda db: {"friends": 1659, "with_chats": 25, "missing": 1634})
+    found = rem_coverage.source_coverage("wechat", {"kind": "wechat", "enabled": True})
+    assert found["skipped"] and "迁移到电脑" in found["skipped"][-1]["fix"]
+
+
+def test_the_night_stores_the_gaps_for_today(tmp_path, monkeypatch):
+    storage = _storage(tmp_path, monkeypatch, keyed=1, unkeyed=3)
+    monkeypatch.setattr(wechat, "db_storage_in_use", lambda: storage)
+    root = tmp_path / "rem"
+    (root / ".state").mkdir(parents=True)
+    rem_coverage.record(root, {"wechat": {"kind": "wechat", "enabled": True}})
+    gap, = rem_coverage.stored(root)
+    assert gap["missing_keys"] == 3 and gap["fix"] == "co wechat key capture"
+    assert "缺 3" in gap["line"] and "missing a key" in gap["line_en"]
+    rem_coverage.record(root, {"wechat": {"kind": "wechat", "enabled": False}})
+    assert rem_coverage.stored(root) == []  # a fixed or removed source clears the line

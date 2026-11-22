@@ -3748,6 +3748,7 @@
     font: var(--w-bold) var(--s-ui)/1.3 var(--font); cursor: pointer; }
   .approve-all:hover:not(:disabled) { background: var(--well); }
   .closed { display: flex; align-items: center; gap: 8px; padding: 4px 6px; color: var(--grey); font: var(--w-regular) var(--s-ui)/1.5 var(--font); }
+  .coverage-fix { white-space: nowrap; }
   .closed .ic { width: 15px; height: 15px; }
   .closed .link-btn { margin-left: auto; }
   #night-sheet .night-done h2 { display: none; }
@@ -4569,7 +4570,7 @@ const UI = {
     "Searching for relevant context": "正在查资料", "Context search completed": "资料查完了", "Context search failed": "查资料失败",
     "Using a provider tool": "正在用工具", "Provider tool completed": "工具用完了", "Provider tool failed": "工具失败了",
     "{agent} finished": "{agent} 做完了",
-    "{agent} stopped before finishing": "{agent} 没做完就停了",
+    "{agent} stopped before finishing": "{agent} 没做完就停了", "(+{n} more)": "（另有 {n} 个源）",
     "See result": "看结果",
     "Draft with this reply": "用这个回复起草", "Retry": "重试", "Clear failed runs": "清除失败记录",
     "Reply draft prepared": "回复草稿已准备好", "Open reply draft": "查看回复草稿",
@@ -10802,7 +10803,19 @@ function nightSummary(runs, marks) {
 // The side column: what others owe and what can be approved at once, what REM did overnight. 「关于 X，有什么值得
 // 记住？」 left Today in sprint 14: it picked a page REM already knew well, gave no reason and took no answer.
 function todaySide(counts) {
-  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine()].filter(Boolean));
+  return el("aside", { class: "side", "aria-label": t("Around today") }, [todayNext(), othersWidget(counts), nightLine(), coverageLine()].filter(Boolean));
+}
+// What last night could not read, with the one step that fixes it (#3353): e.g. WeChat history migrated after the
+// last key capture sat in databases REM had no key for, and the owner had to notice. Only a step that needs him is
+// asked; the line names the command, and the rest REM does itself.
+function coverageLine() {
+  const gap = (REM.coverage_gaps || [])[0];
+  if (!gap) return null;
+  const more = (REM.coverage_gaps || []).length - 1;
+  const [said, command] = (uiLanguage === "zh" ? gap.line : gap.line_en || gap.line).split(" → ");
+  return el("div", { class: "closed coverage-gap", role: "status" }, [icon("clock"),
+    el("span", {}, [said + (more > 0 ? " " + t("(+{n} more)", { n: more }) : ""),
+      command ? el("span", { class: "mono coverage-fix", text: " → " + command }) : null])]);
 }
 // What is next, on the first screen beside the cards (rc34 hunt: the calendar sat ~989px down). The cards stay
 // first; this is the calendar's head, not a second calendar: it reuses agendaEntries and agDetail.
