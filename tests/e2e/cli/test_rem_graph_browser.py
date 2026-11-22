@@ -24,12 +24,6 @@ pytestmark = pytest.mark.skipif(
 TOPIC = "knowledge/heat-storage.md"
 
 
-
-# The 3D map is the desktop default (#3309) and has its own tests (test_rem_live_graph_browser.py). These pages
-# pin the 2D map, which a phone, reduced motion and the owner's 2D choice still draw, so its labels, marks
-# and canvas keep their coverage.
-PIN_2D = "try { localStorage.setItem('co-rem-graph-dim', '2d'); } catch (e) {}"
-
 def notebook(root):
     from connectonion.rem.config import prepare
     from connectonion.rem.files import Notebook
@@ -55,7 +49,6 @@ def page(tmp_path, monkeypatch):
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 900}, locale="en-US")
-        page.add_init_script(PIN_2D)
         errors, requests = [], []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("request", lambda request: requests.append(request.url) if request.url.startswith("http") else None)
@@ -154,7 +147,6 @@ def test_with_no_topics_knowledge_says_rem_files_them_at_night(tmp_path, monkeyp
         browser = api.chromium.launch(channel="chrome", headless=True)
         for width in (1440, 390):
             page = browser.new_page(viewport={"width": width, "height": 900}, locale="en-US")
-            page.add_init_script(PIN_2D)
             page.goto(path.as_uri())
             page.locator("#nav a").first.wait_for(state="attached")  # behind a menu at 390
             # #2996: Knowledge is a rail place even before the night files an entry; it holds the graph too.
@@ -262,7 +254,6 @@ def test_a_long_linked_page_name_wraps_on_a_phone(tmp_path, monkeypatch):
     with sync_playwright() as api:
         browser = api.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 390, "height": 844}, locale="en-US")
-        page.add_init_script(PIN_2D)
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(path.as_uri() + "#r=knowledge%2Fheat-storage.md")
         name = page.locator(".gx-row-name a", has_text="Where should a bare setup command")

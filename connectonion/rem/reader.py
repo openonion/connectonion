@@ -27,10 +27,11 @@ TEMPLATE = Path(__file__).with_name("reader.html")
 PLACEHOLDER = "/*__REM_DATA__*/null"
 # The graph's layout and zoom, pinned and inlined so the page never fetches a script.
 D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"
-# The 3D knowledge graph (#3309): three.js + d3-force-3d, bundled as one pinned UMD build. It is inlined as an
-# inert text block and run only when the graph first opens in 3D, so every other page pays no parse cost and the
-# reader never fetches a script. Licences: vendor/3d-force-graph-1.80.2.LICENSES.md.
+# The 3D knowledge graph (#3309): three.js + d3-force-3d, one pinned UMD build (1.4 MB). It is not inlined: the
+# Host serves it at GRAPH_3D_URL and the live reader loads it the first time the graph opens in 3D, so the page,
+# the offline snapshot and the phone never carry it. Licences: vendor/3d-force-graph-1.80.2.LICENSES.md.
 GRAPH_3D = Path(__file__).with_name("vendor") / "3d-force-graph-1.80.2.min.js"
+GRAPH_3D_URL = f"/rem/vendor/{GRAPH_3D.name}"
 BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
@@ -542,14 +543,15 @@ def _page(full: dict, *, live: bool) -> str:
     # Only the owner's own snapshot of the notebook a live reader serves links to it.
     link = live_link() if not live and full.get("default_root") and not full.get("shared") else ""
     data = _script_json({**shell, "live": live, "live_link": link, "deferred_details": True,
-                         "detail_url": "/rem/data.json" if live else ""})
+                         "detail_url": "/rem/data.json" if live else "",
+                         # Only a page the Host serves can fetch the 3D engine; a snapshot draws the 2D map.
+                         "graph_3d": GRAPH_3D_URL if live else ""})
     detail = '' if live else _script_json(_detail_data(full, shell))
     template = TEMPLATE.read_text(encoding="utf-8")
     if PLACEHOLDER not in template:
         raise RuntimeError("reader.html has lost its data placeholder")
     page = template.replace(PLACEHOLDER, data, 1).replace('/*__REM_DETAIL__*/', detail, 1)
-    page = page.replace('/*__D3__*/', D3.read_text(encoding='utf-8'), 1)
-    return page.replace('/*__GRAPH_3D__*/', GRAPH_3D.read_text(encoding='utf-8'), 1)
+    return page.replace('/*__D3__*/', D3.read_text(encoding='utf-8'), 1)
 
 
 def _script_json(data: dict) -> str:

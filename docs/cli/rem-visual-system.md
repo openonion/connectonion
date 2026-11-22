@@ -74,9 +74,11 @@ A 4px grid: every gap and padding is a multiple of 4. The named steps are `--u1`
 | `--red` | #c02a17 | overdue, and nothing else |
 
 The **3D knowledge graph** is the one place hue names a kind (#3309): there every mark is a sphere, so colour does
-the work shape does on the 2D map. `--kind-knowledge`, `--kind-people`, `--kind-orgs`, `--kind-projects`,
-`--kind-notes` and `--kind-sessions` are muted, are never a call to action, and are read only by the 3D graph
-(`GRAPH_3D_TONE`); nothing else on any page may use them.
+the work shape does on the 2D map. Tag pages take the accent (`--green`, ink in light mode); the other kinds are
+four desaturated colours at one lightness (OKLCH L .60 in light, .74 in dark): `--kind-people`, `--kind-orgs`,
+`--kind-projects` and `--kind-notes` (sessions share the notes' grey). They are never a call to action, a one-line
+legend in the map's header and a dot before each row of its side list name them, and they are read only by the
+3D graph (`GRAPH_3D_TONE` and the `.gx-dot` rules); nothing else on any page may use them.
 
 How much of something there was is said in **steps of ink, never in hue**: `--heat-0` (nothing, the well),
 `--heat-1`, `--heat-2`, `--heat-3`, `--heat-4` (all of the ink). They are mixed from ink and paper, so the dark
