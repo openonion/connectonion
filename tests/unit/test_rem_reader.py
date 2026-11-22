@@ -2088,8 +2088,11 @@ def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     assert compact_role['title'] == '合作负责人; 试点负责人; 研究联络人'
 
 
+# A Chinese tail is two characters, so none is left alone on a line, and a value about four characters wide goes
+# whole (#3405: the tail used to take only 「队」 of 「团队」).
 @pytest.mark.parametrize('value, tail', [
-    ('Head of the Pilot Programme', 'Programme'), ('试点项目负责人', '人'), ('合作负责人。', '人。'),
+    ('Head of the Pilot Programme', 'Programme'), ('试点项目负责人', '责人'), ('合作负责人。', '责人。'),
+    ('团队', '团队'), ('Swift', 'Swift'),
 ])
 def test_fact_citations_stay_with_the_last_word_or_chinese_character(value, tail):
     page = TEMPLATE.read_text()
