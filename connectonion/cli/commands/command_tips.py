@@ -216,6 +216,7 @@ NEXT = {
     "co discord chats": HANDLER,
     "co discord log": "co discord ls",
     "co discord consume": "co discord ls",
+    "co discord link": HANDLER,  # names listen, or listen --restart when one runs
     "co slack listen": "co slack receive --timeout 0",
     "co slack receive": "co slack reply <message-id>",
     "co slack send": "co slack receive --timeout 0",

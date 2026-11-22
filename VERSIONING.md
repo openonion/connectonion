@@ -400,7 +400,51 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc8
+## Current Version: 1.9.7rc13
+Release candidate 1.9.7rc13 for 1.9.7: adding a source onboards it (#3331). `co rem map [people|orgs|projects]
+--source NAME [--dry-run]` builds pages from one source without a model; each source declares the kinds it yields
+(mail: people and orgs; wechat: people; codex/claude-code: projects) and a kind it does not yield is refused
+(#3334). `co rem investigate --source NAME` runs the pages that source reaches, new ones first. `co rem sources add`
+maps a source at once, the night re-maps WeChat and any new or widened local source, created pages go first in the
+people queue, and `co rem sources` / `co rem status` show each source's map (#3335). Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc13.md).
+
+- 1.9.7rc13 (adding a source onboards it: co rem map --source #3334; auto-onboard and per-source status #3335).
+
+### Previous candidate: 1.9.7rc12
+Release candidate 1.9.7rc12 for 1.9.7: the Keys page lists the vault, grouped by site: above 30 keys every site
+folds to one row "<site> · N 条", search opens the matching groups, single-entry sites are one-row groups, and a
+phone shows a two-line list. co's own keys from `~/.co/keys.env` are grouped by service with settings folded, and a
+test pins that no model stage reads `keys/` pages (#3327). Tags render as quiet chips on every page kind: grey
+text, a light fill and a hairline border (#3313). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc12.md).
+
+- 1.9.7rc12 (the Keys vault grouped by site #3327; tags as quiet chips #3313).
+
+### Previous candidate: 1.9.7rc11
+Release candidate 1.9.7rc11 for 1.9.7: the Today reply card and its full-screen compose, rebuilt to one spec (#3312).
+One filled 发送 with the rest under ⋯; the letter reads in full and folds with 展开全文; a line names the message REM
+read; ‹ i/n › steps through the cards. Replies keep to the channel the person is reachable on: a draft stored on a
+channel they are not on (an Outlook thread drafted as Lark) is refused and offered 改写成邮件. Send shows its state
+with undo and retry. Full screen has × top-right and Esc, open questions as clickable chips, and a one-line phone
+header. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc11.md).
+
+- 1.9.7rc11 (the reply card and full-screen compose per #3312; honest channels #3324).
+
+### Previous candidate: 1.9.7rc10
+Release candidate 1.9.7rc10 for 1.9.7: the Keys page imports with one 一键导入 (Chrome, Edge, Brave, the macOS
+Keychain, Apple Passwords via its CSV export, or a CSV), shows a waiting step while the system asks to 允许, and
+says why when the REM Host cannot show that prompt, with the one fix; co's own keys from `~/.co/keys.env` are
+listed by name. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc10.md).
+
+- 1.9.7rc10 (Keys: one-click import from honest sources, a visible prompt step, keys.env listed).
+
+### Previous candidate: 1.9.7rc9
+Release candidate 1.9.7rc9 for 1.9.7: `co discord` as your own account (experimental), system Chrome fallback
+that keeps other sessions' tabs, a bare `co host` that no longer stops serving silently, and `co call` that names
+the address it signed with. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc9.md).
+
+
+### Previous candidate: 1.9.7rc8
 Release candidate 1.9.7rc8 for 1.9.7: fixes a regression in rc7. rc7 reworded a topic link review from the page
 path to its title, and reviews deduped on the question text, so the next night would have proposed every stored
 link again (36 became 77 on a clone of a real notebook) and re-asked decided ones. A link review now matches on

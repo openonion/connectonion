@@ -43,9 +43,10 @@ def test_the_keys_list_says_what_each_secret_is_and_never_its_value(today, width
     page, calls, answers = today
     _with_keys(page, width)
     assert page.locator(".rail a[href='#c=keys'], #nav a[href='#c=keys']").count() >= 1 or width < 400
-    table = page.locator(".keys-sheet table")
-    assert table.locator("tbody tr").count() == 2
-    assert "push to the pilot repo" in table.inner_text() and SECRET not in page.content()
+    # #3326: rows are grouped by site, and a phone gets a list instead of a table, so count the key rows themselves.
+    sheet = page.locator(".keys-sheet")
+    assert sheet.locator(".key-row").count() == 2
+    assert "push to the pilot repo" in sheet.inner_text() and SECRET not in page.content()
     page.locator(".key-adder > summary").click()
     answers["/rem/keys/add"] = lambda body: (200, {"page": "keys/notion-me.md"})
     form = page.locator(".key-add")
@@ -65,7 +66,7 @@ def test_a_key_page_copies_and_shows_through_the_host_and_forgets_the_value(toda
     page, calls, answers = today
     _with_keys(page, width)
     answers["/rem/keys/reveal"] = lambda body: (200, {"secret": SECRET})
-    page.locator(".keys-sheet a", has_text="GitHub").click()
+    page.locator(".keys-sheet a", has_text="mara@example.test").click()  # #3326: a key row leads with its account
     head = page.locator(".key-page .page-head")
     head.wait_for()
     assert "mara@example.test" in page.locator(".key-facts").inner_text() and SECRET not in page.content()
@@ -86,7 +87,7 @@ def test_a_snapshot_shows_the_rows_and_says_where_the_value_is(today):
     _with_keys(page, 390, live=False)
     assert page.locator(".key-adder").count() == 0
     assert "Keychain" in page.locator("#main").inner_text()
-    page.locator(".keys-sheet a", has_text="GitHub").click()
+    page.locator(".keys-sheet a", has_text="mara@example.test").click()  # #3326: a key row leads with its account
     assert page.locator(".key-page .page-head button").count() == 0
     assert "Copy it from the reader on this Mac" in page.locator(".key-page").inner_text()
     _shot(page, "snapshot", 390)
@@ -104,19 +105,26 @@ def _empty_keys(page, width=1440, live=True):
 
 
 def test_the_import_buttons_are_visible_on_an_empty_keys_page(today):
-    # P大 opened Keys with no keys and saw no button — they were hidden in a collapsed "Add a key" disclosure.
+    # P大 opened Keys with no keys and saw no button (#3287); then wanted one 一键导入 offering the sources (#3305).
+    # The art director: one filled action on the page, and the sources ARE the buttons (no button that opens them).
     page, calls, answers = today
     _empty_keys(page)
     adder = page.locator(".key-adder")
     assert adder.count() == 1
     assert adder.evaluate("el => el.open") is True  # open by default when there are no keys
-    chrome = page.locator(".key-importers button", has_text="Chrome")
-    assert chrome.is_visible()  # seen without clicking the summary
-    # He wants to click, not type: the one-click importers lead, the manual form sits below them.
-    chrome_y = chrome.bounding_box()["y"]
-    form_y = page.locator(".key-add input[name=Service]").bounding_box()["y"]
-    assert chrome_y < form_y, (chrome_y, form_y)
-    assert page.locator(".key-import-primary").is_visible()
+    assert page.locator(".key-import-title").is_visible()
+    for name in ("Chrome", "Edge", "Brave"):
+        assert page.locator(".key-source", has_text=name).is_visible()  # seen without a click
+    assert page.locator(".key-source[data-source=keychain]").is_visible()
+    assert page.locator(".key-source[data-source=apple]").is_visible()
+    # Typing one by hand is folded away below the sources, and nothing on the page is a filled button.
+    manual = page.locator(".key-manual")
+    assert not manual.evaluate("el => el.open") and not page.locator(".key-add input[name=Service]").is_visible()
+    assert page.locator(".key-source", has_text="Chrome").bounding_box()["y"] < manual.bounding_box()["y"]
+    assert page.locator(".key-adder .btn-act").count() == 0
+    manual.locator("summary").click()
+    assert page.locator(".key-add input[name=Service]").is_visible()
+    assert "btn-action" in page.locator(".key-add button[type=submit]").get_attribute("class")
     SHOTS.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(SHOTS / "keys-empty-open-1440.png"))
 
@@ -127,5 +135,220 @@ def test_the_adder_stays_collapsed_once_there_are_keys(today):
     _with_keys(page, 1440)
     adder = page.locator(".key-adder")
     assert not adder.evaluate("el => el.open")  # collapsed by default
-    assert not page.locator(".key-importers button", has_text="Chrome").is_visible()
+    assert not page.locator(".key-source", has_text="Chrome").is_visible()
 
+
+
+IMPORT_SHOTS = SHOTS.parent / "keys-import"
+
+
+def _held_import(page):
+    """hostPost for /rem/keys/import waits until the test answers, so the wait on the system prompt can be seen."""
+    page.evaluate("""() => {
+      const real = hostPost;
+      window.importAnswer = null;
+      hostPost = (url, body) => url !== '/rem/keys/import' ? real(url, body)
+        : new Promise(resolve => { window.importBody = body; window.importAnswer = resolve; });
+    }""", isolated_context=False)
+
+
+def _import_shot(page, name, width):
+    IMPORT_SHOTS.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(IMPORT_SHOTS / f"{name}-{width}.png"))
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_choosing_chrome_shows_the_wait_on_the_keychain_prompt_then_what_was_imported(today, width):
+    page, calls, answers = today
+    _empty_keys(page, width)
+    _held_import(page)
+    page.locator(".key-source", has_text="Chrome").click()
+    wait = page.locator(".key-import-wait")
+    wait.wait_for()
+    assert wait.is_visible() and wait.locator(".key-spin").count() == 1
+    assert wait.locator("button").is_visible()  # a cancel
+    assert not page.locator(".key-source", has_text="Edge").is_enabled()  # one prompt at a time
+    assert page.evaluate("window.importBody", isolated_context=False) == {"source": "chrome"}
+    _import_shot(page, "waiting", width)
+    page.evaluate("window.importAnswer({ok: true, code: 200, filed: 3, skipped: 1, sites: ['bank.example.test', 'mail.example.test', 'nas.example.test']})",
+                  isolated_context=False)
+    result = page.locator(".key-import-result.ok")
+    result.wait_for()
+    assert "mail.example.test" in result.inner_text() and "null" not in result.inner_text() and not wait.is_visible()
+    _import_shot(page, "imported", width)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_host_outside_the_login_session_says_so_prominently_with_the_one_fix(today, width):
+    page, calls, answers = today
+    _empty_keys(page, width)
+    _held_import(page)
+    page.locator(".key-source", has_text="Chrome").click()
+    page.locator(".key-import-wait").wait_for()
+    page.evaluate("window.importAnswer({ok: false, code: 409, reason: 'no_gui', error: 'outside your login session'})", isolated_context=False)
+    error = page.locator(".key-import-result.error")
+    error.wait_for()
+    assert error.get_attribute("role") == "alert"
+    assert error.locator(".key-import-fix").inner_text() == "co rem open"
+    box = error.bounding_box()
+    assert box["height"] >= 40 and box["width"] >= 200  # a block, not a one-line status he misses
+    _import_shot(page, "no-session", width)
+
+
+def test_cancel_returns_to_the_sources_and_a_late_answer_is_ignored(today):
+    page, calls, answers = today
+    _empty_keys(page)
+    _held_import(page)
+    page.locator(".key-source", has_text="Brave").click()
+    page.locator(".key-import-wait button").click()
+    assert page.locator(".key-source", has_text="Brave").is_enabled() and not page.locator(".key-import-wait").is_visible()
+    page.evaluate("window.importAnswer({ok: true, code: 200, filed: 1, skipped: 0, sites: ['x.example.test']})", isolated_context=False)
+    page.wait_for_timeout(100)
+    assert page.locator(".key-import-result.ok").count() == 0 or not page.locator(".key-import-result.ok").is_visible()
+
+
+def test_apple_passwords_says_how_to_export_and_offers_the_file(today):
+    page, calls, answers = today
+    _empty_keys(page)
+    page.locator(".key-source[data-source=apple]").click()
+    panel = page.locator(".key-import-csv")
+    panel.wait_for()
+    assert panel.locator("input[type=file]").count() == 1
+    assert calls == [] or all(c[0] != "/rem/keys/import" for c in calls)  # nothing is read by pretending
+    _import_shot(page, "apple", 1440)
+
+
+def test_cos_own_keys_are_grouped_by_service_with_settings_folded(today):
+    # #3326 replaces the flat list of variable names (#3305): one row per service with a count, settings folded.
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [],
+        "services": [{"service": "Google", "count": 2}, {"service": "OpenAI", "count": 1}],
+        "settings": ["GOOGLE_SCOPES", "IS_EMAIL_ACTIVE"]})
+    _with_keys(page, 1440)
+    section = page.locator(".keys-env")
+    section.wait_for()
+    assert section.locator(".keys-env-service").all_inner_texts() == ["Google", "OpenAI"]
+    assert "2" in section.locator("li").first.inner_text()
+    settings = section.locator(".keys-env-settings")
+    assert settings.get_attribute("open") is None and not settings.locator(".keys-env-name").first.is_visible()
+    assert "~/.co/keys.env" in section.inner_text() and "null" not in section.inner_text()
+    _import_shot(page, "keys-env", 1440)
+
+
+SITES = {"github.com": 1, "accounts.example.org": 7, "mail.example.org": 2, "shop.example.net": 3, "10.0.0.1": 1,
+         "bank.example.co.uk": 4, "nas.example.test": 2}
+
+
+def _vault(page, width=1440, live=True):
+    """Twenty imported key pages over seven sites (one site with nine keys across two subdomains)."""
+    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
+    page.evaluate("""([sites, live]) => {
+      REM.live = live;
+      REM.records = REM.records.filter(r => r.category !== 'keys');
+      let i = 0;
+      for (const [site, n] of Object.entries(sites)) for (let k = 0; k < n; k++, i++)
+        REM.records.push({path: `keys/k${i}.md`, category: 'keys', title: site, written: true,
+          text: `# ${site}\n\n## Facts\n- Service: ${site}\n- Account: user${i}@example.test\n- Purpose: sign in\n`});
+      if (!REM.categories.includes('keys')) REM.categories.push('keys');
+      KNOWN.clear(); FACTS.clear(); location.hash = '#c=keys'; render();
+    }""", [SITES, live], isolated_context=False)
+
+
+def test_an_imported_vault_is_listed_grouped_by_site_and_never_says_there_are_none(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _vault(page)
+    main = page.locator("#main")
+    assert "No keys yet" not in main.inner_text() and "还没有钥匙" not in main.inner_text()
+    assert page.locator(".key-row").count() == 20
+    assert "20" in page.locator(".key-summary").inner_text()
+    # accounts.example.org (7) and mail.example.org (2) are one site, example.org: 9 keys, folded.
+    group = page.locator(".key-group[data-site='example.org']")
+    assert "9" in group.inner_text() and group.locator("button").get_attribute("aria-expanded") == "false"
+    assert page.locator(".key-row[data-site='example.org']:visible").count() == 0
+    group.locator("button").click()
+    assert page.locator(".key-row[data-site='example.org']:visible").count() == 9
+    assert page.locator(".key-group[data-site='example.co.uk']").count() == 1  # a country domain keeps three labels
+    # A search narrows to the matching row, across folded groups.
+    page.locator(".key-search").fill("user5@")
+    assert page.locator(".key-row:visible").count() == 1
+    page.locator(".key-search").fill("")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_no_vault_keys_but_cos_own_says_what_is_here_not_none(today, width):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [],
+        "services": [{"service": "Google", "count": 2}, {"service": "OpenAI", "count": 1}], "settings": ["GOOGLE_SCOPES"]})
+    _empty_keys(page, width)
+    page.locator(".keys-env").wait_for()
+    main = page.locator("#main")
+    assert "No keys yet" not in main.inner_text() and "还没有钥匙" not in main.inner_text()
+    assert "3" in page.locator(".key-summary").inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_the_empty_line_shows_when_there_is_nothing_at_all(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _empty_keys(page)
+    page.locator("#main .empty").first.wait_for(state="visible")
+    assert "No keys yet" in page.locator("#main").inner_text()
+
+
+
+def _many_sites(page, width=1440, n=210):
+    """An import of n sites, one login each, every purpose "sign in": the shape a real browser import has."""
+    page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
+    page.evaluate("""([n]) => {
+      REM.live = true;
+      REM.records = REM.records.filter(r => r.category !== 'keys');
+      for (let i = 0; i < n; i++) {
+        const host = i % 3 === 0 ? `login.site${String(i).padStart(3, '0')}.test` : `site${String(i).padStart(3, '0')}.test`;
+        REM.records.push({path: `keys/m${i}.md`, category: 'keys', title: host, written: true,
+          text: `# ${host}\n\n## Facts\n- Service: ${host}\n- Account: user${i}@example.test\n- Purpose: sign in\n`});
+      }
+      if (!REM.categories.includes('keys')) REM.categories.push('keys');
+      KNOWN.clear(); FACTS.clear(); location.hash = '#c=keys'; render();
+    }""", [n], isolated_context=False)
+
+
+def test_hundreds_of_sites_start_as_one_row_each_and_repeat_nothing(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _many_sites(page)
+    groups = page.locator(".key-group")
+    assert groups.count() == 210  # a single-entry site is a group like the rest, not a loose row
+    sites = groups.evaluate_all("rows => rows.map(r => r.dataset.site)")
+    assert sites == sorted(sites)
+    assert page.locator(".key-row:visible").count() == 0  # every group starts folded above 30 keys
+    assert "Purpose" not in page.locator(".keys-sheet thead th").all_inner_texts()  # every value was "sign in"
+    group = page.locator(".key-group[data-site='site003.test']")
+    assert "1 key" in group.inner_text()
+    group.locator("button").click()
+    cells = page.locator(".key-row[data-site='site003.test'] td").all_inner_texts()
+    assert cells[1] == "login.site003.test"  # the Service cell: differs from the group, so shown
+    page.locator(".key-group[data-site='site001.test'] button").click()
+    cells = page.locator(".key-row[data-site='site001.test'] td").all_inner_texts()
+    assert cells[1] == "—"  # the Service cell: same as the group, so not repeated
+    page.locator(".key-search").fill("user150@")
+    assert page.locator(".key-row:visible").count() == 1 and page.locator(".key-group:visible").count() == 1
+    page.locator(".key-search").fill("")
+    assert page.locator(".key-group:visible").count() == 210
+
+
+def test_a_phone_gets_a_list_with_the_account_first(today):
+    page, calls, answers = today
+    answers["/rem/keys/env"] = lambda body: (200, {"where": "~/.co/keys.env", "names": [], "services": [], "settings": []})
+    _vault(page, 390)
+    sheet = page.locator(".keys-sheet")
+    assert sheet.locator("table").count() == 0 and sheet.locator(".key-list").count() == 1
+    assert page.locator(".key-group[data-site='10.0.0.1']").count() == 1  # an IP keeps its first octet (not "0.0.1")
+    entry = page.locator(".key-row[data-site='example.co.uk']").first
+    assert entry.is_visible()  # 20 keys in all, and this group holds 4: open
+    assert entry.locator("a").inner_text().startswith("user")
+    # The second line is "<host> · <purpose>"; every purpose here is "sign in", so only the host is written.
+    assert entry.locator(".key-entry-meta").inner_text().split(" · ")[0] == "bank.example.co.uk"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

@@ -118,11 +118,42 @@ def listing(root, *, include_pending=False, records=None):
     for row in candidates(root, refresh_index=False, **({'records': records} if records is not None else {})):
         saved = read_json(path(root, row['id']), {})
         if saved.get('version') == row['version'] and (include_pending or saved.get('status') not in ('discarded', 'skipped')):
-            found.append({**saved, "private": saved.get("private", False) or row["private"]})
+            reach = reachable_channels(root, row, saved)
+            found.append({**saved, "private": saved.get("private", False) or row["private"], "channels": reach,
+                          # Written for a channel the person is not on: shown as a defect and never sent (#3312 C).
+                          "channel_defect": saved.get('channel', 'mail') not in reach})
         elif include_pending:
             found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private', 'version')} |
                          {'status': 'skipped' if saved.get('version') == row['version'] else 'pending'})
     return found
+
+
+# A chat channel is offered only where this person can be reached on it (#3302). Chats are read live and
+# never stored (#3249), so the index cannot show a WhatsApp or Lark thread; the person's own page can: a cited
+# source from that chat, or a handle the page names for it. WhatsApp also needs the number the send goes to.
+CHAT_EVIDENCE = {'whatsapp': re.compile(r'\bwhatsapp:|^- (?:Handles|Phone):.*\bwhatsapp\b', re.I | re.M),
+                 'lark': re.compile(r'\b(?:lark|feishu):|^- Handles:.*\b(?:lark|feishu|飞书)\b', re.I | re.M)}
+
+
+def reachable_channels(root, row, saved):
+    """The channels this reply can honestly go out on: its own thread's first, then chats with evidence."""
+    channels = ['mail']
+    record = _identities(root, row)['person'].get('page')
+    book = Notebook(root)
+    text = book.read(record) if record and book.exists(record) else ''
+    phone = saved.get('phone') or _phone({'facts': text})
+    if phone and CHAT_EVIDENCE['whatsapp'].search(text):
+        channels.append('whatsapp')
+    if CHAT_EVIDENCE['lark'].search(text):
+        channels.append('lark')
+    return channels
+
+
+def _reachable_or_refuse(root, row, saved, channel):
+    if channel not in reachable_channels(root, row, saved):
+        name = {'lark': 'Lark', 'whatsapp': 'WhatsApp'}.get(channel, channel)
+        raise RemError(f'{saved.get("to") or "This person"} cannot be reached on {name}: their page names no {name} chat'
+                       f' or handle, so the reply stays on mail / 在 {name} 上联系不到对方，回复留在邮件')
 
 
 def owner_skill(name):
@@ -345,8 +376,10 @@ def redraft(root, draft_id, channel):
     """Write the same reply for another channel: a chat message is not a mail body."""
     if channel not in CHANNELS:
         raise RemError(f'Unknown channel {channel!r}; expected one of {", ".join(CHANNELS)}')
-    _not_held(_current(root, draft_id, refresh_index=False))
+    saved = _current(root, draft_id, refresh_index=False)
+    _not_held(saved)
     row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
+    _reachable_or_refuse(root, row, saved, channel)
     return _write_now(root, row, channel)
 
 
@@ -419,6 +452,12 @@ def _send_locked(root, draft_id, body=None, *, held=False):
     if has_slots(text):
         raise RemError('Fill the marked part first / 先填好标出的部分')
     if saved.get('channel', 'mail') != 'mail':
+        # A reply goes out where it was asked unless the person is reachable on the chat it was rewritten for:
+        # an Outlook thread once sat drafted as a Lark message for someone with no Lark chat (#3312 C).
+        row = next((row for row in candidates(root, refresh_index=False) if row['id'] == draft_id), None)
+        if row is None:
+            raise RemError('This reply no longer matches its thread; open Today again')
+        _reachable_or_refuse(root, row, saved, saved['channel'])
         receipt = _send_chat(saved, text)
     else:
         client = mail_client(saved['provider'])

@@ -32,6 +32,8 @@ def startup(monkeypatch):
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
     monkeypatch.setattr("connectonion.cli.co_ai.main._owner_invite_lock", lambda p: nullcontext())
     monkeypatch.setattr(live_host.time, "sleep", lambda seconds: None)
+    # Which launchd session runs the test is the machine's, not the test's: a Terminal is Aqua, an agent is Background.
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Background")
     return identity
 
 
@@ -663,3 +665,50 @@ def test_the_upgrade_watch_keeps_looking_after_a_half_written_install(monkeypatc
     asyncio.run(start())
     assert done.wait(2) and ticks[:2] == [tmp_path, tmp_path]
     asyncio.run(stop())
+
+
+def _background_host(startup, monkeypatch, session="Background"):
+    record = {"address": "owner", "pid": 42, "port": 5000, "command": "-m connectonion.cli.main ai",
+              "install": live_host._install(), **({"session": session} if session else {})}
+    write_json(startup / "rem-live-host.json", record)
+    monkeypatch.setattr(live_host, "_alive", lambda saved: True)
+    monkeypatch.setattr(live_host, "_busy", lambda directory: False)
+    monkeypatch.setattr(live_host, "_inside", lambda pid: False)
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    monkeypatch.setattr(reader, "host_online", lambda *a, **k: True)
+    return record
+
+
+@pytest.mark.parametrize("session", ["Background", None])
+def test_opening_from_the_owners_terminal_moves_a_background_host_into_his_session(startup, monkeypatch, session):
+    # #3305: an agent restarted the Host from a Background session, so macOS could not show the Keychain prompt.
+    # The owner opening REM from his own Terminal (Aqua) replaces it once; a record without the field counts as outside.
+    _background_host(startup, monkeypatch, session)
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")
+    retired, started = [], []
+    monkeypatch.setattr(live_host, "_retire", lambda saved: retired.append(saved["pid"]))
+    monkeypatch.setattr(live_host, "_free", lambda port: True)
+    process = SimpleNamespace(pid=43, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "5000"], poll=lambda: None)
+    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: started.append(port) or process)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: True, raising=False)
+    assert live_host.ensure_online("owner") is None
+    assert retired == [42] and started == [5000]
+    assert live_host.read_json(startup / "rem-live-host.json", {})["session"] == "Aqua"
+
+
+def test_a_host_already_in_the_owners_session_is_reused(startup, monkeypatch):
+    _background_host(startup, monkeypatch, "Aqua")
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")
+    monkeypatch.setattr(live_host, "_retire", lambda saved: pytest.fail("moved a Host that was already in Aqua"))
+    monkeypatch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("duplicate Host"))
+    assert live_host.ensure_online("owner") is None
+
+
+def test_an_agent_open_never_moves_the_host_and_a_busy_host_is_left_alone(startup, monkeypatch):
+    _background_host(startup, monkeypatch, "Background")
+    monkeypatch.setattr(live_host, "_retire", lambda saved: pytest.fail("an agent open moved the Host"))
+    monkeypatch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("duplicate Host"))
+    assert live_host.ensure_online("owner") is None  # this open is Background itself: nothing to gain
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")
+    monkeypatch.setattr(live_host, "_busy", lambda directory: True)
+    assert live_host.ensure_online("owner") is None  # unfinished work keeps the Host where it is
