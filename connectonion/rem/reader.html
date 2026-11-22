@@ -4035,6 +4035,29 @@
   .keys-env-list li { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 0; border-bottom: var(--hair) solid var(--rule); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .keys-env-name { color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
   .keys-env-mask { color: var(--grey); }
+  /* The vault list (#3326): a one-line summary, a search box, and site groups with a count that fold when large. */
+  .key-summary { margin: 4px 0 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-search { width: 100%; max-width: 360px; margin: 8px 0 12px; padding: 6px 10px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-group td { padding: 10px 8px 4px; border-bottom: 0; }
+  .key-group-toggle { display: inline-flex; align-items: baseline; gap: 8px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-group-toggle::before { content: "▸"; color: var(--grey); }
+  .key-group-toggle[aria-expanded="true"]::before { content: "▾"; }
+  .key-group-count { color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-row td.name { padding-left: 24px; }
+  /* A phone gets a list (#3326): the account on line one, host and purpose muted on line two. */
+  .key-list { list-style: none; padding: 0; margin: 0; }
+  .key-list .key-group { padding: 0; border-bottom: var(--hair) solid var(--rule); }
+  /* The phone's 44 px touch target stays; the label sits in its middle instead of leaving a gap under it. */
+  .key-list .key-group-toggle { width: 100%; align-items: center; }
+  .key-entry { display: flex; flex-direction: column; gap: 2px; padding: 8px 0 8px 20px; border-bottom: var(--hair) solid var(--rule); }
+  .key-entry a { color: var(--ink); overflow-wrap: anywhere; }
+  .key-entry-meta { color: var(--grey); overflow-wrap: anywhere; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .key-entry-meta:empty { display: none; }
+  .key-list [hidden], .keys-sheet tr[hidden] { display: none; }
+  .keys-env-service { color: var(--ink); min-width: 120px; }
+  .keys-env-state { color: var(--grey); }
+  .keys-env-settings { margin-top: 12px; }
+  .keys-env-settings > summary { cursor: pointer; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
   .key-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
   .key-value { padding: 4px 8px; border-radius: var(--r-cell); background: var(--well); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
   .key-page .key-facts { columns: 1; max-width: 720px; margin-top: 20px; }
@@ -12193,37 +12216,117 @@ Object.assign(UI.zh, { "Service": "服务", "Account": "账号", "Purpose": "用
   "No keys yet. Add one, or import a password manager's export.": "还没有钥匙。添加一个，或导入密码管理器的导出文件。",
   "Saved · the value is in the Keychain": "已存好 · 密码在钥匙串里" });
 function keyFact(r, label) { return plainLine(((parseFacts(r).get(label) || [])[0] || {}).value || "").replace(/^Unknown$/, ""); }
+// The site a key belongs to, for grouping (#3326): an import of 335 browser logins is mostly one page per origin, so
+// the list groups by registrable domain (accounts.google.com and mail.google.com are both google.com).
+// The page title, not the Service fact: plainLine reads a leading "10." as a list number, so an IP like 10.0.0.1
+// came back as "0.0.1" (#3327). The title is the imported origin as written.
+function keyHost(r) { return r.title || keyFact(r, "Service"); }
+function keySite(r) {
+  const raw = (keyHost(r) || "").toLowerCase().replace(/^[a-z]+:\/\//, "").split(/[\/?#\s]/)[0].replace(/:\d+$/, "");
+  if (!raw.includes(".") || /^[\d.]+$/.test(raw)) return raw || r.title;
+  const parts = raw.split(".").filter(Boolean);
+  const country = parts.length > 2 && parts.at(-1).length === 2 && /^(co|com|org|net|gov|edu|ac)$/.test(parts.at(-2));
+  return parts.slice(country ? -3 : -2).join(".");
+}
+// Groups larger than KEY_GROUP_OPEN start folded; above KEY_MANY keys in all, every group starts folded (#3326).
+const KEY_GROUP_OPEN = 5, KEY_MANY = 30;
 function keysView() {
-  const main = document.getElementById("main"), items = inCategory("keys").sort((a, b) => a.title.localeCompare(b.title));
+  const main = document.getElementById("main"), items = inCategory("keys").sort((a, b) => keySite(a).localeCompare(keySite(b)) || a.title.localeCompare(b.title));
   main.textContent = "";
   const head = el("div", { class: "category-head" }, [el("h1", { text: label("keys") }), items.length ? el("span", { class: "mono", text: String(items.length) }) : null]);
+  // What is on the page, in one line: the vault and co's own keys, so "none" and "29" never sit together (#3326).
+  const summary = el("p", { class: "key-summary", text: items.length ? t("{n} in the Keychain", { n: items.length }) : "" });
   // With no keys yet, open the adder so the one-click import buttons are the first thing seen, not hidden
   // inside a collapsed "Add a key" disclosure. Once there are keys, keep it collapsed so it doesn't nag.
-  main.append(head, liveHere() ? keyAdder(!items.length) : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
-  if (!items.length) {
-    main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export."));
-    if (liveHere()) main.appendChild(keysEnvSection());
+  main.append(head, summary, liveHere() ? keyAdder(!items.length) : el("p", { class: "quiet-line", text: t("The value is in this Mac's Keychain. Copy it from the reader on this Mac.") }));
+  if (items.length) main.appendChild(keysTable(items));
+  // The empty line shows only when nothing at all is here: no vault keys and none of co's own (keys.env).
+  if (!liveHere()) {
+    if (!items.length) main.appendChild(emptyState("No keys yet. Add one, or import a password manager's export."));
     return;
   }
-  const cols = ["Service", "Account", "Purpose", "Used in", "Rotated"];
-  main.appendChild(el("div", { class: "sheet-scroll keys-sheet", tabindex: "0", role: "region", "aria-label": t("{name} table", { name: label("keys") }) }, [
-    el("table", { class: "sheet" }, [el("thead", {}, [el("tr", {}, cols.map(col => el("th", { text: t(col) })))]),
-      el("tbody", {}, items.map(r => el("tr", {}, [el("td", { class: "name" }, [el("a", { href: href(r), text: r.title })]),
-        ...cols.slice(1).map(col => el("td", {}, [textCell(keyFact(r, col))]))])))])]));
-  if (liveHere()) main.appendChild(keysEnvSection());
+  const empty = el("div", { hidden: "" }, [emptyState("No keys yet. Add one, or import a password manager's export.")]);
+  if (!items.length) main.appendChild(empty);
+  main.appendChild(keysEnvSection(own => {
+    if (!items.length && !own) empty.hidden = false;
+    if (own) summary.textContent = items.length ? t("{n} in the Keychain · co's own {m}", { n: items.length, m: own })
+      : t("Nothing imported into the Keychain yet · co's own {m}, below", { m: own });
+  }));
 }
-// co's own credentials (#3305, owner 2026-11-22: «我们自己的密钥是在 keys.env 里面»): their names and where the
-// file is, so every key the owner has is on this one page. The Host sends names only; a value never reaches it.
-function keysEnvSection() {
+// Every key grouped by site (#3326). Above KEY_MANY keys every group starts as one row, "<site> · N 条", so hundreds of
+// imported sites read as a scannable list; below it a group opens when small. A single-entry site is a group like the
+// rest, sorted with them. Inside a group the host shows only where it differs from the group's name, and a column whose
+// every value is the same (all "sign in") is dropped. A phone gets a list, not a five-column table: the account on line
+// one, host and purpose muted on line two. A search box opens the groups it matches. Values are never in the page.
+function keysTable(items) {
+  const groups = new Map();
+  for (const r of items) groups.set(keySite(r), [...(groups.get(keySite(r)) || []), r]);
+  const sites = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+  const many = items.length > KEY_MANY, phone = matchMedia("(max-width: 719px)").matches;
+  const entry = r => ({ r, site: keySite(r), account: keyFact(r, "Account") || r.title, host: keyHost(r),
+    purpose: keyFact(r, "Purpose"), used: keyFact(r, "Used in"), rotated: keyFact(r, "Rotated") });
+  const all = items.map(entry);
+  const varies = field => new Set(all.map(e => e[field])).size > 1;
+  const showHost = all.some(e => e.host !== e.site);
+  const cols = [["Account", "account"], ...(showHost ? [["Service", "host"]] : []),
+    ...[["Purpose", "purpose"], ["Used in", "used"], ["Rotated", "rotated"]].filter(([, field]) => varies(field))];
+  const blocks = sites.map(site => {
+    const members = groups.get(site).map(entry);
+    const open = !many && members.length <= KEY_GROUP_OPEN;
+    const toggle = el("button", { type: "button", class: "key-group-toggle", "aria-expanded": String(open) }, [
+      el("span", { class: "key-group-site", text: site }),
+      el("span", { class: "key-group-count", text: "· " + (members.length === 1 ? t("1 key") : t("{n} keys", { n: members.length })) })]);
+    const find = e => [e.account, e.host, e.r.title].join(" ").toLowerCase();
+    const link = e => el("a", { href: href(e.r), text: e.account });
+    const host = e => (e.host !== site ? e.host : "");
+    const rows = members.map(e => phone
+      ? el("li", { class: "key-row key-entry", "data-site": site, "data-find": find(e) }, [link(e),
+        el("span", { class: "key-entry-meta", text: [host(e), varies("purpose") ? e.purpose : ""].filter(Boolean).join(" · ") })])
+      : el("tr", { class: "key-row", "data-site": site, "data-find": find(e) }, cols.map(([, field]) =>
+        field === "account" ? el("td", { class: "name" }, [link(e)]) : el("td", {}, [textCell(field === "host" ? host(e) : e[field])]))));
+    for (const row of rows) row.hidden = !open;
+    const head = phone ? el("li", { class: "key-group", "data-site": site }, [toggle])
+      : el("tr", { class: "key-group", "data-site": site }, [el("td", { colspan: String(cols.length) }, [toggle])]);
+    const setOpen = value => { toggle.setAttribute("aria-expanded", String(value)); for (const row of rows) row.hidden = !value; };
+    toggle.onclick = () => setOpen(toggle.getAttribute("aria-expanded") !== "true");
+    return { site, head, rows, toggle, setOpen };
+  });
+  const body = blocks.flatMap(b => [b.head, ...b.rows]);
+  const list = phone ? el("ul", { class: "key-list" }, body)
+    : el("table", { class: "sheet" }, [el("thead", {}, [el("tr", {}, cols.map(([name]) => el("th", { text: t(name) })))]), el("tbody", {}, body)]);
+  const find = el("input", { type: "search", class: "key-search", placeholder: t("Find a site or account"), "aria-label": t("Find a site or account") });
+  const remembered = new Map(blocks.map(b => [b.site, b.toggle.getAttribute("aria-expanded") === "true"]));
+  find.oninput = () => {
+    const q = find.value.trim().toLowerCase();
+    for (const b of blocks) {
+      if (!q) { b.head.hidden = false; b.setOpen(remembered.get(b.site)); continue; }
+      const siteHit = b.site.includes(q), hits = b.rows.map(row => siteHit || row.dataset.find.includes(q));
+      b.head.hidden = !hits.some(Boolean);
+      b.toggle.setAttribute("aria-expanded", String(hits.some(Boolean)));
+      b.rows.forEach((row, i) => { row.hidden = !hits[i]; });
+    }
+  };
+  for (const b of blocks) b.toggle.addEventListener("click", () => { if (!find.value.trim()) remembered.set(b.site, b.toggle.getAttribute("aria-expanded") === "true"); });
+  return el("div", { class: "keys-list" }, [find, el("div", { class: "sheet-scroll keys-sheet" + (phone ? " keys-phone" : ""), tabindex: "0", role: "region",
+    "aria-label": t("{name} table", { name: label("keys") }) }, [list])]);
+}
+// co's own credentials (#3305, owner 2026-11-22: «我们自己的密钥是在 keys.env 里面»), grouped by service (#3326):
+// one row per service with "connected" and a count; settings that aren't secrets (scopes, expiry times, flags, the
+// browser engine, the agent address) fold under 设置项. The Host sends names only; a value never reaches it.
+function keysEnvSection(onLoad = () => {}) {
   const box = el("section", { class: "keys-env", hidden: "" });
   hostPost("/rem/keys/env", {}).then(reply => {
-    const names = reply.names || [];
-    if (!reply.ok || (!names.length && !reply.error)) return;
+    const services = reply.ok ? reply.services || [] : [], settings = reply.ok ? reply.settings || [] : [];
+    const own = services.reduce((n, s) => n + s.count, 0);
+    onLoad(own);
+    if (!reply.ok || (!services.length && !settings.length && !reply.error)) return;
     box.append(...[el("h2", { class: "keys-env-h", text: t("co's own keys") }),
       el("p", { class: "key-import-note", text: t("They live in {where}. Values stay hidden.", { where: reply.where }) }),
       reply.error ? el("p", { class: "key-import-note", text: reply.error }) : null,
-      el("ul", { class: "keys-env-list" }, names.map(name => el("li", {}, [el("code", { class: "keys-env-name", text: name }),
-        el("span", { class: "keys-env-mask", "aria-label": t("hidden"), text: "••••••" })])))]
+      services.length ? el("ul", { class: "keys-env-list" }, services.map(s => el("li", {}, [el("span", { class: "keys-env-service", text: s.service }),
+        el("span", { class: "keys-env-state", text: t("Connected") }), el("span", { class: "keys-env-mask", text: s.count === 1 ? t("1 key") : t("{n} keys", { n: s.count }) })]))) : null,
+      settings.length ? el("details", { class: "keys-env-settings" }, [el("summary", { text: t("Settings ({n})", { n: settings.length }) }),
+        el("ul", { class: "keys-env-list" }, settings.map(name => el("li", {}, [el("code", { class: "keys-env-name", text: name })])))]) : null]
       .filter(Boolean));
     box.hidden = false;
   });
@@ -12287,7 +12390,10 @@ Object.assign(UI.zh, {
   "Apple's Passwords app doesn't let other programs read it. In Passwords, choose File → Export All Passwords…, save the CSV, then pick it here:":
     "Apple 的「密码」App 不让其他程序直接读取。在「密码」App 里选 文件 → 导出所有密码…，存成 CSV，再在这里选这个文件：",
   "Pick a password export from 1Password, LastPass, Bitwarden, Chrome or Safari:": "选一个从 1Password、LastPass、Bitwarden、Chrome 或 Safari 导出的密码文件：",
-  "Add one by hand": "手动添加一条", "Values go to the Keychain; the notebook keeps only what each key is.": "密码存进钥匙串，笔记本只记每条是什么。", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏" });
+  "Add one by hand": "手动添加一条", "Values go to the Keychain; the notebook keeps only what each key is.": "密码存进钥匙串，笔记本只记每条是什么。", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏",
+  "{n} in the Keychain": "钥匙串里 {n} 条", "{n} in the Keychain · co's own {m}": "钥匙串里 {n} 条 · co 自己用的 {m} 项",
+  "Nothing imported into the Keychain yet · co's own {m}, below": "钥匙串里还没有导入的密码 · co 自己用的 {m} 项在下面",
+  "{n} keys": "{n} 条", "1 key": "1 条", "Find a site or account": "找网站或账号", "Connected": "已连接", "Settings ({n})": "设置项（{n}）" });
 function keyImporter() {
   const result = el("div", { class: "key-import-result", hidden: "" });
   const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": t("Import a password export (CSV)") });

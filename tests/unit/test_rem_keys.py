@@ -193,3 +193,26 @@ def test_the_host_returns_the_reason_and_lists_keys_env_names(host, fake_vault, 
     assert call(host.routes, "POST", "/rem/keys/env", body=b"{}")[0] == 401  # the page's cookie, as for every key route
     status, _, body = call(host.routes, "POST", "/rem/keys/env", cookie=cookie, body=b"{}")
     assert status == 200 and json.loads(body)["names"] == ["OPENAI_API_KEY"] and "sk-not" not in body
+
+
+# ---- #3326: keys.env grouped by service, settings apart; key pages never reach a model stage ----
+
+def test_keys_env_credentials_are_grouped_by_service_and_settings_kept_apart(tmp_path):
+    env = tmp_path / "keys.env"
+    env.write_text("GOOGLE_ACCESS_TOKEN=ya29.fake\nGOOGLE_REFRESH_TOKEN=1//fake\nGOOGLE_SCOPES=mail calendar\n"
+                   "GOOGLE_TOKEN_EXPIRES_AT=2026-11-22T10:00:00\nOPENAI_API_KEY=sk-fake\nIS_EMAIL_ACTIVE=true\n"
+                   "CO_BROWSER_ENGINE=wtf\nAGENT_ADDRESS=0xfake\nLARK_APP_SECRET=fake\nFREESOUND_API_KEY=fake\n")
+    result = keys.env_names(env)
+    assert result["services"] == [{"service": "Freesound", "count": 1}, {"service": "Google", "count": 2},
+                                  {"service": "Lark", "count": 1}, {"service": "OpenAI", "count": 1}]
+    assert sorted(result["settings"]) == ["AGENT_ADDRESS", "CO_BROWSER_ENGINE", "GOOGLE_SCOPES", "GOOGLE_TOKEN_EXPIRES_AT",
+                                          "IS_EMAIL_ACTIVE"]
+    assert "fake" not in json.dumps(result) and "ya29" not in json.dumps(result)
+
+
+def test_a_name_is_a_credential_only_when_it_ends_in_a_secret_word():
+    secret = ["OPENAI_API_KEY", "GOOGLE_ACCESS_TOKEN", "LARK_APP_SECRET", "SYNO_PASSWORD", "GH_PAT", "AWS_CREDENTIALS"]
+    setting = ["GOOGLE_TOKEN_EXPIRES_AT", "GOOGLE_SCOPES", "IS_EMAIL_ACTIVE", "CO_BROWSER_ENGINE", "AGENT_ADDRESS",
+               "KEYCHAIN_SERVICE", "TOKEN_URL"]
+    assert all(keys.SECRET_NAME.search(name) for name in secret)
+    assert not any(keys.SECRET_NAME.search(name) for name in setting)
