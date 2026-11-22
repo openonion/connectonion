@@ -163,7 +163,7 @@ def test_this_week_project_rows_strip_the_now_label():
     page = TEMPLATE.read_text(encoding="utf-8")
     parsing = page[page.index("const UNKNOWN_LINE ="):page.index("function mappedContact(")]
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["splitTrailers", "plainLine", "displayLine", "summaryLine"])
+                          for name in ["splitTrailers", "plainLine", "displayLine", "summaryLine", "pageWords"])
     week = page[page.index("  const week = weekChanges();"):page.index("  const recent = listedRecords()")] + "  main.appendChild(weekPages);\n"
     script = "\n".join([
         parsing, functions,
@@ -234,7 +234,7 @@ def test_first_build_keeps_failures_and_written_pages_visible(written):
 def test_fact_list_omits_placeholder_only_fields_and_keeps_mail():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['factList', 'knownValue', 'plainLine'])
+                          for name in ['factList', 'knownValue', 'plainLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const FACT_LABELS = {people: ['Phone', 'Role', 'Location']}, COPYABLE = new Set();
       const UNFILLED_LINE = /^Unknown — not verified\.?$/i, youify = text => text;
@@ -258,7 +258,7 @@ def test_fact_list_omits_placeholder_only_fields_and_keeps_mail():
 def test_statement_capitalisation_preserves_code_and_paths():
     page = TEMPLATE.read_text(encoding="utf-8")
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["capFirst", "memoryStatement", "newestStanding", "plainLine", "listItems"])
+                          for name in ["capFirst", "memoryStatement", "newestStanding", "plainLine", "listItems", "pageWords"])
     cases = [
         ("origin/main is ahead", "origin/main is ahead"),
         ("`co rem` runs nightly", "`co rem` runs nightly"),
@@ -659,7 +659,7 @@ def test_open_reader_launches_the_file_uri_only_when_asked(tmp_path, monkeypatch
 def test_summary_values_hide_only_empty_placeholders():
     page = TEMPLATE.read_text(encoding="utf-8")
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["plainLine", "knownValue"])
+                          for name in ["plainLine", "knownValue", "pageWords"])
     unfilled = next(line for line in page.splitlines() if line.startswith("const UNFILLED_LINE ="))
     cases = [None, "", "  ", "Unknown", "unknown", "Unknown.", "—", "Unknown — not verified.",
              "Unknown — not verified. The latest session confirms a changed owner.", "Avery Lin", 0]
@@ -909,7 +909,7 @@ def test_reader_interface_language_default(languages, owner, browser, expected):
 def test_changed_field_matches_raw_facts_before_display_formatting():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['changedValue', 'factText', 'plainLine'])
+                          for name in ['changedValue', 'factText', 'plainLine', 'pageWords'])
     script = '\n'.join([
         '(() => {', functions, 'const youify = value => value;',
         'const r = {path: "people/avery-lin.md"};',
@@ -1102,7 +1102,7 @@ def test_reader_language_swap_reuses_parsing_and_restores_original():
     swap = re.search(r'function swapLanguage\(.*?\n\}', page, re.S).group(0)
     parsing = page[page.index('const UNKNOWN_LINE ='):page.index('function mappedContact(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['splitTrailers', 'plainLine'])
+                          for name in ['splitTrailers', 'plainLine', 'pageWords'])
     script = parsing + functions + swap + r'''
       const FACTS = new Map(), SESSION_TEXT = new Map(), youify = text => text;
       const r = {path: 'people/avery-lin.md', category: 'people', title: 'Avery Lin',
@@ -1144,7 +1144,7 @@ def test_reader_skill_line_is_the_first_plain_clause():
     """Sprint 13: a skill shows one line of what it does, not the description's whole paragraph."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['skillClause', 'plainLine'])
+                          for name in ['skillClause', 'plainLine', 'pageWords'])
     result = _run_reader_js(page[page.index('const UNKNOWN_LINE ='):page.index('const UNKNOWN_LINE =') + 400].split('\n')[0] + '\n'
                             + ''.join(page[page.index('const ' + name + ' ='):].split('\n')[0] + '\n'
                                       for name in ['UNFILLED_LINE', 'SKILL_NO_DESCRIPTION', 'SKILL_ABBREVIATION'])
@@ -1201,7 +1201,7 @@ def test_reader_translated_relationship_takes_precedence_over_index_prose():
 def test_reader_waiting_summary_trims_chinese_separators(separator):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['morningWords', 'withoutDateClutter', 'plainLine', 'capFirst', 'threadWords'])
+                          for name in ['morningWords', 'withoutDateClutter', 'plainLine', 'capFirst', 'threadWords', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const inCategory = () => [], youify = text => text;
       const r = {title: 'Avery Lin'}, separator = ''' + json.dumps(separator) + r''';
@@ -1256,7 +1256,7 @@ def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadEntries', 'threadGroups', 'obligationEvidence', 'obligationWords',
-                                       'sameObligation', 'plainLine', 'threadWords', 'rawSection'])
+                                       'sameObligation', 'plainLine', 'threadWords', 'rawSection', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const REM = {owner: 'people/ellis.md'}, COMMENT = /<!--[\s\S]*?-->/g, DAY_MS = 86400000;
       const youify = text => text;
@@ -1288,7 +1288,7 @@ def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
 def test_reader_insight_labels_tolerate_chinese_punctuation(marker):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['memoryStatement', 'newestStanding', 'plainLine', 'listItems', 'capFirst'])
+                          for name in ['memoryStatement', 'newestStanding', 'plainLine', 'listItems', 'capFirst', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const REM = {}, youify = text => text;
       const section = (r, name) => name === 'insight' ? {text: '- ' + r.marker + ' 已完成交付 [1].'} : null;
@@ -1351,6 +1351,7 @@ def test_reader_privacy_passages_keep_chinese_tags_with_their_words(punctuation,
 def test_reader_privacy_plain_summaries_preserve_public_words_links_and_inline_code():
     page = TEMPLATE.read_text()
     plain = re.search(r'function plainLine\(.*?\n\}', page, re.S).group(0)
+    plain += '\n' + re.search(r'function pageWords\(.*?\n\}', page, re.S).group(0)
     text = ('公开介绍。秘密文件 `case.txt` 和 [同事](people/secret.name.md)[sensitive] [1]。'
             '秘密日期。 [personal] [13]用户秘密后续联系[personal]。公开结尾。')
     result = _run_reader_js(plain + '\nconst youify = text => text;\nconst text = ' + json.dumps(text) + r''';
@@ -1407,7 +1408,7 @@ def test_reader_session_search_removes_labelled_passages_before_indexing_and_tru
 def test_reader_inline_privacy_wraps_the_full_passage_after_html_escaping(secret):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['esc', 'inline'])
+                          for name in ['esc', 'inline', 'pageWords'])
     html = _run_reader_js(functions + r'''
       const youify = text => text, quoteSpans = text => text,
         uncertainCitations = text => text, tetherCitations = text => text;
@@ -1833,7 +1834,7 @@ def test_claim_values_use_only_current_cached_facts_for_chinese_after():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['parseFacts', 'topLevelParts', 'rawSection', 'factText', 'plainLine',
-                                       'originalMark', 'claimValue', 'overnightChange', 'changeCard', 'localDates', 'fmtDate'])
+                                       'originalMark', 'claimValue', 'overnightChange', 'changeCard', 'localDates', 'fmtDate', 'pageWords'])
     result = _run_reader_js(functions + r'''
       UI.zh = {Original: '原文', 'No Chinese translation yet; showing original': '尚无中文译文，显示原文', role: '职位'};
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, youify = text => text;
@@ -1875,7 +1876,7 @@ def test_claim_values_use_only_current_cached_facts_for_chinese_after():
 def test_unknown_is_localised_only_on_display_paths():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['esc', 'inline', 'plainLine', 'displayLine', 'parseFacts', 'topLevelParts', 'rawSection'])
+                          for name in ['esc', 'inline', 'plainLine', 'displayLine', 'parseFacts', 'topLevelParts', 'rawSection', 'pageWords'])
     result = _run_reader_js(functions + r'''
       UI.zh = {Unknown: '未知'};
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
@@ -1900,7 +1901,7 @@ def test_unknown_is_localised_only_on_display_paths():
 def test_summary_line_strips_only_leading_insight_labels():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['plainLine', 'displayLine', 'summaryLine'])
+                          for name in ['plainLine', 'displayLine', 'summaryLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const youify = text => text;
       const labels = ['Now:', '**Now:**', '**Pattern**:', 'At stake:', 'Changed:', '现在：', '规律：', '关键所在：', '变化：'];
@@ -1936,7 +1937,7 @@ def test_role_lede_is_the_title_and_parse_facts_splits_like_facts_py():
     from connectonion.rem.facts import values
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['parseFacts', 'topLevelParts', 'roleLede', 'plainLine'])
+                          for name in ['parseFacts', 'topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
     line = 'Events Coordinator (Entrepreneurship; email signature through 2026-10-29); Mentor [3]'
     result = _run_reader_js(functions + r'''
       const PARSED_FACTS = new Map(), el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
@@ -1955,7 +1956,7 @@ def test_role_lede_keeps_when_a_role_ended_or_started():
     """"Product Owner (until 2025-06); Advisor" read "Product Owner +1": a past role as if current."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['topLevelParts', 'roleLede', 'plainLine'])
+                          for name in ['topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const inline = text => text, youify = text => text, roleSummary = () => null;
@@ -1972,7 +1973,7 @@ def test_role_lede_sends_provenance_in_any_language_to_the_tooltip():
     a translated note on where the role came from, which the English-only pattern let through (owner, 2026-11-18)."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['topLevelParts', 'roleLede', 'plainLine'])
+                          for name in ['topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const inline = text => text, youify = text => text, roleSummary = () => null;
@@ -2001,7 +2002,7 @@ def test_chinese_interface_never_assumes_a_single_persons_gender():
 def test_role_summary_shows_first_and_count_with_full_title():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['roleSummary', 'topLevelParts', 'plainLine'])
+                          for name in ['roleSummary', 'topLevelParts', 'plainLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const youify = text => text, inline = text => text, privateFallback = node => node;
@@ -2061,7 +2062,7 @@ def test_all_builtin_facts_and_sheet_labels_have_chinese_entries():
 def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personSub', 'roleSummary', 'roleLede', 'topLevelParts', 'changedValue', 'factText', 'plainLine'])
+                          for name in ['personSub', 'roleSummary', 'roleLede', 'topLevelParts', 'changedValue', 'factText', 'plainLine', 'pageWords'])
     result = _run_reader_js(functions + r"""
       const role = '合作负责人; 试点负责人; 研究联络人', original = 'Head of Partnerships; Pilot lead; Research liaison';
       const r = {path: 'people/mara-ostrowski.md'};
@@ -2133,7 +2134,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'orgNamed', 'domainName', 'startsWords', 'personDomain', 'sameCompany', 'personProject',
         'factList', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'snapshotWhy', 'translatedRelationBasis',
-        'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+        'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
@@ -2273,7 +2274,7 @@ def test_project_coverage_limit_has_chinese_copy(days, inputs, expected):
 def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', title: 'Fernhill Labs', category: 'orgs', translations: {zh:
@@ -2308,7 +2309,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
-                                       'connectedContext', 'closeStripped', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden'])
+                                       'connectedContext', 'closeStripped', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden', 'pageWords'])
     result = _run_reader_js(functions + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
@@ -4505,7 +4506,7 @@ def test_no_view_offers_a_command_to_copy():
 @pytest.mark.parametrize('link', ['http://127.0.0.1:8000/rem?token=fictional', ''])
 def test_the_review_snapshot_says_one_sentence_and_links_the_live_reader(link):
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in ['reviewPage', 'liveReaderLine'])
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in ['reviewPage', 'liveReaderLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(c => c != null),
         appendChild(child) { this.children.push(child); }});
