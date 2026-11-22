@@ -11,6 +11,31 @@ ConnectOnion v0.3.5+ fully supports Windows, including users with non-ASCII user
 ✅ **Crypto key operations**: Ed25519 key generation, saving, and loading
 ✅ **Agent logging**: Console output with UTF-8 characters and emojis
 ✅ **File operations**: Config files, .env files, recovery phrases
+✅ **Offline reader snapshot**: `co wiki open` safely writes and opens a local HTML view
+
+## Opening an Offline Reader Snapshot
+
+On Windows, run the existing reader command:
+
+```powershell
+co wiki open
+```
+
+There is no new flag or separate Windows command. ConnectOnion writes a
+self-contained HTML snapshot to the local temporary directory and opens it in
+your browser. The snapshot is an offline view of the current notebook; after
+the next maintenance pass, run `co wiki open` again to refresh the view.
+
+The temporary filename is predictable so that repeated opens replace the same
+snapshot. Before replacing it on Windows, ConnectOnion opens the file itself
+and checks whether it is a symbolic link, junction, or other reparse point. If
+it is, the command stops with an error rather than following that redirection
+or overwriting its target. Remove the unexpected temporary link only if you
+created it intentionally, then run `co wiki open` again.
+
+This behavior matches the existing POSIX safety rule that refuses to follow
+links when creating the snapshot. Windows protects the temporary file through
+its normal ACLs rather than POSIX file-mode bits.
 
 ## What Was Fixed (v0.3.5)
 
