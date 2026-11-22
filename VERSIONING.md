@@ -400,7 +400,16 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc7
+## Current Version: 1.9.7rc8
+Release candidate 1.9.7rc8 for 1.9.7: fixes a regression in rc7. rc7 reworded a topic link review from the page
+path to its title, and reviews deduped on the question text, so the next night would have proposed every stored
+link again (36 became 77 on a clone of a real notebook) and re-asked decided ones. A link review now matches on
+its two pages whatever the wording; a pending one takes the new wording, so the stale path questions migrate to
+titles; decided links stay as written. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc8.md).
+
+- 1.9.7rc8 (link reviews dedupe on their pages, not their wording #3292).
+
+### Previous candidate: 1.9.7rc7
 Release candidate 1.9.7rc7 for 1.9.7: a reader polish batch (record pages open at one width, a project page's
 "in Today" opens the filtered Waiting view, calendar titles clamp, the empty Keys page leads with one-click
 import, a topic link review names the page not its file path) and the WeChat upgrade fix — an existing install's
