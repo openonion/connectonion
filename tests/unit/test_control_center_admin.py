@@ -54,8 +54,9 @@ def run(project, *, owner, status="done", sid=None, ago_s=60, prompt="secret pro
 
 
 def page(address, is_admin):
+    # People meta wraps only between its parts (non-breaking spaces inside).
     return dash.render_starter({"name": "desk", "skills": []},
-                               viewer=dash.viewer_for(address, is_admin))
+                               viewer=dash.viewer_for(address, is_admin)).replace("\u00a0", " ")
 
 
 class TestOnlyAnAdminIsSentIt:

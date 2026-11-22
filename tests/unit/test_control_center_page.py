@@ -248,17 +248,19 @@ def _contrast(hex_a, hex_b):
 
 def test_control_center_text_tokens_meet_wcag_aa_in_light_and_dark():
     for foreground, background in (
-        ("#1c1917", "#fafaf9"),
-        ("#57534e", "#fafaf9"),
-        ("#6f6a66", "#ffffff"),
-        ("#6f6a66", "#f5f5f4"),
-        ("#0b2416", "#22d27a"),      # ink on the green fill
-        ("#13703f", "#e9faf1"),      # whitelist badge
-        ("#b42318", "#fdf0ee"),
-        ("#9a5b00", "#fdf5e6"),
-        ("#f5f5f4", "#121211"),
-        ("#c4c0bc", "#121211"),
-        ("#aaa5a0", "#1b1b1a"),
+        ("#18181b", "#fafafa"),
+        ("#52525b", "#fafafa"),
+        ("#6b6b73", "#ffffff"),
+        ("#6b6b73", "#f4f4f5"),      # meta on a quiet pill / invite strip
+        ("#18181b", "#f4f4f5"),      # quiet pill label
+        ("#ffffff", "#18181b"),      # primary pill, admin badge
+        ("#0b2416", "#22d27a"),      # ink on the green mark
+        ("#c0262d", "#ffffff"),      # bad number, Block label
+        ("#c0262d", "#f4f4f5"),
+        ("#a15c00", "#ffffff"),      # warn number
+        ("#f4f4f5", "#0f0f10"),
+        ("#c4c4ca", "#0f0f10"),
+        ("#a1a1aa", "#19191b"),
     ):
         assert _contrast(foreground, background) >= 4.5
 

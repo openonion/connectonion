@@ -260,9 +260,17 @@ def _person(person, now, fragments):
     if level in ("whitelist", "contact"):
         actions = (_button(fragments, "remove", "Remove", address)
                    + _button(fragments, "block", "Block", address, "danger"))
+    name = person["name"]
     return fragments["person"].safe_substitute(
-        what=escape(person["name"] or _short(address)), mono="" if person["name"] else "mono",
-        role=level, meta=escape(" · ".join(_person_meta(person, now))), actions=actions).strip()
+        what=escape(name or _short(address)), mono="" if name else "mono",
+        # A name's first letter, or the address's first two hex digits.
+        initial=escape(name[:1] if name else address[2:4]),
+        role=level, meta=escape(_unbroken(_person_meta(person, now))), actions=actions).strip()
+
+
+def _unbroken(parts):
+    """Join with " · ", wrapping only between parts: "seen 1h" / "ago" read as two facts."""
+    return " · ".join(part.replace(" ", "\u00a0") for part in parts)
 
 
 def _person_meta(person, now):
@@ -289,7 +297,7 @@ def _invite(fragments):
         return ""
     codes = invite_codes()
     if codes:
-        actions = (_button(fragments, "rotate_invite", "New code")
+        actions = (_button(fragments, "rotate_invite", "New code", tone="primary")
                    + _button(fragments, "invite_off", "Turn off", tone="danger"))
         return _sub(fragments, "Invite code", codes[0], actions, "mono")
     return _sub(fragments, "Invite code", "Off · nobody can join with a code",
