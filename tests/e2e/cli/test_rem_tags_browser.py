@@ -102,7 +102,7 @@ def test_a_tag_has_its_page_and_search_finds_it_by_slug_label_or_alias(reader, w
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_a_persons_tags_are_words_that_open_their_tag_page(reader, width):
+def test_a_persons_tags_are_chips_that_open_their_tag_page(reader, width):
     open_page, _ = reader
     page = open_page("r=people%2Fmara-ostrowski.md", width)
     # The head's tag row, as on every record (rc35 hunt, #3131); the profile card no longer repeats it.
@@ -250,3 +250,32 @@ def test_every_page_kind_shows_its_tags_under_its_title_and_a_chip_opens_the_rig
     else:
         pilot.click()
         page.wait_for_function("() => location.hash.startsWith('#q=tag')")
+
+
+CHIP_STYLE = """el => { const s = getComputedStyle(el); return {
+  line: s.textDecorationLine, bg: s.backgroundColor, border: s.borderTopWidth, radius: parseFloat(s.borderTopLeftRadius),
+  weight: s.fontWeight, shadow: s.boxShadow, paper: getComputedStyle(document.body).backgroundColor }; }"""
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("path", ["people/mara-ostrowski.md", "orgs/fernhill-labs.md", "projects/harbour.md",
+                                  "skills/catalog/weekly-brief.md", "decisions/one-vocabulary.md"])
+def test_a_tag_looks_like_a_tag_on_every_page_kind(reader, path, theme):
+    """Owner, 2026-11-22: «那个标签为什么看起来不像标签？它是一个下划线的» (#3308). A tag is a quiet chip on every kind:
+    a tint of its own, rounded, regular weight, no underline and no shadow, in light and dark, and it still opens
+    the page it names. Every kind draws it through one component (tagLinks), so knowledge pages get the same."""
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"))
+    page.evaluate("theme => document.documentElement.setAttribute('data-theme', theme)", theme)
+    chip = page.locator("#main .page-tags a.tag-link").first
+    chip.wait_for()
+    style = chip.evaluate(CHIP_STYLE)
+    assert style["line"] == "none", style  # not an underlined word any more
+    assert style["bg"] not in ("rgba(0, 0, 0, 0)", "transparent", style["paper"]) or style["border"] != "0px", style
+    assert style["radius"] > 0 and style["weight"] == "400" and style["shadow"] == "none", style
+    for width in (1440, 390):
+        page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
+        _shot(page, f"chip-{path.split('/')[0]}-{theme}", width)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    chip.click()
+    page.wait_for_function("() => location.hash.startsWith('#q=tag') || location.hash.startsWith('#r=')")
