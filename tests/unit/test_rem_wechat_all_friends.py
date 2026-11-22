@@ -253,3 +253,16 @@ def test_the_map_keeps_chat_activity_by_page_for_the_reader(tmp_path, monkeypatc
     assert len(found) == 1   # only the friend with chats
     (record, entry), = found.items()
     assert "Quinn" in Notebook(tmp_path).read(record) and (entry["n90"], entry["mine"]) == (6, False)
+
+
+def test_the_coverage_line_counts_the_chats_the_index_holds(tmp_path, monkeypatch):
+    # #3353's text_coverage prefers fts_chat_ids (a cheap read) and calls the readers with db_storage alone.
+    from connectonion.useful_tools import wechat as engine
+    (tmp_path / "message").mkdir()
+    _fts_db(tmp_path / "message" / "message_fts.db")
+    monkeypatch.setattr(engine, "key_for", lambda path: "x")
+    monkeypatch.setattr(engine, "decrypt_db", lambda path, key: path.read_bytes())
+    assert engine.fts_chat_ids(tmp_path) == {"wxid_quinn", "wxid_ines", "99@chatroom"}
+    assert len(engine.fts_messages(tmp_path)) == 5
+    monkeypatch.setattr(engine, "friend_count", lambda storage: 3)
+    assert engine.text_coverage(tmp_path) == {"friends": 3, "with_chats": 2, "missing": 1}

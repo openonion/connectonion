@@ -175,7 +175,33 @@ FTS_DB = "message_fts.db"
 FTS_TABLES = 4   # message_fts_v4_0 .. _3
 
 
-def fts_messages(db_storage: Path, known: dict) -> list[dict]:
+def _fts(db_storage: Path):
+    """The full-text index, open in memory, or None without a key."""
+    path = Path(db_storage) / "message" / FTS_DB
+    key = key_for(path) if path.is_file() else None
+    if not key:
+        return None
+    try:
+        return open_readonly(decrypt_db(path, key))
+    except (WrongKeyError, sqlite3.DatabaseError):
+        return None
+
+
+def fts_chat_ids(db_storage: Path) -> set[str]:
+    """The chats the full-text index holds messages for: the cheap read text_coverage counts (#3353)."""
+    conn = _fts(db_storage)
+    if conn is None:
+        return set()
+    name = {r[0]: r[1] for r in conn.execute("SELECT rowid, username FROM name2id")}
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    sessions = set()
+    for i in range(FTS_TABLES):
+        if f"message_fts_v4_{i}_content" in tables:
+            sessions |= {r[0] for r in conn.execute(f'SELECT DISTINCT c4 FROM "message_fts_v4_{i}_content"')}
+    return {name[s] for s in sessions if s in name}
+
+
+def fts_messages(db_storage: Path, known: dict | None = None) -> list[dict]:
     """Every message in WeChat's full-text index, as all_messages' rows. Read-only, in memory.
 
     `message/message_fts.db` opens with the keys already captured and holds the text of chats whose own
@@ -185,13 +211,9 @@ def fts_messages(db_storage: Path, known: dict) -> list[dict]:
     create_time), which need no tokenizer; ids resolve through this database's own name2id. [] without a key.
     """
     from datetime import datetime, timezone
-    path = Path(db_storage) / "message" / FTS_DB
-    key = key_for(path) if path.is_file() else None
-    if not key:
-        return []
-    try:
-        conn = open_readonly(decrypt_db(path, key))
-    except (WrongKeyError, sqlite3.DatabaseError):
+    known = known or {}
+    conn = _fts(db_storage)
+    if conn is None:
         return []
     name = {r[0]: r[1] for r in conn.execute("SELECT rowid, username FROM name2id")}
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}

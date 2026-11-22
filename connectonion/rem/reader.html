@@ -5941,8 +5941,9 @@ const isoDay = value => (String(value || "").match(/\d{4}-\d{2}-\d{2}/) || [""])
 function quietFriend(r) {
   const chat = chatActivity(r);
   if (!chat || personSources(r).includes("mail")) return false;
-  const cutoff = calendarDay(new Date(Date.parse(REM.as_of || new Date().toISOString()) - 90 * 864e5).toISOString());
-  return calendarDay(chat.last) < cutoff;
+  const asOf = REM.as_of || "";
+  if (REM._quiet?.asOf !== asOf) REM._quiet = { asOf, cutoff: calendarDay(new Date(Date.parse(asOf || new Date().toISOString()) - 90 * 864e5).toISOString()) };
+  return calendarDay(chat.last) < REM._quiet.cutoff;
 }
 function peopleExclusions() {
   const people = REM.records.filter(r => r.category === "people");
@@ -6040,11 +6041,15 @@ function tagBar(c, records) {
       "aria-current": slug === active ? "true" : null }, [tagLabel(slug), " ", el("span", { class: "chip-n", text: String(n) })]))]);
 }
 const TAG_LISTS = ["people", "orgs", "projects", "skills", "decisions", "principles"];
+let DAY_FORMAT = null;
 function calendarDay(iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
   const d = new Date(iso);
   if (isNaN(d)) return "";
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: REM.status?.timezone || "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  // One formatter per time zone: building one per call made a 1,400-person People table measurably slower (#3346).
+  const zone = REM.status?.timezone || "UTC";
+  if (DAY_FORMAT?.zone !== zone) DAY_FORMAT = { zone, format: new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }) };
+  const parts = DAY_FORMAT.format.formatToParts(d);
   const part = type => parts.find(p => p.type === type).value;
   return part("year") + "-" + part("month") + "-" + part("day");
 }
