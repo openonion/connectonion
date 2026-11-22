@@ -197,6 +197,7 @@ def _jobs(root, first, logs, sources, set_aside=None):
     rows = [row for row in rows if row["record"] not in owner_ran]
     rows = [row for row in rows if row["record"] not in retries and row["record"] not in parked
             and (row["record"] not in spent or _newer(row.get("last_activity"), spent[row["record"]]))]
+    rows = _installed_skills_only(root, rows)
     rows += [{"record": record, "kind": "retry", "entry": entry, "last_activity": entry.get("at", "")}
              for record, entry in retries.items() if Notebook(root).exists(record)]
     return daily._owner_due(root) + rows
@@ -746,7 +747,7 @@ def _guarded_job(root, cursor, config, directory):
     try:
         task = _prepare_job(root, cursor, config, directory)
     except Exception as error:  # noqa: BLE001 -- park() returns None for anything not a mailbox's: re-raised
-        notice = fetch_stalls.park(root, job, error)
+        notice = fetch_stalls.park(root, job, error) or _park_unpreparable(root, job, error)
         if notice is None:
             raise
         cursor.setdefault("set_aside", []).append(notice)
@@ -754,6 +755,31 @@ def _guarded_job(root, cursor, config, directory):
         return None
     fetch_stalls.clear(root, job["record"])
     return task
+
+
+def _park_unpreparable(root, job, error):
+    """A page whose preparation raised a RemError of its own is parked with that reason, or None to re-raise.
+
+    2026-11-23 (#3402): one skill page raised the same RemError from 06:15 on; every turn was handed
+    the same job and the round never moved on. A busy lock, a stale task and the runner are the weather
+    (the job stays for the next turn); a bug is not a RemError and is still seen."""
+    from .files import MAINTENANCE_BUSY
+    from .native import TaskFault
+    from .refusals import remember_refusal
+    if (not isinstance(error, RemError) or isinstance(error, (TaskFault, runner.RunFailed, RoundBlocked))
+            or str(error).startswith(("MAINTENANCE_BUSY", MAINTENANCE_BUSY))):
+        return None
+    # "refused" lets a second park in the same words settle the page instead of retrying it every night.
+    why = f"preparation refused: {' '.join(str(error).split())[:240]}"
+    remember_refusal(root, job["record"], [], why, stage="investigate", parked=True)
+    return f"Set {job['record']} aside: {why}"
+
+
+def _installed_skills_only(root, rows):
+    """A skill page whose SKILL.md is gone is not an investigation job: there is nothing to read (#3402)."""
+    from .skill_runs import installed
+    book = Notebook(root)
+    return [row for row in rows if row.get("kind") != "skill" or installed(book, row["record"])]
 
 
 def _stopped_mailboxes(root, job):
@@ -862,7 +888,12 @@ def _prepare_investigation(root, cursor, job, directory):
         write_json(marker(root, 'owner-refresh.json'), {'date': key(root, service.notebook_today(root))})
     if job["kind"] == "skill":
         from . import skill_runs
-        prepared = skill_runs.prepare(root, record, [Path.home() / ".co/evals"], directory=directory, lock_held=True)
+        try:
+            prepared = skill_runs.prepare(root, record, [Path.home() / ".co/evals"], directory=directory, lock_held=True)
+        except skill_runs.SkillNotInstalled as error:
+            # Listed before its SKILL.md went away: skipped with its reason, never raised into the round (#3402).
+            cursor.setdefault("skipped", []).append({"record": record, "reason": str(error)})
+            return None
         return {"record": record, "parts": [prepared["items"][1:]], "context": [], "page": prepared["items"][0],
                 "number": 1, "multi": False, "edited": False, "ledgers": [], "leads": [], "changed": [],
                 "refused_sources": [], "refused_rounds": [], "searched": ["skill source", "retained evals"],

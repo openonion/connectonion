@@ -775,7 +775,23 @@ def schedule_failure(root: Path) -> dict | None:
             # `empty`: how many of them exited 0 with no task served and nothing submitted.
             **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
                 'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
-                'code_error': _code_error_streak(failures)} if failures else {})}
+                'code_error': _code_error_streak(failures),
+                'same_error': _same_error_streak(failures)} if failures else {})}
+
+
+# Not stuck: these turns end on the weather, and the next fire does continue.
+WEATHER = re.compile(r"^(Turn exceeded \d+ hours|The turn produced nothing|MAINTENANCE_BUSY|co rem is busy)")
+
+
+def _same_error_streak(failures: list[dict]) -> int:
+    """How many of the newest failures stopped on one and the same error (counts aside), 3 or more; else 0.
+
+    2026-11-23 (#3402): five turns on one skill page's prepare error under "REM 会自动重试，不需要你做什么"."""
+    plain = lambda turn: re.sub(r"\d+", "#", turn.get('reason') or '')  # noqa: E731
+    if not failures or not failures[0].get('reason') or WEATHER.match(failures[0]['reason']):
+        return 0
+    streak = next((index for index, turn in enumerate(failures) if plain(turn) != plain(failures[0])), len(failures))
+    return streak if streak >= 3 else 0
 
 
 # A bug in REM's own code, not the weather: retrying the same turn meets the same line again (rc35–rc36: six turns

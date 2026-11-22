@@ -10754,6 +10754,11 @@ function turnTrouble(failure) {
     if (failure.code_error) return uiLanguage === "zh"
       ? `后台：夜里的程序出错了（同一个错误 ${failure.code_error} 次），升级到新版本后会继续。自 ${since} 起。`
       : `Background: The night runner hit a code error ${failure.code_error} ${failure.code_error === 1 ? "time" : "times"}; it resumes after an update. Since ${since}.`;
+    // The same error turn after turn will not clear by retrying (#3402: five turns on one page's
+    // preparation under "REM 会自动重试，不需要你做什么"). Say it is stuck; the raw reason stays on the title.
+    if (failure.same_error) return uiLanguage === "zh"
+      ? `后台：最近 ${failure.same_error} 轮都停在同一个问题上，自 ${since} 起，夜里的工作卡在这里。重试解决不了它，要等修复它的新版本。`
+      : `Background: the last ${failure.same_error} turns stopped on the same problem, since ${since}; the night is stuck there. Retrying will not clear it; it needs a release that fixes it.`;
     if (uiLanguage === "zh") return `后台：最近 ${failure.failures} 轮${all ? "运行了但没有产出" : "失败"}${empty && !all ? `（其中 ${empty} 轮运行了但没有产出）` : ""}，自 ${since} 起。REM 会自动重试，不需要你做什么。`;
     const said = all ? (failure.failures === 1 ? "turn ran but produced nothing" : "turns ran but produced nothing")
       : (failure.failures === 1 ? "turn failed" : "turns failed") + (empty ? ` (${empty} ran but produced nothing)` : "");
