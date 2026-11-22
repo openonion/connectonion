@@ -400,7 +400,17 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc13
+## Current Version: 1.9.7rc14
+Release candidate 1.9.7rc14 for 1.9.7: owner-facing text names pages instead of raw `[[…md]]` paths and the record
+breadcrumb is only as wide as its text (#3338); the knowledge graph is alive, 3D in the live reader with Three.js and
+3d-force-graph vendored and served by the Host on first 3D open, and a live, draggable 2D graph on phone and with
+reduced motion (#3330); 不是人 works on WeChat-only people from the header ⋯ menu and the map and the night honour
+it, verified WeChat accounts are filtered, and the map output labels match their names (#3341). Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc14.md).
+
+- 1.9.7rc14 (pages named not paths and a text-wide crumb #3338; live 3D/2D knowledge graph #3330; 不是人 for WeChat-only people #3341).
+
+### Previous candidate: 1.9.7rc13
 Release candidate 1.9.7rc13 for 1.9.7: adding a source onboards it (#3331). `co rem map [people|orgs|projects]
 --source NAME [--dry-run]` builds pages from one source without a model; each source declares the kinds it yields
 (mail: people and orgs; wechat: people; codex/claude-code: projects) and a kind it does not yield is refused
