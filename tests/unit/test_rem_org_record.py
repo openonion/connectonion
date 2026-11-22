@@ -137,6 +137,7 @@ def test_org_full_memory_date_is_a_calendar_date_without_state_counts():
 def test_org_connections_are_distinct_public_project_org_and_topic_links():
     result = run_js(['orgConnections'], DOM + r'''
       const uiLanguage = 'en', orgProse = x => x, href = p => '#' + p.path, known = () => ({summary:'Recorded connection.'});
+      const singular = category => category;
       const rows = [{path:'projects/studio.md',category:'projects',title:'Studio'},
         {path:'orgs/partner.md',category:'orgs',title:'Partner'},
         {path:'knowledge/teaching.md',category:'knowledge',title:'Teaching'},

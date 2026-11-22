@@ -2961,7 +2961,11 @@
   .ov-page .ov-tk { display: block; white-space: normal; overflow-wrap: anywhere; }
   .ov-page .ov-trow[data-kind=unit] .ov-tl1 > a { font-weight: var(--w-bold); }
   .ov-page .ov-milestones p, .ov-page .ov-connections p, .ov-page .ov-about { line-height: 1.7; margin: 12px 0; }
-  .ov-page .ov-milestones time { color: var(--grey); }
+  .ov-page .ov-milestones time, .ov-page .ov-conn-kind { color: var(--grey); }
+  .ov-page .ov-yours { margin: 24px 0 0; }
+  .ov-page .ov-yours-h { font: var(--w-regular) var(--s-ui)/1.4 var(--font); color: var(--grey); margin: 0 0 8px; }
+  .ov-page .ov-yours ul { list-style: none; margin: 0; padding: 0; }
+  .ov-page .ov-yours li { margin: 0 0 8px; }
   .ov-page .ov-about > div { margin: 12px 0; }
   .ov-page .ov-about dt { color: var(--grey); font-size: var(--s-ui); }
   .ov-page .ov-about dd { margin: 0; overflow-wrap: anywhere; }
@@ -5219,8 +5223,9 @@ const UI = {
     "Still unknown: ": "仍不明确：",
     "co rem has this page from your sources' metadata, not from reading them. One investigation reads the material and fills it in.": "co rem 根据来源的元数据映射了此页，尚未阅读内容。发起一次调查即可阅读材料并补全。",
     "Pages linked from or mentioning this one.": "与此页互相链接或提到它的页面。",
-    "Linked from this page": "本页链接",
-    "Links here": "链接到此页",
+    // Which page names which, in plain words (#3397 review: 「本页链接」 left the direction and the word 链接 to guess).
+    "Mentioned on this page": "这页里提到过",
+    "Its page mentions this one": "它的页面提到这里",
     "Mentions it": "提到了它",
     "Mentioned elsewhere": "在别处提到",
     "Pages that mention it": "提到它的页面",
@@ -14581,6 +14586,7 @@ const ORG_UI_ZH = {
   "faculty": "学部", "school": "学院", "department": "部门", "course": "课程", "team": "团队", "programme": "项目组", "venue": "场所", "lab": "实验室", "Units": "所属单位",
   "University": "大学", "Investor": "投资方", "Client or partner": "客户与合作", "Supplier": "供应商",
   "Community and events": "社区与活动", "Your company": "你的公司", "Personal": "个人",
+  "Your side": "你这边对接的人",
   "Not sure what this is yet": "还不清楚是什么机构",
   "{n} organisations": "{n} 个组织",
   "{org} has {n} waiting on you; most urgent: {who}, {thing}": "{org} 有 {n} 件在等你，最急的是 {who}：{thing}",
@@ -15084,7 +15090,16 @@ function orgTree(v) {
   root.tabIndex = 0;
   const tree = el("ul", { role: "tree", "aria-label": orgT("How {org} is built", { org: orgName(v.r) }) }, [root]);
   tree.addEventListener("keydown", event => orgTreeKey(tree, event));
-  return el("section", { class: "ov-org-tree" }, [el("h2", { class: "ov-tree-h", text: uiLanguage === "zh" ? "人物与组织结构" : "People and structure" }), tree]);
+  return el("section", { class: "ov-org-tree" }, [el("h2", { class: "ov-tree-h", text: uiLanguage === "zh" ? "人物与组织结构" : "People and structure" }),
+    tree, orgYourSide(v)]);
+}
+// The owner's own people this org's page names deal with it; they are not its members (#3397). They sit
+// below the tree under a light heading with no fold: level with the org's units, they read as one of its departments.
+function orgYourSide(v) {
+  const ours = orgByLast((v.r.your_side || []).map(byPath).filter(Boolean));
+  return ours.length ? el("div", { class: "ov-yours" }, [el("h3", { class: "ov-yours-h", text: orgT("Your side") }),
+    el("ul", {}, ours.map(p => el("li", {}, [el("a", { href: href(p), text: p.title }),
+      orgRole(p, "span") ? el("small", { class: "ov-tk", text: orgRole(p, "span").textContent }) : null])))]) : null;
 }
 function orgTreeItem(d) {
   const row = el("div", { class: "ov-trow", "data-kind": d.kind }, [el("span", { class: "ov-twisty", "aria-hidden": "true" }),
@@ -15169,10 +15184,21 @@ function orgConnections(v) {
   const paths = [...(v.r.projects || []), ...(v.r.organisations || []), ...(v.r.topics || []), ...(v.r.relations || []).map(edge => edge.path || edge.target)];
   const pages = [...new Set(paths)].map(byPath).filter(p => p && p.path !== v.r.path && ["projects", "orgs", "knowledge"].includes(p.category) && !orgHidden(p));
   if (!pages.length) return null;
+  // The reason is the line on THIS page that links the two, never the other page's own summary: that summary
+  // is about the other page (its latest version note, on the rc19 hunt), not about this pair (#3397).
+  const edges = new Map((v.r.relations || []).map(link => [link.path || link.target, link]));
+  const reasons = new Map([...edges].filter(([, link]) => link.basis)
+    .map(([path, link]) => [path, relationReason(localizedRelation(link, v.r.path).basis, byPath(path), v.r)]).filter(([, reason]) => reason));
+  // No line says why: name only how the two pages meet, never borrow a sentence from elsewhere.
+  // Which page names which: the edge says so; without one, this page's own organisations are named here and a
+  // project or topic listed on it named this org from its own page.
+  const mine = p => edges.get(p.path) ? edges.get(p.path).kind === "linked" : (v.r.organisations || []).includes(p.path);
+  const how = p => mine(p) ? "Mentioned on this page" : "Its page mentions this one";
   return el("section", { class: "ov-connections" }, [el("h2", { text: uiLanguage === "zh" ? "关联" : "Connections" }),
     ...pages.map(p => {
-      const summary = orgSummary(known(p).summary);
-      return el("p", {}, [el("a", { href: href(p), text: pageName(p) }), ...(summary ? [" — ", orgProse(summary)] : [])]);
+      const reason = reasons.get(p.path);
+      return el("p", {}, [el("a", { href: href(p), text: pageName(p) }), " — ",
+        reason ? orgProse(reason) : el("span", { class: "ov-conn-kind", text: singular(p.category) + " · " + t(how(p)) })]);
     })]);
 }
 function orgCoda(v) {
@@ -16305,11 +16331,23 @@ function localizedRelation(link, currentPath) {
 // A citation or a label taken out of a line leaves no space before the punctuation that followed it
 // ("Wren runs the venue at Fernhill ." on a related-page card, rc36 dates fixer).
 function closeStripped(text) { return String(text).replace(/[ \t]+(?=[.,;:!?。，；：！？])/g, "").replace(/[ \t]{2,}/g, " "); }
+// Why two pages belong together, from the line that links them. A basis taken from an Insight line keeps its
+// writer's prefix ("Pattern: …"), so the card shows the sentence. A "Changed:" line is the page's history
+// (a version moved, a date slipped), never a reason the two are related (#3397: 「ConnectOnion — Changed:
+// 所提供的 Oct6 快照为 1.9.0a41…」 on a client's page), so it gives no reason at all.
+// A line that only names the two pages ("Related: Willowmere Fund", "Organisation: Fernhill Labs") says nothing about why.
+const RELATION_HISTORY = /^[-*\s]*(?:Changed|变化|变更)[:：]/i;
+function relationReason(basis, ...pages) {
+  if (!basis || RELATION_HISTORY.test(basis)) return "";
+  const reason = closeStripped(basis).replace(/^[-*\s]*(?:Now|Pattern|At stake|现在|规律|关键所在|利害|模式)[:：]\s*/i, "").trim();
+  const names = pages.filter(Boolean).flatMap(page => [page.title, pageName(page)]).filter(Boolean);
+  const left = names.reduce((text, name) => text.split(name).join(""), reason).replace(/^[^:：\n]{1,40}[:：]/, "");
+  return /[\p{L}\p{N}]/u.test(left) ? reason : "";
+}
 function relationCard(link, currentPath = "") {
-  // A basis taken from an Insight line keeps its writer's prefix ("Changed: …"); the card shows the sentence.
-  const other = byPath(link.path), origin = byPath(link.via), basis = link.basis && closeStripped(link.basis).replace(/^(?:Now|Pattern|At stake|Changed|现在|规律|关键所在|变化|利害|模式)[:：]\s*/i, "");
+  const other = byPath(link.path), origin = byPath(link.via), basis = relationReason(link.basis, other, origin, byPath(currentPath));
   const labelled = link.private || hasPrivacy(basis || "");
-  const labels = { linked: "Linked from this page", "linked from": "Links here",
+  const labels = { linked: "Mentioned on this page", "linked from": "Its page mentions this one",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
   const entry = el("div", { class: "relation-entry" + (other.private || origin?.private ? " private" : "") }, [
     el("a", { class: "relation-card", href: href(other) }, [
