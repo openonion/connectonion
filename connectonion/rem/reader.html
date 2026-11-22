@@ -118,7 +118,9 @@
     --t-burn: 1100ms; /* a fuse ring burns in */
     --t-ember: 1600ms; /* the most urgent fuse still glows */
     --t-night: 2400ms; /* the night chart draws up to now */
+    --t-spin: 900ms; /* one turn of a spinner while the system is asked (the Keychain's 允许) */
     --ease-out: cubic-bezier(.2, .7, .2, 1);
+    --ease-even: linear; /* a spinner turns at one speed */
     --spring: cubic-bezier(.2, .9, .25, 1.15);
   }
 
@@ -164,12 +166,12 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :root { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; }
+    :root { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; --t-spin: 0ms; }
   }
   /* A phone's display element is 36. */
   @media (max-width: 640px) { :root { --s-display: 36px; } }
   /* 设置 ▸ 减少动态效果: the same stillness, chosen in the reader. */
-  :root.calm { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; }
+  :root.calm { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; --t-spin: 0ms; }
   /* /fuse:tokens */
   * { box-sizing: border-box; }
   html { background: var(--paper); }
@@ -3952,13 +3954,12 @@
   .key-import-wait, .key-import-result { box-sizing: border-box; width: 100%; max-width: 560px; padding: 12px 14px; border: var(--hair) solid var(--rule); border-radius: var(--radius); }
   .key-import-wait:not([hidden]) { display: flex; align-items: center; gap: 12px; }
   .key-import-wait > div { flex: 1; min-width: 0; }
-  .key-spin { width: 18px; height: 18px; flex: none; box-sizing: border-box; border: var(--rule-heavy) solid var(--rule); border-top-color: var(--ink); border-radius: 50%; animation: key-spin 0.9s linear infinite; }
+  .key-spin { width: 18px; height: 18px; flex: none; box-sizing: border-box; border: var(--rule-heavy) solid var(--rule); border-top-color: var(--ink); border-radius: var(--round); animation: key-spin var(--t-spin) var(--ease-even) infinite; }
   @keyframes key-spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .key-spin { animation: none; } }
   .key-import-result.error { border-color: var(--red); border-width: var(--rule-heavy); }
   .key-import-head { margin: 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   .key-import-note, .key-import-sites { margin: 4px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); overflow-wrap: anywhere; }
-  .key-import-fix { display: inline-block; margin-top: 8px; padding: 4px 8px; border: var(--hair) solid var(--rule); border-radius: 6px; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); }
+  .key-import-fix { display: inline-block; margin-top: 8px; padding: 4px 8px; border: var(--hair) solid var(--rule); border-radius: var(--r-cell); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--mono); }
   .key-import-csv input { margin-top: 8px; }
   .keys-env { margin-top: 28px; max-width: 720px; }
   .keys-env-h { margin: 0 0 4px; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
@@ -12011,7 +12012,8 @@ function keyAdder(open = false) {
     status.textContent = reply.ok ? t("Saved · the value is in the Keychain") : reply.error || t("Could not do that. Try again.");
   };
   const summary = el("summary", { text: t("Add a key") });
-  const safety = () => el("p", { class: "key-import-lead", text: t("One-click import. Values go to the Keychain; the notebook keeps only what each key is.") });
+  // The heading above already says 一键导入; this line only says where the values go (#3316 review).
+  const safety = () => el("p", { class: "key-import-lead", text: t("Values go to the Keychain; the notebook keeps only what each key is.") });
   const importer = keyImporter();
   if (open) {
     // No keys yet: the import is the page's one action (he wants to click, not type). Typing one in by hand is the
@@ -12053,7 +12055,7 @@ Object.assign(UI.zh, {
   "Apple's Passwords app doesn't let other programs read it. In Passwords, choose File → Export All Passwords…, save the CSV, then pick it here:":
     "Apple 的「密码」App 不让其他程序直接读取。在「密码」App 里选 文件 → 导出所有密码…，存成 CSV，再在这里选这个文件：",
   "Pick a password export from 1Password, LastPass, Bitwarden, Chrome or Safari:": "选一个从 1Password、LastPass、Bitwarden、Chrome 或 Safari 导出的密码文件：",
-  "Add one by hand": "手动添加一条", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏" });
+  "Add one by hand": "手动添加一条", "Values go to the Keychain; the notebook keeps only what each key is.": "密码存进钥匙串，笔记本只记每条是什么。", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏" });
 function keyImporter() {
   const result = el("div", { class: "key-import-result", hidden: "" });
   const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": t("Import a password export (CSV)") });
