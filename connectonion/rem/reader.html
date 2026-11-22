@@ -4047,6 +4047,8 @@
   /* A phone gets a list (#3326): the account on line one, host and purpose muted on line two. */
   .key-list { list-style: none; padding: 0; margin: 0; }
   .key-list .key-group { padding: 0; border-bottom: var(--hair) solid var(--rule); }
+  /* The phone's 44 px touch target stays; the label sits in its middle instead of leaving a gap under it. */
+  .key-list .key-group-toggle { width: 100%; align-items: center; }
   .key-entry { display: flex; flex-direction: column; gap: 2px; padding: 8px 0 8px 20px; border-bottom: var(--hair) solid var(--rule); }
   .key-entry a { color: var(--ink); overflow-wrap: anywhere; }
   .key-entry-meta { color: var(--grey); overflow-wrap: anywhere; font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
