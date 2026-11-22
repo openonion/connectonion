@@ -239,22 +239,123 @@ def key_for(path: Path) -> str | None:
     return keys.get(db_salt(path))
 
 
-def all_messages(db_storage: Path, known: dict) -> list[dict]:
+# Why a database was not read, and what fixes it (#3351, #3353): a skip is always recorded, never silent.
+NO_KEY = "no key (a new database, e.g. after migrating chat history)"
+WRONG_KEY = "the saved key no longer opens it"
+KEY_FIX = "co wechat key capture"
+
+
+def key_opens(path: Path, key_hex: str) -> bool:
+    """Whether a key opens a database: page 1's HMAC only, so a 100 MB file is checked in microseconds."""
+    with open(path, "rb") as handle:
+        page = handle.read(PAGE)
+    if len(page) < PAGE:
+        return False
+    key = key_bytes(key_hex)
+    hmac_key = hashlib.pbkdf2_hmac("sha512", key, bytes(b ^ HMAC_SALT_MASK for b in page[:16]), 2, dklen=32)
+    try:
+        _decrypt_page(page, 1, key, hmac_key)
+    except WrongKeyError:
+        return False
+    return True
+
+
+def chat_databases(db_storage: Path) -> list[Path]:
+    """The message databases that hold chats (message_0.db, message_1.db, …), sorted."""
+    return sorted((Path(db_storage) / "message").glob("*message_[0-9]*.db"))
+
+
+def message_coverage(db_storage: Path) -> dict:
+    """How much of WeChat's chat history is readable: {source, found, read, skipped, missing_keys}.
+
+    WeChat 4.1 has one key per database; a database made after the last key capture (migrating history from
+    the phone writes several) has none, and used to be skipped without a word (#3351).
+    """
+    skipped, read = [], 0
+    found = chat_databases(db_storage)
+    for path in found:
+        key = key_for(path)
+        reason = NO_KEY if not key else None if key_opens(path, key) else WRONG_KEY
+        if reason:
+            skipped.append({"item": path.name, "reason": reason, "fix": KEY_FIX})
+        else:
+            read += 1
+    coverage = {"source": "wechat", "found": len(found), "read": read, "skipped": skipped,
+                "missing_keys": sum(1 for s in skipped if s["reason"] == NO_KEY)}
+    text = text_coverage(db_storage)
+    return {**coverage, "text": text} if text else coverage
+
+
+def friend_count(db_storage: Path) -> int | None:
+    """How many friends the address book holds (contact local_type 1, not groups or official accounts); None if unreadable."""
+    path = Path(db_storage) / "contact" / "contact.db"
+    key = key_for(path) if path.is_file() else None
+    if not key:
+        return None
+    conn = open_readonly(decrypt_db(path, key))
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(contact)")}
+    if "local_type" not in columns:
+        return None
+    return conn.execute("SELECT COUNT(*) FROM contact WHERE local_type = 1 AND username NOT LIKE '%@chatroom' "
+                        "AND username NOT LIKE 'gh\\_%' ESCAPE '\\'").fetchone()[0]
+
+
+def text_coverage(db_storage: Path) -> dict | None:
+    """Friends whose chat text REM can read, against the friend total: {friends, with_chats, missing}.
+
+    The migrated text lives in the keyed message_fts.db; its reader is `fts_messages` (#3347). Until that reader
+    exists this returns None, and the coverage line shows full-row coverage only.
+    """
+    # Prefer a reader of chat ids only (cheap); fall back to the full text reader. Both come from #3347.
+    ids, rows = globals().get("fts_chat_ids"), globals().get("fts_messages")
+    friends = friend_count(db_storage)
+    if friends is None or not (ids or rows):
+        return None
+    chats = ids(db_storage) if ids else {row["chat"] for row in rows(db_storage)}
+    with_chats = len({chat for chat in chats if not str(chat).endswith("@chatroom")})
+    return {"friends": friends, "with_chats": with_chats, "missing": max(friends - with_chats, 0)}
+
+
+def coverage_line(coverage: dict, language: str = "zh") -> str:
+    """What exists, what was read, what is missing and its fix, in one line a person or an agent reads.
+
+    Two parts (#3353): the friends whose chat text is readable (when the text reader is there), and the message
+    databases a key opens: a missing key hides media and full rows, and is fixed by a new key capture.
+    """
+    found, keyed, missing = coverage["found"], coverage["read"], coverage["missing_keys"]
+    other = len(coverage["skipped"]) - missing
+    text = coverage.get("text")
+    fix = f" → {KEY_FIX}" if coverage["skipped"] else ""
+    if language == "zh":
+        head = (f"微信：好友 {text['friends']:,} · 找到聊天 {text['with_chats']:,} · 还缺 {text['missing']:,}；"
+                if text else "微信：")
+        gap = "".join([f" · 缺 {missing}" if missing else "", f" · {other} 个打不开" if other else ""])
+        return f"{head}消息库 {found} · 有密钥 {keyed}{gap}{fix}"
+    head = (f"WeChat: friends {text['friends']:,} · with chats {text['with_chats']:,} · missing {text['missing']:,}; "
+            if text else "WeChat: ")
+    gap = "".join([f" · {missing} missing a key" if missing else "", f" · {other} unreadable" if other else ""])
+    return f"{head}message databases {found} · keyed {keyed}{gap}{fix}"
+
+
+def all_messages(db_storage: Path, known: dict, skipped: list | None = None) -> list[dict]:
     """Every message in every readable chat database, as plain rows. Read-only, in memory.
 
     A row: {id, chat, chat_name, at (ISO), text, sender, sender_name, kind}. The caller decides which
-    chats to keep and which side is the owner's.
+    chats to keep and which side is the owner's. A database that can't be read is appended to `skipped`
+    with its reason and fix (pass a list to see them); it is never dropped without a record.
     """
     import sqlite3
     from datetime import datetime, timezone
-    rows = []
-    for path in sorted((db_storage / "message").glob("*message_[0-9]*.db")):
+    rows, skipped = [], skipped if skipped is not None else []
+    for path in chat_databases(db_storage):
         key = key_for(path)
         if not key:
+            skipped.append({"item": path.name, "reason": NO_KEY, "fix": KEY_FIX})
             continue
         try:
             conn = open_readonly(decrypt_db(path, key))
-        except (WrongKeyError, sqlite3.DatabaseError):
+        except (WrongKeyError, sqlite3.DatabaseError) as error:
+            skipped.append({"item": path.name, "reason": f"{WRONG_KEY} ({type(error).__name__})", "fix": KEY_FIX})
             continue
         sender_of = {r[0]: r[1] for r in conn.execute("SELECT rowid, user_name FROM Name2Id")}
         by_table = {message_table(u): u for u in sender_of.values()}

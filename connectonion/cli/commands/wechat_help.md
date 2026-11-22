@@ -31,7 +31,10 @@ Raw access
   export        One table as JSON or Markdown.
 
 Effects:  Read-only. The first run may ask for folder access and run co wechat key capture.
-Next:     co wechat read 1
+Coverage: the list ends with one line saying how many chat databases exist and how many
+          a key opens; a database with no key (e.g. history migrated after the last
+          capture) is named there, never skipped silently, with its fix.
+Next:     co wechat read 1, or co wechat key capture when the coverage line names a missing key
 Back:     co --help
 ```
 
@@ -99,12 +102,16 @@ Back:     co wechat --help
 ## co wechat tables
 
 ```
-List each WeChat database with its tables and row counts, for raw access. Read-only.
+List each WeChat database with its tables and row counts, then how many chat
+databases a key opens. Read-only.
 
-Usage:    co wechat tables
-Example:  co wechat tables
-Effects:  Read-only. A database without a key is listed as skipped.
-Next:     co wechat export --db contact.db --table contact --format json
+Usage:    co wechat tables [--json]
+Example:  co wechat tables  |  co wechat tables --json
+          --json    only the chat-database coverage as JSON: found, read, skipped, missing_keys
+Effects:  Read-only. A database without a key is named with its fix, never skipped silently.
+Coverage: the last line says how many chat databases exist and how many a key opens.
+Next:     co wechat export --db contact.db --table contact --format json, or
+          co wechat key capture when the coverage line names a missing key
 Back:     co wechat --help
 ```
 
@@ -181,7 +188,8 @@ Usage:    co wechat key capture [--yes] [--keep-copy]
 Example:  co wechat key capture  |  co wechat key capture --yes
           --yes        skip the question; for a script you started yourself
           --keep-copy  keep the 1.4 GB re-signed copy for the next capture
-Effects:  Writes ~/.co/wechat/keys.json (new keys added, saved keys kept).
+Effects:  Writes ~/.co/wechat/keys.json (new keys added, saved keys kept) and says how
+          many keys it found this time and how many databases now have one.
           Quits and reopens WeChat.
 Next:     co wechat tables
 Back:     co wechat key --help
