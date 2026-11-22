@@ -281,13 +281,16 @@
     border: 0; border-radius: 50%; background: transparent; color: var(--ink); cursor: pointer; }
   .writer-close:hover, .writer-close:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
   .writer-close svg { width: 20px; height: 20px; }
-  .writer-notice { margin: 0; padding: 0 24px 14px; color: var(--alarm, #b42318); font: var(--w-bold) var(--s-meta)/1.4 var(--font); }
+  .writer-notice { margin: 0; padding: 0 24px 14px; color: var(--red); font: var(--w-bold) var(--s-meta)/1.4 var(--font); }
   .writer-notice:empty { display: none; }
   @media (max-width: 719px) {
     .writer { grid-template-rows: auto minmax(0, 1fr) auto; }
-    .writer-title { padding: 8px 12px; }
-    .writer-title h2 { text-align: center; }
-    .writer-cancel, .writer-send-top { display: inline-flex; }
+    /* One standard bar, 取消 · 回复 <name> · <channel> · 发送, about 56px; a long name is cut, never wrapped. */
+    .writer-title { height: 56px; padding: 0 8px; gap: 8px; }
+    .writer-title h2 { text-align: center; font-size: var(--s-meta); }
+    .writer-cancel, .writer-send-top { display: inline-flex; flex: none; min-height: 40px; }
+    .writer-letter .mail-head { padding: 10px 16px 8px; }
+    .writer-body { padding: 12px 16px; }
     .writer-close, .writer-actions .btn-act { display: none; }
   }
   .writer-did { margin: 0 0 14px; color: var(--ink); }
@@ -298,7 +301,10 @@
   .writer.provider-gmail .mail-head { border-top: 3px solid #d93025; }
   .writer-letter { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--rule); }
   .writer-letter .mail-head { padding: 18px 24px 12px; }
-  .writer-body { flex: 1; min-height: 0; resize: none; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/1.65 var(--font); color: var(--ink); background: var(--paper); }
+  .writer-body { flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/1.65 var(--font); color: var(--ink); background: var(--paper); }
+  /* An open question in the letter: a chip in its own words, the same as the card's marker; answered, the answer. */
+  .slot-chip { padding: 1px 8px; border-radius: var(--r-pill); border: 1px dashed var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--ink); cursor: pointer; white-space: normal; }
+  .slot-chip.filled { border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 0; background: none; }
   .writer-actions { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--rule); }
   .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: var(--s-body)/1.6 var(--font); color: var(--grey); }
   .writer-side h3 { margin: 0 0 6px; font: var(--w-bold) var(--s-body)/1.3 var(--font); color: var(--ink); }
@@ -342,6 +348,7 @@
   .qhead-acts:has(.qnav) { opacity: 1; }
   .qnav { display: inline-flex; align-items: center; gap: 2px; }
   .qnav .qnav-step { width: 32px; height: 32px; font: var(--w-bold) 20px/1 var(--font); color: var(--ink); }
+  @media (max-width: 820px), (pointer: coarse) { .qnav .qnav-step { width: 44px; height: 44px; } }
   .qcount { min-width: 3.2em; text-align: center; color: var(--grey); font: var(--w-bold) var(--s-meta)/1 var(--font); font-variant-numeric: tabular-nums; }
   /* On a phone nothing the owner must tap rests under fixed chrome (#3312 H): every scroll to a control (a jump to
      REM's open question, a focus, the dock brought into view) stops above the floating tab bar. The dock is never
@@ -4608,11 +4615,12 @@ const UI = {
     "Answer REM's question first: {what}": "先回答 REM 的问题：{what}",
     "This reply was written for {channel}, but {name} can't be reached there.": "这封回复被写成了 {channel} 消息，但在 {channel} 上联系不到 {name}。",
     "Rewrite it as an email": "改写成邮件",
+    "REM read the {date} message “{subject}” and drafted this reply.": "REM 读了 {date} 的〈{subject}〉，起草了这封回复。",
+    "REM read the thread “{subject}” and drafted this reply.": "REM 读了〈{subject}〉这段往来，起草了这封回复。",
     "Reply to {name}": "回复 {name}",
     "What they asked": "对方问的",
     "What REM did": "REM 做了什么",
     "Show the whole letter": "展开全文",
-    "REM read {who}'s message of {date} and drafted this reply.": "REM 读了 {who} {date} 的消息，起草了这封回复。",
     "REM drafted this reply from the thread.": "REM 根据这段往来起草了这封回复。",
     "Discard your changes to this reply?": "放弃对这封回复的修改？",
     "Answer REM's question on the right first: {what}": "先在右边回答 REM 的问题：{what}",
@@ -5077,7 +5085,7 @@ const UI = {
     "Mentioning {name}": "提及 {name}",
     "Topic": "主题",
     "Outcome": "结果",
-    "Sent": "发送于",
+    "Sent at {time}": "发送于 {time}",
     "to": "收件人",
     "Cc": "抄送",
     "Retrieved": "获取于",
@@ -7080,29 +7088,39 @@ function threadActions(entry, onPage = false, strip = false) {
 const SLOT_SPLIT = /(\[[^\]]*(?:\]|$)|［[^］]*(?:］|$)|【[^】]*(?:】|$))/g;
 function openWriter(draft, who, onSend) {
   const to = mailbox(draft.to);
-  const body = el("textarea", { class: "writer-body", "aria-label": t("Reply body") });
-  // REM's open questions read as their own words in the letter, 【邮件附件 / 共享文件夹】, never the raw
-  // 【需要你：… — date not agreed】 (#3312 F); the answer picked on the right takes their place.
-  const parts = draft.body.split(SLOT_SPLIT), fills = {}, current = {};
-  const marker = part => "【" + slotWhat(part) + "】";
-  body.value = parts.map(part => /^(?:\[|［|【)/.test(part) ? marker(part) : part).join("");
-  const initial = body.value, dirty = () => body.value !== initial;
+  // The letter is editable text with REM's open questions as chips in it, as on the card (#3312 F): a chip reads
+  // the question in its own words until it is answered on the right, then the answer. Bracket text never shows.
+  const body = el("div", { class: "writer-body", contenteditable: "true", role: "textbox", "aria-multiline": "true", "aria-label": t("Reply body") });
+  const parts = draft.body.split(SLOT_SPLIT), fills = {}, chips = {};
+  const isSlot = part => /^(?:\[|［|【)/.test(part);
+  for (const [i, part] of parts.entries()) {
+    if (!isSlot(part)) { if (part) body.append(document.createTextNode(part)); continue; }
+    const chip = chips[i] = el("span", { class: "slot-chip", contenteditable: "false", role: "button", tabindex: "0", "data-slot": String(i), text: slotWhat(part) });
+    chip.onclick = () => rows[slots.findIndex(([, k]) => k === i)]?.querySelector("button, input")?.focus();
+    body.append(chip);
+  }
+  // What the letter says now: its text, an answered chip as its answer, an open one as REM's slot (so Send waits).
+  const slotOf = node => node.dataset ? node.dataset.slot : node["data-slot"];
+  const letterText = () => [...body.childNodes].map(node => node.nodeType === 3 ? node.nodeValue
+    : slotOf(node) !== undefined ? fills[slotOf(node)] ?? parts[slotOf(node)]
+    : node.tagName === "BR" ? "\n" : node.innerText ?? node.textContent ?? "").join("");
+  const initial = letterText(), dirty = () => letterText() !== initial;
+  // Enter and paste stay plain text, so the letter holds only text and chips.
+  body.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); document.execCommand("insertText", false, "\n"); } });
+  body.addEventListener("paste", event => { event.preventDefault(); document.execCommand("insertText", false, event.clipboardData.getData("text/plain")); });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const close = el("button", { type: "button", class: "writer-close", "aria-label": t("Close"), title: t("Close") + " (Esc)" }, [icon("x")]);
   const notice = el("p", { class: "mail-status writer-notice", role: "status" });
   const cited = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean);
-  // REM's open questions: the answer replaces the question (or the last answer) where it sits in the letter.
-  const slots = parts.map((part, i) => [part, i]).filter(([part]) => /^(?:\[|［|【)/.test(part));
-  const rows = slots.map(([part, i]) => {
-    current[i] = marker(part);
-    return slotChoices(part, fills, i, () => {
-      const value = fills[i] ?? marker(part);
-      if (body.value.includes(current[i])) body.value = body.value.replace(current[i], value);
-      current[i] = value;
-      notice.textContent = "";
-    });
-  });
-  const unanswered = () => slots.filter(([part, i]) => current[i] === marker(part) && body.value.includes(marker(part)));
+  // REM's open questions, answered on the right: the chip in the letter shows the answer.
+  const slots = parts.map((part, i) => [part, i]).filter(([part]) => isSlot(part));
+  const rows = slots.map(([part, i]) => slotChoices(part, fills, i, () => {
+    chips[i].textContent = fills[i] ?? slotWhat(part);
+    chips[i].classList?.toggle("filled", !!fills[i]);
+    notice.textContent = "";
+  }));
+  // A chip deleted from the letter is a question the owner took out; one still there and unanswered holds Send.
+  const unanswered = () => slots.filter(([, i]) => !fills[i] && chips[i].isConnected !== false);
   const did = el("p", { class: "writer-did", text: remDid(draft) });
   const channel = draft.channel || "mail";
   const channelWord = channel === "mail" ? (draft.provider === "gmail" ? "Gmail" : "Outlook") : t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || channel);
@@ -7147,7 +7165,8 @@ function openWriter(draft, who, onSend) {
     send.disabled = close.disabled = sendTop.disabled = true;
     send.textContent = sendTop.textContent = t("Sending…");
     notice.textContent = "";
-    const error = await onSend(body.value.trim() === draft.body.trim() ? undefined : body.value);  // answered slots always differ
+    const text = letterText();
+    const error = await onSend(text.trim() === draft.body.trim() ? undefined : text);
     if (!error) {
       send.textContent = sendTop.textContent = t("Reply sent");
       setTimeout(() => dialog.close(), motionStilled() ? 0 : 700);
@@ -7166,7 +7185,8 @@ function openWriter(draft, who, onSend) {
   dialog.addEventListener("close", () => dialog.remove());
   document.body.appendChild(dialog);
   dialog.showModal();
-  body.focus();
+  // On a phone the keyboard would cover the letter's opening; the owner taps where he wants to write.
+  if (innerWidth >= 720) body.focus();
 }
 function threadDraft(entry) {
   // No drafts, no answer: skip working out the evidence (People asks this for every person's items).
@@ -7255,8 +7275,10 @@ function chooseHint(hint, open) {
 }
 // What REM did, in one line: the message it read and what it wrote, on the card and in full screen alike.
 function remDid(draft) {
-  const read = (draft.sources || []).map(id => (REM.source_context || {})[id]).find(Boolean);
-  return read ? t("REM read {who}'s message of {date} and drafted this reply.", { who: sourceSender(read), date: fmtDate(calendarDay(read.time)) })
+  const read = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean).at(-1);
+  const subject = (read?.subject || draft.subject || "").replace(/^\s*(?:re|fw|fwd|回复|答复|转发)\s*[:：]\s*/i, "").trim();
+  return read?.time && subject ? t("REM read the {date} message “{subject}” and drafted this reply.", { date: fmtDate(calendarDay(read.time)), subject })
+    : subject ? t("REM read the thread “{subject}” and drafted this reply.", { subject })
     : t("REM drafted this reply from the thread.");
 }
 function replyDraftCard(draft, onSent, person, extra = {}) {
@@ -17475,7 +17497,7 @@ function mailMessage(context, quote) {
   return el("article", { class: "msg" }, [
     el("div", { class: "msg-envelope" }, [el("header", { class: "msg-head" }, [el("span", { class: "msg-from" }, [personChip(from),
         el("span", { class: "msg-address", text: mailbox(from).address })]),
-      el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? t("Sent") + " " + fmtTime(context.time) : t("Sent date unknown") })]),
+      el("time", { class: "msg-time", text: messageMeta(context), title: context.time ? t("Sent at {time}", { time: fmtTime(context.time) }) : t("Sent date unknown") })]),
     ...(subject ? [el("p", { class: "msg-subject evidence-subject", text: subject })] : [])]),
     ...(rows.length ? [el("div", { class: "msg-people evidence-participants" }, rows.map(([label, people]) =>
       el("div", { class: "msg-row" }, [el("span", { class: "msg-label", text: t(label) }), ...people.map(personChip)])))] : []),

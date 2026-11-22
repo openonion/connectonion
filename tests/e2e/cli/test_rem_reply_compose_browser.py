@@ -61,6 +61,13 @@ def test_on_a_phone_the_writer_is_a_sheet_with_cancel_left_and_send_right(today)
     cancel, send = title.get_by_role("button", name="Cancel", exact=True), title.get_by_role("button", name="Send", exact=True)
     assert cancel.is_visible() and send.is_visible()
     assert cancel.bounding_box()["x"] < 80 and send.bounding_box()["x"] > 390 - 140
+    # One standard bar of about 56px, the title cut rather than wrapped; the letter's opening is on the first screen.
+    bar = title.bounding_box()
+    assert 48 <= bar["height"] <= 64, bar
+    assert title.locator("h2").evaluate("n => n.scrollHeight <= n.clientHeight + 1")
+    letter = dialog.locator(".writer-body")
+    assert letter.bounding_box()["y"] - dialog.locator(".writer-letter .mail-head").bounding_box()["y"] < 140
+    assert letter.inner_text().startswith("Hi Ines,") and "【" not in letter.inner_text()
     cancel.click()
     assert page.locator("dialog.writer").count() == 0
 
@@ -82,8 +89,9 @@ def test_a_click_outside_closes_an_unchanged_letter(today):
 def test_a_changed_letter_asks_once_before_esc_closes_it(today):
     page, _, _ = today
     dialog = _writer(page)
-    dialog.locator(".writer-body").press("End")
-    dialog.locator(".writer-body").type(" Thanks!")
+    dialog.locator(".writer-body").click()
+    page.keyboard.press("End")
+    page.keyboard.type(" Thanks!")
     asked = []
     page.once("dialog", lambda d: (asked.append(d.message), d.dismiss()))
     page.keyboard.press("Escape")
@@ -98,15 +106,18 @@ def test_rems_question_is_answered_on_the_right_and_lands_in_the_letter(today):
     dialog = _writer(page)
     side = dialog.locator(".writer-side .writer-choices")
     assert side.is_visible()
-    assert dialog.locator(".writer-did").inner_text().startswith("REM ")
+    assert dialog.locator(".writer-did").inner_text().startswith("REM ") and "Q3 receipts" in dialog.locator(".writer-did").inner_text()
+    # The letter never shows bracket text: the open question is a chip in its own words.
+    letter = dialog.locator(".writer-body")
+    assert "【" not in letter.inner_text() and "需要你" not in letter.inner_text()
+    assert letter.locator(".slot-chip").inner_text() == "邮件附件 / 共享文件夹"
     # Send before answering: the writer says what is missing and takes the focus to it; nothing is sent.
     dialog.get_by_role("button", name="Send", exact=True).click()
     assert "邮件附件 / 共享文件夹" in dialog.locator(".writer-notice").inner_text()
     assert page.evaluate("!!document.activeElement.closest('.writer-choices')", isolated_context=False)
     assert not [path for path, _ in calls if path in ("/rem/approve", "/rem/draft")]
     side.get_by_role("button", name="共享文件夹").click()
-    text = dialog.locator(".writer-body").input_value()
-    assert "共享文件夹" in text and "【" not in text
+    assert letter.locator(".slot-chip").inner_text() == "共享文件夹" and "【" not in letter.inner_text()
 
 
 def test_a_typed_answer_on_the_right_takes_the_keyboard(today):
@@ -115,9 +126,9 @@ def test_a_typed_answer_on_the_right_takes_the_keyboard(today):
     dialog = _writer(page, body=body)
     field = dialog.locator(".writer-choices input")
     field.type("Tuesday 2pm")
-    assert "Tuesday 2pm" in dialog.locator(".writer-body").input_value()
-    # Every visible field in the writer takes the keyboard.
-    for box in dialog.locator("input:visible, textarea:visible").all():
+    assert "Tuesday 2pm" in dialog.locator(".writer-body").inner_text()
+    # Every visible field in the writer takes the keyboard, the letter included.
+    for box in dialog.locator("input:visible, textarea:visible, [contenteditable=true]:visible").all():
         assert box.is_editable()
 
 
@@ -255,3 +266,21 @@ def test_on_a_phone_a_scroll_to_send_or_the_choice_stops_above_the_tab_bar(today
     page.wait_for_timeout(500)
     box, bar = card.locator(".owner-slot").first.bounding_box(), page.locator(".tabbar").bounding_box()
     assert box["y"] + box["height"] <= bar["y"], (box, bar)
+
+
+def test_a_held_send_from_full_screen_is_queued_with_undo(today):
+    # D-101: a reply waits ten minutes with Undo. From full screen the writer says it, goes, and Today keeps the line.
+    page, calls, answers = today
+    dialog = _writer(page)
+    release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
+    answers["/rem/approve"] = lambda body: (200, {"release_at": release, "results": [
+        {"id": i, "status": "held", "release_at": release} for i in body["ids"]]})
+    when = page.evaluate("iso => fmtTime(iso)", release, isolated_context=False)
+    dialog.locator(".writer-choices").get_by_role("button", name="共享文件夹").click()
+    dialog.get_by_role("button", name="Send", exact=True).click()
+    page.locator("dialog.writer").wait_for(state="detached")
+    note = page.locator(".qsent")
+    note.wait_for()
+    assert note.locator(".lede").inner_text() == f"Sending to Inès Halvorsen at {when}."
+    assert note.get_by_role("button", name="Undo", exact=True).is_visible()
+    assert calls[-1][0] == "/rem/approve"

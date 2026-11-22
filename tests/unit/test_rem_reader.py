@@ -3135,33 +3135,37 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
 
 
 def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
-    # Full screen asks for REM's open question by name and keeps the letter open; once the question is gone from
-    # the letter, Send goes out and the writer closes after saying so (#3303).
+    # Full screen shows REM's open question as a chip in the letter, holds Send until it is answered on the right,
+    # then sends the letter with the answer in place and closes after saying so (#3303, #3312 F).
     function = re.search(r'function openWriter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     split = re.search(r'const SLOT_SPLIT = .*?;\n', TEMPLATE.read_text()).group(0)
     what = re.search(r'function slotWhat\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     did = re.search(r'function remDid\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     result = _run_reader_js(split + what + did + function + r'''
-      const nodes = [], sent = [], REM = {};
-      const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children,
-        addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}, remove() {}}; nodes.push(node); return node;};
-      const icon = () => ({}), motionStilled = () => true;
-      const slotChoices = () => ({...el('span', {}, []), querySelector: () => ({focus() {}})}), setTimeout = f => f();
-      const mailbox = address => ({address, name: 'Fern'}), document = {body: {appendChild() {}}};
+      const nodes = [], sent = [], REM = {}, innerWidth = 1440;
+      const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children, get childNodes() { return this.children; },
+        append(child) { this.children.push(child); }, addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}, remove() {}};
+        nodes.push(node); return node;};
+      const icon = () => ({}), motionStilled = () => true, setTimeout = f => f();
+      let answer = null;
+      const slotChoices = (part, fills, i, onChange) => { answer = value => { fills[i] = value; onChange(); };
+        return {...el('span', {}, []), querySelector: () => ({focus() {}})}; };
+      const mailbox = address => ({address, name: 'Fern'});
+      const document = {body: {appendChild() {}}, createTextNode: text => ({nodeType: 3, nodeValue: text})};
       (async () => {
         openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, async body => { sent.push(body); return ''; });
         const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
-        const body = nodes.find(node => node.tag === 'textarea'), dialog = nodes.find(node => node.tag === 'dialog');
+        const dialog = nodes.find(node => node.tag === 'dialog'), chip = nodes.find(node => node.class === 'slot-chip');
         await send.onclick();
         const notice = nodes.find(node => node.class === 'mail-status writer-notice');
-        const blocked = {sent: sent.length, closed: !!dialog.closed, notice: notice.textContent};
-        body.value = 'The demo is ready.';
+        const blocked = {sent: sent.length, closed: !!dialog.closed, notice: notice.textContent, chip: chip.text};
+        answer('looks good');
         await send.onclick();
-        console.log(JSON.stringify({blocked, sent, closed: !!dialog.closed, label: send.textContent}));
+        console.log(JSON.stringify({blocked, sent, closed: !!dialog.closed, label: send.textContent, chip: chip.textContent}));
       })();
     ''')
-    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': "Answer REM's question on the right first: 意见"}
-    assert result['sent'] == ['The demo is ready.']
+    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': "Answer REM's question on the right first: 意见", 'chip': '意见'}
+    assert result['sent'] == ['Feedback: looks good'] and result['chip'] == 'looks good'
     assert result['closed'] and result['label'] == 'Reply sent'
 
 
