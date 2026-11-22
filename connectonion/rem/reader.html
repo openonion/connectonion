@@ -7294,7 +7294,7 @@ function openWriter(draft, who, onSend, onFix) {
         channel === "mail" && draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
         channel === "mail" ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })]) : null]),
       body,
-      el("div", { class: "writer-actions" }, [send, reach.defect ? el("span", { class: "choose-hint", text: reach.held }) : null,
+      el("div", { class: "writer-actions" }, [send, ...(reach.defect ? [el("span", { class: "choose-hint", text: reach.held })] : []),
         el("span", { class: "mail-note", text: reach.defect ? reach.footer : channel === "mail"
         ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider: draft.provider === "gmail" ? "Gmail" : "Outlook" })
         // A Lark or WhatsApp reply leaves through that chat, as the card says, never through the mailbox it answers.
@@ -7488,7 +7488,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   // Triage waits in ⋯ beside Send (#3312 B): 标为完成, 暂不处理, 忽略, 交给 Codex / Claude, and editing in the mail app.
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
     el("div", { class: "menu" }, [extra.triage || null, ...(channel === "mail" ? [edit] : []), extra.triage ? null : skip, directSendItem(who || person)].filter(Boolean))]);
-  const actions = el("div", { class: "mail-actions" }, [hint, reach.defect ? el("span", { class: "choose-hint", text: reach.held }) : null,
+  const actions = el("div", { class: "mail-actions" }, [hint, ...(reach.defect ? [el("span", { class: "choose-hint", text: reach.held })] : []),
       el("span", { class: "mail-note", text: reach.defect ? reach.footer : channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), write, more, send]);
   const why = draft.why ? el("p", { class: "mail-why" }, [el("span", { class: "k", text: t("Why this reply") }), " ", draft.why]) : null;
