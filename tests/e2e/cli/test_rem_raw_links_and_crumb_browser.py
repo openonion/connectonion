@@ -138,3 +138,19 @@ def test_the_crumb_is_a_link_only_where_its_words_are(reader, record):
     assert page.evaluate("location.hash") == before
     page.mouse.click(box["x"] + 4, y)
     assert page.evaluate("location.hash") != before
+
+
+def test_a_named_page_in_prose_is_an_ordinary_link_and_a_card_never_nests_one(reader):
+    # Art director, #3338: a converted name in a passage looks like every other in-text link (no bold, no colour),
+    # and inside a card that is already a link the name stays text.
+    page = reader("#r=" + NOOR.replace("/", "%2F"), "en")
+    page.evaluate("""() => { const p = document.createElement('p'); p.id = 'probe';
+        p.innerHTML = inline('Works with [Fernhill Labs](../orgs/fernhill-labs.md) and [[people/mara-ostrowski.md]] [1].', 'people/noor-bakhtiar.md');
+        document.querySelector('#main').appendChild(p); }""", isolated_context=False)
+    styles = page.evaluate("""() => [...document.querySelectorAll('#probe a:not(.cite)')].map(a => { const s = getComputedStyle(a);
+        return [a.textContent, s.fontWeight, s.color, s.textDecorationLine, s.textDecorationColor, s.textUnderlineOffset]; })""",
+                           isolated_context=False)
+    assert [row[0] for row in styles] == ["Fernhill Labs", "Mara Ostrowski"], styles
+    assert styles[0][1:] == styles[1][1:], styles
+    assert page.evaluate("() => document.querySelectorAll('#main a a').length", isolated_context=False) == 0
+    assert page.evaluate("() => document.querySelectorAll('#main .relation-card a').length", isolated_context=False) == 0
