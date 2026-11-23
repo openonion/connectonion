@@ -3186,6 +3186,9 @@ app.add_typer(canny_app, name="canny")
 # Asana: our own commands on Asana's REST API, with ASANA_ACCESS_TOKEN.
 from .commands.asana_commands import asana_app
 app.add_typer(asana_app, name="asana")
+# Notion: read-only commands on Notion's REST API, with NOTION_API_KEY.
+from .commands.notion_commands import notion_app
+app.add_typer(notion_app, name="notion")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
