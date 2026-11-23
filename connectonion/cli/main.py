@@ -3185,10 +3185,12 @@ app.add_typer(mcp_app, name="mcp")
 
 # Obsidian: local Markdown notes with explicit folder selection.
 obsidian_app = _typer_app(
-    help="Browse Obsidian vaults and list, read, or search Markdown notes. Read-only.\n\n"
+    help="Browse Obsidian vaults, find changed notes, and read their current text.\n\n"
          "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
-         "The list is read-only. If a vault is available, the output suggests a command to browse it. "
+         "If a vault is available, the output suggests a command to browse it. "
          "Use --folder to choose where to look for notes.\n\n"
+         "Writes: Numbered lists save temporary row numbers outside the vault for later commands. "
+         "JSON output does not save them.\n\n"
          "All Obsidian commands work offline.\n\n"
          "Exit 0 means the list loaded, even if it is empty. "
          "Exit 1 means the list could not be read or its row numbers could not be saved. "
@@ -3198,6 +3200,59 @@ obsidian_app = _typer_app(
     invoke_without_command=True,
 )
 app.add_typer(obsidian_app, name="obsidian")
+
+
+@obsidian_app.command("changes", epilog="Example:  co obsidian changes --since 2026-11-20T00:00:00Z --folder Course --json")
+def _obsidian_changes(
+    since: str = typer.Option(..., "--since", help="List notes modified since this ISO date and time, including its timezone."),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path; required when several vaults are available."),
+    folders: List[str] = typer.Option(..., "--folder", help="Selected vault-relative folder path; repeat for several folders. Use . only for the whole vault."),
+    json_output: bool = typer.Option(False, "--json", help="Print since, until and items as JSON; send the next command to stderr."),
+):
+    """List notes changed in selected folders, oldest first. Read-only.
+
+    Checks filenames and modification times without opening note bodies.
+    Writes no files or saved row numbers. Each item has an ID, title, time,
+    path, folder and link. Use its short path or ID with show and the same scope.
+
+    --since needs a timezone and cannot be in the future. The returned until
+    is the time this call started; use it as the next --since after processing
+    the result. A note at the boundary can appear again. Deleted notes are
+    absent; changes that preserve the file's modification time may be missed.
+
+    Exit 0 means the list is complete, possibly empty. Exit 1 means a file or
+    folder could not be checked; retry after checking access. Exit 2 means an
+    argument or scope is invalid. Errors go to stderr without partial JSON.
+    """
+    from .commands.obsidian_commands import handle_obsidian_changes
+    handle_obsidian_changes(since, vault=vault, folders=folders, json_output=json_output)
+
+
+@obsidian_app.command("show", epilog="Example:  co obsidian show Course/Note.md --folder Course\n\n"
+                                   "Example:  co obsidian show Course/Note.md --folder Course --json")
+def _obsidian_show(
+    identifier: str = typer.Argument(..., help="Path listed by changes, such as Course/Note.md, or a note ID."),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path; required when several vaults are available."),
+    folders: List[str] = typer.Option(..., "--folder", help="Allowed vault-relative folder path; repeat for several folders. The ID does not grant access."),
+    json_output: bool = typer.Option(False, "--json", help="Print id, title, text, author, time, link, path, folder, properties, tags and links."),
+):
+    """Read one current Obsidian note. Read-only.
+
+    After co obsidian changes, copy the listed path, such as Course/Note.md.
+    Use the same vault and folders. Paths start at the vault root. You can
+    also paste the note ID from changes. For a citation, omit its obsidian:
+    prefix. Start a path with ./ if it starts with a dash or looks like an ID
+    or citation.
+
+    Reads only the selected Markdown file and saves nothing. Plain output is
+    the original Markdown. Use --json for its text, tags, properties and links.
+    It does not open linked notes or attachments. Hints and errors go to stderr.
+
+    Exit 0 means success. Exit 1 means the note could not be read or parsed.
+    Exit 2 means the path, ID or scope was invalid.
+    """
+    from .commands.obsidian_commands import handle_obsidian_show
+    handle_obsidian_show(identifier, vault=vault, folders=folders, json_output=json_output)
 
 
 @obsidian_app.callback(invoke_without_command=True)
@@ -3214,11 +3269,14 @@ def _obsidian_vaults(
         False, "--json", help="Print all registered vaults as JSON and send the suggested next command to stderr."
     ),
 ):
-    """List numbered vaults with their paths, availability and open status. Read-only.
+    """List registered vaults with their paths, availability and open status without changing notes.
 
-    The list checks which vault folders exist without opening notes. A closed
-    vault can still be read. If a vault is available, the output suggests a
-    command to list its folders.
+    Reads the vault registry and checks which vault folders exist without
+    opening notes. Writes temporary row numbers and vault paths outside the
+    vault when showing a numbered list. The numbers expire after 15 minutes.
+    --json does not save row numbers.
+    A closed vault can still be read. If a vault is available, the output
+    suggests a command to list its folders.
     Use a number from the latest list, for example co obsidian ls --vault 1.
     The number works for 15 minutes. A unique vault name or path also works.
 
@@ -3276,8 +3334,8 @@ def _obsidian_read(
 ):
     """Read a note by row number, path or exact filename title. Read-only.
 
-    Use a note number from ls with --folder, or from search.
-    Numbers from a folder list do not select notes. Note rows last 15 minutes.
+    Use a row number from a note list (ls --folder or search), not a folder list.
+    Note rows last 15 minutes.
     If the list suggests a read command with --listing, copy it to use those
     same note numbers even after you list or search again.
     You can read a row without giving its vault or folders again. If you
@@ -3287,7 +3345,8 @@ def _obsidian_read(
 
     The terminal shows formatted Markdown. Use --raw for the original text
     or --json for the full note record. Piped output is raw by default.
-    The suggested search command goes to stderr, so it stays out of the note text.
+    Follow-up command hints are sent to standard error so they stay separate
+    from the note text.
 
     Exit 0 means the note was read.
     Exit 1 means the note could not be found or read. Use its path if several
