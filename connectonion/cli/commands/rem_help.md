@@ -974,24 +974,21 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag (twenty pages a turn, every tag
-                                         checked by code; the owner, 2026-11-17: "even Terra is enough")
-          models.level2 efforts.level2   gpt-6.1-sol at low: sessions-summary, topic, translate,
-                                         extract, same-person, plan
-          models.level3 efforts.level3   gpt-6.1-sol at low: maintain, projects, reply-draft,
-                                         native (the scheduled session), init, abstract
-          models.level4 efforts.level4   gpt-6.1-sol at low: enrich, muse, claim-audit, insight-critic,
+Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag, tag-node, translate, extract,
+                                         sessions-summary
+          models.level2 efforts.level2   gpt-6-luna at medium: topic, same-person, plan
+          models.level3 efforts.level3   gpt-6-luna at medium: maintain, init, projects, reply-draft,
+                                         native (the scheduled session)
+          models.level4 efforts.level4   gpt-6.1-sol at low: abstract, muse, claim-audit, insight-critic,
                                          synthesize, task (owed work)
           models.investigate efforts.investigate
-                                         gpt-6.1-sol at medium: investigate and render (the turn
-                                         that writes the investigated page), set on their own
-                                         Every stage but tag and investigation runs Sol at low (the
-                                         owner, #3099: no Astra; "Sol light" read as low). Efforts:
-                                         minimal | low | medium | high | xhigh | max; effort VALUE
-                                         sets every level at once. co rem status lists the stages on
-                                         each level. A notebook on another runner keeps its one model on
-                                         every level; the old names model (level3 and investigate) and
-                                         models.summary (level1) still work
+                                         gpt-6.1-sol at low: enrich, investigate and render (the turn
+                                         that writes the investigated page), independent of levels 1-4
+                                         Efforts: minimal | low | medium | high | xhigh | max;
+                                         effort VALUE sets every level at once. co rem status lists
+                                         the stages on each level. A notebook on another runner keeps
+                                         its one model on every level; the old names model (level3 and
+                                         investigate) and models.summary (level1) still work
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
           speed                          standard (default) | fast: Codex's Fast (priority) tier, faster
                                          and dearer; unattended nights default to standard (#3099)
@@ -1019,8 +1016,8 @@ Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag (twenty pages
           route.<stage>                  pins one stage above to a model ("default" clears it);
                                          a route on plan, extract, synthesize or render also
                                          turns on three-call planned investigation
-Example:  co rem config set models.level2 gpt-6.1-sol route.translate gpt-6.1-terra
-Example:  co rem config set efforts.level2 medium efforts.investigate high
+Example:  co rem config set models.level1 gpt-6-luna route.translate gpt-6.1-terra
+Example:  co rem config set efforts.level4 low efforts.investigate low
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
           Measured when level3's model or the runner changes, never read off the name. Unchecked runs
@@ -1066,7 +1063,7 @@ Change one or more settings. Every pair is checked before anything is saved: one
 bad value saves nothing. Never starts a run on your mail or sessions.
 
 Usage:    co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Example:  co rem config set models.level3 gpt-6.1-sol limits.runner_calls_per_day 4
+Example:  co rem config set models.level3 gpt-6-luna limits.runner_calls_per_day 4
 Keys:     the list on co rem config --help
           --no-check  save a new model or runner without checking its tier
 Output:   The saved configuration, as co rem config prints it, and the tier.

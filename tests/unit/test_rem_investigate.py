@@ -446,7 +446,7 @@ def test_runner_codex_is_co_ai_delegating_with_investigation_tools(tmp_path, co_
     argv = co_ai[0]
     assert argv[1:3] == ["ai", "--json"]
     assert argv[3:13] == ["--harness", "codex", "--sandbox", "danger-full-access", "--speed", "standard",
-                         "--effort", "medium", "--model", read_config(root)["model"]]
+                         "--effort", "low", "--model", read_config(root)["model"]]
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/rowan.
     assert argv[-1].startswith("/rem-investigate ") and "/notebook/people/rowan.md" in argv[-1]
@@ -810,7 +810,7 @@ def test_project_mentions_are_not_gathered_for_owner_projects_or_skills(project_
 # attended and scheduled investigation runs.
 PINNED = {
     "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "danger-full-access",
-              "--speed", "standard", "--effort", "medium", "--model", "gpt-5.6-luna", "--timeout", "1200"],
+              "--speed", "standard", "--effort", "low", "--model", "gpt-5.6-luna", "--timeout", "1200"],
     "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "bypassPermissions",
                     "--model", "sonnet", "--timeout", "1200"],
 }

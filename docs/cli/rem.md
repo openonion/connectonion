@@ -1228,7 +1228,7 @@ organisations first, saying which pages were new.
 
 `Who they are` is a skeleton with detail: a framing sentence, then the career timeline newest first
 (employer, role, years, what they did there), education, public work and the people they overlap with,
-each cited, with an unknown said once. Enrich runs on investigation's level (Sol at medium effort), and
+each cited, with an unknown said once. Enrich runs on the independent investigation level (Sol at low effort), and
 neither its prompt nor the size note asks for brevity any more: a page past the length limit moves its
 oldest History to the archive instead.
 
@@ -2619,7 +2619,7 @@ rule to discard companies or event opportunities.
 ## Choose a harness
 
 ```bash
-co rem config set runner codex model gpt-5.6-luna
+co rem config set runner codex models.level3 gpt-6-luna
 co rem config set runner claude-code model default
 co rem config set runner coai model co/gemini-3.8-flash
 co rem config set runner coai model ollama/qwen3
@@ -2630,6 +2630,34 @@ omits the model flag. Changing runner without a model chooses that harness's
 default. Old coai configs which retained the unused Codex default migrate to
 their previous effective behavior (COAI's default). No credential belongs in
 co rem configuration.
+
+### Models and reasoning effort by stage
+
+Codex routes each stage through its model level. Defaults are:
+
+| Level | Stages | Model | Effort |
+| --- | --- | --- | --- |
+| Level 1 | `tag`, `tag-node`, `translate`, `extract`, `sessions-summary` | `gpt-6-luna` (Luna) | `medium` |
+| Level 2 | `topic`, `same-person`, `plan` | `gpt-6-luna` (Luna) | `medium` |
+| Level 3 | `maintain`, `init`, `projects`, `reply-draft`, `native` | `gpt-6-luna` (Luna) | `medium` |
+| Level 4 | `abstract`, `muse`, `claim-audit`, `insight-critic`, `synthesize`, `task` | `gpt-6.1-sol` (Sol) | `low` |
+| Independent investigation | `enrich`, `investigate`, `render` | `gpt-6.1-sol` (Sol) | `low` |
+
+Set `models.level1` through `models.level4` and the matching `efforts.level1`
+through `efforts.level4` separately. `models.investigate` and
+`efforts.investigate` control the independent investigation group. `route.<stage>`
+overrides a stage's model; `default` clears that override. `co rem status`
+lists the model, effort and stages for each level.
+
+```bash
+co rem config set models.level1 gpt-6-luna efforts.level1 medium
+co rem config set models.level4 gpt-6.1-sol efforts.level4 low
+co rem config set models.investigate gpt-6.1-sol efforts.investigate low
+```
+
+The legacy `model` key sets both level 3 and independent investigation;
+`models.summary` aliases level 1. Setting `effort` sets every level at once.
+Other runners keep one model across levels and take no reasoning effort from REM.
 
 ### The job's shape: agent or summary tier
 
@@ -2830,10 +2858,12 @@ Codex notebooks on macOS use `schedule.runner: codex-exec` by default when the
 Codex CLI is installed and signed in. launchd runs `codex exec` directly through
 REM's turn worker, using the same work-loop prompt as the desktop automation.
 Exec sessions can continue across tasks; desktop automation sessions can end early.
-The model remains `model` (default `gpt-6-luna`); `effort` defaults to `medium`.
+The scheduled session uses `models.level3` and `efforts.level3` (Luna at
+medium by default); each worker uses its stage's model and effort from the table above.
 
-`effort` is the reasoning effort of every Codex worker REM starts, not only of
-the scheduled turn. The turns that `co rem exec`, `co rem catchup`, sync,
+Every Codex worker REM starts receives its stage's reasoning effort, including
+the scheduled turn. The legacy `effort` setting overrides every level at once.
+The turns that `co rem exec`, `co rem catchup`, sync,
 investigate and deepen start are `co ai --harness codex --effort <effort>`;
 the scheduled `codex exec` turn and the cited-claim audit get
 `-c model_reasoning_effort=<effort>`; owed tasks and conversations pass it to
@@ -2841,8 +2871,8 @@ the same adapter. Until 2026-11-17 the `co ai` turns and the audit passed
 none, so they ran at the owner's own `~/.codex/config.toml` setting: 81 worker
 turns of one night at `max` while `config.yaml` said `medium`. Claude Code and
 COAI runners take no effort from REM, and their records say none.
-`speed: fast` (the default) asks Codex for its priority service tier on every
-turn; `standard` leaves the tier Codex is configured with.
+`speed: fast` asks Codex for its priority service tier on every turn;
+`standard` (the default) leaves the tier Codex is configured with.
 
 Every run record keeps what its worker was started at (`harness`, `model`,
 `speed`, `effort`); a task `co rem exec` or catchup drives records its stage's

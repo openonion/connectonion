@@ -812,7 +812,7 @@ def test_a_task_exec_drives_records_the_model_and_effort_its_worker_ran_at(noteb
     rows = [row for row in service.run_logs(notebook) if row.get("record") in (fern, heron)]
     assert rows and {model for model, stage in seen} == {"gpt-routed-fixture"}
     assert {(row["harness"], row["model"], row["effort"], row["speed"]) for row in rows} == {
-        ("codex", "gpt-routed-fixture", "medium", "standard")}
+        ("codex", "gpt-routed-fixture", "low", "standard")}
 
 
 def test_the_restore_last_resort_also_runs_when_the_other_errors_are_misquotes_it_drops(tmp_path, monkeypatch):
