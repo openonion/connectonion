@@ -79,9 +79,19 @@ def test_tonight_only_inside_the_nightly_pace_on_every_page_kind(page, category)
 @pytest.mark.parametrize("width", [1440, 390])
 def test_the_queued_line_fits_and_reads_whole(page, width):
     path = _mapped(page, "people")
-    assert _lead(page, path, 1241, 5, width=width) == "排队第 1,241 位 · 按最近每晚约 5 页，约 249 晚内写到"
+    # The invented notebook is served as a page, not a live Host: 调查 is off there, so no hint to press it.
+    assert _lead(page, path, 1241, 5, width=width) == "排在后面，按现在的速度要几个月"
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if os.environ.get("REM_PR_SHOTS"):
         SHOTS.mkdir(parents=True, exist_ok=True)
         page.locator(".missing.primary").scroll_into_view_if_needed()
         page.screenshot(path=str(SHOTS / f"after-{width}.png"), full_page=False)
+
+
+def test_on_the_live_page_months_away_offers_investigate_and_over_a_year_says_so(page):
+    path = _mapped(page, "people")
+    page.evaluate("() => { REM.live = true; }", isolated_context=False)
+    assert _lead(page, path, 1241, 5) == "排在后面，按现在的速度要几个月 · 想先看就点调查"
+    assert _lead(page, path, 1241, 3) == "排在后面，按现在的速度要一年以上 · 想先看就点调查"
+    # The button the hint names is on the page and is the one that starts this page's investigation.
+    assert page.locator(".inv-btn, button:has-text('调查')").first.is_visible()

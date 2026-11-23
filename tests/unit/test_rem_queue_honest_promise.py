@@ -16,12 +16,13 @@ TEMPLATE = Path(__file__).parents[2] / "connectonion" / "rem" / "reader.html"
 SYDNEY = timezone(timedelta(hours=11))
 
 
-def _queued_line(language: str, place, pace) -> str:
+def _queued_line(language: str, place, pace, live=True) -> str:
     page = TEMPLATE.read_text()
     queued = page[page.index('function queuedLine(r) {'):page.index('\nfunction safeHref(')]
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     return _run_reader_js('UI.zh = ' + ui + '; uiLanguage = ' + json.dumps(language) + ';\n'
-                          + 'const REM = {night_throughput: ' + json.dumps(pace) + '};\n' + queued
+                          + 'const REM = {night_throughput: ' + json.dumps(pace) + '};\n'
+                          + 'const liveHere = () => ' + json.dumps(live) + ';\n' + queued
                           + '\nconsole.log(JSON.stringify(queuedLine({queue_place: ' + json.dumps(place) + '})));')
 
 
@@ -36,6 +37,26 @@ def test_a_page_deep_in_the_queue_says_its_place_and_an_estimate_never_tonight(l
     assert "今晚" not in line and "tonight" not in line
     assert line == ("排队第 40 位 · 按最近每晚约 5 页，约 8 晚内写到" if language == "zh"
                     else "In the queue at #40 · at about 5 pages a night, within about 8 nights")
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_months_away_hides_the_place_and_offers_investigate(language):
+    line = _queued_line(language, 200, 5)  # 40 nights
+    assert line == ("排在后面，按现在的速度要几个月 · 想先看就点调查" if language == "zh"
+                    else "Far back in the queue — months at the current pace · investigate it now to see it sooner")
+    assert "200" not in line and "40" not in line
+
+
+def test_over_a_year_says_so():
+    assert _queued_line("zh", 1241, 3) == "排在后面，按现在的速度要一年以上 · 想先看就点调查"  # 414 nights
+
+
+def test_thirty_nights_still_shows_the_place():
+    assert _queued_line("zh", 150, 5) == "排队第 150 位 · 按最近每晚约 5 页，约 30 晚内写到"
+
+
+def test_a_snapshot_never_offers_a_button_that_is_off():
+    assert _queued_line("zh", 1241, 5, live=False) == "排在后面，按现在的速度要几个月"
 
 
 def test_no_pace_means_a_place_and_no_promise():

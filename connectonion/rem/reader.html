@@ -4823,6 +4823,9 @@ const UI = {
     "Page queued for tonight": "此页已排入今晚队列",
     "Page queued for a future night": "此页已排队，之后的某一晚会写",
     "In the queue at #{n}": "排队第 {n} 位",
+    "Far back in the queue — months at the current pace": "排在后面，按现在的速度要几个月",
+    "Far back in the queue — over a year at the current pace": "排在后面，按现在的速度要一年以上",
+    " · investigate it now to see it sooner": " · 想先看就点调查",
     "In the queue at #{n} · at about {k} pages a night, within about {d} nights": "排队第 {n} 位 · 按最近每晚约 {k} 页，约 {d} 晚内写到",
     "Unwritten pages queued for tonight": "未写页面已排入今晚队列",
     "No Chinese translation yet; showing original": "尚无中文译文，显示原文",
@@ -6337,7 +6340,13 @@ function queuedLine(r) {
   if (!place) return t("Page queued for a future night");
   if (pace && place <= pace) return t("Page queued for tonight");
   if (!pace) return t("In the queue at #{n}", { n: place.toLocaleString() });
-  return t("In the queue at #{n} · at about {k} pages a night, within about {d} nights", { n: place.toLocaleString(), k: pace, d: Math.ceil(place / pace) });
+  const nights = Math.ceil(place / pace);
+  if (nights <= 30) return t("In the queue at #{n} · at about {k} pages a night, within about {d} nights", { n: place.toLocaleString(), k: pace, d: nights });
+  // Months away, the exact place only discourages: say how far and the way forward. 调查 starts this page's
+  // investigation now (POST /rem/investigate, `co rem investigate PAGE --enrich`), so the hint is only offered where
+  // that button works; in a snapshot it is off.
+  const far = t(nights > 365 ? "Far back in the queue — over a year at the current pace" : "Far back in the queue — months at the current pace");
+  return liveHere() ? far + t(" · investigate it now to see it sooner") : far;
 }
 
 function safeHref(from, raw) {
