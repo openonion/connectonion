@@ -2319,6 +2319,20 @@ def make_rem_app(factory):
         _handle(ctx, operation, ["config"],
                 draw=_card(ctx, verbose, show_private))
 
+    def _mark_record_kept(root, value):
+        """The result with record_kept: False when the run its summary names was never written.
+
+        The summary names `run.id`, else the batch's own id (rem_output.sync_summary).
+        """
+        from ...rem.files import state_path
+        if not isinstance(value, dict):
+            return value
+        batch = value.get("maintenance") if isinstance(value.get("maintenance"), dict) else value
+        named = (value.get("run") or {}).get("id") or batch.get("id")
+        if named and not state_path(root, f"runs/{named}.json").is_file():
+            return {**value, "record_kept": False}
+        return value
+
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days, *, collect_only=False):
         from ...rem.files import RemError
         from ...rem.service import run_sync, scheduled_skip
@@ -2367,7 +2381,13 @@ def make_rem_app(factory):
                 if record["outcome"] == "failed":
                     # A failed batch must not exit 0: an agent chaining `sync && ...` would walk past it.
                     raise RemError(f"Batch {record['id']} failed: {record.get('error')}")
-                return record, again if collect_only else ["logs", record["id"]]
+                # Nothing new: no model ran and no run was kept (#1846), so
+                # `logs <id>` would name a run that does not exist. collect
+                # keeps its own next step; only the record it named is gone.
+                record = _mark_record_kept(root, record)
+                if collect_only:
+                    return record, again
+                return record, (["logs", record["id"]] if record.get("record_kept", True) else ["status"])
             # The whole update: new material first, then at most one unfinished page.
             from ...rem.daily import run_daily
             from ...rem.service import run_scheduled
@@ -2384,6 +2404,9 @@ def make_rem_app(factory):
             result = run_scheduled(root, daily_round) if scheduled else daily_round()
             if result is None:
                 return scheduled_skip(root, start_command=_next(ctx, ["start"])), ["status"]
+            # The round's Next is the run list, which always opens; the summary's
+            # "Full record" names one run, which a round with nothing new never kept.
+            result = _mark_record_kept(root, result)
             if result["outcome"] == "partial":
                 _emit(ctx, result, ["logs"], failed=True, draw=draw)
             return result, ["logs"]

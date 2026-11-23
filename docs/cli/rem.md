@@ -3653,6 +3653,27 @@ the same, without colour. A long investigation off a terminal prints a stage
 once when it starts (`Investigation: gathering codex sessions`), not once per
 40 files scanned.
 
+**When there is nothing new.** A sync or collect that read no new material runs
+no model and keeps no run record. Its summary then has no `Full record` line,
+and `--json` carries `"record_kept": false`. The next step stays one that
+works: `co rem sync --source …` or `--with …` (a single batch) names
+`co rem status`, not `co rem logs RUN`, which would only say the run does not
+exist; `co rem collect` keeps its own (collect again); plain `co rem sync`, the
+daily round, keeps `co rem logs`, the list of runs.
+
+**A project's agenda comes with it.** A batch is given the pages its material
+names: people, and projects by title or by the folder a session ran in. When a
+project page is one of them, its agenda pages come too: the agenda page with
+the project page's file name (`agenda/atlas.md` for `projects/atlas.md`), and
+any agenda page that links to the project page, by a relative Markdown link or
+a `[[projects/atlas]]` wikilink. An agenda page keeps one dated line per item
+and names the project, never the item, so a batch about one item never names
+it: a moved due date reached the project page and left its agenda on the old
+date. Agenda pages come after every page the material named, so they never
+take a named page's place in a batch (a batch updates at most five pages); each
+is added once, however many projects bring it. With no project page among
+them, no agenda page is added.
+
 `co rem logs --usage` puts every model run under a stage, so the stage totals
 add up to the total: `extract` and `maintain` for sync batches,
 `investigate` for people, organisation and owner investigations (by hand or in
