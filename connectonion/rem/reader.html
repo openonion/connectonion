@@ -5337,6 +5337,7 @@ const UI = {
     "Older": "较早",
     "Newer": "较新",
     "Not summarised yet": "尚未总结",
+    "This session's content is hidden": "这次会话的内容已遮住",
     "Translate with co ai": "用 co ai 翻译",
     "Conversation outline": "对话目录",
     "Original conversation (private)": "原始对话（私密）",
@@ -15649,7 +15650,9 @@ function sessionText(r) {
   const clean = text => unlabelled(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
   const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
   const fields = { title: clean(r.session_title || r.title), summary: ownerAsYou(clean(r.session_summary)),
-    tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
+    // "you" is what search and excerpts read: only the turns that carry no privacy level (#3425 follow-up).
+    tags: (r.session_tags || []).join(" "), you: sessionMessages(r).length ? clean(sessionMessages(r).filter(sessionOpen).map(m => m.text).join("\n")) : quoted("What you typed"),
+    agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
   fields.lower = Object.values(fields).join("\n").toLowerCase();
   SESSION_TEXT.set(r.path, fields);
   return fields;
@@ -16069,6 +16072,14 @@ function sessionMessages(r) {
     return { id: "session-message-" + (i + 1), time, level, text: sessionUnquote(lines.join("\n")) };
   });
 }
+// The owner's words a session may show as its preview: the first turn with no privacy level, by its heading or by a
+// mark in its words (#3425 follow-up). The server already chose it (session_first); a page drawn from text alone
+// chooses the same way. Empty when every turn is labelled.
+function sessionOpen(message) { return !message.level && !hasPrivacy(message.text || "") && !hasPrivacy(message.time || ""); }
+function sessionOpenText(r) {
+  if (r.session_all_hidden) return "";
+  return r.session_first || sessionMessages(r).find(sessionOpen)?.text || "";
+}
 function sessionUnquote(text) { return text.replace(/^> ?/gm, "").replace(/^\n+|\n+$/g, ""); }
 function sessionJump(id) {
   const target = document.getElementById(id);
@@ -16237,7 +16248,7 @@ function sessionRecord(r, heading) {
       // The shared tag row when the session's tags are in the vocabulary; its own session filter links otherwise.
       pageTagRow(r) || el("div", { class: "session-tags" }, (r.session_tags || []).map(tag => el("a", { class: "tag-link", href: sessionHash({ tag }), text: tag })))]),
     el("section", { class: "session-summary" }, [summary ? el("h2", { text: t("Summary") }) : null,
-      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || t("Not summarised yet") + " — " + unlabelled(r.session_first || messages[0]?.text || "").replace(/\s+/g, " ").slice(0, 160) })]),
+      el("p", { class: "lede" + (summary ? "" : " session-unsummarised"), text: summary || (sessionOpenText(r) ? t("Not summarised yet") + " — " + unlabelled(sessionOpenText(r)).replace(/\s+/g, " ").slice(0, 160) : t("This session's content is hidden")) })]),
     attachment.node,
     sessionDecisions(r, messages),
     followups ? el("section", { class: "session-structure session-followups" }, [el("h2", { text: t("Follow-ups") }),
@@ -19389,6 +19400,8 @@ function render() {
   }
   cacheChineseInterface();
   for (const r of REM.records) swapLanguage(r, r.readLanguage ?? (uiLanguage === "en" ? "" : uiLanguage));
+  // A session whose title came from a labelled turn is named in the reader's own words, in its current language.
+  for (const r of REM.records) if (r.session_title_hidden) Object.defineProperty(r, "title", { get: () => t("This session's content is hidden"), configurable: true });
   memoryPass = lastPass();
   document.documentElement.lang = uiLanguage;
   document.getElementById("nav").setAttribute("aria-label", t("Categories"));

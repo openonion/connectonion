@@ -485,7 +485,8 @@ def test_rem_session_reader_fields(notebook):
     assert fields == {"session_project": "", "session_date": "2026-10-16", "session_time": "09:12",
                       "session_agent": "Codex", "session_turns": 2, "session_folder": "/work/demo",
                       "session_first": "Ask Corin about the reader", "session_reply": "Ready. Open the reader.",
-                      "session_title": "Ask Corin", "session_started_with": "Ask Corin", "session_summary": "",
+                      "session_title": "Ask Corin", "session_title_hidden": False, "session_all_hidden": False,
+                      "session_started_with": "Ask Corin", "session_summary": "",
                       "session_tags": [], "session_outcome": "",
                       "session_artifacts": {"prs": 0, "commits": 0, "files": 0}}
     from connectonion.rem.reader import snapshot

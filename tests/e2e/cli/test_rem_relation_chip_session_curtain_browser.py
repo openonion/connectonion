@@ -28,6 +28,11 @@ ORG = "orgs/quillmere-labs-3425aaaa01.md"
 PERSON = "people/tamsin-vale-3425bbbb02.md"
 TOPIC = "knowledge/harbour-pilot-3425cccc03.md"
 SESSION = "sessions/codex-3425-quiet.md"
+# Its title is what the import took from the first turn, which is now labelled; its second turn is open.
+TITLED = "sessions/codex-3425-titled.md"
+# Every turn labelled: no preview at all.
+SEALED = "sessions/codex-3425-sealed.md"
+PRIVATE_WORDS = ["brackenhold", "wolfsbane", "corrimal"]
 SOURCES = "\n## Sources\n- [1] gmail:fixture:9 — 2026-09-01\n- [2] gmail:fixture:9 — 2026-09-01\n"
 
 
@@ -48,6 +53,15 @@ def _notebook(root, now):
                "### 09:12 [sensitive]\n> plan the brackenhold move before anyone hears\n"
                "### 09:20\n> keep this literal [personal] as I typed it\n\n## Final reply\n> Done.\n\n"
                "## Sources\n- codex:fixture:1\n- codex:fixture:2\n")
+    book.write(TITLED, "# move the wolfsbane fund quietly\n\n## Facts\n- Date: 2026-09-29\n- Agent: Codex\n- Project: scratch\n"
+               "- Folder: /work/scratch\n- Session: codex-3425-titled\n- Turns: 2\n"
+               "- Started with: move the wolfsbane fund quietly\n\n## What you typed\n"
+               "### 08:01 [sensitive]\n> move the wolfsbane fund quietly\n### 08:05\n> then tidy the release notes\n\n"
+               "## Final reply\n> Done.\n\n## Sources\n- codex:fixture:3\n- codex:fixture:4\n")
+    book.write(SEALED, "# Sealed session\n\n## Facts\n- Date: 2026-09-28\n- Agent: Codex\n- Project: scratch\n"
+               "- Folder: /work/scratch\n- Session: codex-3425-sealed\n- Turns: 1\n\n## What you typed\n"
+               "### 07:40 [personal]\n> the corrimal appointment details\n\n## Final reply\n> Done.\n\n"
+               "## Sources\n- codex:fixture:5\n")
     return root
 
 
@@ -148,3 +162,63 @@ def test_a_shared_reader_never_receives_a_turn_whose_heading_is_marked():
     own = session_detail(page, private=True)["session_messages"]
     turn = next(m for m in own if "brackenhold" in m["text"])
     assert turn["level"] == "sensitive" and turn["time"] == "09:12", turn
+
+
+# What a session shows of itself: the page's title and lede, every session list row, and every title/aria label.
+HEAD = r"""() => {
+  const main = document.querySelector('#main');
+  const parts = [...main.querySelectorAll('h1, .lede, .session-row, .session-card, .hits li, [class*=session-list] li')].map(n => n.textContent);
+  for (const n of main.querySelectorAll('[title], [aria-label]')) if (!n.closest('.session-quote, .session-turn')) parts.push(n.getAttribute('title') || '', n.getAttribute('aria-label') || '');
+  return parts.join('\n');
+}"""
+
+
+@pytest.mark.parametrize("level", ["all", "cover", "public"])
+def test_a_session_preview_never_takes_a_labelled_turn(page, level):
+    _show(page, TITLED, level)
+    if level == "cover":
+        SHOTS.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(SHOTS / f"session-preview-cover-{page.width}.png"), full_page=False)
+    head = page.evaluate(HEAD, isolated_context=False)
+    assert "wolfsbane" not in head, head[:300]
+    assert "这次会话的内容已遮住" in page.evaluate("() => document.querySelector('#main h1')?.textContent || ''",
+                                                isolated_context=False)
+    assert "tidy the release notes" in page.evaluate("() => document.querySelector('#main .lede')?.textContent || ''",
+                                                   isolated_context=False)
+    _show(page, SEALED, level)
+    lede = page.evaluate("() => document.querySelector('#main .lede')?.textContent || ''", isolated_context=False)
+    assert lede.strip() == "这次会话的内容已遮住", lede
+    # SESSION's turns are both labelled: one by its heading, one by the "[personal]" typed in its words (session_detail
+    # keeps such a turn from a shared reader too), so it has no preview.
+    _show(page, SESSION, level)
+    lede = page.evaluate("() => document.querySelector('#main .lede')?.textContent || ''", isolated_context=False)
+    assert "brackenhold" not in lede and lede.strip() == "这次会话的内容已遮住", lede
+
+
+@pytest.mark.parametrize("level", ["all", "cover", "public"])
+def test_session_lists_and_search_never_show_a_labelled_turn(page, level):
+    page.evaluate("(level) => setPrivacy(level, { save: false })", level, isolated_context=False)
+    for hash_ in ("#c=sessions", "#q=" + quote("wolfsbane"), "#q=" + quote("brackenhold"), "#q=" + quote("corrimal")):
+        page.evaluate("(hash) => { location.hash = hash; }", hash_, isolated_context=False)
+        page.wait_for_timeout(500)
+        # A search page's heading repeats the query the owner typed; it is not the notebook showing a turn.
+        head = page.evaluate(HEAD.replace("'h1, ", "'" if hash_.startswith("#q=") else "'h1, "), isolated_context=False)
+        assert not [w for w in PRIVATE_WORDS if w in head], (hash_, head[:300])
+
+
+def test_a_shared_reader_payload_carries_no_labelled_turn_in_its_session_fields(tmp_path, monkeypatch):
+    import json
+
+    from connectonion.rem import reader as rem_reader
+    monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
+    root = _notebook(tmp_path / "rem", datetime(2026, 10, 1, 12, tzinfo=timezone.utc))
+    data = rem_reader.snapshot(root, local=False)
+    sessions = {r["path"]: r for r in data["records"] if r["category"] == "sessions" and "3425" in r["path"]}
+    fields = ("title", "session_title", "session_first", "session_started_with", "session_time", "session_messages")
+    for path, record in sessions.items():
+        shown = json.dumps({k: record.get(k) for k in fields}, ensure_ascii=False)
+        assert not [w for w in PRIVATE_WORDS if w in shown], (path, shown)
+    assert sessions[TITLED]["title"] == "This session's content is hidden" and sessions[TITLED]["session_title_hidden"]
+    assert sessions[SEALED]["session_all_hidden"] and sessions[SEALED]["session_first"] == ""
+    assert sessions[TITLED]["session_time"] == "08:05", "the start time is the open turn's"
+    assert sessions[TITLED]["session_first"] == "then tidy the release notes"
