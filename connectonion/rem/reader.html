@@ -15771,7 +15771,7 @@ function sessionArchivedTools(r) {
       el("pre", {}, [el("code", { text: command.text })]), el("p", { text: t("Tool output not archived") })]))]);
 }
 function sessionTranscriptTurn(r, message) {
-  const owner = message.role === "user", quote = sessionQuote(message.text);
+  const owner = message.role === "user", quote = sessionQuote(message.text, message.level);
   quote.sessionFullText = message.text;
   return el("section", { class: "session-turn " + (owner ? "owner-turn" : "assistant-turn") + (hasPrivacy(message.text) ? " private" : ""), id: message.id, "data-source": message.source || "" }, [
     el("div", { class: "session-turn-label" }, [owner ? null : sessionToolMark(r), el("span", { text: owner ? t("You") : sessionTool(r).name }),
@@ -16062,8 +16062,11 @@ function sessionSection(r, name) {
 }
 function sessionMessages(r) {
   return sessionSection(r, "What you typed").split(/^### /m).filter(part => /^\d/.test(part)).map((part, i) => {
-    const [time, ...lines] = part.split("\n");
-    return { id: "session-message-" + (i + 1), time, text: sessionUnquote(lines.join("\n")) };
+    const [stamp, ...lines] = part.split("\n");
+    // A turn's level is the page's structure, its own heading ("### 09:12 [sensitive]"), never a token the owner
+    // typed inside the quote: the quote stays literal, and the level curtains it whole.
+    const { text: time, level } = markedText(stamp);
+    return { id: "session-message-" + (i + 1), time, level, text: sessionUnquote(lines.join("\n")) };
   });
 }
 function sessionUnquote(text) { return text.replace(/^> ?/gm, "").replace(/^\n+|\n+$/g, ""); }
@@ -16081,8 +16084,10 @@ function sessionMessageLink(r, message, text) {
   link.onclick = event => { event.preventDefault(); sessionJump(message.id); };
   return link;
 }
-function sessionQuote(text) {
-  return el("blockquote", { class: "session-quote" + (hasPrivacy(text) ? " private" : ""), text });
+// The owner's words, literal. A level from the turn's heading makes the quote a labelled passage, which applyPrivacy
+// curtains at 遮敏感 and removes at 只看公开; the words inside stay exactly as typed.
+function sessionQuote(text, level = "") {
+  return el("blockquote", { class: "session-quote" + (level || hasPrivacy(text) ? " private" : ""), ...(level ? { "data-level": level } : {}), text });
 }
 function sessionFinalReply(r) {
   const text = sessionUnquote(sessionSection(r, "Final reply"));
@@ -16268,14 +16273,14 @@ function sectionBody(r, s) {
   // Session quotes are the owner's words, including Markdown and citation-looking text.
   if (r.category === "sessions" && ["what you typed", "final reply"].includes(name)) {
     const out = el("div", { class: "block" });
-    let quoted = [];
+    let quoted = [], level = "";
     const flush = () => {
-      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (hasPrivacy(quoted.join("\n")) ? " private" : ""), text: quoted.join("\n") }));
+      if (quoted.length) out.appendChild(sessionQuote(quoted.join("\n"), level));
       quoted = [];
     };
     for (const line of s.text.split("\n")) {
       if (line.startsWith("> ")) quoted.push(line.slice(2));
-      else if (line.startsWith("### ")) { flush(); out.appendChild(el("h3", { text: line.slice(4) })); }
+      else if (line.startsWith("### ")) { flush(); const heading = markedText(line.slice(4)); level = heading.level; out.appendChild(el("h3", { text: heading.text })); }
     }
     flush();
     return out;
@@ -16693,6 +16698,10 @@ function markedText(text) {
   const level = /[\[［]sensitive[\]］]/i.test(value) ? "sensitive" : /[\[［]personal[\]］]/i.test(value) ? "personal" : "";
   return { text: value.replace(/[ \t]*[\[［](?:personal|sensitive)[\]］]/gi, "").trim(), level };
 }
+// The chip a labelled passage carries, built the way inline() builds it, so it reads and hides the same everywhere.
+function privacyChip(level) {
+  return el("span", { class: "privacy-tag " + level, text: t(level === "sensitive" ? "Sensitive" : "Personal passage") });
+}
 function relationCard(link, currentPath = "") {
   const other = byPath(link.path), origin = byPath(link.via);
   const marked = markedText(relationReason(link.basis, other, origin, byPath(currentPath)));
@@ -16706,7 +16715,9 @@ function relationCard(link, currentPath = "") {
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: pageName(other) }),
-      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), ...(level ? { "data-level": level } : {}), text: youify(pageWords(factWords(basis))) }) : null,
+      // The same chip the line carries in the body and the 关联 list, from the same level (#3425 follow-up).
+      basis && level ? el("span", { class: "relation-basis private", "data-level": level }, [youify(pageWords(factWords(basis))), privacyChip(level)])
+        : basis ? el("span", { class: "relation-basis", text: youify(pageWords(factWords(basis))) }) : null,
       // 原文 only while the line still reads as English: a Facts line now says its label in Chinese (#3416).
       // A curtained reason has no words on show, so nothing to call original either.
       basis && level !== "sensitive" && link.original && englishProse(factWords(basis)) ? originalMark() : null])]);

@@ -2146,7 +2146,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'orgNamed', 'domainName', 'startsWords', 'personDomain', 'sameCompany', 'personProject',
         'factList', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'snapshotWhy', 'translatedRelationBasis',
-        'closeStripped', 'relationCard', 'markedText', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
+        'closeStripped', 'relationCard', 'markedText', 'privacyChip', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
@@ -2288,7 +2288,7 @@ def test_project_coverage_limit_has_chinese_copy(days, inputs, expected):
 def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'markedText', 'localizedRelation', 'resolve', 'originalMark', 'pageWords', 'englishProse'])
+                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'markedText', 'privacyChip', 'localizedRelation', 'resolve', 'originalMark', 'pageWords', 'englishProse'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nconst originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', title: 'Fernhill Labs', category: 'orgs', translations: {zh:
@@ -2324,7 +2324,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
-                                       'connectedContext', 'closeStripped', 'relationCard', 'markedText', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden', 'pageWords'])
+                                       'connectedContext', 'closeStripped', 'relationCard', 'markedText', 'privacyChip', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden', 'pageWords'])
     result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',

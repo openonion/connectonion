@@ -679,10 +679,12 @@ def session_detail(text: str, *, private: bool = False) -> dict:
     parts = re.split(r"^### ([^\n]+)\n", _section(text, "What you typed"), flags=re.M)
     for index, (stamp, body) in enumerate(zip(parts[1::2], parts[2::2])):
         raw = re.sub(r"^> ?", "", body, flags=re.M).strip()
-        if not raw or (PRIVATE.search(raw) and not private):
+        # A turn's heading ("### 09:12 [sensitive]") labels the whole turn; it reached a shared reader before.
+        level = _level(stamp)
+        if not raw or ((PRIVATE.search(raw) or level) and not private):
             continue
-        turns.append({"id": f"session-message-{index + 1}", "role": "user", "time": stamp,
-                      "text": raw, "source": sources[index] if index < len(sources) else ""})
+        turns.append({"id": f"session-message-{index + 1}", "role": "user", "time": PRIVATE.sub("", stamp).strip(),
+                      "level": level, "text": raw, "source": sources[index] if index < len(sources) else ""})
     reply = re.sub(r"^> ?", "", _section(text, "Final reply"), flags=re.M).strip()
     if reply and (private or not PRIVATE.search(reply)):
         turns.append({"id": "session-final", "role": "assistant", "time": facts.get("Ended", ""), "text": reply})
