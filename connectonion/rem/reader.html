@@ -1168,6 +1168,9 @@
   .n3-person > .translation-line { margin: 12px 4px 0; }
   .lang-status { margin-left: 6px; color: var(--grey); font: var(--s-ui) var(--font); white-space: nowrap; }
   .lang-status.lead { margin: 0 6px 0 0; }
+  /* The page's English after a Chinese label reads as quoted original, not as the label's broken half (#3410). */
+  .orig-quote { overflow-wrap: anywhere; }
+  .orig-quote > .lang-status { margin: 0 2px 0 0; }
   .role-more { color: var(--grey); white-space: nowrap; }
   .contact-line .lead-meta { display: block; font: var(--s-meta)/1.5 var(--font); overflow-wrap: anywhere; }
   .person-focus { max-width: 1120px; }
@@ -5605,6 +5608,9 @@ const UI = {
     "Find in this conversation": "在此对话中查找",
     "Neighbouring sessions": "相邻会话",
     "Copy {name}": "复制{name}",
+    // A citation chip's title and aria-label (#3410).
+    "Source: {label}": "来源：{label}", ", subject “{subject}”": "，主题「{subject}」",
+    ", original not in this snapshot": "，原文不在此快照中", ", {n} sources for this line": "，这一行有 {n} 个来源",
     "Open threads on this record": "此记录的未完成事项",
     "Close conversation": "关闭对话",
     "About this page": "关于此页",
@@ -6437,8 +6443,9 @@ function citeChip(n, from, showDescription = true, visibleLabel = false, ns = [n
   });
   const when = citationDate(r, n), full = when === t("source {n}", { n }) ? when : chipLabel(r, n);
   const subject = context?.subject || REM.conversations?.[context?.thread]?.subject;
-  const tip = "Source: " + label + (subject ? ", subject “" + subject + "”" : "")
-    + (missing ? ", original not in this snapshot" : "") + (ns.length > 1 ? ", " + ns.length + " sources for this line" : "");
+  // The chip's title and aria-label are the reader's words (#3410: "Source: …" in a Chinese reader).
+  const tip = t("Source: {label}", { label }) + (subject ? t(", subject “{subject}”", { subject }) : "")
+    + (missing ? t(", original not in this snapshot") : "") + (ns.length > 1 ? t(", {n} sources for this line", { n: ns.length }) : "");
   return '<a class="cite' + (ns.length > 1 ? " run" : "") + (missing ? " missing" : "") + '" href="#r=' + esc(encodeURIComponent(from)) + "&amp;h=src-" + n.toLowerCase() +
     '" data-sources="' + ns.join(" ") + '" title="' + esc(tip) + '" aria-label="' + esc(tip) + '">' + '<span class="cite-full">' + esc(full) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + '</span><span class="cite-short">' + esc(when) + (ns.length > 1 ? " +" + (ns.length - 1) : "") + "</span><sup class=\"cite-number\">" + esc(n) + "</sup></a>";
 }
@@ -6504,6 +6511,10 @@ function privatePassages(text, replace) {
   value = value.replace(/“[^”\n]*”|「[^」\n]*」|"[^"\n]*"|&quot;(?:(?!&quot;)[^\n])*&quot;/g,
     quote => quote.replace(/[.!?;:,。！？；：，]/g, protect));
   value = value.replace(/&(?:#\d+|#x[\da-f]+|\w+);/g, protect);
+  // A mark that opens a line labels the whole line, as a trailing one labels its sentence (#3410). The passage regex
+  // below reads a mark only after its words, so a leading "[sensitive] …" showed the raw mark and left its words bare.
+  value = value.replace(/(^|\n)([ \t]*(?:[-*•][ \t]+)?)([\[［](?:personal|sensitive)[\]］])[ \t]*([^\n]+)/gi,
+    (m, start, bullet, mark, rest) => start + bullet + protect(replace(restore(rest) + " " + mark, /sensitive/i.test(mark) ? "sensitive" : "personal")));
   // Decimal numbers, email addresses and domains do not start a new sentence.
   value = value.replace(/(?<=[\p{L}\p{N}])\.(?=[\p{L}\p{N}])/gu, protect);
   value = value.replace(/(?<=^|[\n.!?;:,。！？；：，](?:\s*[\[［](?:personal|sensitive|W?\d+)[\]］])*\s*)(?!\s|[\[［](?:personal|sensitive|W?\d+)[\]］])([^\n.!?。！？]*?[.!?;:,。！？；：，]?)\s*[\[［](personal|sensitive)[\]］]((?:\s*[\[［](?:personal|sensitive|W?\d+)[\]］])*)([.!?;:,。！？；：，]?)/gi,
@@ -6831,7 +6842,7 @@ function foldUnfilled(note) {
     empty.push(h.textContent.trim());
     h.remove(); body.forEach(n => n.remove());
   }
-  if (empty.length) note.appendChild(el("p", { class: "unfilled-sections", text: t("Still unknown: ") + empty.join(" · ") }));
+  if (empty.length) note.appendChild(el("p", { class: "unfilled-sections", text: t("Still unknown: ") + empty.map(name => t(name)).join(" · ") }));
   return empty;
 }
 // ---------- what a page knows (#1836) ----------
@@ -12144,7 +12155,9 @@ function personSub(r) {
   const domain = org?.org ? plainLine(String(facts(org.org).domain || "")).replace(/^https?:\/\/|\/$/g, "") : "";
   const units = (r.units || []).map(edge => ({ edge, unit: byPath(edge.path) })).filter(({ unit }) => unit && !orgHidden(unit));
   const mark = () => el("span", { class: "org-mark", "aria-hidden": "true", text: org.name.trim()[0].toUpperCase() });
-  const parts = [knownValue(role) && items.length ? changedValue(el("span", { class: "dek-role" }, [roleLede(items, role, r.path)]), r, "Role") : null,
+  // An English role in a Chinese reader is the page's words, shown as its original (#3410: 「team member」).
+  const lede = () => englishProse(role) ? originalQuote(roleLede(items, role, r.path)) : roleLede(items, role, r.path);
+  const parts = [knownValue(role) && items.length ? changedValue(el("span", { class: "dek-role" }, [lede()]), r, "Role") : null,
     org ? changedValue(org.org ? el("a", { class: "dek-org", href: href(org.org), title: [org.full, knownValue(domain) ? domain : ""].filter(Boolean).join(" · ") }, [mark(), org.name])
       : el("span", { class: "dek-org" }, [mark(), org.name]), r, "Company") : null,
     ...units.map(({ edge, unit }) => el("a", { class: "dek-unit", href: href(unit), text: orgName(unit) + (edge.role ? " · " + unlabelled(edge.role) : "") }))].filter(Boolean);
@@ -12262,9 +12275,9 @@ function profileCard(r) {
 // Its sources are small numbers after it; a labelled value hides with the labelled passages.
 function profileValue(item, r, label, copy) {
   const noted = node => { if (item.note && !hasPrivacy(item.note)) node.title = plainLine(item.note); return node; };
-  if (!copy) return changedValue(noted(factValue(item, r.path)), r, label);
+  if (!copy) return changedValue(noted(factValue(item, r.path, label)), r, label);
   const done = el("span", { class: "pc-done", text: t("Copied") }), value = plainLine(item.value);
-  const button = el("button", { type: "button", class: "pc-copy", title: t("Copy {name}", { name: label }) }, [
+  const button = el("button", { type: "button", class: "pc-copy", title: t("Copy {name}", { name: uiLanguage === "zh" ? t(label) : label.toLowerCase() }) }, [
     el("span", { html: inline(item.value, r.path) }), done]);
   const say = words => { done.textContent = t(words); button.classList.add("done"); setTimeout(() => button.classList.remove("done"), 1600); };
   button.onclick = () => navigator.clipboard ? navigator.clipboard.writeText(value).then(() => say("Copied"), () => say("Copy failed")) : say("Select and copy");
@@ -14724,7 +14737,26 @@ function orgRelation(r) {
   return orgSummary(firstSentence(masked).replace(/\u0006(\d+)\u0006/g, (_, i) => held[i]));
 }
 // Organisation prose with each labelled passage in its own .private span, as on a person's page.
-function orgProse(text) { return text ? privateFallback(el("span", { class: "ov-prose", html: inline(text, "") })) : null; }
+function orgProse(text) {
+  if (!text) return null;
+  const words = factWords(text), prose = privateFallback(el("span", { class: "ov-prose", html: inline(words, "") }));
+  // After a Chinese label the page's English reads as its original (#3410: 「仍不明确：Who they are.」).
+  return englishProse(words.replace(/^[^:：]{1,12}：/, "")) ? originalQuote(prose) : prose;
+}
+// A Facts line quoted as prose ("Parent: [[…]]", "Company: …", "Kind: course") says its label and a kind word in the
+// reader's language (#3410): the label is the reader's own word, the rest is the page's. Only labels the table knows.
+const KIND_WORDS = { course: "课程", university: "大学", school: "学校", team: "团队", company: "公司", startup: "初创公司",
+  department: "部门", lab: "实验室", club: "社团", community: "社区", government: "政府", nonprofit: "非营利组织",
+  faculty: "学院", program: "项目", programme: "项目", group: "小组", agency: "机构", investor: "投资方", client: "客户" };
+function kindWord(value) {
+  const word = String(value || "").trim();
+  return uiLanguage === "zh" && KIND_WORDS[word.toLowerCase()] ? KIND_WORDS[word.toLowerCase()] : word;
+}
+function factWords(text) {
+  if (uiLanguage !== "zh") return text;
+  return String(text).replace(/^([A-Z][A-Za-z /]{1,30}):\s*/, (m, label) => t(label) !== label ? t(label) + "：" : m)
+    .replace(/^(类别：)\s*([A-Za-z]+)\b/, (m, head, word) => head + kindWord(word));
+}
 function orgHidden(r) {
   const seen = new Set();
   for (let page = r; page && !seen.has(page.path); page = byPath(page.parent)) {
@@ -15145,12 +15177,14 @@ function orgYourSide(v) {
   const ours = orgByLast((v.r.your_side || []).map(byPath).filter(Boolean));
   return ours.length ? el("div", { class: "ov-yours" }, [el("h3", { class: "ov-yours-h", text: orgT("Your side") }),
     el("ul", {}, ours.map(p => el("li", {}, [el("a", { href: href(p), text: p.title }),
-      orgRole(p, "span") ? el("small", { class: "ov-tk", text: orgRole(p, "span").textContent }) : null])))]) : null;
+      orgRole(p, "span") ? el("small", { class: "ov-tk", ...(englishProse(orgRole(p, "span").textContent) ? { lang: "en", title: t("No Chinese translation yet; showing original") } : {}) },
+        [englishProse(orgRole(p, "span").textContent) ? originalQuote(document.createTextNode(orgRole(p, "span").textContent)) : orgRole(p, "span").textContent]) : null])))]) : null;
 }
 function orgTreeItem(d) {
   const row = el("div", { class: "ov-trow", "data-kind": d.kind }, [el("span", { class: "ov-twisty", "aria-hidden": "true" }),
     el("span", { class: "ov-tl1" }, [d.link ? el("a", { href: d.link, tabindex: "-1", text: d.label }) : el("b", { text: d.label }),
-      d.meta ? el("small", { class: "ov-tk", text: d.meta }) : null])]);
+      // A role the page wrote in English stays the page's words, marked as the original (#3410: 「team member」).
+      d.meta ? el("small", { class: "ov-tk" }, [englishProse(d.meta) ? originalQuote(document.createTextNode(d.meta)) : d.meta]) : null])]);
   const item = el("li", { role: "treeitem", "aria-level": String(d.level), tabindex: "-1", "aria-label": [d.label, d.meta].filter(Boolean).join(" · ") }, [row]);
   if (d.kids?.length) {
     item.setAttribute("aria-expanded", String(!!d.open));
@@ -16170,7 +16204,22 @@ function oneDate(item) {
   }
   return { ...item, value: m[1] + "-" + m[2] + "-" + m[3] };
 }
-function factValue(item, from) {
+// English a page skill wrote, in a Chinese reader (#3410): a role "team member", how you met, an open question. The
+// reader never translates it itself; it shows the words as the original, behind the same quiet 原文 mark a page
+// header uses, so 「如何认识：Met through…」 reads as a quotation and not as a Chinese label's broken second half.
+// Names, codes, addresses and single words are not prose: "Example University", "Swift", "wren@example.edu".
+function englishProse(text) {
+  const plain = String(text || "").replace(/\[[^\]]*\]\([^)]*\)|\[\[[^\]]*\]\]|\[W?\d{1,3}\]|[\[［](?:personal|sensitive)[\]］]/gi, " ").trim();
+  if (uiLanguage !== "zh" || !plain || /[\p{Script=Han}]/u.test(plain) || /@|:\/\/|^[\w.-]+\.[a-z]{2,}$/i.test(plain)) return false;
+  const words = plain.match(/[A-Za-z][A-Za-z'’-]*/g) || [];
+  return words.length >= 2 && words.some(w => /^[a-z]{2,}$/.test(w));
+}
+function originalQuote(node) {
+  return el("span", { class: "orig-quote", lang: "en" }, [originalMark(), " ", node]);
+}
+function factValue(item, from, label = "") {
+  // A kind word is the reader's own vocabulary ("course" → 课程); any other English value is the page's words.
+  if (label === "Kind") item = { ...item, value: kindWord(item.value) };
   item = oneDate(item);
   const day = /^\d{4}-\d{2}-\d{2}$/.test(item.value);
   const email = /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(item.value);
@@ -16178,8 +16227,10 @@ function factValue(item, from) {
   const html = day ? esc(fmtDate(item.value)) : email ? '<a href="mailto:' + esc(item.value) + '">' + esc(item.value) + "</a>"
     : url ? '<a href="' + esc(item.value) + '" target="_blank" rel="noopener noreferrer">' + esc(item.value.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"
     : inline(item.value, from);
+  const words = el("span", { html });
   const value = el("span", { class: "val" + (day || email || url ? " mono" : "") + (item.derived ? " derived" : ""), title: item.derived ? t("read from the page's prose, not its Facts") : "" }, [
-    el("span", { html }), item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null]);
+    !day && !email && !url && englishProse(item.value) ? originalQuote(words) : words,
+    item.qualifier ? el("span", { class: "qual", text: item.qualifier }) : null]);
   if (!item.citations.length) return value;
   const cites = el("span", { html: citeChips(item.citations, from) });
   softBreaks(value);
@@ -16240,7 +16291,7 @@ function factList(r) {
       ? "— map date shown above" : "— not found";
     // Empty fields are one quiet line under the card, not a row each (#3104).
     if (!items.length && missing === "— not found") { notFound.push(t(label)); continue; }
-    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => changedValue(factValue(i, r.path), r, label)) : [el("span", { text: t(missing) })]);
+    const dd = el("dd", { class: items.length ? "" : "none" }, items.length ? items.map(i => changedValue(factValue(i, r.path, label), r, label)) : [el("span", { text: t(missing) })]);
     if (items.length && COPYABLE.has(label)) {
       const btn = el("button", { type: "button", class: "copy", "aria-label": t("Copy {name}", { name: uiLanguage === "zh" ? t(label) : label.toLowerCase() }), text: t("Copy") });
       btn.onclick = () => copyToClipboard(items.map(i => i.value).join("; "), btn, t("Copied"));
@@ -16435,7 +16486,7 @@ function relationCard(link, currentPath = "") {
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: pageName(other) }),
-      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(pageWords(basis)) }) : null,
+      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(pageWords(factWords(basis))) }) : null,
       basis && link.original ? originalMark() : null])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (labelled ? " private" : "") }, [
     origin.path !== currentPath ? el("span", {}, [t("On "), el("a", { href: href(origin), text: origin.title })]) : null,
@@ -16959,7 +17010,7 @@ function record(path, heading) {
       el("span", { class: "lead", text: t(r.private_project ? "Private project — waiting for your request" : !REM.status?.worker?.enabled ? "Page pending — background updates off" : mapped ? "Page queued for tonight" : "Unresolved sections queued for a future pass") }),
       r.private_project ? el("p", { text: t("This private project waits for your request.") }) : null,
       r.private_project ? investigateRequest(r) : null,
-      el("div", { class: "names", text: mapped ? t("{n} sections will be written when it is investigated.", { n: k.missing.length }) : t("Still unknown: ") + youify(k.missing.join(", ")) + "." })]);
+      el("div", { class: "names", text: mapped ? t("{n} sections will be written when it is investigated.", { n: k.missing.length }) : t("Still unknown: ") + youify(k.missing.map(name => t(name)).join(uiLanguage === "zh" ? "、" : ", ")) + (uiLanguage === "zh" ? "。" : ".") })]);
     if (mapped) main.insertBefore(box, deep.parentNode ? deep : null); else column.appendChild(box);
   }
 
