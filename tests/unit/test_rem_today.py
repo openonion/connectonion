@@ -286,7 +286,7 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     assert result['file'] == result['snapshot'] == [[word, 'disabled', reason, 'why-close'] for word in ('Mark done', 'Not now', 'Ignore')]
 
 
-TODAY_CARD = ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
+TODAY_CARD = ['personCard', 'snapshotCloseLine', 'cardHead', 'qageNode', 'ageNodes', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
 
 
 def _today_card_js(body):
@@ -303,7 +303,7 @@ def _today_card_js(body):
       const queuedReply = () => null, threadKind = () => null, threadContact = () => null, looksDone = entry => !!entry.handled;
       const morningWords = entry => ({words: 'Feedback', context: ''}), contactFields = () => [], company = () => '';
       const threadWho = r => r.title, href = () => '#fern', blockerTag = () => null, overdueDays = () => 0, kindBadge = () => null;
-      const alsoOn = () => null, firstName = r => r.title, threadAge = () => '5 days', setDone = () => {};
+      const alsoOn = () => null, firstName = r => r.title, threadAge = () => '5 days', setDone = () => {}, momentClass = () => '', momentData = () => ({});
       const closed = [], closeEntries = (node, entries) => closed.push([node, entries.map(entry => entry.key)]);
       const r = {path: 'people/fern.md', title: 'Fern'};
       const row = (key, handled = false) => ({key, handled, r, t: {dir: 'mine', text: 'You owe Fern ' + key + '.'}});
@@ -420,7 +420,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'snapshotCloseLine', 'cardHead', 'qageNode', 'ageNodes', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
@@ -436,7 +436,7 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
       const morningWords = () => ({words:'Feedback', context:''}), contactFields = () => [], company = () => '';
       const calendarDay = day => day, threadWho = r => r.title, href = () => '#fern', blockerTag = () => null, overdueDays = () => 0;
       const kindBadge = () => null, alsoOn = () => null, isDone = () => false, setDone = () => {}, fmtDate = day => day;
-      const firstName = r => r.title, threadAge = () => '5 days', taskResult = () => null, CHECK_ICON = '';
+      const firstName = r => r.title, threadAge = () => '5 days', taskResult = () => null, CHECK_ICON = '', momentClass = () => '', momentData = () => ({});
       const handedLine = () => null, rowTask = () => null, handOff = () => null;
       const replyDraftCard = draft => ({sendable:true, body:draft.body});
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});

@@ -58,6 +58,7 @@ TURNS = """() => {
   const running = upcomingMoment({ since, text: 'Call today.' }, other);
   REM.calendar = { events: [] }; clockNow = real;
   return { before, soon, after, running, sameDay: day === agToday(), passed: t('passed'), started: t('started'), at,
+           in30: t('in {n} min', { n: 30 }),
            data: (clockNow = () => base, momentData(thread, r)) };
 }"""
 
@@ -70,9 +71,10 @@ def test_a_card_time_turns_soon_then_passed_as_the_clock_moves(page_file):
             pytest.skip("the fixture's render time is within 3 hours of midnight in its zone")
         assert got["before"]["state"] == "later" and got["before"]["cls"] == "", got
         assert got["soon"]["state"] == "soon" and got["soon"]["cls"] == " soon", got
+        assert got["soon"]["label"] == got["in30"], got  # the hour before counts down in words (art director on #3423)
         assert got["after"]["state"] == "passed", got
         assert got["after"]["label"].endswith(" · " + got["passed"]), got  # 「今天 14:00 · 已过」, not a stale 「今天 14:00」
-        assert got["after"]["cls"] == " passed", got
+        assert got["after"]["cls"] == "", got  # after it the card keeps its weight: only 「已过」 is muted
         assert got["running"]["state"] == "started", got
         assert got["running"]["label"].endswith(" · " + got["started"]), got
         assert got["data"]["data-bucket"] == "later", got  # what the minute tick compares
@@ -139,5 +141,78 @@ def test_a_reason_that_only_restates_the_target_is_no_reason(page_file):
         assert got["linked"] == "", got  # the org page's own line keeps its link and citation: still only the name
         assert got["markdown"] == "", got
         assert got["real"], got  # a line that says something beyond the name stays a reason
+    finally:
+        browser.close(); api.stop()
+
+
+# A card past its time stays where it was and as heavy as it was: the debt is still owed. Only the word 已过 is muted.
+# The first card's person gets a calendar event; the queue is drawn before it, and again with the clock 2 hours on.
+ORDER = """() => {
+  const who = () => [...document.querySelectorAll('#main .today-who')].map(n => n.textContent);
+  const first = document.querySelector('#main .qhead .today-who')?.textContent;
+  const r = inCategory('people').find(p => p.title === first || pageName(p) === first);
+  const base = Date.parse(REM.as_of), real = clockNow;
+  REM.calendar = { events: [{ id: 'e-1', start: new Date(base + 20 * 60e3).toISOString(), end: new Date(base + 50 * 60e3).toISOString(),
+                              title: 'Call', calendar: 'google', people: [r.path] }] };
+  clockNow = () => base; render(); const soonOrder = who();
+  const soonAge = document.querySelector('#main .qhead .qage');
+  const soon = { text: soonAge.textContent, cls: soonAge.className, bucket: soonAge.dataset.bucket };
+  clockNow = () => base + 2 * 3600e3; render(); const pastOrder = who();
+  const age = document.querySelector('#main .qhead .qage'), mark = age.querySelector('.age-passed');
+  const out = { soonOrder, pastOrder, soon, past: { cls: age.className, text: age.textContent,
+    markColor: mark && getComputedStyle(mark).color, ageColor: getComputedStyle(age).color,
+    markWeight: mark && getComputedStyle(mark).fontWeight, ageWeight: getComputedStyle(age).fontWeight }, in20: t('in {n} min', { n: 20 }) };
+  clockNow = real; REM.calendar = { events: [] }; render(); return out;
+}"""
+
+
+def test_a_passed_card_keeps_its_place_and_weight_and_only_mutes_the_word(page_file):
+    api, browser, page = _open(page_file)
+    try:
+        got = page.evaluate(ORDER, isolated_context=False)
+        assert got["soon"]["text"].startswith(got["in20"]), got  # 「20 分钟后 · 已等 …」
+        assert "soon" in got["soon"]["cls"] and got["soon"]["bucket"] == "soon", got
+        assert got["pastOrder"] == got["soonOrder"], got  # no reordering once it has passed
+        # The event ended an hour ago: the card falls back to its words, which name no time, so it is the age alone,
+        # still on the same card in the same place.
+        assert "soon" not in got["past"]["cls"] and "late" not in got["past"]["cls"], got
+    finally:
+        browser.close(); api.stop()
+
+
+MUTED = """() => {
+  const node = el('span', { class: 'qage' }, ageNodes('Today 14:00 · ' + t('passed') + ' · ' + t('waiting {age}', { age: '14 days' })));
+  const head = document.querySelector('#main .qhead'); head.appendChild(node);
+  const mark = node.querySelector('.age-passed');
+  const out = { text: node.textContent, hasMark: !!mark, markWeight: mark && getComputedStyle(mark).fontWeight,
+                ageWeight: getComputedStyle(node).fontWeight, plain: ageNodes('Today 14:00').length };
+  node.remove(); return out;
+}"""
+
+
+def test_only_the_word_passed_is_muted(page_file):
+    api, browser, page = _open(page_file)
+    try:
+        got = page.evaluate(MUTED, isolated_context=False)
+        assert got["hasMark"] and got["text"].startswith("Today 14:00 · "), got
+        assert int(got["markWeight"]) < int(got["ageWeight"]), got  # the time keeps the card's weight; 已过 is lighter
+        assert got["plain"] == 1, got  # a time that has not passed is one plain text node, as before
+    finally:
+        browser.close(); api.stop()
+
+
+ROLES = """() => { setInterfaceLanguage('zh'); const w = v => labelWord(v);
+  return { head: w('Head of Partnerships'), sales: w('Sales Director'), ops: w('Operations Manager'), eng: w('Senior Software Engineer'),
+           fc: w('Founder & CEO'), cc: w('Co-founder and CTO'), coo: w('COO'), vp: w('VP of Marketing'), md: w('Managing Director'),
+           unknown: w('Chief Vibes Wrangler'), team: w('team member') }; }"""
+
+
+def test_common_job_titles_are_translated_not_marked_original(page_file):
+    api, browser, page = _open(page_file)
+    try:
+        got = page.evaluate(ROLES, isolated_context=False)
+        assert got == {"head": "合作负责人", "sales": "销售总监", "ops": "运营经理", "eng": "高级软件工程师",
+                       "fc": "创始人兼CEO", "cc": "联合创始人兼CTO", "coo": "COO", "vp": "市场副总裁", "md": "董事总经理",
+                       "unknown": "Chief Vibes Wrangler", "team": "团队成员"}, got
     finally:
         browser.close(); api.stop()

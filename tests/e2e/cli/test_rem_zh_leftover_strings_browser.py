@@ -204,7 +204,10 @@ def test_section_headings_relation_lines_and_your_role_read_in_chinese_without_a
                             " return h ? {text: h.textContent, id: h.id} : null; }", isolated_context=False)
     assert heading and heading["text"].startswith("未解问题") and heading["id"].startswith("open-questions"), heading
     cards = page.evaluate("() => [...document.querySelectorAll('#main .relation-card')].map(c => c.textContent)", isolated_context=False)
-    assert any("上级组织" in c for c in cards) and not any("原文" in c for c in cards), cards
+    # A relation whose only line is 「上级组织：课程 1234」 names the target and nothing more, so since #3422 it reads by
+    # direction (「这页里提到过」). Either way the card speaks Chinese, with no 原文 and no English label.
+    assert cards and all(("上级组织" in c or "这页里提到过" in c or "它的页面提到这里" in c) for c in cards), cards
+    assert not any("原文" in c or "Parent" in c for c in cards), cards
     row = page.evaluate("() => { const dt = [...document.querySelectorAll('#main dt')].find(d => d.textContent.trim() === '你的身份');"
                         " return dt ? dt.nextElementSibling.textContent : null; }", isolated_context=False)
     assert row and "团队成员" in row and "team member" not in row and "原文" not in row, row
