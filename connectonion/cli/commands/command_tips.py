@@ -288,6 +288,8 @@ NEXT = {
     "co obsidian search": HANDLER,
     "co obsidian changes": HANDLER,
     "co obsidian show": HANDLER,
+    "co obsidian create": HANDLER,
+    "co obsidian append": HANDLER,
     "co onenote ls": HANDLER,        # each handler names the next onenote command (#1887)
     "co onenote pages": HANDLER,
     "co onenote read": HANDLER,

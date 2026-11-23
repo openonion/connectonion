@@ -1,9 +1,9 @@
 """
-Purpose: Discover Obsidian vaults and list, read and search selected Markdown notes
+Purpose: Discover vaults, read scoped notes, and preview or confirm create/append
 LLM-Note:
   Dependencies: imports from [json, typer, rich.markup, cli/style.py, command_tips.py, gmail_listings.py, environment.global_config_dir, useful_tools/obsidian.py] | imported lazily by [cli/main.py]
   Data flow: vault and folder listings → cached row references; selected folders → displayed notes or JSON; note row → context-bound path → original Markdown
-  State/Effects: vaults are read-only; human lists cache paths under ~/.co/obsidian-listings for 15 minutes; JSON never saves rows
+  State/Effects: create/append write only with --yes --expect; human lists cache paths under ~/.co/obsidian-listings for 15 minutes; JSON never saves rows
   Errors: ObsidianError → cause and Next on stderr, exit 1; ValueError → same format, exit 2
 """
 
@@ -642,3 +642,68 @@ def handle_obsidian_show(identifier: str, *, vault: str | None, folders: Sequenc
         _print_raw_note(note["text"])
     path, selected = _scope_parts(scope)
     _tip(_scope_command("ls", path, selected) + (" --json" if json_output else ""), True)
+
+
+# -- explicit writes ------------------------------------------------------
+
+
+def _write_next_command(operation: str, path: str, vault: Path, folders: Sequence[str]) -> str:
+    """Keep a leading dash in a filename or folder from becoming a CLI option."""
+    reference = "./" + path if path.startswith("-") else path
+    selected = tuple("./" + folder if folder.startswith("-") else folder for folder in folders)
+    return _scope_command(f"{operation} {shlex.quote(reference)}", vault, selected)
+
+@_reported
+def handle_obsidian_write(operation: str, note_path: str, content: str, *, vault: str | None,
+                          folders: Sequence[str], yes: bool = False, expect: str | None = None,
+                          json_output: bool = False, listing: str | None = None) -> None:
+    """Preview or write exactly one path; a copied Next binds the original version and input."""
+    help_command = f"co obsidian {operation} --help"
+    if operation == "append" and yes and ROW.fullmatch(note_path):
+        raise UsageError("Preview the numbered note first. Copy the preview's Next command to write to its path.",
+                         help_command)
+    if yes and expect is None:
+        raise UsageError("Preview first, then use --yes --expect from the preview's Next command.", help_command)
+    if expect is not None and (not yes or re.fullmatch(r"[0-9a-f]{64}", expect) is None):
+        raise UsageError("Use --expect only with --yes and the unchanged preview hash.", help_command)
+    piped = content == "-"
+    if piped and sys.stdin.isatty():
+        raise UsageError("Pipe UTF-8 text into --content -, or give --content text; no interactive input is read.",
+                         help_command)
+    if piped:
+        try:
+            content = sys.stdin.buffer.read().decode("utf-8") if hasattr(sys.stdin, "buffer") else sys.stdin.read()
+        except (OSError, UnicodeError):
+            raise UsageError("Cannot read UTF-8 content from standard input.", help_command) from None
+    if operation == "append":
+        scope, note_path = _select_note(note_path, vault=vault, folders=folders, listing=listing,
+                                       help_command=help_command)
+    else:
+        scope = _selection(_resolve_vault_reference(vault), folders)
+    result = api._change_scope_note(scope, note_path, content, operation=operation, yes=yes, expect=expect)
+    path, selected = _scope_parts(scope)
+    if json_output:
+        _emit_json(result)
+    else:
+        out = style.console()
+        label = "Preview" if result["preview"] else "Created" if operation == "create" else "Appended"
+        if not result["changed"]:
+            label = "Preview: no change" if result["preview"] else "No change"
+        out.print(f"{style.label(label)} {style.path(result['path'])}: "
+                  f"{result['bytes_before']} → {result['bytes_after']} bytes", emoji=False)
+        if result["preview"]:
+            out.print(style.muted("Nothing written. Content to create or append:"))
+            out.print(Text("".join(char if char in "\n\t" or ord(char) >= 32 and ord(char) != 127
+                                      else repr(char)[1:-1] for char in content)), highlight=False)
+    if not result["preview"]:
+        return _tip(_write_next_command("read", result["path"], path, selected), json_output)
+    command = _write_next_command(operation, result["path"], path, selected)
+    again_stdin = piped or content == "-" or any(ord(char) < 32 or ord(char) == 127 for char in content)
+    # The selector is added to the outer command only; content is always one literal argument.
+    command += f" --content={shlex.quote('-' if again_stdin else content)} --yes --expect {result['expect']}"
+    if json_output:
+        command += " --json"
+    if again_stdin:
+        style.console(stderr=json_output).print(
+            style.muted("Pipe the same UTF-8 content into the command below; different input is refused."))
+    _tip(command, json_output)

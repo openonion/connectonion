@@ -1,13 +1,14 @@
 """
-Purpose: Discover Obsidian vaults and read Markdown in selected folders
+Purpose: Discover Obsidian vaults, read selected Markdown, and preview-bound create/append
 LLM-Note:
   Dependencies: imports from [json, os, sys, pathlib, dataclasses, typing, yaml, _attachment_files] | imported by [cli/commands/obsidian_commands.py]
   Data flow: registry → vault records; explicit folders → filename index → selected Markdown → parsed notes, links and backlinks → list/read/search
-  State/Effects: discovery reads registry and path metadata only; note operations index and read only the selected folders
+  State/Effects: reads stay scoped; create/append preview by default and publish one file only with yes plus expect
   Errors: ObsidianError for unavailable registry/directories or an incomplete note load; ValueError for unsafe scope, note paths or queries
 """
 
 import json
+import uuid
 import os
 import posixpath
 import re
@@ -19,7 +20,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from functools import cached_property
-from pathlib import Path, PurePosixPath
+from hashlib import sha256
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Sequence
 from urllib.parse import unquote
 
@@ -330,6 +332,165 @@ def _read_markdown(scope: _Scope, path: Path) -> tuple[str, int]:
             if (before.st_mtime_ns, before.st_size) != (after.st_mtime_ns, after.st_size):
                 raise OSError("The note changed while reading it")
     return content, before.st_mtime_ns
+
+
+# -- explicit writes ------------------------------------------------------
+
+def _write_target(scope: _Scope, note_path: str, operation: str) -> Path:
+    """Validate one path, including a missing leaf, without indexing the vault."""
+    if (not isinstance(note_path, str) or not note_path.strip()
+            or any(ord(char) < 32 or ord(char) == 127 for char in note_path)):
+        raise ValueError("Choose a non-empty vault-relative Markdown path.")
+    relative = PurePosixPath(note_path)
+    if ("\\" in note_path or relative.is_absolute() or PureWindowsPath(note_path).drive
+            or ".." in relative.parts or relative.suffix.lower() != ".md"):
+        raise ValueError("Choose a vault-relative .md path with forward slashes and no '..' traversal.")
+    current = scope.vault_path
+    excluded = {name.casefold() for name in scope.excluded_dirs}
+    for part in relative.parts:
+        current /= part
+        if part.casefold() in excluded or current.is_symlink():
+            raise ValueError("Obsidian writes cannot use symlinks or .obsidian, .trash and .git directories.")
+    if not _in_scope(scope, current):
+        raise ValueError("The requested note is outside the selected folders.")
+    if _directory(current.parent) != current.parent:
+        raise ValueError("The note's parent directory changed. Choose the path again.")
+    if operation == "create" and current.exists():
+        raise ObsidianError("The note already exists; create never overwrites it.", "co obsidian read --help")
+    if operation == "append" and not current.is_file():
+        raise ObsidianError("The note does not exist or is not a regular file; append never creates it.",
+                            "co obsidian create --help")
+    if operation == "append" and (not current.stat().st_mode & 0o222 or not os.access(current, os.W_OK)):
+        raise ObsidianError("The note is read-only. Check file permissions before appending.",
+                            "co obsidian append --help")
+    return current
+
+
+def _write_snapshot(scope: _Scope, path: Path, operation: str) -> tuple[bytes, tuple]:
+    if operation == "create":
+        return b"", ()
+    if path.stat(follow_symlinks=False).st_nlink != 1:
+        raise ObsidianError("Cannot append to a note with a hard link; choose an independent file.",
+                            "co obsidian append --help")
+    content, modified = _read_markdown(scope, path)
+    info = path.stat(follow_symlinks=False)
+    if info.st_nlink != 1 or info.st_mtime_ns != modified:
+        raise OSError("The note changed while reading it")
+    return content.encode("utf-8"), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _write_version(scope: _Scope, path: Path, operation: str, content: str, before: bytes, identity: tuple) -> str:
+    """Bind a copied confirmation to the operation, scope, input and original version."""
+    selection = [operation, str(scope.vault_path), path.relative_to(scope.vault_path).as_posix(),
+                 sorted(str(folder) for folder in scope.folders), content, sha256(before).hexdigest(), identity,
+                 [(folder.stat().st_dev, folder.stat().st_ino)
+                  for folder in (scope.vault_path, *scope.folders, path.parent)]]
+    return sha256(json.dumps(selection, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _append_bytes(before: bytes, content: bytes) -> bytes:
+    if not content:
+        return before
+    separator = b""
+    if before and not before.endswith((b"\n", b"\r")):
+        separator = b"\r\n" if b"\r\n" in before else b"\n"
+    return before + separator + content
+
+
+def _check_write_current(scope, path, parent, operation, content, before, identity, version):
+    """Recheck the lexical path and pinned directory before publishing a staged file."""
+    _write_target(scope, path.relative_to(scope.vault_path).as_posix(), operation)
+    current, pinned = path.parent.stat(), os.fstat(parent)
+    if (current.st_dev, current.st_ino) != (pinned.st_dev, pinned.st_ino):
+        raise OSError("The parent directory changed before writing")
+    if (_write_snapshot(scope, path, operation) != (before, identity)
+            or _write_version(scope, path, operation, content, before, identity) != version):
+        raise ObsidianError("The note or scope changed after preview; preview again.",
+                            f"co obsidian {operation} --help")
+
+
+def _lock_write_directory(parent, operation):
+    if parent is None:
+        raise ObsidianError("Safe Obsidian writes require POSIX directory handles (macOS or Linux).",
+                            f"co obsidian {operation} --help")
+    import fcntl
+    try:
+        # External editors do not necessarily share this cooperative lock.
+        fcntl.flock(parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise ObsidianError("Another CLI write is active in this folder. Preview again after it finishes.",
+                            f"co obsidian {operation} --help") from None
+
+
+def _commit_note(scope: _Scope, path: Path, operation: str, data: bytes, before: bytes,
+                 identity: tuple, content: str, version: str) -> None:
+    """Stage the complete result; ordinary staging failures leave the original intact."""
+    staged = f".co-note-{uuid.uuid4().hex}.tmp"
+    with _open_directory(path.parent) as parent:
+        _lock_write_directory(parent, operation)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        descriptor = os.open(staged, flags, 0o600, dir_fd=parent)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            _check_write_current(scope, path, parent, operation, content, before, identity, version)
+            if operation == "create":
+                os.link(staged, path.name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
+            else:
+                os.chmod(staged, stat.S_IMODE(os.stat(path.name, dir_fd=parent, follow_symlinks=False).st_mode),
+                         dir_fd=parent)
+                os.replace(staged, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+                staged = None
+        finally:
+            if staged is not None:
+                os.unlink(staged, dir_fd=parent)
+
+
+def _change_scope_note(scope: _Scope, note_path: str, content: str, *,
+                       operation: str, yes: bool, expect: str | None) -> dict:
+    """Prepare or apply one change using the already validated scope."""
+    if not isinstance(content, str):
+        raise ValueError("Give note content as text, or use '-' to read standard input.")
+    if (yes and expect is None) or (expect is not None and (not yes or re.fullmatch(r"[0-9a-f]{64}", expect) is None)):
+        raise ValueError("Use --expect with --yes and the unchanged hash from the preview's Next command.")
+    try:
+        if any(ord(char) < 32 or ord(char) == 127 for char in str(scope.vault_path)
+               + "".join(str(folder) for folder in scope.folders)):
+            raise ValueError("Write scopes must not contain control characters; choose a single-line path.")
+        path = _write_target(scope, note_path, operation)
+        before, identity = _write_snapshot(scope, path, operation)
+        version = _write_version(scope, path, operation, content, before, identity)
+        if expect is not None and version != expect:
+            raise ObsidianError("The target, scope or content changed after preview; preview again.",
+                                f"co obsidian {operation} --help")
+        data = content.encode("utf-8") if operation == "create" else _append_bytes(before, content.encode("utf-8"))
+        changed = operation == "create" or data != before
+        if yes and changed:
+            _commit_note(scope, path, operation, data, before, identity, content, version)
+        return {"preview": not yes, "operation": operation, "path": path.relative_to(scope.vault_path).as_posix(),
+                "vault": str(scope.vault_path), "expect": version, "changed": changed,
+                "bytes_before": len(before), "bytes_after": len(data), "sha256": sha256(data).hexdigest(),
+                **({"content": content} if not yes else {})}
+    except (OSError, UnicodeError) as error:
+        raise ObsidianError(f"Cannot {operation} this note ({type(error).__name__}). Check its path and permissions. "
+                            "If execution was interrupted, inspect the note before retrying.",
+                            "co obsidian read --help") from None
+
+
+def create_note(vault_path: Path, note_path: str, content: str, *, folders: Sequence[str],
+                yes: bool = False, expect: str | None = None) -> dict:
+    """Preview a UTF-8 note; yes plus the preview token creates it without overwriting."""
+    scope = _validate_scope(vault_path, folders)
+    return _change_scope_note(scope, note_path, content, operation="create", yes=yes, expect=expect)
+
+
+def append_note(vault_path: Path, note_path: str, content: str, *, folders: Sequence[str],
+                yes: bool = False, expect: str | None = None) -> dict:
+    """Preview an append; yes plus the preview token retains the old bytes and adds text."""
+    scope = _validate_scope(vault_path, folders)
+    return _change_scope_note(scope, note_path, content, operation="append", yes=yes, expect=expect)
 
 
 # -- Markdown -------------------------------------------------------------
