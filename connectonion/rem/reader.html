@@ -6011,7 +6011,8 @@ function sweepRawMarks(root) {
   const marked = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!/[\[［](?:personal|sensitive)[\]］]/i.test(node.nodeValue) || node.parentElement?.closest("textarea, input, code, pre, script, style")) continue;
+    // A session quote is the owner's own typing, kept literally, a typed "[personal]" included (test_rem_sessions).
+    if (!/[\[［](?:personal|sensitive)[\]］]/i.test(node.nodeValue) || node.parentElement?.closest("textarea, input, code, pre, script, style, .session-quote")) continue;
     marked.push(node);
   }
   for (const node of marked) {
@@ -16269,8 +16270,7 @@ function sectionBody(r, s) {
     const out = el("div", { class: "block" });
     let quoted = [];
     const flush = () => {
-      const marked = markedText(quoted.join("\n"));
-      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (marked.level ? " private" : ""), ...(marked.level ? { "data-level": marked.level } : {}), text: marked.text }));
+      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (hasPrivacy(quoted.join("\n")) ? " private" : ""), text: quoted.join("\n") }));
       quoted = [];
     };
     for (const line of s.text.split("\n")) {
