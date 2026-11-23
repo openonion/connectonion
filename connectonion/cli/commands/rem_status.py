@@ -48,10 +48,15 @@ def card(root, value: dict, spell, *, verbose: bool = False, show_private: bool 
     if value.get('last_turn'):
         turn = value['last_turn']
         exit_code = f" · exit {turn['exit_code']}" if turn.get('exit_code') is not None else ''
-        lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {turn.get('finished_at') or turn['started_at']}")]
+        lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {_local(root, turn.get('finished_at') or turn['started_at'])}")]
         if turn.get('started_codex_after_s') is not None:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
-        if turn.get('reason'):
+        handled = ((value.get('schedule_failure') or {}).get('stuck') or {}).get('handled')
+        if turn.get('reason') and handled:
+            # The installed build already sets this failure aside (#3413): its old advice (map-skills, start)
+            # cannot fix it and nothing needs restarting.
+            lines += [rem_look.follow(style.muted(_handled_said(value)), glyph='')]
+        elif turn.get('reason'):
             lines += [rem_look.follow(highlight(seen(turn['reason'])), glyph='')]
             if turn['result'] == 'failed' and not turn.get('produced_nothing'):
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
@@ -414,9 +419,13 @@ def _today(root, value: dict) -> list[str]:
     failure = [highlight(f"Last scheduled turn did not finish: {warning['evidence']} · {action}")] if warning else []
     if warning and warning.get('failures'):
         count = warning['failures']
-        since = warning['since'][:16].replace('T', ' ')
-        failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
-                             f"since {since} UTC. Last error: {warning['evidence']}. Next: co rem logs")]
+        since = _local(root, warning['since'])
+        if (warning.get('stuck') or {}).get('handled'):
+            failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
+                                 f"since {since}, on one page. {_handled_said(value)}")]
+        else:
+            failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
+                                 f"since {since}. Last error: {warning['evidence']}. Next: co rem logs")]
     if not runs:
         return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}
@@ -428,6 +437,25 @@ def _today(root, value: dict) -> list[str]:
     return [*failure, rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
                              f"{_plural(runs, 'run')}"),
             rem_look.follow(spent, glyph="")]
+
+
+def _local(root, stamp: str) -> str:
+    """An ISO instant in the notebook's own zone, with the zone's name (#3413: status said UTC to an owner in Sydney)."""
+    try:
+        moment = datetime.fromisoformat(str(stamp).replace('Z', '+00:00'))
+    except ValueError:
+        return str(stamp)
+    if moment.tzinfo is None:
+        return str(stamp)
+    local = moment.astimezone(_zone(root))
+    return f"{local:%Y-%m-%d %H:%M} {local.tzname() or ''}".rstrip()
+
+
+def _handled_said(value: dict) -> str:
+    """The installed build already sets the repeated failure aside: say so, with the next round (#3413)."""
+    upcoming = value.get('next_run')
+    when = f" ({str(upcoming)[11:16]})" if upcoming and len(str(upcoming)) >= 16 else ''
+    return f"This release already handles it; the next round{when} skips it. Nothing to do."
 
 
 def _mailboxes(root, spell=lambda arguments: "co rem " + " ".join(arguments)) -> list[str]:

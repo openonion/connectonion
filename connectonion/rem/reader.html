@@ -8555,8 +8555,27 @@ function runMarkers(markers) {
 // The trace groups nearby runs; dots mark changed pages and stopped runs.
 // One time axis for the curve and for the night's work drawn under it (#3311): both read this, so a stretch's
 // words sit under the dip they describe.
+// 昨夜 is the night: a run the owner started by day, hours after the night ended, is not part of it (#3413: phone
+// Today listed 「11:42–11:48 改写了 1 页」 under 昨夜 while the desktop happened to have no row for it). Runs split at
+// gaps of three hours; a later stretch that begins between 09:00 and 18:00 local is dropped when a night precedes it.
+const NIGHT_GAP = 3 * HOUR;
+function localHour(t) {
+  return Number(new Date(t).toLocaleString("en-GB", { hour: "2-digit", hour12: false, timeZone: REM.status?.timezone || "UTC" })) % 24;
+}
+function nightOnly(runs) {
+  const parts = [];
+  for (const run of runs) {
+    const last = parts.at(-1);
+    if (last && runTime(run) - Math.max(...last.map(runEnd)) < NIGHT_GAP) last.push(run); else parts.push([run]);
+  }
+  while (parts.length > 1) {
+    const hour = localHour(runTime(parts.at(-1)[0]));
+    if (hour >= 9 && hour < 18) parts.pop(); else break;
+  }
+  return parts.flat();
+}
 function hypnoScale(asOf) {
-  const runs = (lastPass()?.runs || []).filter(run => runTime(run) <= asOf).sort((a, b) => runTime(a) - runTime(b));
+  const runs = nightOnly((lastPass()?.runs || []).filter(run => runTime(run) <= asOf).sort((a, b) => runTime(a) - runTime(b)));
   const W = 1000, finished = runs.length ? Math.min(asOf, Math.max(...runs.map(runEnd))) : asOf;
   const start = Math.floor((runs.length ? runTime(runs[0]) : asOf - 4 * HOUR) / HOUR) * HOUR - HOUR / 2;
   // The axis ends just after the last run, never an hour past it: rounding up to the hour plus half an hour drew an
@@ -10782,7 +10801,15 @@ function turnTrouble(failure) {
         : `Background: the last ${n} turns stopped on the same error, since ${since}. Retrying will not clear it; it needs a release that fixes it.`;
       const what = zh ? (stuck.not_installed ? "有一个技能页的技能已经不在了" : `有一个${kindZh}页准备不了`)
         : (stuck.not_installed ? "A skill page's skill is no longer installed" : `${kindEn} page cannot be prepared`);
-      const next = stuck.skipped
+      // The installed build already sets it aside (#3413, `stuck.handled` from status): rc21 was installed with
+      // the fix while Today still said 「要等修复它的新版本」 for 14 hours. Name the next round instead.
+      const nextRun = REM.status?.next_run ? new Date(REM.status.next_run) : null;
+      const at = nextRun && !isNaN(nextRun) ? nextRun.toLocaleTimeString(zh ? "zh-CN" : "en-GB",
+        { hour: "2-digit", minute: "2-digit", timeZone: zone }) : "";
+      const next = stuck.handled
+        ? (zh ? `这个问题新版本已经处理，下一轮会跳过它${at ? `（下一轮 ${at}）` : ""}。`
+          : `This release already handles it; the next round${at ? ` (${at})` : ""} skips it.`)
+        : stuck.skipped
         ? (zh ? `REM 已经跳过它，其余工作照常${stuck.not_installed ? "；要修好它得等新版本" : ""}。`
           : `REM has set it aside and the rest goes on${stuck.not_installed ? "; fixing it needs a new release" : ""}.`)
         : (zh ? "重试解决不了它，要等修复它的新版本。" : "Retrying will not clear it; it needs a release that fixes it.");

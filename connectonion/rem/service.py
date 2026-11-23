@@ -777,18 +777,22 @@ def schedule_failure(root: Path) -> dict | None:
                 'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
                 'code_error': _code_error_streak(failures),
                 'same_error': _same_error_streak(failures),
-                **({'stuck': _stuck_on(root, failures[0].get('reason') or '')} if _same_error_streak(failures) else {})}
+                **({'stuck': _stuck_on(root, failures[0].get('reason') or '', failures)} if _same_error_streak(failures) else {})}
                if failures else {})}
 
 
 STUCK_KINDS = {'skills/catalog/': 'skill', 'people/': 'person', 'orgs/': 'org', 'projects/': 'project'}
 
 
-def _stuck_on(root: Path, reason: str) -> dict:
+def _stuck_on(root: Path, reason: str, failures: list[dict] = ()) -> dict:
     """What the repeated error stopped on, and whether REM really set it aside (#3402).
 
     `skipped` is read from the refusals ledger (parked) or the round's skipped list, never assumed:
-    Today says 已经跳过 only when one of them shows it."""
+    Today says 已经跳过 only when one of them shows it.
+    `handled`: the installed build already sets this failure aside (#3413). Since #3403 a page whose
+    preparation raises REM's own error is parked and the round goes on, and a skill whose file is gone is
+    never listed. That holds only for turns an older build ran: a turn on this very version that still
+    failed the same way proves it is not handled. Receipts before #3413 carry no version (older builds)."""
     match = re.search(r"\b((?:skills/catalog|people|orgs|projects)/[\w.-]+\.md)\b", reason)
     record = match[1] if match else ''
     kind = next((kind for prefix, kind in STUCK_KINDS.items() if record.startswith(prefix)), 'page')
@@ -796,8 +800,11 @@ def _stuck_on(root: Path, reason: str) -> dict:
     parked = bool(record) and str(refused_pages(root).get(record, {}).get('parked', '')).startswith('preparation refused')
     skipped = bool(record) and any(row.get('record') == record
                                    for row in read_json(state_path(root, 'round.json'), {}).get('skipped', []))
+    from .._version import __version__
+    on_this_build = any(turn.get('version') == __version__ for turn in failures)
     return {'kind': kind, 'skipped': parked or skipped,
-            'not_installed': kind == 'skill' and ('no installed source file' in reason or 'no longer installed' in reason)}
+            'not_installed': kind == 'skill' and ('no installed source file' in reason or 'no longer installed' in reason),
+            'handled': bool(record) and not on_this_build}
 
 
 # Not stuck: these turns end on the weather, and the next fire does continue.

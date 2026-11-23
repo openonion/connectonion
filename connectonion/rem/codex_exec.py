@@ -228,7 +228,10 @@ def _run_locked(root, run, lock_fd):
     directory.mkdir(exist_ok=True, mode=0o700)
     name = started.strftime('%Y%m%dT%H%M%S.%fZ')
     log, last = directory / f'{name}.jsonl', directory / f'{name}.last.md'
-    receipt = {'turn_id': name, 'started_at': started.isoformat(), 'result': 'running',
+    # The build that ran the turn: status judges a stored failure against the installed build, so an
+    # error an upgrade now handles is not described as current (#3413).
+    from .._version import __version__
+    receipt = {'turn_id': name, 'started_at': started.isoformat(), 'result': 'running', 'version': __version__,
                'log': str(log), 'last_message': str(last)}
     write_json(state_path(root, 'last-turn.json'), receipt)
     result, skipped, failed = None, False, False
