@@ -31,7 +31,7 @@ def org_js(names, script):
 
 @pytest.mark.parametrize('summary', PLACEHOLDERS)
 def test_mapped_org_opening_starts_with_known_contacts(summary):
-    result = org_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'orgRelation'], DOM + r'''
+    result = org_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName', 'orgRelation'], DOM + r'''
       const known = () => ({summary: SUMMARY, intro: SUMMARY, kept: [], last: '2026-03-04'});
       const facts = () => ({first: '2025-02-03'}), orgLast = () => '2026-03-04';
       const orgFact = () => '', parseFacts = () => new Map();
@@ -47,7 +47,7 @@ def test_mapped_org_opening_starts_with_known_contacts(summary):
 
 @pytest.mark.parametrize('source', ['org', 'person', 'mail', 'index', 'none'])
 def test_mapped_org_opening_uses_recorded_first_contact_without_history(source):
-    result = org_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'orgFact', 'facts', 'parseFacts', 'topLevelParts', 'rawSection'], DOM + r'''
+    result = org_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName', 'orgFact', 'facts', 'parseFacts', 'topLevelParts', 'rawSection'], DOM + r'''
       const SOURCE = __SOURCE__, COMMENT = /<!--[\s\S]*?-->/g;
       const FACTS = new Map(), PARSED_FACTS = new Map();
       const org = {path:'orgs/cedar.md', text:'# Cedar Works\n\n## Facts\n- Website: Unknown'};
@@ -107,7 +107,7 @@ def record_js(script, functions=()):
                           for name in ['UNKNOWN_LINE', 'MECHANICAL', 'PLACEHOLDER', 'STAMP', 'COMMENT'])
     return org_js(['known', 'facts', 'section', 'plainLine', 'pageWords', 'rawSection', 'parseFacts', 'topLevelParts',
                    'swapLanguage', 'orgFact', 'orgRelation', 'firstSentence', 'orgTableRow',
-                   'orgOpening', 'orgPersonLabel', 'addressTitle', 'orgConnections', 'orgCoda', 'textCell', 'orgWebsite',
+                   'orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName', 'orgConnections', 'orgCoda', 'textCell', 'orgWebsite',
                    'privatePassages', 'unlabelled', 'mendCuts', 'hasPrivacy', *functions],
                   constants + DOM + r'''
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();

@@ -28,6 +28,8 @@ SHOTS = Path(os.environ.get("REM_PR_SHOTS", "/tmp/rem-your-side-served-shots"))
 CLIENT, OWN, MATE, NAMELESS = ("orgs/fernhill-labs.md", "orgs/quillmoor.md", "people/kit-brennan.md",
                                "people/dana-quillmoor-example.md")
 ADDRESS = "dana@quillmoor.example"
+# Teammates known only by address whose local part is not a name: a random string and a role mailbox.
+ODD, ROLE = "j23x@quillmoor.example", "info@quillmoor.example"
 SOURCES = "\n## Sources\n- [1] gmail:fixture:9 — 2026-09-01\n"
 
 
@@ -41,6 +43,9 @@ def _notebook(root, now):
     book.write(MATE, "# Kit Brennan\n\n## Facts\n- Email: kit@quillmoor.example [1]\n- Role: Co-founder [1]\n" + SOURCES)
     # A teammate REM knows only by address: the page is titled by it, as on the real notebook.
     book.write(NAMELESS, f"# {ADDRESS}\n\n## Facts\n- Email: {ADDRESS} [1]\n" + SOURCES)
+    for address in (ODD, ROLE):
+        book.write("people/" + address.replace("@", "-").replace(".", "-") + ".md",
+                   f"# {address}\n\n## Facts\n- Email: {address} [1]\n" + SOURCES)
     owner = book.read("people/avery-lin.md")
     owner = owner.replace("- Email: avery@lin.example [1]", "- Email: avery@quillmoor.example [1]", 1)
     owner = owner.replace("- Company: Unknown", "- Company: Quillmoor (co-founder) [1]", 1)
@@ -122,19 +127,27 @@ def test_the_live_page_draws_your_side_from_the_served_details(served, width):
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-def test_a_teammate_titled_by_an_address_never_reads_as_a_raw_address(served, width):
+def test_a_teammate_titled_by_an_address_never_reads_as_half_an_address(served, width):
     page = served(OWN, width)
     tree = page.locator("#main .ov-org-tree")
     opening = page.locator("#main .ov-opening").first.inner_text()
-    assert "@" not in opening and "dana" in opening, opening
-    texts = tree.locator("a").all_inner_texts()
-    assert not [text for text in texts if "@" in text], texts
-    link = tree.locator(f'a[href="#r={NAMELESS.replace("/", "%2F")}"]').first
-    assert link.inner_text().strip() == "dana"
-    assert link.get_attribute("title") == ADDRESS
-    row = link.evaluate("a => { const item = a.closest('[role=treeitem]'); return { text: item.querySelector('.ov-trow').textContent, label: item.getAttribute('aria-label') }; }")
-    assert "未知姓名" in row["text"], row
-    assert "@" not in (row["label"] or ""), row
+    assert "Dana" in opening and ADDRESS not in opening, opening
+
+    def row(address):
+        link = tree.locator(f'a[title="{address}"]').first
+        return link.evaluate("a => { const item = a.closest('[role=treeitem]'); return { label: a.textContent, "
+                             "note: item.querySelector('.ov-tk')?.textContent || '', aria: item.getAttribute('aria-label') }; }")
+
+    # A name-like local part becomes the name; the address is the muted second line, never 未知姓名.
+    dana = row(ADDRESS)
+    assert dana["label"] == "Dana" and dana["note"] == ADDRESS, dana
+    # Not a name (random string, role mailbox): the whole address is the label, and the note says only it is known.
+    for address in (ODD, ROLE):
+        odd = row(address)
+        assert odd["label"] == address and odd["note"] == "只知道邮箱", odd
+    texts = tree.locator("[role=treeitem] .ov-trow").all_inner_texts()
+    assert not [text for text in texts if "未知姓名" in text], texts
+    assert not [text for text in tree.locator("a").all_inner_texts() if text.endswith(("j23x", "info", "dana"))]
     SHOTS.mkdir(parents=True, exist_ok=True)
     tree.scroll_into_view_if_needed()
     page.screenshot(path=str(SHOTS / f"your-side-served-own-{width}.png"), full_page=False)

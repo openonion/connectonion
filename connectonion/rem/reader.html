@@ -12226,7 +12226,7 @@ function personSub(r) {
 // above it, so it does not repeat them; unknown facts are one quiet count, never rows of "not found".
 const PROFILE_GROUPS = [["Contact", ["Email", "Their agent", "Phone", "Handles", "Links"]], ["Work", ["Signing entity", "Unit", "Role in unit", "Project"]],
   ["Relationship", ["How we know them", "First contact", "Last contact", "Mail"]], ["Identity", ["Also known as", "Language", "Location", "Time zone"]]];
-Object.assign(UI.zh, { "Their agent": "对方的 agent", "Name unknown": "未知姓名", "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
+Object.assign(UI.zh, { "Their agent": "对方的 agent", "Name unknown": "未知姓名", "Only the email is known": "只知道邮箱", "Source {n}": "来源 {n}", "Open the original": "打开原文", "Work": "工作", "Relationship": "关系", "Identity": "身份", "Unit": "部门", "Role in unit": "部门职务",
   "1 fact not found": "1 项未找到", "{n} facts not found": "{n} 项未找到", "from the map": "来自映射",
   "Last contact {when}": "最近联系 {when}", "1 mail": "1 封邮件", "{n} mails": "{n} 封邮件", "+{n} more": "还有 {n} 个", "Show less": "收起" });
 // A handle or link says its platform in words; its picture is that service's published mark (Simple Icons) or,
@@ -15269,7 +15269,7 @@ function orgTree(v) {
     const meta = scoped ? roles.map(edge => unlabelled(edge.role) + " · " + unitNames.get(edge.path)).join("; ")
       : unlabelled(orgUnitRole(p, unitPath)) || orgRole(p, "span")?.textContent || "";
     return orgTreeItem({ level, kind: "person", label: orgPersonLabel(p), link: href(p), tip: orgPersonTip(p),
-      meta: meta || (addressTitle(p) ? t("Name unknown") : "") });
+      meta: meta || orgPersonNote(p) });
   };
   const unit = (u, level) => {
     const kids = [...orgByLast(u.people).map(p => person(p, u.path, level + 1)), ...[...u.units].sort(orgByActivity).map(child => unit(child, level + 1))].filter(Boolean);
@@ -15289,15 +15289,30 @@ function orgTree(v) {
 }
 // The owner's own people this org's page names deal with it; they are not its members (#3397). They sit
 // below the tree under a light heading with no fold: level with the org's units, they read as one of its departments.
-// A teammate whose page is titled by an address (#3157: REM does not know the name) reads by the part
-// before the @, with the whole address as the tooltip; a raw address never stands in the tree as a name (#3397).
-function orgPersonLabel(p) { return addressTitle(p) ? String(p.title).trim().split("@")[0] : p.title; }
+// A teammate whose page is titled by an address (#3157: REM does not know the name). A local part that reads as a
+// name becomes that name (dana → Dana, john.smith → John Smith); anything else (digits, j23x, a role mailbox such as
+// info@ or noreply@) keeps the whole address, since half an address is neither a name nor a way to reach them (#3397).
+function addressName(address) {
+  const roles = ["info", "admin", "noreply", "no-reply", "donotreply", "support", "hello", "contact", "sales", "office",
+    "team", "mail", "accounts", "billing", "enquiries", "inquiries", "help", "hr", "jobs", "careers", "marketing",
+    "news", "newsletter", "notifications", "service", "webmaster", "postmaster", "reception", "bookings"];
+  const local = String(address).trim().split("@")[0].toLowerCase();
+  if (roles.includes(local)) return "";
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (!parts.length || parts.length > 3 || !parts.every(part => /^[a-z]{2,}$/.test(part) && /[aeiouy]/.test(part))) return "";
+  return parts.map(part => part[0].toUpperCase() + part.slice(1)).join(" ");
+}
+function orgPersonLabel(p) { return addressTitle(p) ? (addressName(p.title) || String(p.title).trim()) : p.title; }
+// The second line under an address-titled person: the address in the muted note when the label is a derived name,
+// 只知道邮箱 when the label is the address itself. Never 未知姓名 under a name REM just derived.
+function orgPersonNote(p) { return !addressTitle(p) ? "" : addressName(p.title) ? String(p.title).trim() : t("Only the email is known"); }
 function orgPersonTip(p) { return addressTitle(p) ? String(p.title).trim() : ""; }
 function orgYourSide(v) {
   const ours = orgByLast((v.r.your_side || []).map(byPath).filter(Boolean));
   return ours.length ? el("div", { class: "ov-yours" }, [el("h3", { class: "ov-yours-h", text: orgT("Your side") }),
     el("ul", {}, ours.map(p => el("li", {}, [el("a", { href: href(p), text: orgPersonLabel(p), ...(orgPersonTip(p) ? { title: orgPersonTip(p) } : {}) }),
-      orgRole(p, "span") ? el("small", { class: "ov-tk" }, [ourRole(orgRole(p, "span").textContent)]) : null])))]) : null;
+      orgRole(p, "span") ? el("small", { class: "ov-tk" }, [ourRole(orgRole(p, "span").textContent)])
+        : orgPersonNote(p) ? el("small", { class: "ov-tk" }, [orgPersonNote(p)]) : null])))]) : null;
 }
 function orgTreeItem(d) {
   const row = el("div", { class: "ov-trow", "data-kind": d.kind }, [el("span", { class: "ov-twisty", "aria-hidden": "true" }),
