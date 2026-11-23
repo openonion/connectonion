@@ -675,7 +675,7 @@ never were. Those are bounded by the daily call cap
 `co rem status` and that budget hold use one number: the points counted from
 the run logs when status is asked, not the sentence a past round saved.
 
-`co rem status` keeps its existing dashboard and adds five stage lines in the
+`co rem status` keeps its existing status card and adds five stage lines in the
 order above. Each says what is waiting (a count) and when that stage last ran
 in the notebook's timezone (a date or `never`). Counts come from saved source
 metadata and the existing investigation, deepen, captured-decision and
@@ -718,6 +718,9 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem stop` | Remove that notebook's background job; preserve pages and progress. |
 | `co rem sync` | The whole update: one batch of new material; then the day's first run investigates unfinished pages, most recent first, and every later run updates only the people and projects with something new. What the schedule runs (`sync --scheduled`). |
 | `co rem collect [--source NAME] [--with ADDRESS] [--dry-run]` | Read one batch of approved new material only, using the existing extraction/page updates. No investigation, deepen, abstract or translation. Dry run reads metadata only. |
+| `co rem map [people\|orgs\|projects\|knowledge] --source NAME [--dry-run]` | Make pages for what one source holds, without a model (#3331). Each source yields its own kinds of page: gmail/outlook people and orgs, wechat people, codex/claude-code projects; `co rem sources` lists them. A person already on a page from another source gets the new handle on that page; nothing is removed or rewritten. A kind the source doesn't yield is refused (exit 2, nothing written). `co rem map people` maps people from every enabled source. Next: `co rem investigate people --source NAME --new`. |
+| `co rem investigate people --source NAME [--new\|--existing\|--all] [--limit N] [--list]` | Investigate the people pages one source reaches by handle, never-investigated pages first; an investigated page is appended to (#3105). |
+| Adding a source onboards it (#3331) | `co rem sources add NAME` maps an approved source at once. Each night maps the local sources that grow on their own (WeChat contacts). A widened source (`--since`, `--chat`, `--project`) is mapped again. The people pages it made, or gave a new handle, go first in the investigation queue until investigated; a page investigated before is appended to. `co rem sources` and `co rem status` show per source when it was mapped, what it made and what still waits. Mail and coding sources are also mapped by `co rem init` and `co rem map`, not at night: a mail map is a 180-day metadata scan over the network. |
 | `co rem sources add codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
@@ -3084,7 +3087,7 @@ as before.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
-  The dashboard says what a point is under the line.
+  The status card says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - **Past the floor, translation and tagging go on to a ceiling.** A translate or
   tag turn is a minute of a small model; the floor held them with investigation, so

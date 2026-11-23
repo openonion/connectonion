@@ -14,6 +14,8 @@ const el = (tag, attrs = {}, children = []) => ({tag, ...attrs,
 let uiLanguage = 'en';
 const orgT = (text, values={}) => text.replace(/\{(\w+)\}/g, (_,key)=>values[key]);
 const t = orgT;
+const pageName = page => page.title;  // course/team codes: tested in the browser
+const singular = category => ({orgs: 'Organisation', projects: 'Project', knowledge: 'Topic'})[category] || category;
 const orgProse = text => text || null;
 '''
 
@@ -75,8 +77,11 @@ def test_mapped_connection_is_just_its_linked_name(summary):
       const byPath = () => unit, orgHidden = () => false;
       console.log(JSON.stringify(orgConnections({r:{path:'orgs/root.md',organisations:[unit.path]}})));
     '''.replace('SUMMARY', json.dumps(summary)))
-    assert result['children'][1]['children'] == [
-        {'tag': 'a', 'href': '#orgs/field.md', 'text': 'Field studio', 'children': []}]
+    # #3397: a connection with no written reason says only how the pages meet, never a placeholder or another page's summary.
+    row = result['children'][1]['children']
+    assert row[0] == {'tag': 'a', 'href': '#orgs/field.md', 'text': 'Field studio', 'children': []}
+    assert row[2]['class'] == 'ov-conn-kind' and row[2]['text'] == 'Organisation · Mentioned on this page'
+    assert summary not in str(row)
 
 
 @pytest.mark.parametrize('summary', PLACEHOLDERS)
@@ -100,7 +105,7 @@ def record_js(script, functions=()):
     page = TEMPLATE.read_text()
     constants = '\n'.join(re.search(r'^const ' + name + r' = .*?;$', page, re.M)[0]
                           for name in ['UNKNOWN_LINE', 'MECHANICAL', 'PLACEHOLDER', 'STAMP', 'COMMENT'])
-    return org_js(['known', 'facts', 'section', 'plainLine', 'rawSection', 'parseFacts', 'topLevelParts',
+    return org_js(['known', 'facts', 'section', 'plainLine', 'pageWords', 'rawSection', 'parseFacts', 'topLevelParts',
                    'swapLanguage', 'orgFact', 'orgRelation', 'firstSentence', 'orgTableRow',
                    'orgOpening', 'orgConnections', 'orgCoda', 'textCell', 'orgWebsite',
                    'privatePassages', 'unlabelled', 'mendCuts', 'hasPrivacy', *functions],
@@ -177,7 +182,8 @@ def test_org_summary_paths_reject_placeholders_before_rendering(summary, source,
     assert result['cell']['text'] == '—'
     assert ''.join(result['opening']['children']) == 'You know 0 people here. '
     assert result['coda']['children'][0]['children'] == []
-    assert len(result['connections']['children'][1]['children']) == 1
+    row = result['connections']['children'][1]['children']
+    assert row[0]['tag'] == 'a' and row[2]['class'] == 'ov-conn-kind' and summary not in str(row)
 
 
 @pytest.mark.parametrize('summary', ['Unknown — not verified. The team supports field research.',

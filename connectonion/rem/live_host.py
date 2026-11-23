@@ -141,6 +141,10 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
             return held
         if held is REPLACE:
             process, renewed = _renew(directory, saved, address, wait=timeout / 2), True
+        elif _moves_to_session(directory, saved, address):
+            _retire(saved)
+            port = saved.get("port")
+            process, renewed = _launch(directory, address, port=port if isinstance(port, int) and _free(port) else None), True
         elif host_online(address) and not _gone(saved, address):
             return None
         elif saved.get("address") != address or not _alive(saved):
@@ -160,6 +164,33 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
     return f"co ai did not become reachable within {timeout:g}s; see {log}. Retry with `co ai`"
 
 
+def launch_session() -> str:
+    """launchd's manager for this process on macOS, "" elsewhere (#3305).
+
+    "Aqua" is the owner's GUI login session; "Background" is a process an agent, ssh or a detached shell
+    started. A Host inherits the session of whoever launched it, and only an Aqua Host can raise system
+    prompts such as the Keychain's 允许: from a Background Host, `security … -w` fails at once.
+    """
+    if sys.platform != "darwin":
+        return ""
+    try:
+        done = subprocess.run(["launchctl", "managername"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return done.stdout.strip()
+
+
+def _moves_to_session(directory: Path, saved, address: str) -> bool:
+    """Our idle Host runs outside the owner's login session, and this open comes from inside it (#3305).
+
+    Agents restart the Host after an upgrade from a Background session, which leaves it unable to show the
+    Keychain prompt. When the owner then opens REM from his own Terminal, the Host moves into his session,
+    once: the new record says Aqua. A record from before this field is treated as outside.
+    """
+    return (launch_session() == "Aqua" and saved.get("session") != "Aqua" and saved.get("address") == address
+            and _started_here(saved) and not _busy(directory) and not _inside(saved["pid"]))
+
+
 def _launch(directory: Path, address: str, *, background: bool = False, port: int | None = None,
             renewed_for: str | None = None):
     """Start co ai and remember it, so the next open reuses it; the caller holds the lock."""
@@ -169,6 +200,7 @@ def _launch(directory: Path, address: str, *, background: bool = False, port: in
                                                       "port": _port(process.args),
                                                       "command": " ".join(process.args[1:]),
                                                       "install": _install(),
+                                                      "session": launch_session(),
                                                       **({"renewed_for": renewed_for} if renewed_for else {}),
                                                       **({"started_at": time.time()} if background else {})})
     except (OSError, RemError):

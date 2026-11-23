@@ -6,11 +6,12 @@ The agreed design is issue #1656; change a page there and here together.
 ## co rem
 
 ```
-co rem — a notebook about the people, projects and tools in your work, kept up to date from your mail and coding sessions.
+co rem — a notebook about the people, projects and tools in your work, kept up to date from your mail, chats and coding sessions.
 Experimental: its commands may still change between 1.9.x releases.
 
-Build (once)
-  init          Build the notebook from mail and coding sessions, then offer daily updates.
+Build
+  init          Build the notebook from mail, chats and coding sessions, then offer daily updates.
+  map           Make pages for what one source holds, any time: people, orgs, projects. No model.
 Collect — read new mail and sessions
   collect       Read one batch of new material into the notebook.
 Investigate — fill pages from originals
@@ -127,7 +128,7 @@ Back: co rem --help
 ## co rem init
 
 ```
-Build your notebook from connected email accounts and recent coding sessions.
+Build your notebook from connected email accounts, chat sources and recent coding sessions.
 Create pages, then use a model to fill them from your sources.
 
 Global co init performs this build without prompts, records an init source grant
@@ -299,6 +300,9 @@ Usage:
                                                init runs this for you in a terminal.
   co rem investigate all --budget 10          The whole queue, highest first, until 10 points
                                                of your Codex week are spent.
+  co rem investigate people --source NAME --new
+                                              The pages one source reaches by handle, the pages it
+                                               just created first (after co rem map --source NAME).
 
   KIND is one of person, org, project, tag, skill, decision, principle. NAME is
   the page's title or an alias, ignoring case and spaces; when two pages share
@@ -315,6 +319,7 @@ Examples:
   co rem investigate people --recent-days 7 --list
   co rem investigate tags --list              (the tag pages that are due, run nothing)
   co rem investigate all --list               (the whole queue's order, run nothing)
+  co rem investigate people --source wechat --new --list
 
 What each kind reads:
   people    Every message to or from their addresses, searched on the server, with
@@ -350,6 +355,10 @@ Options:
                  the Codex week (1-100).
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)
   --eval-dir DIR skills only: where the run records are
+  --source NAME  With CATEGORY: only pages that source reaches by handle (see co rem sources)
+  --new          With --source: only pages it created and not yet investigated
+  --existing     With --source: only pages it gave a new handle to (appends what it says)
+  --all          With --source: both (the same as giving neither)
   --retry-refused  People, projects or orgs PAGE: retry the same evidence after a refusal;
                    automatic category runs still wait for newer material
 
@@ -628,6 +637,31 @@ Next:     co rem investigate tags   (when tag pages are due)
 Back:     co rem --help
 ```
 
+## co rem map
+
+```
+Create people, org or project pages from one enabled source, without calling a model.
+Each source yields its own kinds of page:
+gmail and outlook yield people and orgs, wechat yields people, codex and
+claude-code yield projects. Calls no model; adds pages and handles, never
+removes or rewrites what a page says. A person already on a page from another
+source gets the new handle added to that page.
+
+Usage:    co rem map [people|orgs|projects|knowledge] --source NAME [--dry-run]
+          co rem map people          people from every enabled source
+Example:  co rem map people --source wechat --dry-run
+          --source    a source from co rem sources (enabled and approved)
+          --dry-run   print what it would create and merge; writes nothing
+          KIND        only this kind; refused when the source doesn't yield it
+
+Writes:   new pages under people/, orgs/ or projects/, and handles on existing
+          people pages. Read-only with --dry-run.
+Next:     co rem investigate people --source NAME --new
+          If the nightly schedule is on, new pages are investigated automatically,
+          first in the queue; check progress with co rem status
+Back:     co rem --help
+```
+
 ## co rem list
 
 ```
@@ -776,11 +810,10 @@ Output:   One line each: the state and next run; open threads waiting on you;
 Options:  --verbose   Show full run details, worker status, token counts and
                       coverage, schedule times and internal diagnostic fields.
                       Also explain investigation points, the weekly usage unit.
-          --show-private
-                      Print [sensitive] passages and full links. By default the
+          --show-private  Print [sensitive] passages and full links. By default the
                       day plan, calendar and run reasons hide each sensitive
                       passage as [hidden] and show a link as its host, so the
-                      dashboard is safe to share; --json is unchanged.
+                      status card is safe to share; --json is unchanged.
 Next:     co rem logs   (details of each run)
 Back:     co rem --help
 ```
@@ -914,7 +947,8 @@ Back:     co rem --help
 ## co rem sources
 
 ```
-Show, connect, add or remove what the notebook reads. Showing is read-only.
+Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
+whatsapp, wechat. Showing is read-only and lists the page kinds each source yields.
 
 Usage:    co rem sources
           co rem sources connect [NAME] [--config FILE]
@@ -1113,6 +1147,7 @@ Build by hand
   stub          Create one empty page by hand, with every section marked Unknown.
 Manage pages
   merge         Fold one page into another; archive the old page and keep its name as an alias.
+  person        Mark one address or chat handle as not a person (an assistant, bot or service), or a person again.
 Experimental: corrections and questions (#1611, #1609)
   reflect       Record a correction, a change, or a reflection about a page.
   reflections   Read the records for a page, or write a compact copy of them.
@@ -1233,6 +1268,27 @@ Example:  co rem stub person "Mei Lin" --email mei@harbourlabs.example
           --person  org: a person page that belongs to it (repeatable)
           --path    project: a folder it lives in (repeatable)
 Next:     co rem investigate KIND NAME
+Back:     co rem advanced --help
+```
+
+## co rem person
+
+```
+Mark one address or chat handle as not a person (an assistant, a bot, a shop or
+a service), as a person, or let the rules decide again. The same mark as 不是人 /
+是人 in the reader: a contact marked not a person leaves People, and neither
+co rem map nor the night creates a page for it again. No model.
+
+Usage:    co rem person HANDLE --not-person | --person | --reset
+Example:  co rem person wxid_example123 --not-person
+          HANDLE        one mail address or chat handle (a WeChat or WhatsApp id); never a pattern
+          --not-person  not a person: an assistant, bot, shop or service
+          --person      a person, whatever the rules say
+          --reset       remove the mark; the rules decide again
+Effects:  Writes one line to .state/people-marks.txt. Undo with --reset.
+JSON:     co rem --json person HANDLE, with one of the three choices
+          Prints one {"ok", "data", "next"} result.
+Next:     co rem list people
 Back:     co rem advanced --help
 ```
 

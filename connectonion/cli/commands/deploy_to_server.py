@@ -463,7 +463,7 @@ def _caddy_stanza(agent: str, hostname: str, port: int) -> str:
     Caddy gets and renews the certificate itself over HTTP-01, which is why 80
     has to be open even though nothing is served on it. `reverse_proxy` passes
     WebSocket upgrades through unchanged, so /ws needs no separate stanza — the
-    agent's chat, dashboard pushes and remote exec all ride that one connection.
+    agent's chat, Control Center pushes and remote exec all ride that one connection.
     """
     return f"""{CADDY_MARK}{agent}
 {hostname} {{
@@ -587,7 +587,7 @@ def _caddy_running(target: str) -> bool:
 #
 # This replaced an include-list that named the `.co/` files worth carrying.
 # That default — exclude unless remembered — lost `.co/skills/` in its first
-# version and `.co/dashboard.html` in its second, and was silently dropping
+# version and the agent's Control Center page in its second, and was silently dropping
 # `host.yaml`, `OO.md` and `commands/` when this was written. Forgetting to
 # carry config is invisible: the deploy succeeds and a different agent runs.
 def _secret_excludes() -> list:
@@ -908,7 +908,7 @@ def _sync_code(target: str, agent: str, project_dir: Path,
     an include-list could not enumerate.
 
     What the author writes under `.co/` — `host.yaml`, `OO.md`, `skills/`,
-    `commands/`, `dashboard.html` — is not state. It is what makes this agent
+    `commands/`, `control_center.html` — is not state. It is what makes this agent
     this agent, so it ships like the rest of the tree. `host.yaml` in particular
     carries the permission whitelist and the port: without it the agent runs on
     template defaults behind a proxy pointed at the wrong port, and reports

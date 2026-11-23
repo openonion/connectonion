@@ -36,7 +36,7 @@ def run_js(names, script):
 TAG_ROUTE = 'const route = () => ({}), TAG_LISTS = [];\n'
 
 
-TREE_FUNCTIONS = ['orgTree', 'orgLoose', 'orgUnitCount', 'orgByLast', 'orgByActivity', 'orgBranchLast']
+TREE_FUNCTIONS = ['orgTree', 'orgYourSide', 'orgLoose', 'orgUnitCount', 'orgByLast', 'orgByActivity', 'orgBranchLast']
 TREE_DOM = r'''
   const uiLanguage = 'en';
   const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, addEventListener() {}});

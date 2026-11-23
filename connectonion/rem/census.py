@@ -131,18 +131,47 @@ def non_person(title: str, text: str, emails: list[str], row: dict | None, autom
                 or NOT_PERSON_ROLE.search(text) or MAILBOX_ROLE.search(text) or COMPANY_NAME.search(title))
 
 
-def is_machine(title, text, emails, row, automated, marks, orgs) -> bool:
-    """The owner's 是人 / 不是人 first (any address marked a person keeps the page a person); then the rules."""
-    said = {marks.get(address) for address in emails} - {None}
+def _chat_handles(text) -> list[str]:
+    """The chat handles a person page lists on its Handles line (a WeChat id), casefolded; no addresses. Not Also
+    known as: names sit there too, and a name is never marked, so it would keep a marked page a person."""
+    from .files import CHAT_HANDLE, CITATION
+    found = []
+    for line in text.splitlines()[:40]:
+        label, _, value = line.strip().lstrip('-').strip().partition(':')
+        if label.strip().casefold() == 'handles':
+            # An investigated page cites its line ("wxid_x [1]"); the citation is not part of the handle.
+            items = [item.strip() for item in CITATION.sub('', value).split(',')]
+            found += [item.casefold() for item in items if CHAT_HANDLE.fullmatch(item)]
+    return found
+
+
+def is_machine(title, text, emails, row, automated, marks, orgs, handles=()) -> bool:
+    """The owner's 是人 / 不是人 first (any address or chat handle marked a person keeps the page a person); then
+    the rules, which read mail addresses only. A page with no address (WeChat only) is marked by its chat handles
+    (#3339); a page with an address keeps reading its addresses alone, so an extra handle never blocks a mark."""
+    ids = list(emails) or list(handles)
+    said = {marks.get(address) for address in ids} - {None}
     if 'person' in said:
         return False
-    if emails and said == {'not-person'} and all(address in marks for address in emails):
+    if ids and said == {'not-person'} and all(address in marks for address in ids):
         return True
     return non_person(title, text, emails, row, automated) or any(assistant_contact(title, address, orgs) for address in emails)
 
 
 def pages(root: Path, *, records: list[dict] | None = None) -> dict:
-    """{record: {category, written, last, held, service, duplicate}} for every counted page."""
+    """{record: {category, written, last, held, service, duplicate}} for every counted page.
+
+    Read once per page build or status (tags.held): `co rem status` called it eight times, each reading every
+    page, at 1,352 people. Every caller gets its own copy of the rows, so one caller's edits never reach another.
+    """
+    if records is not None:
+        return _pages(root, records=records)
+    from .tags import once
+    found = once(root, "census_pages", lambda: _pages(root, records=None))
+    return {record: dict(row) for record, row in found.items()}
+
+
+def _pages(root: Path, *, records: list[dict] | None = None) -> dict:
     from .map import needs_review
     notebook = Notebook(root)
     state = read_json(state_path(root, "map.json"), {})
@@ -166,6 +195,7 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
         emails = [address.casefold() for line in text.splitlines()[:40]
                   if line.strip().lstrip('-').strip().casefold().startswith(EMAIL_LABELS)
                   for address in EMAIL.findall(line)] if category == 'people' else []
+        handles = _chat_handles(text) if category == 'people' else []
         duplicate = category == "skills" and title.casefold() in titles
         if category == "skills":
             titles.add(title.casefold())
@@ -174,10 +204,10 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
             "category": category, "written": category == "sessions" or written(text),
             "last": (session_day[1] if session_day else "") if category == "sessions" else last_activity(text),
             "held": record in held, "duplicate": duplicate,
-            "service": category == 'people' and record != owner and is_machine(title, text, emails, rows.get(record), automated, marks, orgs)}
+            "service": category == 'people' and record != owner and is_machine(title, text, emails, rows.get(record), automated, marks, orgs, handles)}
         # An assistant or one the owner called 不是人: the reader lists it under agents and services, with 是人.
         found[record]["agent"] = found[record]["service"] and (
-            any(marks.get(address) == 'not-person' for address in emails) or any(assistant_contact(title, address, orgs) for address in emails))
+            any(marks.get(address) == 'not-person' for address in (emails or handles)) or any(assistant_contact(title, address, orgs) for address in emails))
     return found
 
 

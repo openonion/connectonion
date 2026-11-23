@@ -120,6 +120,16 @@ AGENT_ADDRESS = re.compile(r'^0x[0-9a-f]{6,}@', re.I)
 WRITE_ONLY_MIN = 2
 
 
+def _chat_people_rows(subscriptions: dict) -> list[dict]:
+    """People the map should also create from the enabled chat sources (WeChat today), in mail-row shape."""
+    from .chat import wechat_people
+    rows = []
+    for sub in (subscriptions or {}).values():
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
+            rows += wechat_people()
+    return rows
+
+
 def _write_only(row: dict) -> bool:
     """Mail the owner keeps sending to an address that has never once replied.
 
@@ -949,6 +959,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     else:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
                                  own_names=sent_names, all_history=all_history)
+    # Chat sources seed people too: a WeChat contact who never emailed still becomes a person, and one who
+    # also emails merges by name (#3279). Only when the owner turned the source on; the id is the handle.
+    people += _chat_people_rows(subscriptions)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})

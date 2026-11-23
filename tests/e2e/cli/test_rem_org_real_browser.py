@@ -56,7 +56,9 @@ def test_mapped_org_shows_known_people_link_only_connections_and_no_empty_facts(
     assert opening.startswith('你认识这里的 1 个人。' if language == 'zh' else 'You know 1 person here.')
     assert 'Fern Vale' in opening and '2024' in opening
     assert placeholder not in page.locator('.ov-page').inner_text()
-    assert page.locator('.ov-connections p').all_inner_texts() == ['Field team']
+    # #3397: a connection with no written reason names how the pages meet, never a placeholder summary.
+    assert page.locator('.ov-connections p').all_inner_texts() == [
+        'Field team — 组织 · 这页里提到过' if language == 'zh' else 'Field team — Organisation · Mentioned on this page']
     assert page.locator('.ov-connections p a').get_attribute('href')
     assert page.locator('.ov-about dt').count() == 0
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -94,7 +96,9 @@ def test_org_placeholder_paths_show_dash_in_source_and_cached_translation(
         assert row.locator('.c-summary [title]').count() == 0
     page.locator('.org-table .c-name a').filter(has_text='Cedar Works').click()
     assert page.locator('.ov-opening').inner_text().startswith('你认识这里的 1 个人。' if stored else 'You know 1 person here.')
-    assert page.locator('.ov-connections p').all_inner_texts() == ['Field team']
+    # #3397: a connection with no written reason names how the pages meet, never a placeholder summary.
+    assert page.locator('.ov-connections p').all_inner_texts() == [
+        'Field team — 组织 · 这页里提到过' if stored else 'Field team — Organisation · Mentioned on this page']
     # Fern's business email still supplies a known website; only unknown/empty facts disappear.
     assert page.locator('.ov-about dt').all_inner_texts() == ['网站' if stored else 'Website']
     assert page.locator('.ov-about dd').all_inner_texts() == ['cedar.example']

@@ -71,8 +71,10 @@ def test_done_skip_undo_and_offline_reconciliation(tmp_path, monkeypatch, width)
         page.on('pageerror', lambda error: page_errors.append(str(error)))
         url = 'http://127.0.0.1:8123/rem'
         page.goto(url)
-        page.locator('.qcard.focal .more-menu > summary').click()  # Skip is behind the letter's 更多 (D-120)
-        page.get_by_role('button', name='Skip', exact=True).first.click()
+        # The card's triage waits in the letter's ⋯ (#3312 B): 暂不处理 asks when, and the item leaves as skipped.
+        page.locator('.qcard.focal .more-menu > summary').click()
+        page.locator('.qcard.focal .more-menu').get_by_role('button', name='Not now', exact=True).click()
+        page.locator('.qcard.focal .more-menu .later-choice').first.click()
         page.get_by_text('Saved in notebook', exact=True).wait_for()
         assert read_json(state_path(root, 'threads.json'), {})
         page.screenshot(path=str(shots / f'skipped-{width}.png'))

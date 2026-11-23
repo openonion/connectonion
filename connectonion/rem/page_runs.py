@@ -138,13 +138,25 @@ REASONS = [
 ]
 
 
+# A draft the page check refused (#2235 follow-up, 2026-11-23): the runner's own words named the kept
+# candidate's path ("Candidate rejected, kept at …/candidate.md: Unused citation: 41") and reached a project's
+# head as they were. The owner gets a sentence; the checker's words stay as a detail, without the path.
+REJECTED = re.compile(r"Candidate rejected(?:, kept at \S+?)?: (.+)$")
+
+
 def explain(message: str) -> dict:
-    """{"reason": a plain sentence, "reason_kind": what kind}: never a list or a traceback."""
+    """{"reason": a plain sentence, "reason_kind": what kind}: never a list, a traceback or a local path.
+    A refused draft also carries "detail", the check's words."""
+    from .refusals import LOCAL_PATH
     message = " ".join(str(message or "").split())
     for kind, pattern, sentence in REASONS:
         if match := pattern.search(message):
             return {"reason": sentence.format(*match.groups()), "reason_kind": kind}
-    return {"reason": (message[:300] or "The investigation stopped without saying why."), "reason_kind": "other"}
+    if match := REJECTED.search(message):
+        return {"reason": "The draft did not pass the page check, so nothing on the page changed.",
+                "reason_kind": "rejected", "detail": LOCAL_PATH.sub("", match.group(1)).strip()[:300]}
+    plain = " ".join(LOCAL_PATH.sub("", message).split())
+    return {"reason": (plain[:300] or "The investigation stopped without saying why."), "reason_kind": "other"}
 
 
 def _unlisted(reason: str) -> str:
@@ -165,8 +177,12 @@ def _unlisted(reason: str) -> str:
 def _readable(receipt: dict, progress: list[dict]) -> dict:
     """A failed receipt's reason as a sentence and a kind (#3155): receipts written before rc28 kept the raw text.
     The run's own recorded error is preferred when the stored reason says nothing (a progress line)."""
-    if receipt.get("result") != "failed" or receipt.get("reason_kind"):
+    if receipt.get("result") != "failed":
         return {}
+    if receipt.get("reason_kind"):
+        # Receipts saved before a kind existed for their words (a refused draft, before rc21) are read again.
+        said = explain(receipt.get("reason")) if receipt["reason_kind"] == "other" else {}
+        return said if said.get("reason_kind", "other") != "other" else {}
     for error in [row["error"] for row in progress if row.get("error")] + [_unlisted(receipt.get("reason"))]:
         said = explain(error)
         if said["reason_kind"] != "other" or (error and not error.startswith("Investigation: ")):
@@ -203,6 +219,30 @@ def _added(before: str, after: str) -> list[str]:
     return [re.sub(r"\s*(?:\[W?\d+\](?!\()\s*)+", " ", line).strip() for line in lines]
 
 
+def next_step(root, record: str, logs) -> dict | None:
+    """What happens to a refused page next, read from the refusal ledger the night retries from (refusals.py),
+    so the reader never promises a retry the night will not make (#3392's lesson).
+
+    {"kind": "retry"}: the night tries it again (once a night, up to MAX_RETRIES).
+    {"kind": "parked", "tries": N}: out of retries on this material; N is the refused investigations since the
+    page was last written. None: the ledger holds nothing for the page, so nothing is promised."""
+    from .refusals import MAX_RETRIES, refused_for
+    entry = refused_for(root, record)
+    if not entry:
+        return None
+    if entry.get("retries", 0) < MAX_RETRIES:
+        return {"kind": "retry"}
+    mine = sorted((run for run in logs if run.get("record") == record and run.get("phase") == "investigate"),
+                  key=lambda run: run.get("started_at", ""))
+    tries = 0
+    for run in mine:
+        if run.get("outcome") == "completed" and run.get("changed"):
+            tries = 0
+        elif run.get("outcome") in ("refused", "failed"):
+            tries += 1
+    return {"kind": "parked", "tries": max(tries, 1)}
+
+
 def status(root, record: str, *, logs=None) -> dict:
     from . import page_versions
     from .service import run_logs
@@ -217,8 +257,11 @@ def status(root, record: str, *, logs=None) -> dict:
             receipt.update(result="failed", reason="The investigation stopped without saying how it ended; "
                                                    "see co rem logs", finished_at=now().isoformat())
             write_json(path, receipt)
-    progress = _progress(root, receipt, run_logs(root) if logs is None else logs)
+    logs = run_logs(root) if logs is None else logs
+    progress = _progress(root, receipt, logs)
     value = {**receipt, **_readable(receipt, progress), "progress": progress}
+    if value["result"] == "failed" and value.get("reason_kind") == "rejected":
+        value["next"] = next_step(root, record, logs)
     if receipt["result"] != "running":
         book = Notebook(root)
         after = book.read(record) if book.exists(record) else ""

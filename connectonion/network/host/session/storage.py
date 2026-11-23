@@ -360,7 +360,7 @@ class SessionStorage:
         list() and get() skip records past their TTL — but they stayed in the
         file and list() parsed all of them to answer. Measured on a live agent:
         17 MB for 222 sessions. One running a schedule every fifteen minutes
-        writes 96 a day, so about 7 MB a day and 2.5 GB a year, and a dashboard
+        writes 96 a day, so about 7 MB a day and 2.5 GB a year, and a Control Center
         that reparses the lot each time it is opened.
 
         Safe for one specific reason: it removes only what list() and get()
@@ -395,7 +395,7 @@ class SessionStorage:
 
         # Someone appended while we were reading and writing, and their record
         # is only in the file we are about to replace. A lost session record is
-        # a turn that happened and left no trace — absent from the dashboard,
+        # a turn that happened and left no trace — absent from the Control Center,
         # uncounted by `co status`, with nothing anywhere saying one was
         # dropped.
         #

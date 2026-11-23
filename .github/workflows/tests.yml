@@ -461,7 +461,9 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP "co-first-run-project"
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           Set-Location $dir
-          $globalInitOutput = co init --yes 2>&1 | Out-String
+          # --no-host: offline there is no OPENONION_API_KEY, so the built-in Host cannot
+          # serve; this step checks global init itself, as the release smoke test does.
+          $globalInitOutput = co init --yes --no-host 2>&1 | Out-String
           Write-Host $globalInitOutput
           if ($LASTEXITCODE -ne 0 -or $globalInitOutput -match "Traceback") { Write-Error "global init failed offline"; exit 1 }
           if ((Test-Path ".co") -or (Test-Path ".env")) { Write-Error "global init wrote project files"; exit 1 }

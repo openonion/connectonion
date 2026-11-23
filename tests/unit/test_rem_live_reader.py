@@ -107,6 +107,20 @@ def test_the_reader_cookie_outlives_a_browser_restart_and_a_host_restart(host):
     assert status == 200 and "Alice Chen" in page
 
 
+def test_the_3d_engine_comes_from_the_host_and_no_page_carries_it(host):
+    """#3309 review: the 1.4 MB three.js build is not inlined. The signed-in live reader fetches it from the
+    Host the first time the knowledge graph opens in 3D; the snapshot, which has no Host, draws the 2D map."""
+    status, head, body = call(host.routes, "GET", reader.GRAPH_3D_URL, cookie=f"co_rem={host.token}")
+    assert status == 200 and head["content-type"].startswith("text/javascript")
+    assert body.startswith("// Version 1.80.2 3d-force-graph")
+    assert call(host.routes, "GET", reader.GRAPH_3D_URL)[0] == 401, "signed in like every other reader path"
+    engine = reader.GRAPH_3D.read_text(encoding="utf-8")[:400]
+    live, snapshot = reader.render(host.root, live=True), reader.render(host.root, local=True)
+    assert engine not in live and engine not in snapshot
+    assert f'"graph_3d": "{reader.GRAPH_3D_URL}"' in live
+    assert '"graph_3d": ""' in snapshot
+
+
 @pytest.mark.parametrize("kwargs", [
     {"client": "192.168.1.20"},                           # another machine on the LAN
     {"host_header": "evil.example:8123"},                 # a rebound DNS name

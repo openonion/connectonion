@@ -31,7 +31,7 @@ def _run_reader_js(script):
     if "liveHere =" not in script and "function liveHere" not in script:
         script = "function liveHere() { return true; }\n" + script
     # stdin, not -e: Linux caps one argument at 128 KB and the template is larger.
-    script = "const UI = {en: {}}; let uiLanguage = 'en';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
+    script = "const UI = {en: {}}; let uiLanguage = 'en'; let privacyLevel = 'cover';\n" + re.search(r"function t\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + re.search(r"function uiLocale\(.*?\}", TEMPLATE.read_text(), re.S).group(0) + "\n" + script
     result = subprocess.run([node], input=script, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -81,6 +81,7 @@ def test_round_nine_browser_fixture_retains_all_four_context_disclosures(tmp_pat
     result = _run_reader_js(functions + '\nUI.zh = ' + ui + ';\nconst REM = ' + json.dumps(data) + ';\n' + r'''
       const COMMENT = /<!--[\s\S]*?-->/g, UNKNOWN_TEXT = /^Unknown$/;
       const byPath = path => REM.records.find(r => r.path === path);
+      const codedOrgName = () => null, pageName = page => page?.title;  // course/team codes: tested in the browser
       const KNOWN = new Map(), FACTS = new Map(), render = () => {};
       const projectSessions = () => null, fmtDate = value => value;
       const localizedRelation = link => link, relationCard = () => ({tag: 'card'});
@@ -163,7 +164,7 @@ def test_this_week_project_rows_strip_the_now_label():
     page = TEMPLATE.read_text(encoding="utf-8")
     parsing = page[page.index("const UNKNOWN_LINE ="):page.index("function mappedContact(")]
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["splitTrailers", "plainLine", "displayLine", "summaryLine"])
+                          for name in ["splitTrailers", "plainLine", "displayLine", "summaryLine", "pageWords"])
     week = page[page.index("  const week = weekChanges();"):page.index("  const recent = listedRecords()")] + "  main.appendChild(weekPages);\n"
     script = "\n".join([
         parsing, functions,
@@ -234,7 +235,7 @@ def test_first_build_keeps_failures_and_written_pages_visible(written):
 def test_fact_list_omits_placeholder_only_fields_and_keeps_mail():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['factList', 'knownValue', 'plainLine'])
+                          for name in ['factList', 'knownValue', 'plainLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const FACT_LABELS = {people: ['Phone', 'Role', 'Location']}, COPYABLE = new Set();
       const UNFILLED_LINE = /^Unknown — not verified\.?$/i, youify = text => text;
@@ -242,6 +243,7 @@ def test_fact_list_omits_placeholder_only_fields_and_keeps_mail():
         ['Location', [{value: 'Unknown — not verified.'}]]]);
       const legacyFact = () => [], mappedContact = () => false, softBreaks = node => node;
       const changedValue = node => node, factValue = item => ({text: item.value});
+      const known = () => ({status: 'Investigated'});  // an investigated page: its gaps are 'not found' (#3381)
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         append(...nodes) { this.children.push(...nodes); }});
       const panel = (title, children) => ({title, children});
@@ -258,7 +260,7 @@ def test_fact_list_omits_placeholder_only_fields_and_keeps_mail():
 def test_statement_capitalisation_preserves_code_and_paths():
     page = TEMPLATE.read_text(encoding="utf-8")
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["capFirst", "memoryStatement", "newestStanding", "plainLine", "listItems"])
+                          for name in ["capFirst", "memoryStatement", "newestStanding", "plainLine", "listItems", "pageWords"])
     cases = [
         ("origin/main is ahead", "origin/main is ahead"),
         ("`co rem` runs nightly", "`co rem` runs nightly"),
@@ -659,7 +661,7 @@ def test_open_reader_launches_the_file_uri_only_when_asked(tmp_path, monkeypatch
 def test_summary_values_hide_only_empty_placeholders():
     page = TEMPLATE.read_text(encoding="utf-8")
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["plainLine", "knownValue"])
+                          for name in ["plainLine", "knownValue", "pageWords"])
     unfilled = next(line for line in page.splitlines() if line.startswith("const UNFILLED_LINE ="))
     cases = [None, "", "  ", "Unknown", "unknown", "Unknown.", "—", "Unknown — not verified.",
              "Unknown — not verified. The latest session confirms a changed owner.", "Avery Lin", 0]
@@ -782,6 +784,7 @@ def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
         functions, 'const REM = {as_of: "2026-10-20"}, DAY_MS = 86400000;',
         'const calendarDay = text => text.slice(0, 10);',
         'const el = (tag, attrs) => attrs;',
+        'const upcomingWhen = () => "";',  # no calendar here: the age alone (#3406 in the browser test)
         'console.log(JSON.stringify(' + json.dumps(cases)
         + '.map(t => ({age: threadAge(t), tag: blockerTag(t)}))));',
     ]))
@@ -909,7 +912,7 @@ def test_reader_interface_language_default(languages, owner, browser, expected):
 def test_changed_field_matches_raw_facts_before_display_formatting():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['changedValue', 'factText', 'plainLine'])
+                          for name in ['changedValue', 'factText', 'plainLine', 'pageWords'])
     script = '\n'.join([
         '(() => {', functions, 'const youify = value => value;',
         'const r = {path: "people/avery-lin.md"};',
@@ -944,7 +947,7 @@ def test_update_markers_follow_latest_pass_in_the_invented_notebook(tmp_path, mo
     data = snapshot(build(tmp_path / 'rem', datetime(2026, 10, 1, 12, tzinfo=timezone.utc)))
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['lastPass', 'firstBuild', 'runTime', 'sameClaim', 'updatedMarker'])
+                          for name in ['passRuns', 'lastPass', 'firstBuild', 'runTime', 'sameClaim', 'updatedMarker'])
     result = _run_reader_js('\n'.join([
         '(() => { const REM = ' + json.dumps(data) + ';', functions,
         'const HOUR = 3600e3, FAILED = /^(failed|abandoned|error|refused|timeout)/i;',
@@ -1102,7 +1105,7 @@ def test_reader_language_swap_reuses_parsing_and_restores_original():
     swap = re.search(r'function swapLanguage\(.*?\n\}', page, re.S).group(0)
     parsing = page[page.index('const UNKNOWN_LINE ='):page.index('function mappedContact(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['splitTrailers', 'plainLine'])
+                          for name in ['splitTrailers', 'plainLine', 'pageWords'])
     script = parsing + functions + swap + r'''
       const FACTS = new Map(), SESSION_TEXT = new Map(), youify = text => text;
       const r = {path: 'people/avery-lin.md', category: 'people', title: 'Avery Lin',
@@ -1144,7 +1147,7 @@ def test_reader_skill_line_is_the_first_plain_clause():
     """Sprint 13: a skill shows one line of what it does, not the description's whole paragraph."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['skillClause', 'plainLine'])
+                          for name in ['skillClause', 'plainLine', 'pageWords'])
     result = _run_reader_js(page[page.index('const UNKNOWN_LINE ='):page.index('const UNKNOWN_LINE =') + 400].split('\n')[0] + '\n'
                             + ''.join(page[page.index('const ' + name + ' ='):].split('\n')[0] + '\n'
                                       for name in ['UNFILLED_LINE', 'SKILL_NO_DESCRIPTION', 'SKILL_ABBREVIATION'])
@@ -1201,7 +1204,7 @@ def test_reader_translated_relationship_takes_precedence_over_index_prose():
 def test_reader_waiting_summary_trims_chinese_separators(separator):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['morningWords', 'withoutDateClutter', 'plainLine', 'capFirst', 'threadWords'])
+                          for name in ['morningWords', 'withoutDateClutter', 'plainLine', 'capFirst', 'threadWords', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const inCategory = () => [], youify = text => text;
       const r = {title: 'Avery Lin'}, separator = ''' + json.dumps(separator) + r''';
@@ -1256,7 +1259,7 @@ def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadEntries', 'threadGroups', 'obligationEvidence', 'obligationWords',
-                                       'sameObligation', 'plainLine', 'threadWords', 'rawSection'])
+                                       'sameObligation', 'plainLine', 'threadWords', 'rawSection', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const REM = {owner: 'people/ellis.md'}, COMMENT = /<!--[\s\S]*?-->/g, DAY_MS = 86400000;
       const youify = text => text;
@@ -1288,7 +1291,7 @@ def test_reader_merged_threads_exclude_empty_prose_and_the_rows_own_person():
 def test_reader_insight_labels_tolerate_chinese_punctuation(marker):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['memoryStatement', 'newestStanding', 'plainLine', 'listItems', 'capFirst'])
+                          for name in ['memoryStatement', 'newestStanding', 'plainLine', 'listItems', 'capFirst', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const REM = {}, youify = text => text;
       const section = (r, name) => name === 'insight' ? {text: '- ' + r.marker + ' 已完成交付 [1].'} : null;
@@ -1351,6 +1354,7 @@ def test_reader_privacy_passages_keep_chinese_tags_with_their_words(punctuation,
 def test_reader_privacy_plain_summaries_preserve_public_words_links_and_inline_code():
     page = TEMPLATE.read_text()
     plain = re.search(r'function plainLine\(.*?\n\}', page, re.S).group(0)
+    plain += '\n' + re.search(r'function pageWords\(.*?\n\}', page, re.S).group(0)
     text = ('公开介绍。秘密文件 `case.txt` 和 [同事](people/secret.name.md)[sensitive] [1]。'
             '秘密日期。 [personal] [13]用户秘密后续联系[personal]。公开结尾。')
     result = _run_reader_js(plain + '\nconst youify = text => text;\nconst text = ' + json.dumps(text) + r''';
@@ -1407,7 +1411,7 @@ def test_reader_session_search_removes_labelled_passages_before_indexing_and_tru
 def test_reader_inline_privacy_wraps_the_full_passage_after_html_escaping(secret):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['esc', 'inline'])
+                          for name in ['esc', 'inline', 'pageWords'])
     html = _run_reader_js(functions + r'''
       const youify = text => text, quoteSpans = text => text,
         uncertainCitations = text => text, tetherCitations = text => text;
@@ -1586,7 +1590,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1610,11 +1614,12 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
       console.log(JSON.stringify({prepared, actions, fallback, discarded, pending, paused, sent: draftNote(threadDraft(entry))}));
     ''')
     assert result['prepared']['class'] == 'mailcard'
-    actions = result['prepared']['children'][4]['children']  # [head, body, why, choices, actions, status]
-    # Send is the one green; Write full screen stays in sight beside it (sprint 22: behind 更多 the owner could not
-    # find it); editing in Gmail and Skip wait behind 更多 (D-120).
-    buttons = [actions[-1], actions[1], *actions[0]['children'][1]['children']]
-    assert [button['text'] for button in buttons if button['tag'] == 'button'] == [
+    # [head, body, why, dock, status, what REM did]; the dock holds [choices, defect, actions] (#3312 B, H).
+    actions = result['prepared']['children'][3]['children'][2]['children']
+    # Send is the one filled button; Write full screen stays in sight beside it as an icon named by its label
+    # (sprint 22: behind 更多 the owner could not find it); editing in Gmail and Skip wait behind ⋯ (D-120).
+    buttons = [actions[-1], actions[2], *actions[3]['children'][1]['children']]
+    assert [button.get('text') or button.get('aria-label') for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
     assert result['actions']['children'][0]['text'] == 'Open the page'  # no archived thread identity
@@ -1632,7 +1637,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
-                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -1659,7 +1664,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     assert card['data-step'] == 'send'
     mail = card['children'][2]['children'][1]
     assert mail['class'] == 'mailcard'
-    assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail', 'Lark', 'WhatsApp']
+    # Only channels the person can be reached on (#3302): a draft with no reachable chat offers its own channel alone.
+    assert [pill['text'] for pill in mail['children'][0]['children'][0]['children']] == ['Mail']
     assert mail['children'][0]['children'][1]['children'][0]['text'] == 'To'
     # D-10: the CC row is always there, and says when nobody is copied.
     assert [cell['text'] for cell in mail['children'][0]['children'][2]['children']] == ['CC', 'No one']
@@ -1670,8 +1676,8 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     # Build 3b review: Why this reply sits under the owner's-language reading, beside the letter.
     why = gist['children'][2]
     assert why['class'] == 'mail-why' and '先确认收到，再给出明确的回复时间。' in why['children'] and mail['children'][2] is None
-    assert mail['children'][3] is None  # no question for the owner, so no choice rows above Send
-    assert mail['children'][4]['children'][-1]['text'] == 'Send'
+    assert mail['children'][3]['children'][0] is None  # no question for the owner, so no choice rows above Send
+    assert mail['children'][3]['children'][2]['children'][-1]['text'] == 'Send'
     assert 'mailto:' not in json.dumps(card)
     # Without a draft the primary drafts in place using its archived identity.
     actions = result['withoutDraft']['children'][3]['children'][0]
@@ -1693,9 +1699,9 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
     page = TEMPLATE.read_text()
     interface = page[page.index('const UI ='):page.index('function setInterfaceLanguage(')]
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['nightCard', 'scheduleFailure', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
+                          for name in ['waitingLine', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate', 'todayCrumb'])
     result = _run_reader_js('(() => { let uiLanguage = "en";\n' + interface + 'const RING = 314.16;\n' + functions + r'''
-      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null, nightWords = () => null, nightStall = () => null;
+      const REM = {as_of: '2026-10-20'}, calendarDay = day => day, threadWho = r => r.title, threadAge = () => 'new', icon = () => null, nightChart = () => null, nightWords = () => null, nightStall = () => null, nightTimeline = () => null, nightLine = () => null, coverageLine = () => null;
       let mine = 5;
       const threadCounts = () => ({mine}), staleEntry = () => false, threadDraft = () => null;
       const overdueDays = thread => thread.due && thread.due < REM.as_of ? Math.round((Date.parse(REM.as_of) - Date.parse(thread.due)) / 86400000) : 0;
@@ -1704,27 +1710,29 @@ def test_night_card_counts_people_and_burns_each_face_by_days_overdue_and_transl
       const groups = [{r: {path: 'a', title: 'Ada'}, entries: [{t: {dir: 'mine', since: '2026-10-20'}}, {t: {dir: 'mine', due: '2026-10-18'}}]},
         {r: {path: 'b', title: 'Bea'}, entries: [{t: {dir: 'mine', due: '2026-10-19'}}, {t: {dir: 'mine', due: '2026-10-23'}}]},
         {r: {path: 'c', title: 'Cy'}, entries: [{t: {dir: 'mine', since: '2026-10-20'}}]}];
-      const card = nightCard(groups, 'b');
+      const card = waitingLine(groups, 'b');
       mine = 0;
-      const quiet = nightCard([], null);
+      const quiet = waitingLine([], null);
       mine = 5;
-      const faces = card.children[0].children[0].children[1].children, date = todayCrumb();
+      const faces = card.children[0].children[1].children, date = todayCrumb();
       uiLanguage = 'zh';
-      const zh = nightCard(groups, 'b');
-      console.log(JSON.stringify({count: card.children[0].children[0].children[0].children.map(c => c.text),
+      const zh = waitingLine(groups, 'b');
+      console.log(JSON.stringify({count: card.children[0].children[0].children.map(c => c.text),
         faces: faces.map(f => [f['aria-pressed'], f.children[1].text, f.children[1].class, f.children[0].children[0].html.includes('class="burn"')]),
-        quiet: quiet.children[0].children[0].children[0].children.map(c => c.text), solo: card.children[0].class,
-        zh: zh.children[0].children[0].children[0].children.map(c => c.text), zhLate: zh.children[0].children[0].children[1].children[0].children[1].text,
+        quiet: quiet.children[0].children[0].children.map(c => c.text), solo: card.class,
+        zh: zh.children[0].children[0].children.map(c => c.text), zhLate: zh.children[0].children[1].children[0].children[1].text,
         date, find: t('Find')}));
     })();''')
     # The number is the badge's (items waiting on you, sprint 14 #4); the faces beside it are the people to start
     # with, and no sentence says so (owner, 2026-11-13, #2994).
-    assert result['count'] == ['5', 'things waiting on you']
+    # Three cards for five items: the title names the set the deck's ‹ 1 / 3 › pages through (#3379).
+    assert result['count'] == ['5', 'things waiting on you', '· start with these 3']
     # Days overdue in red under the face, the ring burnt; a face with nothing overdue says its age and has no burn.
     assert result['faces'] == [['false', '2 d', 'dd late', True], ['true', '1 d', 'dd late', True], ['false', 'new', 'dd', False]]
     assert result['quiet'] == ['0', 'Nobody is waiting on you today.']
-    assert result['solo'] == 'nb solo'  # no logs and no drafts: no chart is drawn, the faces take the card
-    assert result['zh'] == ['5', '件在等你'] and result['zhLate'] == '2 天'
+    # Since sprint T3 the waiting line is the desk's title (waitingLine), no longer a row of the night card.
+    assert result['solo'] == 'nb solo'
+    assert result['zh'] == ['5', '件在等你', '· 先看这 3 张'] and result['zhLate'] == '2 天'
     assert result['date'] == 'Tue, 20 October'
     assert result['find'] == '查找'
 
@@ -1734,7 +1742,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
     page = TEMPLATE.read_text()
     names = ['writtenDatePattern', 'writtenDates', 'threads', 'listItems', 'isCalm',
              'direction', 'owing', 'rawSection', 'threadEntries', 'obligationWords',
-             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'nightCard', 'scheduleFailure', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate']
+             'obligationEvidence', 'sameObligation', 'threadGroups', 'todayEntries', 'personGroups', 'waitingLine', 'countLine', 'answered', 'waitingOnYou', 'faceStrip', 'fusedFace', 'groupLate']
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
     result = _run_reader_js(functions + r'''
       const DAY_MS = 86400000, COMMENT = /<!--[\s\S]*?-->/g;
@@ -1744,7 +1752,7 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
       const plainLine = text => text, threadWords = text => text, isDone = () => false;
       const threadWho = r => r.title, RING = 314.16, threadCounts = () => ({mine: 7}), threadDraft = () => null, staleEntry = () => false;
-      const icon = () => null, nightChart = () => null, nightWords = () => null, nightStall = () => null, threadAge = () => 'new', overdueDays = () => 0;
+      const icon = () => null, nightChart = () => null, nightWords = () => null, nightStall = () => null, nightTimeline = () => null, nightLine = () => null, coverageLine = () => null, threadAge = () => 'new', overdueDays = () => 0;
       const face = name => ({tag: 'span', text: name, append() {}});
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const pairs = ['budget forecast', 'product outline', 'contract revision', 'receipt bundle', 'design proposal', 'renewal summary'];
@@ -1758,10 +1766,11 @@ def test_seven_distinct_review_threads_keep_overdue_due_soon_and_new_counts():
       const today = todayEntries(entries);
       console.log(JSON.stringify({parsed: threads(REM.records[0]).items.length,
         merged: entries.length, today: today.length,
-        headline: nightCard(personGroups(today), null).children[0].children[0].children[0]}));
+        headline: waitingLine(personGroups(today), null).children[0].children[0]}));
     ''')
     # Seven asks from one person are one card: one person is waiting.
-    assert _words(result.pop('headline')) == '7things waiting on you'
+    # One card for seven asks, and the title says so (#3379).
+    assert _words(result.pop('headline')) == '7things waiting on you· start with this one'
     assert result == {'parsed': 7, 'merged': 7, 'today': 7}
 
 
@@ -1786,14 +1795,14 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
         '调查后会写出 2 个章节。' if language == 'zh'
         else '2 sections will be written when it is investigated.')
     assert written['children'][-1]['text'] == (
-        '仍不明确：Insight, Who they are.' if language == 'zh' else 'Still unknown: Insight, Who they are.')
+        '仍不明确：洞察、他们是谁。' if language == 'zh' else 'Still unknown: Insight, Who they are.')
 
 
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'morningWords', 'withoutDateClutter'])
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + r'''
       const threadWho = r => r.title, overdueDays = () => 0;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
       const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
@@ -1833,7 +1842,7 @@ def test_claim_values_use_only_current_cached_facts_for_chinese_after():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['parseFacts', 'topLevelParts', 'rawSection', 'factText', 'plainLine',
-                                       'originalMark', 'claimValue', 'overnightChange', 'changeCard', 'localDates', 'fmtDate'])
+                                       'originalMark', 'claimValue', 'overnightChange', 'changeCard', 'localDates', 'fmtDate', 'pageWords'])
     result = _run_reader_js(functions + r'''
       UI.zh = {Original: '原文', 'No Chinese translation yet; showing original': '尚无中文译文，显示原文', role: '职位'};
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, youify = text => text;
@@ -1875,7 +1884,7 @@ def test_claim_values_use_only_current_cached_facts_for_chinese_after():
 def test_unknown_is_localised_only_on_display_paths():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['esc', 'inline', 'plainLine', 'displayLine', 'parseFacts', 'topLevelParts', 'rawSection'])
+                          for name in ['esc', 'inline', 'plainLine', 'displayLine', 'parseFacts', 'topLevelParts', 'rawSection', 'pageWords'])
     result = _run_reader_js(functions + r'''
       UI.zh = {Unknown: '未知'};
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
@@ -1900,7 +1909,7 @@ def test_unknown_is_localised_only_on_display_paths():
 def test_summary_line_strips_only_leading_insight_labels():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['plainLine', 'displayLine', 'summaryLine'])
+                          for name in ['plainLine', 'displayLine', 'summaryLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const youify = text => text;
       const labels = ['Now:', '**Now:**', '**Pattern**:', 'At stake:', 'Changed:', '现在：', '规律：', '关键所在：', '变化：'];
@@ -1936,9 +1945,9 @@ def test_role_lede_is_the_title_and_parse_facts_splits_like_facts_py():
     from connectonion.rem.facts import values
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['parseFacts', 'topLevelParts', 'roleLede', 'plainLine'])
+                          for name in ['parseFacts', 'topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
     line = 'Events Coordinator (Entrepreneurship; email signature through 2026-10-29); Mentor [3]'
-    result = _run_reader_js(functions + r'''
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const PARSED_FACTS = new Map(), el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const rawSection = page => page.text, inline = text => text, youify = text => text, roleSummary = () => null;
       const r = {path: 'people/tamsin.md', text: '- Role: ' + LINE + '\n'};
@@ -1955,8 +1964,8 @@ def test_role_lede_keeps_when_a_role_ended_or_started():
     """"Product Owner (until 2025-06); Advisor" read "Product Owner +1": a past role as if current."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['topLevelParts', 'roleLede', 'plainLine'])
-    result = _run_reader_js(functions + r'''
+                          for name in ['topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const inline = text => text, youify = text => text, roleSummary = () => null;
       const lede = (value, qualifier) => roleLede([{value, qualifier}, {value: 'Advisor', qualifier: ''}], value, '').children[0].html;
@@ -1972,8 +1981,8 @@ def test_role_lede_sends_provenance_in_any_language_to_the_tooltip():
     a translated note on where the role came from, which the English-only pattern let through (owner, 2026-11-18)."""
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['topLevelParts', 'roleLede', 'plainLine'])
-    result = _run_reader_js(functions + r'''
+                          for name in ['topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const inline = text => text, youify = text => text, roleSummary = () => null;
       const lede = (value, qualifier) => roleLede([{value, qualifier}], value + ' (' + qualifier + ')', '');
@@ -2001,8 +2010,8 @@ def test_chinese_interface_never_assumes_a_single_persons_gender():
 def test_role_summary_shows_first_and_count_with_full_title():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['roleSummary', 'topLevelParts', 'plainLine'])
-    result = _run_reader_js(functions + r'''
+                          for name in ['roleSummary', 'topLevelParts', 'plainLine', 'pageWords'])
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const youify = text => text, inline = text => text, privateFallback = node => node;
       const roles = 'Head of Partnerships; Pilot lead; Research liaison';
@@ -2061,8 +2070,8 @@ def test_all_builtin_facts_and_sheet_labels_have_chinese_entries():
 def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['personSub', 'roleSummary', 'roleLede', 'topLevelParts', 'changedValue', 'factText', 'plainLine'])
-    result = _run_reader_js(functions + r"""
+                          for name in ['personSub', 'roleSummary', 'roleLede', 'topLevelParts', 'changedValue', 'factText', 'plainLine', 'pageWords'])
+    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r"""
       const role = '合作负责人; 试点负责人; 研究联络人', original = 'Head of Partnerships; Pilot lead; Research liaison';
       const r = {path: 'people/mara-ostrowski.md'};
       const facts = () => ({role}), personOrg = () => null, personProject = () => null, knownValue = Boolean;
@@ -2080,15 +2089,19 @@ def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     assert compact_role['title'] == '合作负责人; 试点负责人; 研究联络人'
 
 
+# A Chinese tail is two characters, so none is left alone on a line, and a value about four characters wide goes
+# whole (#3405: the tail used to take only 「队」 of 「团队」).
 @pytest.mark.parametrize('value, tail', [
-    ('Head of the Pilot Programme', 'Programme'), ('试点项目负责人', '人'), ('合作负责人。', '人。'),
+    ('Head of the Pilot Programme', 'Programme'), ('试点项目负责人', '责人'), ('合作负责人。', '责人。'),
+    ('团队', '团队'), ('Swift', 'Swift'),
 ])
 def test_fact_citations_stay_with_the_last_word_or_chinese_character(value, tail):
     page = TEMPLATE.read_text()
     function = re.search(r'function oneDate\(.*?\n\}', page, re.S).group(0) + '\n' + re.search(r'function factValue\(.*?\n\}', page, re.S).group(0)
-    result = _run_reader_js(function + r'''
+    result = _run_reader_js(function + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r'''
       const inline = text => text, softBreaks = node => node;
       const citeChip = n => '<a class="cite">' + n + '</a>';
+      const citeChips = ns => ns.map(n => citeChip(n)).join('');
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         get firstChild() { return this.children[0]; }, get childNodes() { return this.children; },
         appendChild(node) { this.children.push(node); }});
@@ -2132,11 +2145,11 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'orgNamed', 'domainName', 'startsWords', 'personDomain', 'sameCompany', 'personProject',
         'factList', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'snapshotWhy', 'translatedRelationBasis',
-        'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+        'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};
@@ -2144,7 +2157,9 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
       const listItems = () => [], threads = () => ({items: [], calm: false});
       const youify = text => text, inline = text => text, softBreaks = node => node, privateFallback = node => node;
       const changedValue = node => node, mappedContact = () => false, legacyFact = () => [], knownValue = Boolean;
+      const withoutWechatIds = (r, item) => item, chatActivity = () => null;  // WeChat ids: tested in the browser (#3372)
       const inCategory = () => [], orgName = page => page.title;
+      const codedOrgName = () => null, pageName = page => page?.title;  // course/team codes: tested in the browser
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         get childNodes() { return this.children; },
         get textContent() { return (this.text || this.html || '') + this.children.map(n => typeof n === 'string' ? n : n?.textContent || '').join(''); },
@@ -2272,13 +2287,14 @@ def test_project_coverage_limit_has_chinese_copy(days, inputs, expected):
 def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark'])
+                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark', 'pageWords', 'englishProse'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
+    result = _run_reader_js(functions + '\nconst originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', title: 'Fernhill Labs', category: 'orgs', translations: {zh:
         '# Fernhill Labs\n## People here\n- [Theo Park](../people/theo-park.md) — 代表试点团队确认了计划 [2].\n\n## Sources\n- [2] mail:invented'}};
       const person = {path: 'people/theo-park.md', title: 'Theo Park', category: 'people'};
       const byPath = path => [origin, person].find(r => r.path === path), href = r => r.path;
+      const pageName = page => page.title;  // course/team codes: tested in the browser
       const youify = text => text, singular = () => '', inline = text => text;
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
@@ -2307,8 +2323,8 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
-                                       'connectedContext', 'closeStripped', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden'])
-    result = _run_reader_js(functions + r'''
+                                       'connectedContext', 'closeStripped', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden', 'pageWords'])
+    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
         translations: {zh: '# Fernhill Labs\n- [Theo Park](../people/theo-park.md) 和 [Mia Chen](../people/mia-chen.md) 共同审阅了试点计划 [2].'}};
@@ -2318,6 +2334,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
         basis: 'Theo Park and Mia Chen reviewed the pilot plan.', sources: ['2']}));
       const byPath = path => [origin, theo, mia].find(r => r.path === path);
       const known = r => ({intro: r === mia ? '负责核对试点团队的下一步安排。' : '负责试点。'}), facts = () => ({});
+      const pageName = page => page.title;  // course/team codes: tested in the browser
       const youify = text => text, inline = text => text, singular = () => '', href = r => r.path;
       const originalMark = () => ({text: '原文'});
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
@@ -2350,7 +2367,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
     assert len(data['logs']) == 1
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
-        'runTime', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
+        'runTime', 'passRuns', 'lastPass', 'firstBuild', 'sameClaim', 'scheduleState', 'nightlyUpdatesOff',
         'passSummary', 'morningBrief', 'pagesLine', 'translationNotice'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js('const REM = ' + json.dumps(data) + '; UI.zh = ' + ui + ';\n' + functions + r'''
@@ -2375,7 +2392,7 @@ def test_first_build_uses_fixture_pass_window_and_first_run_copy(tmp_path, monke
       const enough = translationNotice();
       REM.logs.push({...REM.logs[0], started_at: '2026-10-01T01:00:00Z'});
       const returning = firstBuild();
-      REM.logs = [];
+      REM.logs = []; REM.night_runs = [];  // a notebook with no runs has neither (#3391)
       console.log(JSON.stringify({first, header, brief, scheduled, zhHeader, notice, enough,
         returning, noPass: firstBuild()}));
     ''')
@@ -2411,7 +2428,7 @@ def test_a_busy_day_does_not_make_an_old_notebook_look_new(tmp_path, monkeypatch
     assert len(data['logs']) <= 21
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['runTime', 'lastPass', 'firstBuild', 'sameClaim'])
+                          for name in ['runTime', 'passRuns', 'lastPass', 'firstBuild', 'sameClaim'])
     result = _run_reader_js('const REM = ' + json.dumps(data) + ';\n' + functions + r'''
       const HOUR = 3600e3, FAILED = /^(failed|abandoned)/, STAMP = /^Investigation:[^\n]*$/m;
       const byPath = path => REM.records.find(r => r.path === path), listedRecords = () => REM.records;
@@ -2715,7 +2732,7 @@ def test_conversation_reopens_at_the_cited_message_instead_of_old_scroll_positio
       const dialog = {scrollTop: 999, append() {}, appendChild() {}, addEventListener() {}, showModal() {}, querySelector: () => cited};
       const document = {getElementById: () => dialog};
       const el = (tag, attrs, children) => ({tag, ...attrs, children, focus() {}});
-      const byPath = () => null, sourceSender = () => 'You';
+      const byPath = () => null, sourceSender = () => 'You', pageName = page => page?.title;
       const conversationFor = () => ({subject: 'Example', cited_ids: ['example:3'], messages: [{id: 'example:3', sender: 'You', excerpt: 'Cited example.'}]});
       openConversation({}, 'example', {focus() {}});
       console.log(JSON.stringify({scrollTop: dialog.scrollTop, scrolls}));
@@ -3098,7 +3115,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -3114,6 +3131,8 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
       visit(card);
       console.log(JSON.stringify({card, chips: nodes.filter(node => (node.class || '').split(' ').includes('owner-slot')),
         buttons: nodes.filter(node => node.tag === 'button').map(node => node.text),
+        labels: nodes.filter(node => node.tag === 'button').map(node => node['aria-label']),
+        actions: nodes.find(node => node.class === 'mail-actions'),
         commands: nodes.filter(node => node.class === 'cmd')}));
     ''')
     assert len(result['chips']) == 2
@@ -3121,31 +3140,48 @@ def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(liv
     assert [chip['aria-label'] for chip in result['chips']] == ['演示意见', '时间']
     assert all(chip['role'] == 'group' and chip['children'][-1]['tag'] == 'input' for chip in result['chips'])
     if live:
-        assert 'Send' in result['buttons'] and 'Write full screen' in result['buttons']
+        # Full screen is an icon beside Send, named by its label (#3312 B).
+        assert 'Send' in result['buttons'] and 'Write full screen' in result['labels']
     else:
         # D-60 (build 3b review): a snapshot shows Send disabled and no command; the page says why once.
-        assert result['buttons'] == ['Send'] and result['card']['children'][-2]['children'][0]['disabled'] == ''
+        assert result['buttons'] == ['Send'] and result['actions']['children'][0]['disabled'] == ''
         assert result['commands'] == []
 
 
 def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
+    # Full screen shows REM's open question as a chip in the letter, holds Send until it is answered on the right,
+    # then sends the letter with the answer in place and closes after saying so (#3303, #3312 F).
     function = re.search(r'function openWriter\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-    result = _run_reader_js(function + r'''
-      const nodes = [], sent = [], REM = {};
-      const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children,
-        addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}}; nodes.push(node); return node;};
-      const mailbox = address => ({address, name: 'Fern'}), document = {body: {appendChild() {}}};
-      openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, body => sent.push(body));
-      const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
-      const body = nodes.find(node => node.tag === 'textarea'), dialog = nodes.find(node => node.tag === 'dialog');
-      send.onclick();
-      const blocked = {sent: sent.length, closed: !!dialog.closed, notice: nodes.some(node => node.textContent === 'Fill the marked part first')};
-      body.value = 'The demo is ready.';
-      send.onclick();
-      console.log(JSON.stringify({blocked, sent}));
+    split = re.search(r'const SLOT_SPLIT = .*?;\n', TEMPLATE.read_text()).group(0)
+    what = re.search(r'function slotWhat\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    did = re.search(r'function remDid\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    channel = re.search(r'function replyChannel\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(split + what + did + channel + function + r'''
+      const nodes = [], sent = [], REM = {}, innerWidth = 1440;
+      const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children, get childNodes() { return this.children; },
+        append(child) { this.children.push(child); }, addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}, remove() {}};
+        nodes.push(node); return node;};
+      const icon = () => ({}), motionStilled = () => true, setTimeout = f => f();
+      let answer = null;
+      const slotChoices = (part, fills, i, onChange) => { answer = value => { fills[i] = value; onChange(); };
+        return {...el('span', {}, []), querySelector: () => ({focus() {}})}; };
+      const mailbox = address => ({address, name: 'Fern'});
+      const document = {body: {appendChild() {}}, createTextNode: text => ({nodeType: 3, nodeValue: text})};
+      (async () => {
+        openWriter({body: 'Feedback: 【需要你：意见 — date not agreed】', to: 'fern@example.test'}, null, async body => { sent.push(body); return ''; });
+        const send = nodes.find(node => node.tag === 'button' && node.text === 'Send');
+        const dialog = nodes.find(node => node.tag === 'dialog'), chip = nodes.find(node => node.class === 'slot-chip');
+        await send.onclick();
+        const notice = nodes.find(node => node.class === 'mail-status writer-notice');
+        const blocked = {sent: sent.length, closed: !!dialog.closed, notice: notice.textContent, chip: chip.text};
+        answer('looks good');
+        await send.onclick();
+        console.log(JSON.stringify({blocked, sent, closed: !!dialog.closed, label: send.textContent, chip: chip.textContent}));
+      })();
     ''')
-    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': True}
-    assert result['sent'] == ['The demo is ready.']
+    assert result['blocked'] == {'sent': 0, 'closed': False, 'notice': "Answer REM's question on the right first: 意见", 'chip': '意见'}
+    assert result['sent'] == ['Feedback: looks good'] and result['chip'] == 'looks good'
+    assert result['closed'] and result['label'] == 'Reply sent'
 
 
 def test_today_reader_preserves_python_ranks_for_similar_requests_in_distinct_mail_threads(tmp_path, monkeypatch):
@@ -3426,7 +3462,7 @@ def test_today_card_never_answers_an_existing_thread_with_a_new_mail():
     ''')
     assert result == {'unrecordedSubject': 'live', 'noThread': 'write'}
 
-HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff',
+HAND = ['todayRow', 'obligationKey', 'rowTask', 'keepTask', 'handed', 'hostPost', 'liveHere', 'handOff', 'oneAction',
         'handButtons', 'handOver', 'handRefusal', 'handFailedNote', 'putOffNote', 'putOffOver', 'clockNow', 'todayStrip', 'moreButton', 'handState', 'taskStep', 'terminalButtons', 'followTask', 'seeResult', 'taskPrimary', 'summaryHere', 'taskStatus', 'taskStatusNode', 'startTaskClock', 'taskElapsed', 'taskFailure', 'confirmHandoff', 'refreshHandoff', 'dotted', 'talkMenu', 'snapshotWhy', 'stripDone']
 
 
@@ -4504,7 +4540,7 @@ def test_no_view_offers_a_command_to_copy():
 @pytest.mark.parametrize('link', ['http://127.0.0.1:8000/rem?token=fictional', ''])
 def test_the_review_snapshot_says_one_sentence_and_links_the_live_reader(link):
     page = TEMPLATE.read_text()
-    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in ['reviewPage', 'liveReaderLine'])
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S)[0] for name in ['reviewPage', 'liveReaderLine', 'pageWords'])
     result = _run_reader_js(functions + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(c => c != null),
         appendChild(child) { this.children.push(child); }});
@@ -5018,6 +5054,46 @@ def test_a_failed_rebuild_is_retried_at_once_when_the_install_changes(tmp_path, 
     assert reader._spawn_refresh(root, ["full"]) is True and len(started) == 1
 
 
+def test_a_build_the_upgrade_broke_mid_render_is_not_backed_off(tmp_path, monkeypatch):
+    """2026-11-22 (#3295): rc7 and rc8 showed the old page for 10 and 18 minutes after installing. A build was
+    rendering when `uv tool install --force` removed the package (FileNotFoundError on _version.py); by the time it
+    recorded its failure the new release was fully written, so the failure carried the NEW install's stamp and every
+    retry waited out REBUILD_INTERVAL. A failure only counts against the install the build began with."""
+    import subprocess
+    reader = _cached_reader(tmp_path, monkeypatch)
+    root = tmp_path / "rem"
+    prepare(root)
+    reader.open_snapshot(root, launch=False)
+    started = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: started.append(a))
+
+    def upgraded_underneath(root, **options):
+        monkeypatch.setattr(reader, "_release", lambda: "9.9.9rc1")   # uv finished writing the new release meanwhile
+        raise FileNotFoundError("connectonion/_version.py")
+    monkeypatch.setattr(reader, "snapshot", upgraded_underneath)
+    Notebook(root).write("people/bruno.md", "# Bruno Example\n")
+    with pytest.raises(FileNotFoundError):
+        reader.main([str(root), "full"])
+    assert reader.failure(root) is None                                    # not a failure of the new install
+    assert reader._spawn_refresh(root, ["full"]) is True and len(started) == 1   # rebuilt now, not in 10 minutes
+
+
+def test_the_page_served_during_an_upgrade_names_the_release_it_is_updating_to(tmp_path, monkeypatch):
+    """#3295: the old page sat there unmarked, so "not installed" and "not rebuilt yet" looked the same."""
+    reader, root = _saved_under_an_older_release(tmp_path, monkeypatch, "upgrade")
+    served, building = reader.cached_page(root, "live.html")
+    assert building and 'data-release="1.9.4"' in served
+    mark = re.search(r'<script>(\(\(\) => \{[^<]*?rem-updating.*?)</script>', served, re.S).group(1)
+    said = {}
+    for owner, browser in (("zh", "en-AU"), ("en", "en-AU")):
+        said[owner] = _run_reader_js(
+            "const node = {dataset: {release: '1.9.4'}}; const document = {getElementById: () => node};"
+            f"const window = {{REM: {json.dumps({'owner_language': owner})}}};"
+            f"const navigator = {{language: {json.dumps(browser)}}};" + mark
+            + "\nconsole.log(JSON.stringify(node.textContent));")
+    assert said == {"zh": "正在更新到 1.9.4…", "en": "Updating to 1.9.4…"}
+
+
 def test_a_manual_build_says_when_another_build_holds_the_pages(tmp_path, monkeypatch, capsys):
     """2026-11-19 (#3112): `python -m connectonion.rem.reader ROOT live full` printed nothing and changed nothing
     while the Host's own build held the lock. It says so, and that the running build saves the pages."""
@@ -5046,3 +5122,34 @@ def test_rem_version_says_whether_a_newer_page_is_being_built(tmp_path, monkeypa
     assert reader.latest(root)["building"] is False
     monkeypatch.setattr(reader, "_rebuild_stale", lambda root, name, version, owner=False: True)
     assert reader.latest(root)["building"] is True
+
+
+def test_two_citations_on_the_same_day_are_one_chip_not_the_date_twice():
+    """A fact cited twice on one day printed "11月8日 11月8日" (rc44 hunt); different days stay two chips."""
+    page = TEMPLATE.read_text()
+    function = re.search(r'function citeChips\(.*?\n\}', page, re.S).group(0)
+    result = _run_reader_js(function + r'''
+      const dates = {'1': 'Nov 8', '2': 'Nov 8', '3': 'Oct 26'};
+      const byPath = path => ({path}), citationDate = (r, n) => dates[n];
+      const citeChip = n => '[' + dates[n] + ']', citeRun = ns => '[' + dates[ns[0]] + ' +' + (ns.length - 1) + ']';
+      console.log(JSON.stringify({same: citeChips(['1', '2'], 'projects/x.md'), other: citeChips(['1', '3'], 'projects/x.md')}));
+    ''')
+    assert result['same'] == '[Nov 8 +1]'
+    assert result['other'] == '[Nov 8][Oct 26]'
+
+
+@pytest.mark.parametrize('level, expect', [('cover', 'A sensitive item (covered)'), ('all', 'The user owes Fernhill the evidence')])
+def test_a_today_line_whose_every_clause_is_labelled_says_so_and_show_all_keeps_every_word(level, expect):
+    """rc44 hunt: at Cover sensitive a fully labelled open line left only "— due 9 Dec." on Today."""
+    page = TEMPLATE.read_text()
+    names = ['morningWords']  # the privacy helpers come with _run_reader_js
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in names)
+    line = ('The user owes Fernhill the evidence, the answers and the calculation — “We will reply.” (2026-11-13) [sensitive] [3]; '
+            '“Records follow.” (2026-11-13) [sensitive] [3] — due 2026-12-09 [sensitive] [4][5].')
+    result = _run_reader_js(functions + r'''
+      privacyLevel = ''' + json.dumps(level) + r''';
+      const threadWords = text => text, withoutDateClutter = text => text, plainLine = text => text, capFirst = text => text;
+      console.log(JSON.stringify(morningWords(''' + json.dumps(line) + r''', {path: 'orgs/fernhill.md'}, {due: '2026-12-09'})));
+    ''')
+    assert expect in result['words']
+    assert '[sensitive]' not in result['words']

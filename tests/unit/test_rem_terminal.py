@@ -182,12 +182,12 @@ def test_status_leads_with_what_waits_on_you_and_keeps_budget_to_two_lines(tmp_p
     monkeypatch.setattr("connectonion.rem.census.open_threads", lambda root, found=None: {"open": 159, "mine": 31})
     value = {"investigation_quota": {"spent_points": 0.1, "budget_points": 35},
              "codex_week": "0% used on pro; resets Thu 22 Oct 17:24"}
-    plain = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "")).plain.splitlines()
+    plain = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "")).plain.splitlines()
     assert plain[2] == "Waiting on you   31 of 159 open threads"
     budget = plain.index(next(line for line in plain if line.startswith("Budget")))
     assert plain[budget + 1].strip() == "Codex week 0% used on pro · resets Thu 22 Oct 17:24"
     assert plain[budget + 2] == ""
-    verbose = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "", verbose=True)).plain
+    verbose = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "", verbose=True)).plain
     assert "1% of your Codex week" in verbose
 
 
@@ -269,11 +269,11 @@ def test_status_hides_sensitive_day_plan_text_and_full_links_unless_asked(tmp_pa
     value = {"day_plan": {"text": "Your day (2026-11-20); 10:00–10:30 Studio lease — https://meet.example.com/abc-defg-hij; "
                                   "Proposed: The landlord may sell the building [sensitive] [4]"},
              "calendar": {"text": "Calendar: Ivy's private diary https://calendar.example.com/ical/secret-token/basic.ics"}}
-    plain = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "")).plain
+    plain = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "")).plain
     assert "landlord" not in plain and "[hidden]" in plain
     assert "abc-defg-hij" not in plain and "secret-token" not in plain
     assert shows_host("meet.example.com", plain) and shows_host("calendar.example.com", plain) and "Studio lease" in plain
-    shown = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "", show_private=True)).plain
+    shown = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "", show_private=True)).plain
     assert "landlord" in shown and "abc-defg-hij" in shown
 
 

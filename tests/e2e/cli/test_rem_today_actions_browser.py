@@ -102,7 +102,7 @@ def open_today(folder, size=(1440, 900), language="en"):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
         page.evaluate(SCENE, {"todos": TODOS}, isolated_context=False)
         if language != "en":
             page.evaluate("language => { setInterfaceLanguage(language); render(); scrollTo(0, 0); }", language, isolated_context=False)
@@ -133,7 +133,7 @@ def _focal(page):
 
 def _numbers(page):
     """Every count Today prints about what waits on you: the header's, the rail badge's and the phone tab's."""
-    return page.evaluate("""() => ({header: document.querySelector('.night-card .count')?.textContent,
+    return page.evaluate("""() => ({header: document.querySelector('#main .count-line .count')?.textContent,
       badges: [...document.querySelectorAll('#rail .n, #tabbar .n, nav .n')].filter(node => node.getClientRects().length).map(node => node.textContent)})""",
                          isolated_context=False)
 

@@ -12,7 +12,7 @@ from connectonion.cli.commands.trust_commands import handle_trust_block, handle_
 from connectonion.network.connect import RemoteAgent
 from connectonion.network.host.auth import extract_and_authenticate
 from connectonion.network.host.session import ActiveSessionRegistry, SessionStorage
-from connectonion.network.host.ws_router import dashboard, run_ws_session
+from connectonion.network.host.ws_router import control_center as dashboard, run_ws_session
 from connectonion.network.trust import TrustAgent
 
 REVOKED = "Your access to this agent was revoked by its admin."
@@ -48,7 +48,7 @@ def host(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     # Home rendering is unrelated; keep the real signature and trust gates.
     monkeypatch.setattr(
-        dashboard, "send_dashboard", AsyncMock()
+        dashboard, "send_control_center_page", AsyncMock()
     )
     keys = address.generate()
     client = RemoteAgent(HOST, keys=keys)

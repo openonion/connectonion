@@ -5,6 +5,7 @@ that same full snapshot to an authenticated sibling endpoint.
 """
 
 import hashlib
+import html
 import json
 import os
 import posixpath
@@ -27,6 +28,11 @@ TEMPLATE = Path(__file__).with_name("reader.html")
 PLACEHOLDER = "/*__REM_DATA__*/null"
 # The graph's layout and zoom, pinned and inlined so the page never fetches a script.
 D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"
+# The 3D knowledge graph (#3309): three.js + d3-force-3d, one pinned UMD build (1.4 MB). It is not inlined: the
+# Host serves it at GRAPH_3D_URL and the live reader loads it the first time the graph opens in 3D, so the page,
+# the offline snapshot and the phone never carry it. Licences: vendor/3d-force-graph-1.80.2.LICENSES.md.
+GRAPH_3D = Path(__file__).with_name("vendor") / "3d-force-graph-1.80.2.min.js"
+GRAPH_3D_URL = f"/rem/vendor/{GRAPH_3D.name}"
 BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 
@@ -209,6 +215,18 @@ def _reader_subscriptions(root: Path) -> dict:
 
 
 def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
+    """The page build's data; the whole-notebook tag scans run once in it (tags.held)."""
+    from .tags import held
+    if local:
+        # Tag pages an older writer titled "X [personal]" showed as one repeated "Personal" label; their titles are
+        # unmarked once, here on this machine, before the pages are read (#3385).
+        from .tag_nodes import repair_titles
+        repair_titles(root)
+    with held(root):
+        return _snapshot(root, local=local, today=today)
+
+
+def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook.
 
     `local`: this machine's own reader (the file snapshot, the loopback live
@@ -404,8 +422,13 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": _reader_subscriptions(root),
+            # What the last night could not read, with its fix (#3353): Today shows it in one line.
+            "coverage_gaps": coverage_gaps(root) if local else [],
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],
             "first_run_at": logs[-1].get("started_at") if logs else None,
+            # The whole last pass for Today's curve (#3391): `logs` keeps only the latest 21 runs, so on a busy
+            # night the curve began 90 minutes before dawn and a stuck stretch at 01:12 fell off its left edge.
+            "night_runs": night_runs(logs),
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
             "counts": counts(root, found),
             "owner": owner,
@@ -420,6 +443,14 @@ def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     data['ignored_senders'] = ignored_senders(root) if local else {}
     from .threads import person_marks
     data['person_marks'] = person_marks(root) if local else {}
+    # Address-book friends with nothing to read yet: People folds them out of the table (#3347).
+    from .onboard import activity, backfill, idle
+    if local:
+        # Pages made by an older map have no activity or onboarding record; fill them once, locally (#3368).
+        backfill(root)
+    data['idle_people'] = idle(root)
+    # When the owner last talked with each WeChat person: People's columns and its 90-day fold (#3346).
+    data['chat_activity'] = activity(root)
     # The owner's calendars as the night saved them; a shared page carries none of his meetings.
     from .calendar import upcoming
     data['calendar'] = upcoming(root, records, owner) if local else None
@@ -506,6 +537,27 @@ def _today_data(data: dict) -> dict:
     return shell
 
 
+# A night of 15-minute slots with several runs each stays far below this; a runaway loop cannot bloat the page.
+NIGHT_RUNS_MAX = 400
+NIGHT_CHANGED_MAX = 40
+
+
+def night_runs(logs: list[dict]) -> list[dict]:
+    """The latest pass (every run in the 18 hours before the newest one, as lastPass() in the reader counts it),
+    newest first, as start, end, outcome, phase, items and changed pages: what the sleep curve draws, no transcripts."""
+    if not logs:
+        return []
+    latest = datetime.fromisoformat(logs[0]["started_at"])
+    rows = []
+    for run in logs[:NIGHT_RUNS_MAX]:
+        if (latest - datetime.fromisoformat(run["started_at"])).total_seconds() > 18 * 3600:
+            break
+        row = {key: run[key] for key in ("started_at", "finished_at", "phase", "items") if key in run}
+        row.update(outcome=seen_outcome(run), changed=list(run.get("changed") or [])[:NIGHT_CHANGED_MAX])
+        rows.append(row)
+    return rows
+
+
 def _failure_reasons(error: str) -> list[str]:
     """Safe recovery hints for Today, without copying private runner output."""
     patterns = (
@@ -548,7 +600,9 @@ def _page(full: dict, *, live: bool) -> str:
     # Only the owner's own snapshot of the notebook a live reader serves links to it.
     link = live_link() if not live and full.get("default_root") and not full.get("shared") else ""
     data = _script_json({**shell, "live": live, "live_link": link, "deferred_details": True,
-                         "detail_url": "/rem/data.json" if live else ""})
+                         "detail_url": "/rem/data.json" if live else "",
+                         # Only a page the Host serves can fetch the 3D engine; a snapshot draws the 2D map.
+                         "graph_3d": GRAPH_3D_URL if live else ""})
     detail = '' if live else _script_json(_detail_data(full, shell))
     template = TEMPLATE.read_text(encoding="utf-8")
     if PLACEHOLDER not in template:
@@ -653,11 +707,14 @@ LOG_LINES = 200
 PROGRESS_SECONDS = 3.0
 # Put on a saved page served while a newer one is built; worded in the reader's
 # language, chosen as the page chooses it (uiLanguage in reader.html).
+# During an upgrade it names the release being built (data-release), so a page still drawn by the old
+# release says so instead of looking like the install did nothing (#3295).
 UPDATING = ('<p id="rem-updating" role="status" style="position:fixed;right:16px;bottom:12px;margin:0;'
             'font:12px/18px system-ui,sans-serif;color:#8a8a8a;z-index:9"></p>'
             '<script>(() => { const zh = /^zh(?:-|$)/i.test(window.REM?.owner_language || "")'
-            ' || /^zh/i.test(navigator.language || ""); document.getElementById("rem-updating").textContent'
-            ' = zh ? "正在更新…" : "Updating…"; })();</script>')
+            ' || /^zh/i.test(navigator.language || ""); const note = document.getElementById("rem-updating"),'
+            ' to = note.dataset?.release || ""; note.textContent = zh ? (to ? "正在更新到 " + to + "…" : "正在更新…")'
+            ' : (to ? "Updating to " + to + "…" : "Updating…"); })();</script>')
 
 
 # The saved pages a person reads; data.json is the live page's details, never altered.
@@ -798,6 +855,11 @@ def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
             (_cache_dir() / old).unlink(missing_ok=True)
 
 
+def coverage_gaps(root):
+    from .coverage import stored
+    return stored(root)
+
+
 def _release() -> str:
     from .live_host import version_on_disk
     return version_on_disk()
@@ -927,10 +989,16 @@ def _unchecked(row: dict, moment: float) -> bool:
 def main(argv) -> None:
     """The detached build (python -m connectonion.rem.reader ROOT BUILD...)."""
     root = Path(argv[0])
+    begun = _install_stamp()
     try:
         ran = refresh(root, argv[1:])
     except Exception:
-        _keep_failure(root)
+        # A build an upgrade broke under it (`uv tool install --force` removes the package mid-render) is not a
+        # failure of the new install. Recorded with the new install's stamp, it backed every retry off for
+        # REBUILD_INTERVAL and the old page stayed up 10-18 minutes after rc7 and rc8 (#3295). Only a build that
+        # failed on the install it began with backs off; otherwise the next read rebuilds at once.
+        if begun is not None and _install_stamp() == begun:
+            _keep_failure(root)
         raise  # the traceback is the log's last lines
     if not ran:
         # Run by hand while the Host's build held the lock, this printed nothing and changed nothing (#3112).
@@ -991,8 +1059,10 @@ def cached_page(root: Path, name: str, *, owner: bool = False, say=None) -> tupl
     # The banner is HTML, for the pages only: the details are JSON the page parses,
     # and anything after them broke every deferred page (1.9.6rc2). The open page
     # learns of a newer render from /rem/version.
-    if building and name in HTML_PAGES and saved(root, BUILDS[name]).get("version") != version:
-        text = _updating(text)
+    row = saved(root, BUILDS[name])
+    if building and name in HTML_PAGES and row.get("version") != version:
+        drawn, installed = row.get("release"), _release()
+        text = _updating(text, installed if drawn and drawn != installed else "")
     return text, building
 
 
@@ -1006,9 +1076,11 @@ def _saved_page(root: Path, name: str):
     return text
 
 
-def _updating(page: str) -> str:
+def _updating(page: str, release: str = "") -> str:
+    mark = UPDATING.replace('<p id="rem-updating"', f'<p id="rem-updating" data-release="{html.escape(release)}"', 1) \
+        if release else UPDATING
     head, body, tail = page.rpartition("</body>")
-    return head + UPDATING + body + tail if body else page + UPDATING
+    return head + mark + body + tail if body else page + mark
 
 
 def _first_page(root: Path, name: str, version: list, say) -> str:

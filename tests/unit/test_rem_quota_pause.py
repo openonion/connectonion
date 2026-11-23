@@ -45,7 +45,7 @@ def turn(root, monkeypatch):
 
 
 def dashboard(root):
-    from connectonion.cli.commands.rem_status import dashboard as draw
+    from connectonion.cli.commands.rem_status import card as draw
     return draw(root, service.status(root), lambda arguments: "co rem " + " ".join(arguments))
 
 

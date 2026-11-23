@@ -1358,7 +1358,7 @@ def _write_page(notebook, record, text, items, *, receipt=None, preserve_text=Fa
     from . import facts
     from .config import read_config
     from .investigate import retain_cited_github
-    from .page_review import collapse_repeated_markers, renumber_sources, settle_sources, source_dates
+    from .page_review import collapse_repeated_markers, renumber_sources, settle_sources, source_dates, trail_privacy_marks
     from .reader_model import _source_ids
     from .service import notebook_zone
     from .evidence import retain_research
@@ -1369,7 +1369,7 @@ def _write_page(notebook, record, text, items, *, receipt=None, preserve_text=Fa
     retain_research(notebook.root, text, items)
     retain_cited_github(notebook.root, items, _source_ids([{"text": text}]))
     dates = source_dates(notebook.root, text, items, notebook_zone(read_config(notebook.root, validated=False)))
-    saved = text if preserve_text else collapse_repeated_markers(renumber_sources(settle_sources(text, dates)))
+    saved = text if preserve_text else trail_privacy_marks(collapse_repeated_markers(renumber_sources(settle_sources(text, dates))))
     if record.startswith("projects/"):
         from .project_pages import settle_last_activity
         saved = settle_last_activity(notebook.root, saved, items)

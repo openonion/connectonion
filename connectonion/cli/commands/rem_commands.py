@@ -99,10 +99,10 @@ def _owner_next(root, arguments):
 DRIVEN_NEXT = "End your turn: the co rem exec that started this task takes the next one."
 
 
-def _emit(ctx, value, arguments, *, failed=False, draw=None):
+def _emit(ctx, value, arguments, *, failed=False, draw=None, code=1):
     """Print a result and its Next line: styled in a terminal, the same words anywhere else.
 
-    `draw` turns a result into markup of its own (status's dashboard); any
+    `draw` turns a result into markup of its own (status's card); any
     other result is `render`'s text with commands, counts and errors marked.
     """
     from ..style import next_line
@@ -134,7 +134,7 @@ def _emit(ctx, value, arguments, *, failed=False, draw=None):
         rem_look.say(rem_look.result(text, titled=not isinstance(value, str)), err=failed, plain=text)
         rem_look.say(next_line(command), err=failed)
     if failed:
-        raise typer.Exit(1)
+        raise typer.Exit(code)
 
 
 # The pages this process wrote, in order: what a Ctrl-C summary names (#2008).
@@ -192,6 +192,46 @@ def _decoding(trace):
     return None
 
 
+def _map_summary(report: dict, dry_run: bool) -> str:
+    """`co rem map` in words: per source and kind, each count with its own names; names on the owner's terminal.
+
+    The names follow the count they belong to: a release check once read "not worth a page 10: <15 names>" as the
+    skipped contacts when they were the created ones (#3339)."""
+    verb = "would create" if dry_run else "created"
+    named = lambda rows: ", ".join(names[:20]) + (" …" if len(names) > 20 else "") if (names := [  # noqa: E731
+        row["name"] if isinstance(row, dict) else str(row) for row in rows]) else ""
+    lines, made = [], []
+    for name, kinds in report.items():
+        for kind, out in kinds.items():
+            created = named(out["create"])
+            lines.append(f"{name} · {kind}: {verb} {len(out['create'])}" + (f": {created}" if created else ""))
+            merged = named(out["merge"])
+            rest = [f"merged {len(out['merge'])}" + (f" ({merged})" if merged else ""),
+                    f"already there {out['known']}", f"not worth a page {out['skip']}"]
+            if out.get("not_person"):
+                rest.append(f"not a person by your mark {out['not_person']}")
+            if out.get("retitled"):
+                rest.append(("would retitle" if dry_run else "retitled") + f" {len(out['retitled'])} pages named only by punctuation")
+            lines.append("  " + " · ".join(rest))
+            if out["create"] and kind == "people":
+                made.append(name)
+    from ...rem.onboard import coverage, sync_hint
+    for kinds in report.values():
+        for out in kinds.values():
+            if found := coverage(out):
+                lines.append(found)   # the address book against the chats found (#3347)
+    hint = next((h for kinds in report.values() for out in kinds.values() if (h := sync_hint(out))), "")
+    if hint:
+        lines.append(hint)  # once: few of the owner's WeChat friends have chats on this Mac (#3347)
+    if dry_run:
+        lines.append("Dry run: nothing was written.")
+    elif made:
+        # Next stays `status` while the schedule writes (_owner_next); the line says what happens to the new pages.
+        lines.append(f"New pages are first in the queue; the night investigates them. Now instead: "
+                     f"co rem investigate people --source {made[0]} --new")
+    return "\n".join(lines) or "No enabled source yields that kind."
+
+
 def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     """Run a command's operation and print its result; `resume` is the Next line after Ctrl-C."""
     from ...rem.files import RemError
@@ -212,7 +252,8 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
         named = re.search(r"`co rem ([^`<>]+)`", message)
         next_step = (shlex.split(named.group(1)) if named else
                      retry if retry and getattr(error, "_rem_retry_page", False) else recovery)
-        _emit(ctx, message, next_step, failed=True)
+        # A usage refusal (a kind the source doesn't yield) exits 2, like any wrong usage; other failures 1.
+        _emit(ctx, message, next_step, failed=True, code=getattr(error, "exit_code", 1))
         return
     finally:
         # The scheduled turn's receipt is decided from what its own commands report.
@@ -225,10 +266,10 @@ def _handle(ctx, operation, recovery, *, retry=None, draw=None, resume=None):
     _emit(ctx, value, arguments, failed=failed, draw=draw)
 
 
-def _dashboard(ctx, verbose=False, show_private=False):
-    """How status draws its result: a small dashboard, internals only with --verbose (#1996)."""
-    from .rem_status import dashboard
-    return lambda value: dashboard(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose,
+def _card(ctx, verbose=False, show_private=False):
+    """How status draws its result: a small status card, internals only with --verbose (#1996)."""
+    from .rem_status import card
+    return lambda value: card(ctx.obj["root"], value, lambda arguments: _next(ctx, arguments), verbose=verbose,
                                    show_private=show_private)
 
 
@@ -1578,7 +1619,7 @@ def make_rem_app(factory):
                 def operation(root):
                     result = status(root)
                     return result, ["investigate"] if result["configured"] else ["init"]
-                _handle(ctx, operation, ["config"], draw=_dashboard(ctx))
+                _handle(ctx, operation, ["config"], draw=_card(ctx))
 
     V = verbatim
 
@@ -1630,7 +1671,11 @@ def make_rem_app(factory):
                          rewrite: bool = typer.Option(False, "--rewrite"),
                          accept_rewrite: bool = typer.Option(False, "--accept-rewrite"),
                          discard_rewrite: bool = typer.Option(False, "--discard-rewrite"),
-                         undo: bool = typer.Option(False, "--undo")):
+                         undo: bool = typer.Option(False, "--undo"),
+                         source: str = typer.Option("", "--source"),
+                         new_only: bool = typer.Option(False, "--new"),
+                         existing_only: bool = typer.Option(False, "--existing"),
+                         all_pages: bool = typer.Option(False, "--all")):
         from ...rem.files import Notebook, RemError, read_json, state_path
         from ...rem import queue as rem_queue
         from ...rem.queue import CATEGORIES, order
@@ -1644,6 +1689,32 @@ def make_rem_app(factory):
         def one(root, notebook, record):
             return _investigate_page(root, notebook, record, handle=handle, days=days, eval_dir=eval_dir,
                                      progress=progress, retry_refused=retry_refused)
+
+        def by_source(root):
+            # The pages one source reaches by handle, new ones first (#3331); an investigated page is appended to.
+            from ...rem import onboard
+            from ...rem.files import MAP_DAYS
+            subs = subscriptions(root)
+            if source not in subs:
+                raise RemError(f"No source named {source}; see `co rem sources`")
+            onboard.check_kinds(source, subs[source], ("people",))
+            pages = onboard.touched(root, onboard.rows(root, source, subs[source], MAP_DAYS))
+            picked = pages["new"] if new_only else pages["existing"] if existing_only else pages["new"] + pages["existing"]
+            chosen = picked if pages_limit == 0 else picked[:pages_limit]
+            again = ["investigate", "people", "--source", source]
+            if list_only:
+                return {"source": source, "new": pages["new"], "existing": pages["existing"]}, again
+            notebook, done = Notebook(root), []
+            for record in chosen:
+                try:
+                    one(root, notebook, record)
+                    done.append({"page": record, "outcome": "accepted"})
+                except RunFailed as error:
+                    done.append({"page": record, "outcome": "refused", "why": str(error)})
+                except RemError as error:
+                    done.append({"page": record, "outcome": "failed", "why": str(error)})
+            return ({"source": source, "investigated": done, "left": len(picked) - len(chosen)}, again,
+                    any(row["outcome"] != "accepted" for row in done))
 
         def overview(root):
             from ...rem import census
@@ -1801,6 +1872,12 @@ def make_rem_app(factory):
             if recent_days is not None and target != "people":
                 raise RemError("--recent-days goes with people: co rem investigate people --recent-days 14")
             from ...rem import named_pages, tag_nodes
+            if (new_only or existing_only or all_pages) and not source:
+                raise RemError("--new, --existing and --all go with --source: co rem investigate people --source wechat --new")
+            if source:
+                if target not in ("", "people") or name:
+                    raise RemError("--source goes with people: co rem investigate people --source NAME")
+                return by_source(root)
             if not target:
                 return overview(root)
             if name and target not in named_pages.KINDS:
@@ -2014,6 +2091,41 @@ def make_rem_app(factory):
                 bool(report["failed"])
         _handle(ctx, operation, ["status"])
 
+    @rem.command("map", cls=V("co rem map"))
+    def map_source(ctx: typer.Context, kind: str = typer.Argument("", metavar="KIND"),
+                   source: str = typer.Option("", "--source"),
+                   dry_run: bool = typer.Option(False, "--dry-run")):
+        # One source's pages, by the kinds it yields (#3331). No model; adds pages and handles only.
+        from ...rem import onboard
+        from ...rem.files import MAP_DAYS, RemError
+        from ...rem.service import subscriptions
+
+        def operation(root):
+            if kind and kind not in onboard.KIND_WORDS:
+                raise RemError(f"KIND is one of {', '.join(onboard.KIND_WORDS)}: co rem map people --source wechat")
+            if not kind and not source:
+                raise RemError("Name a source or a kind: co rem map people --source wechat, or co rem map people")
+            subs = subscriptions(root)
+            if source and source not in subs:
+                raise RemError(f"No source named {source}; see `co rem sources`")
+            names = [source] if source else [n for n, sub in subs.items()
+                                             if sub.get("enabled") and sub.get("consented") and kind in onboard.yields(sub)]
+            report = {}
+            for name in names:
+                sub = subs[name]
+                if not (sub.get("enabled") and sub.get("consented")):
+                    raise RemError(f"{name} is not enabled and approved; run `co rem sources add {name}`")
+                kinds = onboard.check_kinds(name, sub, (kind,) if kind else ())
+                # A real map leaves the same state the night does: activity, the queue, the mapped record (#3368).
+                report[name] = (onboard.plan(root, onboard.rows(root, name, sub, MAP_DAYS), kinds, write=False) if dry_run
+                                else onboard.onboard(root, name, sub, MAP_DAYS, kinds))
+            follow = ["investigate", "people", "--source", source or (names[0] if names else ""), "--new"]
+            if ctx.obj["json"]:
+                return {"dry_run": dry_run, "sources": report}, follow
+            return _map_summary(report, dry_run), follow
+
+        _handle(ctx, operation, ["sources"])
+
     @rem.command("list", cls=V("co rem list"))
     def list_records(ctx: typer.Context, category: str = typer.Argument(""),
                      aliases: bool = typer.Option(False, "--aliases"),
@@ -2125,6 +2237,27 @@ def make_rem_app(factory):
 
         _handle(ctx, operation, ["list"])
 
+    @rem.command("person", cls=V("co rem person"))
+    def person_mark(ctx: typer.Context, handle: str = typer.Argument(..., metavar="HANDLE"),
+                    not_person: bool = typer.Option(False, "--not-person"),
+                    person: bool = typer.Option(False, "--person"),
+                    reset: bool = typer.Option(False, "--reset")):
+        # The reader's 不是人 / 是人 from the command line (#3355): an agent can classify a contact too.
+        from ...rem.files import RemError, person_handle
+        from ...rem.threads import mark_person
+
+        def operation(root):
+            if sum((not_person, person, reset)) != 1:
+                raise RemError("Choose one: --not-person, --person or --reset")
+            value = handle.strip()
+            if not person_handle(value):
+                raise RemError("HANDLE is one mail address or chat handle (a WeChat or WhatsApp id), never a pattern")
+            mark = False if not_person else True if person else None
+            marks = mark_person(root, value, person=mark)
+            return {"handle": value.casefold(), "person": mark, "mark": marks.get(value.casefold(), "rules")}, ["list", "people"]
+
+        _handle(ctx, operation, ["list", "people"])
+
     # -------------------------------------------------------- Keep it current
 
     @rem.command("history", cls=V("co rem history"))
@@ -2182,12 +2315,12 @@ def make_rem_app(factory):
         def operation(root):
             value = status(root, include_quota=True)
             # Keep the CLI's JSON contract; translation coverage is drawn in
-            # the dashboard and consumed separately by the notebook reader.
+            # the status card and consumed separately by the notebook reader.
             if ctx.obj["json"]:
                 value.pop("translation_coverage", None)
             return value, status_next(value)
         _handle(ctx, operation, ["config"],
-                draw=_dashboard(ctx, verbose, show_private))
+                draw=_card(ctx, verbose, show_private))
 
     def _sync(ctx, source, with_person, dry_run, scheduled, all_pending, days, *, collect_only=False):
         from ...rem.files import RemError
@@ -2481,9 +2614,24 @@ def make_rem_app(factory):
 
     @sources_app.callback(invoke_without_command=True)
     def inspect_sources(ctx: typer.Context):
+        from ...rem.coverage import source_coverage
+        from ...rem.onboard import summary, yields
         from ...rem.service import subscriptions
         if ctx.invoked_subcommand is None:
-            _handle(ctx, lambda root: (subscriptions(root), ["sync", "--dry-run"]), ["config"])
+            # Each source also says which kinds of page it yields (#3331), and how much of it REM can read (#3353):
+            # a gap (e.g. WeChat databases with no key) shows here with its fix instead of being skipped silently.
+            def shown(root):
+                rows = {}
+                for name, sub in subscriptions(root).items():
+                    coverage = source_coverage(name, sub)
+                    rows[name] = {**sub, "yields": ", ".join(yields(sub)) or "nothing to map yet",
+                                  **({"mapped": summary(root, name)} if yields(sub) else {}),
+                                  **({"coverage": coverage["line"], "found": coverage["found"], "read": coverage["read"],
+                                      "missing_keys": coverage["missing_keys"],
+                                      "skipped": [f"{s['item']}: {s['reason']}" for s in coverage["skipped"]]}
+                                     if coverage else {})}
+                return rows, ["sync", "--dry-run"]
+            _handle(ctx, shown, ["config"])
 
     def _add_source(ctx, name, chat, project, about, since, only, force):
         from ...rem.service import set_window, toggle_source
@@ -2503,6 +2651,11 @@ def make_rem_app(factory):
                 # A new chat is not read until `start` has shown it and the user agreed.
                 result["chats"] = chat
                 return result, ["start"]
+            # Adding a source onboards it (#3331): an approved source is mapped now, its pages queued first.
+            from ...rem.onboard import run_due, summary
+            from ...rem.service import subscriptions
+            if run_due(root, subscriptions(root), night=False, only=(name,)) is not None:
+                result["mapped"] = summary(root, name)
             return result, ["sync", "--dry-run"]
         _handle(ctx, operation, ["sources"])
 
@@ -2957,8 +3110,8 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init collect investigate deepen enrich muse abstract decisions translate tag catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
-             "advanced scan backfill map-skills stub merge reflect reflections propose review capture "
+    order = ("init map collect investigate deepen enrich muse abstract decisions translate tag catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
+             "advanced scan backfill map-skills stub merge person reflect reflections propose review capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))
     return rem

@@ -1,8 +1,9 @@
 # Discord CLI (`co discord`)
 
-> **Experimental.** `co discord` was tested against fakes, not yet a live bot. Edit, delete and react are not implemented and say so.
+> **Experimental.** `co discord` was tested against fakes, not yet a live bot or a live user account. Edit, delete and react are not implemented and say so.
 
-Turn a Discord bot you own into a directory of files. Every message the bot
+Turn a Discord bot you own, or (experimental, against Discord's terms) your
+own account, into a directory of files. Every message the bot
 can see becomes one line in a log and one file in a queue; anything that can
 read a file can answer it. The same verbs as [`co feishu`](feishu.md), against
 a different platform.
@@ -42,6 +43,56 @@ open, and no OpenOnion credential is involved.
 The token is read only by the local process. It is never sent to OpenOnion,
 never written into the inbox, and never included in an error. `co status` and
 `co keys` show whether it was found and hide its value.
+
+## As your own account (experimental)
+
+> **Warning.** This automates a normal user account (a "self-bot"). Discord's
+> terms forbid it ([support article 115002192352](https://support.discord.com/hc/articles/115002192352)),
+> and Discord can limit or terminate the account for it. **Link a throwaway
+> account first** and run it for a week or two before you link the one you
+> care about. This mode has not yet been run against a real Discord account.
+
+```bash
+co discord link --yes                 # shows a QR; scan it with the Discord phone app
+co discord link --token --yes         # or paste a token (hidden input, or piped on stdin)
+co discord check                      # says "acting as your own Discord account @you"
+co discord listen                     # DMs and group DMs → ~/.co/inbox/discord/
+co discord reply 123456789012345678 "yes, after lunch"
+```
+
+`link` prints the warning above and needs `--yes`, or a `y` at the prompt. The
+QR is Discord's own "Log in with QR code": the phone shows which account it is
+about to log in, you confirm there, and co receives a token for a new session
+that only co uses. If Discord asks for a captcha, co says so and links nothing;
+use `--token` instead. You can also put `DISCORD_USER_TOKEN=...` in
+`~/.co/keys.env`. Use a token that no other client uses: one session shared by
+two clients is what gets accounts flagged.
+
+The token is kept in `~/.co/inbox/discord/user-session.json`, readable only by
+you (mode 0600). It is full access to the account. Delete the file to unlink.
+While it exists, every `co discord` verb acts as that account instead of the
+bot, and `check` and `listen` say which one they act as.
+
+What it does and does not do:
+
+- **Receives** direct messages and group DMs. Messages in servers are ignored
+  unless the channel id is in `DISCORD_USER_CHANNELS=<id>,<id>` in
+  `~/.co/keys.env`. The account's own messages are never queued.
+- **Replies and sends** only in DMs and group DMs the account already has (the
+  listener learns them) and allowlisted channels. Before each message it shows
+  "typing…" and waits a moment that grows with the length.
+- **Caps** sends at 3 a minute per channel and 10 a minute in all. A send over
+  the cap is refused, not queued.
+- **Refuses** to open a new DM, send a friend request, join a server or post in
+  any other channel. These are the actions that get accounts terminated.
+- **Stops for good** when Discord objects: a 401, an "account disabled" or
+  "verify your account" answer, a captcha, or Gateway close 4004. co stops the
+  listener, writes the reason to `user-stopped.json` and does not log in again
+  by itself. Fix the account in the official app, then run `co discord link
+  --yes` again.
+- Identifies to the Gateway as the web client (Chrome, invisible). The client
+  build it presents is one constant in `connectonion/inbox/discord_user.py`
+  and goes out of date as Discord ships new builds.
 
 ## What a message looks like
 

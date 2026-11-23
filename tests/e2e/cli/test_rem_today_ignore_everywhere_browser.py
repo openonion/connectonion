@@ -36,6 +36,24 @@ def _at(page, size, live=True):
     page.mouse.move(0, 0)
 
 
+def _raise(page, path):
+    """Deal a card onto the desk: by its face on a wide screen, by the card's own Next card on a phone, which
+    has no faces since sprint T3 (art director, #3371: the card's ‹ 1/4 › already counts)."""
+    face = page.locator(f'.deal[data-path="{path}"]')
+    if face.count() and face.first.is_visible():
+        face.first.click()
+        return
+    for _ in range(page.locator(".today-brief .qcard").count()):
+        if page.locator(".today-brief .qcard.focal").get_attribute("data-path") == path:
+            return
+        page.locator(".today-brief .qcard.focal").get_by_role("button", name="Next card").first.click()
+    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == path
+
+
+def _paths(page):
+    return [card.get_attribute("data-path") for card in page.locator(".today-brief .qcard").all()]
+
+
 def _says_the_closes(row):
     """Mark done · Not now · Ignore are words in the row as drawn now, in D-100's order."""
     text = row.inner_text()
@@ -50,10 +68,10 @@ def test_every_dealt_cards_rows_say_ignore(today, size):
     page, _, _ = today
     page.evaluate(OVERDUE, isolated_context=False)
     _at(page, size)
-    faces = page.locator(".deal .dd").count()
-    assert faces >= 3
-    for i in range(faces):
-        page.locator(".deal").nth(i).click()
+    paths = _paths(page)
+    assert len(paths) >= 3
+    for path in paths:
+        _raise(page, path)
         page.mouse.move(0, 0)
         rows = page.locator(".today-brief .qcard.focal .qitem")
         for j in range(rows.count()):
@@ -67,6 +85,9 @@ def test_a_row_handed_to_codex_still_says_ignore(today, size):
     page.evaluate("""() => { const row = REM.today_queue.find(row => row.section === 'today');
       row.task = {id: 'a'.repeat(32), agent: 'codex', result: 'completed', record: 'people/ines-halvorsen.md'}; }""", isolated_context=False)
     _at(page, size)
+    # Work an agent holds is dealt behind the people waiting (sprint T3, #3312), so raise its card first.
+    _raise(page, "people/ines-halvorsen.md")
+    page.mouse.move(0, 0)
     handed = page.locator(".today-brief .qcard.focal .qitem").filter(has=page.locator(".handed"))
     assert handed.count() == 1
     _says_the_closes(handed)

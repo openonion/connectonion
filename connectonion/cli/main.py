@@ -329,8 +329,8 @@ def _host_target() -> Path:
     return profile_dir()
 
 
-def _print_host_status(target: Path) -> None:
-    """The human summary `co host` prints: is it running, what it serves, how to stop it."""
+def _print_host_status(target: Path) -> bool:
+    """The human summary `co host` prints: is it running, what it serves, how to stop it. Returns whether it runs."""
     import yaml
 
     from .co_ai.native_host import configured_model
@@ -338,14 +338,14 @@ def _print_host_status(target: Path) -> None:
     config_path = target/'.co'/'host.yaml'
     if not config_path.is_file():
         console.print("No Host is set up yet. Next: co init", markup=False)
-        return
+        return False
     config = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
     agent = 'agent.py' if (target/'agent.py').is_file() else f"built-in, model {configured_model(target/'.co')}"
     try:
         state = host_service(target).status()
     except HostServiceError as error:
         console.print(f"Host: {target}\nServes: {agent}\n{error}", markup=False)
-        return
+        return False
     if state['running']:
         line = f"Running in the background (pid {state['pid']})"
     elif state['configured']:
@@ -355,6 +355,25 @@ def _print_host_status(target: Path) -> None:
     console.print(f"Host: {target}\nServes: {agent}\nPort: {config.get('port', 8000)}\n{line}\n"
                   "Stop: co host --stop  ·  Run in this terminal: co host --serve  ·  Details: co host --status",
                   markup=False)
+    return bool(state['running'])
+
+
+def _show_host_or_fail(target: Path) -> None:
+    """Bare `co host`: print the status; exit 1 when it names a project nothing serves.
+
+    Before 1.9.7 a bare `co host` served the project, so a script or a Windows
+    logon task written then (run-host.cmd: `co host`) printed status, exited 0
+    and left the agent offline (#3297). A console window counts as a terminal,
+    so the TTY check alone cannot catch it; a non-zero exit and the replacement
+    command can.
+    """
+    from .mac_bootstrap import profile_dir
+    if _print_host_status(target) or target == profile_dir():
+        return
+    command = 'co host --agent agent.py' if (target/'agent.py').is_file() else 'co host --serve'
+    console.print(f"Not serving this project: since 1.9.7 a bare co host only shows status. To serve it: {command}",
+                  markup=False)
+    raise typer.Exit(1)
 
 
 @app.command(epilog="Example:  co host  |  co host --serve  |  co host --stop  |  co host --agent agent.py")
@@ -363,15 +382,19 @@ def host(
     serve: bool = typer.Option(False, '--serve', help="Run the Host in this terminal with the built-in agent; host.yaml's model: picks codex, claude-code or a model name"),
     agent_file: Optional[Path] = typer.Option(None, '--agent', exists=True, dir_okay=False, help="Run your own agent.py as the Host instead of the built-in agent"),
     background: bool = typer.Option(False, '--background', help='Install/start the background service (launchd on macOS, systemd on Linux); co init does this for you'),
-    status: bool = typer.Option(False, '--status', help='Read-only: the background service and process, as JSON; no device-ready claim'),
+    status: bool = typer.Option(False, '--status', help='Read-only: print service and process status as JSON without running readiness checks'),
     stop: bool = typer.Option(False, '--stop', help='Stop and disable the background service across login'),
     uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove the background service; preserve agent, identity, memory and logs'),
     native_codex: bool = typer.Option(False, '--native-codex', hidden=True, help='Pre-#3170: serve native Codex from this profile; set model: codex instead'),
 ):
     """Show the always-on Host that co init started, or manage it. With no option: its status. --serve runs it in this terminal; --agent runs your own agent.py.
 
-    One host serves everything: the agent over HTTP, WebSocket and the relay, REM for you, and the
-    channels in .co/host.yaml's listen:. The agent is the built-in one unless you pass --agent.
+    Upgrading from 1.9.6: a bare `co host` no longer serves a project. If no Host is running
+    for the project, bare `co host` exits 1 and prints the start command; use
+    `co host --serve` or `co host --agent agent.py` in scripts.
+
+    The Host exposes your agent over HTTP, WebSocket and the channels listed under listen: in
+    .co/host.yaml. It also serves REM, your private notebook of what you have worked on, to you only. The agent is the built-in one unless you pass --agent.
     """
     import os
     import subprocess
@@ -418,9 +441,7 @@ def host(
         if Path("agent.py").is_file() and not _in_terminal():
             agent_file = Path("agent.py")
         else:
-            _print_host_status(_host_target())
-            if Path("agent.py").is_file():
-                console.print("This folder has an agent.py. To serve it: co host --agent agent.py", markup=False)
+            _show_host_or_fail(_host_target())
             return
     # install.sh puts co in a uv tool environment the system python cannot import from (#2438).
     env = {**os.environ, **({"AGENT_PORT": str(port)} if port else {})}
@@ -849,11 +870,15 @@ def proxy(
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-             epilog="Example:  co call 0x3d40... co status")
+             epilog="Example:  co call 0x3d40... co status  |  co call --global 0x3d40... co status")
 def call(
-    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),
+    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] [--global | --co-dir DIR] <address> <command...>"),
 ):
     """Run one command on a remote agent and print the result (no LLM). Runs it there as bash.
+
+    Signs with the project key in .co/keys if there is one (and says so on stderr),
+    else with your key in ~/.co. Use --global to force ~/.co, or --co-dir DIR for
+    another folder. A refusal names the address it signed with and its folder.
 
     Everything after the address runs on the remote agent as a shell command,
     if the allow list in its .co/host.yaml permits it:
@@ -2505,8 +2530,26 @@ app.add_typer(_people_verbs(_inbox_group("feishu", "Feishu bot as an inbox: list
 app.add_typer(_people_verbs(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "lark"), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
-app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
-              short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
+# `link` (experimental) makes every verb act as the owner's own account instead.
+_discord_app = _inbox_group(
+    "discord", "Experimental: Discord as an inbox: listen, receive, send, reply. Sends as your bot, "
+               "or as your own account after co discord link (against Discord's terms; try a throwaway account first).")
+
+
+@_discord_app.command("link", epilog="Example:  co discord link --yes  |  co discord link --token --yes  |  "
+                                     "pbpaste | co discord link --token --yes")
+def _discord_link(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Accept the terms-of-service warning without the prompt"),
+    token: bool = typer.Option(False, "--token",
+                               help="Paste a token instead of scanning a QR: hidden input, or stdin when piped"),
+):
+    """Experimental: link your own Discord account, so listen, receive, send and reply act as you. Shows a QR for the Discord phone app. Writes the token to ~/.co/inbox/discord/user-session.json (mode 0600). Automating a user account is against Discord's terms and can get it limited or terminated: try a throwaway account first."""
+    from .commands.discord_commands import handle_link
+    handle_link(yes=yes, token=token)
+
+
+app.add_typer(_discord_app, name="discord",
+              short_help="Experimental: Discord as an inbox, as your bot or your own account.")
 # Slack over Socket Mode: the same outbound-WebSocket shape as Discord, the same
 # dependency. Experimental for 1.8.9: tested against fakes, never a live workspace.
 # Beside the inbox, four read verbs on Slack's Web API (#2051), for what was said
@@ -3145,9 +3188,158 @@ app.add_typer(linear_app, name="linear")
 # Canny feedback boards (#2050): our own commands on Canny's REST API.
 from .commands.canny_commands import canny_app
 app.add_typer(canny_app, name="canny")
+# Asana: our own commands on Asana's REST API, with ASANA_ACCESS_TOKEN.
+from .commands.asana_commands import asana_app
+app.add_typer(asana_app, name="asana")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
+
+
+# Obsidian: local Markdown notes with explicit folder selection.
+obsidian_app = _typer_app(
+    help="Browse Obsidian vaults and list, read, or search Markdown notes. Read-only.\n\n"
+         "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
+         "The list is read-only. If a vault is available, the output suggests a command to browse it. "
+         "Use --folder to choose where to look for notes.\n\n"
+         "All Obsidian commands work offline.\n\n"
+         "Exit 0 means the list loaded, even if it is empty. "
+         "Exit 1 means the list could not be read or its row numbers could not be saved. "
+         "Exit 2 means an argument is invalid. Check the error and this help.",
+    epilog='Example:  co obsidian\n\n'
+           'Example:\n\nco obsidian ls --vault Personal --folder Course',
+    invoke_without_command=True,
+)
+app.add_typer(obsidian_app, name="obsidian")
+
+
+@obsidian_app.callback(invoke_without_command=True)
+def _obsidian_default(ctx: typer.Context):
+    """List all registered vaults when no Obsidian subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        from .commands.obsidian_commands import handle_obsidian_vaults
+        handle_obsidian_vaults()
+
+
+@obsidian_app.command("vaults", epilog="Example:  co obsidian vaults\n\nExample:  co obsidian vaults --json")
+def _obsidian_vaults(
+    json_output: bool = typer.Option(
+        False, "--json", help="Print all registered vaults as JSON and send the suggested next command to stderr."
+    ),
+):
+    """List numbered vaults with their paths, availability and open status. Read-only.
+
+    The list checks which vault folders exist without opening notes. A closed
+    vault can still be read. If a vault is available, the output suggests a
+    command to list its folders.
+    Use a number from the latest list, for example co obsidian ls --vault 1.
+    The number works for 15 minutes. A unique vault name or path also works.
+
+    Exit 0 means the list loaded, even if it is empty. If it is empty, open a
+    vault in Obsidian or give ls its path.
+    Exit 1 means the vault list could not be read or its row numbers could
+    not be saved. See the error message.
+    Exit 2 means an argument is invalid. Check this help for valid options.
+    """
+    from .commands.obsidian_commands import handle_obsidian_vaults
+    handle_obsidian_vaults(json_output=json_output)
+
+
+@obsidian_app.command("ls", short_help="List a vault's folders or the Markdown notes in selected folders. Read-only.",
+                      epilog='Example:  co obsidian ls --vault 1\n\n'
+                             'Example:  co obsidian ls --vault Personal --folder 1')
+def _obsidian_ls(
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault row, unique registered name, or path; omit when only one is available"),
+    folders: List[str] = typer.Option(None, "--folder", help="Folder row or vault-relative path; repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many notes, most recently modified first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print the result as JSON; no row numbers are saved"),
+):
+    """List a vault's folders or the Markdown notes in selected folders. Read-only.
+
+    With no --folder, the command lists folders and Markdown filenames at the
+    top of the vault. When folders are listed, the output suggests a command
+    to list notes in the first folder.
+    Pass a number from that vault's latest folder list or a path such as
+    Course to --folder. For a folder named 1, use --folder ./1.
+
+    With --folder, shows the latest 20 notes by default. Use -n up to 250.
+    Numbered rows show filenames, with a parent path when a name repeats.
+    Row numbers work for 15 minutes. JSON output does not save them.
+
+    Exit 0 means the list loaded. If it is empty, check the folder selection.
+    Exit 1 means a file or vault could not be read, or the list could not be
+    saved. The error message shows what to do next.
+    Exit 2 means the arguments or selection are invalid. Check this help or
+    choose a vault by its path if several vaults have the same name.
+    """
+    from .commands.obsidian_commands import handle_obsidian_ls
+    handle_obsidian_ls(vault=vault, folders=folders or (), last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("read", epilog="Example:  co obsidian read 1\n\n"
+                                    "Example:  co obsidian read Course/Note.md --folder Course")
+def _obsidian_read(
+    ref: str = typer.Argument(..., help="Note path, exact filename title, or row number from ls or search"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path for an explicit scope"),
+    folders: List[str] = typer.Option(None, "--folder", help="Vault-relative folder; required for a note path or title; repeat to select several"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID shown by ls or search (lasts 15 minutes)"),
+    json_output: bool = typer.Option(False, "--json", help="Print the full note record as JSON"),
+    raw: bool = typer.Option(False, "--raw", help="Show original Markdown in a terminal"),
+):
+    """Read a note by row number, path or exact filename title. Read-only.
+
+    Use a note number from ls with --folder, or from search.
+    Numbers from a folder list do not select notes. Note rows last 15 minutes.
+    If the list suggests a read command with --listing, copy it to use those
+    same note numbers even after you list or search again.
+    You can read a row without giving its vault or folders again. If you
+    give --vault with a row, also give its --folder. Both must match the list.
+    For a path or title, give --folder and use --vault if several vaults are
+    available.
+
+    The terminal shows formatted Markdown. Use --raw for the original text
+    or --json for the full note record. Piped output is raw by default.
+    The suggested search command goes to stderr, so it stays out of the note text.
+
+    Exit 0 means the note was read.
+    Exit 1 means the note could not be found or read. Use its path if several
+    notes have the same title.
+    Exit 2 means the arguments or selection are invalid, or the row expired.
+    Check the vault and folders or list notes again.
+    """
+    from .commands.obsidian_commands import handle_obsidian_read
+    handle_obsidian_read(ref, vault=vault, folders=folders or (), listing=listing, json_output=json_output, raw=raw)
+
+
+@obsidian_app.command("search", epilog='Example:\n\nco obsidian search "logic lecture" --folder Course')
+def _obsidian_search(
+    query: str = typer.Argument(..., help="All terms must match; quote phrases inside the query for an exact phrase"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    last: int = typer.Option(20, "--last", "-n", min=1, max=250, help="At most this many matches, title matches first"),
+    ids: bool = typer.Option(False, "--ids", help="Use relative note paths instead of row numbers"),
+    json_output: bool = typer.Option(False, "--json", help="Print search hits as JSON; no row numbers are saved"),
+):
+    """Search selected notes across title, body, tags, properties and links. Read-only.
+
+    All query terms must match, ignoring case. The example finds notes matching
+    both logic and lecture. Quotes inside the query keep a phrase together.
+    A query can match any field. Use co obsidian read with --json to check
+    a tag, property or link in a matching note.
+
+    Shows at most 20 matches by default, with title matches first. Row numbers
+    work for 15 minutes. JSON output does not save them. Repeat --folder to
+    search several folders.
+
+    Exit 0 means the search completed. If nothing matched, try a simpler query
+    in the same folders.
+    Exit 1 means a file or vault could not be read, or the list of matches
+    could not be saved. The error message shows what to do next.
+    Exit 2 means the query, arguments or selection are invalid. Check this help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_search
+    handle_obsidian_search(query, vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.

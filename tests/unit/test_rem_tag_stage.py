@@ -254,3 +254,36 @@ def test_principles_and_knowledge_wait_to_be_tagged_and_sessions_are_tagged_by_t
     waiting = tag_stage.candidates(book.root)
     assert "principles/steady.md" in waiting and "knowledge/kiln-firing.md" in waiting
     assert not any(record.startswith("sessions/") for record in waiting)
+
+
+def test_a_page_whose_tags_cannot_be_set_alone_is_left_waiting_and_the_others_are_written(book, monkeypatch):
+    """2026-11-23: promote raised "<page>: tagging would change more than its Tags line; nothing
+    written" partway through, after writing the pages before it. The message was false, the pages
+    it had written made the task's inputs stale, and the night looped on that task. Now the page
+    that cannot be tagged alone is left as it was, reported as refused, and the rest are written."""
+    _, plan = planned(book, reply([{"id": "p1", "tags": [{"tag": "harbour-university", "evidence": "# Harbour University"}]},
+                                   {"id": "p2", "tags": MIRA}], [COURSE]))
+    real = tags.with_tags
+    monkeypatch.setattr(tags, "with_tags", lambda text, rows: real(text, rows) + "\nstray\n"
+                        if text.startswith("# Harbour") else real(text, rows))
+    assert tag_stage.promote(book.root, plan) == ["people/mira-osei.md"]
+    assert book.read("orgs/harbour-university.md") == ORG
+    assert tags.page_tags(book.read("people/mira-osei.md")) == ["9900", "student", "harbour-university"]
+    assert [row["record"] for row in plan["refused"] if "more than its Tags line" in row.get("reason", "")] == [
+        "orgs/harbour-university.md"]
+    assert "orgs/harbour-university.md" in tag_stage.candidates(book.root)
+
+
+def test_a_page_that_raises_while_tagging_is_left_waiting_too(book, monkeypatch):
+    _, plan = planned(book, reply([{"id": "p1", "tags": []}, {"id": "p2", "tags": MIRA}], [COURSE]))
+    real = tags.with_tags
+
+    def broken(text, rows):
+        if text.startswith("# Mira"):
+            raise ValueError("A page needs a title or a ## Facts section to hold its Tags line")
+        return real(text, rows)
+
+    monkeypatch.setattr(tags, "with_tags", broken)
+    tag_stage.promote(book.root, plan)
+    assert book.read("people/mira-osei.md") == PERSON
+    assert any(row["record"] == "people/mira-osei.md" for row in plan["refused"])

@@ -44,7 +44,7 @@ THEME = Theme({
     "co.heading": "bold underline",
     "co.ok": "green",
     "co.muted": "dim",
-    # A dashboard's section label (`Today`, `Mailboxes`): bold, not underlined,
+    # A status card's section label (`Today`, `Mailboxes`): bold, not underlined,
     # so the one underlined heading is the title (1.9.0a9).
     "co.label": "bold",
     # Rich's own progress colours were pink, green and yellow on one line; a

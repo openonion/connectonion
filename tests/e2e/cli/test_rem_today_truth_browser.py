@@ -45,10 +45,10 @@ def _faces(page):
 def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today):
     page, _, _ = today
     page.evaluate("() => { REM.live = true; render(); }", isolated_context=False)  # a snapshot disables Still open too
-    before = int(page.locator(".night-card .count").inner_text())
+    before = int(page.locator("#main .count-line .count").inner_text())
     page.evaluate(ANCIENT, isolated_context=False)
     # Not one more person waiting, and no red 170 days anywhere on the first screen.
-    assert int(page.locator(".night-card .count").inner_text()) == before
+    assert int(page.locator("#main .count-line .count").inner_text()) == before
     assert "170 d" not in _faces(page)
     asked = page.locator(f'#today-stale li[data-path="{TOMAS}"]')
     assert page.locator("#today-stale > summary").inner_text() == "1 has gone quiet for a long time · Look"
@@ -67,11 +67,11 @@ def test_mark_done_on_a_stale_promise_closes_it_through_the_usual_path(today):
     answers["/rem/thread"] = lambda body: (200, {"state": body["state"], "keys": body["keys"]})  # the notebook keeps it
     page.evaluate("() => { REM.live = true; }", isolated_context=False)  # a snapshot keeps no mark (#2990 review)
     page.evaluate(ANCIENT, isolated_context=False)
-    before = int(page.locator(".night-card .count").inner_text())
+    before = int(page.locator("#main .count-line .count").inner_text())
     _open_stale(page)
     page.locator(f'#today-stale li[data-path="{TOMAS}"]').get_by_role("button", name="Mark done", exact=True).click()
     assert page.locator("#today-stale").count() == 0
-    assert int(page.locator(".night-card .count").inner_text()) == before
+    assert int(page.locator("#main .count-line .count").inner_text()) == before
     assert page.evaluate("""() => threadEntries().filter(entry => entry.r.path === 'people/tomas-reyes.md' && /loan agreement/.test(entry.t.text))
       .every(isDone)""", isolated_context=False)
 
@@ -101,10 +101,11 @@ def test_the_side_line_the_sheet_and_the_overnight_section_tell_the_same_number(
         o('no_reply', 'people/ines-halvorsen.md', 6), o('could_not_prepare', 'people/quinn-alder.md', 7)];
       render();
     }""", isolated_context=False)
-    assert page.locator(".side .closed").inner_text().startswith("REM handled 6 things overnight")
+    # The line sits in the night card since sprint T3 (#3311): the night's own block says what it settled.
+    assert page.locator(".night-card .closed").inner_text().startswith("REM handled 6 things overnight")
     assert page.locator(".overnight .night-tally").inner_text() == (
         "REM handled 6 things overnight: 3 things have a reply drafted; prepared 1 task; 2 things need no reply.")
-    page.locator(".side .closed .link-btn").click()
+    page.locator(".night-card .closed .link-btn").click()
     lines = page.locator('#night-sheet .night-done li:not([data-kind="could_not_prepare"]) b').all_inner_texts()
     assert sum(int(line.split()[1] if line.startswith("Prepared") else line.split()[0]) for line in lines) == 6, lines
     page.keyboard.press("Escape")
@@ -161,7 +162,8 @@ def test_the_hint_names_the_choice_left_and_a_tap_goes_to_it(today):
     page.evaluate(DRAFT, True, isolated_context=False)
     card = page.locator(".qcard.open")
     hint, send = card.locator(".choose-hint"), card.locator(".mail-actions").get_by_role("button", name="Send", exact=True)
-    assert hint.inner_text() == "1 choice left: 邮件附件 / 共享文件夹" and send.is_disabled()
+    # Send never looks disabled (#3312 E); the hint still names what is left.
+    assert hint.inner_text() == "1 choice left: 邮件附件 / 共享文件夹" and not send.is_disabled()
     # The letter's own label names the slot when it has one.
     page.evaluate("""() => { REM.drafts[0].body = 'Hi Ines,\\n\\nFormat: 【需要你：PDF / CSV】\\n\\nAvery'; REM.approval_outcomes[0].body = REM.drafts[0].body; render(); }""",
                   isolated_context=False)
@@ -179,17 +181,19 @@ def test_last_night_is_said_in_words_and_quiet_nights_give_the_row_back(today):
     import re
     card = page.locator(".night-card")
     assert card.locator(".hyp, .hyp-wrap").count() == 0
-    read = lambda: int((re.search(r"read (\d+) mail", page.locator(".night-card .nh").inner_text()) or [0, 0])[1])  # noqa: E731
+    # Reads come from every source, so they are items, not mails (#3396: the heading called them mails).
+    read = lambda: int((re.search(r"read (\d+) item", page.locator(".night-card .nh").inner_text()) or [0, 0])[1])  # noqa: E731
     before = read()
     page.evaluate("""() => { const at = Date.parse(REM.as_of) - 4 * 3600000;
       REM.logs = [...REM.logs, {phase: 'sync', started_at: new Date(at).toISOString(), finished_at: new Date(at + 600000).toISOString(), items: 9}];
       REM.brief_logs = REM.logs; render(); }""", isolated_context=False)
     head = page.locator(".night-card .nh")
-    assert "Last night" in head.inner_text() and read() == before + 9  # a run's mails are counted in words
+    assert "Last night" in head.inner_text() and read() == before + 9  # a run's reads are counted in words
     page.evaluate("""() => { REM.logs = REM.logs.filter(run => Date.parse(REM.as_of) - Date.parse(run.started_at) > 3 * 86400000);
-      REM.brief_logs = REM.logs; REM.night_outcomes = []; render(); }""", isolated_context=False)
+      // A quiet night has no runs anywhere: since #3391 the whole night also rides night_runs, which the heading reads.
+      REM.brief_logs = REM.logs; REM.night_runs = []; REM.night_outcomes = []; render(); }""", isolated_context=False)
     assert page.locator(".night-card .nh").count() == 0
-    assert page.locator(".deal").count() == int(page.locator(".night-card .count").inner_text())
+    assert page.locator(".deal").count() == int(page.locator("#main .count-line .count").inner_text())
 
 
 @pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
