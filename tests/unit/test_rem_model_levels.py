@@ -208,3 +208,30 @@ def test_previous_defaults_upgrade_but_explicit_values_survive(tmp_path):
     assert config["efforts"]["level2"] == "low"
     assert config["efforts"]["investigate"] == "medium"
     assert stage_config(tmp_path, config, "abstract")["model"] == "gpt-6-luna"
+
+
+@pytest.mark.parametrize("effort", ["low", "medium", "high"])
+def test_explicit_global_effort_survives_reload(tmp_path, effort):
+    set_config(tmp_path, ["effort", effort])
+    assert read_config(tmp_path)["efforts"] == dict.fromkeys(EFFORTS, effort)
+
+
+@pytest.mark.parametrize("per_level", [False, True])
+def test_codex_default_migration_does_not_change_another_runner(tmp_path, per_level):
+    old = default_config()
+    old.update(runner="coai", model="gpt-6.1-sol")
+    old["efforts"].update(level2="low", level3="low", investigate="medium")
+    if per_level:
+        old["models"] = dict.fromkeys(LEVELS, "gpt-6.1-sol")
+    else:
+        old.pop("models")
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(old))
+    config = read_config(tmp_path)
+    assert set(config["models"].values()) == {"gpt-6.1-sol"}
+    assert config["efforts"] == old["efforts"]
+
+
+def test_explicit_legacy_work_model_still_sets_both_work_groups(tmp_path):
+    set_config(tmp_path, ["model", "gpt-6.1-sol"])
+    config = read_config(tmp_path)
+    assert config["models"]["level3"] == config["models"]["investigate"] == "gpt-6.1-sol"

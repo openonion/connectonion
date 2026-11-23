@@ -335,6 +335,10 @@ def _drop_superseded(root: Path, config: dict) -> None:
     defaults = default_config()
     for key, old in SUPERSEDED.items():
         section, _, name = key.rpartition(".")
+        if config.get("runner") != "codex" and (key == "model" or section in ("models", "efforts")):
+            continue  # Codex defaults are not defaults for another runner.
+        if section == "efforts" and "effort" in explicit:
+            continue  # A global effort choice applies to every level.
         saved = config.get(section) if section else config
         current = defaults[section] if section else {**defaults, "model": LEVEL_MODELS["level3"]}
         value = saved.get(name) if isinstance(saved, dict) else None
