@@ -114,13 +114,13 @@ def test_the_same_error_three_turns_running_is_counted_as_stuck_and_names_what(t
     warning = service.schedule_failure(tmp_path)
     assert warning["same_error"] == 5
     # Nothing in the ledger says it was set aside: never claimed as skipped.
-    assert warning["stuck"] == {"kind": "skill", "skipped": False, "not_installed": True}
+    assert warning["stuck"] == {"kind": "skill", "skipped": False, "not_installed": True, "handled": True}  # older receipts (#3413)
 
 
 def test_skipped_is_read_from_the_ledger_not_assumed(tmp_path, rem_clock):
     from connectonion.rem.refusals import remember_refusal
     _failed_turns(tmp_path, ["people/ivy.md has a malformed Handles line"] * 4)
-    assert service.schedule_failure(tmp_path)["stuck"] == {"kind": "person", "skipped": False, "not_installed": False}
+    assert service.schedule_failure(tmp_path)["stuck"] == {"kind": "person", "skipped": False, "not_installed": False, "handled": True}
     remember_refusal(tmp_path, "people/ivy.md", [], "preparation refused: people/ivy.md has a malformed Handles line",
                      stage="investigate", parked=True)
     assert service.schedule_failure(tmp_path)["stuck"]["skipped"] is True
