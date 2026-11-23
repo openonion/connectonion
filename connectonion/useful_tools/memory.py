@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: creates/modifies memory.md file or memory/ directory | single file uses ## headings as keys | auto-migrates to directory structure at threshold | does NOT delete old file on migration (removes it) | no network I/O
   Integration: exposes Memory class with write_memory(), read_memory(), list_memories(), search_memory() | used as agent tool by passing to Agent(tools=[memory]) | storage format: markdown with ## key headings | directory format: one .md file per key
   Performance: file I/O per operation (no caching) | parsing is O(n) file lines | search is O(n*m) files * lines | auto-scaling avoids single file bloat
-  Errors: returns error string for missing keys | invalid key names sanitized (alphanumeric, hyphen, underscore only) | no exceptions raised (returns error messages)
+  Errors: returns error string for missing keys | invalid key names sanitized (alphanumeric, hyphen, underscore only) | invalid regex patterns return an error message instead of raising
 
 **Simple by default**: Stores all memories in a single `memory.md` file.
 **Scales automatically**: Splits into directory when file exceeds 3000 lines.
@@ -131,12 +131,18 @@ class Memory:
             pattern: Regex pattern to search for
 
         Returns:
-            Formatted search results showing matching memories and lines
+            Formatted search results showing matching memories and lines,
+            or an error message when the pattern is not a valid regex
         """
-        if self.using_directory:
-            return self._search_directory(pattern)
+        try:
+            compiled = re.compile(pattern)
+        except re.error as e:
+            return f"Invalid regex pattern: {pattern}\n{e}"
 
-        return self._search_single_file(pattern)
+        if self.using_directory:
+            return self._search_directory(pattern, compiled)
+
+        return self._search_single_file(pattern, compiled)
 
 
     # Single file implementation
@@ -204,7 +210,7 @@ class Memory:
 
         return "\n".join(output)
 
-    def _search_single_file(self, pattern: str) -> str:
+    def _search_single_file(self, pattern: str, regex: re.Pattern) -> str:
         """Search in single memory file."""
         if not os.path.exists(self.memory_file):
             return "No memories to search"
@@ -217,7 +223,6 @@ class Memory:
         if not sections:
             return "No memories to search"
 
-        regex = re.compile(pattern)
         results = []
         total_matches = 0
 
@@ -359,7 +364,7 @@ class Memory:
 
         return "\n".join(output)
 
-    def _search_directory(self, pattern: str) -> str:
+    def _search_directory(self, pattern: str, regex: re.Pattern) -> str:
         """Search in directory structure."""
         if not os.path.exists(self.memory_dir):
             return "No memories to search"
@@ -369,7 +374,6 @@ class Memory:
         if not files:
             return "No memories to search"
 
-        regex = re.compile(pattern)
         results = []
         total_matches = 0
 
