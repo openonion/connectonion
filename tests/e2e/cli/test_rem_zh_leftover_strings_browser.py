@@ -153,9 +153,10 @@ def test_english_page_prose_reads_as_quoted_original(page):
             && /[一-鿿][：:]\s*[A-Za-z][a-z'’-]*\s+[a-z]{2,}/.test(el.textContent))
           .map(el => el.textContent.slice(0, 60))""", isolated_context=False)
         assert not bare, bare
-        quoted = page.evaluate("() => [...document.querySelectorAll('#main .orig-quote')].map(q => q.textContent)",
-                               isolated_context=False)
-        assert any(re.search(r"[A-Za-z]{3,}", q) for q in quoted), "the English stays readable, as the original"
+        if record == PERSON:  # the team page has no English sentence left: its role and section name are labels
+            quoted = page.evaluate("() => [...document.querySelectorAll('#main .orig-quote')].map(q => q.textContent)",
+                                   isolated_context=False)
+            assert any(re.search(r"[A-Za-z]{3,}", q) for q in quoted), "the English stays readable, as the original"
 
 
 def test_a_privacy_mark_at_the_start_of_a_line_is_curtained_like_one_at_the_end(page):
@@ -164,3 +165,44 @@ def test_a_privacy_mark_at_the_start_of_a_line_is_curtained_like_one_at_the_end(
     assert "[sensitive]" not in text and "［sensitive］" not in text, "the raw mark never shows"
     assert "private detail about health" not in text, "a leading mark curtains its line at the default level"
     assert "another private detail" not in text, "a trailing mark still curtains its line"
+
+
+def test_a_mostly_chinese_line_never_carries_the_original_mark_and_a_leaked_section_name_is_translated(page):
+    """Art director on #3416: 「原文 Who they are. 你带的课程小组。…」 marked a line of the reader's own Chinese, and
+    "Who they are." was a section name that leaked into the summary, not the page's prose."""
+    _open(page, TEAM)
+    opening = page.evaluate("() => { const p = document.querySelector('#main .ov-opening'); return p ? "
+                            "{text: p.textContent, quoted: p.querySelectorAll('.orig-quote').length} : null; }",
+                            isolated_context=False)
+    assert opening and opening["quoted"] == 0, opening
+    assert "Who they are" not in opening["text"] and "他们是谁" in opening["text"], opening["text"]
+
+
+def test_a_role_is_a_label_said_in_chinese_and_only_a_sentence_is_quoted_as_original(page):
+    """Art director on #3416: a role ("team member") is a label from the reviewed table (团队成员), never 原文; a
+    sentence ("Met through the course pilot.") keeps 原文."""
+    _open(page, PERSON)
+    role = page.evaluate("() => document.querySelector('#main .dek-role')?.textContent || ''", isolated_context=False)
+    assert "团队成员" in role and "team member" not in role and "原文" not in role, role
+    quoted = page.evaluate("() => [...document.querySelectorAll('#main .orig-quote')].map(q => q.textContent)",
+                           isolated_context=False)
+    # The citation tail can split one quote into two nodes; read them together.
+    assert "Met through the course pilot" in " ".join(" ".join(quoted).split()), quoted
+    assert not any("team member" in q for q in quoted), quoted
+    _open(page, TEAM)
+    tree = page.evaluate("() => [...document.querySelectorAll('#main .ov-tk')].map(n => n.textContent)", isolated_context=False)
+    assert "团队成员" in tree and not any("team member" in n or "原文" in n for n in tree), tree
+
+
+def test_section_headings_relation_lines_and_your_role_read_in_chinese_without_a_stray_original_mark(page):
+    """The rest of the art director's #3416 review: a known body heading ("Open questions") reads in Chinese and keeps
+    its English as the anchor; a relation line that now says 「上级组织：…」 carries no 原文; 「你的身份」 is a label."""
+    _open(page, TEAM)
+    heading = page.evaluate("() => { const h = [...document.querySelectorAll('#main .note h2')].find(h => h.dataset.anchor === 'Open questions');"
+                            " return h ? {text: h.textContent, id: h.id} : null; }", isolated_context=False)
+    assert heading and heading["text"].startswith("未解问题") and heading["id"].startswith("open-questions"), heading
+    cards = page.evaluate("() => [...document.querySelectorAll('#main .relation-card')].map(c => c.textContent)", isolated_context=False)
+    assert any("上级组织" in c for c in cards) and not any("原文" in c for c in cards), cards
+    row = page.evaluate("() => { const dt = [...document.querySelectorAll('#main dt')].find(d => d.textContent.trim() === '你的身份');"
+                        " return dt ? dt.nextElementSibling.textContent : null; }", isolated_context=False)
+    assert row and "团队成员" in row and "team member" not in row and "原文" not in row, row
