@@ -1,24 +1,20 @@
 """
-Purpose: Read-only, explicitly scoped Granola meeting-notes source for co rem.
+Purpose: Read-only Granola public-API client used by the co granola commands.
 LLM-Note:
-  Dependencies: imports from [os, re, time, httpx, importlib.metadata, datetime, yaml, pathlib] | imported by [cli/commands/granola_commands.py] | tested by [tests/unit/test_granola.py, tests/unit/test_granola_adapter.py]
-  Data flow: GranolaClient methods → Bearer-token httpx.Client GET requests to BASE_URL → raw Granola API v1 JSON → returned as plain dicts/lists to the CLI/import layer; write_source_yaml() creates source.yaml under source_dir
-  State/Effects: GRANOLA_API_KEY is read via setting() (process/file/encrypted store; never logged) | no writes to Granola (read-only) | write_source_yaml() creates source.yaml under source_dir
-  Errors: GranolaConfigError (missing/invalid key or profile) | GranolaAuthError (HTTP 401) | GranolaPermissionError (HTTP 403) | GranolaIncompleteRead (5xx retries exhausted, carries partial raw pages)
+  Dependencies: imports from [math, re, time, email.utils, httpx] | imported by [cli/commands/granola_commands.py, useful_tools/granola_source.py] | tested by [tests/unit/test_granola.py]
+  Data flow: GranolaClient methods -> Bearer-token httpx GET requests to BASE_URL -> Granola API v1 JSON -> plain dicts/lists for the CLI
+  State/Effects: GRANOLA_API_KEY is read via setting() (process/file/encrypted store; never logged) | no writes to Granola and no local files
+  Errors: GranolaConfigError (missing key or unexpected status) | GranolaAuthError (HTTP 401) | GranolaPermissionError (HTTP 403) | GranolaIncompleteRead (network failure or retries exhausted)
 
-Granola public-API client: verify key, list folders, list notes, get note.
-
-Usage (Phase 2+):
-    from connectonion.useful_tools.granola import GranolaClient, validate_profile
+Usage:
+    from connectonion.useful_tools.granola import GranolaClient
     client = GranolaClient()
     folders = client.list_folders()
     notes   = client.list_notes(folder_id="fld-abc", limit=50)
 """
 
-import os
 import math
 from email.utils import parsedate_to_datetime
-import re
 import time
 
 # ---------------------------------------------------------------------------
@@ -41,17 +37,13 @@ _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 #: Maximum number of retries for a single transient failure before giving up.
 _MAX_RETRIES = 3
 
-# Profile: 1–64 chars, ASCII alphanumeric + hyphen, must start and end with alphanumeric.
-# Colons are excluded to prevent breakage of the composite record ID "granola:<profile>:<note_id>".
-PROFILE_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$")
-
 # ---------------------------------------------------------------------------
 # Exceptions — all are ValueError subclasses so CLI can catch them uniformly.
 # ---------------------------------------------------------------------------
 
 
 class GranolaConfigError(ValueError):
-    """Local configuration missing or invalid (GRANOLA_API_KEY / profile)."""
+    """Local configuration missing or invalid (GRANOLA_API_KEY) or an unexpected API status."""
 
 
 class GranolaAuthError(ValueError):
@@ -66,9 +58,9 @@ class GranolaIncompleteRead(Exception):
     """Retry budget exhausted before all requested notes could be fetched.
 
     Carries the raw note batches successfully received before the failure
-    and a safe, non-secret failure reason.  The import layer maps
-    partial_pages to records and persists them; the CLI then marks the
-    result complete:false and exits 1.
+    and a safe, non-secret failure reason.  `co granola notes` prints
+    partial_pages with complete:false and exits 1; changes and show treat
+    any partial read as an error and print no partial result.
 
     Attributes:
         reason:        human-readable safe failure description (no credentials).
@@ -79,69 +71,6 @@ class GranolaIncompleteRead(Exception):
         super().__init__(reason)
         self.reason = reason
         self.partial_pages: list[list[dict]] = partial_pages
-
-
-# ---------------------------------------------------------------------------
-# Profile validation (Phase-1 contract; used by CLI before any network call).
-# ---------------------------------------------------------------------------
-
-
-def validate_profile(profile: str) -> None:
-    """Raise GranolaConfigError if *profile* is not a valid non-secret user label.
-
-    Profile rules (frozen in Phase 1):
-    - 1–64 characters
-    - ASCII letters, digits, and hyphens only
-    - Must start and end with a letter or digit (never a hyphen)
-    - Must not contain a colon (colons break the compound record ID)
-
-    The profile is a non-secret convenience label chosen by the user
-    (e.g. ``work``, ``home-2024``).  It is not the API key or an email.
-    """
-    if not isinstance(profile, str) or not PROFILE_RE.fullmatch(profile):
-        raise GranolaConfigError(
-            f"Invalid profile {profile!r}: must be 1–64 ASCII letters/digits/hyphens, "
-            "starting and ending with a letter or digit (e.g. 'work', 'home-2024').\n"
-            "Repair: choose a profile that matches [A-Za-z0-9][A-Za-z0-9-]{0,62}[A-Za-z0-9]?$"
-        )
-
-
-def validate_source_identity(source_dir, folder_id: str, profile: str) -> None:
-    """Refuse to reuse a Granola output directory for another source identity."""
-    import yaml
-    from pathlib import Path
-
-    target = Path(source_dir) / "source.yaml"
-    if not target.exists():
-        return
-    try:
-        existing = yaml.safe_load(target.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
-        raise GranolaConfigError(
-            f"Cannot read existing source.yaml at {target}: {exc}. "
-            "Choose a separate --output directory or repair this file."
-        ) from exc
-    if isinstance(existing, dict) and existing.get("credential_binding"):
-        import hashlib
-        from ..environment import setting
-        from ..secret_store import SecretStoreError
-        try:
-            key = setting("GRANOLA_API_KEY") or ""
-        except SecretStoreError:
-            raise GranolaConfigError("Saved Granola key cannot be unlocked. Inspect co env and reconnect.") from None
-        if not key or hashlib.sha256(key.encode()).hexdigest() != existing["credential_binding"]:
-            raise GranolaConfigError("This source is bound to another Granola key. Preserve it and use a separate notebook/profile.")
-    scope = existing.get("scope") if isinstance(existing, dict) else None
-    if (
-        not isinstance(scope, dict)
-        or existing.get("driver") != "granola"
-        or existing.get("account") != profile
-        or scope.get("folder_id") != folder_id
-    ):
-        raise GranolaConfigError(
-            f"Existing source.yaml at {target} belongs to a different source, "
-            "profile, or personal folder. Choose a separate --output directory."
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +343,7 @@ class GranolaClient:
             GranolaIncompleteRead: if retries exhaust before all pages are fetched;
                                    carries partial_pages and a safe failure reason.
 
-        Returns raw note dicts as returned by the API; adapter maps them to records.
+        Returns raw note dicts as returned by the API.
         """
         if folder_id is None:
             raise GranolaConfigError(
@@ -511,104 +440,3 @@ class GranolaClient:
             clean["calendar_event"] = {key: event[key] for key in (
                 "scheduled_start", "scheduled_end", "scheduled_start_time", "scheduled_end_time") if key in event}
         return clean
-
-    def hydrate_notes(self, notes: list[dict]) -> list[dict]:
-        """Fetch raw detail objects for lightweight list-note results."""
-        details: list[dict] = []
-        for note in notes:
-            note_id = str(note.get("id") or "") if isinstance(note, dict) else ""
-            if not note_id:
-                raise GranolaConfigError("Granola list response included a note without an id.")
-            try:
-                details.append(self.get_note(note_id))
-            except (GranolaIncompleteRead, ValueError) as exc:
-                raise GranolaIncompleteRead(
-                    reason=f"Could not fetch detail for note {note_id}: {str(exc)}",
-                    partial_pages=[details],
-                ) from exc
-        return details
-
-    def write_source_yaml(
-        self,
-        source_dir,
-        folder_id: str,
-        profile: str,
-        *,
-        limit: int | None = None,
-        complete: bool = True,
-        note_id: str | None = None,
-        export_id: str | None = None,
-        include_children: bool = False,
-    ) -> None:
-        """Write source_dir/source.yaml with scope, account, retention, and validated_with.
-
-        Args:
-            source_dir:  Directory under ~/.co/rem/docs/granola (or --output).
-            folder_id:   The personal folder ID selected for import.
-            profile:     Non-secret user label used as the record account component.
-            limit:       Effective note limit used; None means MAX_SELECTED was used.
-                         For precise imports (note_id given), this is always 1.
-            complete:    False when the read was interrupted (GranolaIncompleteRead);
-                         recorded in the file so downstream tools know the data is partial.
-            note_id:     When set, records this note ID in the scope for traceability.
-                         Precise imports always set limit=1 alongside note_id.
-
-        Token and API key never appear in the written file.
-        Raises ValueError if profile is invalid (via validate_profile).
-        """
-        import importlib.metadata
-        import datetime
-        import yaml
-
-        validate_profile(profile)
-        validate_source_identity(source_dir, folder_id, profile)
-
-        from pathlib import Path as _Path
-        source_dir = _Path(source_dir)
-        source_dir.mkdir(parents=True, exist_ok=True)
-        version = importlib.metadata.version("connectonion")
-        scope: dict = {
-            "folder_id": folder_id,
-            "limit": limit if limit is not None else MAX_SELECTED,
-        }
-        if note_id is not None:
-            scope["note_id"] = note_id
-        if include_children:
-            scope["include_children"] = True
-        doc = {
-            "driver": "granola",
-            "account": profile,
-            "scope": scope,
-            "retention": "90d",
-            "media_policy": "metadata_only",
-            "complete": complete,
-            "validated_with": {
-                "connectonion_version": version,
-                "command": _import_command(folder_id, profile, limit, note_id, source_dir, export_id, include_children),
-                "path": str(source_dir / "source.yaml"),
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            },
-        }
-        target = source_dir / "source.yaml"
-        if target.is_file():
-            previous = yaml.safe_load(target.read_text(encoding="utf-8"))
-            if isinstance(previous, dict) and previous.get("credential_binding"):
-                doc["credential_binding"] = previous["credential_binding"]
-        from ..rem.files import atomic_write
-        atomic_write(target, yaml.safe_dump(doc, allow_unicode=True, sort_keys=False))
-
-
-def _import_command(folder_id, profile, limit, note_id, source_dir, export_id, include_children=False):
-    import shlex
-    from ..environment import selected_command
-    args = ["co", "granola", "import", folder_id, "--profile", profile]
-    if note_id is not None:
-        args.extend(["--note-id", note_id])
-    elif limit is not None:
-        args.extend(["--limit", str(limit)])
-    if include_children:
-        args.append("--include-children")
-    args.extend(["--output", str(source_dir)])
-    if export_id is not None:
-        args.extend(["--export", export_id])
-    return selected_command(shlex.join(args))

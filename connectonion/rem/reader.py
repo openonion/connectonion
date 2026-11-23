@@ -204,16 +204,6 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                    "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
 
 
-def _reader_subscriptions(root: Path) -> dict:
-    sources = subscriptions(root)
-    granola = sources.get("granola")
-    if granola is not None:
-        # Connection details are host state, not part of the Reader's view.
-        sources["granola"] = {key: value for key, value in granola.items()
-                              if key not in {"remote", "import_identity", "root"}}
-    return sources
-
-
 def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     """The page build's data; the whole-notebook tag scans run once in it (tags.held)."""
     from .tags import held
@@ -421,7 +411,7 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "mail_versions": threads.observed_versions(root, records) if local else {},
             "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
-            "status": current_status, "subscriptions": _reader_subscriptions(root),
+            "status": current_status, "subscriptions": subscriptions(root),
             # What the last night could not read, with its fix (#3353): Today shows it in one line.
             "coverage_gaps": coverage_gaps(root) if local else [],
             "logs": [{**log, "outcome": seen_outcome(log)} for log in shown_logs],

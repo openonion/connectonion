@@ -34,7 +34,6 @@ from connectonion.useful_tools.granola import (
     GranolaConfigError,
     GranolaIncompleteRead,
     GranolaPermissionError,
-    MAX_PAGES,
     MAX_SELECTED,
     _MAX_PAGE_SIZE,
     _MAX_RETRIES,
@@ -42,11 +41,9 @@ from connectonion.useful_tools.granola import (
 from tests.unit.granola_fixtures import (
     ERR_401,
     ERR_403,
-    ERR_404,
     ERR_429,
     ERR_500,
     FOLDER_ID,
-    FOLDERS_PAGE,
     FOLDERS_PAGE_1,
     FOLDERS_PAGE_2,
     FOLDERS_REPEAT_CURSOR,
@@ -56,7 +53,6 @@ from tests.unit.granola_fixtures import (
     NOTES_PAGE_1,
     NOTES_PAGE_2,
     NOTES_REPEAT_CURSOR,
-    NOTES_SINGLE_PAGE,
     NOTES_VERIFY_PROBE,
     _API_KEY,
 )
@@ -708,17 +704,6 @@ class TestGetNote:
     def test_get_note_result_does_not_contain_api_key(self, granola_api):
         note = GranolaClient().get_note("not_note1")
         assert _API_KEY not in str(note)
-
-
-class TestHydrateNotes:
-    def test_hydrates_list_stubs_to_detail_objects(self, granola_api):
-        stubs = [{"id": "not_note1"}, {"id": "not_note2"}]
-        notes = GranolaClient().hydrate_notes(stubs)
-        assert [note["id"] for note in notes] == ["not_note1", "not_note2"]
-
-    def test_missing_stub_id_is_configuration_error(self, granola_api):
-        with pytest.raises(GranolaConfigError, match="without an id"):
-            GranolaClient().hydrate_notes([{}])
 
 
 # ============================================================================
