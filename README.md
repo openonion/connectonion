@@ -101,6 +101,10 @@ work, keep it on your machine, and carry it into the next task.
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
 
+<p><b>Integrations in review</b><br>
+<a href="https://github.com/openonion/connectonion/pull/3223"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/granola.svg" width="80" height="80" alt="Granola" title="Granola · integration PR"></a>
+<a href="https://github.com/openonion/connectonion/pull/3054"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/notion.svg" width="80" height="80" alt="Notion" title="Notion · integration PR"></a></p>
+
 <a id="co-rem--your-agents-memory"></a>
 
 ## co rem — decentralized context flow
