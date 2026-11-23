@@ -18,13 +18,36 @@ The agent-facing guide is the `co-asana` Skill
 
 ## Setup
 
-1. In Asana, open <https://app.asana.com/0/my-apps> and create a personal
-   access token.
-2. Save it, encrypted:
+Run, in a terminal:
 
-   ```bash
-   co env set ASANA_ACCESS_TOKEN <pat> --secret
-   ```
+```bash
+co auth asana
+```
+
+It makes the token in the co browser, in a tab of its own (`co-auth-asana`;
+the shared main tab is left alone). If the co browser has no Asana cookies, it
+asks once to copy your Chrome cookies for asana.com into it (nothing else is
+copied), or waits while you sign in in its window. It opens Asana's developer
+console and the new-token form, names the token `co on <this computer> <date>`
+and marks what is left to you; you accept Asana's API terms and press
+**Create token**, and it reads the token back, checks it with
+Asana and saves it encrypted, as `co env set ASANA_ACCESS_TOKEN <pat> --secret`
+does (that works too). A token that already works is kept, and no new one is
+made. The token is never printed.
+
+However it ends, and before any paste is asked for, the console tab is
+replaced by one line, so the token is not left on screen, and the Asana cookies
+it copied or you signed in with are cleared from the co browser again. Asana
+cookies the co browser already had are left alone.
+
+If the co browser is not available, cannot say which cookies it holds, holds
+Asana cookies but no sign-in (a sign-in typed there could not be told apart and
+cleared), or does not get as far as a token (no sign-in, no Create within five
+minutes), it falls back to pasting: it opens <https://app.asana.com/0/my-apps> in your default
+browser and asks for the token, hidden. `co auth asana --paste` goes straight
+there and never uses the co browser. Without a terminal it reads one line from
+standard input (`co auth asana --paste < token.txt`) and stops after 30 seconds
+if nothing arrives.
 
    An `ASANA_ACCESS_TOKEN` exported in your shell wins over the saved one.
 3. Check it:
@@ -225,8 +248,8 @@ Every failure prints `✗ <cause>` and one `Next:` command on stderr.
 
 | exit | cause | printed (examples) | Next |
 |---|---|---|---|
-| 1 | no token | `ASANA_ACCESS_TOKEN is not set in ~/.co/keys.env. Create a personal access token at https://app.asana.com/0/my-apps, then save it` | `co env set ASANA_ACCESS_TOKEN <pat> --secret` |
-| 1 | token rejected | `Asana rejected ASANA_ACCESS_TOKEN: Not Authorized. Make a new token at https://app.asana.com/0/my-apps` | `co env set ASANA_ACCESS_TOKEN <pat> --secret` |
+| 1 | no token | `ASANA_ACCESS_TOKEN is not set in ~/.co/keys.env. Create a personal access token at https://app.asana.com/0/my-apps; co auth asana saves it (or co env set ASANA_ACCESS_TOKEN <pat> --secret)` | `co auth asana` |
+| 1 | token rejected | `Asana rejected ASANA_ACCESS_TOKEN: Not Authorized. Make a new token at https://app.asana.com/0/my-apps and save it with co auth asana` | `co auth asana` |
 | 1 | saved token will not open | `ASANA_ACCESS_TOKEN is saved encrypted but cannot be opened: no agent key at ~/.co/keys/agent.key. …` | `co init` (no agent key), otherwise save the token again |
 | 1 | unknown or hidden task | `No Asana task 1209000000009999, or this token cannot see it (… HTTP 404)` | `co asana tasks "<project>"` |
 | 1 | rate limit after retries | `Read 0 tasks, incomplete; nothing was listed: Asana asked to wait 30 s before the next request (HTTP 429). Try again later` | `co asana check` |

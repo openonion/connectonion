@@ -57,7 +57,7 @@ def cli(mock_http):
 
 
 def test_bare_asana_without_token_says_how_to_connect(cli, mock_http, monkeypatch):
-    """Bare co asana shows content like bare co gmail: here check, so no token says how to save one."""
+    """Bare co asana shows content like bare co gmail: here check, so no token means co auth asana."""
     monkeypatch.delenv('ASANA_ACCESS_TOKEN')
     result = cli(['asana'])
 

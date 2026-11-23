@@ -31,7 +31,8 @@ import httpx
 URL = "https://app.asana.com/api/1.0"
 KEY = "ASANA_ACCESS_TOKEN"
 TOKEN_PAGE = "https://app.asana.com/0/my-apps"
-SET_KEY = f"co env set {KEY} <pat> --secret"     # a personal access token, encrypted at rest
+SET_KEY = "co auth asana"                         # makes the token in the co browser (or asks for it), saves it encrypted
+MANUAL_KEY = f"co env set {KEY} <pat> --secret"   # the same, by hand
 TIMEOUT = 30
 
 # What `co asana check` shows: one /users/me call answers both "who am I" and
@@ -104,7 +105,8 @@ def _token() -> str:
     if token:
         return token
     raise AsanaError(f"{KEY} is not set in {display_path(selected_env_file())}. "
-                     f"Create a personal access token at {TOKEN_PAGE}, then save it", SET_KEY)
+                     f"Create a personal access token at {TOKEN_PAGE}; co auth asana saves it "
+                     f"(or {MANUAL_KEY})", SET_KEY)
 
 
 def has_token() -> bool:
@@ -589,7 +591,8 @@ def _body(response: httpx.Response, *, write: bool = False) -> dict:
         raise AsanaError(f"Asana answered HTTP {status} without a readable result; the change may have been saved",
                          "co asana check", status=status, outcome_unknown=True)
     if status == 401:
-        raise AsanaError(f"Asana rejected {KEY}: {message}. Make a new token at {TOKEN_PAGE}", SET_KEY, status=401)
+        raise AsanaError(f"Asana rejected {KEY}: {message}. Make a new token at {TOKEN_PAGE} and save it "
+                         "with co auth asana", SET_KEY, status=401)
     if status == 429:
         asked = _retry_after(response)
         wait = f"Wait {asked} s" if asked is not None else "Wait a minute"

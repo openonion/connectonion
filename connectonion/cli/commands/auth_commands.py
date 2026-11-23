@@ -151,6 +151,27 @@ _OAUTH_STATUS_TEXT = {
 }
 
 
+def _asana_token_state() -> str:
+    """Where ASANA_ACCESS_TOKEN would be read from, as one of a few literals; never its value.
+
+    Looked up in `co asana`'s order (process, the selected env file, then the
+    encrypted store) from names alone: nothing is decrypted and Asana is not
+    asked, so "present" means saved, not accepted; `co asana check` asks.
+    """
+    from ...environment import global_config_dir
+    from ...secret_store import stored_names
+    from .status_commands import _credential_sources
+    for source, values in _credential_sources(supported_names={"ASANA_ACCESS_TOKEN"}):
+        if values.get("ASANA_ACCESS_TOKEN"):
+            return f"present ({source}; co asana check verifies it)"
+    try:
+        stored = "asana_access_token" in stored_names(global_config_dir())
+    except OSError:
+        return "unknown (the encrypted store cannot be listed)"
+    return ("present (encrypted; co asana check verifies it)" if stored
+            else "missing (co auth asana connects it)")
+
+
 def handle_auth_status():
     """Report sign-in state without signing in, minting a key, or calling the network.
 
@@ -189,6 +210,7 @@ def handle_auth_status():
         chat_apps = {**values, **chat_apps}
     for name, label in (("FEISHU_APP_ID", "Feishu app"), ("LARK_APP_ID", "Lark app")):
         print(f"{label}: {'configured' if chat_apps.get(name) else 'missing'}")
+    print(f"Asana token: {_asana_token_state()}")
     if not (identity and has_token):
         print("Not signed in to OpenOnion.")
         print_tip("Next: co auth login")

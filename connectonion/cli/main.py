@@ -488,16 +488,21 @@ def deploy(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack")
-def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack"),
+@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack  |  co auth asana")
+def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack, asana"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions"),
          core: bool = typer.Option(False, "--core",
-                                   help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do")):
-    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create. status is Read-only."""
+                                   help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do"),
+         paste: bool = typer.Option(False, "--paste",
+                                    help="Asana: paste a token you make yourself instead; the co browser is not used at all")):
+    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create; asana makes a token in the co browser (it copies your Chrome cookies for asana.com into it for the run and removes them afterwards; an Asana sign-in it already had is left alone), falls back to pasting one, and saves it encrypted instead. status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
+    if paste and service != "asana":
+        print("--paste is only supported for Asana. Next: co auth asana --help")
         raise typer.Exit(2)
     if app_id is not None and service not in ("feishu", "lark"):
         print("--app-id is only supported for Feishu and Lark. Next: co auth feishu --help")
@@ -517,6 +522,9 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
     elif service == "slack":
         from .commands.slack_auth import handle_slack_auth
         handle_slack_auth()
+    elif service == "asana":
+        from .commands.asana_auth import handle_asana_auth
+        handle_asana_auth(paste=paste)
     elif service == "status":
         from .commands.auth_commands import handle_auth_status
         handle_auth_status()
@@ -532,7 +540,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
         # A word we do not know must not do the one thing that writes secrets.
         from .commands.command_tips import print_tip
         print(f"Unknown auth target: {service}. Use one of: login, status, logout, "
-              "google, microsoft, feishu, lark, slack.")
+              "google, microsoft, feishu, lark, slack, asana.")
         print_tip("Next: co auth status")
         raise typer.Exit(2)
 

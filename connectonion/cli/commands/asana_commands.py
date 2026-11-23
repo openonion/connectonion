@@ -59,7 +59,7 @@ asana_app = typer.Typer(
          "next command also goes to stderr. A list that stops part way prints nothing and says "
          "Read N items, incomplete.",
     epilog="Example:  co asana check  |  co asana tasks 1  |  co asana task 1  |  "
-           "Setup:  co env set ASANA_ACCESS_TOKEN <pat> --secret  →  co asana check",
+           "Setup:  co auth asana  (or co env set ASANA_ACCESS_TOKEN <pat> --secret)  →  co asana check",
 )
 
 
@@ -95,7 +95,7 @@ def check():
     """Show which Asana account co uses, and that account's workspaces with their IDs. Read-only.
 
     If Asana is not connected yet, or the saved token stopped working, it
-    exits 1 and says where to make a token and how to save it.
+    exits 1 and tells you to run co auth asana.
 
     Exit 0 on success, 1 on a failure from the token, Asana or the network,
     2 on a wrong argument. Errors go to stderr.

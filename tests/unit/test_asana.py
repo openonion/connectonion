@@ -17,7 +17,7 @@ from connectonion.useful_tools import asana
 pytestmark = pytest.mark.unit
 
 TOKEN = 'test-token-check'
-SET_TOKEN = 'co env set ASANA_ACCESS_TOKEN <pat> --secret'
+SET_TOKEN = 'co auth asana'   # the Next line; the manual co env set command stays in the message
 USER_GID = '120012345678901234567890'
 WORKSPACE_GID = '000120012345678901234567891'
 FIELDS = {'gid', 'name', 'email', 'workspaces.gid', 'workspaces.name'}
