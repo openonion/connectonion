@@ -38,6 +38,7 @@ TOKENS = ["[sensitive]", "[personal]", "［sensitive］", "［personal］"]
 
 def _notebook(root, now):
     from rem_reader_notebook import build
+
     from connectonion.rem.files import Notebook
     build(root, now)
     book = Notebook(root)
@@ -55,6 +56,7 @@ def _notebook(root, now):
 @pytest.fixture(params=[1440, 390])
 def page(request, tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
+
     from connectonion.rem import reader as rem_reader
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     html = rem_reader.render(_notebook(tmp_path / "rem", datetime(2026, 10, 1, 12, tzinfo=timezone.utc)), local=True)
