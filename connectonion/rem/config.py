@@ -44,39 +44,28 @@ def schedule_runner() -> str:
     return 'codex-app' if ready({'runner': 'codex'})[0] and app_installed() else 'codex-exec'
 
 
-# Levels were the cheapest model that does each kind of call well, measured on the
-# owner's runs 2026-10-10..11-09 (sprint-12/model-levels.md). The owner, 2026-11-17
-# (#3099), after the rc20 night used 9 points of a Codex week and the max-effort night
-# 44: no Astra, and every stage but investigation on Sol "light", read here as Sol at
-# low effort (one `config set effort ...` changes it). Tag stays on Luna: three trials
-# tagged on it with every tag checked by code, and he said even Terra is enough.
-# Investigation is a level of its own so it can be measured and set apart: Sol at
-# medium until an A/B on his notebook shows something better (#3099).
-LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-sol", "level3": "gpt-6.1-sol",
+# #3426: routine transformations and upkeep use Luna at medium; abstraction,
+# deep reasoning and independent investigation use Sol at low.
+LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6-luna", "level3": "gpt-6-luna",
                 "level4": "gpt-6.1-sol", "investigate": "gpt-6.1-sol"}
-LEVEL_EFFORTS = {"level1": "medium", "level2": "low", "level3": "low", "level4": "low", "investigate": "medium"}
+LEVEL_EFFORTS = {"level1": "medium", "level2": "medium", "level3": "medium", "level4": "low", "investigate": "low"}
 # Codex's own names (`codex debug models`, 0.162): every model takes low to max.
 # "ultra" is left out: it delegates the turn to further agents.
 EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 STAGE_LEVELS = {
-    # 1: short, structured, and every answer checked by code afterwards.
-    "tag": "level1", "tag-node": "level1",
-    # Abstract: finding decisions, knowledge and principles; code checks the result (at most 20 pages, three
-    # folders). The owner, 2026-11-19 (#3142): «关于 decisions，你应该用 Luna 这种模型去找».
-    "abstract": "level1",
-    # 2: faithful transformation or a narrow judgement over small input.
-    "sessions-summary": "level2", "topic": "level2",
-    "translate": "level2", "extract": "level2", "same-person": "level2", "plan": "level2",
-    # 3: writing pages and drafts the owner reads, from cited evidence.
+    # 1: structured transformations checked by code.
+    "tag": "level1", "tag-node": "level1", "translate": "level1",
+    "extract": "level1", "sessions-summary": "level1",
+    # 2: narrow judgements and organisation.
+    "topic": "level2", "same-person": "level2", "plan": "level2",
+    # 3: routine upkeep, pages, drafts and orchestration.
     "maintain": "level3", "init": "level3",
     "projects": "level3", "reply-draft": "level3", "native": "level3",
-    # 4: deep rounds, independent audits, and owed work done for the owner.
-    # Enrich is investigation's web half (owner, 2026-11-19: "外部调查，那就很少"): it runs on investigation's
-    # level, Sol at medium, not level 4's low effort (#3141).
-    "enrich": "investigate", "muse": "level4", "claim-audit": "level4", "insight-critic": "level4",
-    "synthesize": "level4", "task": "level4",
-    # Investigation, and render: the turn that writes an investigated page (runner._run_stage).
-    "investigate": "investigate", "render": "investigate",
+    # 4: abstraction, independent audits and deeper reasoning.
+    "abstract": "level4", "muse": "level4", "claim-audit": "level4",
+    "insight-critic": "level4", "synthesize": "level4", "task": "level4",
+    # Independent investigation, including web enrichment and page rendering.
+    "enrich": "investigate", "investigate": "investigate", "render": "investigate",
 }
 
 
@@ -277,9 +266,12 @@ def validate(config: dict) -> dict:
 # "model" is the pre-1.9.3 work model: Luna was its default once, and a saved
 # `model: gpt-6-luna` from then is that default, not a choice. A level the owner sets
 # to Luna (`config set models.investigate gpt-6-luna`) is a models.* key and stays.
-SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
+SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna", "gpt-6.1-sol"},
               # #3099: init saved these defaults into every config.yaml.
-              "models.level2": {"gpt-6.1-terra"}, "models.level4": {"gpt-6-astra"},
+              "models.level2": {"gpt-6.1-terra", "gpt-6.1-sol"},
+              "models.level3": {"gpt-6.1-sol"}, "models.level4": {"gpt-6-astra"},
+              "efforts.level2": {"low"}, "efforts.level3": {"low"},
+              "efforts.investigate": {"medium"},
               "speed": {"fast"},
               "limits.timeout_seconds": {600},
               "limits.extract_chars_per_batch": {300000},
@@ -347,7 +339,10 @@ def _drop_superseded(root: Path, config: dict) -> None:
         current = defaults[section] if section else {**defaults, "model": LEVEL_MODELS["level3"]}
         value = saved.get(name) if isinstance(saved, dict) else None
         if key not in explicit and isinstance(saved, dict) and (tuple(value) if isinstance(value, list) else value) in old:
-            saved[name] = current[name]
+            if key == "model":
+                saved.pop(name, None)  # Do not pin investigation to the new level-three default.
+            else:
+                saved[name] = current[name]
 
 
 def read_config(root: Path, *, validated: bool = True) -> dict:

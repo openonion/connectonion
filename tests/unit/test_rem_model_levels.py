@@ -14,9 +14,9 @@ from connectonion.rem.config import STAGE_LEVELS, default_config, read_config, s
 from connectonion.rem.inquiry import inquiry_routed, stage_config
 
 
-LEVELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-sol", "level3": "gpt-6.1-sol", "level4": "gpt-6.1-sol",
+LEVELS = {"level1": "gpt-6-luna", "level2": "gpt-6-luna", "level3": "gpt-6-luna", "level4": "gpt-6.1-sol",
           "investigate": "gpt-6.1-sol"}
-EFFORTS = {"level1": "medium", "level2": "low", "level3": "low", "level4": "low", "investigate": "medium"}
+EFFORTS = {"level1": "medium", "level2": "medium", "level3": "medium", "level4": "low", "investigate": "low"}
 
 
 def test_each_stage_resolves_to_its_levels_model_and_effort(tmp_path):
@@ -27,9 +27,9 @@ def test_each_stage_resolves_to_its_levels_model_and_effort(tmp_path):
         assert (picked["model"], picked["effort"]) == (LEVELS[level], EFFORTS[level]), stage
     picked = {stage: (stage_config(tmp_path, config, stage)["model"], stage_config(tmp_path, config, stage)["effort"])
               for stage in ("tag", "sessions-summary", "translate", "maintain", "claim-audit", "investigate")}
-    assert picked == {"tag": ("gpt-6-luna", "medium"), "sessions-summary": ("gpt-6.1-sol", "low"),
-                      "translate": ("gpt-6.1-sol", "low"), "maintain": ("gpt-6.1-sol", "low"),
-                      "claim-audit": ("gpt-6.1-sol", "low"), "investigate": ("gpt-6.1-sol", "medium")}
+    assert picked == {"tag": ("gpt-6-luna", "medium"), "sessions-summary": ("gpt-6-luna", "medium"),
+                      "translate": ("gpt-6-luna", "medium"), "maintain": ("gpt-6-luna", "medium"),
+                      "claim-audit": ("gpt-6.1-sol", "low"), "investigate": ("gpt-6.1-sol", "low")}
 
 
 def test_no_stage_runs_astra_by_default(tmp_path):
@@ -89,9 +89,9 @@ def test_a_stage_outside_the_table_is_a_bug_not_a_silent_default(tmp_path):
 
 def test_changing_a_level_moves_every_stage_on_it(tmp_path):
     config = set_config(tmp_path, ["models.level2", "gpt-6.1-terra"])
-    assert stage_config(tmp_path, config, "translate")["model"] == "gpt-6.1-terra"
+    assert stage_config(tmp_path, config, "topic")["model"] == "gpt-6.1-terra"
     assert stage_config(tmp_path, config, "tag")["model"] == "gpt-6-luna"
-    assert stage_config(tmp_path, config, "maintain")["model"] == "gpt-6.1-sol"
+    assert stage_config(tmp_path, config, "maintain")["model"] == "gpt-6-luna"
 
 
 def test_a_route_overrides_one_stage_only_and_does_not_start_inquiry(tmp_path):
@@ -100,11 +100,11 @@ def test_a_route_overrides_one_stage_only_and_does_not_start_inquiry(tmp_path):
     assert result.exit_code == 0, result.output
     config = read_config(tmp_path)
     assert stage_config(tmp_path, config, "translate")["model"] == "gpt-6.1-terra"
-    assert stage_config(tmp_path, config, "topic")["model"] == "gpt-6.1-sol"
+    assert stage_config(tmp_path, config, "topic")["model"] == "gpt-6-luna"
     assert not inquiry_routed(tmp_path)
     result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), "config", "set", "route.translate", "default"])
     assert result.exit_code == 0, result.output
-    assert stage_config(tmp_path, read_config(tmp_path), "translate")["model"] == "gpt-6.1-sol"
+    assert stage_config(tmp_path, read_config(tmp_path), "translate")["model"] == "gpt-6-luna"
 
 
 def test_old_model_and_summary_keys_migrate_without_rewriting_the_file(tmp_path):
@@ -114,7 +114,7 @@ def test_old_model_and_summary_keys_migrate_without_rewriting_the_file(tmp_path)
     saved = yaml.safe_dump(old)
     (tmp_path / "config.yaml").write_text(saved)
     config = read_config(tmp_path)
-    assert config["models"] == {"level1": "gpt-6.1-terra", "level2": "gpt-6.1-sol",
+    assert config["models"] == {"level1": "gpt-6.1-terra", "level2": "gpt-6-luna",
                                 "level3": "gpt-6-astra", "level4": "gpt-6.1-sol", "investigate": "gpt-6-astra"}
     assert config["model"] == "gpt-6-astra"
     assert (tmp_path / "config.yaml").read_text() == saved
@@ -170,12 +170,41 @@ def test_status_shows_the_levels_their_efforts_and_their_stages(tmp_path):
 def test_config_help_documents_the_levels():
     output = CliRunner().invoke(app, ["rem", "config", "--help"]).output
     assert "models.level1" in output and "models.level4" in output and "route.<stage>" in output
-    assert "models.investigate" in output and "efforts.investigate" in output and "Sol at low" in output
+    assert "models.investigate" in output and "efforts.investigate" in output and "gpt-6.1-sol at low" in output
 
 
-def test_abstract_finds_decisions_on_the_cheap_model(tmp_path):
-    """#3142 (owner, 2026-11-19): «关于 decisions，你应该用 Luna 这种模型去找». Abstract's output is checked by code
-    (at most 20 pages, only decisions/knowledge/principles), so it sits on level 1 with tags."""
+def test_abstract_uses_level_four_for_knowledge_and_principles(tmp_path):
     config = read_config(tmp_path)
-    assert STAGE_LEVELS["abstract"] == "level1"
+    assert STAGE_LEVELS["abstract"] == "level4"
+    picked = stage_config(tmp_path, config, "abstract")
+    assert (picked["model"], picked["effort"]) == ("gpt-6.1-sol", "low")
+
+
+def test_stage_groups_match_their_work():
+    groups = {
+        "level1": {"tag", "tag-node", "translate", "extract", "sessions-summary"},
+        "level2": {"topic", "same-person", "plan"},
+        "level3": {"maintain", "init", "projects", "reply-draft", "native"},
+        "level4": {"abstract", "muse", "claim-audit", "insight-critic", "synthesize", "task"},
+        "investigate": {"investigate", "enrich", "render"},
+    }
+    assert STAGE_LEVELS == {stage: level for level, stages in groups.items() for stage in stages}
+
+
+def test_previous_defaults_upgrade_but_explicit_values_survive(tmp_path):
+    old = default_config()
+    old["models"].update(level2="gpt-6.1-sol", level3="gpt-6.1-sol")
+    old["efforts"].update(level2="low", level3="low", investigate="medium")
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(old))
+    config = read_config(tmp_path)
+    assert config["models"] == LEVELS
+    assert config["efforts"] == EFFORTS
+    set_config(tmp_path, ["models.level2", "gpt-6.1-sol", "efforts.level2", "low",
+                          "efforts.investigate", "medium"])
+    from connectonion.rem.inquiry import set_route
+    set_route(tmp_path, "abstract", "codex", "gpt-6-luna")
+    config = read_config(tmp_path)
+    assert config["models"]["level2"] == "gpt-6.1-sol"
+    assert config["efforts"]["level2"] == "low"
+    assert config["efforts"]["investigate"] == "medium"
     assert stage_config(tmp_path, config, "abstract")["model"] == "gpt-6-luna"
