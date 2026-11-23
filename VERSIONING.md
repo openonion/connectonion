@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc24
+## Current Version: 1.9.7rc25
+Release candidate 1.9.7rc25 for 1.9.7: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation (#3426). Explicit model and effort choices survive upgrades. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc25.md).
+
+- 1.9.7rc25 (REM model groups and safe default migration #3426).
+
+### Previous candidate: 1.9.7rc24
 Release candidate 1.9.7rc24 for 1.9.7: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc24.md).
 
 - 1.9.7rc24 (honest queue position #3421/#3420; card time, countdown, job titles, org site and reasons #3423/#3422).

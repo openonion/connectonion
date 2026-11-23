@@ -1,0 +1,2 @@
+version: v1.9.7rc25
+no_visual_change: "Backend model routing, configuration migration and CLI help only; reader layout and interactions are unchanged."
