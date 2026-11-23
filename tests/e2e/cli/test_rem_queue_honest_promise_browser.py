@@ -24,6 +24,7 @@ SHOTS = Path(os.environ.get("REM_PR_SHOTS", "/tmp/rem-queue-shots"))
 def page(tmp_path, monkeypatch):
     from patchright.sync_api import sync_playwright
     from rem_reader_notebook import build
+
     from connectonion.rem import reader as rem_reader
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     build(tmp_path / "rem", datetime(2026, 10, 1, 12, tzinfo=timezone.utc))
