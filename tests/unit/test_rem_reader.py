@@ -784,7 +784,7 @@ def test_thread_priority_uses_only_explicit_deadlines_and_blocking_words():
         functions, 'const REM = {as_of: "2026-10-20"}, DAY_MS = 86400000;',
         'const calendarDay = text => text.slice(0, 10);',
         'const el = (tag, attrs) => attrs;',
-        'const upcomingWhen = () => "";',  # no calendar here: the age alone (#3406 in the browser test)
+        'const upcomingWhen = () => "", momentClass = () => "", momentData = () => ({}), ageNodes = text => [text], qageNode = (late, thread, r) => el(`span`, { class: `qage` + (late ? ` late` : ``), text: late ? t(late === 1 ? `1 day overdue` : `{n} days overdue`, { n: late }) : threadAge(thread, r) });',  # no calendar here: the age alone (#3406 in the browser test)
         'console.log(JSON.stringify(' + json.dumps(cases)
         + '.map(t => ({age: threadAge(t), tag: blockerTag(t)}))));',
     ]))
@@ -1638,7 +1638,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
                                        'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const momentClass = () => '', momentData = () => ({}), ageNodes = text => [text], qageNode = (late, thread, r) => el(`span`, { class: `qage` + (late ? ` late` : ``), text: late ? t(late === 1 ? `1 day overdue` : `{n} days overdue`, { n: late }) : threadAge(thread, r) }); const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
         body: 'I will send the review tomorrow.', gist: '明天发出审阅意见。', why: '先确认收到，再给出明确的回复时间。'};
@@ -1803,7 +1803,7 @@ def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['todayEntries', 'threadAge', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'morningWords', 'withoutDateClutter'])
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + r'''
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '', momentClass = () => '', momentData = () => ({}), ageNodes = text => [text], qageNode = (late, thread, r) => el(`span`, { class: `qage` + (late ? ` late` : ``), text: late ? t(late === 1 ? `1 day overdue` : `{n} days overdue`, { n: late }) : threadAge(thread, r) });\n" + r'''
       const threadWho = r => r.title, overdueDays = () => 0;
       const REM = {as_of: '2026-10-30'}, DAY_MS = 86400000, calendarDay = day => day;
       const r = {path: 'people/theo-park.md', title: 'Theo Park'}, also = [{path: 'orgs/northgate-university.md'}];
@@ -2150,7 +2150,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '', momentClass = () => '', momentData = () => ({}), ageNodes = text => [text], qageNode = (late, thread, r) => el(`span`, { class: `qage` + (late ? ` late` : ``), text: late ? t(late === 1 ? `1 day overdue` : `{n} days overdue`, { n: late }) : threadAge(thread, r) });\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};
@@ -2457,7 +2457,7 @@ def test_owner_thread_surfaces_use_your_page_without_counterpart_metadata():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['threadWho', 'cardHead', 'snapshotWhy', 'threadRow', 'withoutDateClutter', 'rowWords'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const momentClass = () => '', momentData = () => ({}), ageNodes = text => [text], qageNode = (late, thread, r) => el(`span`, { class: `qage` + (late ? ` late` : ``), text: late ? t(late === 1 ? `1 day overdue` : `{n} days overdue`, { n: late }) : threadAge(thread, r) }); const kindBadge = () => null, threadKind = () => null;\n" + '\nUI.zh = ' + ui + r''';
       const REM = {owner: 'people/theo-park.md', as_of: '2026-10-20'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, classList: {add() {}}});
       const href = r => '#r=' + r.path, morningWords = () => ({words: 'Review the pilot.', context: ''});

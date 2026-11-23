@@ -3802,6 +3802,8 @@
   .qhead-acts .ibtn:hover { color: var(--ink); }
   .qcard:hover .qhead-acts, .qcard:focus-within .qhead-acts { opacity: 1; }
   .qhead .qage { color: var(--grey); font: var(--w-bold) var(--s-ui)/1 var(--font); white-space: nowrap; }
+  .qhead .qage.soon { padding: 3px 6px; border-radius: var(--radius); color: var(--ink); background: var(--paper); }
+  .qhead .qage .age-passed { color: var(--grey); font-weight: var(--w-regular); }
   .qhead .qage.late { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--r-pill); color: var(--red); box-shadow: var(--e-fuse); }
   .qhead .qage.late::before { content: ""; width: 7px; height: 7px; border-radius: var(--round); background: var(--red); animation: n3-ember var(--t-ember) var(--ease-out) infinite; }
   .qitems { display: grid; gap: 2px; margin: 16px 0 18px; padding: 0; }
@@ -5406,7 +5408,7 @@ const UI = {
     "today": "今天",
     "1 day": "1 天",
     "{n} days": "{n} 天",
-    "waiting {age}": "已等 {age}",
+    "waiting {age}": "已等 {age}", "passed": "已过", "started": "已开始", "in {n} min": "{n} 分钟后",
     " ago": "前",
     "gone quiet": "久未推进",
     " and {n} is waiting on someone else": "，另有 {n} 件等对方处理",
@@ -9618,7 +9620,7 @@ function cardHead(group, late, skippable, tick = group.entries.length > 1, pos =
     el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
     org ? el(page ? "a" : "span", { class: "meta org-chip", title: role ? plainLine(role) : "", ...(page ? { href: href(page) } : {}) }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.trim()[0]?.toUpperCase() || "" }), org]) : null,
     el("span", { class: "qhead-acts" }, [done, skip]),
-    el("span", { class: "qage" + (late ? " late" : ""), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t, r) })]);
+    qageNode(late, entries[0].t, r)]);
 }
 // On a 中文 reader the card speaks his language where REM already wrote it: the draft's gist.
 function ownerLine(draft) {
@@ -14822,9 +14824,40 @@ const ROLE_WORDS = { "team member": "团队成员", member: "成员", founder: "
   colleague: "同事", classmate: "同学", "team lead": "组长", "team leader": "组长", lead: "负责人", owner: "负责人",
   "product owner": "产品负责人", researcher: "研究员", volunteer: "志愿者", organiser: "组织者", organizer: "组织者",
   "account manager": "客户经理", sales: "销售", marketing: "市场", operations: "运营", accountant: "会计", lawyer: "律师" };
+Object.assign(ROLE_WORDS, { coo: "COO", cfo: "CFO", cmo: "CMO", cpo: "CPO", "chief executive officer": "首席执行官",
+  "chief technology officer": "首席技术官", "chief operating officer": "首席运营官", "chief financial officer": "首席财务官",
+  "chief marketing officer": "首席营销官", "chief product officer": "首席产品官", president: "总裁", "vice president": "副总裁",
+  vp: "副总裁", "managing director": "董事总经理", "general manager": "总经理", head: "负责人", "founding engineer": "创始工程师",
+  "founding member": "创始成员", "solo founder": "独立创始人", "technical co-founder": "技术联合创始人", partnerships: "合作",
+  "business development": "业务拓展", bd: "业务拓展", "head of": "负责人", specialist: "专员", coordinator: "协调人",
+  executive: "主管", associate: "专员", analyst: "分析师", officer: "主管", administrator: "管理员", assistant: "助理" });
+// The department a title names: "Head of Partnerships" → 合作负责人, "Sales Director" → 销售总监 (art director on #3423:
+// 「Head of Partnerships」 was still marked 原文). Only departments and titles in these reviewed tables; anything else
+// leaves the title as the page wrote it.
+const DEPARTMENT_WORDS = { partnerships: "合作", partnership: "合作", sales: "销售", marketing: "市场", operations: "运营",
+  ops: "运营", engineering: "工程", product: "产品", design: "设计", growth: "增长", finance: "财务", people: "人力",
+  hr: "人力", "human resources": "人力资源", technology: "技术", tech: "技术", data: "数据", research: "研究", strategy: "战略",
+  communications: "传播", legal: "法务", it: "IT", ai: "AI", "business development": "业务拓展", bd: "业务拓展",
+  "customer success": "客户成功", support: "支持", "customer support": "客服", content: "内容", community: "社区",
+  brand: "品牌", platform: "平台", infrastructure: "基础设施", security: "安全", software: "软件" };
+const TITLE_SUFFIX = { director: "总监", manager: "经理", lead: "负责人", head: "负责人", engineer: "工程师", specialist: "专员",
+  coordinator: "协调人", executive: "主管", associate: "专员", analyst: "分析师", officer: "主管", designer: "设计师", intern: "实习生" };
+function titleWord(key) {
+  if (ROLE_WORDS[key] || KIND_WORDS[key]) return ROLE_WORDS[key] || KIND_WORDS[key];
+  // "Founder & CEO", "Co-founder and CTO", "Founder / Director": each part known, joined with 兼.
+  const parts = key.split(/\s*(?:&|\band\b|\/|,|\+)\s*/).filter(Boolean);
+  if (parts.length > 1) { const words = parts.map(titleWord); return words.every(Boolean) ? words.join("兼") : ""; }
+  let m = /^(?:head|director|vp|vice president|chief) of (.+)$/.exec(key);
+  if (m && DEPARTMENT_WORDS[m[1]]) return DEPARTMENT_WORDS[m[1]] + ({ head: "负责人", director: "总监", vp: "副总裁", "vice president": "副总裁", chief: "负责人" })[key.split(" of ")[0]];
+  m = /^(.+?) (director|manager|lead|head|engineer|specialist|coordinator|executive|associate|analyst|officer|designer|intern)$/.exec(key);
+  if (m && DEPARTMENT_WORDS[m[1]]) return DEPARTMENT_WORDS[m[1]] + TITLE_SUFFIX[m[2]];
+  m = /^(senior|junior|lead|principal|staff|associate|assistant) (.+)$/.exec(key);
+  if (m) { const rest = titleWord(m[2]); return rest ? ({ senior: "高级", junior: "初级", lead: "首席", principal: "首席", staff: "资深", associate: "助理", assistant: "助理" })[m[1]] + rest : ""; }
+  return "";
+}
 function labelWord(value) {
   const word = String(value || "").trim(), key = word.toLowerCase().replace(/\s+/g, " ");
-  return uiLanguage === "zh" ? ROLE_WORDS[key] || KIND_WORDS[key] || word : word;
+  return uiLanguage === "zh" ? titleWord(key) || word : word;
 }
 function kindWord(value) { return labelWord(value); }
 function ourRole(role) {
@@ -14942,6 +14975,7 @@ function orgWebsite(r, people) {
     const url = /^https?:\/\//i.test(raw) ? raw : /^[\w.-]+\.[a-z]{2,}(?:\/[^\s]*)?$/i.test(raw) ? "https://" + raw : "";
     return url && /^https?:\/\/[^\s/]+(?:\/[^\s]*)?$/i.test(url) ? { url, derived: false } : null;
   }
+  const shared = /(?:^|\.)(?:student|students|alumni|stu|mail|my)\.|\.(?:edu|ac)(?:\.[a-z]{2})?$/i;
   const free = /^(?:(?:gmail|googlemail|outlook|hotmail|live|msn|yahoo|ymail|icloud|me|mac|aol|proton|protonmail|pm|gmx|mail|fastmail|hey|qq|163|126|139|yeah|foxmail|sina|sohu|naver|daum|hanmail|rediffmail|zoho|yandex|tuta|tutanota)\.[a-z.]+)$/i;
   // The mailbox and home-internet providers excluded by scan.personal_mailbox are not employers.
   const home = new Set(["bigpond.com", "bigpond.net.au", "optusnet.com.au", "xtra.co.nz", "tpg.com.au", "iinet.net.au", "internode.on.net", "ozemail.com.au", "dodo.com.au", "comcast.net", "verizon.net", "att.net", "btinternet.com", "sky.com", "virginmedia.com"]);
@@ -14949,7 +14983,9 @@ function orgWebsite(r, people) {
     const domains = unlabelled(orgFact(p, "Email", true)).matchAll(/@[a-z0-9.-]+\.[a-z]{2,}/gi);
     for (const match of domains) {
       const domain = match[0].slice(1).toLowerCase();
-      if (!free.test(domain) && !home.has(domain)) return { url: "https://" + domain, derived: true };
+      // A university's mail is shared by every student and staff member: it is the university's, never a team's or
+      // a course's website (13:25 hunt: a student team's 网站 read as the university's student mail domain).
+      if (!free.test(domain) && !home.has(domain) && !shared.test(domain)) return { url: "https://" + domain, derived: true };
     }
   }
   return null;
@@ -16425,18 +16461,69 @@ function statedDays(text, today) {
 // When a thread's thing happens, if that is today or tomorrow: the person's next calendar event on those days, else a
 // due date or an ISO date in the thread's words, with its time when the words give one. Never guessed from 今天/today
 // in old words: those meant the day they were written.
-function upcomingWhen(thread, r) {
+function upcomingWhen(thread, r) { return upcomingMoment(thread, r).label; }
+// The clock a card is read against: the render's moment, moved on by the real clock while the page stays open, so
+// 「今天 14:00」 turns into 「今天 14:00 · 已过」 after two (13:25 hunt: a card still said 14:00 at 14:40).
+// Within the hour before it, a card's time gets the quiet "today" mark; once it has gone by, it greys (13:25 hunt).
+function momentClass(thread, r) { const s = upcomingMoment(thread, r).state; return s === "soon" || s === "started" ? " soon" : ""; }
+// The card's age: overdue days, or its time and age; only a passed time carries the muted 「已过」 as its own node.
+function qageNode(late, thread, r) {
+  const attrs = { class: "qage" + (late ? " late" : momentClass(thread, r)), ...momentData(late ? null : thread, r) };
+  if (late) return el("span", { ...attrs, text: t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) });
+  const nodes = ageNodes(threadAge(thread, r));
+  return nodes.length === 1 ? el("span", { ...attrs, text: nodes[0] }) : el("span", attrs, nodes);
+}
+// A card whose time has gone by keeps its weight and its place: the debt is still owed. Only 「已过」 is muted.
+function ageNodes(text) {
+  const mark = " · " + t("passed"), i = text.indexOf(mark);
+  return i < 0 ? [text] : [text.slice(0, i) + " · ", el("span", { class: "age-passed", text: t("passed") }), text.slice(i + mark.length)];
+}
+function momentBucket(at, now) { return at <= now ? "past" : at - now <= 3600e3 ? "soon" : "later"; }
+function momentData(thread, r) {
+  const at = thread ? upcomingMoment(thread, r).at : null;
+  return at == null ? {} : { "data-at": String(at), "data-bucket": momentBucket(at, readNow()) };
+}
+// The page is read for hours: once a minute, a card counting down, or one whose time crossed into the hour before it or
+// past it, is drawn again. Only in a real browser document: node harnesses that run this script must still exit.
+if (typeof window !== "undefined" && window.document) setInterval(() => {
+  const now = readNow();
+  const cards = [...document.querySelectorAll("#main .qage[data-at]")];
+  if (cards.some(node => node.dataset.bucket === "soon" || momentBucket(Number(node.dataset.at), now) !== node.dataset.bucket)) redraw();
+}, 60e3);
+function readNow() { return Math.max(Date.parse(REM.as_of || "") || 0, clockNow()); }
+// When a thread's thing happens, if that is today or tomorrow: the person's next calendar event on those days, else a
+// due date or a date in the thread's words, with its time when the words give one. Never guessed from 今天/today in old
+// words: those meant the day they were written. {label, at, state}: state is "later", "soon" (within the hour before),
+// "started" (an event under way) or "passed" (a time in the words that has gone by). A day without a time never turns.
+function upcomingMoment(thread, r) {
   const today = agToday(), tomorrow = agDay(today, 1), soon = day => day === today || day === tomorrow;
   const word = day => agT(day === today ? "Today" : "Tomorrow");
-  const now = Date.parse(REM.as_of || "") || clockNow();
-  const event = r && !REM.shared ? timedEvents(now).find(e => soon(e.first) && Date.parse(e.start) > now && e.people.some(p => p.path === r.path)) : null;
-  if (event) return word(event.first) + " " + agTime(event.start);
+  const now = readNow(), HOUR = 3600e3;
+  const turn = at => at == null ? "later" : at <= now ? "passed" : at - now <= HOUR ? "soon" : "later";
+  // In the hour before it the card counts down in words (「40 分钟后」), redrawn each minute; after it, 「· 已过」 (art director on #3423).
+  const marked = (label, s, at) => s === "soon" ? t("in {n} min", { n: Math.max(1, Math.ceil((at - now) / 60e3)) })
+    : label + (s === "passed" ? " · " + t("passed") : s === "started" ? " · " + t("started") : "");
+  // An event still running keeps its card's time ("started"); one that ended falls back to the thread's own words.
+  const event = r && !REM.shared ? timedEvents(now).find(e => soon(e.first) && e.people.some(p => p.path === r.path)) : null;
+  if (event) {
+    const at = Date.parse(event.start), s = at <= now ? "started" : turn(at);
+    return { label: marked(word(event.first) + " " + agTime(event.start), s, at), at, state: s };
+  }
   const text = thread.text || "", day = soon(thread.due) ? thread.due : statedDays(text, today).find(soon);
-  if (!day) return "";
+  if (!day) return { label: "", at: null, state: "later" };
   const clock = text.match(/\b([01]?\d|2[0-3])[:：]([0-5]\d)\b/), meridiem = text.match(/\b(1[0-2]|[1-9])\s?([ap])\.?m\b/i);
   const time = clock ? clock[1].padStart(2, "0") + ":" + clock[2]
     : meridiem ? String((Number(meridiem[1]) % 12) + (meridiem[2].toLowerCase() === "p" ? 12 : 0)).padStart(2, "0") + ":00" : "";
-  return word(day) + (time ? " " + time : "");
+  const at = time ? zonedMoment(day, time) : null, s = turn(at);
+  return { label: marked(word(day) + (time ? " " + time : ""), s, at), at, state: s };
+}
+// A day and HH:MM on the notebook's clock as epoch ms: read the UTC guess back through agTime and remove the offset.
+function zonedMoment(day, time) {
+  const guess = Date.parse(day + "T" + time + ":00Z");
+  if (isNaN(guess)) return null;
+  const iso = new Date(guess).toISOString(), minutes = hm => hm.split(":").reduce((h, m) => Number(h) * 60 + Number(m));
+  const shownDay = Date.parse(calendarDay(iso) + "T00:00:00Z"), wantDay = Date.parse(day + "T00:00:00Z");
+  return guess - (shownDay - wantDay) - (minutes(agTime(iso)) - minutes(time)) * 60e3;
 }
 function threadPreview(text) {
   const summary = withoutDateClutter(plainLine(text));
@@ -16551,8 +16638,14 @@ const RELATION_HISTORY = /^[-*\s]*(?:Changed|变化|变更)[:：]/i;
 function relationReason(basis, ...pages) {
   if (!basis || RELATION_HISTORY.test(basis)) return "";
   const reason = closeStripped(basis).replace(/^[-*\s]*(?:Now|Pattern|At stake|现在|规律|关键所在|利害|模式)[:：]\s*/i, "").trim();
-  const names = pages.filter(Boolean).flatMap(page => [page.title, pageName(page)]).filter(Boolean);
-  const left = names.reduce((text, name) => text.split(name).join(""), reason).replace(/^[^:：\n]{1,40}[:：]/, "");
+  // Longest name first: taking "9900" out before 「课程 9900」 left 「课程」 behind, so 「上级组织: 课程 9900」 read as a
+  // reason (13:25 hunt). A kind word a coded name carries (课程, 团队, course, team) left on its own says nothing either.
+  const names = [...new Set(pages.filter(Boolean).flatMap(page => [page.title, pageName(page)]).filter(Boolean))].sort((a, b) => b.length - a.length);
+  // The basis still carries its links and citations ("Parent: [[orgs/1234-….md]] [2]", the org page's own line):
+  // a link's path or a citation number is not a reason either, so they go before the names do.
+  const bare = reason.replace(/\[\[[^\]]*\]\]/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\[W?\d{1,3}\]/g, "");
+  const left = names.reduce((text, name) => text.split(name).join(""), bare).replace(/^[^:：\n]{1,40}[:：]/, "")
+    .replace(/(?:课程|团队|小组|course|team|unit|group)/gi, "");
   return /[\p{L}\p{N}]/u.test(left) ? reason : "";
 }
 function relationCard(link, currentPath = "") {
