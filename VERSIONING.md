@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc24
+## Current Version: 1.9.7rc25
+Release candidate 1.9.7rc25 for 1.9.7: privacy: a private relation reason, and any page line drawn outside the passage renderer, is curtained at 遮敏感 like a passage, so no raw [sensitive]/[personal] token or private reason shows; on rc24 a person page's 提到它的页面 card showed a private reason's words and its raw mark, and citation words showed a bare mark (#3427, #3425). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc25.md).
+
+- 1.9.7rc25 (private relation reasons and raw marks curtained #3427/#3425).
+
+### Previous candidate: 1.9.7rc24
 Release candidate 1.9.7rc24 for 1.9.7: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc24.md).
 
 - 1.9.7rc24 (honest queue position #3421/#3420; card time, countdown, job titles, org site and reasons #3423/#3422).

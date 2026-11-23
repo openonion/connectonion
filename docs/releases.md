@@ -21,7 +21,8 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
-Release candidate **1.9.7rc24**: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). See [1.9.7rc24 notes](releases/1.9.7rc24.md).
+Release candidate **1.9.7rc25**: privacy: a private relation reason, and any page line drawn outside the passage renderer, is curtained at 遮敏感 like a passage, so no raw [sensitive]/[personal] token or private reason shows; on rc24 a person page's 提到它的页面 card showed a private reason's words and its raw mark, and citation words showed a bare mark (#3427, #3425). See [1.9.7rc25 notes](releases/1.9.7rc25.md).
+Before it, release candidate **1.9.7rc24**: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). See [1.9.7rc24 notes](releases/1.9.7rc24.md).
 Before it, release candidate **1.9.7rc23**: privacy: a line that opens with a privacy mark is curtained in place at 遮敏感 in every section kind; on rc22 such a line showed in full with its raw mark, and a Chinese reader says its own labels in Chinese and shows a page's English as its original (#3416, #3410); once the fix for a stuck page is installed, Today and status say the next round skips it, in local time, over one night window (#3414, #3413); the owner's side of a client organisation is found from what real pages say, so 你这边对接的人 appears on real client orgs (#3415, #3397). See [1.9.7rc23 notes](releases/1.9.7rc23.md).
 Before it, release candidate **1.9.7rc22**: a tag or search view never scrolls sideways: a privacy curtain's cap is a length, not a width (#3407, #3404); Today says when before how old, says each event once, and fits a phone without a caption running off the card (#3408, #3406, #3379); a facts card keeps a short value whole and its labels speak Chinese (#3409, #3405). See [1.9.7rc22 notes](releases/1.9.7rc22.md).
 Before it, release candidate **1.9.7rc21**: a draft the page check refused says the page is unchanged, in the owner's words, and what happens next from the night's own retry ledger: 今晚会再试一次, or 已暂停 after N tries (#3398, #2235); one night, one count: Today's 昨夜 heading adds up the curve's own stretches, the side line says 待办, and the Codex line no longer sounds like one task both running and stopped (#3399, #3396); an organisation's connections give the line that links the pair, or say plainly which page names which, and the owner's own people are no longer drawn inside a client's org tree (#3400, #3397); a job that can never be prepared is set aside and the round goes on: a skill page whose skill is no longer installed stopped every background round from 06:15, and Today now says when one error keeps stopping the night (#3403, #3402). See [1.9.7rc21 notes](releases/1.9.7rc21.md).
@@ -48,7 +49,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc24'
+python -m pip install --upgrade 'connectonion==1.9.7rc25'
 ```
 
 ## Current release
