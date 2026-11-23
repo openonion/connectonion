@@ -401,7 +401,7 @@ See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
 ## Current Version: 1.9.7rc25
-Release candidate 1.9.7rc25 for 1.9.7: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation (#3426). Explicit model and effort choices survive upgrades. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc25.md).
+Release candidate 1.9.7rc25 for 1.9.7: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation (#3426). Explicit model and effort choices survive upgrades; related-page privacy marks are curtained (#3427, #3425). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc25.md).
 
 - 1.9.7rc25 (REM model groups and safe default migration #3426).
 

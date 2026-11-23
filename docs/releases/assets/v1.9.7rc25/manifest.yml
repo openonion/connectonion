@@ -1,2 +1,16 @@
 version: v1.9.7rc25
-no_visual_change: "Backend model routing, configuration migration and CLI help only; reader layout and interactions are unchanged."
+images:
+  - file: privacy-1440.png
+    alt: "Demo organisation relation reasons before and after the privacy fix on desktop"
+    caption: "At Hide sensitive, the sensitive relation reason becomes a curtain and raw privacy marks disappear. Fictional fixture data."
+    scenario: "Open a demo organisation with sensitive relation reasons at Hide sensitive"
+    viewport: "1440 px desktop, before and after"
+    commit: a63f286fe62c0afd313187ab81af7eec4ac10320
+    source_run: "https://github.com/openonion/connectonion/pull/3427"
+  - file: privacy-390.png
+    alt: "Demo organisation relation reasons before and after the privacy fix on mobile"
+    caption: "The same privacy rule holds on a 390 px phone viewport. Fictional fixture data."
+    scenario: "Open the same demo organisation on mobile at Hide sensitive"
+    viewport: "390 px mobile, before and after"
+    commit: a63f286fe62c0afd313187ab81af7eec4ac10320
+    source_run: "https://github.com/openonion/connectonion/pull/3427"

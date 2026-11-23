@@ -21,7 +21,7 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
-Release candidate **1.9.7rc25**: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation, with explicit choices preserved (#3426). See [1.9.7rc25 notes](releases/1.9.7rc25.md).
+Release candidate **1.9.7rc25**: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation, with explicit choices preserved (#3426); sensitive relation reasons and stray privacy marks are curtained (#3427, #3425). See [1.9.7rc25 notes](releases/1.9.7rc25.md).
 
 Release candidate **1.9.7rc24**: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). See [1.9.7rc24 notes](releases/1.9.7rc24.md).
 Before it, release candidate **1.9.7rc23**: privacy: a line that opens with a privacy mark is curtained in place at 遮敏感 in every section kind; on rc22 such a line showed in full with its raw mark, and a Chinese reader says its own labels in Chinese and shows a page's English as its original (#3416, #3410); once the fix for a stuck page is installed, Today and status say the next round skips it, in local time, over one night window (#3414, #3413); the owner's side of a client organisation is found from what real pages say, so 你这边对接的人 appears on real client orgs (#3415, #3397). See [1.9.7rc23 notes](releases/1.9.7rc23.md).
