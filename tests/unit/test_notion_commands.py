@@ -270,6 +270,22 @@ def test_a_limit_is_reported_and_never_presented_as_the_whole_page(notion):
     assert shallow["coverage"]["complete"] is False and "deeper than 1" in shallow["coverage"]["stopped"][0]
 
 
+def test_a_page_exactly_at_the_block_limit_is_complete(notion):
+    result = run("page", CHILD, "--max-blocks", "1", "--json")
+    detail = json.loads(result.stdout)
+    assert detail["coverage"]["blocks"] == 1
+    assert detail["coverage"]["complete"] is True
+
+
+def test_server_html_failure_reports_the_status_and_next_step(notion):
+    notion.fail("GET", "users/me", httpx.Response(502, text="<h1>Bad Gateway</h1>", headers={"content-type": "text/html"}), times=3)
+    result = run("check")
+    assert result.exit_code == 1
+    assert "HTTP 502" in result.stderr
+    assert "Next: co notion check" in result.stderr
+    assert "Bad Gateway</h1>" not in result.stderr
+
+
 def test_page_json_keeps_types_ids_and_empty_values(notion):
     detail = json.loads(run("page", ROW, "--json").stdout)
     props = detail["properties"]

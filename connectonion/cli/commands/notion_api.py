@@ -118,9 +118,13 @@ def call(method: str, path: str, body: dict | None = None, params: dict | None =
     response = _send(method, path, body, params, using.token)
     if response is None:
         raise NotionError("Notion could not be reached", "co notion check", "network")
-    if "json" not in response.headers.get("content-type", ""):
-        response.raise_for_status()
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        raise NotionError(f"Notion returned an unreadable response (HTTP {response.status_code})",
+                          "co notion check", "invalid_response")
     if response.status_code >= 400 or data.get("object") == "error":
         raise _error(data, response.status_code, using=using)
     return data
@@ -541,11 +545,11 @@ def children(block_id: str, limit: int = 1000) -> tuple[list, bool]:
     """A block's direct children in order, following Notion's cursor; (blocks, complete)."""
     found, cursor = [], ""
     while len(found) < limit:
-        params = {"page_size": 100, **({"start_cursor": cursor} if cursor else {})}
+        params = {"page_size": min(100, limit - len(found)), **({"start_cursor": cursor} if cursor else {})}
         data = call("GET", f"blocks/{block_id}/children", params=params)
         found.extend(data.get("results", []))
         if not data.get("has_more"):
-            return found[:limit], True
+            return found[:limit], len(found) <= limit
         cursor = data.get("next_cursor") or ""
     return found[:limit], False
 
@@ -605,10 +609,8 @@ def block_tree(root_id: str, *, max_blocks: int = DEFAULT_BLOCK_LIMIT, max_depth
 
     walk(root_id, 0)
     coverage["blocks"] = len(flat)
-    if len(flat) >= max_blocks:
-        coverage["complete"] = False
-        if not coverage["stopped"]:
-            coverage["stopped"].append(f"stopped at {max_blocks} blocks")
+    if not coverage["complete"] and not coverage["stopped"]:
+        coverage["stopped"].append(f"stopped at {max_blocks} blocks")
     coverage["stopped"] = list(dict.fromkeys(coverage["stopped"]))
     return flat, coverage
 
