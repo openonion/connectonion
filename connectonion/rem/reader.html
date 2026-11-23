@@ -6700,7 +6700,10 @@ function markdownList(lines, start, from) {
       if (spaces <= indent) break;
       body.push(lines[i].slice(Math.min(spaces, contentIndent))); i++;
     }
-    const itemContent = body.join("\n");
+    // An item that is only a section's name ("- Who they are. [1]" under Open questions: the old 仍不明确 leak) is the
+    // reader's word, said through the same table as the headings and the opening line (art director on #3416).
+    const itemContent = body.join("\n").replace(/^([A-Z][a-z]+(?: [a-z]+){0,4})\.?((?:\s*\[W?\d{1,3}\])*)\s*$/,
+      (m, name, cites) => sectionWords(name) !== name ? sectionWords(name).replace(/。$/, "") + cites : m);
     const itemClass = UNKNOWN_TEXT.test(itemContent.trim()) ? ' class="unknown-item"' : "";
     items.push("<li" + itemClass + ">" + markdown(itemContent, from) + "</li>");
   }

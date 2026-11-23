@@ -81,7 +81,9 @@ def _notebook(root, now):
                "- What they do: 课程项目小组 [1]\n\n## Open questions\n- Who they are. [1]\n" + SOURCES)
     book.write(PERSON, "# Wren Pike\n\n## Facts\n- Email: wren@example.edu [1]\n- Role: team member [2]\n"
                "- How we know them: Met through the course pilot. [1]\n"
-               "- Company: [[" + TEAM + "]] [1]\n\n## Notes\n- [sensitive] Leading mark: private detail about health. [1]\n"
+               "- Location: [sensitive] Near the clinic. [2]\n"
+               "- Company: [[" + TEAM + "]] [1]\n\n## Insight\n[sensitive] Paragraph mark: a private paragraph. [2]\n\n"
+               "## Notes\n- [sensitive] Leading mark: private detail about health. [1]\n"
                "- Trailing mark: another private detail [sensitive] [2]\n" + SOURCES)
     return root
 
@@ -206,3 +208,40 @@ def test_section_headings_relation_lines_and_your_role_read_in_chinese_without_a
     row = page.evaluate("() => { const dt = [...document.querySelectorAll('#main dt')].find(d => d.textContent.trim() === '你的身份');"
                         " return dt ? dt.nextElementSibling.textContent : null; }", isolated_context=False)
     assert row and "团队成员" in row and "team member" not in row and "原文" not in row, row
+
+
+
+def test_an_open_question_that_is_only_a_section_name_reads_in_chinese(page):
+    """Art director on #3416 round 2: under 未解问题 the item still read "Who they are.", the leaked section name the
+    opening already translates."""
+    _open(page, TEAM)
+    items = page.evaluate("() => { const h = [...document.querySelectorAll('#main .note h2')].find(h => h.dataset.anchor === 'Open questions');"
+                          " const list = h && h.nextElementSibling; return list ? [...list.querySelectorAll('li')].map(li => li.textContent) : []; }",
+                          isolated_context=False)
+    assert items and items[0].startswith("他们是谁") and not any("Who they are" in i for i in items), items
+
+
+@pytest.mark.parametrize("where", ["Notes", "Insight", "Location"])
+def test_at_cover_level_a_marked_line_is_curtained_in_place_and_never_removed(page, where):
+    """Art director on #3416 round 2: a privacy-marked line must show as the standard 敏感 curtain bar where it stands,
+    at 遮敏感, in every section kind (a list item, a paragraph, a fact), and is never taken out. (A page served from
+    elsewhere opens at 只看公开, which takes passages out for screen sharing, by design; 遮敏感 is set here.)"""
+    page.evaluate("() => setPrivacy('cover', { save: false })", isolated_context=False)
+    _open(page, PERSON)
+    page.evaluate("() => document.querySelectorAll('#main details').forEach(d => { d.open = true; })", isolated_context=False)
+    found = page.evaluate("""(where) => {
+      const scope = where === 'Location'
+        ? document.querySelector('#main header.person-head')  // a person's location is the header's third line
+        : (() => { const h = [...document.querySelectorAll('#main .note h2')].find(h => h.dataset.anchor === where);
+                   const out = []; for (let n = h && h.nextElementSibling; n && n.tagName !== 'H2'; n = n.nextElementSibling) out.push(n);
+                   const box = document.createElement('div'); out.forEach(n => box.appendChild(n.cloneNode(true)));
+                   return h ? Object.assign(box, {live: out}) : null; })();
+      if (!scope) return null;
+      const nodes = scope.live || [scope];
+      const curtains = nodes.flatMap(n => [...(n.matches?.('.curtain') ? [n] : []), ...n.querySelectorAll('.curtain')]);
+      const visible = curtains.filter(c => { const r = c.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(c).display !== 'none'; });
+      return {curtains: curtains.length, visible: visible.length, label: curtains[0]?.getAttribute('data-curtain') || '',
+              raw: nodes.some(n => /[\[［](sensitive|personal)[\]］]/i.test(n.textContent))};
+    }""", where, isolated_context=False)
+    assert found and found["curtains"] >= 1 and found["visible"] >= 1, (where, found)
+    assert "敏感" in found["label"] and not found["raw"], (where, found)
