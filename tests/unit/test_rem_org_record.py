@@ -73,7 +73,7 @@ def test_org_article_milestones_use_only_the_organisations_dated_story():
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_org_opening_says_summary_contacts_and_dates_as_sentences(language):
-    result = run_js(['orgOpening'], DOM.replace('const orgT = text => text, t = text => text;', '') + r'''
+    result = run_js(['orgOpening', 'orgPersonLabel', 'addressTitle'], DOM.replace('const orgT = text => text, t = text => text;', '') + r'''
       const uiLanguage = __LANG__, orgT = (key, v) => key.replace('{date}', v.date);
       const known = () => ({summary: 'A teaching university.', last: '2026-10-01'});
       const facts = () => ({first: '2025-01-02'}), orgRelation = () => 'Your research partner.';
@@ -152,7 +152,7 @@ def test_org_connections_are_distinct_public_project_org_and_topic_links():
 
 
 def test_org_opening_deduplicates_relationship_and_names_all_few_contacts():
-    result = run_js(['orgOpening'], DOM + r'''
+    result = run_js(['orgOpening', 'orgPersonLabel', 'addressTitle'], DOM + r'''
       const uiLanguage = 'en', known = () => ({summary:'Climate research; your first paying pilot.',last:''});
       const orgRelation = () => 'Your first paying pilot', facts = () => ({}), orgLast = p => p.last;
       const orgFact = () => '';
@@ -166,7 +166,7 @@ def test_org_opening_deduplicates_relationship_and_names_all_few_contacts():
 
 
 def test_org_opening_many_contacts_names_the_most_recent_and_says_so():
-    result = run_js(['orgOpening'], DOM + r'''
+    result = run_js(['orgOpening', 'orgPersonLabel', 'addressTitle'], DOM + r'''
       const uiLanguage = 'en', known = () => ({summary:'Research.',last:''});
       const orgRelation = () => '', facts = () => ({}), orgLast = p => p.last;
       const orgFact = () => '';

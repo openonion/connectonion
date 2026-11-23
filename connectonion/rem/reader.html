@@ -15235,7 +15235,7 @@ function orgOpening(v) {
   const sentence = text => text ? text + (/[。.!?！？]$/.test(text) ? " " : uiLanguage === "zh" ? "。" : ". ") : "";
   const count = uiLanguage === "zh" ? `你认识这里的 ${v.people.length} 个人。` : `You know ${v.people.length} ${v.people.length === 1 ? "person" : "people"} here. `;
   const through = [...v.people].sort((a, b) => orgLast(b).localeCompare(orgLast(a)) || a.title.localeCompare(b.title))
-    .slice(0, 4).map(p => p.title).join(uiLanguage === "zh" ? "、" : ", ");
+    .slice(0, 4).map(orgPersonLabel).join(uiLanguage === "zh" ? "、" : ", ");
   const recent = v.people.length > 4;
   const contact = through ? (uiLanguage === "zh" ? `${recent ? "最近往来的 4 位联系人是" : "往来联系人包括"} ${through}。` : `${recent ? "Your most recent 4 contacts are" : "Your contacts include"} ${through}. `) : "";
   const normalized = text => text.toLocaleLowerCase().replace(/[\s。.!?！？]+$/u, "").replace(/\s+/g, " ");
@@ -15268,7 +15268,8 @@ function orgTree(v) {
     const scoped = roles.length > 1 || roles.some(edge => edge.path !== unitPath);
     const meta = scoped ? roles.map(edge => unlabelled(edge.role) + " · " + unitNames.get(edge.path)).join("; ")
       : unlabelled(orgUnitRole(p, unitPath)) || orgRole(p, "span")?.textContent || "";
-    return orgTreeItem({ level, kind: "person", label: p.title, link: href(p), meta });
+    return orgTreeItem({ level, kind: "person", label: orgPersonLabel(p), link: href(p), tip: orgPersonTip(p),
+      meta: meta || (addressTitle(p) ? t("Name unknown") : "") });
   };
   const unit = (u, level) => {
     const kids = [...orgByLast(u.people).map(p => person(p, u.path, level + 1)), ...[...u.units].sort(orgByActivity).map(child => unit(child, level + 1))].filter(Boolean);
@@ -15288,15 +15289,19 @@ function orgTree(v) {
 }
 // The owner's own people this org's page names deal with it; they are not its members (#3397). They sit
 // below the tree under a light heading with no fold: level with the org's units, they read as one of its departments.
+// A teammate whose page is titled by an address (#3157: REM does not know the name) reads by the part
+// before the @, with the whole address as the tooltip; a raw address never stands in the tree as a name (#3397).
+function orgPersonLabel(p) { return addressTitle(p) ? String(p.title).trim().split("@")[0] : p.title; }
+function orgPersonTip(p) { return addressTitle(p) ? String(p.title).trim() : ""; }
 function orgYourSide(v) {
   const ours = orgByLast((v.r.your_side || []).map(byPath).filter(Boolean));
   return ours.length ? el("div", { class: "ov-yours" }, [el("h3", { class: "ov-yours-h", text: orgT("Your side") }),
-    el("ul", {}, ours.map(p => el("li", {}, [el("a", { href: href(p), text: p.title }),
+    el("ul", {}, ours.map(p => el("li", {}, [el("a", { href: href(p), text: orgPersonLabel(p), ...(orgPersonTip(p) ? { title: orgPersonTip(p) } : {}) }),
       orgRole(p, "span") ? el("small", { class: "ov-tk" }, [ourRole(orgRole(p, "span").textContent)]) : null])))]) : null;
 }
 function orgTreeItem(d) {
   const row = el("div", { class: "ov-trow", "data-kind": d.kind }, [el("span", { class: "ov-twisty", "aria-hidden": "true" }),
-    el("span", { class: "ov-tl1" }, [d.link ? el("a", { href: d.link, tabindex: "-1", text: d.label }) : el("b", { text: d.label }),
+    el("span", { class: "ov-tl1" }, [d.link ? el("a", { href: d.link, tabindex: "-1", text: d.label, ...(d.tip ? { title: d.tip } : {}) }) : el("b", { text: d.label }),
       // A role the page wrote in English stays the page's words, marked as the original (#3410: 「team member」).
       d.meta ? el("small", { class: "ov-tk" }, [ourRole(d.meta)]) : null])]);
   const item = el("li", { role: "treeitem", "aria-level": String(d.level), tabindex: "-1", "aria-label": [d.label, d.meta].filter(Boolean).join(" · ") }, [row]);
