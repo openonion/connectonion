@@ -1779,8 +1779,9 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
     page = TEMPLATE.read_text()
     notice = page[page.index('  if (k.missing.length) {'):page.index('\n  const foot = el("div", { class: "page-foot"')]
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js('UI.zh = ' + ui + '; uiLanguage = ' + json.dumps(language) + ';\n' + r'''
-      const REM = {status: {worker: {enabled: true}}}, r = {}, deep = {};
+    queued = page[page.index('function queuedLine(r) {'):page.index('\nfunction safeHref(')]
+    result = _run_reader_js('UI.zh = ' + ui + '; uiLanguage = ' + json.dumps(language) + ';\n' + queued + r'''
+      const REM = {status: {worker: {enabled: true}}, night_throughput: 5}, r = {queue_place: 1}, deep = {};
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children}), youify = text => text;
       const rows = [], main = {insertBefore: node => rows.push(node)}, column = {appendChild: node => rows.push(node)};
       const k = {status: 'Mapped', missing: ['Insight', 'Who they are']};
