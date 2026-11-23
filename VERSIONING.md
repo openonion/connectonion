@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc22
+## Current Version: 1.9.7rc23
+Release candidate 1.9.7rc23 for 1.9.7: privacy: a line that opens with a privacy mark is curtained in place at 遮敏感 in every section kind; on rc22 such a line showed in full with its raw mark, and a Chinese reader says its own labels in Chinese and shows a page's English as its original (#3416, #3410); once the fix for a stuck page is installed, Today and status say the next round skips it, in local time, over one night window (#3414, #3413); the owner's side of a client organisation is found from what real pages say, so 你这边对接的人 appears on real client orgs (#3415, #3397). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc23.md).
+
+- 1.9.7rc23 (line-leading mark curtained at 遮敏感, Chinese labels #3416/#3410; status after a fix in local time #3414/#3413; owner's side on client orgs #3415/#3397).
+
+### Previous candidate: 1.9.7rc22
 Release candidate 1.9.7rc22 for 1.9.7: a tag or search view never scrolls sideways: a privacy curtain's cap is a length, not a width (#3407, #3404); Today says when before how old, says each event once, and fits a phone without a caption running off the card (#3408, #3406, #3379); a facts card keeps a short value whole and its labels speak Chinese (#3409, #3405). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc22.md).
 
 - 1.9.7rc22 (tag/search overflow #3407/#3404; Today time-first and phone fit #3408/#3406/#3379; facts card values and labels #3409/#3405).
