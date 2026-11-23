@@ -986,8 +986,8 @@ def test_rem_session_earlier_reply_is_not_final_after_a_later_owner_turn(noteboo
 def test_session_summary_uses_summary_model_only(notebook, summary_ready):
     from connectonion.rem.config import read_config
     root, _, _ = notebook
-    # Summaries are level 2 since #3099; a distinct model shows which level ran.
-    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol", "models.level2", "gpt-6.1-terra"])
+    # Summaries are level 1 since #3426; a distinct model shows which level ran.
+    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol", "models.level1", "gpt-6.1-terra"])
     transcript(notebook)
     import_sessions(root, now=NOW)
     def run(directory, prompt, settings, stage):

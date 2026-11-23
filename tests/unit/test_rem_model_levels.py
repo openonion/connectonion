@@ -1,9 +1,5 @@
-"""Owner decision 2026-11-09: every model call has a level; level 1 is the
-cheapest model, level 4 the strongest. `route.<stage>` still pins one stage.
-
-#3099 (2026-11-17): no Astra; every stage but tag and investigation runs Sol at
-low effort; investigation is a level of its own so it can be measured and set
-apart; each level has its own effort."""
+"""#3426: routine work uses Luna medium; abstraction and investigation use Sol low.
+Explicit model/effort choices and stage routes survive default upgrades."""
 
 import yaml
 import pytest
