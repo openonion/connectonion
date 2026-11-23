@@ -1896,7 +1896,8 @@ def test_written_unknown_sections_are_distinct_from_uninvestigated_pages(reader)
     assert page.locator('.missing .lead').inner_text() == 'Unresolved sections queued for a future pass'
     page.goto(uri + '#r=people%2Fquinn-alder.md')
     assert page.locator('.missing .names').inner_text().endswith('sections will be written when it is investigated.')
-    assert page.locator('.missing .lead').inner_text() == 'Page queued for tonight'
+    # The invented notebook's nights investigated nothing, so the page says its place and promises no night (#3420).
+    assert page.locator('.missing .lead').inner_text().startswith('In the queue at #')
     assert 'primary' in page.locator('.missing').get_attribute('class')
 
 
@@ -3312,7 +3313,8 @@ def test_mapped_guidance_explains_before_command_with_secondary_copy(reader, pat
     assert box.locator('.lead').inner_text() == 'Page pending — background updates off'
     assert box.locator('.names').inner_text().endswith('sections will be written when it is investigated.')
     assert box.locator('button, code').count() == 0
-    page.evaluate("() => { REM.status.worker = {enabled: true}; render(); }", isolated_context=False)
+    # Inside the nightly pace the page says tonight (#3420: outside it, its place and an estimate).
+    page.evaluate("() => { REM.status.worker = {enabled: true}; REM.night_throughput = 12; render(); }", isolated_context=False)
     assert box.locator('.lead').inner_text() == 'Page queued for tonight'
     assert not page.locator('.focus-command').count()
     if path.startswith('people/'):

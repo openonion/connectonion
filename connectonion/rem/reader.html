@@ -4821,6 +4821,12 @@ const UI = {
     "Agent sessions pending — background updates off": "智能体会话待处理，后台更新未开启",
     "Agent sessions queued for tonight": "智能体会话已排入今晚队列",
     "Page queued for tonight": "此页已排入今晚队列",
+    "Page queued for a future night": "此页已排队，之后的某一晚会写",
+    "In the queue at #{n}": "排队第 {n} 位",
+    "Far back in the queue — months at the current pace": "排在后面，按现在的速度要几个月",
+    "Far back in the queue — over a year at the current pace": "排在后面，按现在的速度要一年以上",
+    " · investigate it now to see it sooner": " · 想先看就点调查",
+    "In the queue at #{n} · at about {k} pages a night, within about {d} nights": "排队第 {n} 位 · 按最近每晚约 {k} 页，约 {d} 晚内写到",
     "Unwritten pages queued for tonight": "未写页面已排入今晚队列",
     "No Chinese translation yet; showing original": "尚无中文译文，显示原文",
     "company": "公司",
@@ -6327,6 +6333,22 @@ function resolve(from, path) {
   }
   return base.join("/");
 }
+// The queued line says where the page really stands (#3420). "Queued for tonight" sat on 1,241 pages while a
+// night completed 3 to 10: 今晚 only inside the measured nightly pace, otherwise the place and an estimate.
+function queuedLine(r) {
+  const place = r.queue_place, pace = REM.night_throughput;
+  if (!place) return t("Page queued for a future night");
+  if (pace && place <= pace) return t("Page queued for tonight");
+  if (!pace) return t("In the queue at #{n}", { n: place.toLocaleString() });
+  const nights = Math.ceil(place / pace);
+  if (nights <= 30) return t("In the queue at #{n} · at about {k} pages a night, within about {d} nights", { n: place.toLocaleString(), k: pace, d: nights });
+  // Months away, the exact place only discourages: say how far and the way forward. 调查 starts this page's
+  // investigation now (POST /rem/investigate, `co rem investigate PAGE --enrich`), so the hint is only offered where
+  // that button works; in a snapshot it is off.
+  const far = t(nights > 365 ? "Far back in the queue — over a year at the current pace" : "Far back in the queue — months at the current pace");
+  return liveHere() ? far + t(" · investigate it now to see it sooner") : far;
+}
+
 function safeHref(from, raw) {
   const target = raw.trim();
   if (target.startsWith("/rem/task-file?")) return { href: target, external: false };
@@ -17064,7 +17086,7 @@ function record(path, heading) {
   if (k.missing.length) {
     const mapped = k.status === "Mapped";
     const box = el("div", { class: "missing" + (mapped ? " primary" : "") }, [
-      el("span", { class: "lead", text: t(r.private_project ? "Private project — waiting for your request" : !REM.status?.worker?.enabled ? "Page pending — background updates off" : mapped ? "Page queued for tonight" : "Unresolved sections queued for a future pass") }),
+      el("span", { class: "lead", text: r.private_project ? t("Private project — waiting for your request") : !REM.status?.worker?.enabled ? t("Page pending — background updates off") : mapped ? queuedLine(r) : t("Unresolved sections queued for a future pass") }),
       r.private_project ? el("p", { text: t("This private project waits for your request.") }) : null,
       r.private_project ? investigateRequest(r) : null,
       el("div", { class: "names", text: mapped ? t("{n} sections will be written when it is investigated.", { n: k.missing.length }) : t("Still unknown: ") + youify(k.missing.map(name => t(name)).join(uiLanguage === "zh" ? "、" : ", ")) + (uiLanguage === "zh" ? "。" : ".") })]);

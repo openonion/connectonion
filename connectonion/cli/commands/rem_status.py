@@ -297,9 +297,19 @@ def next_to_write(root, counts: dict, *, scheduled: bool = False) -> tuple:
         left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
             if scheduled:
-                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued for tonight", []
+                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued{_pace(root, left)}", []
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
+
+
+def _pace(root, left: int) -> str:
+    """" for tonight" only when the night gets through the queue (#3420), else the pace it really keeps."""
+    from ...rem.queue import night_pace
+    from ...rem.service import run_logs
+    pace = night_pace(root, run_logs(root))
+    if pace and left <= pace:
+        return " for tonight"
+    return f" · the night investigates about {pace}" if pace else ""
 
 
 def queued_unwritten(root, category: str) -> int:

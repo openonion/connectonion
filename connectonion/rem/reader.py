@@ -297,6 +297,13 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         for record in records:
             if record["path"] in found_states:
                 record["investigation"] = found_states[record["path"]]
+        # Where each unwritten page stands in the night's queue (#3420): "queued for tonight" was on 1,241
+        # pages while a night completed 3 to 10, so the page now says its place and the measured pace.
+        from .queue import positions
+        places = positions(root)
+        for record in records:
+            if record["path"] in places:
+                record["queue_place"] = places[record["path"]]
     owner = owner_record(root)
     organisation_members(records, owner)
     from .org_hierarchy import structure, rollups
@@ -419,6 +426,8 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             # The whole last pass for Today's curve (#3391): `logs` keeps only the latest 21 runs, so on a busy
             # night the curve began 90 minutes before dawn and a stuck stretch at 01:12 fell off its left edge.
             "night_runs": night_runs(logs),
+            # Investigations a night really completes (median of the last nights that ran), or None (#3420).
+            "night_throughput": _night_throughput(root, logs),
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
             "counts": counts(root, found),
             "owner": owner,
@@ -530,6 +539,11 @@ def _today_data(data: dict) -> dict:
 # A night of 15-minute slots with several runs each stays far below this; a runaway loop cannot bloat the page.
 NIGHT_RUNS_MAX = 400
 NIGHT_CHANGED_MAX = 40
+
+
+def _night_throughput(root: Path, logs: list[dict]):
+    from .queue import night_pace
+    return night_pace(root, logs)
 
 
 def night_runs(logs: list[dict]) -> list[dict]:
