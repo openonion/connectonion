@@ -150,3 +150,29 @@ def test_only_daytime_runs_are_still_shown():
     # With no night before them there is nothing to drop: the pass is what ran.
     day = ["2026-11-23T00:42:00Z"]
     assert _night_only([_run(t) for t in day]) == day
+
+
+def _scheduled(root):
+    """A notebook with a schedule and a running worker: `next_run` comes from the same source as `co rem status`."""
+    prepare(root)
+    set_config(root, ["schedule.timezone", "Australia/Sydney"])
+    set_config(root, ["schedule.times", "01:00"])
+    write_json(state_path(root, "consent.json"), {"at": "2026-11-01T00:00:00+00:00"})
+    # codex-exec: the owner's runner, and no probe of the machine's own Codex schedule.
+    write_json(state_path(root, "worker.json"), {"enabled": True, "scheduler": "codex-exec"})
+    _failed_turns(root, [GONE] * 6)
+
+
+def test_with_a_schedule_status_and_today_name_the_next_round_in_local_time(tmp_path, rem_clock):
+    from connectonion.rem.reader import TEMPLATE, snapshot
+    from tests.unit.test_rem_reader import _run_reader_js
+    _scheduled(tmp_path)
+    value = service.status(tmp_path)
+    assert value["next_run"] and value["next_run"][11:16] == "01:00", value["next_run"]
+    assert "the next round (01:00) skips it" in _status_text(tmp_path)
+    status = snapshot(tmp_path, today=True)["status"]  # what the reader receives
+    function = re.search(r"function turnTrouble\(.*?\n\}", TEMPLATE.read_text(), re.S)[0]
+    script = (f'uiLanguage = "zh"; const REM = {{status: {json.dumps(status, default=str)}}};\n' + function
+              + f"\nconsole.log(JSON.stringify(turnTrouble({json.dumps(status['schedule_failure'])})));")
+    output = _run_reader_js(script)
+    assert "这个问题新版本已经处理，下一轮会跳过它（下一轮 01:00）" in output, output
