@@ -16,6 +16,7 @@ Policy fixtures (autouse, apply to every test):
 - _isolate_selected_environment: no provider selection leaks between tests
 - _never_touch_the_real_home: HOME, ~/.co and home-derived module constants are a fresh tmp dir per test
 - _never_touch_the_real_applications: the WTF Browser app `co` keeps current is looked for in a folder that does not exist
+- _no_real_tmux: a REM hand-off never opens a session on this machine's tmux server; a test that wants tmux fakes it
 - _restore_excepthook: sys.excepthook installed by a test does not outlive it
 - _no_network: any test in the default run that opens a non-loopback socket fails
 - _host_ports_do_not_depend_on_this_machine: host()'s port-in-use check says free
@@ -101,6 +102,28 @@ def rem_sydney_slot(request, monkeypatch, rem_clock):
     monkeypatch.setattr(service, "now", lambda: moment)
     monkeypatch.setattr("connectonion.rem.config.local_timezone", lambda: "Australia/Sydney")
     return moment
+
+
+@pytest.fixture(autouse=True)
+def _no_real_tmux(monkeypatch):
+    """A REM hand-off (#3138) starts its worker in tmux when tmux is installed; tests never use the real server."""
+    monkeypatch.setattr("connectonion.rem.tasks._tmux", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_background_host(monkeypatch):
+    """Global `co init` starts the always-on Host (#3170); tests never install a real launchd or systemd unit.
+
+    A test about that step replaces `prepare_host` itself, or calls the service
+    classes with a fake runner, as tests/unit/test_host_service.py does.
+    """
+    from connectonion.cli import mac_bootstrap
+    from connectonion.cli.host_service import HostServiceError, HostServiceUnavailable
+
+    def refuse():
+        raise HostServiceUnavailable("A background Host needs macOS or Linux with systemd. "
+                               "Next: co host --serve, to run it in this terminal")
+    monkeypatch.setattr(mac_bootstrap, "prepare_host", refuse)
 
 
 @pytest.fixture(autouse=True)
@@ -686,3 +709,12 @@ def _nothing_written_into_the_repos_own_project():
             "shares that directory, so it is state one test hands another. "
             "monkeypatch.chdir(tmp_path) first, or pass log=False."
         )
+
+
+@pytest.fixture(autouse=True)
+def _no_weather_request(monkeypatch):
+    """The night's calendar step also asks Open-Meteo for a forecast (rem/weather.py). No test may: the one
+    function that talks to it answers as a dead network would, and a test of the forecast replaces it."""
+    def refused(url, params):
+        raise ConnectionError("tests do not reach Open-Meteo; replace connectonion.rem.weather.get_json")
+    monkeypatch.setattr("connectonion.rem.weather.get_json", refused)

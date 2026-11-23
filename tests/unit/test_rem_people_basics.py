@@ -132,7 +132,7 @@ def test_people_coverage_counts_qualifying_archive_correspondents_without_pages(
     data = snapshot(tmp_path)
     assert data["people_coverage"] == {"total": 2, "covered": 1, "missing": 1}
     assert status(tmp_path)["people_coverage"] == data["people_coverage"]
-    shown = rem_status.dashboard(tmp_path, status(tmp_path), lambda args: "co rem " + " ".join(args))
+    shown = rem_status.card(tmp_path, status(tmp_path), lambda args: "co rem " + " ".join(args))
     from rich.text import Text
     plain = Text.from_markup(shown).plain
     assert "50%" in next(line for line in plain.splitlines() if "People" in line)
@@ -254,3 +254,57 @@ def test_only_third_party_mail_cannot_preserve_a_model_contact_date(tmp_path):
     book.write(RECORD, page)
     people_basics.refresh(tmp_path)
     assert not facts.parse(book.read(RECORD), RECORD)["Last contact"]
+
+
+def _open_investigation(root, monkeypatch):
+    """A round whose parts pass was accepted for RECORD before the contact script filled its dates."""
+    from connectonion.rem import native_round
+    book = archive(root)
+    before = book.read(RECORD)
+    draft = before.replace("## Who they are\n- Unknown — not investigated yet",
+                           "## Who they are\n- Lena Vale asked about the Lantern pilot. [1]")
+    draft = draft.replace("- (none yet)", "- [1] gmail:earliest — 2024-02-01")
+    assert draft != before
+    mail = {"role": "other", "source": "gmail:earliest", "timestamp": "2024-02-01T02:00:00Z",
+            "text": "Could we talk about the Lantern pilot?"}
+    state = {"record": RECORD, "parts": [[mail]], "context": [], "number": 2, "multi": False, "edited": True,
+             "page": {"role": "page", "record": RECORD, "source": "investigation:page", "one_page": True},
+             "ledgers": [], "leads": [], "changed": [RECORD], "refused_sources": [], "refused_rounds": [],
+             "searched": [], "repository_items": [], "session_items": [], "tail": "done",
+             "before": before, "draft": draft}
+    cursor = {"started_at": "2026-11-16T02:00:00+00:00", "jobs": [{"record": RECORD, "kind": "person"}],
+              "job_index": 0, "current": state, "run": {"id": "run_" + "0" * 32}, "phase": "daily-investigation"}
+    monkeypatch.setattr(native_round, "_prepare_investigation",
+                        lambda *args: pytest.fail("the accepted draft was dropped and the page gathered again"))
+    return book, cursor, draft
+
+
+def test_an_accepted_draft_survives_the_contact_script_filling_the_page_between_nights(tmp_path, monkeypatch):
+    """One page cost 2,158 s and 10.75M tokens: its parts pass was accepted, the night ended, the next
+    night's preparation filled Last contact, and that change alone restarted it at parts round 1 (#3083)."""
+    from connectonion.rem import native_round, people_basics
+    from connectonion.rem.config import read_config
+    book, cursor, draft = _open_investigation(tmp_path, monkeypatch)
+    assert people_basics.refresh(tmp_path) == [RECORD], "the next night's preparation rewrites the page"
+    page = book.read(RECORD)
+    task = native_round._prepare_job(tmp_path, cursor, read_config(tmp_path), state_path(tmp_path, "tasks/native-final"))
+    assert task["pass"] == "final", "resumed at the final pass, not parts round 1"
+    carried = (state_path(tmp_path, "tasks/native-final") / "candidate.md").read_text()
+    assert "- Lena Vale asked about the Lantern pilot. [1]" in carried, "the accepted draft is kept"
+    for line in (line for line in page.splitlines() if line.startswith(("- First contact:", "- Last contact:"))):
+        assert line.split(" [")[0] in carried, "and carries what the script wrote"
+    assert "gmail:latest" in carried and facts.parse(carried, RECORD)["Last contact"][0]["value"] == "2026-10-05"
+    assert cursor["current"]["before"] == page and task["task"]["before"] == {RECORD: page}
+
+
+def test_an_accepted_draft_is_still_dropped_when_someone_else_changed_the_page(tmp_path, monkeypatch):
+    """Only the script's own rewrite is carried: an edit by the owner or by mail is read again."""
+    from connectonion.rem import native_round
+    from connectonion.rem.config import read_config
+    book, cursor, _ = _open_investigation(tmp_path, monkeypatch)
+    book.write(RECORD, book.read(RECORD).replace("- Location: Unknown", "- Location: Singapore"))
+    gathered = []
+    monkeypatch.setattr(native_round, "_prepare_investigation", lambda *args: gathered.append(args[2]["record"]))
+    assert native_round._prepare_job(tmp_path, cursor, read_config(tmp_path),
+                                     state_path(tmp_path, "tasks/native-again")) is None
+    assert gathered == [RECORD] and cursor["current"] is None

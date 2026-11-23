@@ -16,6 +16,11 @@ TRICKY = ["Next:     co rem open   (read your page), then co rem start (keep it 
           "Error: mailbox gmail failed [TimeoutError]", "Stopped:", "Warning: 3 messages in [brackets]"]
 
 
+def shows_host(host, text):
+    """The host appears as its own token (not inside a longer name): what a reader sees after a link is shortened."""
+    return re.search(r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", text) is not None
+
+
 def styled(markup):
     out = Console(file=io.StringIO(), theme=style.THEME, force_terminal=True, width=300, soft_wrap=True)
     out.print(markup, emoji=False)
@@ -37,7 +42,7 @@ def test_a_command_is_styled_as_far_as_it_goes_and_no_further():
 
 def test_a_help_page_marks_its_sections_and_its_command_column():
     markup = rem_look.page(pages()["co rem"])
-    for heading in ("Build (once)", "Read", "Keep it current", "Settings", "Options (before the command):"):
+    for heading in ("Build", "Read", "Keep it current", "Settings", "Options (before the command):"):
         assert f"[co.heading]{heading}[/co.heading]" in markup
     assert "  [co.command]init[/co.command]" in markup and "[co.command]co rem init[/co.command]" in markup
 
@@ -84,3 +89,25 @@ def test_a_sync_step_hangs_its_outcome_in_the_margin(capsys):
     assert capsys.readouterr().out.splitlines() == [
         "  Investigating people/a.md…", "✓ Updated people/a.md (accepted)", "✗ Refused people/b.md: too long",
         "○ Nothing new for people/c.md", "  New material: 3 items, 1 pages changed (completed)"]
+
+
+# ------------------------------------------------ rc35 hunt: status printed private text in plain words
+
+
+def test_a_glance_hides_sensitive_passages_and_shortens_links():
+    from connectonion.cli.commands.rem_look import glance
+    text = ("09:00–09:30 Weekly sync — Ivy Marsh — https://meet.example.com/abc-defg-hij?pwd=123 ; "
+            "Proposed: Call Ivy. Her sister is in hospital [sensitive] [3]. Prefers calls before ten [personal] [2].")
+    seen = glance(text)
+    assert "sister" not in seen and "hospital" not in seen and "[hidden]" in seen
+    assert "abc-defg-hij" not in seen and "pwd" not in seen and shows_host("meet.example.com", seen)
+    assert "Prefers calls before ten" in seen and "[personal]" not in seen     # personal shows, its label does not
+    assert "Weekly sync" in seen and "Call Ivy." in seen                       # unlabelled words are untouched
+
+
+def test_a_glance_keeps_the_rest_of_the_line_and_reads_both_writing_systems():
+    from connectonion.cli.commands.rem_look import glance
+    seen = glance("项目进展顺利，房东可能卖掉这栋楼［sensitive］，下周再谈。 Contact ivy@example.org about v2.1 [sensitive].")
+    assert "房东" not in seen and "项目进展顺利，" in seen and "下周再谈" in seen
+    assert "ivy@example.org" not in seen and seen.count("[hidden]") == 2
+    assert glance("No labels here: https://example.org/a/b") == "No labels here: example.org"

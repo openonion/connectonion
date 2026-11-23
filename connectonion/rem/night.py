@@ -54,6 +54,9 @@ def listing(root, *, rows=None):
         draft = read_json(drafts.path(root, candidate['id']), {}) if candidate else {}
         if candidate and draft.get('version') == candidate['version'] and draft.get('status') in ('prepared', 'no_reply', 'sent'):
             outcome = _draft_outcome(root, row, draft)
+            # A draft written for a chat this person is not on is not ready: the round rewrites it (#3348).
+            if drafts.wrong_channel(root, candidate, draft):
+                outcome = None
         if outcome and outcome['kind'] == 'task':
             from .tasks import identity, receipt_for
             receipt = receipt_for(root, row['key'])
@@ -151,6 +154,10 @@ def _outcomes(root, rows, candidates, existing, *, attempted, errors, stop):
 def prepare(root, config, *, attempted=(), fetches=None, stop=''):
     """Persist all outcomes and return affordable drafts in Today order. Caller holds the writer lock."""
     from .store import refresh
+    from .owner_today import refresh as owner_digest
+    from .threads import migrate_marks
+    migrate_marks(root)  # marks saved before they recorded their sources (#3174)
+    owner_digest(root)   # .state/owner-today.md: what the owner did in the day, for every stage tonight
     fetches = {} if fetches is None else fetches
     if stop:
         refresh(root)

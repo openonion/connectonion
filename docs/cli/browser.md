@@ -26,7 +26,7 @@ co browser --engine wtf go_to example.com     # paid WTF Browser, and only when 
 Paying is opt-in. An ordinary command never starts a billable session, even on
 a machine where Onionwright is installed and in credit.
 
-The paid path requires Onionwright 0.0.15 or newer. Install or upgrade the real
+The paid path requires Onionwright 0.0.16 or newer (the first with Windows support). Install or upgrade the real
 private wheel explicitly:
 
 ```bash
@@ -66,6 +66,17 @@ co browser --engine wtf get_text
 co browser --engine wtf close
 co browser go_to example.com  # a fresh default session is free again
 ```
+
+`co browser close` ends every session's tabs. When the paid browser is not
+running — its session ended, or it could not start — a command that asks for
+system Chrome switches the daemon over without closing anything:
+
+```bash
+co browser --engine system -t mytab go_to example.com
+```
+
+Other sessions keep their tabs and get them back on system Chrome with their
+next command. While a paid browser is running, the pin still holds.
 
 System Chrome and Onion Browser use separate persistent profiles. Cookies and
 fingerprint state are not silently copied between them. `co browser status`
@@ -184,9 +195,9 @@ co browser scroll                          # scroll the main content
 co browser close                           # close browser, stop daemon
 ```
 
-Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters, and `--index 2` or `--full-page true` mean the same as the `=` forms. For `fill_text_by_selector`, `type_text_by_selector`, and `keyboard_type`, a final `--stdin` reads the text from redirected standard input so passwords and one-run codes do not appear in process arguments. Prefer `fill_text_by_selector` when replacing a controlled framework input; use `type_text_by_selector` when appending human-shaped keystrokes is required.
+Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters, and `--index 2` or `--full-page true` mean the same as the `=` forms. For `fill_text_by_selector`, `type_text_by_selector`, and `keyboard_type`, a final `--stdin` reads the text from redirected standard input so passwords and one-run codes do not appear in process arguments. Prefer `fill_text_by_selector` when replacing a controlled framework input; use `type_text_by_selector` to append at a selector.
 
-`keyboard_type` pastes Chinese, Japanese, and Korean runs and falls back to IME composition only when the field's text did not change at all. An empty rich-text editor (Feishu, Lark, Slate) replaces a zero-width placeholder on the first paste, so "grew by the full length" is the wrong test; since 1.8.9b19 the text is typed once, not twice (#1877). A paste that lands partly is not retyped, so still screenshot before pressing Enter.
+`keyboard_type` and `type_text_by_selector` paste the text as one event, so a 1,400-character post goes in at once instead of taking about 0.1 s a character (#2901). Add `--human` to type it key by key with human timing instead, for fields where the cadence matters, such as a login form. When the paste does not land, as in headless Chrome on Windows over SSH, the whole text is inserted through CDP `Input.insertText`, which needs no OS clipboard. The result says which happened: `Entered by paste.`, `Entered by CDP insertText…` or `Entered key by key.` A field that takes neither is typed key by key: Latin per key, and Chinese, Japanese, and Korean runs pasted, falling back to IME composition only when the field's text did not change at all. An empty rich-text editor (Feishu, Lark, Slate) replaces a zero-width placeholder on the first paste, so "grew by the full length" is the wrong test; since 1.8.9b19 the text is typed once, not twice (#1877). A paste that lands partly is not retyped, so still screenshot before pressing Enter.
 
 Before replacing focused text with a keyboard shortcut, inspect the target:
 

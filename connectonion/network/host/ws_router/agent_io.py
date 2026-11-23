@@ -160,13 +160,13 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
     else:
         await send_msg({"type": "ERROR", "message": "Agent completed without result"})
 
-    # Dashboard delivery is connection state: CONNECT sends the initial snapshot
+    # Control Center delivery is connection state: CONNECT sends the initial snapshot
     # and records its stamp, then a completed run may replace it. Callers without
     # a connection are forwarding only the OIP agent stream and must not acquire
-    # an unrelated Home frame from process-global dashboard state.
+    # an unrelated Home frame from process-global page state.
     if conn is not None:
-        from .dashboard import send_dashboard
-        await send_dashboard(send_msg, session_id, conn)
+        from .control_center import send_control_center_page
+        await send_control_center_page(send_msg, session_id, conn)
 
 
 def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None, last_msg_id=None):

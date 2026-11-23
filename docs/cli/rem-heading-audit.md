@@ -48,9 +48,10 @@ retain their meaning and remain available.
 
 ## Former All records paths (#2996)
 
-- The wiki remains `#c=knowledge`, one entry per topic, with linked entity chips.
-- The complete linked graph remains `#view=graph`, reached by Knowledge's Graph
-  control and the command palette. Focus URLs still work. `#c=all` remains a
+- The wiki is `#c=knowledge&view=entries`, one entry per topic, with linked entity
+  chips; the rail's `#c=knowledge` opens the graph (#3085).
+- The complete linked graph remains `#view=graph`, reached by the rail's Knowledge,
+  its Graph control and the command palette. Focus URLs still work. `#c=all` remains a
   compatibility bookmark to this graph, activating the Knowledge rail item.
 - The combined list is retired. Its `listedRecords()` inventory remains in the
   corresponding People, Organisations, Projects, Skills or Knowledge rail place,

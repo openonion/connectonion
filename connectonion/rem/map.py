@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import MAP_DAYS, Notebook, archive_path, atomic_write, maintenance_lock, read_json, state_path
-from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
+from .scan import (scan_people, scan_projects, canonical_origin, is_repository, main_checkout, not_a_project,
                    institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
 from .org_map import _domain, map_orgs, organisation
@@ -118,6 +118,16 @@ AGENT_ADDRESS = re.compile(r'^0x[0-9a-f]{6,}@', re.I)
 # Two, since a page is made from two sends (`worth_a_page`, #2057): a nameless
 # address written to twice and never answering is held, not queued.
 WRITE_ONLY_MIN = 2
+
+
+def _chat_people_rows(subscriptions: dict) -> list[dict]:
+    """People the map should also create from the enabled chat sources (WeChat today), in mail-row shape."""
+    from .chat import wechat_people
+    rows = []
+    for sub in (subscriptions or {}).values():
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
+            rows += wechat_people()
+    return rows
 
 
 def _write_only(row: dict) -> bool:
@@ -640,7 +650,7 @@ def _repository_folder(path: str) -> str:
     """
     folder = Path(path)
     return main_checkout(path) or next(
-        (str(parent) for parent in (folder, *folder.parents) if (parent / '.git').exists()), '')
+        (str(parent) for parent in (folder, *folder.parents) if is_repository(parent)), '')
 
 
 def _same_named_project(name: str, repository: bool, other: str, other_repository: bool) -> bool:
@@ -918,7 +928,7 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     report['tidied'] = tidy(root, lock_held=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
-    earlier = json.loads(state.read_text()).get('owner') if state.is_file() else None
+    earlier = json.loads(state.read_text(encoding="utf-8")).get('owner') if state.is_file() else None
     # An address confirmed once (--mine, or folded into the owner's page by
     # tidy) stays the owner's: without this the next map, run without --mine,
     # made it a correspondent page again (#2008).
@@ -949,6 +959,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     else:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
                                  own_names=sent_names, all_history=all_history)
+    # Chat sources seed people too: a WeChat contact who never emailed still becomes a person, and one who
+    # also emails merges by name (#3279). Only when the owner turned the source on; the id is the handle.
+    people += _chat_people_rows(subscriptions)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})

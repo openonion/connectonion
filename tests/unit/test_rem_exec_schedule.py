@@ -316,6 +316,188 @@ def test_exec_passes_own_turn_id_to_maintenance_children(tmp_path, monkeypatch):
     assert codex_exec.run_turn(tmp_path, run=run) == 'completed'
 
 
+@pytest.mark.parametrize('recovery', [None, 'not due', 'round done', 'task'])
+def test_exec_records_preparation_error_even_when_codex_exits_zero(tmp_path, monkeypatch, recovery):
+    import json
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import codex_exec, native
+    from connectonion.rem.config import prepare
+    prepare(tmp_path)
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+    monkeypatch.setattr(codex_schedule.CodexNative, 'recent_desktop_fire', lambda *a: False)
+
+    def fail(root, **kwargs):
+        raise PermissionError(13, 'Permission denied', '/outside/protected/.git')
+
+    def run(command, **kwargs):
+        monkeypatch.setenv('CO_REM_TURN_ID', kwargs['env']['CO_REM_TURN_ID'])
+        monkeypatch.setattr(native, 'next_task', fail)
+        failed = CliRunner().invoke(app, ['rem', '--root', str(tmp_path), 'next', '--scheduled', '--json'])
+        assert failed.exit_code == 1
+        assert 'Cannot read or write the selected co rem files' not in failed.output
+        if recovery:
+            value = {'outcome': 'task', 'id': 'fixture'} if recovery == 'task' else {'outcome': 'done', 'reason': recovery}
+            monkeypatch.setattr(native, 'next_task', lambda *a, **kw: value)
+            assert CliRunner().invoke(app, ['rem', '--root', str(tmp_path), 'next', '--json']).exit_code == 0
+        return CompletedProcess(command, 0)
+
+    expected = 'completed' if recovery else 'failed'
+    assert codex_exec.run_turn(tmp_path, run=run) == expected
+    receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+    assert receipt['result'] == expected and receipt['exit_code'] == 0
+    assert read_json(state_path(tmp_path, f"turns/{receipt['turn_id']}.json"), {}) == receipt
+    if not recovery:
+        assert '/outside/protected/.git' in receipt['reason']
+        assert receipt['error_class'] == 'PermissionError'   # status tells a code error from the weather by it
+    events = [json.loads(line) for line in Path(receipt['log']).read_text().splitlines()]
+    failure = next(event for event in events if event.get('type') == 'rem.preparation_failed')
+    assert 'Traceback (most recent call last)' in failure['traceback']
+    assert 'PermissionError' in failure['traceback'] and 'fail' in failure['traceback']
+
+
+@pytest.mark.parametrize('reason', ['not due', 'round done', 'nothing to do'])
+def test_exec_idle_preparation_is_completed(tmp_path, monkeypatch, reason):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import codex_exec, native
+    from connectonion.rem.config import prepare
+    prepare(tmp_path)
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+    monkeypatch.setattr(codex_schedule.CodexNative, 'recent_desktop_fire', lambda *a: False)
+    monkeypatch.setattr(native, 'next_task', lambda *a, **kw: {'outcome': 'done', 'reason': reason})
+
+    def run(command, **kwargs):
+        monkeypatch.setenv('CO_REM_TURN_ID', kwargs['env']['CO_REM_TURN_ID'])
+        result = CliRunner().invoke(app, ['rem', '--root', str(tmp_path), 'next', '--scheduled', '--json'])
+        assert result.exit_code == 0
+        return CompletedProcess(command, 0)
+
+    assert codex_exec.run_turn(tmp_path, run=run) == 'completed'
+
+
+def _turn_of(tmp_path, monkeypatch, commands):
+    """One scheduled turn whose Codex session runs `commands` and exits 0."""
+    from connectonion.rem import codex_exec
+    from connectonion.rem.config import prepare
+    prepare(tmp_path)
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+    monkeypatch.setattr(codex_schedule.CodexNative, 'recent_desktop_fire', lambda *a: False)
+
+    def run(command, **kwargs):
+        monkeypatch.setenv('CO_REM_TURN_ID', kwargs['env']['CO_REM_TURN_ID'])
+        for step in commands:
+            step()
+        return CompletedProcess(command, 0)
+
+    outcome = codex_exec.run_turn(tmp_path, run=run)
+    receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+    assert receipt['result'] == outcome and receipt['exit_code'] == 0
+    return receipt
+
+
+def _stalled_next(tmp_path, page='people/fixture.md'):
+    """What a `co rem next` that passes its deadline leaves for its launcher before it exits 75."""
+    from connectonion.rem import codex_exec
+    return lambda: codex_exec.record_stall(tmp_path, f'preparing {page}: gathering codex sessions',
+                                           {f'preparing {page}: gathering codex sessions': 598})
+
+
+def _cli(tmp_path, monkeypatch, command, value):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import native
+
+    def invoke():
+        monkeypatch.setattr(native, 'next_task' if command[0] == 'next' else 'submit', lambda *a, **kw: value)
+        assert CliRunner().invoke(app, ['rem', '--json', '--root', str(tmp_path), *command]).exit_code in (0, 1)
+    return invoke
+
+
+def test_exec_turn_whose_every_next_passed_its_deadline_is_not_completed(tmp_path, monkeypatch):
+    """11-16: three deadlines, nothing served, nothing submitted, and the receipt said completed, exit 0."""
+    import json
+    receipt = _turn_of(tmp_path, monkeypatch, [_stalled_next(tmp_path)] * 3)
+    assert receipt['result'] == 'failed' and receipt['produced_nothing'] is True
+    assert receipt['blocked'] is False
+    assert receipt['reason'] == ('The turn produced nothing: co rem next passed its deadline 3 times, last while '
+                                 'preparing people/fixture.md: gathering codex sessions; '
+                                 'no task was served and nothing was submitted')
+    stalls = [json.loads(line) for line in Path(receipt['log']).read_text().splitlines()]
+    assert [event['type'] for event in stalls] == ['rem.preparation_stalled'] * 3
+    assert stalls[0]['timings'] == {'preparing people/fixture.md: gathering codex sessions': 598}
+
+
+def test_exec_turn_with_no_recorded_next_says_so_and_is_not_counted_as_empty(tmp_path, monkeypatch):
+    """No record is not proof of an empty turn; the receipt says what is known."""
+    from connectonion.rem import service
+    receipt = _turn_of(tmp_path, monkeypatch, [])
+    assert receipt['result'] == 'completed' and 'produced_nothing' not in receipt
+    assert receipt['reason'] == 'No co rem next was recorded in this turn'
+    assert service.schedule_failure(tmp_path) is None
+
+
+@pytest.mark.parametrize('after', ['served', 'accepted', 'not due'])
+def test_exec_turn_that_stalled_once_and_then_worked_or_had_nothing_due_is_completed(tmp_path, monkeypatch, after):
+    task_id = 'native-' + '0' * 32
+    then = {'served': _cli(tmp_path, monkeypatch, ['next', '--scheduled'], {'outcome': 'task', 'id': task_id}),
+            'accepted': _cli(tmp_path, monkeypatch, ['submit', task_id], {'outcome': 'accepted', 'id': task_id}),
+            'not due': _cli(tmp_path, monkeypatch, ['next', '--scheduled'], {'outcome': 'done', 'reason': 'not due'})}
+    receipt = _turn_of(tmp_path, monkeypatch, [_stalled_next(tmp_path), then[after]])
+    assert receipt['result'] == 'completed' and 'produced_nothing' not in receipt
+
+
+def test_exec_turn_whose_only_submission_was_refused_and_last_next_stalled_is_not_completed(tmp_path, monkeypatch):
+    task_id = 'native-' + '0' * 32
+    refused = _cli(tmp_path, monkeypatch, ['submit', task_id], {'outcome': 'refused', 'reason': 'fixture'})
+    receipt = _turn_of(tmp_path, monkeypatch, [refused, _stalled_next(tmp_path)])
+    assert receipt['result'] == 'failed' and 'passed its deadline 1 time,' in receipt['reason']
+
+
+def test_status_counts_turns_that_produced_nothing_and_idle_turns_end_the_count(tmp_path, monkeypatch):
+    from rich.text import Text
+    from connectonion.cli.commands.rem_status import _today, card as dashboard
+    from connectonion.rem import service
+    for _ in range(2):
+        _turn_of(tmp_path, monkeypatch, [_stalled_next(tmp_path)])
+    warning = service.schedule_failure(tmp_path)
+    assert warning['failures'] == 2 and warning['empty'] == 2 and warning['code'] == 'repeated_failure'
+    value = service.status(tmp_path)
+    today = Text.from_markup('\n'.join(_today(tmp_path, value))).plain
+    assert 'Background: the last 2 turns ran but produced nothing, since ' in today
+    assert 'Last error: The turn produced nothing: co rem next passed its deadline 1 time, last while preparing' in today
+    shown = Text.from_markup(dashboard(tmp_path, value, lambda arguments: 'co rem ' + ' '.join(arguments))).plain
+    assert 'failed · exit 0' in shown and 'after fixing the cause' not in shown
+    idle = _cli(tmp_path, monkeypatch, ['next', '--scheduled'], {'outcome': 'done', 'reason': 'not due'})
+    assert _turn_of(tmp_path, monkeypatch, [idle])['result'] == 'completed'
+    assert service.schedule_failure(tmp_path) is None
+
+
+def test_exec_records_unhandled_preparation_failure(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+    from connectonion.cli.main import app
+    from connectonion.rem import codex_exec, native
+    from connectonion.rem.config import prepare
+    prepare(tmp_path)
+    monkeypatch.setattr(codex_exec, '_start_command', lambda *a: ['fictional-codex'])
+    monkeypatch.setattr(codex_schedule.CodexNative, 'recent_desktop_fire', lambda *a: False)
+
+    def fail(root, **kwargs):
+        raise RuntimeError('Fixture preparation failed unexpectedly')
+
+    def run(command, **kwargs):
+        monkeypatch.setenv('CO_REM_TURN_ID', kwargs['env']['CO_REM_TURN_ID'])
+        monkeypatch.setattr(native, 'next_task', fail)
+        result = CliRunner().invoke(app, ['rem', '--root', str(tmp_path), 'next', '--scheduled', '--json'])
+        assert isinstance(result.exception, RuntimeError)
+        return CompletedProcess(command, 0)
+
+    assert codex_exec.run_turn(tmp_path, run=run) == 'failed'
+    receipt = read_json(state_path(tmp_path, 'last-turn.json'), {})
+    assert receipt['reason'] == 'Fixture preparation failed unexpectedly'
+    assert 'RuntimeError' in Path(receipt['log']).read_text()
+
+
 @pytest.mark.parametrize('parent,result,command,terminated', [
     (1, 'timed-out', 'co rem next --scheduled', True),
     (1, 'completed', 'co rem submit task-1', True),

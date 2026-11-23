@@ -77,21 +77,21 @@ Notion, Google Sheets.
   same afternoon it was removed, because deploys from fresh worktrees lack `.co`
   metadata.
 
-## The control center (dashboard)
+## The Control Center
 
 - The Control Center iframe is **sandboxed: `<script>` never executes.** A
-  fetch()-based dashboard shows empty panels, and even its error message never
+  fetch()-based Control Center shows empty panels, and even its error message never
   renders. Bake data into the HTML server-side via marker regions
   (`<!-- NAME:BEGIN/END -->`) rewritten by a pipeline script; interactions go
   through `data-ochat-skill` / `data-ochat-args` buttons only.
 - Marker rewrites must be idempotent — run twice, get byte-identical output —
   and fail loudly when a marker is missing.
-- Dashboard discipline: one hero number; shares drawn as bars rather than left
+- Control Center discipline: one hero number; shares drawn as bars rather than left
   as mental arithmetic; drill-down to the concrete detail; every figure labelled
   with its methodology tier, and tiers never summed together.
 - Keep a `control-center-audit` skill — hard constraints (no JS, marker
   integrity, brand palette, traceable numbers) plus a design checklist — and run
-  it before every dashboard change.
+  it before every Control Center change.
 
 ## Communicating with the people using it
 

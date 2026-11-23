@@ -353,3 +353,43 @@ def test_a_codex_desktop_thread_typed_in_the_workspace_is_filed_by_its_tool_call
     assert texts(ws.root, "projects/alpha.md") == ["alpha 的 parser 要严格一点。"]
     assert report["workspace"]["attributed"] == 2 and report["workspace"]["stayed_out"] == 0
     assert report["harness_blocks_skipped"] == 1  # the AGENTS.md block, never a page's material
+
+
+# ---- A string that cannot be a folder is never asked about as one ----
+
+# The shape that ended a catchup night: a base64url token whose text happens to
+# hold "-cd" with 554 more of its characters after it.
+TOKEN_TAIL = "Ab3_x-" * 92 + "Zq"
+TOKEN = "eyJhbGciOi" + "Qw9" * 30 + "-cd" + TOKEN_TAIL
+
+
+def test_a_token_that_only_contains_cd_is_not_a_folder_the_session_moved_to(ws):
+    assert len(TOKEN_TAIL) == 554
+    args = json.dumps({"cmd": f'curl -H "Authorization: Bearer {TOKEN}" example.test'})
+    assert project_material._paths(args, str(ws.projects)) == set()
+    # The commands the pattern is for still name their folder.
+    assert project_material._paths(json.dumps({"cmd": "cd beta && git status"}), str(ws.projects)) == {ws.p("beta")}
+    assert project_material._paths("git -C gamma log", str(ws.projects)) == {ws.p("gamma")}
+    assert project_material._paths(json.dumps({"workdir": ws.p("alpha")}), "") == {ws.p("alpha")}
+
+
+def test_a_name_longer_than_a_folder_name_can_be_is_never_a_path(ws):
+    """macOS and Linux both refuse a 256-byte name with ENAMETOOLONG; `.exists()` raises it."""
+    long = "a" * 256
+    assert project_material._paths(f"cd {long} && ls /srv/{long}/file.py /srv/ok/file.py", str(ws.projects)) == {
+        "/srv/ok/file.py"}
+    assert project_material._paths("cd " + "é" * 128, str(ws.projects)) == set()  # 256 bytes, 128 characters
+    assert project_material._paths("cd " + "a" * 255, str(ws.projects)) == {ws.p("a" * 255)}
+
+
+def test_a_session_whose_tool_call_carried_a_token_does_not_stop_the_extraction(ws):
+    """2026-11-16: `[Errno 63] File name too long` on `<workspace>/<554 characters>/.git` ended catchup in a minute."""
+    codex_session(ws.codex / "2026/11/16/rollout-token.jsonl", str(ws.projects), [
+        ("Call the API with the saved login.", 1, [
+            ("shell", {"cmd": f'curl -H "Authorization: Bearer {TOKEN}" https://example.test/v1'}),
+            ("shell", {"cmd": f"cd {'b' * 300} ; cat /srv/{'c' * 300}/notes.md"}),
+            ("exec", exec_command("pytest -q", workdir=ws.p("alpha")))]),
+    ])
+    report = extract(ws.root, ws.subs)
+    assert texts(ws.root, "projects/alpha.md") == ["Call the API with the saved login."]
+    assert report["workspace"]["attributed"] == 1

@@ -101,8 +101,18 @@ def queue(root):
     states = threads.listing(root)
     from .today import queue as today_queue
     ranks = {key: entry['rank'] for entry in today_queue(root, states=states) for key in entry['keys']}
-    pending = [row for row in rows if not closed(root, row, states=states)
-               and read_json(path(root, row['id']), {}).get('version') != row['version']]
+    pending = []
+    for row in rows:
+        if closed(root, row, states=states):
+            continue
+        saved = read_json(path(root, row['id']), {})
+        stray = wrong_channel(root, row, saved)
+        if stray:
+            # Written for a chat this person is not on: rewriting it on the thread's own channel is REM's to undo,
+            # not the owner's chore (#3348). The mark rides through check() into the stored draft as the card's note.
+            pending.append({**row, 'redrafted_from': stray})
+        elif saved.get('version') != row['version']:
+            pending.append(row)
     return sorted(pending, key=lambda row: min((ranks.get(threads.done_key(item['record'], item['text']), float('inf'))
                                              for item in row['obligations']), default=float('inf')))
 
@@ -118,11 +128,51 @@ def listing(root, *, include_pending=False, records=None):
     for row in candidates(root, refresh_index=False, **({'records': records} if records is not None else {})):
         saved = read_json(path(root, row['id']), {})
         if saved.get('version') == row['version'] and (include_pending or saved.get('status') not in ('discarded', 'skipped')):
-            found.append({**saved, "private": saved.get("private", False) or row["private"]})
+            reach = reachable_channels(root, row, saved)
+            found.append({**saved, "private": saved.get("private", False) or row["private"], "channels": reach,
+                          # Written for a channel the person is not on: shown as a defect and never sent (#3312 C);
+                          # the next round rewrites it on the thread's own channel (#3348).
+                          "channel_defect": saved.get('channel', 'mail') not in reach})
         elif include_pending:
             found.append({key: row[key] for key in ('id', 'thread', 'provider', 'private', 'version')} |
                          {'status': 'skipped' if saved.get('version') == row['version'] else 'pending'})
     return found
+
+
+# A chat channel is offered only where this person can be reached on it (#3302). Chats are read live and
+# never stored (#3249), so the index cannot show a WhatsApp or Lark thread; the person's own page can: a cited
+# source from that chat, or a handle the page names for it. WhatsApp also needs the number the send goes to.
+CHAT_EVIDENCE = {'whatsapp': re.compile(r'\bwhatsapp:|^- (?:Handles|Phone):.*\bwhatsapp\b', re.I | re.M),
+                 'lark': re.compile(r'\b(?:lark|feishu):|^- Handles:.*\b(?:lark|feishu|飞书)\b', re.I | re.M)}
+
+
+def reachable_channels(root, row, saved):
+    """The channels this reply can honestly go out on: its own thread's first, then chats with evidence."""
+    channels = ['mail']
+    record = _identities(root, row)['person'].get('page')
+    book = Notebook(root)
+    text = book.read(record) if record and book.exists(record) else ''
+    phone = saved.get('phone') or _phone({'facts': text})
+    if phone and CHAT_EVIDENCE['whatsapp'].search(text):
+        channels.append('whatsapp')
+    if CHAT_EVIDENCE['lark'].search(text):
+        channels.append('lark')
+    return channels
+
+
+def wrong_channel(root, row, saved):
+    """The chat a current, unsent draft was written for when this person can't be reached there; else None (#3348)."""
+    channel = saved.get('channel', 'mail')
+    if channel == 'mail' or saved.get('version') != row['version'] or saved.get('status') != 'prepared':
+        return None
+    return channel if channel not in reachable_channels(root, row, saved) else None
+
+
+def _reachable_or_refuse(root, row, saved, channel):
+    if channel not in reachable_channels(root, row, saved):
+        name = {'lark': 'Lark', 'whatsapp': 'WhatsApp'}.get(channel, channel)
+        raise RemError(f'{saved.get("to") or "This person"} cannot be reached on {name}: their page names no {name} chat'
+                       f' or handle, so the reply stays on mail / 在 {name} 上联系不到对方，回复留在邮件')
 
 
 def owner_skill(name):
@@ -146,7 +196,7 @@ def _page_excerpt(root, record, sections, limit=1800):
         if match:
             found[title.lower().replace(' ', '_')] = match.group(1).strip()[:limit]
             if title == 'Facts':
-                permission = re.search(r'^- Direct send: (partner|close|none)\b', match.group(1), re.M)
+                permission = re.search(r'^- Direct send: (partner|close|none|never)\b', match.group(1), re.M)
                 found['direct_send'] = permission.group(1) if permission else 'none'
     return found
 
@@ -345,8 +395,10 @@ def redraft(root, draft_id, channel):
     """Write the same reply for another channel: a chat message is not a mail body."""
     if channel not in CHANNELS:
         raise RemError(f'Unknown channel {channel!r}; expected one of {", ".join(CHANNELS)}')
-    _not_held(_current(root, draft_id, refresh_index=False))
+    saved = _current(root, draft_id, refresh_index=False)
+    _not_held(saved)
     row = next(row for row in candidates(root, refresh_index=False) if row['id'] == draft_id)
+    _reachable_or_refuse(root, row, saved, channel)
     return _write_now(root, row, channel)
 
 
@@ -376,7 +428,7 @@ def _lark_open_id(found):
 
 
 def _cli(command):
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if completed.returncode:
         raise RemError((completed.stderr or completed.stdout).strip()[:400] or f'{command[0]} failed')
     return json.loads(completed.stdout or '{}')
@@ -419,12 +471,20 @@ def _send_locked(root, draft_id, body=None, *, held=False):
     if has_slots(text):
         raise RemError('Fill the marked part first / 先填好标出的部分')
     if saved.get('channel', 'mail') != 'mail':
+        # A reply goes out where it was asked unless the person is reachable on the chat it was rewritten for:
+        # an Outlook thread once sat drafted as a Lark message for someone with no Lark chat (#3312 C).
+        row = next((row for row in candidates(root, refresh_index=False) if row['id'] == draft_id), None)
+        if row is None:
+            raise RemError('This reply no longer matches its thread; open Today again')
+        _reachable_or_refuse(root, row, saved, saved['channel'])
         receipt = _send_chat(saved, text)
     else:
         client = mail_client(saved['provider'])
         receipt = (client.reply(saved['in_reply_to'], text, cc=saved['cc'] or None) if saved['provider'] == 'outlook'
                    else client.reply(saved['in_reply_to'], text))
-    write_json(path(root, draft_id), {**saved, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
+    # What REM prepared, kept when the owner changed it: the night learns his voice from the difference (#3174).
+    prepared = {'prepared_body': saved['body']} if text != saved['body'] and 'prepared_body' not in saved else {}
+    write_json(path(root, draft_id), {**saved, **prepared, 'body': text, 'status': 'sent', 'sent_at': now().isoformat(), 'sent_receipt': receipt})
     return {'status': 'sent'}
 
 

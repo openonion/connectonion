@@ -11,6 +11,7 @@ const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
   append(...nodes) { this.children.push(...nodes); },
   appendChild(node) { this.children.push(node); },
   get childElementCount() { return this.children.length; }});
+const pageName = page => page.title;  // course/team codes: tested in the browser
 const orgT = text => text, t = text => text;
 const orgSummary = text => text || '';
 '''
@@ -41,7 +42,7 @@ def test_org_stage_has_no_today_projection():
     result = run_js(['orgStage'], DOM + r'''
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
       const updatedMarker = () => null, orgSub = () => [], translationLine = () => null;
-      const orgOpening = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count';
+      const orgOpening = () => 'facts', orgTree = () => 'tree', orgTodayLink = () => 'Today count', investigateControl = () => null, recordActs = () => null;
       console.log(JSON.stringify(orgStage({r: {}, people: []})));
     ''')
     assert 'Today count' not in str(result)
@@ -72,7 +73,7 @@ def test_org_article_milestones_use_only_the_organisations_dated_story():
 
 @pytest.mark.parametrize('language', ['en', 'zh'])
 def test_org_opening_says_summary_contacts_and_dates_as_sentences(language):
-    result = run_js(['orgOpening'], DOM.replace('const orgT = text => text, t = text => text;', '') + r'''
+    result = run_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName'], DOM.replace('const orgT = text => text, t = text => text;', '') + r'''
       const uiLanguage = __LANG__, orgT = (key, v) => key.replace('{date}', v.date);
       const known = () => ({summary: 'A teaching university.', last: '2026-10-01'});
       const facts = () => ({first: '2025-01-02'}), orgRelation = () => 'Your research partner.';
@@ -90,7 +91,7 @@ def test_org_opening_says_summary_contacts_and_dates_as_sentences(language):
 def test_org_article_stage_has_no_state_only_elements():
     result = run_js(['orgStage'], DOM + r'''
       const orgOver = () => 'breadcrumb', orgName = () => 'Fernhill', nameLang = () => 'en';
-      const orgOpening = () => 'Opening sentences', orgTree = () => 'tree', translationLine = () => null;
+      const orgOpening = () => 'Opening sentences', orgTree = () => 'tree', translationLine = () => null, investigateControl = () => null, recordActs = () => null;
       const updatedMarker = () => ({class: 'updated-label'}), orgSub = () => [], orgFacts = () => 'facts';
       const orgKeyPeople = () => null, orgTodayLink = () => null, orgXray = () => null;
       console.log(JSON.stringify(orgStage({r: {}, people: []})));
@@ -136,6 +137,7 @@ def test_org_full_memory_date_is_a_calendar_date_without_state_counts():
 def test_org_connections_are_distinct_public_project_org_and_topic_links():
     result = run_js(['orgConnections'], DOM + r'''
       const uiLanguage = 'en', orgProse = x => x, href = p => '#' + p.path, known = () => ({summary:'Recorded connection.'});
+      const singular = category => category;
       const rows = [{path:'projects/studio.md',category:'projects',title:'Studio'},
         {path:'orgs/partner.md',category:'orgs',title:'Partner'},
         {path:'knowledge/teaching.md',category:'knowledge',title:'Teaching'},
@@ -150,7 +152,7 @@ def test_org_connections_are_distinct_public_project_org_and_topic_links():
 
 
 def test_org_opening_deduplicates_relationship_and_names_all_few_contacts():
-    result = run_js(['orgOpening'], DOM + r'''
+    result = run_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName'], DOM + r'''
       const uiLanguage = 'en', known = () => ({summary:'Climate research; your first paying pilot.',last:''});
       const orgRelation = () => 'Your first paying pilot', facts = () => ({}), orgLast = p => p.last;
       const orgFact = () => '';
@@ -164,7 +166,7 @@ def test_org_opening_deduplicates_relationship_and_names_all_few_contacts():
 
 
 def test_org_opening_many_contacts_names_the_most_recent_and_says_so():
-    result = run_js(['orgOpening'], DOM + r'''
+    result = run_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName'], DOM + r'''
       const uiLanguage = 'en', known = () => ({summary:'Research.',last:''});
       const orgRelation = () => '', facts = () => ({}), orgLast = p => p.last;
       const orgFact = () => '';
@@ -186,10 +188,9 @@ def test_org_facts_have_individual_labels_and_a_clickable_website():
       const orgTableT = x => x, plainLine = x => x, orgProse = x => x, href = () => '#record';
       console.log(JSON.stringify({coda: orgCoda({r:{},people:[]}), header: orgOver({})}));
     ''')
-    header_link = result['header']['children'][1]
+    # #3131 one header: View sources lives in the shared action slot (recordActs), not floating in the org header.
+    assert result['header']['children'] == ['breadcrumb']
     memory_link = result['coda']['children'][1]
-    assert header_link['text'] == 'View sources →'
-    assert header_link['href'] == '#record&h=sources'
     assert memory_link['text'] == 'Read full memory →'
     assert memory_link['href'] == '#record&h=full-memory-heading'
     facts = result['coda']['children'][0]

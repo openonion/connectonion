@@ -55,7 +55,9 @@ def test_org_table_columns_links_activity_and_calm_blanks(browser, tmp_path, mon
     assert page.locator('.org-logo').count() == 4
     for a in page.locator('.c-website a').all():
         assert a.get_attribute('target') == '_blank' and a.get_attribute('rel') == 'noopener'
-    assert 'Derived' in page.locator('tr').filter(has_text='Elm Desk').inner_text()
+    # #3160: inferred is a dot with its word on hover, not a line under the domain.
+    assert page.locator('tr').filter(has_text='Elm Desk').locator('.org-derived').get_attribute('title') == 'Derived'
+    assert 'Derived' not in page.locator('tr').filter(has_text='Elm Desk').inner_text()
     assert page.locator('tr').filter(has_text='Ash').locator('.c-location').inner_text() == '—'
     text = page.locator('#main').inner_text().lower()
     for word in ('waiting','overdue','open items','who wrote last','reply speed','今天','等你'):

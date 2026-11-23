@@ -400,7 +400,457 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.6rc16
+## Current Version: 1.9.7rc25
+Release candidate 1.9.7rc25 for 1.9.7: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation (#3426). Explicit model and effort choices survive upgrades; related-page privacy marks are curtained (#3427, #3425). Also included: standalone Obsidian live reads (#3064), sync/agenda lead fixes (#3055) and memory regex errors (#3255). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc25.md).
+
+- 1.9.7rc25 (REM model groups and safe default migration #3426).
+
+### Previous candidate: 1.9.7rc24
+Release candidate 1.9.7rc24 for 1.9.7: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc24.md).
+
+- 1.9.7rc24 (honest queue position #3421/#3420; card time, countdown, job titles, org site and reasons #3423/#3422).
+
+### Previous candidate: 1.9.7rc23
+Release candidate 1.9.7rc23 for 1.9.7: privacy: a line that opens with a privacy mark is curtained in place at 遮敏感 in every section kind; on rc22 such a line showed in full with its raw mark, and a Chinese reader says its own labels in Chinese and shows a page's English as its original (#3416, #3410); once the fix for a stuck page is installed, Today and status say the next round skips it, in local time, over one night window (#3414, #3413); the owner's side of a client organisation is found from what real pages say, so 你这边对接的人 appears on real client orgs (#3415, #3397). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc23.md).
+
+- 1.9.7rc23 (line-leading mark curtained at 遮敏感, Chinese labels #3416/#3410; status after a fix in local time #3414/#3413; owner's side on client orgs #3415/#3397).
+
+### Previous candidate: 1.9.7rc22
+Release candidate 1.9.7rc22 for 1.9.7: a tag or search view never scrolls sideways: a privacy curtain's cap is a length, not a width (#3407, #3404); Today says when before how old, says each event once, and fits a phone without a caption running off the card (#3408, #3406, #3379); a facts card keeps a short value whole and its labels speak Chinese (#3409, #3405). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc22.md).
+
+- 1.9.7rc22 (tag/search overflow #3407/#3404; Today time-first and phone fit #3408/#3406/#3379; facts card values and labels #3409/#3405).
+
+### Previous candidate: 1.9.7rc21
+Release candidate 1.9.7rc21 for 1.9.7: a draft the page check refused says the page is unchanged, in the owner's words, and what happens next from the night's own retry ledger: 今晚会再试一次, or 已暂停 after N tries (#3398, #2235); one night, one count: Today's 昨夜 heading adds up the curve's own stretches, the side line says 待办, and the Codex line no longer sounds like one task both running and stopped (#3399, #3396); an organisation's connections give the line that links the pair, or say plainly which page names which, and the owner's own people are no longer drawn inside a client's org tree (#3400, #3397); a job that can never be prepared is set aside and the round goes on: a skill page whose skill is no longer installed stopped every background round from 06:15, and Today now says when one error keeps stopping the night (#3403, #3402). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc21.md).
+
+- 1.9.7rc21 (refused-draft line #3398/#2235; one night one count #3399/#3396; org connection reasons #3400/#3397; unpreparable jobs parked #3403/#3402).
+
+### Previous candidate: 1.9.7rc20
+Release candidate 1.9.7rc20 for 1.9.7: the tag-page title never carries a privacy mark: a page check refuses one, the page build moves an old mark onto the page's passages once, and a masked page reads 个人事项 1, 2 …, numbered once in the order it was first masked (#3386, #3385); course and team codes read 课程 3900 / 团队 … wherever an organisation's name shows (#3389, #3388); a mail Outlook or Gmail says is gone is asked for once more a day later, then the night stops waiting and says so instead of promising 会再试 (#3393, #3392); Today's night curve carries the whole night, not the last 21 runs, a stuck stretch keeps its own caption and the axis ends after the last run (#3394, #3391). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc20.md).
+
+- 1.9.7rc20 (masked tag titles #3386/#3385; course-code org names #3389/#3388; gone-mail retry truth #3393/#3392; whole-night curve #3394/#3391).
+
+### Previous candidate: 1.9.7rc19
+Release candidate 1.9.7rc19 for 1.9.7: the night's sleep curve tells the truth: a parked or stuck stretch draws as 清醒, captioned 卡住 N 分钟 · 已自动跳过, and the phone names the highest level the night reached; the desk title counts what the cards show (#3382, #3379); an uninvestigated WeChat friend's facts card no longer prints the raw WeChat id and says the rest comes with investigation (#3381, #3372); the upgrade backfill is versioned, so the retitle and the first/last-chat fields reach notebooks already backfilled on rc17 (#3380, #3368). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc19.md).
+
+- 1.9.7rc19 (Today curve truth #3382/#3379; WeChat facts card #3381/#3372; versioned backfill #3380/#3368).
+
+### Previous candidate: 1.9.7rc18
+Release candidate 1.9.7rc18 for 1.9.7: the night can no longer loop on one task: a tag page that cannot be tagged alone waits instead of raising after the others were written, and a scheduled next parks a task whose input changed (#3377, #3376); Today opens with the night as a sleep curve, the night's work under it and one primary action per card (#3371); a WeChat-only person page says when you last talked, the 90-day count and who wrote last, with the raw WeChat id moved into ⋯ (#3374, #3372); the People filters are labelled 来源 and 标签 and course codes read as names (#3373); `co wechat` and `co rem` help speak to the AI that runs them (#3361). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc18.md).
+
+- 1.9.7rc18 (night loop fix #3377/#3376; Today sleep curve #3371; WeChat person header #3374; People filter labels #3373; CLI help for the AI #3361).
+
+### Previous candidate: 1.9.7rc17
+Release candidate 1.9.7rc17 for 1.9.7: WeChat works on an upgraded notebook without waiting for a night run: the first page build backfills each source's chat activity and onboarding record, `co rem map` records them like the night, status counts the pages a source already holds, punctuation-only WeChat names fall back to the remark or 微信好友（无名字 · …1234）, and the People row marks only the minority source (#3369, #3368). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc17.md).
+
+- 1.9.7rc17 (upgrade backfill, map records activity, status counts held pages, junk-title fallback, minority source mark #3369/#3368).
+
+### Previous candidate: 1.9.7rc16
+Release candidate 1.9.7rc16 for 1.9.7: REM gets faster and WeChat-complete: the same-person check and the whole-notebook scans run once per build (`co rem status` ~20 s → ~11 s on 1,352 people, #3365); every WeChat friend gets a page, chats are read from the full-text index too, and the People table counts WeChat activity, folds friends without recent chats and labels the id 微信 (#3357, #3346); a wrong-channel reply is rewritten on the thread's own channel and full screen holds send until it is (#3358); every source reports its coverage and Today names what REM can't read with one button (#3354, #3356); opening the reader no longer asks for translation status (#3352); one token sheet for states and motion (#3362); 3D graph fit and search refinements (#3342). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc16.md).
+
+- 1.9.7rc16 (scan perf #3365; every WeChat friend + WeChat activity in People #3357/#3346; wrong-channel redraft #3358; source coverage #3354/#3356; no translate-status on open #3352; token sheet #3362; 3D refine #3342).
+
+### Previous candidate: 1.9.7rc15
+Release candidate 1.9.7rc15 for 1.9.7: the agent's page is called the Control Center everywhere (#3336). The Host
+serves `.co/control_center.html`, then `.co/dashboard.html`, then a root `dashboard.html`, and `co host` prints a
+one-line rename hint when an old name is in use. The snapshot frame is `CONTROL_CENTER_SNAPSHOT`; each one is followed
+by an identical `DASHBOARD_SNAPSHOT` for one preview cycle so older O Chat builds keep rendering. The builtin skill is
+`control-center`. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc15.md).
+
+- 1.9.7rc15 (Control Center rename: control_center.html, CONTROL_CENTER_SNAPSHOT, control-center skill #3336).
+
+### Previous candidate: 1.9.7rc14
+Release candidate 1.9.7rc14 for 1.9.7: owner-facing text names pages instead of raw `[[…md]]` paths and the record
+breadcrumb is only as wide as its text (#3338); the knowledge graph is alive, 3D in the live reader with Three.js and
+3d-force-graph vendored and served by the Host on first 3D open, and a live, draggable 2D graph on phone and with
+reduced motion (#3330); 不是人 works on WeChat-only people from the header ⋯ menu and the map and the night honour
+it, verified WeChat accounts are filtered, and the map output labels match their names (#3341). Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc14.md).
+
+- 1.9.7rc14 (pages named not paths and a text-wide crumb #3338; live 3D/2D knowledge graph #3330; 不是人 for WeChat-only people #3341).
+
+### Previous candidate: 1.9.7rc13
+Release candidate 1.9.7rc13 for 1.9.7: adding a source onboards it (#3331). `co rem map [people|orgs|projects]
+--source NAME [--dry-run]` builds pages from one source without a model; each source declares the kinds it yields
+(mail: people and orgs; wechat: people; codex/claude-code: projects) and a kind it does not yield is refused
+(#3334). `co rem investigate --source NAME` runs the pages that source reaches, new ones first. `co rem sources add`
+maps a source at once, the night re-maps WeChat and any new or widened local source, created pages go first in the
+people queue, and `co rem sources` / `co rem status` show each source's map (#3335). Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc13.md).
+
+- 1.9.7rc13 (adding a source onboards it: co rem map --source #3334; auto-onboard and per-source status #3335).
+
+### Previous candidate: 1.9.7rc12
+Release candidate 1.9.7rc12 for 1.9.7: the Keys page lists the vault, grouped by site: above 30 keys every site
+folds to one row "<site> · N 条", search opens the matching groups, single-entry sites are one-row groups, and a
+phone shows a two-line list. co's own keys from `~/.co/keys.env` are grouped by service with settings folded, and a
+test pins that no model stage reads `keys/` pages (#3327). Tags render as quiet chips on every page kind: grey
+text, a light fill and a hairline border (#3313). Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc12.md).
+
+- 1.9.7rc12 (the Keys vault grouped by site #3327; tags as quiet chips #3313).
+
+### Previous candidate: 1.9.7rc11
+Release candidate 1.9.7rc11 for 1.9.7: the Today reply card and its full-screen compose, rebuilt to one spec (#3312).
+One filled 发送 with the rest under ⋯; the letter reads in full and folds with 展开全文; a line names the message REM
+read; ‹ i/n › steps through the cards. Replies keep to the channel the person is reachable on: a draft stored on a
+channel they are not on (an Outlook thread drafted as Lark) is refused and offered 改写成邮件. Send shows its state
+with undo and retry. Full screen has × top-right and Esc, open questions as clickable chips, and a one-line phone
+header. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc11.md).
+
+- 1.9.7rc11 (the reply card and full-screen compose per #3312; honest channels #3324).
+
+### Previous candidate: 1.9.7rc10
+Release candidate 1.9.7rc10 for 1.9.7: the Keys page imports with one 一键导入 (Chrome, Edge, Brave, the macOS
+Keychain, Apple Passwords via its CSV export, or a CSV), shows a waiting step while the system asks to 允许, and
+says why when the REM Host cannot show that prompt, with the one fix; co's own keys from `~/.co/keys.env` are
+listed by name. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc10.md).
+
+- 1.9.7rc10 (Keys: one-click import from honest sources, a visible prompt step, keys.env listed).
+
+### Previous candidate: 1.9.7rc9
+Release candidate 1.9.7rc9 for 1.9.7: `co discord` as your own account (experimental), system Chrome fallback
+that keeps other sessions' tabs, a bare `co host` that no longer stops serving silently, and `co call` that names
+the address it signed with. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc9.md).
+
+
+### Previous candidate: 1.9.7rc8
+Release candidate 1.9.7rc8 for 1.9.7: fixes a regression in rc7. rc7 reworded a topic link review from the page
+path to its title, and reviews deduped on the question text, so the next night would have proposed every stored
+link again (36 became 77 on a clone of a real notebook) and re-asked decided ones. A link review now matches on
+its two pages whatever the wording; a pending one takes the new wording, so the stale path questions migrate to
+titles; decided links stay as written. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc8.md).
+
+- 1.9.7rc8 (link reviews dedupe on their pages, not their wording #3292).
+
+### Previous candidate: 1.9.7rc7
+Release candidate 1.9.7rc7 for 1.9.7: a reader polish batch (record pages open at one width, a project page's
+"in Today" opens the filtered Waiting view, calendar titles clamp, the empty Keys page leads with one-click
+import, a topic link review names the page not its file path) and the WeChat upgrade fix — an existing install's
+stale wechat source implies consent once keys are captured, and seeding matches the reader's gate, so the night
+both seeds and fills WeChat people. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc7.md).
+
+- 1.9.7rc7 (reader polish batch; WeChat upgrade fix #3289).
+
+### Previous candidate: 1.9.7rc6
+Release candidate 1.9.7rc6 for 1.9.7: WeChat is a co rem source that seeds people into the map and the night,
+on by default once its keys are captured. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc6.md).
+
+- 1.9.7rc6 (WeChat seeds people into co rem).
+
+### Previous candidate: 1.9.7rc5
+Release candidate 1.9.7rc5 for 1.9.7: the Control Center has an admin section (who joined, Remove/Block, rotate
+the invite without a restart, activity, health, log), shown only to admins. Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc5.md).
+
+- 1.9.7rc5 (Control Center admin section).
+
+### Previous candidate: 1.9.7rc4
+Release candidate 1.9.7rc4 for 1.9.7: WeChat is a co rem source (read straight from its databases, no local
+copies), and the Keys page imports from Chrome/Edge/Brave in one click. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc4.md).
+
+- 1.9.7rc4 (WeChat in co rem; one-click key import from browsers).
+
+### Previous candidate: 1.9.7rc3
+Release candidate 1.9.7rc3 for 1.9.7: `restricted: env` passes named Host variables to the tools, and the
+caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. Stable is 1.9.6. See [candidate notes](docs/releases/1.9.7rc3.md).
+
+- 1.9.7rc3 (restricted: env and the caller in the environment).
+
+### Previous candidate: 1.9.7rc2
+Release candidate 1.9.7rc2 for 1.9.7: `co wechat` just works on WeChat 4.1 for Mac. One command captures every
+database's key, the databases open (WAL frames applied), and bare `co wechat` lists your chats with `read` and
+`search`. The README shows WeChat, Asana and Obsidian. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc2.md).
+
+- 1.9.7rc2 (co wechat reads WeChat 4.1 for Mac).
+
+### Previous candidate: 1.9.7rc1
+Release candidate 1.9.7rc1 for 1.9.7: a restricted claude-code Host from host.yaml, a Host that refuses a silent
+co/ model, provider/model names in /info, and `co obsidian` / `co asana`. Stable is 1.9.6. See
+[candidate notes](docs/releases/1.9.7rc1.md).
+
+- 1.9.7rc1 (restricted claude-code Host; no silent co/ model; co obsidian and co asana).
+
+### Previous: stable 1.9.6
+
+Stable 1.9.6, released by the owner's decision: 1.9.6rc48's code. `co init` starts the Host and leaves it
+running on macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through a
+logged-in Claude Code with no API key (checked on a real Windows 11 PC over the relay in rc43). REM gets the new
+desk, a knowledge graph, three privacy levels and hand-offs you can watch; `co send` / `co receive`, `co wechat`,
+WhatsApp pairing by code and Windows hosts. The default model is Gemini 4 Hydrogen. See [1.9.6 notes](docs/releases/1.9.6.md).
+
+- 1.9.6 (co init starts the Host; model: claude-code; REM's new desk; files between agents).
+
+### Previous candidate: 1.9.6rc48
+Release candidate 1.9.6rc48 for 1.9.6: REM related-page cards show the sentence without the writer's
+"Changed:" prefix, and the page foot says Copy the file path instead of printing it. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc48.md).
+
+- 1.9.6rc48 (related cards and page foot read cleanly).
+
+### Previous candidate: 1.9.6rc47
+Release candidate 1.9.6rc47 for 1.9.6: on a phone, a knowledge or tag page whose linked page is named by a
+long question no longer widens the page. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc47.md).
+
+- 1.9.6rc47 (linked page names wrap on a phone).
+
+### Previous candidate: 1.9.6rc46
+Release candidate 1.9.6rc46 for 1.9.6: a Windows background Host counts as running only when it answers, and a
+Host the relay refuses stops with the reason. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc46.md).
+
+- 1.9.6rc46 (Host health on Windows; refused announce stops the Host).
+
+### Previous candidate: 1.9.6rc45
+Release candidate 1.9.6rc45 for 1.9.6: on a phone, a finished hand-off's line on Today wraps instead of widening
+the page so the phone zoomed out; a claude-code Host names a missing Claude login. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc45.md).
+
+- 1.9.6rc45 (Today on a phone no longer zooms out; missing Claude login named).
+
+### Previous candidate: 1.9.6rc44
+Release candidate 1.9.6rc44 for 1.9.6: global `co init` on Windows from an elevated shell starts a Host that
+can read its profile; with Claude Code logged in it serves `model: claude-code` by default. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc44.md).
+
+- 1.9.6rc44 (Windows default Host from an elevated shell).
+
+### Previous candidate: 1.9.6rc43
+Release candidate 1.9.6rc43 for 1.9.6: the Windows logon Host starts when co was set up from an elevated
+shell, checked on a real Windows 11 PC with `model: claude-code` over the relay. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc43.md).
+
+- 1.9.6rc43 (Windows logon Host from an elevated shell).
+
+### Previous candidate: 1.9.6rc42
+Release candidate 1.9.6rc42 for 1.9.6: rc40's code, published; rc39 to rc41 were tagged but stopped at the
+release checks that run global `co init` under a temporary HOME, which now pass `--no-host`. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc42.md).
+
+- 1.9.6rc42 (rc39 to rc41, published).
+
+### Previous candidate: 1.9.6rc41 (not published)
+Release candidate 1.9.6rc41 for 1.9.6: rc40's code, published; rc39 and rc40 were tagged but stopped at the
+wheel check, which now runs global `co init` with `--no-host`. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc41.md).
+
+- 1.9.6rc41 (rc39 and rc40, published).
+
+### Previous candidate: 1.9.6rc40 (not published)
+Release candidate 1.9.6rc40 for 1.9.6: everything from rc39, which was tagged but never published, plus
+`co init` that skips the background Host and exits 0 on Linux without a systemd user session (containers, CI,
+SSH without linger). Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc40.md).
+
+- 1.9.6rc40 (rc39 plus co init on machines without a user service manager).
+
+### Previous candidate: 1.9.6rc39 (not published)
+Release candidate 1.9.6rc39 for 1.9.6: `co init` starts the Host and leaves it running (launchd on macOS,
+systemd on Linux, a Scheduled Task at logon on Windows); `co host` shows it; the model is one line in
+host.yaml (`codex`, `claude-code` or a model name), so a logged-in Claude Code answers through the Host and
+O Chat with no API key. The WTF engine requires onionwright 0.0.16, the first with Windows support.
+Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc39.md).
+
+- 1.9.6rc39 (co init starts the Host on every OS; model: claude-code; onionwright 0.0.16).
+
+### Previous candidate: 1.9.6rc38
+Release candidate 1.9.6rc38 for 1.9.6: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc38.md).
+
+- 1.9.6rc38 (REM rc36 bug-hunt fixes, #3203 #3204 #3206 #3208 #3209 #3210 #3211).
+
+### Previous candidate: 1.9.6rc37
+Release candidate 1.9.6rc37 for 1.9.6: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc37.md).
+
+### Previous candidate: 1.9.6rc36
+Release candidate 1.9.6rc36 for 1.9.6: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said once in the reader's own form. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc36.md).
+
+- 1.9.6rc36 (REM: rc35 bug-hunt fixes — web source cards, Today's side column, phone agenda, worded counts, privacy polish, dates and hex).
+
+### Previous candidate: 1.9.6rc35
+Release candidate 1.9.6rc35 for 1.9.6: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
+bar, and night stages that drain. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc35.md).
+
+- 1.9.6rc35 (REM: rc34 bug-hunt fixes — upgrade-safe tab, Today's first screen, dates and ids, compact top bar, draining stages).
+
+### Previous candidate: 1.9.6rc34
+Release candidate 1.9.6rc34 for 1.9.6: REM gets the knowledge graph (a tag links pages; tag pages; `co rem investigate tag`), a closed item
+stays closed, three privacy levels in the reader's top bar that cover every place a passage shows, sources that never
+open empty, and the hourly bug hunt's fixes. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc34.md).
+
+- 1.9.6rc34 (REM: knowledge graph, closed stays closed, privacy levels, bug-hunt fixes).
+
+### Previous candidate: 1.9.6rc33
+Release candidate 1.9.6rc33 for 1.9.6: `co wechat` reads your own WeChat for Mac history locally, read-only — a
+SQLCipher-4 decryption engine (no new dependency, tested against an independent sqlcipher-CLI oracle) with `doctor`,
+`key`, `chats`, `decrypt` and `export`. Obtaining the key stays a consented manual step; the schema is revealed, not
+assumed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc33.md).
+
+- 1.9.6rc33 (co wechat: read your own WeChat for Mac history locally).
+
+### Previous candidate: 1.9.6rc32
+Release candidate 1.9.6rc32 for 1.9.6: `co browser` starts headless on Windows in session 0 (OpenSSH logins,
+services, scheduled tasks), where a headed Chrome could never show a window and go_to waited 120 s. Together with
+rc31's Windows fixes for co rem (timezone, UTF-8, paths, long prompts) and the onionwright install, co runs on a
+Windows PC end to end. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc32.md).
+
+- 1.9.6rc32 (co browser headless in Windows session 0).
+
+### Previous candidate: 1.9.6rc31
+Release candidate 1.9.6rc31 for 1.9.6: the calendar is part of Today (a week strip over the day's timeline, under
+the cards; no separate Agenda place), record pages read in one 720 px measure with a flat header and an ink accent,
+a Keys place whose values live only in the macOS Keychain, tags on every page kind with tag pages, filters and graph
+nodes, approve and talk answering in under a second, a Host that moves itself onto a new release, done marks that
+survive the night's rewording, and a deleted mail that no longer fails an investigation. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc31.md).
+
+- 1.9.6rc31 (calendar in Today; reading measure and ink; Keys; tags everywhere; faster approve and talk).
+
+### Previous candidate: 1.9.6rc30
+Release candidate 1.9.6rc30 for 1.9.6: hand-offs to Codex and Claude you can watch and pick up (live steps, a tmux
+session, Watch in Terminal, Continue in Codex/Claude; the row turns at the click, a finished run says so with a
+summary and offers to draft its reply, failures say why with Retry), enrich that writes like OSINT (career timelines,
+organisation pages created and linked both ways), decisions found on the cheap model with translated titles, one
+language control in the top bar, a page that lost its Host says so and reconnects, and a person page that leads with
+what happened (no open-topics block; a timeline row opens its original). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc30.md).
+
+- 1.9.6rc30 (hand-offs you can watch; OSINT enrich; one language control; person timeline first).
+
+### Previous candidate: 1.9.6rc29
+Release candidate 1.9.6rc29 for 1.9.6: a source's title in Full memory's Sources opens its original (mail, file,
+session) in the side card again (#3134); a calendar event shows how to join (Google Meet, Teams, Zoom named), who
+organised it and its notes, with the provider's page a quiet link (#3135); and the Investigate menu and "What
+changed" float over every card under the record head. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc29.md).
+
+- 1.9.6rc29 (source titles open the original; calendar join links and notes; Investigate popovers on top).
+
+### Previous candidate: 1.9.6rc28
+Release candidate 1.9.6rc28 for 1.9.6: the night runs again (a finishing step deadlocked on its own lock; a step
+that keeps stalling is held and named; the Codex quota is read outside the sandbox), Investigate can append to a
+page already over the length limit (its oldest History moves word for word to an archive), the live reader
+recovers after an upgrade (a failed rebuild retries, a dead Host is replaced, the port is kept), a person's reply
+policy is one click (以后直接发给他 / 以后先给我看; nothing auto-sent before 07:00; private facts hold), and the
+person header is polished. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc28.md).
+
+- 1.9.6rc28 (night unblocked, append to long pages, live reader recovers, one-click reply policy).
+
+### Previous candidate: 1.9.6rc27
+Release candidate 1.9.6rc27 for 1.9.6: the person page's header and profile card are redesigned (#3131's first
+slice). Three header lines (name; role · organisation; place · last contact · mail · Today), one action column
+(调查, then the translation state), and facts as single-line rows in two balanced columns, with sources one hover
+away. Also fixes a private project page that rendered nothing after its first section, and the Investigate menu
+running off a phone's screen. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc27.md).
+
+- 1.9.6rc27 (person header and profile card redesign; private project page crash; phone Investigate menu).
+
+### Previous candidate: 1.9.6rc26
+Release candidate 1.9.6rc26 for 1.9.6: REM sprint 22. Today's Send always answers (an unfilled slot is
+pointed at, a sent reply says when and to whom with Undo), full-screen writing is a visible button, and the
+"more" panel's Codex/Claude actions are a button row. A person's profile card is the first thing under the
+name. Full memory opens by itself and its sources are short, named and linked both ways with the lines that
+cite them. `co rem investigate PAGE` writes a missing page and appends to an existing one (`--enrich` adds
+the web step, `--rewrite` is held for approval, `--undo` reverts), and record pages get one Investigate
+button. The calendar draws multi-day events as all-day bars. Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc26.md).
+
+- 1.9.6rc26 (REM sprint 22: Send feedback, profile card first, sources band, investigate appends).
+
+### Previous candidate: 1.9.6rc25
+Release candidate 1.9.6rc25 for 1.9.6: a Windows PC can host. `co host` no longer publishes
+link-local 169.254.x addresses and never sends the relay more than its 10 endpoints, so a PC with
+disconnected adapters registers; `co call` runs on a Windows host through Git Bash (or `cmd /c`);
+the background listener's log is UTF-8. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc25.md).
+
+- 1.9.6rc25 (Windows hosts: announce within the relay limit, bash via Git Bash or cmd, UTF-8 listener log).
+
+### Previous candidate: 1.9.6rc24
+Release candidate 1.9.6rc24 for 1.9.6: three Windows fixes from the first live `co whatsapp` run on
+Windows 11. `check` and `consume` no longer crash with PermissionError while a listener runs (the pid
+moved out of the locked file into listen.pid); incoming WhatsApp messages are no longer dropped
+(timestamps arrive in milliseconds); `consume` talks UTF-8 with its command instead of cp1252.
+Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc24.md).
+
+- 1.9.6rc24 (Windows: listen.pid, millisecond WhatsApp timestamps, UTF-8 consume).
+
+### Previous candidate: 1.9.6rc23
+
+Release candidate 1.9.6rc23 for 1.9.6: `co whatsapp listen --phone <number>` prints an 8-character
+pairing code to type on the phone under Linked devices, instead of a QR that changes every ~20 s and
+has to be seen. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc23.md).
+
+- 1.9.6rc23 (co whatsapp listen --phone: link by pairing code).
+
+### Previous candidate: 1.9.6rc22
+
+Release candidate 1.9.6rc22 for 1.9.6: when `co browser keyboard_type` or `type_text_by_selector`
+cannot paste, the whole text goes in through one CDP `Input.insertText` call, which needs no OS
+clipboard (measured on rc21: headless Chrome on Windows over SSH never took the paste and typed 920
+of 1,402 characters key by key before the 120 s timeout). The result says whether the text was
+pasted, inserted or typed. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc22.md).
+
+- 1.9.6rc22 (co browser: CDP insert when the paste does not land; the result says how text went in).
+
+### Previous candidate: 1.9.6rc21
+
+Release candidate 1.9.6rc21 for 1.9.6: when `co send` cannot reach the receiver directly, because
+its Host is behind a router or not running, a file of up to 10 MB waits on the server for 7 days,
+boxed to the receiver so the server never sees its name or bytes, and `co receive` there takes it
+from a trusted sender. `co browser keyboard_type` and `type_text_by_selector` paste the text in one
+event (measured: a 1,402-character post had 610 characters in when the CLI's 120 s timeout cut it
+off); `--human` types key by key. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc21.md).
+
+- 1.9.6rc21 (co send: small files wait on the server; co browser: keyboard_type pastes).
+
+### Previous candidate: 1.9.6rc20
+
+Release candidate 1.9.6rc20 for 1.9.6: the night's Codex workers run at the reasoning effort the
+notebook's config names instead of inheriting the global Codex setting (measured: every worker of
+three real nights ran at `max` against a configured `medium`). `co rem catchup` and the scheduled
+turn hold one lock, so two runs no longer work the same notebook. A worker turn that times out
+parks its page and the round goes on. Each night has shares per stage, and a spent investigation
+budget holds only new investigations. Decision pages that admit their own reason is unknown are
+refused. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc20.md).
+
+- 1.9.6rc20 (REM: configured effort reaches the workers; one lock per notebook; a timeout parks one page; nightly shares).
+
+### Previous candidate: 1.9.6rc19
+
+Release candidate 1.9.6rc19 for 1.9.6: `co send <address> <file or folder>` sends files to another
+agent's running Host, byte for byte and verified by sha256, and `co receive` lists what arrived. An
+interrupted send continues from where it stopped (measured: 5 GiB from a laptop to a mini PC on the
+office network, stopped at 1.2 GB and resumed there). Only the receiver's contacts may send, the
+bytes never go through the relay, and sealed client sockets no longer offer compression. Stable
+remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc19.md).
+
+- 1.9.6rc19 (co send / co receive: files between agents, verified and resumable; no deflate on sealed sockets).
+
+### Previous candidate: 1.9.6rc18
+
+Release candidate 1.9.6rc18 for 1.9.6: found on the owner's Mac, where one scheduled turn ran
+`co rem next` three times, each to its ten-minute deadline on the same person's page, and was
+recorded as completed. The page is now parked by name and the next call serves other work; a turn
+whose last `co rem next` passed its deadline with nothing served or submitted is recorded as failed
+and counted in words; the deadline says which step was waited on; and the session window no longer
+reads every coding-session log again once one of them has been compressed. Stable remains 1.9.5.
+See [candidate notes](docs/releases/1.9.6rc18.md).
+
+- 1.9.6rc18 (REM background: a page that passes the deadline is parked and the round moves on; a turn that only stalled is not completed; the session window reads only changed rollouts).
+
+### Previous candidate: 1.9.6rc17
+
+Release candidate 1.9.6rc17 for 1.9.6: found on the owner's Mac, where every background round had
+failed since 2026-11-14. A session that names a folder REM may not read no longer stops the round:
+an unreadable folder is not a repository. A turn whose round could not be prepared is recorded as
+failed, and `co rem status` and Today say so in words (#3066). Stable remains 1.9.5. See
+[candidate notes](docs/releases/1.9.6rc17.md).
+
+- 1.9.6rc17 (REM background: an unreadable folder no longer stops the round; failed turns are recorded as failed).
+
+### Previous candidate: 1.9.6rc16
+
 Release candidate 1.9.6rc16 for 1.9.6: found by opening rc15 on a real notebook. The Organisations
 table never prints the not-investigated placeholder as a fact, whichever field or translation
 carried it (#3036, #3037); an organisation whose kind is `company` renders; a long location is
@@ -556,7 +1006,7 @@ under More. Stable remains 1.9.5. See [candidate notes](docs/releases/1.9.6rc1.m
 
 - 1.9.6rc1 (whole lines on desktop, letter first on a phone, less-used actions under More).
 
-## Current stable: 1.9.5
+## Previous stable: 1.9.5
 
 Stable 1.9.5. A fresh install works again: typer 0.29.0 (released 2026-11-09) made every `co`
 command crash, so typer is capped below 0.29. REM reads each slot's mail while the Codex weekly

@@ -275,10 +275,11 @@ def test_type_text_by_selector_focuses_and_types():
     result = browser.type_text_by_selector(
         'div[contenteditable="true"][role="textbox"]',
         "Great point.",
+        human=True,
     )
 
     assert item.force_clicked is True
-    # Typing is humanized — one keystroke per character, not one bulk insert.
+    # Asked for human typing — one keystroke per character, not one bulk insert. — one keystroke per character, not one bulk insert.
     assert page.keyboard.typed == list("Great point.")
     assert page.waits == [1000]
     assert "Typed text into element 1/1" in result

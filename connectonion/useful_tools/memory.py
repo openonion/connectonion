@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: creates/modifies memory.md file or memory/ directory | single file uses ## headings as keys | auto-migrates to directory structure at threshold | does NOT delete old file on migration (removes it) | no network I/O
   Integration: exposes Memory class with write_memory(), read_memory(), list_memories(), search_memory() | used as agent tool by passing to Agent(tools=[memory]) | storage format: markdown with ## key headings | directory format: one .md file per key
   Performance: file I/O per operation (no caching) | parsing is O(n) file lines | search is O(n*m) files * lines | auto-scaling avoids single file bloat
-  Errors: returns error string for missing keys | invalid key names sanitized (alphanumeric, hyphen, underscore only) | no exceptions raised (returns error messages)
+  Errors: returns error string for missing keys | invalid key names sanitized (alphanumeric, hyphen, underscore only) | invalid regex patterns return an error message instead of raising
 
 **Simple by default**: Stores all memories in a single `memory.md` file.
 **Scales automatically**: Splits into directory when file exceeds 3000 lines.
@@ -131,12 +131,18 @@ class Memory:
             pattern: Regex pattern to search for
 
         Returns:
-            Formatted search results showing matching memories and lines
+            Formatted search results showing matching memories and lines,
+            or an error message when the pattern is not a valid regex
         """
-        if self.using_directory:
-            return self._search_directory(pattern)
+        try:
+            compiled = re.compile(pattern)
+        except re.error as e:
+            return f"Invalid regex pattern: {pattern}\n{e}"
 
-        return self._search_single_file(pattern)
+        if self.using_directory:
+            return self._search_directory(pattern, compiled)
+
+        return self._search_single_file(pattern, compiled)
 
 
     # Single file implementation
@@ -152,11 +158,11 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        header, sections = self._parse_sections(file_content)
         sections[key] = content
 
         # Write back
-        new_content = self._serialize_sections(sections)
+        new_content = self._serialize_sections(sections, header)
         with open(self.memory_file, 'w', encoding="utf-8") as f:
             f.write(new_content)
 
@@ -176,7 +182,7 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        _, sections = self._parse_sections(file_content)
 
         if key not in sections:
             available = ", ".join(sorted(sections.keys())) if sections else "none"
@@ -192,7 +198,7 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        _, sections = self._parse_sections(file_content)
 
         if not sections:
             return "No memories stored yet"
@@ -204,7 +210,7 @@ class Memory:
 
         return "\n".join(output)
 
-    def _search_single_file(self, pattern: str) -> str:
+    def _search_single_file(self, pattern: str, regex: re.Pattern) -> str:
         """Search in single memory file."""
         if not os.path.exists(self.memory_file):
             return "No memories to search"
@@ -212,12 +218,11 @@ class Memory:
         with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
-        sections = self._parse_sections(file_content)
+        _, sections = self._parse_sections(file_content)
 
         if not sections:
             return "No memories to search"
 
-        regex = re.compile(pattern)
         results = []
         total_matches = 0
 
@@ -244,11 +249,26 @@ class Memory:
         return "\n".join(output)
 
 
-    def _parse_sections(self, content: str) -> dict:
-        """Parse memory.md into sections."""
+    def _parse_sections(self, content: str) -> tuple[str, dict[str, str]]:
+        """Parse memory.md into a header and sections.
+
+        The header is any content that appears before the first ``## `` section
+        heading (for example a leading ``# Title`` line). It is preserved so
+        that writing back to the file does not silently drop it. Surrounding
+        whitespace in the header is normalised with ``strip()``, so a write is
+        not necessarily byte-identical to the original file (harmless for
+        Markdown, but worth knowing).
+
+        Returns:
+            A ``(header, sections)`` tuple where ``header`` is the text before
+            the first section heading with surrounding whitespace stripped,
+            and ``sections`` maps each key to its content.
+        """
+        header_lines = []
         sections = {}
         current_key = None
         current_content = []
+        in_header = True
 
         for line in content.split('\n'):
             if line.startswith('## '):
@@ -258,6 +278,9 @@ class Memory:
                 # Start new section
                 current_key = line[3:].strip()
                 current_content = []
+                in_header = False
+            elif in_header:
+                header_lines.append(line)
             elif current_key:
                 current_content.append(line)
 
@@ -265,11 +288,14 @@ class Memory:
         if current_key:
             sections[current_key] = '\n'.join(current_content).strip()
 
-        return sections
+        return '\n'.join(header_lines).strip(), sections
 
-    def _serialize_sections(self, sections: dict) -> str:
-        """Serialize sections back to memory.md format."""
+    def _serialize_sections(self, sections: dict, header: str = "") -> str:
+        """Serialize sections back to memory.md format, preserving any header."""
         output = []
+        if header:
+            output.append(header)
+            output.append("")
         for key in sorted(sections.keys()):
             output.append(f"## {key}\n")
             output.append(f"{sections[key]}\n")
@@ -338,7 +364,7 @@ class Memory:
 
         return "\n".join(output)
 
-    def _search_directory(self, pattern: str) -> str:
+    def _search_directory(self, pattern: str, regex: re.Pattern) -> str:
         """Search in directory structure."""
         if not os.path.exists(self.memory_dir):
             return "No memories to search"
@@ -348,7 +374,6 @@ class Memory:
         if not files:
             return "No memories to search"
 
-        regex = re.compile(pattern)
         results = []
         total_matches = 0
 

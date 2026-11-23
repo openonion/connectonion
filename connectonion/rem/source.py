@@ -521,20 +521,23 @@ def _rollout(source, old: dict, kind: str):
     offset = old.get("offset", 0)
     if type(offset) is not int or offset < 0:
         raise RemError("Invalid source progress; preserve it for diagnosis")
+    # The first line is taken before the prefix is hashed, so the hash ends at the
+    # offset and nothing seeks back: a compressed session seeks back by decompressing
+    # from its start, and was decompressed three times to be read once (11-16).
+    head = source.readline(1_000_000)
+    source.seek(0)
     try:
         digest = _verify_prefix(source, offset, old.get("digest"))
     except ChangedPrefix:
         yield None, {}, offset, None
         return
-    source.seek(0)
     try:
-        first = json.loads(source.readline(1_000_000))
+        first = json.loads(head)
     except (ValueError, UnicodeError) as error:
         raise RemError("Invalid session metadata") from error
     if not isinstance(first, dict):
         raise RemError("Unrecognized session transcript format")
     meta = KINDS[kind]["meta"](first)
-    source.seek(offset)
     yield source, meta, offset, digest
 
 
@@ -551,7 +554,9 @@ def _fit(item: dict, max_chars: int) -> dict:
     raise RemError("Batch input limit is too small to hold one message; raise limits.input_chars_per_batch")
 
 
-def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) -> Batch:
+def collect(subscription: dict, progress: dict, max_items: int, max_chars: int, *, scan_bytes: int = 0) -> Batch:
+    """The next batch of typed messages. `scan_bytes` ends the batch once that much has been walked,
+    so a caller that saves progress between batches is never far from its last save."""
     if not subscription.get("enabled") or not subscription.get("consented"):
         raise RemError("Source is disabled or not yet authorized; run start to confirm access")
     kind = subscription.get("kind", "codex")
@@ -568,7 +573,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
             continue
         files.append((path, stat))
     files.sort(key=lambda pair: pair[1].st_mtime_ns)
-    batch = _collect_files(subscription, progress, max_items, max_chars, files, _read_rollout)
+    batch = _collect_files(subscription, progress, max_items, max_chars, files, _read_rollout, scan_bytes=scan_bytes)
     batch.missing_files = missing + batch.missing_files
     return batch
 
@@ -580,12 +585,13 @@ def collect_data(data: bytes, path: Path, stat, subscription: dict, progress: di
                           lambda path, old, kind: _read_rollout_data(data, old, kind), unfamiliar=unfamiliar)
 
 
-def _collect_files(subscription, progress, max_items, max_chars, files, read_rollout, unfamiliar=None):
+def _collect_files(subscription, progress, max_items, max_chars, files, read_rollout, unfamiliar=None,
+                   scan_bytes=0):
     kind = subscription.get("kind", "codex")
     parse = KINDS[kind]["message"]
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
-    skipped = unrecognised = 0
+    skipped = unrecognised = walked = 0
     changed_files, missing_files = [], []
     # Oldest session first. The notebook should grow the way the user's understanding
     # did -- later sessions revising earlier pages -- and a backfill that starts at the
@@ -596,6 +602,9 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
     # 15,000 rollouts was half of a warm scan (2026-10-20).
     prefix = len(str(root).rstrip("/")) + 1
     for path, stat in files:
+        if scan_bytes and walked >= scan_bytes and updated != progress:
+            # Only once something advanced: a batch that changed nothing reads as "no more".
+            break
         name = progress_name(str(path)[prefix:].replace("\\", "/"))
         old = progress.get(name, {})
         # A compressed file's size is not its plain offset: it keeps its own size to compare.
@@ -628,6 +637,7 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
             about = (subscription.get("about") or "").strip().lower()
             held, matched = [], not about
             scanned = 0
+            walked += offset  # the prefix was read to be verified
             while scanned < SCAN_BYTES_PER_PASS:
                 line = source.readline()
                 if not line or not line.endswith(b"\n"):
@@ -667,6 +677,7 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
                         used += size
                 offset += len(line)
                 scanned += len(line)
+                walked += len(line)
                 digest.update(line)
                 updated[name] = {"offset": offset, "digest": digest.hexdigest(),
                                  "mtime_ns": stat.st_mtime_ns}

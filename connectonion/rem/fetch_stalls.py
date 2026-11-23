@@ -14,6 +14,7 @@ is not asked again in that turn. The reader's night line reads this ledger.
 """
 
 import functools
+import hashlib
 import os
 from datetime import timedelta
 
@@ -30,6 +31,11 @@ PROVIDER_STOP_PAGES = 3
 # These say the mailbox itself is unusable: the first one stops it for the turn.
 MAILBOX_WIDE = ("auth", "denied")
 EVENT_DAYS = 3
+# A mail the mailbox says is gone (404/410) is asked for once more a day later, then believed (#3392).
+# Waiting for a page change alone left six pages saying 「下一轮再试」 for a week with nothing to retry them;
+# asking every turn cost a turn every 15 minutes (#3073). The page itself is kept as it is either way.
+MISSING_ATTEMPTS = 2
+MISSING_RETRY_HOURS = 24
 _CREDENTIAL = {"reauth_required": "auth", "broker_auth_failed": "auth", "record_changed": "auth",
                "invalid_response": "auth", "account_changed": "auth", "permission_denied": "denied",
                "network_error": "network"}
@@ -62,7 +68,7 @@ def failure(error) -> str | None:
 
 
 def _by_status(status: int) -> str:
-    if status == 404:
+    if status in (404, 410):
         return "not_found"
     if status == 401:
         return "auth"
@@ -70,6 +76,8 @@ def _by_status(status: int) -> str:
         return "denied"
     if status == 429:
         return "throttled"
+    if status == 408:
+        return "timeout"
     return "server" if status >= 500 else "refused"
 
 
@@ -120,6 +128,9 @@ def park(root, job: dict, error) -> str | None:
     None means the error is not a mailbox's, and the caller re-raises it."""
     # Only an error a mail client raised (Labelled tags it) is a mailbox's: a git or
     # web fetch timing out in a project or skill page is not mail, and must be seen.
+    from .mail import MissingMail, RefusedMail
+    if getattr(error, 'rem_read_failure', False) and not isinstance(error, MissingMail):
+        return None
     provider, reason = getattr(error, "rem_provider", None), failure(error)
     if provider is None or reason is None:
         return None
@@ -129,10 +140,18 @@ def park(root, job: dict, error) -> str | None:
     retry = moment + timedelta(hours=BACKOFF_HOURS[min(attempts, len(BACKOFF_HOURS)) - 1])
     ledger["items"][record] = {"provider": provider, "reason": reason, "attempts": attempts, "job": job,
                                "at": moment.isoformat(), "retry_at": retry.isoformat()}
+    if isinstance(error, MissingMail):
+        retry = moment + timedelta(hours=MISSING_RETRY_HOURS)
+        ledger['items'][record].update(missing_id=error.missing_id, operation=error.operation,
+                                      error=str(error), page_revision=_page_revision(root, record),
+                                      retry_at=retry.isoformat())
+    if isinstance(error, RefusedMail):
+        # The night line reads this: which read, and the status the mailbox answered.
+        ledger['items'][record]['error'] = str(error)
     failed = ledger["turn"]["failed"].setdefault(provider, [])
     if record not in failed:
         failed.append(record)
-    stops = reason in MAILBOX_WIDE or len(failed) >= PROVIDER_STOP_PAGES
+    stops = not isinstance(error, MissingMail) and (reason in MAILBOX_WIDE or len(failed) >= PROVIDER_STOP_PAGES)
     if stops:
         ledger["turn"]["stopped"][provider] = reason
     cutoff = (moment - timedelta(days=EVENT_DAYS)).isoformat()
@@ -141,7 +160,12 @@ def park(root, job: dict, error) -> str | None:
          **({"stopped": True} if stops else {})}]
     write_json(state_path(root, LEDGER), ledger)
     name = NAMES.get(provider, provider)
-    notice = f"Set {record} aside: {name} {PHRASES[reason]}; tried again no earlier than {retry:%Y-%m-%d %H:%M} UTC"
+    what = str(error) if isinstance(error, RefusedMail) else f"{name} {PHRASES[reason]}"
+    notice = f"Set {record} aside: {what}; tried again no earlier than {retry:%Y-%m-%d %H:%M} UTC"
+    if isinstance(error, MissingMail):
+        notice = (f'Set {record} aside: {error}; no longer waited for, until the page changes (for example, new mail).'
+                  if gone(ledger['items'][record]) else
+                  f'Set {record} aside: {error}; asked for once more no earlier than {retry:%Y-%m-%d %H:%M} UTC.')
     if stops:
         notice += f". {name} is not asked again in this turn"
     return notice
@@ -226,7 +250,7 @@ def _live(root) -> dict:
 def waiting(root) -> set:
     """Parked pages whose retry time has not come: the round leaves them out."""
     moment = service.now().isoformat()
-    return {record for record, entry in _live(root)["items"].items() if entry["retry_at"] > moment}
+    return {record for record, entry in _live(root)["items"].items() if not _due(root, record, entry, moment)}
 
 
 def due(root) -> dict:
@@ -235,7 +259,23 @@ def due(root) -> dict:
     They come back even when nothing new arrived: the round that parked them
     has already counted their activity as seen."""
     moment = service.now().isoformat()
-    return {record: entry["job"] for record, entry in _live(root)["items"].items() if entry["retry_at"] <= moment}
+    return {record: entry["job"] for record, entry in _live(root)["items"].items() if _due(root, record, entry, moment)}
+
+
+def _page_revision(root, record):
+    from .files import Notebook
+    return hashlib.sha256(Notebook(root).read(record).encode()).hexdigest()
+
+
+def gone(entry) -> bool:
+    """A missing mail the mailbox has now denied on every check: nothing retries it until its page changes."""
+    return 'missing_id' in entry and entry.get('attempts', 1) >= MISSING_ATTEMPTS
+
+
+def _due(root, record, entry, moment):
+    if 'missing_id' in entry and entry['page_revision'] != _page_revision(root, record):
+        return True
+    return not gone(entry) and entry['retry_at'] <= moment
 
 
 def clear(root, record: str) -> None:
@@ -262,7 +302,9 @@ def last_night(root) -> dict | None:
     ledger["items"] = {record: entry for record, entry in ledger["items"].items() if book.exists(record)}
     since = (moment - timedelta(days=1)).isoformat()
     events = [event for event in ledger["events"] if event["at"] >= since]
-    parked = sorted(({"record": record, **{key: entry[key] for key in ("provider", "reason", "retry_at")}}
+    parked = sorted(({"record": record, "name": NAMES.get(entry["provider"], entry["provider"]),
+                      **({"gone": gone(entry)} if "missing_id" in entry else {}),
+                      **{key: entry[key] for key in ("provider", "reason", "retry_at", "missing_id", "error") if key in entry}}
                      for record, entry in ledger["items"].items()), key=lambda row: row["retry_at"])
     if not events and not parked:
         return None
@@ -271,7 +313,8 @@ def last_night(root) -> dict | None:
     return {"provider": NAMES.get(provider, provider),
             "reason": _most(row["reason"] for row in rows if row["provider"] == provider),
             "times": len(events), "pages": len({row["record"] for row in rows if row["record"]}),
-            "stopped": any(event.get("stopped") for event in events), "parked": parked}
+            "stopped": any(event.get("stopped") for event in events), "parked": parked,
+            "gone": sum(1 for row in parked if row.get("gone"))}
 
 
 def _most(values) -> str:

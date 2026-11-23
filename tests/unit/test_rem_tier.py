@@ -154,3 +154,18 @@ def test_a_reply_wrapped_in_prose_and_a_fence_is_still_the_page():
     page = "# Ada\n\n## Contact\n- Email: a@b.c\n"
     assert tier.page_from_reply(f"Sure.\n\n```markdown\n{page}```") == page
     assert tier.page_from_reply(page) == page
+
+
+def test_capability_fixture_checks_the_requested_model_not_investigation_default(model, monkeypatch):
+    model("agent")
+    from connectonion.rem import runner
+    original = runner.run_task
+    seen = []
+    def capture(workspace, prompt, config, stage):
+        seen.append(config["model"])
+        return original(workspace, prompt, config, stage)
+    monkeypatch.setattr(runner, "run_task", capture)
+    config = default_config()
+    config["model"] = "gpt-fixture-chosen"
+    assert tier.attempt(config, "agent") == []
+    assert seen and set(seen) == {"gpt-fixture-chosen"}

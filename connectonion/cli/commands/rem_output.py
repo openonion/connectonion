@@ -513,6 +513,12 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
         for source, left in batch.get('material_remaining', {}).items():
             material += f" · {left} left in {source} for next time"
     lines = [rem_look.section('New material', said(material))]
+    if 'collection' in value:
+        backlog = value['collection']
+        waiting = f"{backlog['waiting']} listed mail waiting; unlisted mail and sessions are not counted"
+        if backlog['held']:
+            waiting += f" · {backlog['held']} held (source disabled or unapproved)"
+        lines.append(rem_look.section('Still waiting', said(waiting)))
     if batch.get('sessions'):
         from ...rem.sessions import summary
         lines.append(rem_look.section('Agent sessions', said(summary(batch['sessions']).removeprefix('Agent sessions: '))))
@@ -553,7 +559,7 @@ def sync_summary(value, spell=lambda arguments: 'co rem ' + ' '.join(arguments))
     if tokens:
         lines.append(rem_look.section('Tokens', said(tokens)))
     record = run.get('id') or batch.get('id')
-    if record:
+    if record and value.get('record_kept', True):
         lines.append(rem_look.section('Full record', style.command(spell(['logs', record]))))
     outcome = str(value.get('outcome') or batch.get('outcome') or 'unknown').replace('_', ' ')
     title = style.heading('co rem sync') + (' — ' + style.error('needs attention')

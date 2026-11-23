@@ -33,6 +33,35 @@ def save_round(root, jobs, **extra):
     return cursor
 
 
+@pytest.mark.parametrize("suffix,scheduled", [(".worktrees/probe", False), ("", True)])
+def test_native_round_prepares_task_when_session_names_unreadable_folder(notebook, monkeypatch, suffix, scheduled):
+    from datetime import timedelta
+    from tests.unit.test_rem_sessions import codex, transcript
+    directory = notebook / "transcripts"
+    directory.mkdir()
+    sources = {"codex": {"kind": "codex", "root": str(directory / "codex"),
+                         "enabled": True, "consented": True,
+                         "since": (service.now() - timedelta(days=1)).isoformat()}}
+    write_json(state_path(notebook, "subscriptions.json"), sources)
+    write_json(state_path(notebook, "worker.json"), {"enabled": True})
+    protected = Path("/System/Volumes/Data/.fseventsd")
+    rows = [codex("Inspect the unreadable folder", stamp=service.now().isoformat()),
+            {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command",
+             "arguments": json.dumps({"cmd": "pwd", "workdir": str(protected / suffix)})}}]
+    transcript((notebook, directory, sources), cwd="/work/fern", rows=rows)
+    exists = Path.exists
+
+    def denied(path):
+        if path == protected / ".git":
+            raise PermissionError(13, "Permission denied", str(path))
+        return exists(path)
+
+    monkeypatch.setattr(Path, "exists", denied)
+    task = native.next_task(notebook, scheduled=scheduled)
+    assert task["outcome"] == "task"
+    assert read_json(state_path(notebook, "round.json"), {})["sessions"]["imported"] == 1
+
+
 def audit_notes(task):
     directory = Path(task["material"])
     packet = read_json(directory / "audit-material.json", {})
@@ -68,10 +97,11 @@ def test_native_offers_jobs_before_summaries(notebook, monkeypatch):
     assert native_round.prepare_task(notebook, cursor, read_config(notebook), notebook)["stage"] == "investigate"
 
 
-def test_native_queues_at_most_five_summaries(notebook, monkeypatch):
+def test_native_queues_at_most_its_configured_summaries(notebook, monkeypatch):
+    # Five until 2026-11-17: a summary is under a minute, so a round takes limits.summaries_per_round (40).
     monkeypatch.setattr(native_round.sessions, "_summary_candidates", lambda root, limit: list(range(limit)))
     cursor = native_round.prepare(notebook, read_config(notebook), scheduled=False)
-    assert len(cursor["summaries"]) == 5
+    assert len(cursor["summaries"]) == 40
 
 
 @pytest.mark.parametrize("own_page", [False, True])
@@ -172,6 +202,8 @@ def test_native_project_coverage_moves_only_for_changed_accepted_candidate(noteb
         {"role": "page", "record": record, "source": "investigation:page", "text": before}, item], new))
     monkeypatch.setattr(project_pages, "pending", lambda *a: ([item], "update"))
     save_round(notebook, [{"record": record, "kind": "project"}])
+    # This is about the project's coverage: the round's tagging of the written page is not.
+    monkeypatch.setattr("connectonion.rem.tag_stage.candidates", lambda root: [])
     task = native.next_task(notebook)
     if changed:
         Path(task["candidate"]).write_text(before.replace("## What it is\n", "## What it is\n- A pilot review was requested. [2]\n")
@@ -273,3 +305,97 @@ def test_legacy_project_completion_never_marks_unchanged_inputs_read(notebook, m
     assert native_round._project_task(notebook, cursor, read_config(notebook), notebook, record) is None
     assert page_state(notebook, record)['written_through'] == (new if changed else old)
     assert cursor['job_index'] == 1
+
+
+def test_native_abstract_submit_promotes_a_batch_and_leaves_other_pages_alone(notebook, monkeypatch):
+    from connectonion.rem import night, tag_stage, tasks
+    monkeypatch.setattr(night, 'prepare', lambda *a, **kw: [])
+    # The decisions written here are tag candidates since #3093; the round's tag turn is tested in test_rem_tag_stage.py.
+    monkeypatch.setattr(tag_stage, 'candidates', lambda root, *a, **k: [])
+    monkeypatch.setattr(tasks, 'auto_dispatch', lambda *a: None)
+    save_round(notebook, [])
+    book = Notebook(notebook)
+    quote = 'Use Markdown for inspection instead of a database.'
+    choice = (f'# Where to store pages\n\n“{quote}” [1]\n\n## Why\nInspection. [1]\n\n'
+              '## Sources\n- [1] codex:fixture:7\n')
+    book.write('sessions/fixture.md', f'# Fixture\n\n## Decisions\n- “{quote}” [1]\n\n## Sources\n- [1] codex:fixture:7\n')
+    book.write('decisions/existing.md', choice)
+    task = native.next_task(notebook)
+    assert task['outcome'] == 'task' and task['stage'] == 'abstract'
+    output = Notebook(Path(task['candidate']))
+    output.write('decisions/existing.md', choice.replace('Inspection.', 'Inspection and portability.'))
+    output.write('decisions/new.md', choice)
+    result = native.submit(notebook, task['id'])
+    assert result['outcome'] == 'accepted', result
+    assert result['changed'] == ['decisions/existing.md', 'decisions/new.md']
+    assert native.next_task(notebook)['outcome'] == 'done'
+
+
+def test_a_session_still_being_written_is_not_summarised_this_round(notebook, monkeypatch):
+    """#3083 rc20 night: a live Claude Code session file changed under its summary task in 21 s
+    and the task was parked "Task input changed". A file written since the round imported it waits."""
+    from connectonion.rem import sessions
+    live, still = notebook / "live.jsonl", notebook / "still.jsonl"
+    live.write_text("{}\n")
+    still.write_text("{}\n")
+    imported = {path: {"size": path.stat().st_size, "mtime_ns": path.stat().st_mtime_ns} for path in (live, still)}
+    write_json(state_path(notebook, "sessions.json"), {"files": {
+        str(live): {**imported[live], "session": "claude:live", "record": "sessions/live.md"},
+        str(still): {**imported[still], "session": "claude:still", "record": "sessions/still.md"}}, "sessions": {}})
+    live.write_text("{}\n{\"more\": 1}\n")  # the session goes on after the import
+    for name in ("live", "still"):
+        page = Notebook(notebook).path(f"sessions/{name}.md")
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(f"# {name}\n")
+    monkeypatch.setattr(sessions, "prepare", lambda root, rows, config, **kw: {"rows": rows})
+    cursor = {"phase": "daily-update", "summaries": [{"key": "claude:live", "record": "sessions/live.md"},
+                                                     {"key": "claude:still", "record": "sessions/still.md"}]}
+    task = native_round._summary_turn(notebook, cursor, read_config(notebook), notebook)
+    assert task["record"] == "sessions/still.md" and task["task"]["input_paths"] == [str(still)]
+    assert [row["key"] for row in cursor["summaries"]] == ["claude:still"]
+    assert not sessions.being_written(notebook, "claude:still")
+
+
+def test_a_stall_while_finishing_a_page_names_that_page_so_the_next_call_parks_it(tmp_path, monkeypatch):
+    """#3128: the deadline fired while next finished the page it had investigated, and the stall said only
+    "preparing the next task". With no page named, nothing was parked and the round stayed at that job: five
+    calls a turn, eight turns, nothing done. The finish is now a named step, so the stall parks the page."""
+    import pytest
+    from connectonion.rem import native, native_round
+
+    class Finished(Exception):
+        pass
+
+    def finish(root, cursor):
+        raise Finished(dict(native._WATCH["skip"]))
+
+    monkeypatch.setattr(native_round, "_reset_attempts", lambda root, cursor: None)
+    monkeypatch.setattr(native_round, "prepare_batch", lambda *args: None)
+    monkeypatch.setattr(native_round, "_finish_investigation", finish)
+    cursor = {"phase": "daily-investigation", "started_at": "2026-11-18T14:08:41+00:00", "job_index": 200,
+              "current": {"record": "skills/catalog/example.md", "finalized": True}, "jobs": []}
+    with pytest.raises(Finished) as stopped:
+        native_round.prepare_task(tmp_path, cursor, {}, tmp_path)
+    assert stopped.value.args[0] == {"round": "2026-11-18T14:08:41+00:00", "job_index": 200, "record": "skills/catalog/example.md"}
+
+
+def test_five_unnamed_stalls_in_a_row_hold_that_step_and_say_so_then_let_go(tmp_path, monkeypatch):
+    """#3128: a deadline at a step that names no page parked nothing, so each turn spent five calls and fifty
+    minutes on it. After five in a row the step is held, the reason says so, and six hours on it is tried again."""
+    from datetime import timedelta
+    from connectonion.rem import native, service
+    from connectonion.rem.files import read_json, state_path, write_json
+    clock = [service.now()]
+    monkeypatch.setattr(service, "now", lambda: clock[0])
+    write_json(state_path(tmp_path, "round.json"), {"started_at": "2026-11-18T14:08:41+00:00", "job_index": 200, "jobs": []})
+    for _ in range(4):
+        write_json(state_path(tmp_path, native.STALLED), {"label": "preparing the next task", "step": "preparing the next task"})
+        native._skip_stalled(tmp_path)
+        assert native._stall_hold(tmp_path) == ""
+    write_json(state_path(tmp_path, native.STALLED), {"label": "preparing the next task", "step": "preparing the next task"})
+    native._skip_stalled(tmp_path)
+    held = native._stall_hold(tmp_path)
+    assert "passed its deadline 5 times in a row while preparing the next task" in held and "co rem logs" in held
+    clock[0] += timedelta(hours=6, minutes=1)
+    assert native._stall_hold(tmp_path) == ""
+    assert "unnamed_stalls" not in read_json(state_path(tmp_path, "round.json"), {})

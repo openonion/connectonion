@@ -89,7 +89,7 @@ Cover at minimum, and in parallel where possible:
 - `connectonion/useful_skills/`, `connectonion/useful_plugins/skills.py` — what a
   skill is and where skills can come from.
 - `connectonion/useful_tools/` — what is usable on its own.
-- `connectonion/network/` — hosting, addressing, relay, trust, dashboard delivery.
+- `connectonion/network/` — hosting, addressing, relay, trust, Control Center delivery.
 - `connectonion/cli/templates/` — what lands on disk at `co create`.
 - The front end, if present in a sibling checkout (`../oo-chat`) — this is what
   the end customer actually sees, and it is routinely the most under-sold part.

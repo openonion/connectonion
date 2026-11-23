@@ -201,10 +201,12 @@ def test_rem_session_idempotent_append_and_changed_title_keep_the_record(noteboo
     assert import_sessions(root, now=NOW)["imported"] == 1
     record, = Notebook(root).list("sessions")
     again = import_sessions(root, now=NOW)
+    assert again['changed'] == []
     assert again["imported"] == 0 and again["unchanged"] == 1
     with path.open("a") as stream:
         stream.write(json.dumps(codex("Use day headings", stamp="2026-10-16T13:12:00Z")) + "\n")
     updated = import_sessions(root, now=NOW)
+    assert updated['changed'] == [record]
     assert updated["updated"] == 1 and updated["imported"] == 0
     assert Notebook(root).list("sessions") == [record]
     assert "- Turns: 2" in Notebook(root).read(record)
@@ -310,6 +312,10 @@ def test_rem_session_project_ties_unmapped_and_bounded_calls(notebook):
     assert paths == Counter({"/work/demo/a.py": 2, "/work/demo": 1})
     assert _touched(json.dumps({"cmd": "cd demo && pwd", "workdir": "/elsewhere"}), "/work") == Counter({
         "/elsewhere": 1, "/elsewhere/demo": 1})
+    # A name no filesystem holds (over 255 bytes) is not a path the session touched:
+    # asking whether it is a repository raises ENAMETOOLONG (2026-11-16).
+    assert _touched(f"cd {'a' * 256} && cat /work/{'b' * 256}/a.py /work/demo/a.py", "/work") == Counter({
+        "/work/demo/a.py": 1})
     transcript(notebook, cwd="/work", rows=[codex(), {"type": "response_item", "payload": {
         "type": "function_call", "arguments": json.dumps({"cmd": "cat /unmapped/file.py"})}}])
     import_sessions(notebook[0], now=NOW)
@@ -657,7 +663,10 @@ def test_rem_import_sessions_cli_json(notebook):
     from connectonion.cli.main import app
     root, _, _ = notebook
     transcript(notebook)
-    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--days", "30", "--json"])
+    # The transcript is stamped STAMP and the CLI reads the wall clock: a fixed "--days 30" began
+    # failing on 2026-11-15, thirty days after STAMP, on every branch at once.
+    days = (datetime.now(timezone.utc) - datetime.fromisoformat(STAMP.replace("Z", "+00:00"))).days + 30
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--days", str(days), "--json"])
     assert result.exit_code == 0, result.output
     output = json.loads(result.stdout)
     assert output["ok"] is True and output["data"]["imported"] == 1
@@ -977,15 +986,16 @@ def test_rem_session_earlier_reply_is_not_final_after_a_later_owner_turn(noteboo
 def test_session_summary_uses_summary_model_only(notebook, summary_ready):
     from connectonion.rem.config import read_config
     root, _, _ = notebook
-    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol"])
+    # Summaries are level 1 since #3426; a distinct model shows which level ran.
+    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol", "models.level1", "gpt-6.1-terra"])
     transcript(notebook)
     import_sessions(root, now=NOW)
     def run(directory, prompt, settings, stage):
-        assert settings["model"] == "gpt-6-luna"
+        assert settings["model"] == "gpt-6.1-terra"
         assert read_config(root)["model"] == "gpt-6.1-sol"
         return summary_answer("s1")
     assert summarise_sessions(root, run=run)["summarised"] == 1
-    assert read_summary(root, "codex:3456-abcdef12")["model"] == "gpt-6-luna"
+    assert read_summary(root, "codex:3456-abcdef12")["model"] == "gpt-6.1-terra"
 
 
 def test_code_evidence_excludes_sessions_that_change_cwd(notebook):

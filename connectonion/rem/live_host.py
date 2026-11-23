@@ -29,7 +29,7 @@ def version_on_disk() -> str:
 
 def _ps(*args):
     try:
-        return subprocess.run(["ps", *args], capture_output=True, text=True, timeout=2)
+        return subprocess.run(["ps", *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=2)
     except subprocess.TimeoutExpired as error:
         raise OSError("could not verify the existing Host process; retry `co ai`") from error
 
@@ -141,10 +141,14 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
             return held
         if held is REPLACE:
             process, renewed = _renew(directory, saved, address, wait=timeout / 2), True
-        elif host_online(address):
+        elif _moves_to_session(directory, saved, address):
+            _retire(saved)
+            port = saved.get("port")
+            process, renewed = _launch(directory, address, port=port if isinstance(port, int) and _free(port) else None), True
+        elif host_online(address) and not _gone(saved, address):
             return None
         elif saved.get("address") != address or not _alive(saved):
-            process = _launch(directory, address)
+            process = _launch(directory, address, port=_saved_port(saved))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if process is not None and process.poll() is not None:
@@ -160,6 +164,33 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
     return f"co ai did not become reachable within {timeout:g}s; see {log}. Retry with `co ai`"
 
 
+def launch_session() -> str:
+    """launchd's manager for this process on macOS, "" elsewhere (#3305).
+
+    "Aqua" is the owner's GUI login session; "Background" is a process an agent, ssh or a detached shell
+    started. A Host inherits the session of whoever launched it, and only an Aqua Host can raise system
+    prompts such as the Keychain's 允许: from a Background Host, `security … -w` fails at once.
+    """
+    if sys.platform != "darwin":
+        return ""
+    try:
+        done = subprocess.run(["launchctl", "managername"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return done.stdout.strip()
+
+
+def _moves_to_session(directory: Path, saved, address: str) -> bool:
+    """Our idle Host runs outside the owner's login session, and this open comes from inside it (#3305).
+
+    Agents restart the Host after an upgrade from a Background session, which leaves it unable to show the
+    Keychain prompt. When the owner then opens REM from his own Terminal, the Host moves into his session,
+    once: the new record says Aqua. A record from before this field is treated as outside.
+    """
+    return (launch_session() == "Aqua" and saved.get("session") != "Aqua" and saved.get("address") == address
+            and _started_here(saved) and not _busy(directory) and not _inside(saved["pid"]))
+
+
 def _launch(directory: Path, address: str, *, background: bool = False, port: int | None = None,
             renewed_for: str | None = None):
     """Start co ai and remember it, so the next open reuses it; the caller holds the lock."""
@@ -169,6 +200,7 @@ def _launch(directory: Path, address: str, *, background: bool = False, port: in
                                                       "port": _port(process.args),
                                                       "command": " ".join(process.args[1:]),
                                                       "install": _install(),
+                                                      "session": launch_session(),
                                                       **({"renewed_for": renewed_for} if renewed_for else {}),
                                                       **({"started_at": time.time()} if background else {})})
     except (OSError, RemError):
@@ -367,6 +399,50 @@ def renew_idle() -> None:
             print(f"Replaced the server from before the upgrade: co ai pid {process.pid} on port {_port(process.args)}.")
 
 
+# The Host watches for an upgrade itself (#3112): the build that replaces an idle old Host (renew_idle) used to run
+# only when an open page polled, so with no tab open the old code was served until the next `co rem open`.
+UPGRADE_CHECK = 60    # seconds between looks at the installed version
+UPGRADE_RETRY = 600   # while still the old release (busy, or the build failed), start the build again this often
+
+
+def notice_upgrade(root, kicked: dict, *, now=time.monotonic) -> bool:
+    """When this process runs an older release than is installed, start the page build: it runs the installed code
+    and replaces this Host on the same port once it is idle (renew_idle, _upgrade). Once per installed release, then
+    every UPGRADE_RETRY while this Host is still the old one. `kicked` is the caller's memory of when."""
+    from .._version import __version__ as running
+    installed = version_on_disk()
+    if installed == running or installed in kicked and now() - kicked[installed] < UPGRADE_RETRY:
+        return False
+    kicked[installed] = now()
+    from .reader import owner_changed
+    owner_changed(Path(root))
+    return True
+
+
+def _gone(saved, address: str) -> bool:
+    """The record names this address's Host, that process is gone, and nothing answers locally as the address.
+
+    Then the relay's listing is stale (it holds a dead Host's registration for a while) and is not trusted:
+    after the owner's Host was killed, `co rem open --live` believed it and started nothing (#3112). A Host
+    the owner started by hand answers on a known port, so it is still reused, never doubled.
+    """
+    return (saved.get("address") == address and not _alive(saved)
+            and not any(answers(port, address) for port in _known_ports()))
+
+
+def recorded_gone(address: str) -> bool:
+    """_gone for this identity's record: the live open asks before trusting the relay."""
+    from ..project import selected_identity_dir
+    return _gone(read_json(selected_identity_dir() / "rem-live-host.json", {}), address)
+
+
+def _saved_port(saved):
+    """The port the last Host had, when it is free: an open reader tab keeps its address (#3130).
+    None lets _spawn take a random one, as before, when something else holds it."""
+    port = saved.get("port")
+    return port if isinstance(port, int) and _free(port) else None
+
+
 def outdated(address: str) -> bool:
     """A server of another version answers as this identity on a port co rem knows."""
     return any(_other_version(port, address) for port in _known_ports())
@@ -406,7 +482,7 @@ def start(address: str) -> str | None:
             return None
         exited = (saved.get("address") == address and isinstance(saved.get("started_at"), (int, float))
                   and time.time() - saved["started_at"] < STARTUP_WINDOW)
-        _launch(directory, address, background=True)
+        _launch(directory, address, background=True, port=_saved_port(saved))
     if exited:
         return (f"co ai exited during startup; see {directory / 'rem-live-host.log'}. "
                 "Starting it again; retry with `co ai` to see the error")
@@ -512,9 +588,9 @@ def reader_token(directory: Path) -> str:
     path = directory / "rem-reader-token"
     if not path.exists():
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w") as output:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
             output.write(secrets.token_urlsafe(32))
-    return path.read_text().strip()
+    return path.read_text(encoding="utf-8").strip()
 
 
 def live_link() -> str:

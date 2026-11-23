@@ -218,7 +218,10 @@ def _driver_error_text(verb: str, exc: BaseException, tab) -> str | None:
 # from "timed out".
 _KEYCHAIN = ("Chrome's cookie store — on macOS it waits on a Keychain prompt "
              "until someone answers it (look behind other windows)")
-_WAITS_ON = {"cookies": _KEYCHAIN, "save_state": _KEYCHAIN, "go_to": "the page to load"}
+_TYPING = ("text being typed key by key; part of it is already in the field, "
+           "so clear the field before retrying")
+_WAITS_ON = {"cookies": _KEYCHAIN, "save_state": _KEYCHAIN, "go_to": "the page to load",
+             "keyboard_type": _TYPING, "type_text_by_selector": _TYPING}
 
 
 def _is_verb(browser, name: str) -> bool:
@@ -550,6 +553,8 @@ class BrowserDaemon:
         """
         if requested_engine == self.engine_mode:
             return None
+        if requested_engine == "system" and await self._fall_back_to_system():
+            return None
         if requested_engine != "auto":
             return self._engine_pin_refusal(requested_engine)
         if self.engine_mode != "onion":
@@ -557,6 +562,29 @@ class BrowserDaemon:
         if await self._paid_browser_is_live():
             return None
         return self._paid_relaunch_refusal()
+
+    async def _fall_back_to_system(self) -> bool:
+        """Re-pin a paid daemon with no paid browser running to system Chrome.
+
+        A pin protects running pages. When the paid engine is not running —
+        it ended, or it could not start at all (#3294) — there is nothing on
+        it to protect, and the old way out, `co browser close`, ended every
+        other session's tabs (#3299). The tab board is kept, so each session
+        gets its tab back on system Chrome with its next command.
+
+        Never for a Remote Browser daemon (its egress policy needs the paid
+        engine), and never while a launch is under way: that launch already
+        chose the paid engine and would come up under the wrong pin.
+        """
+        if self.engine_mode != "onion" or self._remote_egress:
+            return False
+        if await self._browser_is_alive():
+            return False
+        if self.browser._lifecycle_lock.locked():
+            return False
+        self.engine_mode = "system"
+        self.browser._engine_mode = "system"
+        return True
 
     async def _paid_browser_is_live(self) -> bool:
         """Is the paid session this daemon was pinned for still open?"""
@@ -574,17 +602,20 @@ class BrowserDaemon:
 
     def _paid_relaunch_refusal(self) -> str:
         """A bare command must not restart a paid browser on the caller's behalf."""
-        # Only commands this daemon would actually accept, in this state. The pin
-        # is immutable while the daemon lives, so `--engine system` here would be
-        # refused as a conflict — offering it would be the #1510 circle again.
+        # Only commands this daemon would actually accept, in this state: with
+        # no paid browser running, `--engine system` re-pins the daemon
+        # (_fall_back_to_system), so it is offered before `close`, which ends
+        # every session's tabs.
         return (
             "browser daemon is pinned to engine=wtf and its paid session is no "
             "longer open. Starting it again bills, so a command with no engine "
             "of its own has to say:\n\n"
             "Start a new paid session:\n"
             "  co browser --engine wtf <verb> ...\n\n"
-            "Or close this daemon — the next command then picks its own engine, "
-            "and your logins are still there:\n"
+            "Or switch this daemon to system Chrome — free, and other sessions "
+            "keep their tabs:\n"
+            "  co browser --engine system <verb> ...\n\n"
+            "Or close this daemon, which ends every session's tabs:\n"
             "  co browser close"
         )
 
@@ -603,7 +634,8 @@ class BrowserDaemon:
             f"  co browser --engine {pinned} <verb> ...\n\n"
             f"Stop repeating the flag — make it this machine's default:\n"
             f"  co browser config {pinned}\n\n"
-            f"Or start over on the engine you asked for:\n"
+            f"Or start over on the engine you asked for — this ends every "
+            f"session's tabs:\n"
             f"  co browser close"
         )
 

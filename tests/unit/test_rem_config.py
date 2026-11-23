@@ -58,7 +58,7 @@ def test_a_new_notebook_runs_on_codex():
     Claude Code and announced ~460M input tokens on the user's Claude plan."""
     from connectonion.rem.config import default_config
     config = default_config()
-    assert (config["runner"], config["model"]) == ("codex", "gpt-6.1-sol")
+    assert (config["runner"], config["model"]) == ("codex", "gpt-6-luna")
 
 
 def test_a_new_notebook_uses_claude_code_when_codex_cannot_run(tmp_path, monkeypatch):
@@ -92,15 +92,16 @@ def test_a_config_saved_before_the_language_setting_reads_as_english(tmp_path):
     assert read_config(tmp_path)["language"] == "en"
 
 
-def test_speed_defaults_to_fast_for_new_and_existing_notebooks(tmp_path):
+def test_speed_defaults_to_standard_for_new_and_existing_notebooks(tmp_path):
+    """#3099: unattended nights have no one waiting; fast is Codex's priority tier."""
     import yaml
     from connectonion.rem.config import default_config, read_config
-    assert read_config(tmp_path)["speed"] == "fast"
+    assert read_config(tmp_path)["speed"] == "standard"
     old = default_config()
     old.pop("speed")
     saved = yaml.safe_dump(old)
     tmp_path.joinpath("config.yaml").write_text(saved)
-    assert read_config(tmp_path)["speed"] == "fast"
+    assert read_config(tmp_path)["speed"] == "standard"
     assert tmp_path.joinpath("config.yaml").read_text() == saved
 
 
@@ -185,7 +186,7 @@ def test_old_luna_default_migrates_without_writing_and_explicit_choice_stays(tmp
     old["model"] = "gpt-6-luna"
     saved = yaml.safe_dump(old)
     (tmp_path / "config.yaml").write_text(saved)
-    assert read_config(tmp_path)["model"] == "gpt-6.1-sol"
+    assert read_config(tmp_path)["model"] == "gpt-6-luna"
     assert read_config(tmp_path)["models"]["level1"] == "gpt-6-luna"
     assert (tmp_path / "config.yaml").read_text() == saved
     set_config(tmp_path, ["model", "gpt-6-luna"])
@@ -214,7 +215,7 @@ def test_config_and_status_show_model_roles(tmp_path):
     for command in ("config", "status"):
         result = CliRunner().invoke(app, ["rem", "--root", str(tmp_path), command])
         assert result.exit_code == 0, result.output
-        assert any("gpt-6-luna" in line and "sessions-summary" in line
+        assert any("gpt-6-luna" in line and "tag" in line
                    for line in result.output.splitlines()), result.output
         assert any("gpt-6.1-sol" in line and "investigate" in line
                    for line in result.output.splitlines()), result.output
@@ -245,4 +246,33 @@ def test_runner_change_resets_levels_it_was_not_told(tmp_path):
     assert set(settings["models"].values()) == {"default"} and settings["model"] == "default"
     set_config(tmp_path, ["models.summary", "claude-sonnet-5-5"])
     settings = set_config(tmp_path, ["runner", "codex", "model", "gpt-6-astra"])
-    assert settings["models"] == {**LEVEL_MODELS, "level3": "gpt-6-astra"}
+    assert settings["models"] == {**LEVEL_MODELS, "level3": "gpt-6-astra", "investigate": "gpt-6-astra"}
+
+
+def test_abstract_round_limit_defaults_for_existing_notebooks(tmp_path):
+    import yaml
+    from connectonion.rem.config import default_config, read_config
+    assert default_config()['limits'].get('abstract_rounds_per_night') == 6
+    old = default_config()
+    old['limits'].pop('abstract_rounds_per_night')
+    saved = yaml.safe_dump(old)
+    tmp_path.joinpath('config.yaml').write_text(saved)
+    assert read_config(tmp_path)['limits']['abstract_rounds_per_night'] == 6
+    assert tmp_path.joinpath('config.yaml').read_text() == saved
+
+
+def test_abstract_round_limit_can_be_configured(tmp_path):
+    from connectonion.rem.config import read_config, set_config
+    assert set_config(tmp_path, ['limits.abstract_rounds_per_night', '3'])['limits']['abstract_rounds_per_night'] == 3
+    assert read_config(tmp_path)['limits']['abstract_rounds_per_night'] == 3
+
+
+def test_abstract_round_limit_rejects_nonpositive_and_noninteger_values():
+    import pytest
+    from connectonion.rem.config import default_config, validate
+    from connectonion.rem.files import RemError
+    for value in (0, -1, True, 1.5, '6'):
+        config = default_config()
+        config['limits']['abstract_rounds_per_night'] = value
+        with pytest.raises(RemError, match='Limits must be positive integers'):
+            validate(config)

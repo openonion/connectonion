@@ -1,7 +1,7 @@
 """Scheduled REM does reversible work before asking the owner to act."""
 import json
 import sqlite3
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -496,6 +496,13 @@ def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool
         (workspace / 'candidate.json').write_text(json.dumps({'body': '看过了，周二前给你反馈。', 'gist': '简短确认', 'why': '她是试点负责人', 'sources': ['gmail:one']}))
         return {'outcome': 'natural'}
     monkeypatch.setattr(runner, 'run_task', fake_turn)
+    # Lark is offered only where the person is on it (#3302): with no Lark chat on her page the rewrite is refused,
+    # and once her page cites a Lark chat it goes ahead.
+    with pytest.raises(Exception, match='cannot be reached on Lark'):
+        drafts.redraft(notebook, row['id'], 'lark')
+    from connectonion.rem.files import Notebook
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace('## Sources\n', '## Sources\n- [2] lark:oc_pilot:1\n'))
     saved = drafts.redraft(notebook, row['id'], 'lark')
     assert saved['channel'] == 'lark' and saved['body'] == '看过了，周二前给你反馈。' and saved['status'] == 'prepared'
     with pytest.raises(Exception, match='Unknown channel'):
@@ -503,7 +510,7 @@ def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool
 
     commands = []
 
-    def fake_run(command, capture_output, text):
+    def fake_run(command, capture_output, text, **kwargs):
         commands.append(command)
         payload = {'items': [{'name': 'Mia', 'open_id': 'ou_mia'}]} if command[1] == 'contact' else {'message_id': 'om_1'}
         return type('Done', (), {'returncode': 0, 'stdout': json.dumps(payload), 'stderr': ''})()
@@ -1007,11 +1014,16 @@ def test_night_fetch_failure_or_denied_consent_is_named_on_card(notebook, monkey
     factory = Mock(return_value=client)
     monkeypatch.setattr(service, 'mail_client', factory)
     fake_night_writer(monkeypatch)
+    if permission == 'allowed':
+        with pytest.raises(TimeoutError, match='private provider URL'):
+            daily._draft_replies(notebook, read_config(notebook), {})
+        assert factory.call_count == 1
+        return
     daily._draft_replies(notebook, read_config(notebook), {})
     data = snapshot(notebook, local=True, today=True)
     outcome = data['night_outcomes'][0]
     assert outcome['kind'] == 'could_not_prepare'
-    assert ('TimeoutError' if permission == 'allowed' else 'consent') in outcome['reason']
+    assert 'consent' in outcome['reason']
     assert 'private provider URL' not in outcome['reason']
     assert data['today_queue'][0]['outcome'] == outcome
     assert factory.call_count == int(permission == 'allowed')
@@ -1437,3 +1449,62 @@ def test_a_send_now_reply_goes_out_through_the_ten_minute_hold_as_rems_decision(
         assert result['release_at'] == item['release_at']
     else:
         assert result is None and queue == {}
+
+
+# #3121: who a reply goes to decides how it is sent. A partner's prepared reply goes out without a click,
+# through the same hold and Undo; never in the small hours; never with a private fact; the owner's choice wins.
+def _local(root, hour):
+    """The service clock at HOUR:00 in the notebook's own zone, tomorrow."""
+    from connectonion.rem.config import read_config
+    zone = service.notebook_zone(read_config(root))
+    day = (service.now().astimezone(zone) + timedelta(days=1)).date()
+    return datetime.combine(day, time(hour), zone).astimezone(timezone.utc)
+
+
+@pytest.mark.parametrize('hour, sends_at', [(3, 7), (6, 7), (9, None), (23, None)])
+def test_a_partners_reply_never_goes_out_in_the_small_hours(notebook, monkeypatch, hour, sends_at):
+    from connectonion.rem import approvals, drafts
+    from connectonion.rem.config import read_config
+    moment = _local(notebook, hour)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Tuesday works.', 'sources': ['gmail:one'], 'send': 'now'})
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: Mock())
+    result = approvals.send_direct(notebook, row['id'])
+    zone = service.notebook_zone(read_config(notebook))
+    release = datetime.fromisoformat(result['release_at'])
+    if sends_at is None:
+        assert release == moment + timedelta(minutes=10)
+    else:
+        assert release.astimezone(zone).time() == time(sends_at) and release >= moment + timedelta(minutes=10)
+
+
+def test_a_partners_reply_is_sent_after_the_hold_and_undo_stops_it(notebook, monkeypatch):
+    from connectonion.rem import approvals, drafts
+    moment = _local(notebook, 10)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Tuesday works.', 'sources': ['gmail:one'], 'send': 'now'})
+    client = Mock()  # the recorder: nothing real is ever sent
+    client.reply.return_value = 'sent'
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: client)
+    held = approvals.send_direct(notebook, row['id'])['results'][0]
+    assert held['status'] == 'held' and held['by'] == 'rem'
+    assert approvals.undo(notebook, [held['id']])['results'][0]['status'] == 'cancelled'
+    assert approvals.release(notebook, at=moment + timedelta(minutes=11)) == []
+    client.reply.assert_not_called()  # Undo within the hold stopped it
+    assert approvals.send_direct(notebook, row['id']) is not None  # prepared again; a later night may send it
+    assert approvals.release(notebook, at=moment + timedelta(minutes=11))[0]['status'] == 'sent'
+    client.reply.assert_called_once()
+
+
+def test_a_reply_carrying_a_private_fact_is_held_whoever_it_goes_to(notebook, monkeypatch):
+    from connectonion.rem import approvals, drafts
+    mail_thread(notebook)
+    row = drafts.queue(notebook)[0]
+    drafts.promote(notebook, {**row, 'body': 'Tuesday works.', 'sources': ['gmail:one'], 'send': 'now', 'private': True})
+    monkeypatch.setattr(drafts, 'mail_client', lambda kind: Mock())
+    assert approvals.send_direct(notebook, row['id']) is None
+    assert read_json(state_path(notebook, 'approvals.json'), {}) == {}

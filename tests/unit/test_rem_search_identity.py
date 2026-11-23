@@ -11,7 +11,7 @@ from test_rem_reader import _run_reader_js
 def search_result(query, selected="", *, hidden=True, unique=False, no_details=False,
                   first_title='Aster Vale', second_title='Aster Vale', second_alias='', extra_titles=()):
     page = TEMPLATE.read_text()
-    names = ["search", "listedRecords", "identityChoices", "identityDetails", "nameMatches", "recordedNames"]
+    names = ["search", "searchSnippet", "localDates", "listedRecords", "identityChoices", "identityDetails", "nameMatches", "recordedNames", "tagNorm", "tagResolve", "tagged"]
     functions = "\n".join(match.group(0) for name in names
                           if (match := re.search(r"function " + name + r"\(.*?\n\}", page, re.S)))
     script = r'''
@@ -134,7 +134,7 @@ def test_unique_whole_alias_keeps_best_match():
 def test_identity_details_use_original_visible_facts_without_poisoning_translation_cache():
     page = TEMPLATE.read_text()
     functions = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", page, re.S).group(0)
-                          for name in ["identityDetails", "parseFacts", "topLevelParts", "rawSection", "plainLine", "plainValue", "knownValue"])
+                          for name in ["identityDetails", "parseFacts", "topLevelParts", "rawSection", "plainLine", "plainValue", "knownValue", "pageWords"])
     result = _run_reader_js(functions + r'''
       const PARSED_FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g, UNFILLED_LINE = /^not investigated$/;
       const youify = s => s;

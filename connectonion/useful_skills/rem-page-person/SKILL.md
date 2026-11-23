@@ -92,10 +92,12 @@ Rules:
 - **`How they communicate` quotes how they ask to be reached** (“WhatsApp me,
   not email”) and lists no channel they did not offer or use.
 - **`Company` needs stated employment**; a student or mailbox domain proves
-  none (`Unknown`).
+  none (`Unknown`); a known one is its page's link.
 - `Unit`: repeat cited org-page links; `Role in unit`: the same link — role. Legacy `Team` means `Unit`; `Company` stays top-level. Domains place nobody; conflicting codes go to review questions.
-- **`Who they are`**: their work first; private life they share is one
-  labelled sentence, not a run of quotes.
+- **`Who they are`: a framing sentence, then dated career lines newest first**
+  (`- 2019–now: Founder, [Kiln Labs](../orgs/kiln-labs.md) — what they did [n]`), education, public work,
+  people they overlap with. Organisations are links to their pages (the program makes missing ones).
+  Unknowns once; private life one labelled sentence.
 - **`Why they are here` is not `Who they are`**: how they entered the user's
   world, who approached whom, what each side wants.
 - **`Our relationship` is a state, not a log**: kind, where it stands, its

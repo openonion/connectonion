@@ -1,0 +1,86 @@
+name: rem-abstract-quotes
+cases:
+  - id: session-choice
+    kind: normal
+    input: |
+      Write one decision from sessions/storage.md:
+      ## Decisions
+      - “Use flat files rather than a database so I can inspect them.” [1]
+      ## Sources
+      - [1] codex:example:17
+    expect:
+      must:
+        - The owner's exact quote appears in the decision body immediately followed by a numbered citation.
+        - Sources defines that citation with codex:example:17 and keeps the originating page as context.
+  - id: project-choice
+    kind: normal
+    input: |
+      Write one decision from projects/schedule.md:
+      ## Key decisions
+      - “Use an interval tick instead of a calendar trigger.” [4]
+      ## Sources
+      - [4] codex:example:23
+    expect:
+      must:
+        - The decision body keeps the owner's exact interval choice beside its citation.
+        - Sources defines the original codex:example:23 source, even if citation numbers change.
+  - id: misplaced-quote
+    kind: normal
+    input: |
+      Fix this refused decision using its existing source, without changing the owner's words:
+      # Storage choice
+      Use flat files. [1]
+      ## Sources
+      - [1] codex:example:17
+        > “Use flat files rather than a database so I can inspect them.” [1]
+      Refusal: the quote is under Sources; put it in the body beside its [n].
+    expect:
+      must:
+        - The existing quote moves into the body with its numbered citation immediately following it.
+        - Sources retains the original source definition.
+  - id: assistant-proposal
+    kind: counterexample
+    input: |
+      Write a decision from sessions/proposal.md:
+      ## Decisions
+      - The assistant proposed using a database. The owner has not replied.
+      ## Sources
+      - [1] codex:example:31
+    expect:
+      must:
+        - No owner decision is recorded from the unaccepted assistant proposal.
+      must_not:
+        - The assistant's suggestion is presented as the owner's quoted choice.
+  - id: insufficient-principle
+    kind: counterexample
+    input: |
+      Write a principle from two existing decisions. decisions/storage.md chose flat files
+      for inspection; decisions/logs.md chose plain text logs for inspection.
+      No third decision is available.
+    expect:
+      must:
+        - The two decisions remain decisions until a third supports the recurring reason.
+      must_not:
+        - A principle page is written from only two decisions.
+  - id: captured-verdict-report
+    kind: normal
+    input: |
+      Account for this offered captured line without writing a decision page:
+      [d0123456789ab] - “Fix the typo.” [1]
+      ## Sources
+      - [1] codex:example:41
+      Write your report to /task/abstract-example/report.md.
+    expect:
+      must:
+        - The report file and final message both contain VERDICT d0123456789ab not-a-decision on its own line.
+  - id: captured-verdict-link-only
+    kind: counterexample
+    input: |
+      Finish accounting for the offered line d0123456789ab, which rejected no alternative.
+      The report at /task/abstract-example/report.md contains its not-a-decision verdict.
+      Return your final message now.
+    expect:
+      must:
+        - The final message repeats the offered line's explicit not-a-decision verdict.
+      must_not:
+        - The final message contains only a link to the report instead of its verdict line.

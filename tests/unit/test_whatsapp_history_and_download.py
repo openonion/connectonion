@@ -88,7 +88,7 @@ def test_a_file_opens_only_under_its_own_kind():
     with pytest.raises(media.MediaError, match="MAC"):
         media.decrypt(blob, {**ref, "kind": "image"})
     with pytest.raises(media.MediaError, match="fileEncSha256"):
-        media.decrypt(blob[:-1] + b"\0", ref)
+        media.decrypt(blob[:-1] + bytes([blob[-1] ^ 1]), ref)  # always a change; a random last byte can already be 0
 
 
 def test_the_history_payload_is_read_entry_by_entry_and_bounded(monkeypatch):

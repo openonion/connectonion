@@ -145,3 +145,78 @@ async def test_a_matching_request_is_untouched(pinned):
     ok, payload = await pinned.dispatch_async(envelope("status", engine="onion"))
 
     assert not _refusal(payload)
+
+
+# #3299: when the paid engine cannot start, the only way to system Chrome was
+# `co browser close`, which ends every other session's tabs. A pin protects
+# running pages; with no paid browser running there are none to protect.
+
+
+@pytest.mark.asyncio
+async def test_system_chrome_is_served_when_the_paid_browser_is_not_running(pinned):
+    pinned.browser._tab_meta["someone-elses"] = {"who": "other", "opened_by": "other"}
+
+    ok, payload = await pinned.dispatch_async(envelope("tab ls", engine="system"))
+    ok, payload = await pinned.dispatch_async(envelope("get_text", engine="system"))
+
+    assert not _refusal(payload), "nothing is running on the paid engine to protect"
+    assert pinned.engine_mode == "system"
+    assert pinned.browser._engine_mode == "system", "the next launch must be system Chrome"
+    assert "someone-elses" in pinned.browser._tab_meta, "no other session loses its tab"
+
+
+@pytest.mark.asyncio
+async def test_a_bare_command_after_the_fallback_rides_system_chrome(pinned):
+    await pinned.dispatch_async(envelope("get_text", engine="system"))
+
+    ok, payload = await pinned.dispatch_async(envelope("get_text", engine="auto"))
+
+    assert not _refusal(payload)
+
+
+@pytest.mark.asyncio
+async def test_a_paid_browser_still_starting_is_not_switched_away(pinned):
+    await pinned.browser._lifecycle_lock.acquire()
+
+    ok, payload = await pinned.dispatch_async(envelope("get_text", engine="system"))
+
+    assert _refusal(payload)
+    assert pinned.engine_mode == "onion"
+
+
+@pytest.mark.asyncio
+async def test_a_browser_that_does_not_answer_counts_as_running(pinned, monkeypatch):
+    async def unknown():
+        return None
+
+    monkeypatch.setattr(pinned, "_probe_alive", unknown)
+
+    ok, payload = await pinned.dispatch_async(envelope("get_text", engine="system"))
+
+    assert _refusal(payload)
+    assert pinned.engine_mode == "onion"
+
+
+@pytest.mark.asyncio
+async def test_a_remote_browser_daemon_never_falls_back_to_system(pinned):
+    pinned._remote_egress = True
+
+    conflict = await pinned._engine_conflict("system")
+
+    assert conflict is not None
+    assert pinned.engine_mode == "onion"
+
+
+@pytest.mark.asyncio
+async def test_the_paid_relaunch_refusal_offers_system_chrome_first(pinned):
+    ok, payload = await pinned.dispatch_async(envelope("go_to example.com", engine="auto"))
+
+    assert "co browser --engine system" in payload
+    assert payload.index("--engine system") < payload.index("co browser close")
+
+
+@pytest.mark.asyncio
+async def test_close_is_offered_with_what_it_costs_other_sessions(live):
+    ok, payload = await live.dispatch_async(envelope("get_text", engine="system"))
+
+    assert "every session" in payload

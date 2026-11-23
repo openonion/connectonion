@@ -288,7 +288,7 @@ def _restart_listener(name: str, inbox: Inbox) -> None:
     print_tip(f"Next: co {name} check")
 
 
-def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
+def handle_listen(name: str, raw: bool = False, restart: bool = False, phone: str = "") -> None:
     """Hold the connection and write every message to the inbox."""
     p = _configured(name)
     inbox = Inbox(name)
@@ -326,7 +326,8 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
                 inbox.log(f"returned {released} stale message(s) to new/")
 
     threading.Thread(target=sweep, daemon=True).start()
-    errors.print(f"listening · {inbox.root}", style="dim")
+    acting = getattr(p, "acting_as", None)
+    errors.print(f"listening · {inbox.root}" + (f" · as {acting()}" if acting else ""), style="dim")
 
     def terminated(signum, frame):
         # SIGTERM used to end the process with no line at all: the log showed
@@ -338,7 +339,7 @@ def handle_listen(name: str, raw: bool = False, restart: bool = False) -> None:
     main = threading.current_thread() is threading.main_thread()
     previous = signal.signal(signal.SIGTERM, terminated) if main else None
     try:
-        p.run(inbox, raw=raw)
+        p.run(inbox, raw=raw, **({"phone": phone} if phone else {}))
     except KeyboardInterrupt:
         inbox.log("stopped by Ctrl-C")
     except ListenerStopped as exc:
@@ -732,6 +733,10 @@ def handle_check(name: str) -> None:
     listener = f"listener pid {pid}" if pid else "no listener running (receive starts one)"
     console.print(f"{style.ok('✓')} {escape(name)} configured · {escape(listener)} · "
                   f"{style.count(len(inbox.unread()))} unread · {style.path(inbox.root)}")
+    acting = getattr(p, "acting_as", None)
+    if acting:
+        # Which account a send goes out as: the bot, or the owner's own.
+        console.print(f"  acting as {escape(acting())}")
     stale = version_line(name, inbox, pid, installed=installed_version()) if pid else ""
     if stale:
         errors.print(stale, style="yellow")
@@ -935,6 +940,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
             CO_SENDER=message.sender,
             CO_MSG_ID=message.id,
             CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
+            PYTHONIOENCODING="utf-8",
         )
         os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
         # Before the command, not before the send. Here the command *is* the
@@ -944,7 +950,10 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         # lands, which is the same as not marking at all.
         _mark_answering(p, inbox, message)
         run = subprocess.run(command, input=_with_context(inbox, message, context) + "\n",
-                             capture_output=True, text=True, env=env)
+                             capture_output=True, text=True, env=env,
+                             # UTF-8 both ways, not the locale: on Windows that is
+                             # cp1252, and Chinese replies arrived as "â€¢".
+                             encoding="utf-8", errors="replace")
         # Returning finishes the message; raising leaves it in cur/ for the
         # sweep to offer again in an hour. So a command that failed, or a
         # reply the platform refused, raises: completing it here turned every

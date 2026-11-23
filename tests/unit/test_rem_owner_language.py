@@ -112,7 +112,9 @@ def test_a_round_reads_todays_queue_once_whatever_the_languages_and_turns(notebo
     set_config(notebook, ['languages', 'zh,ja'])
     reads = []
     monkeypatch.setattr(translate, 'shown_today', lambda root: reads.append(1) or ['people/ivo.md'])
-    monkeypatch.setattr(translate, 'prepare', lambda root, record, language, **kw: {'record': record, 'language': language})
+    monkeypatch.setattr(translate, 'BATCH', 1)  # one page a turn: two turns, one read of Today
+    monkeypatch.setattr(translate, 'prepare_batch', lambda root, records, language, **kw: {
+        'records': records, 'language': language})
     cursor = {'phase': 'daily-translation', 'changed': []}
     first = native_round.prepare_translation(notebook, cursor, read_config(notebook), notebook)
     cursor['translation_attempts'].append(['zh', first['record']])

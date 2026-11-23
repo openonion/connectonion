@@ -202,7 +202,7 @@ def test_model_denial_stops_first_run_before_writing_pages(first_run, monkeypatc
     from connectonion.rem.service import run_logs
     assert run_logs(root)[0]["phase"] == "model access"
     assert run_logs(root)[0]["outcome"] == "failed"
-    assert run_logs(root)[0]["speed"] == "fast"
+    assert run_logs(root)[0]["speed"] == "standard"
     assert run_logs(root)[0]["harness"] == "codex"
 
 
@@ -485,7 +485,7 @@ def test_runner_ok_investigates_me_once_with_inits_window(first_run):
     assert all(call["days"] == 5 and call["sent_only"] is True for call in mine)
     assert "me@example.org" in mine[0]["handles"]
     text = Text.from_ansi(result.output).plain
-    assert "codex" in text and "gpt-6.1-sol" in text
+    assert "codex" in text and "gpt-6-luna" in text
     assert "your own" in text and "Ctrl-C" in text
     assert text.rstrip().endswith(f"--root {root} open")
     assert f"--root {root} start" in text

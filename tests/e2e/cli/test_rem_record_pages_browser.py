@@ -9,6 +9,7 @@ original quietly (D-103). The notebook is the invented one in tests/fixtures/rem
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,7 +42,11 @@ def _notebook(root, now):
     text = book.read(MARA)
     head, _, rest = text.partition("## Open threads\n")
     topics, _, tail = rest.partition("\n## ")
-    book.write(MARA, head + "## Open threads\n" + topics.rstrip("\n") + MORE_TOPICS + "\n## " + tail)
+    # A phone number and a GitHub handle, so her header carries all three contact buttons (owner, 2026-11-17).
+    text = (head + "## Open threads\n" + topics.rstrip("\n") + MORE_TOPICS + "\n## " + tail).replace(
+        "- Phone: Unknown", "- Phone: +64 21 555 0142 (mobile) [1]").replace("- Handles: mara@fernhill.example", "- Handles: mara-o (GitHub)")
+    assert "mara-o (GitHub)" in text and "+64 21 555 0142" in text
+    book.write(MARA, text)
     # The owner's own page links to everyone, as it does on a real notebook: he is every page's hub.
     owner = book.read("people/avery-lin.md").replace("## Sources", "## People\n- [Mara Ostrowski](mara-ostrowski.md)\n"
                                                     "- [Tomás Reyes](tomas-reyes.md)\n- [Inès Halvorsen](ines-halvorsen.md)\n"
@@ -76,7 +81,7 @@ def reader(tmp_path, monkeypatch):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
 
         def open_page(hash_, width=1440, language="zh", live=False):
             page.set_viewport_size({"width": width, "height": 900})
@@ -106,23 +111,33 @@ def test_an_english_page_with_no_translation_asked_for_carries_no_original_label
     assert page.locator("#main .translation-line").count() == 0
 
 
-# A translation genuinely on its way is one quiet worded line by the body, never a chip above the name.
+# A translation genuinely on its way is said once, by the top bar's language control (#3143), never in the page.
 @pytest.mark.parametrize("width", [1440, 390])
 @pytest.mark.parametrize("hash_, head", [("r=" + MARA.replace("/", "%2F"), ".person-head"), ("r=orgs%2Ffernhill-labs.md", ".ov-say h1"),
                                          ("r=projects%2Fharbour.md", ".page-head")])
-def test_a_pending_translation_is_one_quiet_line_below_the_header(reader, width, hash_, head):
+def test_a_pending_translation_is_the_top_bars_one_language_control_not_a_line_in_the_page(reader, width, hash_, head):
+    """#3143 (owner, 2026-11-19): the page's translate button and the EN/中 switch are one control, in one place."""
     open_page, calls = reader
     page = open_page(hash_, width=width, live=True)
-    line = page.locator("#main .translation-line")
-    assert line.count() == 1
-    # The words, then the one worded button that translates every page (#2999).
-    assert line.evaluate("n => n.firstChild.textContent") == "中文版还没好，先看原文"
-    assert line.get_by_role("button").all_inner_texts() == ["全部翻译成中文"]
+    assert page.locator("#main .translation-line, #main .translate-all").count() == 0
     assert page.locator(HEADERS).locator(".lang-status").count() == 0
-    assert _box(line)["y"] >= _box(page.locator(head))["y"] + _box(page.locator(head))["height"] - 1
-    assert line.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
-        "getComputedStyle(document.documentElement).getPropertyValue('--s-meta').trim()", isolated_context=False)
-    assert any(path == "/rem/translation-request" for path, _ in calls)
+    # rc34 check: the bar shows a count beside 中/EN whose menu holds the line; a phone has the one 显示 menu instead.
+    badge = page.locator("#lang-progress .lang-badge")
+    assert "还没有中文版" in badge.get_attribute("title")
+    if width > 400:
+        progress = page.locator("#lang-progress")
+        assert progress.is_visible()
+        # Beside the EN/中 toggle in the top bar, in the 13px label size.
+        toggle = _box(page.locator("#lang-toggle"))
+        assert abs(_box(progress)["y"] + _box(progress)["height"] / 2 - (toggle["y"] + toggle["height"] / 2)) < 8
+        assert progress.evaluate("n => getComputedStyle(n).fontSize") == page.evaluate(
+            "getComputedStyle(document.documentElement).getPropertyValue('--s-ui').trim()", isolated_context=False)
+        badge.click()
+        assert "还没有中文版" in page.locator(".lang-menu").inner_text()
+    else:
+        page.locator("#display-menu").click()
+        assert "还没有中文版" in page.locator(".display-pop").inner_text()
+    assert any(path == "/rem/translation-request" for path, _ in calls)   # the opened page is still asked for at once
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
@@ -140,30 +155,28 @@ def test_most_connected_leaves_the_owner_out(reader):
 
 # 3. Open topics are what he opens a person for: right under the header, top three, "全部 N 条".
 @pytest.mark.parametrize("width", [1440, 390])
-def test_open_topics_lead_the_person_page_with_the_top_three(reader, width):
+def test_the_headers_today_count_drops_when_an_item_is_closed_in_today(reader, width):
+    """#3145: what is open shows only as the header's count, from Today's own state; closed there, gone here."""
     open_page, _ = reader
     page = open_page("r=" + MARA.replace("/", "%2F"), width=width)
-    topics = page.locator(".r4-person .r4-topics")
-    hero, first_widget = _box(page.locator(".person-head")), _box(page.locator(".r4-person .bento > *"))
-    assert hero["y"] + hero["height"] <= _box(topics)["y"] < first_widget["y"]
-    assert topics.locator("li").evaluate_all("rows => rows.filter(r => r.offsetParent).length") == 3
-    more = topics.get_by_role("button")
-    assert more.inner_text() == "全部 5 条"
-    more.click()
-    assert topics.locator("li").evaluate_all("rows => rows.filter(r => r.offsetParent).length") == 5
-    # Still a record (D-30): nothing to mark, reply or close here.
-    assert topics.locator("a, .chip:not(button)").count() == 0
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    count = lambda: page.evaluate("waitingOn(byPath('people/mara-ostrowski.md')).length", isolated_context=False)  # noqa: E731
+    before = count()
+    assert before >= 1
+    page.evaluate("() => { const e = waitingOn(byPath('people/mara-ostrowski.md'))[0]; threadStates[doneKey(e)] = { state: 'done', at: new Date().toISOString() }; render(); }",
+                  isolated_context=False)
+    assert count() == before - 1
+    link = page.locator(".person-head .hero-meta .r4-today")
+    assert (link.count() == 0) if before == 1 else (str(before - 1) in link.inner_text())
 
 
-# 4. The Skills page says what its numbers are on the cards, not in a caption about name matching.
+# 4. The Skills page says what its numbers are in the column's header (#3094), not in a caption about name matching.
 def test_skills_has_no_matching_jargon(reader):
     open_page, _ = reader
     page = open_page("c=skills")
-    page.locator(".skill-card").first.wait_for()
+    page.locator(".skill-table tbody tr").first.wait_for()
     text = page.locator("#main").inner_text()
     assert "按技能名称匹配计数" not in text and "匹配" not in text
-    assert "近 180 天" in page.locator(".skill-card").first.inner_text()
+    assert "近 180 天" in page.locator(".skill-table thead th.c-uses").inner_text()
 
 
 # 5. On a phone the face belongs to the header beside the name, not in the row of contact buttons.
@@ -175,6 +188,23 @@ def test_phone_person_face_sits_with_the_name_not_the_actions(reader):
     assert face["y"] < name["y"] + name["height"] and face["y"] + face["height"] > name["y"]  # same row as the name
     assert face["y"] + face["height"] <= acts["y"]  # above the contact row, not inside it
     assert face["x"] + face["width"] <= name["x"]
+
+
+# 5b. The owner called the contact pictures "not very accurate": a phone number was a smartphone and a GitHub
+# handle a speech bubble. Each is now the published picture, the same size as its neighbours, centred in its
+# button, and its kind is said in words beside the value on hover and in its name.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_contact_rows_say_their_kind_in_words_and_copy_on_a_click(reader, width):
+    """The profile card's rows (#3131, owner 2026-11-19: «资料卡片很丑»): each says its kind in a word in one label
+    column, with no picture beside some labels and not others, and an address, phone or handle copies on a click."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
+    rows = page.locator(".person-head .pcard .pc-row").evaluate_all("""rows => rows.map(r => ({
+      word: r.querySelector('.pc-k').textContent, picture: !!r.querySelector('.pc-k svg'), copy: !!r.querySelector('.pc-copy')}))""")
+    assert [r["word"] for r in rows][:3] == ["Email", "Phone", "GitHub"]
+    assert all(r["copy"] for r in rows[:3])
+    assert not any(r["picture"] for r in rows)  # one label language: words
+    assert page.locator(".person-head .round").count() == 0
 
 
 # 6. Organisation records never project Today's queue, even when obligations change.
@@ -191,24 +221,318 @@ def test_org_record_has_no_today_projection(reader):
     assert page.locator(".ov-org-tree [role=tree]").is_visible()
 
 
-# Review: with labelled passages hidden, the card counts and slices only what is shown, and leaves when nothing is.
-@pytest.mark.parametrize("private_rows, expected", [(3, "还没结的话题\n2"), (5, None)])
-def test_open_topics_count_only_shown_rows_when_labelled_passages_are_hidden(reader, private_rows, expected):
+# 7. The profile card is the first thing on the person page (owner, 2026-11-18): every known fact under the name,
+# nothing to expand, each fact in one place. #3131 (2026-11-19): one line per fact, place and last contact in the
+# header's third line, and what is unknown in the card's tooltip, not a line of "not found".
+@pytest.mark.parametrize("width", [1440, 390])
+def test_profile_card_shows_every_known_fact_under_the_name_without_expanding(reader, width):
     open_page, _ = reader
-    page = open_page("r=" + MARA.replace("/", "%2F"))
-    page.evaluate("""n => {
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="en")
+    page.evaluate("""() => {
       const r = byPath('people/mara-ostrowski.md');
-      const rows = ['the signed addendum', 'the usage export', 'the seat price', 'a training date', 'the invoice correction']
-        .map((what, i) => '- You owe Mara ' + what + (i >= 5 - n ? ' [personal]' : '') + '.');
-      r.text = r.text.replace(/## Open threads\\n[\\s\\S]*?(?=\\n## )/, '## Open threads\\n' + rows.join('\\n') + '\\n');
-      KNOWN.clear(); FACTS.clear();
-      if (!document.documentElement.classList.contains('hide-private')) togglePrivate();
-      render();
-    }""", private_rows, isolated_context=False)
-    topics = page.locator(".r4-person .r4-topics")
-    if expected is None:
-        assert topics.count() == 0 or not topics.is_visible()
-    else:
-        assert topics.inner_text().startswith(expected + "\n")
-        assert "全部" not in topics.inner_text() and "[personal]" not in topics.inner_text()
-    assert "5" not in page.locator(".r4-person .r4-topics h2, .r4-person .r4-topics .end").all_inner_texts().__str__()
+      r.text = r.text.replace(/^- Phone:[^\\n]*/m, '- Phone: +64 21 555 0199 (mobile) [2]')
+        .replace(/^- Signing entity:[^\\n]*/m, '- Signing entity: Fernhill Labs Ltd [2]')
+        .replace(/^- Handles:[^\\n]*/m, '- Handles: mara@fernhill.example; github.com/mara-o (GitHub) [2]; mara#2041 (Discord) [3]');
+      // rem.test is not a secure origin, so the page has no clipboard of its own here.
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: text => { window.copied = text; return Promise.resolve(); } } });
+      delete r.original; delete r.translations; KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    # The card is in the header, outside Full memory: it shows whether or not Full memory is open (#3104 opens it).
+    assert card.is_visible() and card.evaluate("n => !n.closest('details')")
+    name, box = _box(page.locator(".person-head h1")), _box(card)
+    assert name["y"] + name["height"] <= box["y"] < 844, "the card is under the name, on the first screen"
+    labels = card.locator(".pc-k").all_inner_texts()
+    for label in ["Email", "Phone", "GitHub", "Discord", "Signing entity", "How we know them", "First contact",
+                  "Also known as", "Language"]:
+        assert label in labels, label
+    meta = page.locator(".person-head .hero-meta").inner_text()
+    assert "Last contact" in meta and "Last contact" not in labels and "Location" not in labels  # said once, in the header
+    text = card.inner_text()
+    assert "+64 21 555 0199" in text and "Fernhill Labs Ltd" in text and "M. Ostrowski" in text
+    assert "not found" not in text and "Time zone" not in labels  # no rows or lines of "not found"
+    assert "1 fact not found" in card.get_attribute("title")  # what is unknown is one hover away
+    # Every fact is one row: a label column beside its value, never a label stacked over it.
+    for row in card.locator(".pc-row").all()[:4]:
+        k, v = _box(row.locator(".pc-k")), _box(row.locator(".pc-v"))
+        assert abs(k["y"] - v["y"]) < 6 and k["x"] + k["width"] <= v["x"]
+    # One place per fact: role and organisation are the line under the name, not chips, rows or round buttons.
+    assert "Head of Partnerships" in page.locator(".r4-sub").inner_text() and "Head of Partnerships" not in text
+    assert page.locator(".person-head .round, .r4-sub .chip").count() == 0
+    assert labels.count("Email") == 1 and text.count("mara@fernhill.example") == 1  # the handle that is an email is not repeated
+    phone = card.locator(".pc-row", has=page.locator(".pc-k", has_text="Phone")).locator("button")
+    phone.click()
+    assert "Copied" in phone.inner_text() and page.evaluate("window.copied", isolated_context=False) == "+64 21 555 0199"
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_the_header_meta_line_keeps_a_gap_and_a_dot_between_every_item(reader, width):
+    """Mac review of rc28: '43 封邮●今天 · 逾期 16 天' and '36 封邮件今天里有 6 件': the Today link lost its gap and dot."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width)
+    page.evaluate("""() => { const meta = document.querySelector('.person-head .hero-meta');
+      const late = Object.assign(document.createElement('a'), { className: 'r4-today late', href: '#', textContent: '今天 · 逾期 16 天' });
+      meta.append(Object.assign(document.createElement('span'), { textContent: '43 封邮件' }), late); }""", isolated_context=False)
+    gaps = page.evaluate("""() => { const items = [...document.querySelectorAll('.person-head .hero-meta > *')], out = [];
+      for (let i = 1; i < items.length; i++) { const a = items[i - 1].getBoundingClientRect(), b = items[i].getBoundingClientRect();
+        if (Math.abs(a.top - b.top) < 4) out.push(Math.round(b.left - a.right)); }
+      return out; }""", isolated_context=False)
+    assert gaps and all(gap >= 12 for gap in gaps), gaps
+    dot = page.locator(".person-head .hero-meta .r4-today.late").evaluate("n => getComputedStyle(n, '::before').content")
+    assert dot == '"·"', dot
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_person_page_leads_with_what_happened_and_a_row_opens_its_original(reader, width):
+    """#3145 (owner, 2026-11-19): no 还没结的话题 (it disagreed with Today); 往来 is first under the header, newest first,
+    and one click on a row shows its whole original beside it, the row marked while it is open."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width)
+    assert page.locator(".r4-person .r4-topics").count() == 0
+    timeline = page.locator(".r4-person > .tl-lead")
+    head = page.locator(".person-head").bounding_box()
+    assert timeline.bounding_box()["y"] >= head["y"] + head["height"] - 1
+    assert page.evaluate("document.querySelector('.r4-person > .tl-lead').previousElementSibling.classList.contains('person-head')")
+    days = timeline.locator(".tl-e .d").all_inner_texts()
+    assert days, "the timeline shows rows"
+    assert timeline.locator(".tl-e.tl-open").count(), timeline.locator(".tl-e").first.evaluate("n => n.outerHTML.slice(0, 600)")
+    row = timeline.locator(".tl-e.tl-open").first
+    row.click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert panel.locator(".evidence-claim").count() == 0 and "null" not in panel.inner_text()
+    assert "on" in row.get_attribute("class")
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"person-timeline-open-{width}.png"))
+    page.keyboard.press("Escape")
+    assert not panel.is_visible() and "on" not in (row.get_attribute("class") or "").split()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("width", [1440, 390])
+def test_people_never_show_an_address_as_a_name_and_cells_never_overlap(reader, width):
+    """#3157: rows named by an address, organisation cells carrying provenance prose, long names drawn over the next
+    column. An address-titled page reads as 'name unknown' with its address quiet; provenance is a tooltip."""
+    open_page, _ = reader
+    page = open_page("c=people", width=width, language="zh")
+    page.evaluate("""() => {
+      const r = byPath('people/mara-ostrowski.md');
+      REM.records.push({...r, path: 'people/someone-at-example.md', title: 'someone.unknown@example.test',
+        text: '# someone.unknown@example.test\\n\\n## Facts\\n- Email: someone.unknown@example.test\\n- Company: Fernhill Labs (their signature)\\n'});
+      REM.records.push({...r, path: 'people/long-name.md', title: 'Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff',
+        text: '# Maximiliana Theodora Wolfeschlegelsteinhausen-Bergerdorff\\n\\n## Facts\\n- Company: Fernhill Labs\\n'});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    rows = page.locator(".people-table tbody tr")
+    text = page.locator(".people-table tbody").inner_text()
+    assert "someone.unknown@example.test" not in page.locator(".people-table td.c-name a").all_inner_texts()
+    assert "未知姓名" in text
+    assert "(their signature)" not in text  # provenance moves to the tooltip
+    if width == 1440:
+        overlap = page.evaluate("""() => [...document.querySelectorAll('.people-table tbody tr')].some(tr => {
+          const name = tr.querySelector('td.c-name'), org = tr.querySelector('td.c-org');
+          if (!name || !org) return false;
+          const inner = name.querySelector('a').getBoundingClientRect(), cell = name.getBoundingClientRect();
+          return inner.right > cell.right + 1; })""", isolated_context=False)
+        assert not overlap
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_orgs_merge_same_named_units_keep_people_out_and_hide_empty_columns(reader):
+    """#3160: a unit listed twice, a person's role filed as an organisation, columns mostly '—', and '推断' as a line."""
+    open_page, _ = reader
+    page = open_page("c=orgs", width=1440, language="zh")
+    page.evaluate("""() => {
+      const base = byPath('orgs/fernhill-labs.md');
+      const org = (path, title, extra = {}) => ({...base, path, title, text: '# ' + title + '\\n\\n## Facts\\n- Kind: company\\n', children: [], parent: undefined, unit_kind: undefined, people: [], ...extra});
+      REM.records.push(org('orgs/eng-a.md', 'Faculty of Engineering', {unit_kind: 'faculty'}), org('orgs/eng-b.md', 'Faculty of Engineering', {unit_kind: 'faculty'}),
+        org('orgs/deputy.md', 'Deputy Director, Research Partnerships'));
+      for (let i = 0; i < 6; i++) REM.records.push(org('orgs/filler-' + i + '.md', 'Filler Company ' + i));
+      KNOWN.clear(); FACTS.clear(); orgTableColumns = null; render();
+    }""", isolated_context=False)
+    names = page.locator(".org-table tbody td.c-name a").all_inner_texts()
+    assert names.count("Faculty of Engineering") == 1
+    assert not any("Deputy Director" in n for n in names)
+    headers = page.locator(".org-table thead th").all_inner_texts()
+    assert not any("位置" in h for h in headers)  # empty for 80%+ of rows
+    assert page.locator(".org-table .org-site small").count() == 0  # 推断 is a dot with a tooltip, not a line
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_decision_titles_carry_no_privacy_label_and_leads_no_timestamps(reader):
+    """#3159: a title ended with a literal '[personal]'; leads opened with '这项选择作于 2026-11-08 的 10:20…'."""
+    open_page, _ = reader
+    page = open_page("c=decisions", width=1440, language="zh")
+    page.evaluate("""() => {
+      REM.records.push({path: 'decisions/keep-markdown.md', title: 'Keep Markdown [personal]', category: 'decisions', written: true,
+        text: '# Keep Markdown [personal]\\n\\n## Decision\\n这项选择作于 2026-11-08 的 10:20，所在会话开始于 2026-10-29T09:00:00Z。保留 Markdown 作为笔记格式。 [1]\\n\\n## Sources\\n- [1] codex:01a1a594\\n'});
+      // This fixture is served from a non-loopback host, which starts at Public only (#2840) and so takes a
+      // [personal] title out of the list; the label rule is about what a shown title prints.
+      setPrivacy('cover', {save: false, redraw: false});
+      KNOWN.clear(); FACTS.clear(); render();
+    }""", isolated_context=False)
+    text = page.locator("#main").inner_text()
+    assert "[personal]" not in text and "Keep Markdown" in text
+    assert "2026-11-08" not in text and "T09:00" not in text and "这项选择作于" not in text
+    assert "保留 Markdown 作为笔记格式" in text
+
+
+def test_an_agent_mailbox_is_the_persons_agent_and_the_owners_own_address_is_never_theirs(reader):
+    """#3164: the 账号 row listed an agent mailbox as the person's account, and an owner's own address can appear."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=1440, language="en")
+    owner_address = page.evaluate("""() => {
+      const owner = byPath(REM.owner);
+      const mine = (/[\\w.+-]+@[\\w.-]+\\.\\w+/.exec(owner?.text || '') || ['owner@self.example'])[0];
+      const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Handles:[^\\n]*/m, '- Handles: 0xab12cd34ef@mail.openonion.ai; ' + mine);
+      KNOWN.clear(); FACTS.clear(); render();
+      return mine;
+    }""", isolated_context=False)
+    card = page.locator(".person-head .pcard")
+    rows = {row.locator(".pc-k").inner_text(): row.locator(".pc-v").inner_text() for row in card.locator(".pc-row").all()}
+    assert "Their agent" in rows and "0xab12cd34ef@mail.openonion.ai" in rows["Their agent"]
+    assert not any("0xab12cd34ef" in value for key, value in rows.items() if key != "Their agent")
+    if owner_address != "owner@self.example":
+        assert owner_address not in card.inner_text()
+
+
+# A citation chip opens its source beside the page and never navigates (#3165 deep hunt, 2026-11-19: «我点了一个引用，
+# 结果跳到别人的人物页去了，我刚才在看项目啊»). Each page kind, a chip quoted from another page, and a chip whose page
+# is not in this snapshot.
+CITED = {
+    "decisions/notebook-format.md": "# Notebook format\n\n## Decision\nPages stay Markdown so they can be read without co rem [1].\n\n## Sources\n- [1] file:/notes/format.md — 2026-09-02\n",
+    "skills/catalog/weekly-brief.md": "# weekly-brief\n\n## Insight\nA saved draft needs a queue readback before it can be sent [1].\n\n## Sources\n- [1] file:/notes/brief.md — 2026-09-03\n",
+}
+
+
+def _chip_opens_beside(page, chip, path):
+    before = page.evaluate("location.hash", isolated_context=False)
+    chip.click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert page.evaluate("location.hash", isolated_context=False) == before, "the chip navigated away"
+    assert page.evaluate("new URLSearchParams(location.hash.slice(1)).get('r')", isolated_context=False) == path
+    page.keyboard.press("Escape")
+
+
+@pytest.mark.parametrize("path", ["projects/harbour.md", "orgs/fernhill-labs.md", MARA, "decisions/notebook-format.md",
+                                  "skills/catalog/weekly-brief.md"])
+def test_a_citation_chip_opens_its_source_beside_the_page_and_never_navigates(reader, path):
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"), language="en")
+    if path in CITED:
+        page.evaluate("""([path, text]) => { const r = byPath(path); r.text = text; delete r.translations; KNOWN.clear(); FACTS.clear(); render(); }""",
+                      [path, CITED[path]], isolated_context=False)
+    page.evaluate("() => document.querySelectorAll('details').forEach(d => d.open = true)", isolated_context=False)
+    # A chip in the page's text (the profile card's sources are a hover away and have their own touch test, #3179).
+    page.evaluate("() => { const a = [...document.querySelectorAll('#main a.cite')].find(n => !n.closest('.pc-row') && n.getClientRects().length); if (a) a.id = 'first-text-chip'; }",
+                  isolated_context=False)
+    chip = page.locator("#first-text-chip")
+    assert chip.count(), path
+    _chip_opens_beside(page, chip, path)
+
+
+def test_a_chip_quoted_from_another_page_opens_that_pages_source_and_stays_put(reader):
+    open_page, _ = reader
+    page = open_page("r=projects%2Fharbour.md", language="en")
+    page.evaluate("""() => { const card = relationCard({path: 'people/mara-ostrowski.md', via: 'people/mara-ostrowski.md',
+        kind: 'mentioned by', basis: 'Mara leads the pilot', sources: ['1']}, 'projects/harbour.md');
+      card.id = 'quoted-card'; document.getElementById('main').prepend(card); }""", isolated_context=False)
+    chip = page.locator("#quoted-card a.cite").first
+    assert "people%2Fmara-ostrowski.md" in chip.get_attribute("href")  # the number is Mara's page's
+    _chip_opens_beside(page, chip, "projects/harbour.md")
+
+
+def test_a_chip_whose_page_is_not_in_the_snapshot_says_so_and_stays_put(reader):
+    open_page, _ = reader
+    page = open_page("r=projects%2Fharbour.md", language="zh")
+    page.evaluate("""() => { const a = Object.assign(document.createElement('a'), { className: 'cite', id: 'gone-chip', textContent: '1',
+        href: '#r=people%2Fnot-in-this-snapshot.md&h=src-1' }); document.getElementById('main').prepend(a); }""", isolated_context=False)
+    before = page.evaluate("location.hash", isolated_context=False)
+    page.locator("#gone-chip").click()
+    panel = page.locator("#evidence-panel")
+    panel.wait_for(state="visible")
+    assert "这条来源所在的页面不在这份快照里" in panel.inner_text()
+    assert page.evaluate("location.hash", isolated_context=False) == before
+    page.keyboard.press("Escape")
+    assert not panel.is_visible()
+
+
+# #3131 (hunt on rc31): a person's Full memory repeated every fact the profile card shows ('资料 · 已知 15/17 项'),
+# and dates printed twice ('2026-10-29 10月29日'). One place per fact, one date per value.
+@pytest.mark.parametrize("width", [1440, 390])
+def test_a_person_shows_each_fact_once_and_each_date_once(reader, width):
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), width=width, language="zh")
+    page.evaluate("""() => { const r = byPath('people/mara-ostrowski.md');
+      r.text = r.text.replace(/^- Last contact:[^\\n]*/m, '- Last contact: 2026-10-29 (10月29日) [3]')
+        .replace(/^- First contact:[^\\n]*/m, '- First contact: 2015-11-18 2015年11月18日 [3]');
+      KNOWN.clear(); FACTS.clear(); render(); }""", isolated_context=False)
+    assert page.locator(".person-head .pcard").count() == 1
+    assert page.locator("#main .factlist").count() == 0, "the profile card is the one place for facts"
+    text = page.locator("#main").inner_text()
+    assert "2026-10-29" not in text and "2015-11-18" not in text  # ISO forms never reach the Chinese page
+    assert text.count("2015年11月18日") <= 1 and text.count("10月29日 10月29日") == 0
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], f"cal-person-facts-once-{width}.png"), full_page=True)
+
+
+# rc34 hunt: a person page printed a raw "[sensitive]" label, and an organisation's tag row listed the organisation
+# itself. A label is a mark the reader turns into a curtain or a pill, never text; a page is never its own tag.
+LABEL = re.compile(r"[\[［](?:personal|sensitive)[\]］]", re.I)
+
+
+@pytest.mark.parametrize("level", ["all", "cover", "public"])
+@pytest.mark.parametrize("path", [MARA, "orgs/fernhill-labs.md", "projects/harbour.md"])
+def test_a_raw_privacy_label_never_reaches_the_page(reader, path, level):
+    open_page, _ = reader
+    page = open_page("r=" + path.replace("/", "%2F"), language="en")
+    page.evaluate(r"""([path, level]) => { const r = byPath(path);
+      // A label on every kind of line a record page draws: the lead, a fact, a bullet, a dated history row, a heading.
+      r.text = r.text.replace(/^(# [^\n]*\n+)([^\n#][^\n]*)/m, '$1$2 [sensitive]')
+        .replace(/^- (Role|Location|Company|Status|Stage|Owner): ([^\n]*)/gm, '- $1: $2 [sensitive]')
+        .replace(/^(## [^\n]*\n+- )([^\n]*)/gm, '$1$2 [personal]')
+        .replace(/^- (\d{4}-\d{2}-\d{2}[^\n]*)/gm, '- $1 [sensitive]');
+      r.index = {...(r.index || {}), how_known: 'Met through the pilot [sensitive]', role: 'Head of Partnerships [sensitive]'};
+      KNOWN.clear(); FACTS.clear(); setPrivacy(level, {save: false, redraw: false}); render(); }""", [path, level], isolated_context=False)
+    text = page.locator("body").inner_text()
+    found = [line for line in text.splitlines() if LABEL.search(line)]
+    assert not found, found[:5]
+
+
+def test_a_page_is_never_listed_in_its_own_tag_row(reader):
+    open_page, _ = reader
+    page = open_page("r=orgs%2Ffernhill-labs.md", language="en")
+    page.evaluate("""() => { REM.tags = {...REM.tags, 'fernhill-labs': {label: 'Fernhill Labs', kind: 'org', page: 'orgs/fernhill-labs.md', count: 2}, pilot: {label: 'Fernhill pilot', kind: 'topic', count: 2}};
+      for (const p of ['orgs/fernhill-labs.md', 'people/mara-ostrowski.md']) { const r = byPath(p); r.tags = [...new Set([...(r.tags || []), 'fernhill-labs', 'pilot'])]; }
+      render(); }""", isolated_context=False)
+    row = page.locator("#main .page-tags").first
+    row.wait_for()
+    assert row.get_by_role("link", name="Fernhill Labs").count() == 0, row.inner_text()
+    assert row.get_by_role("link", name="Fernhill pilot").count() == 1
+
+
+def test_a_citation_to_mail_rem_indexed_but_never_kept_opens_its_header(reader):
+    """rc34 hunt: person and organisation citations opened an empty card for mail REM knew the sender, subject and
+    time of. The card shows those and says, in words, that the body was not kept."""
+    open_page, _ = reader
+    page = open_page("r=" + MARA.replace("/", "%2F"), language="en")
+    chip = page.locator("#main a.cite[href*='src-'] >> visible=true").first
+    number = chip.get_attribute("data-sources") or chip.get_attribute("href").split("h=src-")[-1]
+    page.evaluate("""n => { const r = byPath('people/mara-ostrowski.md'), src = sourceList(r).find(s => s.n === n.split(' ')[0]);
+      REM.source_context[sourceId(src.text)] = {excerpt: '', truncated: false, body_empty: true, header_only: true,
+        time: '2026-08-22T09:00:00Z', sender: 'Mara Ostrowski <mara@fernhill.example>', subject: 'Pilot kickoff notes',
+        thread: '', source: 'outlook', participants: {from: 'Mara Ostrowski <mara@fernhill.example>', to: [], cc: []}}; }""",
+                  number, isolated_context=False)
+    chip.click()
+    page.locator("#evidence-panel").wait_for(state="visible")
+    page.locator("#evidence-panel").get_by_role("button", name="Show labelled passages").click()
+    text = page.locator("#evidence-panel").inner_text()
+    assert "Pilot kickoff notes" in text and "Mara" in text
+    assert "REM kept who wrote this and when, not the message itself." in text
+    assert "did not keep a copy" not in text and "isn't in this snapshot" not in text
+    assert "Copied" not in text  # a profile-card row is quoted as its values, not its copy button (rc35 hunt)
+    if os.environ.get("REM_PR_SHOTS"):
+        page.screenshot(path=os.path.join(os.environ["REM_PR_SHOTS"], "today-header-only-citation-1440.png"))

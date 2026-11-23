@@ -259,11 +259,13 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
     result = _run_reader_js(_live_here(TEMPLATE.read_text()) + reader_functions('snapshotWhy', 'stripDone') + r'''
       const REM = {live: true}, location = {protocol: 'http:'}, calls = [];
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
-      const setDone = (entry, done, state) => calls.push(['setDone', entry.t.text, done, state]);
+      const setDone = (entry, done, state, entries, extra, until) => calls.push(['setDone', entry.t.text, done, state, ...(until ? [until] : [])]);
       const todayRow = () => null;  // no cited mail sender, so Ignore offers nothing more
+      // Not now asks when (#3072): the chooser hands back the moment he picked, here always the same one.
+      const laterChooser = (line, choose) => choose('2026-11-20T00:00:00.000Z')('click'), press = {currentTarget: {closest: () => 'line'}};
       const entry = {r: {path: 'people/mara.md'}, t: {text: 'You owe Mara a pilot review.'}};
-      const own = stripDone(entry), slide = stripDone(entry, (event, state) => calls.push(['close', event, state]));
-      own[0].onclick(); own[2].onclick(); slide.forEach(button => button.onclick('click'));
+      const own = stripDone(entry), slide = stripDone(entry, (event, state, extra, until) => calls.push(['close', event, state, ...(until ? [until] : [])]));
+      own[0].onclick(); own[1].onclick(press); own[2].onclick(); slide[0].onclick('click'); slide[1].onclick(press); slide[2].onclick('click');
       const shown = {own: own.map(node => [node.tag, node.class, node.text]), calls,
         ask: stripDone({...entry, ask: true}).length,
         bare: stripDone({key: 'open'}).length};
@@ -276,21 +278,22 @@ def test_the_strips_mark_done_is_the_rows_own_done_and_takes_the_pages_way_of_cl
                              ['button', 'btn-quiet strip-ignore', 'Ignore']]
     # All three closes take the page's way out (Today slides the row), and Ignore is its own state.
     assert result['calls'] == [['setDone', 'You owe Mara a pilot review.', True, 'done'],
+                               ['setDone', 'You owe Mara a pilot review.', True, 'skipped', '2026-11-20T00:00:00.000Z'],
                                ['setDone', 'You owe Mara a pilot review.', True, 'ignored'],
-                               ['close', 'click', 'done'], ['close', 'click', 'skipped'], ['close', 'click', 'ignored']]
+                               ['close', 'click', 'done'], ['close', 'click', 'skipped', '2026-11-20T00:00:00.000Z'], ['close', 'click', 'ignored']]
     assert {key: result[key] for key in ('ask', 'bare')} == {'ask': 0, 'bare': 0}
     reason = 'This is an offline snapshot; open REM to mark it.'
     assert result['file'] == result['snapshot'] == [[word, 'disabled', reason, 'why-close'] for word in ('Mark done', 'Not now', 'Ignore')]
 
 
-TODAY_CARD = ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
+TODAY_CARD = ['personCard', 'snapshotCloseLine', 'cardHead', 'qageNode', 'ageNodes', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep']
 
 
 def _today_card_js(body):
     """A Today card built by the reader's own functions, hand-off strip included; only the data and the DOM are stubs."""
     page = TEMPLATE.read_text()
     steps_order = re.search(r'const STEPS = .*?;', page).group(0)
-    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map();\n'
+    return _run_reader_js(steps_order + '\nconst AGENT_NAMES = { codex: "Codex", claude: "Claude" }, ACTIVE_TASK = ["queued", "starting", "running"], OPEN_TALKS = new Map(), HAND_FAILED = new Map(), PENDING_HANDOFFS = new Map();\n'
                           + reader_functions(*TODAY_CARD, *[name for name in HAND if name != 'snapshotWhy']) + r'''
       const REM = {live: true, owner: 'people/avery.md', as_of: '2026-11-08', today_queue: []}, location = {protocol: 'http:'};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
@@ -300,7 +303,7 @@ def _today_card_js(body):
       const queuedReply = () => null, threadKind = () => null, threadContact = () => null, looksDone = entry => !!entry.handled;
       const morningWords = entry => ({words: 'Feedback', context: ''}), contactFields = () => [], company = () => '';
       const threadWho = r => r.title, href = () => '#fern', blockerTag = () => null, overdueDays = () => 0, kindBadge = () => null;
-      const alsoOn = () => null, firstName = r => r.title, threadAge = () => '5 days', setDone = () => {};
+      const alsoOn = () => null, firstName = r => r.title, threadAge = () => '5 days', setDone = () => {}, momentClass = () => '', momentData = () => ({});
       const closed = [], closeEntries = (node, entries) => closed.push([node, entries.map(entry => entry.key)]);
       const r = {path: 'people/fern.md', title: 'Fern'};
       const row = (key, handled = false) => ({key, handled, r, t: {dir: 'mine', text: 'You owe Fern ' + key + '.'}});
@@ -417,7 +420,7 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
 @pytest.mark.parametrize('status', ['prepared', 'no_reply'])
 def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
     steps_order = re.search(r'const STEPS = .*?;', TEMPLATE.read_text()).group(0)
-    functions = steps_order + reader_functions('personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
+    functions = steps_order + reader_functions('personCard', 'snapshotCloseLine', 'cardHead', 'qageNode', 'ageNodes', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep',
                                                'threadDraft', 'draftNote', 'mailboxLink', 'threadUrl')
     result = _run_reader_js(functions + 'const state = ' + json.dumps(state) + ', status = ' + json.dumps(status) + ';\n' + r'''
       const entry = {r:{path:'people/fern.md', title:'Fern'}, t:{text:'You owe Fern feedback. [1] [2]'}};
@@ -433,7 +436,7 @@ def test_ready_draft_on_any_cited_thread_beats_owner_last(state, status):
       const morningWords = () => ({words:'Feedback', context:''}), contactFields = () => [], company = () => '';
       const calendarDay = day => day, threadWho = r => r.title, href = () => '#fern', blockerTag = () => null, overdueDays = () => 0;
       const kindBadge = () => null, alsoOn = () => null, isDone = () => false, setDone = () => {}, fmtDate = day => day;
-      const firstName = r => r.title, threadAge = () => '5 days', taskResult = () => null, CHECK_ICON = '';
+      const firstName = r => r.title, threadAge = () => '5 days', taskResult = () => null, CHECK_ICON = '', momentClass = () => '', momentData = () => ({});
       const handedLine = () => null, rowTask = () => null, handOff = () => null;
       const replyDraftCard = draft => ({sendable:true, body:draft.body});
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
@@ -550,3 +553,26 @@ def test_the_owners_unnamed_rows_never_take_one_of_todays_five_places():
       console.log(JSON.stringify(todayGroups(ranked).map(group => group.r.path)));
     ''')
     assert result == ['people/p1.md', 'people/p2.md', 'people/p3.md', 'people/p4.md', 'people/p5.md']
+
+
+def test_the_queue_is_built_once_per_notebook_change(tmp_path, monkeypatch):
+    """#3106: approving and opening a talk each rebuilt Today's queue from every page. The Host now keeps the
+    queue for the notebook as it stands: a second click is free, and any write to the notebook builds it again."""
+    from connectonion.rem import today
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    root = tmp_path / "rem"
+    prepare(root)
+    book = Notebook(root)
+    book.stub_project("projects/pilot.md", "Pilot", [])
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("## Open threads\n", "## Open threads\n- You owe Mara a pilot review.\n"))
+    built = []
+    real = today._entries
+    monkeypatch.setattr(today, "_entries", lambda *a, **k: built.append(1) or real(*a, **k))
+    first = today.queue(root)
+    second = today.queue(root)
+    assert len(built) == 1 and first == second
+    second[0]["text"] = "changed by a caller"
+    assert today.queue(root)[0]["text"] != "changed by a caller"  # callers get their own copy
+    book.write("projects/pilot.md", book.read("projects/pilot.md").replace("pilot review", "pilot review and invoice"))
+    assert "invoice" in today.queue(root)[0]["text"] and len(built) == 2

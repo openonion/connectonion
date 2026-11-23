@@ -27,6 +27,7 @@ don't interfere between concurrent requests.
 
 import asyncio
 import json
+import logging
 import os
 import random
 import threading
@@ -254,6 +255,12 @@ def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
     return None
 
 
+def _model_name(llm) -> str:
+    """provider/model, as host.yaml writes it; OpenOnionLLM keeps co/ off the name it sends."""
+    from ...core.llm import OpenOnionLLM
+    return f"co/{llm.model}" if isinstance(llm, OpenOnionLLM) else llm.model
+
+
 def _extract_agent_metadata(create_agent: Callable,
                             name: Optional[str] = None) -> tuple[dict, object]:
     """Extract metadata from a sample agent instance.
@@ -272,10 +279,16 @@ def _extract_agent_metadata(create_agent: Callable,
         # deploy already uses for the directory, the unit and the hostname.
         "name": name or sample.name,
         "tools": sample.tools.names(),
-        "model": sample.llm.model,
+        "model": _model_name(sample.llm),
         "skills": [{"name": s.name, "description": s.description, "location": s.location}
                    for s in raw_skills],
     }
+    # A `restricted:` Host publishes no skill, and its Home said "None published"
+    # beside the skills host.yaml lets it run (#3263).
+    from ...useful_tools.claude_code import ClaudeRestriction
+    restriction = getattr(sample, "restriction", None)
+    if isinstance(restriction, ClaudeRestriction) and restriction.skills:
+        metadata["restricted_skills"] = list(restriction.skills)
     # Managed-key (co/*) agents have an OpenOnion account balance; publish it so
     # chat clients can show the agent's balance. Clients can't fetch it themselves
     # — it's gated by the agent's private key — so the agent is the only party that
@@ -288,6 +301,25 @@ def _extract_agent_metadata(create_agent: Callable,
         if balance is not None:
             metadata["balance_usd"] = balance
     return metadata, sample
+
+
+def _refuse_silent_outer_model(configured, reported: str) -> None:
+    """host.yaml naming codex or claude-code must not mean another model sees every message first.
+
+    An agent.py whose Agent kept the co/ default, served under `model:
+    claude-code/<model>`, answered through co/gemini on every message and
+    reported it in /info. Its own model cannot become Claude Code, so say so.
+    """
+    from ...cli.co_ai.native_host import NATIVE_MODELS
+    provider = configured.partition("/")[0] if isinstance(configured, str) else ""
+    if provider not in NATIVE_MODELS or reported.split("/")[0].split(" ")[0] in NATIVE_MODELS:
+        return
+    raise SystemExit(
+        f"host.yaml says model: {configured}, but this agent runs on {reported}: every message "
+        f"would go through {reported} before {provider}. Next: serve host.yaml alone with "
+        "`co host --serve` (a restricted: block limits what it may do), or give the agent "
+        "the model you want and remove model: from host.yaml."
+    )
 
 
 DIRECTORY_SETTINGS = ("listed", "unlisted")
@@ -313,7 +345,7 @@ def _build_agent_profile(agent_metadata: dict, directory: str | None = None) -> 
     # and a listing shows the card (alias, bio, address), never the skills.
     if directory == "listed":
         profile["listed"] = True
-    from .ws_router.dashboard import first_sentence
+    from .ws_router.control_center import first_sentence
     bio = first_sentence(agent_metadata.get("tagline"), limit=140)
     if bio:
         profile["bio"] = bio
@@ -330,8 +362,8 @@ def _build_agent_profile(agent_metadata: dict, directory: str | None = None) -> 
     # claude-project (.claude/skills). user (~/.co/skills), claude-user (~/.claude/skills)
     # are the operator's personal toolboxes and builtin is framework noise; none may leak
     # into the public directory. Allowlist, so an unknown future category stays private.
-    # Every client-facing skill list (this profile, the starter dashboard) draws from it,
-    # so a dashboard button can't name a skill the client will refuse to run.
+    # Every client-facing skill list (this profile, the starter Control Center) draws from it,
+    # so a Control Center button can't name a skill the client will refuse to run.
     from ...useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
     profile["skills"] = [
         {"name": s["name"], "description": s.get("description", "")}
@@ -524,6 +556,14 @@ def _create_route_handlers(
     }
 
 
+def _configure_admin_home(trust_agent, sample) -> None:
+    """Give the Control Center's admin section its trust agent and log (#3263)."""
+    from .ws_router import admin_home
+    logger = getattr(sample, "logger", None)
+    log_path = logger.log_file_path if getattr(logger, "enable_file", False) else None
+    admin_home.configure(trust_agent, log_path)
+
+
 def _host_mode_policy(sample) -> HostPermissionPolicy:
     """Capture only an explicitly configured positive Full access ceiling."""
     turns = getattr(sample, "_full_access_turns", None)
@@ -708,7 +748,7 @@ def _port_taken_message(port: int, co_dir: Path) -> str:
     return (f"[host] Port {port} is already in use — another agent, or an earlier "
             f"`co host` still running?\n"
             f"       {where}, "
-            f"or for one run: co host --port {port + 1}")
+            f"or for one run: co host --serve --port {port + 1}")
 
 
 def _print_host_banner(
@@ -879,6 +919,31 @@ def _create_handoff_lifespan(co_dir: Path):
     async def on_shutdown():
         for event in stop:
             event.set()
+
+    return on_startup, on_shutdown
+
+
+def _create_rem_upgrade_lifespan(rem_root):
+    """A Host that serves REM notices an upgrade under it and starts the build that replaces it when idle (#3112)."""
+    if rem_root is None:
+        return None, None
+    from ...rem import live_host
+    stop = threading.Event()
+
+    def watch():
+        kicked = {}
+        while not stop.wait(live_host.UPGRADE_CHECK):
+            # A half-written upgrade raises on import or read: looked at again on the next tick.
+            try:
+                live_host.notice_upgrade(rem_root, kicked)
+            except (OSError, SyntaxError, ImportError, ValueError) as error:
+                logging.getLogger(__name__).info("REM upgrade check: %s", error)
+
+    async def on_startup():
+        threading.Thread(target=watch, name="rem-upgrade-watch", daemon=True).start()
+
+    async def on_shutdown():
+        stop.set()
 
     return on_startup, on_shutdown
 
@@ -1273,6 +1338,7 @@ def host(
 
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent, config.get("name"))
+    _refuse_silent_outer_model(config.get("model"), agent_metadata["model"])
 
     # Auto-generate summary from system_prompt if not set
     # An operator-written summary is the only thing worth putting on the Home page
@@ -1310,8 +1376,8 @@ def host(
     # Rendered here and not earlier: the Home shows the address and the trust
     # level, and neither exists until this point. Called above, it rendered a
     # page missing both and nothing said so.
-    from .ws_router.dashboard import ensure_dashboard
-    ensure_dashboard(agent_metadata)
+    from .ws_router.control_center import ensure_control_center
+    ensure_control_center(agent_metadata)
 
     # co_dir, not the default: host(co_dir=...) must put the sessions there too.
     storage = provider_station.storage if provider_station is not None else SessionStorage(co_dir / "session_results.jsonl")
@@ -1323,7 +1389,7 @@ def host(
         storage.reconcile_interrupted()
     # And drop what no reader can see: superseded records, and sessions past
     # their TTL that are not running. The file is append-only otherwise, and a
-    # live agent was at 17 MB for 222 sessions — every dashboard open reparses
+    # live agent was at 17 MB for 222 sessions — every Control Center open reparses
     # all of it.
     storage.compact()
 
@@ -1363,11 +1429,15 @@ def host(
         project_dir=co_dir.parent,
         provider_station=provider_station,
     )
+    _configure_admin_home(trust_agent, sample)
     route_handlers["rem_root"] = _rem_root(rem_root, config)
     # Where the local reader's token lives (rem_http.py): beside this Host's key.
     route_handlers["identity_dir"] = co_dir
     # The host signs its half of a sealed direct channel with this.
     route_handlers["identity"] = addr_data
+    # Where files other agents send land (file_inbox.py, `co send`).
+    from .file_inbox import files_dir
+    route_handlers["files_dir"] = files_dir(co_dir)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -1434,6 +1504,9 @@ def host(
     handoff_startup, handoff_shutdown = _create_handoff_lifespan(co_dir)
     on_startup = _both(on_startup, handoff_startup)
     on_shutdown = _both(handoff_shutdown, on_shutdown)
+    rem_startup, rem_shutdown = _create_rem_upgrade_lifespan(route_handlers.get("rem_root"))
+    on_startup = _both(on_startup, rem_startup)
+    on_shutdown = _both(rem_shutdown, on_shutdown)
     on_startup = _both(on_startup, on_agent_startup)
     on_shutdown = _both(on_agent_shutdown, on_shutdown)
 
@@ -1502,9 +1575,9 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     agent_metadata["address"] = get_agent_address(sample)
     agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
 
-    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
-    from .ws_router.dashboard import ensure_dashboard
-    ensure_dashboard(agent_metadata)
+    # Give the agent a polished Home on day zero (no-op if control_center.html exists).
+    from .ws_router.control_center import ensure_control_center
+    ensure_control_center(agent_metadata)
 
     # The storage directory is the project boundary available to create_app().
     # Resolve it before trust construction so authorization and replay state
@@ -1534,6 +1607,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         remote_browser_service=remote_browser_service,
         project_dir=replay_dir.parent,
     )
+    _configure_admin_home(trust_agent, sample)
     balance_startup, balance_shutdown = _create_balance_lifespan(
         sample, agent_metadata
     )

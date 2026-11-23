@@ -107,7 +107,7 @@ integrations as `co ai --harness` runs them (`useful_tools/codex.py`,
 `useful_tools/claude_code.py`), with full access (owner decision D-100,
 2026-11-09): Codex with `danger-full-access`, Claude Code with
 `bypassPermissions`. Codex runs on the `task` stage's level, `models.level4`,
-with the configured effort. Claude Code keeps its own model and loads the
+at `efforts.level4` (Sol at low by default since #3099). Claude Code keeps its own model and loads the
 owner's own Claude setup, as `co claude run` does: his user CLAUDE.md, skills
 and settings, with `--setting-sources user` instead of `--safe-mode`
 (context over control). Earlier 1.9.3 previews ran Codex sealed in a

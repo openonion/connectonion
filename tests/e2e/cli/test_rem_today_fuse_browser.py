@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
 BASE = "http://rem.test/"
-GREEN = ("rgb(34, 210, 122)", "rgb(59, 227, 143)")
+GREEN = ("rgb(18, 21, 18)", "rgb(238, 240, 237)")
 
 # Ines is overdue five days (due 3 Oct), Mara two (a review due 6 Oct); Fernhill Labs and Harbour carry no due date.
 OVERDUE = r'''async () => {
@@ -95,7 +95,7 @@ def today(tmp_path, monkeypatch):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
         yield page, calls, answers
         browser.close()
     assert not errors, errors
@@ -110,7 +110,8 @@ def _box_inside(page, locator, margin):
 def _greens(page):
     return page.evaluate("""green => [...document.querySelectorAll('#main *')].filter(node => {
       const box = node.getBoundingClientRect();
-      return box.width > 0 && box.height > 0 && green.includes(getComputedStyle(node).backgroundColor);
+      // The accent is ink (#3144): the one primary *control*; ink-filled content (the night card, a date) is not one.
+      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && green.includes(getComputedStyle(node).backgroundColor);
     }).map(node => node.textContent.trim())""", list(GREEN), isolated_context=False)
 
 
@@ -126,13 +127,14 @@ def test_send_is_the_only_green_and_sits_well_inside_the_first_screen(today, siz
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
     assert send.is_visible()
     assert _box_inside(page, send, 16), (send.bounding_box(), size)
-    # The fill-in box is a row of choices above Send, outside the letter's scroll window, built from the slot's
-    # own words; until it is answered Send waits, with a plain hint (build 3b re-review).
+    # The fill-in box is a row of choices above Send, built from the slot's own words, with a plain hint until it is
+    # answered. Send never looks disabled (#3312 E replaces the grey "waiting" Send the owner read as dead): it is the
+    # card's one filled button from the start, and a click with the choice open goes to it.
     choose = page.locator(".qcard.open .mail-choices .owner-slot")
     assert choose.get_attribute("role") == "group" and _box_inside(page, choose, 0)
     assert choose.get_by_role("button").all_inner_texts() == ["邮件附件", "共享文件夹"]
-    assert send.is_disabled() and page.locator(".qcard.open .choose-hint").is_visible()
-    assert _greens(page) == []
+    assert not send.is_disabled() and page.locator(".qcard.open .choose-hint").is_visible()
+    assert _greens(page) == ["Send"]
     choose.get_by_role("button", name="邮件附件").click()
     assert send.is_enabled() and not page.locator(".qcard.open .choose-hint").is_visible()
     assert "邮件附件" in page.locator(".qcard.open .mail-text .slot-ref").inner_text()
@@ -162,7 +164,7 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     page, _, _ = today
     page.evaluate(OVERDUE, isolated_context=False)
     faces = page.locator(".deal")
-    headline = page.locator(".night-card .count").inner_text()
+    headline = page.locator("#main .count-line .count").inner_text()
     people = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
     assert faces.evaluate_all(FACES) == people  # no draft: one order
     # The large number is the badge's (sprint 14 #4); the faces beside it are where to start, and no sentence
@@ -179,7 +181,7 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     assert _burn(page, "projects/harbour.md") == 0 and "late" not in undated.locator(".dd").get_attribute("class")
     # One number says one thing (TOP10 #9): the items total is the sidebar's, not said again here.
     assert "items waiting on you" not in page.locator(".night-card").inner_text()
-    assert page.locator(".others .waiting-more").inner_text().endswith("waiting on others →")
+    assert page.locator(".others .waiting-more").inner_text().endswith("you are waiting on others for →")
 
 
 def test_a_face_deals_its_card_and_skip_deals_the_next(today):
@@ -218,14 +220,13 @@ def test_every_pending_row_offers_codex_and_claude_quietly(today):
     for i in range(rows.count()):
         # On Today the three closes come first, then the two hand-offs, still visible words (D-100; sprint 14).
         names = rows.nth(i).locator(".handoff-line > button").all_text_contents()
-        assert names == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
+        assert names == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # Show more is the item's second level (#3072)
     page.goto(BASE + "#view=open")
     mine = page.locator(".task-band").first.locator(".thread")
     assert mine.count() >= 1
     for i in range(mine.count()):
         # One order on every strip (#2990 review, D-100): Waiting's too, the talk behind its worded More.
-        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude"]
-        assert " ".join(mine.nth(i).locator(".strip-more > summary").inner_text().split()) == "More ▾"
+        assert mine.nth(i).locator(".handoff-line > button").all_text_contents() == ["Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]
     page.locator(".task-band .thread .handoff button").first.wait_for()
     fills = page.locator(".handoff button").evaluate_all("nodes => nodes.map(node => getComputedStyle(node).backgroundColor)")
     assert not set(fills) & set(GREEN)
@@ -318,9 +319,13 @@ def test_a_hand_off_posts_the_item_key_and_agent_then_shows_progress_and_plain_e
     answers["/rem/task"] = [(200, {"id": "a1b2", "result": "starting", "agent": "claude", "by": "owner"})]
     card.locator(".qitem").first.hover()  # the row's actions are its second level (D-120)
     _hand(card.locator(".handoff").first, "交给 Claude")
-    card.get_by_text("Claude 正在做").wait_for()
+    # On a Today card the row is the agent's from the click: it leaves the deck and the work shows in one strip (#3072).
+    strip = page.locator("#work-strip")
+    strip.get_by_text("Claude 正在做 1 件事").wait_for()
     assert calls[-1] == ("/rem/task", {"action": "run", "key": key, "agent": "claude"})
-    assert card.get_by_role("button", name="停止").is_visible()
+    if not strip.evaluate("node => node.open"):
+        strip.locator("summary").click()
+    assert strip.get_by_role("button", name="停止").is_visible()
     answers["/rem/task"] = [(400, {"error": "Expected the item key and agent codex or claude"})]
     other = page.locator(".deal").evaluate_all(FACES)[1]
     page.locator(f'.deal[data-path="{other}"]').click()
@@ -357,7 +362,7 @@ def test_a_snapshot_offers_no_command_anywhere_and_says_why_once(today, route):
     assert page.get_by_text(SNAPSHOT_LINE, exact=True).count() == 1
     # Every strip button is disabled work in a snapshot, the three closes included (#2990 review: nothing carries a
     # snapshot's mark to the notebook); the card says why in words, never a command.
-    assert page.locator(".handoff button:not(:disabled)").count() == 0
+    assert page.locator(".handoff button:not(:disabled):not(.strip-more)").count() == 0  # Show more only reads, so it works
     assert page.locator(".handoff .strip-done:disabled").count() > 0
     assert "This is an offline snapshot; open REM to mark it." in page.locator("#main").inner_text()
     assert page.locator(".handoff-status").evaluate_all("nodes => nodes.map(n => n.textContent).join('')") == ""
@@ -406,7 +411,7 @@ def test_the_owner_is_never_a_person_waiting(today):
     paths = page.locator(".deal").evaluate_all(FACES)
     assert owner not in paths and "people/tomas-reyes.md" in paths
     assert page.locator(f'.qcard[data-path="{owner}"]').count() == 0
-    assert int(page.locator(".night-card .count").inner_text()) == len(paths)
+    assert int(page.locator("#main .count-line .count").inner_text()) == len(paths)
     assert "Your page" not in page.locator(".night-card").inner_text()
     page.locator(".closed .link-btn").click()  # 看: what REM did overnight, every name
     assert page.locator('#night-sheet .night-done li[data-kind="could_not_prepare"] b').inner_text() == "Could not draft for 1 person"
@@ -431,13 +436,15 @@ def test_counts_name_their_unit(today):
     page.evaluate("""() => { REM.live = true; setInterfaceLanguage('zh');
       REM.approval_outcomes = [{id: 'a', kind: 'handled', title: 'Mara'}, {id: 'b', kind: 'task', title: 'Mara'}]; render(); }""",
                   isolated_context=False)
-    assert page.locator("#approve-all").inner_text() == "一键批准这 2 件"
+    assert page.locator("#approve-all").inner_text() == "一键批准 REM 备好的 2 件"
     assert "件等你处理" not in page.locator(".night-card").inner_text()  # the sidebar's 等你处理 says it
-    assert page.locator(".others .waiting-more").inner_text().startswith("看 ") and page.locator(".others .waiting-more").inner_text().endswith(" 件在等谁 →")
+    assert page.locator(".others .waiting-more").inner_text().startswith("看你在等对方的 ") and page.locator(".others .waiting-more").inner_text().endswith(" 件 →")
 
 
 @pytest.mark.parametrize("status, words", [(409, "这件事已经变了，刷新后再试。"), (401, "登录过期，刷新页面。"),
-                                           (500, "REM 暂时没回应，过会儿再试。"), (None, "REM 暂时没回应，过会儿再试。")])
+                                           (500, "REM 暂时没回应，过会儿再试。"),
+                                           # No answer at all: the page has lost REM, and waiting will not bring it back (#3072).
+                                           (None, "这页连不上 REM 了（REM 刚重启过），所以没有交出去。重新连接后再试。")])
 def test_hand_off_failures_are_plain_words(today, status, words):
     page, _, answers = today
     page.evaluate("() => { REM.live = true; setInterfaceLanguage('zh'); render(); }", isolated_context=False)
@@ -491,7 +498,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
-    before = int(page.locator(".night-card .count").inner_text())
+    before = int(page.locator("#main .count-line .count").inner_text())
     # The Host holds a Send for ten minutes. A decades-long fake hold overflows
     # the browser timer and keeps replacing Undo before a real click can land.
     release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
@@ -504,16 +511,16 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     path, body = calls[-1]
     assert path == "/rem/approve" and body["ids"] == ["reply:ines"]
     assert "共享文件夹" in body["bodies"]["reply:ines"] and "【" not in body["bodies"]["reply:ines"]
-    assert int(page.locator(".night-card .count").inner_text()) == before - 1
+    assert int(page.locator("#main .count-line .count").inner_text()) == before - 1
     assert page.locator('.deal[data-path="people/ines-halvorsen.md"]').count() == 0
     assert page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
     note = page.locator(".qsent")
-    assert "Sent to Inès Halvorsen." in note.inner_text() and "undo" in note.inner_text()
+    assert "Sending to Inès Halvorsen at " in note.inner_text() and "undo" in note.inner_text()
     assert page.locator("#approval-undo").count() == 0  # one undo, beside the row it belongs to
     note.get_by_role("button", name="Undo", exact=True).click()
     page.locator('.qcard[data-path="people/ines-halvorsen.md"]').wait_for()
     assert calls[-1][1] == {"action": "undo", "ids": ["reply:ines"]}
-    assert int(page.locator(".night-card .count").inner_text()) == before
+    assert int(page.locator("#main .count-line .count").inner_text()) == before
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
 
 
@@ -578,9 +585,11 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     links = page.locator("#nav a")
     assert links.first.is_visible() and page.locator('#nav a[href="#view=changes"]').is_visible()
     # Each row of the sheet writes its place's full name beside its picture; the rail's short word is not shown twice.
+    # The sheet is in the rail's one order (#3091), with the places this notebook has pages for.
     rows = page.locator("#nav > a")
     assert rows.evaluate_all("rows => rows.map(row => getComputedStyle(row, '::after').content)") == [
-        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Skills"', '"Knowledge"']
+        '"Today"', '"Waiting on you"', '"People"', '"Organisations"', '"Projects"', '"Keys"', '"Knowledge"',  # no Agenda: it is in Today (#3152)
+        '"Decisions"', '"Skills"', '"Memory changes"']
     assert rows.locator(".w").evaluate_all("words => words.every(word => !word.getClientRects().length)")
     # The open sheet sits above the tab bar: every link it shows answers its own centre.
     assert page.evaluate("""() => [...document.querySelectorAll('#nav a')].every(link => {
@@ -594,7 +603,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     assert page.evaluate("location.hash", isolated_context=False) == "#c=people"
     assert toggle.get_attribute("aria-expanded") == "false" and not links.first.is_visible()
     page.goto(BASE)
-    page.locator(".night-card .count").wait_for()
+    page.locator("#main .count-line .count").wait_for()
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
@@ -615,11 +624,10 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     card = page.locator(".today-brief .qcard.open")
     slot = card.locator(".owner-slot input")
     slot.fill("Thursday afternoon")
-    row = card.locator(".qitem").first
-    row.hover()
-    row.locator(".strip-more > summary").click()
-    row.locator(".strip-more .talk-menu > summary").click()
-    row.locator('[data-talk="codex"]').click()
+    # The talk's choices are in the item's second level (#3072), reached from the letter's ⋯ (#3312 B).
+    card.locator(".qdraft .more-menu > summary").click()
+    card.locator(".qdraft .more-menu .strip-more").click()
+    page.locator('#item-context [data-talk="codex"]').click()
     talk = page.get_by_role("textbox", name="Your message")
     talk.fill("Draft it short")
     talk.evaluate("node => node.setSelectionRange(6, 8)")
@@ -677,7 +685,7 @@ def _cut(page, text, clip):
 
 @pytest.mark.parametrize("size", [(1440, 1000), (390, 844)])
 @pytest.mark.parametrize("lang", ["zh", "en"])
-def test_the_letter_scrolls_in_its_own_window_and_the_slot_row_never_covers_it(today, size, lang):
+def test_the_letter_is_read_whole_and_the_slot_row_never_covers_it(today, size, lang):
     page, _, _ = today
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.evaluate(OVERDUE, isolated_context=False)
@@ -690,9 +698,13 @@ def test_the_letter_scrolls_in_its_own_window_and_the_slot_row_never_covers_it(t
     assert _apart(body.bounding_box(), slot.bounding_box()), (body.bounding_box(), slot.bounding_box())
     columns = [letter] + ([card.locator(".mail-gist")] if card.locator(".mail-gist").is_visible() else [])
     assert [cut for column in columns for cut in _cut(page, column, body)] == []
-    # The letter is read by scrolling inside its window, to its last line.
-    assert body.evaluate("node => node.scrollHeight > node.clientHeight")
-    body.evaluate("node => { node.scrollTop = node.scrollHeight; }")
+    # The letter is read whole, with no inner scroll window (#3312 B4 replaces the three-line window that cut the
+    # owner's letter mid-sentence): a short letter shows to its last line; a long one fades and opens whole.
+    unfold = card.get_by_role("button", name="展开全文" if lang == "zh" else "Show the whole letter")
+    if body.evaluate("node => node.scrollHeight > node.clientHeight + 4"):
+        unfold.wait_for()  # a letter longer than its first screen always offers the rest
+        unfold.click()
+    assert body.evaluate("node => node.scrollHeight <= node.clientHeight + 4")
     last = page.evaluate("""node => { const r = document.createRange(); r.selectNodeContents(node);
       const lines = [...r.getClientRects()].filter(l => l.height > 0); return lines.at(-1).bottom; }""",
                          letter.element_handle(), isolated_context=False)
@@ -723,12 +735,9 @@ def test_a_long_row_is_clamped_whole_and_never_runs_into_the_line_below(today, s
 RAISED = """() => {
   const shows = node => node.getClientRects().length > 0;
   const green = [...document.querySelectorAll('.today-brief .qcard')].filter(card => [...card.querySelectorAll('.btn-act, .strip-lead')].some(shows));
-  // Faces that rose close together share one ring: its initials are the raised person's, its title names them all.
-  const waiting = [...document.querySelectorAll('.today-brief .qcard')].map(card => byPath(card.dataset.path));
-  const ringed = [...document.querySelectorAll('.night-card .fc.sel')].flatMap(ring => waiting.filter(r =>
-    ring.querySelector('title').textContent.includes(threadWho(r)) && ring.querySelector('text').textContent === face(threadWho(r)).textContent));
+  // The night card no longer draws a chart with faces (Mac review of rc30): the card, its primary and the faces agree.
   return [[...document.querySelectorAll('.today-brief .qcard.focal.open')], green, [...document.querySelectorAll('.deal[aria-pressed="true"]')],
-    [...document.querySelectorAll('.deal.on')]].map(nodes => nodes.map(node => node.dataset.path).join()).concat(ringed.map(r => r.path).join());
+    [...document.querySelectorAll('.deal.on')]].map(nodes => nodes.map(node => node.dataset.path).join());
 }"""
 
 
@@ -760,14 +769,14 @@ def test_dealing_another_card_keeps_the_words_typed_in_the_raised_one(today):
     card.locator(".owner-slot input").fill("Thursday afternoon")
     faces = page.locator(".deal").evaluate_all(FACES)
     other = next(path for path in faces if path != start)
-    assert _raised_everywhere(page) == [start] * 5
+    assert _raised_everywhere(page) == [start] * 4
     page.locator(f'.deal[data-path="{other}"]').click()
-    assert _raised_everywhere(page) == [other] * 5
+    assert _raised_everywhere(page) == [other] * 4
     assert page.locator(f'.deal[data-path="{start}"]').get_attribute("aria-pressed") == "false"
     page.locator("body").press("s")  # S deals the next card; the words stay where they were typed
-    assert _raised_everywhere(page) == [faces[(faces.index(other) + 1) % len(faces)]] * 5
+    assert _raised_everywhere(page) == [faces[(faces.index(other) + 1) % len(faces)]] * 4
     page.locator(f'.deal[data-path="{start}"]').click()
-    assert _raised_everywhere(page) == [start] * 5
+    assert _raised_everywhere(page) == [start] * 4
     assert page.locator(".today-brief .qcard.focal .owner-slot input").input_value() == "Thursday afternoon"
     # The raised card carries the page's one primary action; a card waiting behind its face does not.
     assert page.locator(".today-brief .qcard:not(.focal) .card-acts .btn-act").count() == 0
@@ -829,7 +838,7 @@ def test_undoing_a_held_approval_shows_the_approve_button_again(today):
     page.locator("#approval-undo").get_by_role("button", name="Undo", exact=True).click()
     page.locator("#approve-all").wait_for()
     assert calls[-1] == ("/rem/approve", {"action": "undo", "ids": ["reply:ines"]})
-    assert page.locator("#approve-all").inner_text() == "Approve all 1" and page.locator("#approve-all").is_enabled()
+    assert page.locator("#approve-all").inner_text() == "Approve the 1 REM prepared" and page.locator("#approve-all").is_enabled()
     assert page.locator(".side .nothing-open").count() == 0
     assert "Cancelled" in page.locator("#approval-undo").inner_text()
 

@@ -66,7 +66,7 @@ def fingerprints(root: Path, group: str, paths: list) -> dict:
     for path in paths:
         if path.exists() and not path.is_symlink():
             stat = path.stat()
-            found[str(path.relative_to(root))] = (stat.st_mtime_ns, stat.st_size, group)
+            found[path.relative_to(root).as_posix()] = (stat.st_mtime_ns, stat.st_size, group)
     return found
 
 

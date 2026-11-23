@@ -62,9 +62,62 @@ def _counted(record: str) -> bool:
 
 # A vendor's ticket desk answers, so its thread is two-way and the map's direction
 # rule kept it a person; it led People titled with its own domain (#3004).
-DESK = re.compile(r"^(?:support|help|helpdesk|service|customer-?service|customer-?care|care|billing|"
-                  r"tickets?|no-?reply|do-?not-?reply)(?:\+[^@]*)?@", re.I)
+# #3157 adds the desks and bots that read as people on the owner's notebook: a shop's ordering inbox, a
+# notifications sender, a booking desk, and an agent's own mailbox (software writing, not a person).
+# A desk word may follow one prefix ("acme.orders@", "team-notifications@": rc35 hunt, an order-intake mailbox was 未知姓名).
+DESK = re.compile(r"^(?:[a-z0-9]+[._-])?(?:support|help|helpdesk|service|customer-?service|customer-?care|care|billing|"
+                  r"tickets?|no-?reply|do-?not-?reply|orders?|sales|accounts?|bookings?|enquir(?:y|ies)|inquir(?:y|ies)|"
+                  r"reservations?|notifications?|notify|alerts?|updates?|0x[0-9a-f]{6,})(?:\+[^@]*)?@", re.I)
 BARE_DOMAIN = re.compile(r"^(?:[a-z0-9-]+\.)+[a-z]{2,}$", re.I)
+# The page says it is not a person in its own Role line: an inbox, an agent's mailbox, or an AI assistant that
+# writes on someone's behalf (rc34 check). A human "executive assistant" or someone who works on agents stays a person.
+NOT_PERSON_ROLE = re.compile(r"^- Role:\s*(?:not a person\b|(?:an? |the )?(?:agent mailbox|ai (?:assistant|agent)|"
+                             r"virtual assistant|chat ?bot|bot)\b)", re.I | re.M)
+# A Role line that says the subject *is* a mailbox: the words open the value or a parenthesis, as in "Automated
+# order-intake and result mailbox for …" or "Building management (shared mailbox used by successive managers)"
+# (rc35 check: both still led People as 未知姓名 rows). Mailbox words later in the line describe what a person does
+# ("Team lead managing a shared mailbox": "team" opens it, but a verb sits between), so they keep the page a person.
+MAILBOX_ROLE = re.compile(r"^- Role:\s*(?:[^\n(]*\()?(?:(?:automated|shared|team|agent|account|order[- ]intake)\b"
+                          r"(?:(?!\w+ing\b)[^\n;()]){0,40}?\b(?:mail ?box|inbox)|(?:mail ?box|inbox) (?:for|used for))\b", re.I | re.M)
+# A company's or fund's name: it ends in a legal or fund word (rc34 check: "… Ventures" listed as a person).
+COMPANY_NAME = re.compile(r"(?:^|\s)(?:Ventures|Capital|Holdings|Pty\.? Ltd\.?|Pty|Ltd\.?|Limited|Inc\.?|LLC|GmbH|Corp\.?)\s*$")
+
+
+# An organisation whose page says it provides an assistant, agent, bot or automated service (rc35 check: a company's
+# assistant mailed from the company's domain and led People). Only the names its page gives that assistant are
+# machines; a human at the same company stays a person unless the page names them as the assistant.
+ASSISTANT_ORG = re.compile(r"\b(?:AI (?:assistant|agent)s?|virtual assistants?|chat ?bots?|bots?|automated (?:service|assistant|agent)s?|"
+                           r"assistant service)\b", re.I)
+_NAME = r"[“\"']?([A-Z][\w-]{1,30})[”\"']?"
+ASSISTANT_NAMED = (re.compile(r"\b(?:automated|AI|bot)\s+" + _NAME + r"\s+(?:assistant|agent|bot)\b"),
+                   re.compile(r"[“\"']([A-Z][\w-]{1,30})[”\"'],?\s+(?:an?|the|its|their)\s+(?:AI\s+|automated\s+)?(?:assistant|agent|bot)\b"),
+                   re.compile(r"\b(?:assistant|agent|bot)\s+(?:service\s+)?(?:called|named)\s+(?:an?\s+)?" + _NAME))
+
+
+def assistant_orgs(records: list[dict]) -> list[tuple[set, set]]:
+    """[(the org's domains, the casefolded names its page gives its assistant)] for orgs that describe one."""
+    found = []
+    for page in records:
+        text = page.get('text') or ''
+        if not page['path'].startswith('orgs/'):
+            continue
+        does = re.search(r'^- What they do:\s*(.+)$', text, re.M)
+        intro = re.search(r'^## Who they are\s*\n(.+)', text, re.M)
+        if not ASSISTANT_ORG.search(' '.join(part[1] for part in (does, intro) if part)):
+            continue
+        domains = re.search(r'^## Domains\s*\n((?:- .*\n?)+)', text, re.M)
+        hosts = {match.casefold() for match in re.findall(r'^- ((?:[\w-]+\.)+[a-z]{2,})', domains[1] if domains else '', re.M | re.I)}
+        names = {name.casefold() for pattern in ASSISTANT_NAMED for name in pattern.findall(text)}
+        if hosts and names:
+            found.append((hosts, names))
+    return found
+
+
+def assistant_contact(name: str, address: str, orgs: list[tuple[set, set]]) -> bool:
+    """An address from such an org's domain whose name (or mailbox) is the assistant its page names."""
+    local, _, host = address.casefold().partition('@')
+    return any((host in hosts or any(host.endswith('.' + h) for h in hosts)) and (name.strip().casefold() in names or local in names)
+               for hosts, names in orgs)
 
 
 def non_person(title: str, text: str, emails: list[str], row: dict | None, automated: set) -> bool:
@@ -74,11 +127,51 @@ def non_person(title: str, text: str, emails: list[str], row: dict | None, autom
     return bool(re.search(r'^## Domains\s*$', text, re.M)
                 or re.search(r'\bshared mailbox\b', title, re.I)
                 or BARE_DOMAIN.match(title) or (emails and all(DESK.match(address) for address in emails))
-                or institutional_name(title) or service_page(title, emails, row, automated))
+                or institutional_name(title) or service_page(title, emails, row, automated)
+                or NOT_PERSON_ROLE.search(text) or MAILBOX_ROLE.search(text) or COMPANY_NAME.search(title))
+
+
+def _chat_handles(text) -> list[str]:
+    """The chat handles a person page lists on its Handles line (a WeChat id), casefolded; no addresses. Not Also
+    known as: names sit there too, and a name is never marked, so it would keep a marked page a person."""
+    from .files import CHAT_HANDLE, CITATION
+    found = []
+    for line in text.splitlines()[:40]:
+        label, _, value = line.strip().lstrip('-').strip().partition(':')
+        if label.strip().casefold() == 'handles':
+            # An investigated page cites its line ("wxid_x [1]"); the citation is not part of the handle.
+            items = [item.strip() for item in CITATION.sub('', value).split(',')]
+            found += [item.casefold() for item in items if CHAT_HANDLE.fullmatch(item)]
+    return found
+
+
+def is_machine(title, text, emails, row, automated, marks, orgs, handles=()) -> bool:
+    """The owner's 是人 / 不是人 first (any address or chat handle marked a person keeps the page a person); then
+    the rules, which read mail addresses only. A page with no address (WeChat only) is marked by its chat handles
+    (#3339); a page with an address keeps reading its addresses alone, so an extra handle never blocks a mark."""
+    ids = list(emails) or list(handles)
+    said = {marks.get(address) for address in ids} - {None}
+    if 'person' in said:
+        return False
+    if ids and said == {'not-person'} and all(address in marks for address in ids):
+        return True
+    return non_person(title, text, emails, row, automated) or any(assistant_contact(title, address, orgs) for address in emails)
 
 
 def pages(root: Path, *, records: list[dict] | None = None) -> dict:
-    """{record: {category, written, last, held, service, duplicate}} for every counted page."""
+    """{record: {category, written, last, held, service, duplicate}} for every counted page.
+
+    Read once per page build or status (tags.held): `co rem status` called it eight times, each reading every
+    page, at 1,352 people. Every caller gets its own copy of the rows, so one caller's edits never reach another.
+    """
+    if records is not None:
+        return _pages(root, records=records)
+    from .tags import once
+    found = once(root, "census_pages", lambda: _pages(root, records=None))
+    return {record: dict(row) for record, row in found.items()}
+
+
+def _pages(root: Path, *, records: list[dict] | None = None) -> dict:
     from .map import needs_review
     notebook = Notebook(root)
     state = read_json(state_path(root, "map.json"), {})
@@ -90,7 +183,9 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
     from .files import EMAIL, EMAIL_LABELS
     if records is None:
         records = [{"path": path, "text": notebook.read(path)} for path in notebook.list()]
+    from .threads import person_marks
     held, titles, found = needs_review(root), set(), {}
+    marks, orgs = person_marks(root), assistant_orgs(records)
     for page in records:
         record, text = page['path'], page['text']
         if not _counted(record):
@@ -100,6 +195,7 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
         emails = [address.casefold() for line in text.splitlines()[:40]
                   if line.strip().lstrip('-').strip().casefold().startswith(EMAIL_LABELS)
                   for address in EMAIL.findall(line)] if category == 'people' else []
+        handles = _chat_handles(text) if category == 'people' else []
         duplicate = category == "skills" and title.casefold() in titles
         if category == "skills":
             titles.add(title.casefold())
@@ -108,8 +204,10 @@ def pages(root: Path, *, records: list[dict] | None = None) -> dict:
             "category": category, "written": category == "sessions" or written(text),
             "last": (session_day[1] if session_day else "") if category == "sessions" else last_activity(text),
             "held": record in held, "duplicate": duplicate,
-            "service": category == 'people' and record != owner
-            and non_person(title, text, emails, rows.get(record), automated)}
+            "service": category == 'people' and record != owner and is_machine(title, text, emails, rows.get(record), automated, marks, orgs, handles)}
+        # An assistant or one the owner called 不是人: the reader lists it under agents and services, with 是人.
+        found[record]["agent"] = found[record]["service"] and (
+            any(marks.get(address) == 'not-person' for address in (emails or handles)) or any(assistant_contact(title, address, orgs) for address in emails))
     return found
 
 

@@ -14,7 +14,13 @@ from .files import WRITE_WAIT_SECONDS, CATEGORIES, RemError, atomic_write, maint
 
 def local_timezone() -> str:
     candidate = os.environ.get("TZ", "").removeprefix(":")
-    if not candidate:
+    if not candidate and os.name == "nt":
+        # Windows has no /etc/localtime; the registry names a Windows zone
+        # ("AUS Eastern Standard Time") and tzlocal maps it to IANA. co rem
+        # init stopped at "Set schedule.timezone" on every Windows PC.
+        from tzlocal import get_localzone_name
+        candidate = get_localzone_name() or ""
+    elif not candidate:
         # macOS resolves further into zoneinfo.default, so inspect the public
         # localtime link before canonicalizing its target.
         local = Path("/etc/localtime")
@@ -38,20 +44,28 @@ def schedule_runner() -> str:
     return 'codex-app' if ready({'runner': 'codex'})[0] and app_installed() else 'codex-exec'
 
 
-# The cheapest model that does each kind of call well, measured on the owner's
-# runs 2026-10-10..11-09 (sprint-12/model-levels.md). Level 1 is the weakest.
-LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6.1-terra",
-                "level3": "gpt-6.1-sol", "level4": "gpt-6-astra"}
+# #3426: routine transformations and upkeep use Luna at medium; abstraction,
+# deep reasoning and independent investigation use Sol at low.
+LEVEL_MODELS = {"level1": "gpt-6-luna", "level2": "gpt-6-luna", "level3": "gpt-6-luna",
+                "level4": "gpt-6.1-sol", "investigate": "gpt-6.1-sol"}
+LEVEL_EFFORTS = {"level1": "medium", "level2": "medium", "level3": "medium", "level4": "low", "investigate": "low"}
+# Codex's own names (`codex debug models`, 0.162): every model takes low to max.
+# "ultra" is left out: it delegates the turn to further agents.
+EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 STAGE_LEVELS = {
-    # 1: short, structured, checked by code afterwards.
-    "sessions-summary": 1, "topic": 1,
-    # 2: faithful transformation or a narrow judgement over small input.
-    "translate": 2, "extract": 2, "same-person": 2, "plan": 2,
-    # 3: writing pages and drafts the owner reads, from cited evidence.
-    "maintain": 3, "abstract": 3, "init": 3, "investigate": 3, "render": 3,
-    "projects": 3, "reply-draft": 3, "native": 3,
-    # 4: deep rounds, independent audits, and owed work done for the owner.
-    "enrich": 4, "muse": 4, "claim-audit": 4, "insight-critic": 4, "synthesize": 4, "task": 4,
+    # 1: structured transformations checked by code.
+    "tag": "level1", "tag-node": "level1", "translate": "level1",
+    "extract": "level1", "sessions-summary": "level1",
+    # 2: narrow judgements and organisation.
+    "topic": "level2", "same-person": "level2", "plan": "level2",
+    # 3: routine upkeep, pages, drafts and orchestration.
+    "maintain": "level3", "init": "level3",
+    "projects": "level3", "reply-draft": "level3", "native": "level3",
+    # 4: abstraction, independent audits and deeper reasoning.
+    "abstract": "level4", "muse": "level4", "claim-audit": "level4",
+    "insight-critic": "level4", "synthesize": "level4", "task": "level4",
+    # Independent investigation, including web enrichment and page rendering.
+    "enrich": "investigate", "investigate": "investigate", "render": "investigate",
 }
 
 
@@ -60,13 +74,18 @@ OLD_NAMES = {"model": "models.level3", "models.summary": "models.level1"}
 
 
 def level_model(config: dict, stage: str) -> str:
-    return config["models"][f"level{STAGE_LEVELS[stage]}"]
+    return config["models"][STAGE_LEVELS[stage]]
+
+
+def level_effort(config: dict, stage: str) -> str:
+    return config["efforts"][STAGE_LEVELS[stage]]
 
 
 def describe_levels(config: dict) -> list[str]:
-    """One line per level for status and config: its model, then the stages on it."""
-    return [f"level {n} {config['models'][f'level{n}']} · "
-            + ", ".join(stage for stage, level in STAGE_LEVELS.items() if level == n) for n in range(1, 5)]
+    """One line per level for status and config: its model and effort, then the stages on it."""
+    efforts = config.get("efforts") or dict.fromkeys(LEVEL_MODELS, config.get("effort", ""))
+    return [f"{key.replace('level', 'level ')} {config['models'][key]} at {efforts[key]} · "
+            + ", ".join(stage for stage, level in STAGE_LEVELS.items() if level == key) for key in LEVEL_MODELS]
 
 
 def default_config() -> dict:
@@ -80,7 +99,11 @@ def default_config() -> dict:
     # detected from his own mail and sessions (D-103), not "translate nothing".
     # tasks.auto: owed work starts after the night's drafts, with full access and Undo
     # (owner, D-100, 2026-11-09). An owner's own `config set tasks.auto false` wins.
-    return {"version": 1, "notify": {"channel": "none", "target": ""}, "tasks": {"auto": True}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS), "speed": "fast", "effort": "medium", "language": "en", "languages": [],
+    return {"version": 1, "notify": {"channel": "none", "target": ""}, "weather": {"place": ""}, "tasks": {"auto": True}, "runner": "codex", "model": LEVEL_MODELS["level3"], "models": dict(LEVEL_MODELS),
+            # speed: the standard service tier. Unattended nights have no one waiting, and
+            # `fast` selects Codex's priority tier, which costs more of the week (#3099).
+            "speed": "standard", "effort": LEVEL_EFFORTS["level3"], "efforts": dict(LEVEL_EFFORTS),
+            "language": "en", "languages": [],
             # Each slot is followed by 15-minute turns for up to three hours. The old six
             # slots left 22:00-03:00 with nothing running; the weekly Codex budget, not the
             # number of slots, bounds what the night spends.
@@ -110,6 +133,27 @@ def default_config() -> dict:
             "limits": {"runner_calls_per_day": 200, "items_per_batch": 20,
                        "input_chars_per_batch": 200000, "timeout_seconds": 1200,
                        "extract_items_per_batch": 40, "extract_chars_per_batch": 150000,
+                       # Abstract slices run after summaries, before the same-person
+                       # and translation tail; leave those jobs room each night.
+                       "abstract_rounds_per_night": 6,
+                       # A night's share of the investigation queue (owner, 2026-11-16).
+                       # The queue held 333 pages against a weekly budget for 60 to 90,
+                       # the round never left it, and Abstract and Deepen stood at 0 after
+                       # eight catchup runs. Past the share the round goes on and the rest
+                       # wait for later nights. Skill pages (147 of the 333) are counted
+                       # on their own so they cannot take the people's and projects' places.
+                       "investigations_per_night": 12, "skill_pages_per_night": 3,
+                       # Cheap stages are finished, not rationed (owner, 2026-11-17). A
+                       # translation turn measured 11 to 83 s with 9 of 9 accepted first try
+                       # and a session summary 24 to 57 s, against 9 to 35 minutes for one
+                       # deepen turn; four nights translated 9, 8, 9 and 0 of some 350
+                       # waiting pages and a round summarised five sessions. These two are
+                       # above what a notebook has waiting: they are a round's stated end
+                       # (400 turns are about 4 hours), not a share to live within.
+                       "summaries_per_round": 40, "translations_per_round": 400,
+                       # Tagging is the cheapest stage: 20 pages a level-1 turn, checked
+                       # by code (#3093). A round's stated end, like translation's.
+                       "tags_per_round": 400, "tag_nodes_per_round": 6, "topic_min_pages": 2,
                        # Pages at once for init's first run and investigate CATEGORY;
                        # --workers overrides one run. Measured 2026-10-20 (Codex, fast):
                        # 4/8/12/16 workers wrote ~30/38/61/63 pages an hour with no
@@ -120,6 +164,10 @@ def default_config() -> dict:
                        # budget, and the level past which it starts nothing so the
                        # owner's own coding keeps the rest of the week.
                        "investigation_quota_points": 35, "quota_floor_percent": 90,
+                       # Past the floor the cheap stages (translate, tag, tag pages) go on up to here
+                       # (owner, 2026-11-19: "一次翻译消耗额度不到 1%…为什么没有搞定呢"); at 90% from
+                       # Friday the floor held 142 translations and 226 untagged pages until Tuesday.
+                       "cheap_ceiling_percent": 97,
                        # Deepening's share of the Codex week, separate from investigation's
                        # 35; the owner agreed 30% on #2533.
                        "depth_quota_points": 30,
@@ -146,7 +194,8 @@ PROFILES = {"default": default_config()["schedule"]["times"],
 
 def validate(config: dict) -> dict:
     defaults = default_config()
-    if not isinstance(config, dict) or set(config) - {"model"} != set(defaults) - {"model"} or config["version"] != 1:
+    if (not isinstance(config, dict) or set(config) - DERIVED != set(defaults) - DERIVED
+            or config["version"] != 1):
         raise RemError("Invalid co rem config keys or version")
     if config["runner"] not in RUNNERS:
         raise RemError(f"runner must be one of {', '.join(RUNNERS)}")
@@ -157,12 +206,17 @@ def validate(config: dict) -> dict:
             or notify["channel"] not in ("none", "outlook", "telegram", "lark", "whatsapp", "email")
             or not isinstance(notify["target"], str)):
         raise RemError("notify.channel must be none, outlook, telegram, lark, whatsapp or email; notify.target must be text")
+    weather = config["weather"]
+    if not isinstance(weather, dict) or set(weather) != {"place"} or not isinstance(weather["place"], str):
+        raise RemError("weather.place must be a city name, off, or empty for the notebook timezone's city")
     models = config["models"]
     if (not isinstance(models, dict) or set(models) != set(LEVEL_MODELS)
             or any(not isinstance(name, str) or not name.strip() for name in models.values())):
-        raise RemError("models.level1 to models.level4 must each be a model name or default")
-    if config["effort"] not in ("minimal", "low", "medium", "high", "xhigh"):
-        raise RemError("effort must be minimal, low, medium, high or xhigh")
+        raise RemError("models.level1 to models.level4 and models.investigate must each be a model name or default")
+    efforts = config["efforts"]
+    if not isinstance(efforts, dict) or set(efforts) != set(LEVEL_EFFORTS) or any(e not in EFFORTS for e in efforts.values()):
+        raise RemError("efforts.level1 to efforts.level4 and efforts.investigate must each be "
+                       "minimal, low, medium, high, xhigh or max")
     if config["speed"] not in ("fast", "standard"):
         raise RemError("speed must be fast or standard")
     if not isinstance(config["language"], str) or not LANGUAGE.fullmatch(config["language"]):
@@ -171,8 +225,14 @@ def validate(config: dict) -> dict:
             or any(not isinstance(tag, str) or not LANGUAGE.fullmatch(tag) for tag in config["languages"])):
         raise RemError("languages must be language tags separated by commas, such as zh,en")
     schedule, limits = config["schedule"], config["limits"]
-    if not isinstance(schedule, dict) or set(schedule) != {"times", "timezone", "runner", "profile"}:
+    if not isinstance(schedule, dict) or set(schedule) - {"working_hours"} != {"times", "timezone", "runner", "profile"}:
         raise RemError("Schedule requires times and timezone")
+    if 'working_hours' in schedule:
+        hours = schedule['working_hours']
+        if (not isinstance(hours, dict) or set(hours) != {'start', 'end'}
+                or any(not isinstance(value, str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', value)
+                       for value in hours.values()) or hours['start'] >= hours['end']):
+            raise RemError('schedule.working_hours requires start before end, both HH:MM')
     if schedule["profile"] not in PROFILES:
         raise RemError(f"schedule.profile must be {' or '.join(PROFILES)}")
     if schedule["runner"] not in ("codex-exec", "codex-app"):
@@ -191,8 +251,10 @@ def validate(config: dict) -> dict:
         raise RemError("Limits must be positive integers")
     if limits["workers"] > 32:
         raise RemError("workers must be 1 to 32")
-    if any(limits[key] > 100 for key in ("quota_floor_percent", "investigation_quota_points", "depth_quota_points")):
-        raise RemError("quota_floor_percent, investigation_quota_points and depth_quota_points are percents: 1 to 100")
+    if any(limits[key] > 100 for key in ("quota_floor_percent", "cheap_ceiling_percent", "investigation_quota_points",
+                                         "depth_quota_points")):
+        raise RemError("quota_floor_percent, cheap_ceiling_percent, investigation_quota_points and depth_quota_points "
+                       "are percents: 1 to 100")
     return config
 
 
@@ -201,7 +263,16 @@ def validate(config: dict) -> dict:
 # the defaults of the day it was made: one from 2026-09-20 ran the refused
 # gpt-5.3-codex-spark for four nights (#1714). A saved value equal to one of
 # these is read as unset, unless the owner chose it with `config set`.
-SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
+# "model" is the pre-1.9.3 work model: Luna was its default once, and a saved
+# `model: gpt-6-luna` from then is that default, not a choice. A level the owner sets
+# to Luna (`config set models.investigate gpt-6-luna`) is a models.* key and stays.
+SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna", "gpt-6.1-sol"},
+              # #3099: init saved these defaults into every config.yaml.
+              "models.level2": {"gpt-6.1-terra", "gpt-6.1-sol"},
+              "models.level3": {"gpt-6.1-sol"}, "models.level4": {"gpt-6-astra"},
+              "efforts.level2": {"low"}, "efforts.level3": {"low"},
+              "efforts.investigate": {"medium"},
+              "speed": {"fast"},
               "limits.timeout_seconds": {600},
               "limits.extract_chars_per_batch": {300000},
               "limits.runner_calls_per_day": {6, 30, 50},
@@ -211,6 +282,9 @@ SUPERSEDED = {"model": {"gpt-5.3-codex-spark", "gpt-6-luna"},
               "tasks.auto": {False},
               "schedule.times": {("03:00", "04:00", "06:00", "17:00", "18:00", "19:00")}}
 EXPLICIT = "config-explicit.json"
+# Kept beside the saved keys for code that reads one value, never saved: `model` and
+# `effort` are level3's.
+DERIVED = {"model", "effort"}
 # Count caps the owner retired on 2026-11-09 (D-104, "启动的时候，数量可以不用受限制"):
 # none of them stops night work any more. A saved value is dropped when read.
 RETIRED = ("tasks_per_night", "drafts_per_night", "jobs_per_round", "translations_per_day")
@@ -261,11 +335,18 @@ def _drop_superseded(root: Path, config: dict) -> None:
     defaults = default_config()
     for key, old in SUPERSEDED.items():
         section, _, name = key.rpartition(".")
+        if config.get("runner") != "codex" and (key == "model" or section in ("models", "efforts")):
+            continue  # Codex defaults are not defaults for another runner.
+        if section == "efforts" and "effort" in explicit:
+            continue  # A global effort choice applies to every level.
         saved = config.get(section) if section else config
-        current = defaults[section] if section else {"model": LEVEL_MODELS["level3"]}
+        current = defaults[section] if section else {**defaults, "model": LEVEL_MODELS["level3"]}
         value = saved.get(name) if isinstance(saved, dict) else None
         if key not in explicit and isinstance(saved, dict) and (tuple(value) if isinstance(value, list) else value) in old:
-            saved[name] = current[name]
+            if key == "model":
+                saved.pop(name, None)  # Do not pin investigation to the new level-three default.
+            else:
+                saved[name] = current[name]
 
 
 def read_config(root: Path, *, validated: bool = True) -> dict:
@@ -285,10 +366,11 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
         config["limits"] = {**default_config()["limits"], **saved}
     config.setdefault("notify", {"channel": "none", "target": ""})
     config.setdefault("tasks", {"auto": True})
+    # Added with the Agenda forecast: '' is the notebook timezone's city, 'off' asks nobody (weather.py).
+    config.setdefault("weather", {"place": ""})
     config.setdefault("language", "en")
     config.setdefault("languages", [])
-    config.setdefault("speed", "fast")
-    config.setdefault("effort", "medium")
+    config.setdefault("speed", default_config()["speed"])
     if isinstance(config.get("schedule"), dict) and 'runner' not in config['schedule']:
         config['schedule']['runner'] = default_config()['schedule']['runner']
     if isinstance(config.get("schedule"), dict):
@@ -299,7 +381,18 @@ def read_config(root: Path, *, validated: bool = True) -> dict:
             and config["schedule"].get("profile") in PROFILES):
         config["schedule"]["times"] = PROFILES[config["schedule"]["profile"]]
     _migrate_models(config)
+    _migrate_efforts(config, explicit)
     return validate(config) if validated else config
+
+
+def _migrate_efforts(config: dict, explicit: set) -> None:
+    """Before #3099 one `effort` ran every level. Saved by init it was a default; set by
+    the owner it still applies to each level he has not set on its own."""
+    single = config.pop("effort", None)
+    saved = config.get("efforts") if isinstance(config.get("efforts"), dict) else {}
+    efforts = dict.fromkeys(LEVEL_EFFORTS, single) if single and "effort" in explicit else dict(LEVEL_EFFORTS)
+    config["efforts"] = {**efforts, **saved}
+    config["effort"] = config["efforts"]["level3"]
 
 
 def _migrate_models(config: dict) -> None:
@@ -309,7 +402,7 @@ def _migrate_models(config: dict) -> None:
     work = config.pop("model", None)
     saved = config.get("models") if isinstance(config.get("models"), dict) else {}
     levels = dict(LEVEL_MODELS) if config.get("runner") == "codex" else dict.fromkeys(LEVEL_MODELS, work or "default")
-    levels.update({"level3": work} if work else {})
+    levels.update({"level3": work, "investigate": work} if work else {})
     levels.update({"level1": saved["summary"]} if "summary" in saved else {})
     levels.update({key: value for key, value in saved.items() if key in LEVEL_MODELS})
     config["models"] = levels
@@ -347,8 +440,8 @@ def prepare(root: Path) -> None:
 
 
 def saved(config: dict) -> dict:
-    """What config.yaml holds: the levels, not the `model` derived from them."""
-    return {key: value for key, value in config.items() if key != "model"}
+    """What config.yaml holds: the levels, not the `model` and `effort` derived from them."""
+    return {key: value for key, value in config.items() if key not in DERIVED}
 
 
 def first_runner(config: dict) -> dict:
@@ -384,20 +477,26 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
     migrate_schedule_pin(root)
     config = copy.deepcopy(read_config(root, validated=False))
     previous_runner = config["runner"]
+    # `model` was the work model, and investigation was work: it sets both levels.
+    pairs = [part for key, raw in zip(pairs[::2], pairs[1::2])
+             for part in ([key, raw, "models.investigate", raw] if key == "model" else [key, raw])]
     pairs = [OLD_NAMES.get(part, part) if index % 2 == 0 else part for index, part in enumerate(pairs)]
     for key, raw in zip(pairs[::2], pairs[1::2]):
         parts = key.split(".")
         target = config
-        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "tasks", "notify"):
+        if key == "effort":  # Every level at once; a later efforts.<level> in the same command wins.
+            config["efforts"] = dict.fromkeys(config["efforts"], raw)
+            continue
+        if len(parts) == 2 and parts[0] in ("schedule", "limits", "models", "efforts", "tasks", "notify", "weather"):
             target = config.get(parts[0])
             if not isinstance(target, dict):
                 raise RemError("Invalid nested configuration; preserve config.yaml for diagnosis")
         elif len(parts) != 1 or key not in ("runner", "speed", "effort", "language", "languages"):
-            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, models.investigate, efforts.<level>, schedule.runner, schedule.times, schedule.timezone, schedule.profile, weather.place, limits.<name> and route.<stage> (see `co rem config`)")
         if parts[0] == "limits" and parts[-1] in RETIRED:
             raise RemError(f"{key} {RETIRED_NOTE}")
         if parts[-1] not in target:
-            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, schedule.runner, schedule.times, schedule.timezone, schedule.profile, limits.<name> and route.<stage> (see `co rem config`)")
+            raise RemError(f"{key}: " "not a setting; the keys are runner, speed, effort, language, languages, models.level1 to models.level4, models.investigate, efforts.<level>, schedule.runner, schedule.times, schedule.timezone, schedule.profile, weather.place, limits.<name> and route.<stage> (see `co rem config`)")
         if key == "tasks.auto":
             if raw not in ("true", "false"):
                 raise RemError("tasks.auto must be true or false")
@@ -419,7 +518,7 @@ def _set_config(root: Path, pairs: list[str]) -> dict:
         config["models"].update({level: LEVEL_MODELS[level] if config["runner"] == "codex" else "default"
                                  for level in LEVEL_MODELS if f"models.{level}" not in pairs[::2]})
     explicit = set(read_json(state_path(root, EXPLICIT), [])) | set(pairs[::2])
-    config["model"] = config["models"]["level3"]
+    config["model"], config["effort"] = config["models"]["level3"], config["efforts"]["level3"]
     validate(config)
     atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(saved(config), sort_keys=False))
     write_json(state_path(root, EXPLICIT), sorted(explicit))

@@ -29,14 +29,15 @@ def run_js(names, script):
 ])
 def test_reader_person_lead_keeps_english_punctuation_and_private_passages(text):
     """The full memory now retains the complete intro, including its privacy markup."""
-    result = run_js(['markdown', 'inline', 'privatePassages'], r'''
+    result = run_js(['markdown', 'inline', 'privatePassages', 'pageWords'], r'''
       const UNKNOWN_TEXT = /^Unknown$/, uiLanguage = 'en';
-      const esc = value => value, youify = value => value;
+      const esc = value => value, youify = value => value, t = value => value;
       const tetherCitations = value => value, uncertainCitations = value => value, quoteSpans = value => value;
       console.log(JSON.stringify(markdown(''' + json.dumps(text) + r''', 'people/mara.md')));
     ''')
     plain = re.sub(r'<[^>]+>', '', result)
-    assert plain == text.replace('[personal]', 'personal')
+    # The chip prints the reader's word for the level (#3374), never the raw "[personal]" marker.
+    assert plain == text.replace('[personal]', 'Personal passage')
     if '[personal]' in text:
         assert '<span class="private" data-level="personal">秘密信息' in result
         assert result.startswith('<p>公开介绍。')
@@ -74,9 +75,10 @@ def test_person_contact_metric_is_a_true_readable_sentence(language, history):
     ('', 'Fernhill Labs'),
 ])
 def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_labels(company, label):
-    result = run_js(['personOrg'], r'''
+    result = run_js(['personOrg', 'orgNamed', 'domainName', 'startsWords', 'personDomain', 'sameCompany'], r'''
       const facts = () => ({company: ''' + json.dumps(company) + r'''});
       const plainLine = text => text, knownValue = Boolean;
+      const codedOrgName = () => null;  // Fernhill Labs is a name, not a course or team code
       const org = {path: 'orgs/fernhill.md', title: 'Fernhill Labs'};
       const byPath = path => path === org.path ? org : null;
       console.log(JSON.stringify(personOrg({organisations: [org.path]})));
@@ -88,7 +90,7 @@ def test_person_organisation_resolves_new_wikilinks_and_keeps_page_written_label
 def test_person_quotes_skip_mail_that_only_a_private_passage_cites():
     """The person ledger whose source marks this guarded is gone (D-30); its quotes inherit the rule:
     a mail cited only by a [personal] passage is never quoted, and greetings and reactions are not their words."""
-    result = run_js(['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'hasPrivacy', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled'], r'''
+    result = run_js(['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'hasPrivacy', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'mendCuts'], r'''
       const icon = () => null;
       const r = {title: 'Mara Ostrowski', path: 'people/mara.md',
         text: 'Public ask [2]. Private ask [3][personal]. Reacted [4].\n\n## Sources\n- [2] gmail:a\n- [3] gmail:b\n- [4] gmail:c\n'};
@@ -133,7 +135,7 @@ QUOTE_HARNESS = r'''
   const sourceList = () => [{n: '3', text: 'gmail:b'}];
   const ownerAddresses = () => OWNER, icon = () => null;
 '''
-QUOTE_NAMES = ['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'hasPrivacy']
+QUOTE_NAMES = ['personQuotes', 'widgetHead', 'expandChip', 'publicOnlyCites', 'saidWords', 'saidToYou', 'isAutoReply', 'privatePassages', 'unlabelled', 'mendCuts', 'hasPrivacy']
 
 
 def _quotes(text, excerpt, participants="to", owner="['avery@lin.example']"):

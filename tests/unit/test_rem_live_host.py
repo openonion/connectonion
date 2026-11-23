@@ -32,6 +32,8 @@ def startup(monkeypatch):
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
     monkeypatch.setattr("connectonion.cli.co_ai.main._owner_invite_lock", lambda p: nullcontext())
     monkeypatch.setattr(live_host.time, "sleep", lambda seconds: None)
+    # Which launchd session runs the test is the machine's, not the test's: a Terminal is Aqua, an agent is Background.
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Background")
     return identity
 
 
@@ -566,3 +568,147 @@ def test_on_windows_an_old_host_is_reported_and_nothing_runs_ps(startup, old_hos
         notice = live_host.start("owner")
     assert isinstance(notice, live_host.Notice) and f"port {port}" in notice and process.poll() is None
     assert "did not start" not in notice and "Windows" in notice     # it may well be ours: say what is true
+
+
+def test_a_dead_recorded_host_is_replaced_though_the_relay_still_lists_the_address(startup, monkeypatch):
+    """2026-11-19 (#3112): the owner's Host was killed; for a while the relay still listed the address, so
+    `co rem open --live` and ensure_online trusted it and started nothing, and the phone reached no Host. The
+    record names our Host: when that process is gone and nothing answers locally as this address, start one."""
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    monkeypatch.setattr(reader, "host_online", lambda *a, **k: True)     # the relay's stale listing
+    monkeypatch.setattr(live_host, "_alive", lambda saved: False)        # our recorded Host is gone
+    monkeypatch.setattr(live_host, "_info", lambda port: None)           # nothing answers locally
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    spawned = []
+    process = SimpleNamespace(pid=43, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "50123"], poll=lambda: None)
+    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: spawned.append(port) or process)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: bool(spawned))
+    assert live_host.ensure_online("owner") is None
+    assert len(spawned) == 1
+    asked = []
+    monkeypatch.setattr(live_host, "answers", lambda port, address: False)  # that Host died too
+    monkeypatch.setattr(live_host, "ensure_online", lambda address, **k: asked.append(address))
+    monkeypatch.setattr(live_host, "outdated", lambda address: False)
+    reader.live_or_snapshot(startup, "owner", live=True, launch=False)
+    assert asked == ["owner"]                                            # --live asks too, not only when offline
+
+
+def test_a_live_host_that_answers_locally_is_still_reused(startup, monkeypatch):
+    """The other side: a Host the owner started by hand answers on a known port; no second Host on the address."""
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    monkeypatch.setattr(reader, "host_online", lambda *a, **k: True)
+    monkeypatch.setattr(live_host, "_alive", lambda saved: False)
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: port == live_host.DEFAULT_PORT)
+    monkeypatch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("duplicate Host"))
+    assert live_host.ensure_online("owner") is None
+
+
+def test_a_new_host_takes_the_port_it_had_when_that_port_is_free(startup, monkeypatch):
+    """#3130: every fresh start bound port 0, so the reader's local address changed on every open and an open tab
+    went dead. The recorded port is reused when it is free; a taken port falls back to a random one."""
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    ports = []
+    process = SimpleNamespace(pid=43, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "1"], poll=lambda: None)
+    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: ports.append(port) or process)
+    monkeypatch.setattr(live_host, "_alive", lambda saved: False)
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    monkeypatch.setattr(live_host, "_free", lambda port: True)
+    live_host.start("owner")
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 42, "port": 50123, "command": "x"})
+    monkeypatch.setattr(live_host, "_free", lambda port: False)
+    live_host.start("owner")
+    assert ports == [50123, None]
+
+
+def test_a_host_older_than_the_install_starts_the_build_that_replaces_it_once_per_release(monkeypatch, tmp_path):
+    """#3112: after an upgrade the old Host served the old code until the next `co rem open` (both Macs, rc27/rc28):
+    the build that replaces an idle old Host only ran when an open page polled. The Host now notices by itself."""
+    from connectonion.rem import live_host, reader
+    from connectonion import _version
+    kicks, clock = [], [1000.0]
+    monkeypatch.setattr(reader, "owner_changed", lambda root: kicks.append(root) or True)
+    monkeypatch.setattr(live_host, "version_on_disk", lambda: _version.__version__)
+    kicked = {}
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is False and kicks == []  # same release
+    monkeypatch.setattr(live_host, "version_on_disk", lambda: "9.9.9")
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is True and kicks == [tmp_path]
+    clock[0] += 60
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is False and len(kicks) == 1  # once
+    clock[0] += live_host.UPGRADE_RETRY
+    assert live_host.notice_upgrade(tmp_path, kicked, now=lambda: clock[0]) is True and len(kicks) == 2  # still old: again
+
+
+def test_the_upgrade_watch_runs_only_for_a_host_that_serves_rem(tmp_path):
+    from connectonion.network.host.server import _create_rem_upgrade_lifespan
+    assert _create_rem_upgrade_lifespan(None) == (None, None)
+    start, stop = _create_rem_upgrade_lifespan(tmp_path)
+    assert callable(start) and callable(stop)
+
+
+def test_the_upgrade_watch_keeps_looking_after_a_half_written_install(monkeypatch, tmp_path):
+    """A tick that lands mid-upgrade (a half-written _version.py) is logged and the next tick looks again."""
+    import asyncio
+    import threading
+    from connectonion.network.host import server
+    from connectonion.rem import live_host
+    ticks, done = [], threading.Event()
+    monkeypatch.setattr(live_host, "UPGRADE_CHECK", 0.01)
+
+    def notice(root, kicked):
+        ticks.append(root)
+        if len(ticks) == 1:
+            raise SyntaxError("half-written _version.py")
+        done.set()
+    monkeypatch.setattr(live_host, "notice_upgrade", notice)
+    start, stop = server._create_rem_upgrade_lifespan(tmp_path)
+    asyncio.run(start())
+    assert done.wait(2) and ticks[:2] == [tmp_path, tmp_path]
+    asyncio.run(stop())
+
+
+def _background_host(startup, monkeypatch, session="Background"):
+    record = {"address": "owner", "pid": 42, "port": 5000, "command": "-m connectonion.cli.main ai",
+              "install": live_host._install(), **({"session": session} if session else {})}
+    write_json(startup / "rem-live-host.json", record)
+    monkeypatch.setattr(live_host, "_alive", lambda saved: True)
+    monkeypatch.setattr(live_host, "_busy", lambda directory: False)
+    monkeypatch.setattr(live_host, "_inside", lambda pid: False)
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: None)
+    monkeypatch.setattr(reader, "host_online", lambda *a, **k: True)
+    return record
+
+
+@pytest.mark.parametrize("session", ["Background", None])
+def test_opening_from_the_owners_terminal_moves_a_background_host_into_his_session(startup, monkeypatch, session):
+    # #3305: an agent restarted the Host from a Background session, so macOS could not show the Keychain prompt.
+    # The owner opening REM from his own Terminal (Aqua) replaces it once; a record without the field counts as outside.
+    _background_host(startup, monkeypatch, session)
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")
+    retired, started = [], []
+    monkeypatch.setattr(live_host, "_retire", lambda saved: retired.append(saved["pid"]))
+    monkeypatch.setattr(live_host, "_free", lambda port: True)
+    process = SimpleNamespace(pid=43, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "5000"], poll=lambda: None)
+    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: started.append(port) or process)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: True, raising=False)
+    assert live_host.ensure_online("owner") is None
+    assert retired == [42] and started == [5000]
+    assert live_host.read_json(startup / "rem-live-host.json", {})["session"] == "Aqua"
+
+
+def test_a_host_already_in_the_owners_session_is_reused(startup, monkeypatch):
+    _background_host(startup, monkeypatch, "Aqua")
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")
+    monkeypatch.setattr(live_host, "_retire", lambda saved: pytest.fail("moved a Host that was already in Aqua"))
+    monkeypatch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("duplicate Host"))
+    assert live_host.ensure_online("owner") is None
+
+
+def test_an_agent_open_never_moves_the_host_and_a_busy_host_is_left_alone(startup, monkeypatch):
+    _background_host(startup, monkeypatch, "Background")
+    monkeypatch.setattr(live_host, "_retire", lambda saved: pytest.fail("an agent open moved the Host"))
+    monkeypatch.setattr(live_host, "_spawn", lambda *a, **k: pytest.fail("duplicate Host"))
+    assert live_host.ensure_online("owner") is None  # this open is Background itself: nothing to gain
+    monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")
+    monkeypatch.setattr(live_host, "_busy", lambda directory: True)
+    assert live_host.ensure_online("owner") is None  # unfinished work keeps the Host where it is

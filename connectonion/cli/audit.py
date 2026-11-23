@@ -80,8 +80,15 @@ FIXES = {
     "params": "an option or argument has no description",
     "look": "a terminal and a pipe must show the same words, in colour only in the terminal",
     "review": "a model reviewer flagged this page",
+    "coverage": "a source command must say how much of the source it can read and how to fix a gap",
 }
-RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private", "params", "look")
+RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private", "params", "look",
+         "coverage")
+# Source commands whose root page must document their coverage line (#3353): what exists, what is read, what is
+# missing and its fix, so an agent running them sees a gap instead of a silent shortfall. Grows as each source
+# reports coverage.
+SOURCE_ROOTS = ("co wechat",)
+COVERAGE_WORDS = re.compile(r"\bcoverage\b|覆盖|读到", re.I)
 
 
 @dataclass(frozen=True)
@@ -384,6 +391,8 @@ def check(path: str, page: Page, found: dict) -> list:
     missing = undocumented(text)
     if missing:
         add("params", ", ".join(missing))
+    if path in SOURCE_ROOTS and not COVERAGE_WORDS.search(text):
+        add("coverage", "the page never says what it reports when part of the source can't be read")
     return out
 
 

@@ -6,31 +6,43 @@ The agreed design is issue #1656; change a page there and here together.
 ## co rem
 
 ```
-co rem — a notebook about the people, projects and tools in your work, kept up to date from your mail and coding sessions.
+co rem — a notebook about the people, projects and tools in your work, kept up to date from your mail, chats and coding sessions.
 Experimental: its commands may still change between 1.9.x releases.
 
-Build (once)
-  init          Build the notebook from mail and coding sessions, then offer daily updates.
+Build
+  init          Build the notebook from mail, chats and coding sessions, then offer daily updates.
+  map           Make pages for what one source holds, any time: people, orgs, projects. No model.
+Collect — read new mail and sessions
+  collect       Read one batch of new material into the notebook.
+Investigate — fill pages from originals
   investigate   Fill a page, a whole category, or your own page, using a model.
-Deepen one page
+Deepen — follow leads, add insights
+  deepen        Add research and insights to pages with useful activity but little detail.
   enrich        Follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
   muse          Study questions about one page and add new insights.
-  deepen        Add research and insights to pages with useful activity but little detail.
+Abstract — learn from pages
+  abstract      Write decisions, settled knowledge, then principles from pages.
+  decisions     Count decision and principle pages and decisions waiting. No model.
+Translate — put pages in your language
+  translate     Translate every page not yet in your language, or one page.
+Tag — organise pages by tag
+  tag           Tag every page that has no tag yet; a tag that names a person, organisation or project links to its page.
+Run a whole day now
+  catchup       Do a whole night's work now, all five stages; several nights with --nights.
 Read
   open          Browse the notebook in your browser.
   list          List pages in a category (people, projects, orgs, skills).
   show          Print one page.
   search        Find text across pages. No model.
-  translate     Translate every page not yet in your language, or one page.
 Keep it current
   start         Approve sources and turn on the daily schedule.
   stop          Turn the schedule off. Pages and approvals stay.
-  status        Is the schedule on, when it runs next, what ran today.
-  sync          Run one update now.
-  exec          Run the configured background upkeep round.
+  status        Show coverage, upkeep, and each stage's waiting count and last run.
+  task          Run, inspect or stop work owed by the owner.
+Background machinery
+  exec          Run the configured background upkeep round, including its deepen slot.
   next          Prepare the next task for this session, without calling a model.
   submit        Check and save completed work from co rem next.
-  task          Run, inspect or stop work owed by the owner.
 Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
@@ -57,9 +69,30 @@ Add --no-start to leave background updates off. An existing schedule stays on.
 Example:      co rem search "term sheet" --in people
 Every page:   co rem <command> --help
 Advanced:     co rem advanced --help   (scan, backfill, map-skills, import, stub, merge, reflect,
-              reflections, propose, review, abstract, capture, projects)
+              reflections, propose, review, capture, projects)
 Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, route
               and usage remain compatibility aliases and print their new name.
+Compatibility: sync — Collect, then investigate what is unfinished; use co rem collect
+              for new material only, co rem catchup for a whole day.
+              Installed schedules still use co rem sync --scheduled.
+```
+
+## co rem catchup
+
+```
+Do the night's work, including its one deepen slot.
+Usage:    co rem catchup [--nights N]
+Example:  co rem catchup  |  co rem catchup --nights 5
+Each night is one co rem exec round: Collect, then Investigate in portions of 2 turns. Between portions come one session summary, one Abstract round, one Tag turn and Translate's share. After the queue the round finishes the cheap stages: up to limits.summaries_per_round session summaries, default 40, every page waiting for translation up to limits.translations_per_round, default 400, eight pages a turn with each page checked and kept on its own, then every page waiting for tags up to limits.tags_per_round, default 400. The night's one deepen slot runs after the first portion. A night that is cut short has still abstracted, deepened and translated.
+A night investigates up to limits.investigations_per_night pages (default 12) and limits.skill_pages_per_night skill pages (default 3), then finishes the other stages. The pages that did not fit wait for later nights; none are dropped.
+A night with deepen can take an hour or more.
+Stops after --nights N (default 1), a night that produces nothing, the weekly investigation budget or the Codex quota floor.
+At a weekly limit before any night ran, it still does what needs no model, once: collects new mail and sessions for the next round to read, and saves the calendar and the day plan.
+Output:   One line per night with its counts, then totals and why it stopped. A night that used its share of investigations says how many pages wait for later nights. When a limit held every night: what was collected and saved, which stages wait, and when the week resets.
+Exit:     0 when it finished or a limit stopped it; 1 on a refused or busy task or a failed round. Resume unfinished work with co rem exec.
+Effects:  Calls the configured model and saves pages and progress. Each night gets fresh daily limits; weekly limits still apply. Saved work survives interruption. Schedule times stay the same.
+Next:     co rem open
+Back:     co rem --help
 ```
 
 ## co rem exec
@@ -67,6 +100,20 @@ Old names:    unfinished, people, daily, subscriptions, subscribe, unsubscribe, 
 ```
 Run the configured background upkeep round. Runs the selected coding agent and
 writes notebook pages, reports and run state; never sends mail.
+
+A whole round runs one deepen slot: after its first portion of investigation
+(2 turns) and that portion's Abstract round, or after the round completes when
+it had nothing to investigate. A round that stops before its first portion and
+a translation-only round do not deepen. In-session next and submit
+only hand out single tasks and never run the hour-long deepen slot.
+
+After session summaries, the night writes decisions/, knowledge/ and principles/ in rounds,
+reading up to 20 captured decision lines each, oldest first. The limit is
+limits.abstract_rounds_per_night (default 6); roughly ceil(N / 20 / rounds) nights
+clear N lines, or longer if rounds fail or the input character limit reads fewer.
+An empty round counts as a failed slice and moves on; two empty rounds in a row
+stop this work for the night. Failed slices wait for a later retry. A restart keeps
+the round count and empty streak. Run co rem abstract to catch up now without that limit.
 
 Usage:    co rem exec [--scheduled]
 Example:  co rem exec --scheduled
@@ -81,7 +128,7 @@ Back: co rem --help
 ## co rem init
 
 ```
-Build your notebook from connected email accounts and recent coding sessions.
+Build your notebook from connected email accounts, chat sources and recent coding sessions.
 Create pages, then use a model to fill them from your sources.
 
 Global co init performs this build without prompts, records an init source grant
@@ -189,6 +236,16 @@ Back:     co rem --help
 ```
 co rem investigate — use a model to fill notebook pages from mail, sessions and files.
 
+Words:
+  page             One thing REM knows: a person, organisation, project, tag, skill or decision.
+  tag (= topic)    A word that links pages. `co rem tag` puts tags on pages; `investigate tag X`
+                   reads every page carrying X and writes X's tag page.
+  knowledge graph  Every page and the links between them. Each tag page is a page in it;
+                   tags are how pages connect.
+  entity           Not used in REM. It means any page in the knowledge graph.
+
+Name the kind, then the page: co rem investigate person "Jalaj Jain". A plural kind (people, tags) means every page of that kind that is due.
+
 Use only the supplied sources. Before replacing a page, check that citations
 point to those sources and quotes match them word for word. For people,
 organisations and projects, a second model also checks the cited claims.
@@ -197,30 +254,72 @@ still rejected and keep the rest. Keep a phone or email only if the mail shows
 it belongs to that person; otherwise write Unknown. Save rejected drafts with
 the reason so the work is not lost.
 
+Write or append (people, orgs and projects; #3105):
+  A page with no investigation yet is written whole from its sources. A page
+  investigated before is appended to: the writer is given the page and only the
+  material since its last investigation, with the saved archive to search for
+  the older threads and attachments that material continues. It adds what is
+  new and corrects stale lines in place, keeping the old value ("was X until
+  <date>"); it removes nothing. The program checks this: every quote, every
+  cited source and every cited line the page had (outside the lead, History and
+  Uncertainties) must still be there or be marked corrected. A draft that drops
+  one goes back for repair; what the repair still drops is put back as it was.
+  Your own page (investigate me) is still written whole from your recent work.
+
+Tag pages (#3140):
+  A tag no person, organisation or project page is named for, shared by two or
+  more pages (limits.topic_min_pages), gets a tag page. Its material is the
+  pages that carry the tag: investigate tag NAME writes knowledge/<tag>.md when
+  missing and appends when it exists, every line cited to those pages' sources,
+  on the cheap model. A tag on one page stays a plain link. topic and topics are
+  the same words as tag and tags.
+
 Usage:
-  co rem investigate                          Per category: completed and total pages, pages due
-                                               for a refresh and the next three to write. No model.
-  co rem investigate PAGE                     Investigate one page.
-  co rem investigate PAGE --retry-refused     Retry a refused Person, Project or Org page on the same sources.
-  co rem investigate CATEGORY [--limit N]     Investigate all unfinished pages in one category,
-                                               most useful first, using limits.workers (default 16).
+  co rem investigate                          Per kind: completed and total pages, pages due for a
+                                               refresh and the next three to write. No model.
+  co rem investigate KIND NAME                Write or append one page from material in the notebook:
+                                               mail, sessions, files, older threads, attachments.
+  co rem investigate KIND NAME --enrich       Then follow its leads: links, attachments, the web (the enrich
+                                               step). The Investigate button in the reader runs this.
+  co rem investigate KIND NAME --quick        The same as no option: write or append only.
+  co rem investigate KIND NAME --rewrite      Rewrite the whole page from its material as a draft; the page
+                                               itself does not change until you accept the draft.
+  co rem investigate KIND NAME --accept-rewrite
+                                              Replace the page with its waiting draft (refused if the page
+                                               changed after the draft was made).
+  co rem investigate KIND NAME --discard-rewrite
+                                              Delete the waiting draft.
+  co rem investigate KIND NAME --undo         Put back the page as it was before its last investigation,
+                                               if nothing has changed it since.
+  co rem investigate KIND NAME --retry-refused
+                                              Retry a refused page on the same sources.
+  co rem investigate KINDS [--limit N]        Every due page of one kind, most useful first, using
+                                               limits.workers (default 16). --list shows the order.
   co rem investigate me                       Investigate your own page from your recent work.
   co rem investigate me --quick               Bounded first pass; says what it did not cover.
                                                init runs this for you in a terminal.
   co rem investigate all --budget 10          The whole queue, highest first, until 10 points
                                                of your Codex week are spent.
+  co rem investigate people --source NAME --new
+                                              The pages one source reaches by handle, the pages it
+                                               just created first (after co rem map --source NAME).
 
-  PAGE is a path from co rem list or co rem search, or a short page stem,
-  title or email. CATEGORY is people, projects, orgs, skills, or all.
-  all combines the four categories in priority order.
+  KIND is one of person, org, project, tag, skill, decision, principle. NAME is
+  the page's title or an alias, ignoring case and spaces; when two pages share
+  it, the command lists them with their full names and does nothing. KINDS is
+  people, orgs, projects, skills or tags; all is every kind in priority order.
 
 Examples:
   co rem investigate
-  co rem investigate corin-marsh-c6a901ffd8
+  co rem investigate person "Jalaj Jain"
+  co rem investigate org UNSW --enrich
+  co rem investigate project connectonion
+  co rem investigate tag "AI Agent"
   co rem investigate people --limit 3
   co rem investigate people --recent-days 7 --list
-  co rem investigate projects --list          (show the order, run nothing)
+  co rem investigate tags --list              (the tag pages that are due, run nothing)
   co rem investigate all --list               (the whole queue's order, run nothing)
+  co rem investigate people --source wechat --new --list
 
 What each kind reads:
   people    Every message to or from their addresses, searched on the server, with
@@ -240,7 +339,13 @@ found there are not the person's own.
 
 Options:
   --days N       How far back to read (default 150; 30 for me)
-  --quick        With me: sample recent evidence for one model turn; explicitly partial
+  --quick        With me: sample recent evidence for one model turn; explicitly partial.
+                 With PAGE: write or append only, no enrich (the default).
+  --enrich       PAGE only: after writing or appending, run the enrich step on the result
+                 (links, attachments, older threads, the web; never removes a line).
+  --rewrite      People, orgs or projects PAGE: a whole-page rewrite, kept as a draft
+                 for --accept-rewrite or --discard-rewrite
+  --undo         PAGE only: restore the page from before its last investigation
   --limit N      With CATEGORY: at most N pages this run (default all)
   --workers N    With CATEGORY: concurrent pages (default limits.workers, 16; 1-32;
                  1 with --limit/--budget)
@@ -250,6 +355,10 @@ Options:
                  the Codex week (1-100).
   --handle TEXT  PAGE only: another address or name for the subject (repeatable)
   --eval-dir DIR skills only: where the run records are
+  --source NAME  With CATEGORY: only pages that source reaches by handle (see co rem sources)
+  --new          With --source: only pages it created and not yet investigated
+  --existing     With --source: only pages it gave a new handle to (appends what it says)
+  --all          With --source: both (the same as giving neither)
   --retry-refused  People, projects or orgs PAGE: retry the same evidence after a refusal;
                    automatic category runs still wait for newer material
 
@@ -295,15 +404,21 @@ Back:     co rem --help
 ```
 co rem enrich — follow the leads a page has not followed — links, attachments, older threads — and add what they establish.
 
+Moved: `co rem enrich PAGE` runs `co rem investigate KIND NAME --enrich`, which first
+appends what is new and then runs this step. It says so in one line.
+
 Read one existing people, projects or orgs page, its cited originals and the
 reachable saved archive (up to ten years). Follow unread links, attachments and
 older threads; add what they establish and return followed, open and blocked
 leads. No live mailbox is searched; the agent may open links on the web.
 Automatic checks of citations, quotes and claims decide whether to save the page,
-as in co rem investigate.
+as in co rem investigate. It never removes a line: a contradicted line is
+corrected in place with its old value kept, and the program puts back any cited
+line a draft dropped.
 
 Usage:    co rem enrich PAGE
 Example:  co rem enrich people/avery-lin.md
+          (the same as co rem investigate person "Avery Lin" --enrich)
 
 Inputs:   PAGE is a path from co rem list or co rem search, or a short stem, title
           or email. Other notebook pages provide context.
@@ -355,6 +470,10 @@ Options:
 Budget:   Deepening has its own weekly allowance: 30 points of your Codex week
           by default (limits.depth_quota_points). Investigation has a separate
           35-point target. Both stop starting new pages at 90% weekly usage.
+          A run is charged its own fresh tokens at the effort it ran at (about 1.66M a
+          point at medium, 140K at max, half that on the fast tier; measured on the
+          owner's nights of 16-17 Nov); the week's meter, which your own coding also
+          moves, only caps the charge, and counts a run alone when it reported no tokens.
           If weekly usage cannot be measured, count the last seven days of runs.
           Stop starting new pages after 60 minutes by default
           (limits.depth_slot_minutes). This also applies to named pages.
@@ -369,7 +488,9 @@ Effects:  Reads selected pages and their sources. Uses the configured model for
           .state/depth.json and run logs.
 Takes:    Large-page rounds took 35–97 minutes (2026-10-20).
 Schedule: Scheduled sync runs this after a due daily round that is not partial.
-          Manual sync never deepens.
+          Manual sync never deepens. The night's investigation writes or appends
+          pages with new material; this slot is where enrich runs at night, within
+          the weekly allowance above.
 
 Next:     co rem logs
 Back:     co rem --help
@@ -472,6 +593,75 @@ Next:     co rem open
 Back:     co rem --help
 ```
 
+## co rem tag
+
+```
+Words:
+  page             One thing REM knows: a person, organisation, project, tag, skill or decision.
+  tag (= topic)    A word that links pages. `co rem tag` puts tags on pages; `investigate tag X`
+                   reads every page carrying X and writes X's tag page.
+  knowledge graph  Every page and the links between them. Each tag page is a page in it;
+                   tags are how pages connect.
+  entity           Not used in REM. It means any page in the knowledge graph.
+
+Tag every page that has no tag yet; a tag that names a person, organisation or project links to its page.
+Name the kind, then the page, to tag one: co rem tag person "Jalaj Jain". A page
+waits when it was never tagged or its text changed since. A tag that names a
+page (by its title, an alias or its file name) is a link to that page. A tag no
+page is named for, shared by two or more pages, gets a tag page: co rem
+investigate tag NAME writes it. Reads pages, never mail or sessions.
+
+Usage:    co rem tag [KIND NAME] [--pages N] [--dry-run]
+Example:  co rem tag
+          co rem tag person "Jalaj Jain"
+          co rem tag --dry-run
+Options:  KIND NAME   Tag this one page, waiting or not. KIND is person, org, project,
+                      skill, decision or principle; NAME is its title or an alias.
+          --pages N   Tag at most N pages that have no tag (default 200).
+          --dry-run   Count, with no model: pages waiting for tags, tags that link to a
+                      page, tags that get a tag page (and how many are due), and tags
+                      on one page that stay links.
+Cost:     One level-1 model turn per 20 pages on the notebook's runner.
+Output:   Tagged N of M pages (K changed); R tags refused; F pages failed; W still
+          waiting. Then: L tags link to a person, organisation or project page; T
+          tag pages are due. --json returns the run record with linked and
+          tag_pages_due.
+Effects:  Writes only each page's "- Tags:" line, with the citation of the line
+          that supports each tag; adds new tags to .state/tags.json (label, kind,
+          aliases) and marks the pages tagged in .state/tag-pages.json. A tag the
+          page does not support is dropped, never written. A failed turn leaves its
+          pages waiting. Every co rem catchup round tags too, up to
+          limits.tags_per_round pages.
+Next:     co rem investigate tags   (when tag pages are due)
+          co rem open
+Back:     co rem --help
+```
+
+## co rem map
+
+```
+Create people, org or project pages from one enabled source, without calling a model.
+Each source yields its own kinds of page:
+gmail and outlook yield people and orgs, wechat yields people, codex and
+claude-code yield projects. Calls no model; adds pages and handles, never
+removes or rewrites what a page says. A person already on a page from another
+source gets the new handle added to that page.
+
+Usage:    co rem map [people|orgs|projects|knowledge] --source NAME [--dry-run]
+          co rem map people          people from every enabled source
+Example:  co rem map people --source wechat --dry-run
+          --source    a source from co rem sources (enabled and approved)
+          --dry-run   print what it would create and merge; writes nothing
+          KIND        only this kind; refused when the source doesn't yield it
+
+Writes:   new pages under people/, orgs/ or projects/, and handles on existing
+          people pages. Read-only with --dry-run.
+Next:     co rem investigate people --source NAME --new
+          If the nightly schedule is on, new pages are investigated automatically,
+          first in the queue; check progress with co rem status
+Back:     co rem --help
+```
+
 ## co rem list
 
 ```
@@ -501,7 +691,7 @@ Inputs:   PAGE comes from list, search, or the Next line of investigate.
           people, projects, orgs and skills, and project folder names, ignoring case.
           Person aliases and email addresses still work.
           A NAME matching several pages lists their paths and shows none.
-Next:     co rem investigate PAGE   (if it still says Unknown)
+Next:     co rem investigate KIND NAME   (if it still says Unknown)
 Back:     co rem --help
 ```
 
@@ -601,10 +791,14 @@ Back:     co rem --help
 Show whether the schedule is on, when it runs next, what ran today, and what it cost.
 Read-only.
 
-Usage:    co rem status [--verbose]
+Usage:    co rem status [--verbose] [--show-private]
 Example:  co rem status
 Output:   One line each: the state and next run; open threads waiting on you;
-          today's runs, pages changed and tokens; the notebook (people, projects,
+          today's runs, pages changed and tokens; Collect, Investigate, Deepen,
+          Abstract, Translate and Tag, each with a waiting count and last-run date
+          (or never), and on Investigate how many pages wait for later nights
+          when the last night used its share; --json includes the same data under stages;
+          the notebook (people, projects,
           organisations and skills, written of mapped, and what to write next);
           translation coverage and what is queued;
           each mailbox with the command that fixes it, and how long ago it was
@@ -616,6 +810,10 @@ Output:   One line each: the state and next run; open threads waiting on you;
 Options:  --verbose   Show full run details, worker status, token counts and
                       coverage, schedule times and internal diagnostic fields.
                       Also explain investigation points, the weekly usage unit.
+          --show-private  Print [sensitive] passages and full links. By default the
+                      day plan, calendar and run reasons hide each sensitive
+                      passage as [hidden] and show a link as its host, so the
+                      status card is safe to share; --json is unchanged.
 Next:     co rem logs   (details of each run)
 Back:     co rem --help
 ```
@@ -666,12 +864,48 @@ Effects:  Checks that the input has not changed. Checks the output's citations,
           input is rejected. Manual sync waits until this task is submitted or
           discarded with co rem next --discard.
 Next:     co rem next
+          A task co rem exec handed to its worker ends on "End your turn"
+          instead: exec takes the next task, the worker runs no next.
+Back:     co rem --help
+```
+
+## co rem collect
+
+```
+Read one batch of new material from approved sources into the notebook.
+Collection only: no investigation, deepen, abstract or translation.
+Reuses the existing batch reader and its extraction/page updates for new material.
+
+Usage:    co rem collect [--source NAME] [--with ADDRESS] [--dry-run]
+Example:  co rem collect  |  co rem collect --source gmail
+          co rem collect --dry-run
+Options:
+  --source NAME   Take the extraction batch from this approved source in co rem sources.
+  --with ADDRESS  Take only matching mail into the extraction batch (address or part).
+  --dry-run       Inspect pending metadata and daily limits; no bodies, model or writes.
+  --help          Show this message and exit.
+One run reads one batch, not until caught up: up to limits.extract_items_per_batch
+(default 40) from one source, also bounded by the input character limit.
+Existing batch housekeeping also imports approved coding sessions and may resume
+init's stalled mail archive for up to five minutes across approved mailboxes.
+Those reads are outside the extraction batch; --source scopes only that batch.
+Sources take turns. Mail takes whole correspondents oldest first, slicing a
+correspondent larger than the batch. --with leaves other correspondents waiting.
+Output:   Items read, pages changed, known mail still waiting and the next command.
+          The waiting count covers saved listings, not mail or sessions not yet listed.
+          Mail from disabled or unapproved sources is shown separately as held.
+Effects:  Reads source bodies, may call the configured model to extract new material
+          and update its pages, and saves progress. Keeps finished work on interruption.
+Requires: co rem start (it records your approval of the sources).
+Next:     co rem collect
 Back:     co rem --help
 ```
 
 ## co rem sync
 
 ```
+Collect, then investigate what is unfinished; use co rem collect for new material only, co rem catchup for a whole day.
+
 Run one update now: read what arrived since the last run and update the pages it
 concerns. Then the day's first run investigates unfinished pages, most recent
 first; every later run updates only the people and
@@ -714,7 +948,7 @@ Back:     co rem --help
 
 ```
 Show, add or remove what the notebook reads: gmail, outlook, codex, claude-code,
-whatsapp. Showing is read-only.
+whatsapp, wechat. Showing is read-only and lists the page kinds each source yields.
 
 Usage:    co rem sources
           co rem sources add NAME [--since 3d|2w|6m|1y] [--chat ID]... [--project DIR]
@@ -740,17 +974,24 @@ starts a run on your mail or sessions.
 
 Usage:    co rem config
           co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Keys:     models.level1                  gpt-6-luna (Codex default): sessions-summary, topic
-          models.level2                  gpt-6.1-terra: translate, extract, same-person, plan
-          models.level3                  gpt-6.1-sol: maintain, investigate, render, projects,
-                                         reply-draft, native (the scheduled session), init, abstract
-          models.level4                  gpt-6-astra: enrich, muse, claim-audit, insight-critic,
+Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag, tag-node, translate, extract,
+                                         sessions-summary
+          models.level2 efforts.level2   gpt-6-luna at medium: topic, same-person, plan
+          models.level3 efforts.level3   gpt-6-luna at medium: maintain, init, projects, reply-draft,
+                                         native (the scheduled session)
+          models.level4 efforts.level4   gpt-6.1-sol at low: abstract, muse, claim-audit, insight-critic,
                                          synthesize, task (owed work)
-                                         co rem status lists the stages on each level. A notebook on
-                                         another runner keeps its one model on every level;
-                                         the old names model (level3) and models.summary (level1) still work
+          models.investigate efforts.investigate
+                                         gpt-6.1-sol at low: enrich, investigate and render (the turn
+                                         that writes the investigated page), independent of levels 1-4
+                                         Efforts: minimal | low | medium | high | xhigh | max;
+                                         effort VALUE sets every level at once. co rem status lists
+                                         the stages on each level. A notebook on another runner keeps
+                                         its one model on every level; the old names model (level3 and
+                                         investigate) and models.summary (level1) still work
           runner                         codex (default; claude-code when Codex cannot run) | claude-code | coai
-          speed                          fast (default) | standard: Codex's Fast tier, 1.5x speed
+          speed                          standard (default) | fast: Codex's Fast (priority) tier, faster
+                                         and dearer; unattended nights default to standard (#3099)
           language                       en (default) | zh | zh-TW | ja ...: what page prose is written in;
                                          headings, labels and quotes stay as they are
           languages                      zh,en: the languages you read, first in the reader's
@@ -765,11 +1006,18 @@ Keys:     models.level1                  gpt-6-luna (Codex default): sessions-su
           limits.workers                 16: concurrent pages for init and investigate CATEGORY
           limits.runner_calls_per_day    6
           limits.timeout_seconds         600
+          limits.abstract_rounds_per_night 6: successive abstract slices after summaries
+          limits.investigations_per_night 12: pages investigated a night; the rest wait for later nights
+          limits.skill_pages_per_night   3: skill pages investigated a night, counted on their own
+          limits.summaries_per_round     40: session summaries a round writes
+          limits.translations_per_round  400: the most pages a round translates; it goes on until none wait
+          limits.tags_per_round          400: the most pages a round tags; it goes on until none wait
           limits.<name>                  the other limits co rem config shows
           route.<stage>                  pins one stage above to a model ("default" clears it);
                                          a route on plan, extract, synthesize or render also
                                          turns on three-call planned investigation
-Example:  co rem config set models.level2 gpt-6.1-sol route.translate gpt-6.1-terra
+Example:  co rem config set models.level1 gpt-6-luna route.translate gpt-6.1-terra
+Example:  co rem config set efforts.level4 low efforts.investigate low
 Tier:     agent    the model drives tools: it reads the material and writes the page itself
           summary  a plain model: the material is handed over and it replies with the page
           Measured when level3's model or the runner changes, never read off the name. Unchecked runs
@@ -815,7 +1063,7 @@ Change one or more settings. Every pair is checked before anything is saved: one
 bad value saves nothing. Never starts a run on your mail or sessions.
 
 Usage:    co rem config set KEY VALUE [KEY VALUE]... [--no-check]
-Example:  co rem config set models.level3 gpt-6.1-sol limits.runner_calls_per_day 4
+Example:  co rem config set models.level3 gpt-6-luna limits.runner_calls_per_day 4
 Keys:     the list on co rem config --help
           --no-check  save a new model or runner without checking its tier
 Output:   The saved configuration, as co rem config prints it, and the tier.
@@ -875,12 +1123,12 @@ Build by hand
   stub          Create one empty page by hand, with every section marked Unknown.
 Manage pages
   merge         Fold one page into another; archive the old page and keep its name as an alias.
+  person        Mark one address or chat handle as not a person (an assistant, bot or service), or a person again.
 Experimental: corrections and questions (#1611, #1609)
   reflect       Record a correction, a change, or a reflection about a page.
   reflections   Read the records for a page, or write a compact copy of them.
   propose       Save a question about a page, or a possible link between two pages.
   review        Answer the saved questions and links.
-  abstract      Write decision and principle pages from the pages you already have.
 Experimental: session capture (#1520)
   capture       Queue the user's messages from one coding-session file. Run by a hook.
 Experimental: project pages from your own messages (#1943)
@@ -995,7 +1243,28 @@ Example:  co rem stub person "Mei Lin" --email mei@harbourlabs.example
           --domain  org: a mail domain it owns (repeatable)
           --person  org: a person page that belongs to it (repeatable)
           --path    project: a folder it lives in (repeatable)
-Next:     co rem investigate PAGE
+Next:     co rem investigate KIND NAME
+Back:     co rem advanced --help
+```
+
+## co rem person
+
+```
+Mark one address or chat handle as not a person (an assistant, a bot, a shop or
+a service), as a person, or let the rules decide again. The same mark as 不是人 /
+是人 in the reader: a contact marked not a person leaves People, and neither
+co rem map nor the night creates a page for it again. No model.
+
+Usage:    co rem person HANDLE --not-person | --person | --reset
+Example:  co rem person wxid_example123 --not-person
+          HANDLE        one mail address or chat handle (a WeChat or WhatsApp id); never a pattern
+          --not-person  not a person: an assistant, bot, shop or service
+          --person      a person, whatever the rules say
+          --reset       remove the mark; the rules decide again
+Effects:  Writes one line to .state/people-marks.txt. Undo with --reset.
+JSON:     co rem --json person HANDLE, with one of the three choices
+          Prints one {"ok", "data", "next"} result.
+Next:     co rem list people
 Back:     co rem advanced --help
 ```
 
@@ -1036,7 +1305,7 @@ Example:  co rem reflect people/mei-lin.md "Mei now leads partnerships" \
           --source      a source id that supports it (repeatable)
           --supersedes  an earlier record of this page that it replaces (repeatable)
 Effects:  Writes one record under .state/reflections/. The page itself is unchanged.
-Next:     co rem investigate PAGE
+Next:     co rem investigate KIND NAME
 Back:     co rem advanced --help
 ```
 
@@ -1085,20 +1354,36 @@ Next:     co rem review
 Back:     co rem advanced --help
 ```
 
+## co rem decisions
+
+```
+Count your decision and principle pages and the supported captured decisions waiting to be written.
+Reads the decisions already on session and project pages. No model; no files written.
+Waiting counts only lines with a verbatim quote and a bound original source, excluding known authorship contradictions.
+
+Usage:    co rem decisions
+Example:  co rem decisions
+Output:   Decision pages, principle pages, decisions waiting, N to retry and skipped captures by reason, then the next command.
+Effects:  Reads notebook pages and saved progress. No model; no writes.
+Next:     co rem abstract
+Back:     co rem --help
+```
+
 ## co rem abstract
 
 ```
-Write the layer above the pages: decision pages (a question that was settled,
-with the alternative that was rejected), then principle pages (a reason that
-keeps recurring across decisions). Reads pages only, never mail or sessions.
-Runs the model once.
-
-Usage:    co rem abstract
-Example:  co rem abstract
-Output:   Pages under decisions/ and principles/, cited to the pages they came from.
-Effects:  Calls the model. Writes pages.
+Turn settled notebook experience into decisions, knowledge, and principles, in that order.
+Knowledge records lessons from at least two pages; principles capture reasons shared by at least three decisions.
+Usage:    co rem abstract [--rounds N]
+Flags:    --rounds N  Stop after at most N rounds; N must be at least 1.
+          --help      Show this help and exit.
+Example:  co rem abstract --rounds 2
+Output:   Decision, knowledge and principle counts, progress per round, and refused pages with reasons.
+Effects:  Calls the model once per round. Writes reviewed pages under decisions/, knowledge/ and principles/.
+          Existing knowledge pages can only gain clearly headed sections. Saves progress for the next run.
+          Stops when no work remains or after two empty rounds in a row.
 Next:     co rem list decisions
-Back:     co rem advanced --help
+Back:     co rem --help
 ```
 
 ## co rem capture
@@ -1216,7 +1501,7 @@ Arguments:
 Options:
   --agent       codex or claude: who runs a task that has not started.
 
-Codex uses models.level4 and the configured effort. Claude Code keeps its own
+Codex uses models.level4 at efforts.level4. Claude Code keeps its own
 model and loads your own Claude setup (user CLAUDE.md, skills, settings).
 Both run with full access. Work happens in
 a git worktree of the project page's repository on branch rem/task-ID when there

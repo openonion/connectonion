@@ -38,7 +38,7 @@ def _fetch(repo):
         argv = ['gh', 'api', 'graphql', '-f', 'query=' + query, '-f', 'owner=' + owner, '-f', 'name=' + name]
         if cursor:
             argv += ['-f', 'cursor=' + cursor]
-        run = subprocess.run(argv, capture_output=True, text=True, timeout=60, check=True)
+        run = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, check=True)
         data = json.loads(run.stdout)
         if data.get('errors'):
             raise ValueError('GitHub issue query failed: ' + json.dumps(data['errors']))

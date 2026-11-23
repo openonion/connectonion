@@ -444,6 +444,18 @@ into "launch must follow that review".
 
 The rule used to say "read the CLI reference first". In the 1.9.0a1 acceptance run (2026-09-30), the model obeyed it in every investigation: its first action was to `cat` the 12.6k-character reference. A 14.8k turn really carried about 27k, which undid the 15k ceiling from #1851. Offline runs, the common case, never run a `co` command, so they never need the reference.
 
+## Exact research calls instead of "run `--help` first" (#3083)
+
+The research block opened with "run `co commands` and the relevant `--help`
+first". In one audited day of real runs (2026-11-16) that was obeyed on every
+task: 145 help calls, 7–14 per investigation, each a model request that re-sent
+the whole context. The Skill now gives the calls it expects, with flags copied
+from each command's own `--help` (`co search`, `co fetch`, the `co browser` tab
+commands, `co gmail`/`co outlook` search, read, attachments and download), and
+keeps one sentence: `--help` is for a command not listed. It is the same lesson
+as #1960 below. When a flag of one of these commands changes, change the Skill
+with it; `tests/unit/test_rem_research.py` pins the calls.
+
 ## Moved out of the runtime Skill when it was split by page kind (2026-09-30)
 
 The owner asked that a turn carry only what its subject needs, that the model stay inside the material our script prepared, and that it not be handed command references it can discover with `--help`. `co rem` runs are offline, so the web-lookup procedure below was never usable at runtime; it is kept here for an online mode.

@@ -21,6 +21,7 @@ CITATION = re.compile(r"\[(W?\d{1,3})\]")
 SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
+SENSITIVE = re.compile(r"[\[［]sensitive[\]］]", re.I)
 WIKILINK = re.compile(r"\[\[((?:orgs|people|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 
 
@@ -71,17 +72,77 @@ def _org_roster(org: dict) -> set[str]:
     return set(notebook_links(org['path'], '\n'.join(lines)))
 
 
+def _parent_chain(org: dict, orgs: dict) -> set[str]:
+    """The org and its cited Parent chain: a course's roster may place a person whose Company is its university."""
+    chain, path = set(), org['path']
+    while path in orgs and path not in chain:
+        chain.add(path)
+        parents = [link for value in orgs[path]['facts'].get('Parent', []) if value['citations']
+                   for link in notebook_links(path, value['value']) if link.startswith('orgs/')]
+        path = parents[0] if len(parents) == 1 else ''
+    return chain
+
+
+# Public mail hosts say nothing about where someone works.
+FREE_MAIL = frozenset({"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com",
+                       "icloud.com", "me.com", "mac.com", "yahoo.com", "qq.com", "163.com", "126.com",
+                       "foxmail.com", "proton.me", "protonmail.com", "aol.com"})
+
+
+def _mail_domains(row: dict) -> set[str]:
+    """Work domains from the page's own Email fact, never from addresses quoted in its body."""
+    values = ' '.join(fact['value'] for fact in row.get('facts', {}).get('Email', []))
+    return {domain.lower() for domain in re.findall(r'@([A-Za-z0-9.-]+\.[A-Za-z]{2,})', values)} - FREE_MAIL
+
+
+def _fold(text: str) -> str:
+    return re.sub(r'[\W_]+', '', text).casefold()
+
+
+def _owner_orgs(owner_row: dict, orgs: dict) -> set[str]:
+    """The owner's own organisations. On real notebooks the owner page's Company is usually plain text
+    ("Quillmoor Labs (co-founder)"), not a link, and no org says Kind: own_company (#3397 reopened), so an
+    org whose title appears in that text counts as well as a linked one."""
+    found = set(owner_row.get('organisations', [])) | {path for path, org in orgs.items() if org.get('kind') == 'own_company'}
+    company = ' '.join(fact['value'] for fact in owner_row.get('facts', {}).get('Company', [])
+                       if not PRIVATE.search(fact['value']))
+    plain = _fold(company)
+    return found | {path for path, org in orgs.items() if len(_fold(org['title'])) >= 3 and _fold(org['title']) in plain}
+
+
 def organisation_members(records: list[dict], owner: str) -> None:
-    """Only listed people and explicit affiliations populate the org roster."""
+    """Only listed people and explicit affiliations populate the org roster.
+
+    A roster is the org page's claim (someone on its threads). A person whose OWN page names a
+    different company is not drawn into this org by it (#3397: the owner's co-founder sat inside a
+    client's tree because she was on the thread). The owner's own people named there are the org's
+    `your_side`: the contacts on the owner's side of the relationship.
+
+    A person whose page names no company but whose own Email is at the owner's work domain is the
+    owner's teammate: real teammates' pages rarely carry a Company line (#3397 reopened).
+    """
     people = [row for row in records if row['category'] == 'people' and row['path'] != owner
               and not (row.get('service') or row.get('needs_review'))]
-    for org in records:
-        if org['category'] != 'orgs':
-            continue
-        roster = _org_roster(org)
+    orgs = {row['path']: row for row in records if row['category'] == 'orgs'}
+    owner_row = next((row for row in records if row['path'] == owner), {})
+    owner_orgs = _owner_orgs(owner_row, orgs) if owner_row else set()
+    owner_domains = _mail_domains(owner_row) if owner_row else set()
+    for person in people:
+        if owner_orgs and owner_domains and not person['organisations'] and _mail_domains(person) & owner_domains:
+            person['organisations'] = sorted(owner_orgs)
+    own = {person['path']: set(person['organisations']) for person in people}
+    for org in orgs.values():
+        roster, chain = _org_roster(org), _parent_chain(org, orgs)
+        org['your_side'] = []
         for person in people:
-            if person['path'] in roster and org['path'] not in person['organisations']:
+            if person['path'] not in roster or org['path'] in person['organisations']:
+                continue
+            elsewhere = own[person['path']] and not own[person['path']] & chain
+            if elsewhere and own[person['path']] & owner_orgs and not chain & owner_orgs:
+                org['your_side'].append(person['path'])
+            elif not elsewhere:
                 person['organisations'].append(org['path'])
+    for org in orgs.values():
         linked = [row for row in records if org['path'] in row.get('organisations', [])
                   and not (row.get('service') or row.get('needs_review')) and row['path'] != owner]
         for category in ('people', 'projects'):
@@ -149,9 +210,16 @@ def _clip(text: str, limit: int = 220) -> str:
 
 def _relation(origin: str, target: str, line: str, kind: str) -> dict:
     basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-    basis = _clip(CITATION.sub("", basis).lstrip("- ").strip())
-    return {"path": target, "kind": kind, "basis": basis,
-            "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
+    # The citation goes with the space before it: "at Fernhill [1]." reads "at Fernhill.", never "at Fernhill ." (rc36).
+    basis = _clip(re.sub(r"[ \t]*" + CITATION.pattern, "", basis).lstrip("- ").strip())
+    return {"path": target, "kind": kind, "basis": basis, "private": bool(PRIVATE.search(line)), "level": _level(line),
+            "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
+
+
+def _level(text: str) -> str:
+    """The strongest privacy mark on a line: the reader curtains a relation reason by it (#3425). The basis can be
+    clipped before its mark, so the level is read from the whole line, not from what the card shows."""
+    return "sensitive" if SENSITIVE.search(text) else "personal" if PRIVATE.search(text) else ""
 
 
 def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re.Pattern[str], str, str]]) -> dict:
@@ -225,11 +293,14 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     # Keep their explicit links, but avoid scanning every name in every stub.
     forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])
                for path, row in paths.items()}
-    private_topics = {path for path, row in paths.items() if row['category'] == 'knowledge'
-                      and PRIVATE.search(row['text'].split('\n', 1)[0])}
+    private_topics = {path: _level(row['text'].split('\n', 1)[0]) for path, row in paths.items()
+                      if row['category'] == 'knowledge' and PRIVATE.search(row['text'].split('\n', 1)[0])}
     for origin, rows in forward.items():
         for target, relation in rows.items():
             relation['private'] |= origin in private_topics or target in private_topics
+            topic = private_topics.get(origin) or private_topics.get(target) or ""
+            if topic == "sensitive" or (topic and not relation.get('level')):
+                relation['level'] = topic
     found = {path: dict(rows) for path, rows in forward.items()}
     # Finish every page's own links before adding incoming navigation. Otherwise
     # a reverse hint can replace a later page's explicit link and its provenance.
@@ -269,7 +340,8 @@ def _around(text: str, aliases: list[str], limit: int = 220) -> str:
     return '…' + _clip(text[start:], limit - 1)
 
 
-def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict | None = None) -> dict:
+def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict | None = None,
+                   vocabulary: dict | None = None) -> dict:
     """Explicit undirected links only; sessions fold into their linked project.
 
     `topics` maps a topic page to the records whose cited sentences name it
@@ -314,7 +386,27 @@ def graph_snapshot(records: list[dict], links: dict | None = None, topics: dict 
                       'degree': degree[path], 'has_owed': has_owed, 'private': private})
     isolated = Counter(n['kind'] for n in nodes if not n['degree'])
     return {'nodes': nodes, 'edges': list(edges.values()), 'folded_sessions': len(folded),
-            'unconnected': {'count': sum(isolated.values()), 'by_kind': dict(isolated)}}
+            'unconnected': {'count': sum(isolated.values()), 'by_kind': dict(isolated)},
+            'tags': tag_layer(nodes, paths, vocabulary or {})}
+
+
+def tag_layer(nodes: list[dict], paths: dict, vocabulary: dict) -> dict:
+    """The knowledge graph has one kind of point, the page (#3140): a tag adds an edge from each page carrying
+    it to the page the tag links to (a person, organisation, project or tag page), never a point of its own.
+
+    Only drawn pages: a folded session or a private record adds no edge, and a tag whose page is not drawn
+    adds none."""
+    from .tags import page_tags
+    drawn = {node['id'] for node in nodes}
+    edges = {}
+    for node in nodes:
+        if node['private']:
+            continue
+        for slug in page_tags(paths[node['id']]['text']):
+            target = vocabulary.get(slug, {}).get('page', '')
+            if target in drawn and target != node['id']:
+                edges.setdefault(tuple(sorted((node['id'], target))), {'source': node['id'], 'target': target, 'kind': 'tagged', 'tag': slug})
+    return {'nodes': [], 'edges': list(edges.values())}
 
 
 def _source_ids(records: list[dict]) -> set[str]:
@@ -334,6 +426,25 @@ def _budget_order(records: list[dict], ids: set[str]) -> list[str]:
                                            source.split(":", 1)[0] not in ("gmail", "outlook"), source))
 
 
+# A short citation (gmail:<12 hex>) names a message by its id's digest. Each lookup used to fetch every message
+# of the provider and hash every id again, 534k sha256 calls for one Today queue on the owner's notebook (#3106).
+# One digest index for the connection in use answers them all; connections here are short-lived and read-only,
+# and a connection takes no weak reference, so the index is kept for the latest one only (held, so its id is not reused).
+_DIGESTS: list = [None, {}]
+
+
+def _digest_index(db, provider: str) -> dict[str, list]:
+    if _DIGESTS[0] is not db:
+        _DIGESTS[:] = [db, {}]
+    per_db = _DIGESTS[1]
+    if provider not in per_db:
+        index: dict[str, list] = {}
+        for row in db.execute("select * from messages where source = ?", (provider,)):
+            index.setdefault(hashlib.sha256(row["id"].removeprefix(provider + ":").encode()).hexdigest()[:12], []).append(row)
+        per_db[provider] = index
+    return per_db[provider]
+
+
 def _cited_row(db, source: str):
     row = db.execute("select * from messages where id = ?", (source,)).fetchone()
     if row is not None:
@@ -342,10 +453,10 @@ def _cited_row(db, source: str):
     if not match:
         return None
     provider, digest = match.groups()
-    rows = db.execute("select * from messages where source = ? and (body_path like ? or body_path like ? or body_path is null)",
-                      (provider, f"mail/messages/{provider}/{digest}%.json",
-                       f"mail/observed/{provider}/{digest}%.json")).fetchall()
-    rows = [row for row in rows if hashlib.sha256(row['id'].removeprefix(provider + ':').encode()).hexdigest().startswith(digest)]
+    # Its archived body, when it has one, is named by the same digest.
+    homes = (f"mail/messages/{provider}/{digest}", f"mail/observed/{provider}/{digest}")
+    rows = [row for row in _digest_index(db, provider).get(digest, [])
+            if row["body_path"] is None or (row["body_path"].startswith(homes) and row["body_path"].endswith(".json"))]
     if len(rows) == 1:
         return rows[0]
     return None
@@ -397,9 +508,18 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
             message = dict(row)
             saved = archived_message(root, message) or {}
             raw = saved.get("text" if message.get("body_line") else "body")
+            mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
+            if not isinstance(raw, str) and mail and private:
+                # Indexed, never archived (rc34 hunt: 214 of a real notebook's person and org citations). The owner's
+                # own reader still says who wrote, when and about what, rather than "REM did not keep a copy".
+                output[source] = {"excerpt": "", "truncated": False, "body_empty": True, "header_only": True,
+                                  "time": message.get("time") or "", "sender": message.get("sender") or "",
+                                  "thread": message.get("thread") or "", "source": message.get("source") or "",
+                                  "subject": message.get("subject") or "", "input_scope": "",
+                                  "participants": {"from": message.get("sender") or "", "to": [], "cc": []}}
+                continue
             if not isinstance(raw, str) or (PRIVATE.search(raw) and not private):
                 continue
-            mail = message.get("source") in ("gmail", "outlook") and not message.get("body_line")
             if mail and "--- Email Body ---" in raw:
                 raw = raw.partition("--- Email Body ---")[2]
             excerpt = raw.strip()[: min(16_384 if mail else 2_048, budget)]
@@ -503,7 +623,7 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
     Labelled ([personal]/[sensitive]) mail is left out; secret shapes are removed.
     """
     from contextlib import closing
-    from .files import SECRET_SHAPES
+    from .files import KEY_SHAPES
     file = state_path(root, "rem.db")
     if not file.is_file() or file.is_symlink():
         return []
@@ -523,7 +643,7 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
         raw = saved.get("body")
         if not isinstance(raw, str) or PRIVATE.search(raw):
             continue
-        text = SECRET_SHAPES.sub("[secret-shaped text removed by co rem]",
+        text = KEY_SHAPES.sub("[secret-shaped text removed by co rem]",
                                  raw.partition("--- Email Body ---")[2] or raw).strip()[:min(chars, budget)]
         if not text:
             continue

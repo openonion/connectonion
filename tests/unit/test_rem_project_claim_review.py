@@ -543,14 +543,15 @@ def test_codex_audit_sends_private_sources_over_stdin(tmp_path, monkeypatch, spe
         return SimpleNamespace(returncode=0, stdout=json.dumps(event), stderr='')
 
     monkeypatch.setattr(runner.subprocess, 'run', completed)
-    config = {'runner': 'codex', 'model': 'gpt-6-luna', 'speed': speed, 'limits': {'timeout_seconds': 600}}
+    config = {'runner': 'codex', 'model': 'gpt-6-luna', 'speed': speed, 'effort': 'low',
+              'limits': {'timeout_seconds': 600}}
     result = runner.run_claim_task(tmp_path, 'PRIVATE SOURCE BODY', config, 'claim-audit')
     assert seen['input'] == 'PRIVATE SOURCE BODY'
     assert 'PRIVATE SOURCE BODY' not in ' '.join(seen['command'])
-    if speed == 'fast':
-        assert seen['command'][seen['command'].index('-c') + 1] == 'service_tier="priority"'
-    else:
-        assert '-c' not in seen['command']
+    settings = [seen['command'][n + 1] for n, word in enumerate(seen['command']) if word == '-c']
+    # The audit runs at the notebook's effort, never the owner's own ~/.codex setting.
+    assert 'model_reasoning_effort=low' in settings
+    assert ('service_tier="priority"' in settings) == (speed == 'fast')
     assert result['usage'] == {'input_tokens': 42, 'cached_input_tokens': 0, 'output_tokens': 4}
 
 
