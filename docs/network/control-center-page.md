@@ -1,4 +1,4 @@
-# Legacy Control Center snapshot
+# Control Center page
 
 > New projects also receive a full Web app in `.co/control-center/`. It can use
 > JavaScript, routes, external assets, and the typed Chat bridge after it has been
@@ -7,12 +7,12 @@
 Every hosted agent has a **Control Center** beside the conversation. The Host renders
 a current day-zero view—identity, quick actions, recent activity, searchable
 capabilities, and diagnostics—before you type anything.
-Custom pages keep the stable filename `.co/dashboard.html` for compatibility.
+A custom page is the single file `.co/control_center.html`.
 
 **Each client sees its own activity.** The starter's "Recent" list is rendered
 for the connecting client's verified address: it shows the runs that address
 started and nobody else's, admins included. The "Scheduled" section is operator
-configuration and is shown only to an admin. A custom `.co/dashboard.html` is
+configuration and is shown only to an admin. A custom `.co/control_center.html` is
 served as written to every client, so do not put anything in it that a visitor
 should not read.
 
@@ -26,17 +26,17 @@ Control Center should not hard-code runtime claims such as “Ready” or “Wor
 my-agent/
 ├── agent.py
 └── .co/
-    ├── dashboard.html   ← optional custom Control Center (compatible filename)
+    ├── control_center.html   ← optional custom Control Center
     └── skills/          ← and the skills it offers
 ```
 
 The browser can't read a file inside your agent's container, so the Host reads
-`dashboard.html` and sends it over the WebSocket the client is already authenticated
+`control_center.html` and sends it over the WebSocket the client is already authenticated
 on. There's no extra endpoint, no build step, and no sidecar JSON.
 
 ## It starts working on its own
 
-When there is no `dashboard.html`, ConnectOnion renders the bundled starter fresh.
+When there is no `control_center.html`, ConnectOnion renders the bundled starter fresh.
 It writes no file, so improvements and newly published skills appear after upgrades.
 
 ```python
@@ -47,11 +47,11 @@ host(lambda: Agent("maren", tools=[...]))
 # → The client receives Maren's current Control Center.
 ```
 
-If you create `.co/dashboard.html`, the file is yours and ConnectOnion never overwrites it.
+If you create `.co/control_center.html`, the file is yours and ConnectOnion never overwrites it.
 
 ### Where it lives, and how it's found
 
-`.co/dashboard.html`, beside `.co/skills/`. Both are **what the agent is**, as opposed
+`.co/control_center.html`, beside `.co/skills/`. Both are **what the agent is**, as opposed
 to the logs and evals it accumulates — and that distinction is what `.co/` is sorted
 by, not "config vs content".
 
@@ -60,33 +60,44 @@ found. So it doesn't matter which directory you start the agent from:
 
 ```
 my-agent/           ← found, because .co/ is here
-├── .co/dashboard.html
+├── .co/control_center.html
 └── src/
     └── run.py      ← `python run.py` from here still serves the same Control Center
 ```
 
 With no `.co/` above you, the custom-file lookup starts where the agent was started.
 
-**An older `dashboard.html` in the project root still works.** If one is there it is
-the file being served, and nothing moves, copies, or overwrites it — an agent whose
-Control Center vanished on upgrade would be a worse bug than an inconsistent path. Move it to
-`.co/` yourself when you feel like it. If both exist, `.co/` wins.
+**Older names still work.** Before 1.9.7rc15 the page was called `dashboard.html`, and
+before that it lived in the project root. The Host looks for, in order:
+
+1. `.co/control_center.html`
+2. `.co/dashboard.html`
+3. `dashboard.html` in the project root
+
+The first one that exists is served, and nothing moves, copies, or overwrites it — an
+agent whose Control Center vanished on upgrade would be a worse bug than an
+inconsistent name. When an old name is the one being served, `co host` prints one
+line at startup suggesting the rename:
+
+```
+Control Center: rename /srv/maren/.co/dashboard.html to .co/control_center.html
+```
 
 #### It travels
 
 `co deploy --to` protects server-owned `.co/` state such as identity, logs and evals,
 while syncing project-authored files such as `.co/host.yaml`, `.co/skills/` and
-`.co/dashboard.html`. A deploy that dropped a custom Control Center would silently
+`.co/control_center.html`. A deploy that dropped a custom Control Center would silently
 replace it with the starter, so the page travels as ordinary project content.
 
-#### The legacy snapshot isn't scaffolded
+#### The page isn't scaffolded
 
-`co create` and `co init` do not write `.co/dashboard.html`. At create time the project
-has no skills yet, and writing the snapshot would freeze an empty Control Center.
+`co create` and `co init` do not write `.co/control_center.html`. At create time the project
+has no skills yet, and writing the page would freeze an empty Control Center.
 Instead the Host renders it from the skills and activity present on that server.
 
 They do scaffold `.co/control-center/`, the source for the new full website. The two
-surfaces coexist during migration: the legacy snapshot remains the fallback until the
+surfaces coexist during migration: the page remains the fallback until the
 full website has an approved, immutable `CONTROL_CENTER_APP.app.url`.
 
 ### One starter for all your agents
@@ -133,11 +144,11 @@ which is the one thing that works without scripting.
 
 ## Editing it
 
-`.co/dashboard.html` is a plain HTML file — edit it with any editor. Or ask the agent:
-the built-in `dashboard` skill (name preserved for compatibility) teaches the contract.
+`.co/control_center.html` is a plain HTML file — edit it with any editor. Or ask the
+agent: the built-in `control-center` skill teaches the contract.
 
 ```
-/dashboard put this week's numbers in my Control Center
+/control-center put this week's numbers in my Control Center
 ```
 
 Write plain HTML and inline CSS. Two constraints, both enforced by the client's
@@ -177,20 +188,20 @@ Measured, not assumed: with the pane at 320px the frame reports `innerWidth` 319
 the query matches; dragged out to 900px it reports 899 and it does not. You do not
 need container queries — the isolation already is one.
 
-This matters because the pane is **resizable**: one dashboard has to hold up anywhere
+This matters because the pane is **resizable**: one page has to hold up anywhere
 from 320px to 900px, not at the two or three widths a client used to pick. Design for
 the narrow end first. A four-column table needs roughly 500px, so below that give it a
 stacked form — otherwise the column the table exists for ends up off the right edge
 behind a horizontal scrollbar, which nobody scrolls to find a number they came for.
 
-> **Why so locked down?** The client renders your `dashboard.html` in a sandboxed
+> **Why so locked down?** The client renders your `control_center.html` in a sandboxed
 > iframe with a strict Content-Security-Policy, because from its side the file is
 > untrusted, agent-authored HTML. Everything above follows from that: nothing loads
 > from the network, nothing scripts, and nothing navigates away. A Control Center is a
 > glanceable, self-contained page whose one action is running a skill.
 >
 > Supporting external links later is a deliberate change to that contract, not a
-> setting — it means deciding what a dashboard may navigate to and how (in-sandbox,
+> setting — it means deciding what a Control Center may navigate to and how (in-sandbox,
 > where the destination still can't be trusted, or handed to a real browser tab).
 > Until then, treat the page as a closed surface.
 
@@ -214,7 +225,7 @@ Arguments are optional:
 **Only project skills work as buttons** — the ones in `.co/skills/` or
 `.claude/skills/`. Your personal skills (`~/.co/skills/`) and ConnectOnion's builtin
 skills aren't published to clients, so a button naming one renders but silently
-refuses to run. The starter dashboard follows this rule automatically; if you hand-write
+refuses to run. The starter page follows this rule automatically; if you hand-write
 a button, check the skill's location first.
 
 The client validates every button name against the skills your agent published, so a
@@ -227,7 +238,7 @@ The Host sends the file at two moments:
 | When | Why |
 |------|-----|
 | On connect, right after `CONNECTED` | Control Center paints before the first message |
-| After each run, right after `OUTPUT` | A run that rewrote the dashboard shows the new version |
+| After each run, right after `OUTPUT` | A run that rewrote the page shows the new version |
 
 The post-run send is skipped when the file hasn't changed since that connection last
 saw it, so an unchanged Control Center costs nothing per turn. Nothing is polled and nothing
@@ -242,29 +253,33 @@ One frame, client-opaque to the relay:
 
 ```json
 {
-  "type": "DASHBOARD_SNAPSHOT",
+  "type": "CONTROL_CENTER_SNAPSHOT",
   "html": "<!DOCTYPE html>…",
   "session_id": "550e8400-…"
 }
 ```
 
+For one preview cycle after the rename the Host also sends the same frame again as
+`DASHBOARD_SNAPSHOT`, its name before 1.9.7rc15, so O Chat builds from before the rename
+keep rendering. A client that reads both should treat them as the same page.
+
 See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 
 ## Reference
 
-`connectonion/network/host/ws_router/dashboard.py`:
+`connectonion/network/host/ws_router/control_center.py`:
 
 | Function | Purpose |
 |----------|---------|
-| `read_dashboard_snapshot(session_id=None, *, viewer)` | Build the frame for `viewer` (`viewer_for(address, is_admin)`), or `None` if the file is missing, too large, unreadable, or not UTF-8 |
-| `send_dashboard(send_msg, session_id, conn, force=False)` | Send it, rendered for `conn`'s verified address, unless this connection already has the current file; reads off the event loop |
-| `ensure_dashboard(agent_metadata, project_dir=None)` | Anchor the project and metadata used to render the starter; writes no file |
+| `read_control_center_snapshot(session_id=None, *, viewer)` | Build the frame for `viewer` (`viewer_for(address, is_admin)`), or `None` if the file is missing, too large, unreadable, or not UTF-8 |
+| `send_control_center_page(send_msg, session_id, conn, force=False)` | Send it, rendered for `conn`'s verified address, unless this connection already has the current file; reads off the event loop |
+| `ensure_control_center(agent_metadata, project_dir=None)` | Anchor the project and metadata used to render the starter; writes no file |
 | `project_root(start=None)` | Walk up for `.co/`; the project, not the cwd |
-| `dashboard_path()` | `.co/dashboard.html`, or a legacy root one if that is what exists |
+| `control_center_path()` | `.co/control_center.html`, or an older name if that is what exists |
 | `render_starter(agent_metadata, viewer=EVERYONE)` | The day-zero HTML, from `starter.html`; `EVERYONE` is for in-process rendering only |
 | `published_skills(skills)` | The project-tree skills a starter may offer as buttons |
 | `group_skills(skills)` | `(families, loose)` split by name prefix, for long lists |
-| `MAX_DASHBOARD_BYTES` | 128 MiB HTML cap; 256 MiB transport envelope |
+| `MAX_CONTROL_CENTER_BYTES` | 128 MiB HTML cap; 256 MiB transport envelope |
 
 The path is resolved against the project directory captured at host startup, not the
 live working directory — so a tool that changes directories mid-run can't redirect

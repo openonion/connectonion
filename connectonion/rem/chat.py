@@ -22,12 +22,16 @@ conversation rather than from a week of several interleaved ones.
 import hashlib
 import json
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError
 from .source import MAX_MESSAGE_CHARS, TRUNCATION_NOTE, Batch, timestamp
 
-CHAT_KINDS = ("whatsapp",)
+CHAT_KINDS = ("whatsapp", "wechat")
+# WeChat is read straight from WeChat for Mac's own databases (read-only), with no intermediate files;
+# "*" stands for every one-to-one chat: people, never groups (@chatroom) or official accounts (gh_).
+EVERY_PERSON = "*"
 # Records that are not someone saying something: an emoji on a message, a
 # group changing its subject. They stay in the inbox; they are not material.
 NOT_SAID = {"reaction", "revoke", "protocol", "group", "senderkeydistribution"}
@@ -76,14 +80,20 @@ def collect_chat(subscription: dict, progress: dict, max_items: int, max_chars: 
     updated = dict(progress)
     if not chats:
         return Batch([], updated)
-    home = Path(subscription["root"])
+    wanted = (lambda chat: chat in chats or (EVERY_PERSON in chats and _one_to_one(chat)))
     since = timestamp(subscription["since"])
-    agent = {row.get("id") for row in _records(home / "sent.jsonl") if row.get("id")}
     pending = defaultdict(list)
-    for role, name in (("other", "received.jsonl"), ("user", "own.jsonl")):
-        for row in _records(home / name):
+    if kind == "wechat":
+        streams = _wechat_streams()  # read now, in memory; nothing is written to disk
+    else:
+        home = Path(subscription["root"])
+        agent = {row.get("id") for row in _records(home / "sent.jsonl") if row.get("id")}
+        streams = (("other", _records(home / "received.jsonl")),
+                   ("user", [row for row in _records(home / "own.jsonl") if row.get("id") not in agent]))
+    for role, rows in streams:
+        for row in rows:
             chat = row["chat"]
-            if chat not in chats or (role == "user" and row["id"] in agent):
+            if not wanted(chat):
                 continue
             if (row.get("kind") or "text") in NOT_SAID:
                 continue
@@ -123,3 +133,141 @@ def collect_chat(subscription: dict, progress: dict, max_items: int, max_chars: 
             else:
                 updated[chat] = {"cursor": when.isoformat(), "seen": [message_id]}
     return Batch(items, updated)
+
+
+def _one_to_one(chat: str) -> bool:
+    """A chat with one person: not a group, not an official account, not WeChat's own service chats."""
+    return not (chat.endswith("@chatroom") or chat.startswith("gh_") or chat in ("filehelper", "weixin", "newsapp", "fmessage"))
+
+
+def _wechat_streams():
+    """WeChat's messages now, straight from WeChat for Mac's databases: ("other", rows) and ("user", rows).
+
+    Read-only, in memory; nothing is written to ~/.co/inbox. The owner's own messages are the "user" side.
+    """
+    from ..useful_tools import wechat as engine
+    db_storage = engine.db_storage_in_use()
+    if db_storage is None:
+        raise RemError("WeChat for Mac is not readable: run `co wechat` to grant access and capture keys")
+    if not engine.KEY_MAP.is_file():
+        raise RemError("No WeChat keys saved: run `co wechat key capture`")
+    owner = engine.owner_username(db_storage)
+    known = engine.names(engine.open_readonly(engine.decrypt_db(db_storage / "contact" / "contact.db",
+                                                                engine.key_for(db_storage / "contact" / "contact.db"))))
+    other, mine = [], []
+    for row in engine.every_message(db_storage, known):
+        (mine if row["sender"] == owner else other).append(row)
+    return (("other", other), ("user", mine))
+
+
+# Characters that render as nothing or as a blank: Hangul fillers and zero-width marks people put in WeChat names.
+_FILLERS = frozenset("\u3164\u115f\u1160\uffa0\u200b\u200c\u200d\u2060\ufeff")
+
+
+def usable_name(text: str) -> bool:
+    """A name worth titling a page: at least one letter, digit or CJK character, not only punctuation, blanks or
+    emoticons. WeChat nicknames such as ".", "...", "^ ^", "。" or a filler blank are not (#3368)."""
+    import unicodedata
+    return any(unicodedata.category(ch)[0] in "LN" and ch not in _FILLERS for ch in text or "")
+
+
+def preview_line(text: str, limit: int = 80) -> str:
+    """One line of a message for a page header: whitespace collapsed, markdown brackets dropped (so a pasted "[1]" or
+    "[personal]" is never read as a citation or a privacy mark), cut at `limit` characters."""
+    line = " ".join(str(text).replace("[", "").replace("]", "").split())
+    return line if len(line) <= limit else line[:limit - 1].rstrip() + "…"
+
+
+def wechat_title(username: str, *names: str) -> str:
+    """The first usable of the owner's remark and the contact's nickname; else a plain placeholder with a short
+    hint, never the raw id. "" when the contact has no name at all (left out, as before)."""
+    # A "name" that is only the raw id is no name: such a contact is left out, as before.
+    tried = [name for name in (" ".join((n or "").split()) for n in names) if name != username]
+    for name in tried:
+        if usable_name(name):
+            return name
+    if not any(tried):
+        return ""
+    return f"微信好友（无名字 · …{username[-4:]}）"
+
+
+def wechat_people(min_messages: int = 1) -> list[dict]:
+    """Candidate people from WeChat for Mac: every friend in the address book, plus anyone with a one-to-one chat.
+
+    Shape matches the map's mail rows ({address, name, mails, sent, received}), with the bare WeChat id as
+    the address so investigation's handle match finds the chat (its correspondent is that id). Read-only.
+    `friend` marks an address-book friend (worth a page with no messages: the owner added them, #3347) and
+    `remark` one the owner named. Counts come from the chats this Mac holds, else 0: WeChat for Mac keeps only
+    what was synced to it, so most friends have none here. Groups, official and verified accounts (brands,
+    companies, services), service chats and people only met in groups are left out. [] when WeChat isn't readable.
+    """
+    from ..useful_tools import wechat as engine
+    db_storage = engine.db_storage_in_use()
+    if db_storage is None or not engine.KEY_MAP.is_file():
+        return []
+    try:
+        contacts = engine.open_readonly(engine.decrypt_db(
+            db_storage / "contact" / "contact.db", engine.key_for(db_storage / "contact" / "contact.db")))
+        known = engine.names(contacts)
+        verified = engine.verified_accounts(contacts)
+        book = engine.friends(contacts)
+    except Exception:
+        return []
+    owner = engine.owner_username(db_storage)
+    # When the owner last talked with each friend, and how much lately: People's columns read these (#3346).
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+    counts = {}
+    for row in engine.every_message(db_storage, known):
+        chat = row["chat"]
+        # A verified account (verify_flag set: a brand, a company or a service) is not a person (#3339).
+        if not _one_to_one(chat) or chat == owner or chat in verified:
+            continue
+        c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0,
+                                     "last": "", "last_mine": None, "n90": 0, "first": "", "preview": ""})
+        c["mails"] += 1
+        c["sent" if row["sender"] == owner else "received"] += 1
+        at = row.get("at") or ""
+        if at >= c["last"]:
+            c["last"], c["last_mine"] = at, row["sender"] == owner
+            # What was last said, for the page header before any investigation (#3372); the reader curtains it.
+            c["preview"] = preview_line(row.get("text") or "")
+        if at and (not c["first"] or at < c["first"]):
+            c["first"] = at
+        c["n90"] += at >= cutoff
+    friend_ids = {f["username"] for f in book}
+    remarked = {f["username"] for f in book if f["remark"].strip()}
+    by_user = {f["username"]: f for f in book}
+    people = []
+    for chat, c in counts.items():
+        entry = by_user.get(chat)
+        name = wechat_title(chat, entry["remark"], entry["nick_name"]) if entry else wechat_title(chat, c["name"] or "")
+        # A real name, not the raw id and not a group/service; the id is the handle, the name titles the page.
+        if c["mails"] < min_messages or not name or name == chat:
+            continue
+        people.append({"address": chat, "name": name, "mails": c["mails"], "sent": c["sent"],
+                       "received": c["received"], "kind": "wechat", "friend": chat in friend_ids,
+                       "remark": chat in remarked, "last": c["last"], "last_mine": c["last_mine"], "n90": c["n90"],
+                       "first": c["first"], "preview": c["preview"]})
+    # The rest of the address book: a friend with no chat on this Mac is still someone the owner knows (#3347).
+    for f in book:
+        chat, name = f["username"], wechat_title(f["username"], f["remark"], f["nick_name"])
+        if chat in counts or not _one_to_one(chat) or chat == owner or chat in verified or not name or name == chat:
+            continue
+        people.append({"address": chat, "name": name, "mails": 0, "sent": 0, "received": 0, "kind": "wechat",
+                       "friend": True, "remark": chat in remarked})
+    return people
+
+
+def seed_chat_people(root, subscriptions: dict) -> list[str]:
+    """The WeChat people pages a map of that source creates; the generic onboarding step does the work (#3331).
+
+    Kept for its callers: additive and local, no model and no network. A contact already on a page by handle
+    is left alone, a full-name match gains the WeChat id, the rest get mapped pages.
+    """
+    from . import onboard
+    created = []
+    for name, sub in (subscriptions or {}).items():
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
+            people = onboard.plan(root, onboard.rows(root, name, sub, 0), ("people",), write=True)["people"]
+            created += [row["record"] for row in people["create"]]
+    return created

@@ -73,12 +73,52 @@ A 4px grid: every gap and padding is a multiple of 4. The named steps are `--u1`
 | `--green` | #22d27a | **the one accent.** Reserved for the single primary action of a screen. A page of records has none, so it has no green |
 | `--red` | #c02a17 | overdue, and nothing else |
 
+The **3D knowledge graph** is the one place hue names a kind (#3309): there every mark is a sphere, so colour does
+the work shape does on the 2D map. Tag pages take the accent (`--green`, ink in light mode); the other kinds are
+four desaturated colours at one lightness (OKLCH L .60 in light, .74 in dark): `--kind-people`, `--kind-orgs`,
+`--kind-projects` and `--kind-notes` (sessions share the notes' grey). They are never a call to action, a one-line
+legend in the map's header and a dot before each row of its side list name them, and they are read only by the
+3D graph (`GRAPH_3D_TONE` and the `.gx-dot` rules); nothing else on any page may use them.
+
 How much of something there was is said in **steps of ink, never in hue**: `--heat-0` (nothing, the well),
 `--heat-1`, `--heat-2`, `--heat-3`, `--heat-4` (all of the ink). They are mixed from ink and paper, so the dark
 theme follows without a second set. A strip that uses them always says in words what is counted and what a
 step means.
 
 Dark is the same names under the two theme selectors; a page never writes a dark value of its own.
+
+### States and overlays (#3359 T1)
+
+A state is **ink or paper at an alpha**, written once in the sheet; no rule mixes its own colour (a test fails on
+any `color-mix()` outside the sheet). Dark follows because `--ink` and `--paper` flip.
+
+| Token | Value | Use |
+|---|---|---|
+| `--fill-hover` | ink 4 % | a control under the pointer |
+| `--fill-press` | ink 7 % | a control being pressed |
+| `--fill-chip` | well 50 % on paper | a tag chip, quieter than an inset |
+| `--tint-red` | red 8 % | behind a slot REM needs the owner to answer |
+| `--underline` | the text colour at 55 % | a link's underline |
+| `--overlay` | ink 40 % | behind the full-screen writer |
+| `--veil` | paper 70 % | behind a palette or a side dialog |
+
+## Motion (#3359 T1)
+
+Springs, not timers. The craft is learned from Rare UI (rareui.com) and re-derived here; no code is taken from it,
+since its repository has no licence. Each spring is a damped spring's step response sampled once into CSS
+`linear()`:
+
+| Token | Spring | Use |
+|---|---|---|
+| `--spring` | stiffness 500, damping 30 (about 6 % overshoot) | presses, toggles, a menu's pop |
+| `--spring-soft` | stiffness 150, damping 28 (no overshoot) | things that rise into place: widgets, the night card, sheets |
+
+The `--t-` durations carry the time (`--t-press` 150 ms, `--t-state` 250 ms, `--t-draw` 500 ms). With
+"reduce motion" on, or 设置 ▸ 减少动态效果, every `--t-` is 0, so nothing animates; a browser test checks it.
+
+**Next, as components migrate** (T2–T6), the sheet gains only what a rule uses: an expo-out arrival curve for
+toasts, a sheet curve, the radius steps 6 / 10 / 14 / 20 / full, and the hairline/lift edge tiers. The sheet's lint
+refuses a token nothing reads, so a token arrives with its first user.
 
 ## Tables and rows
 

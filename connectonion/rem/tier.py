@@ -116,10 +116,14 @@ def attempt(config: dict, tier: str) -> list[str]:
     """Investigate the fixture page as this tier, in a throwaway notebook; the grade's failures."""
     from .config import prepare
     from .investigate import investigate
+    # The fixture checks the requested model, not the notebook's other levels.
+    config = {**config, "models": dict.fromkeys(config.get("models", {}), config["model"])}
     with tempfile.TemporaryDirectory(prefix="co-rem-tier-") as temporary:
         root = Path(temporary) / "rem"
         prepare(root)
         atomic_write(safe_path(root, "config.yaml"), yaml.safe_dump(config, sort_keys=False))
+        write_json(state_path(root, "config-explicit.json"), ["model", *(
+            f"models.{level}" for level in config["models"])])
         write_json(state_path(root, RECORD), {"tier": tier, "runner": config["runner"], "model": config["model"]})
         Notebook(root).stub_person(PAGE, SUBJECT, [ADDRESS], email=ADDRESS)
         from .runner import AUDIT

@@ -67,6 +67,17 @@ co browser --engine wtf close
 co browser go_to example.com  # a fresh default session is free again
 ```
 
+`co browser close` ends every session's tabs. When the paid browser is not
+running — its session ended, or it could not start — a command that asks for
+system Chrome switches the daemon over without closing anything:
+
+```bash
+co browser --engine system -t mytab go_to example.com
+```
+
+Other sessions keep their tabs and get them back on system Chrome with their
+next command. While a paid browser is running, the pin still holds.
+
 System Chrome and Onion Browser use separate persistent profiles. Cookies and
 fingerprint state are not silently copied between them. `co browser status`
 shows requested/resolved engine, typed reason, and exact artifact when paid;

@@ -400,7 +400,10 @@ co discord consume -- claude -p
 
 The same verbs, over an outbound Gateway WebSocket: no public endpoint, no
 OpenOnion credential. Your own bot's token lives in `~/.co/keys.env` as
-`DISCORD_BOT_TOKEN`, and the Message Content intent must be on. See
+`DISCORD_BOT_TOKEN`, and the Message Content intent must be on.
+Experimental: `co discord link --yes` makes the same verbs act as your own
+account (DMs and group DMs only). That is against Discord's terms and can get
+the account limited or terminated, so try a throwaway account first. See
 [discord.md](discord.md).
 
 #### `co slack` - A Slack App as a Directory of Files (Experimental)

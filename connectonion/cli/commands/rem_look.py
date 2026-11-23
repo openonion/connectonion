@@ -146,7 +146,7 @@ def _page_rest(text: str) -> str:
 
 # ------------------------------------------------- the shapes results share
 #
-# co rem's results are small dashboards: status, doctor, sync and init end on
+# co rem's results are small status cards: status, doctor, sync and init end on
 # one. They share one layout so the eye learns it once (1.9.0a9): a title line,
 # section labels in the left margin, every value starting at the same column,
 # one item per line, and a fix on the line under the thing it fixes. A few
@@ -238,7 +238,7 @@ def hang(markup: str, width: int) -> str:
 
 
 # What a glance at the terminal shows of the notebook's words (rc35 hunt, #2840). `co rem status` printed a
-# [sensitive] passage and full calendar links (meeting ids, private-feed tokens) in plain text: a dashboard is
+# [sensitive] passage and full calendar links (meeting ids, private-feed tokens) in plain text: a status card is
 # read with someone beside you, pasted into a chat, kept in a log. Like the reader's default level, a glance keeps
 # [personal] words (without the label) and hides each [sensitive] passage -- from the clause boundary before it to
 # its label and citations -- and a link shows only its host. `co rem show` is a deliberate read of one page

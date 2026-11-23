@@ -73,6 +73,35 @@ def test_a_mailbox_stopped_for_the_turn_is_said_once_without_a_command(today):
     assert "co auth" not in text
 
 
+@pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
+def test_mail_confirmed_gone_never_promises_a_retry(today, size):
+    # #3392: six pages said 「下一轮再试」 for a week; their mail was gone and nothing would try again.
+    page, _, _ = today
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    gone = {"record": TOMAS, "provider": "outlook", "name": "Outlook", "reason": "not_found",
+            "missing_id": "mail-1", "gone": True, "retry_at": "2026-09-25T06:00:00+00:00"}
+    page.evaluate(STUCK, stall(reason="not_found", times=0, gone=1, parked=[gone]), isolated_context=False)
+    page.evaluate("() => { setInterfaceLanguage('zh'); scrollTo(0, 0); }", isolated_context=False)
+    line = page.locator(".night-stall > summary")
+    line.click()
+    text = page.locator(".night-stall").inner_text()
+    assert "再试" not in text and "会再试" not in text
+    assert line.inner_text().startswith("1 页引用的邮件已不在 Outlook，不再等")
+    assert "原邮件已不在 Outlook · 不再等" in page.locator(".night-stall li").first.inner_text()
+    assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_a_wait_with_some_gone_counts_only_what_is_retried(today):
+    page, _, _ = today
+    gone = {"record": TOMAS, "provider": "outlook", "name": "Outlook", "reason": "not_found",
+            "missing_id": "mail-1", "gone": True, "retry_at": "2026-09-25T06:00:00+00:00"}
+    waits = {"record": "people/ines-halvorsen.md", "provider": "outlook", "name": "Outlook", "reason": "timeout",
+             "retry_at": "2026-10-02T06:00:00+00:00"}
+    page.evaluate(STUCK, stall(times=0, pages=2, gone=1, parked=[waits, gone]), isolated_context=False)
+    page.evaluate("() => { setInterfaceLanguage('zh'); scrollTo(0, 0); }", isolated_context=False)
+    assert page.locator(".night-stall > summary").inner_text().startswith("1 项在等 Outlook，会再试")
+
+
 def test_no_stall_no_line(today):
     page, _, _ = today
     assert page.locator(".night-stall").count() == 0

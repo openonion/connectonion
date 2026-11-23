@@ -52,7 +52,7 @@ def test_today_leads_with_owner_debt_and_uses_only_its_overdue_days(today, width
     assert '2' in card.locator('.qage.late').inner_text()
     assert '15' not in card.locator('.qhead').inner_text()
     assert page.locator('.deal .dd').inner_text() == '2 天'
-    assert page.locator('.night-card .count').inner_text() == '1'
+    assert page.locator('#main .count-line .count').inner_text() == '1'
     assert card.locator('.handoff-line button').all_inner_texts()[:5] == [
         '标为完成', '暂不处理', '忽略', '交给 Codex', '交给 Claude']
     # Their late task remains available in Waiting on others, with its true direction.

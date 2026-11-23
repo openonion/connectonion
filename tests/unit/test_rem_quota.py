@@ -78,7 +78,7 @@ def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch,
     assert quota.blocks(bits["quota"], 99, config["limits"]) == ""
 
     value = {"root": str(root), "state": "Stopped", "configured": True, **bits}
-    text = Text.from_markup(rem_status.dashboard(root, value, lambda args: "co rem " + " ".join(args))).plain
+    text = Text.from_markup(rem_status.card(root, value, lambda args: "co rem " + " ".join(args))).plain
     assert "RuntimeError" not in text
     assert "pages still run" in text
     assert "within the daily call cap" in text
@@ -230,7 +230,7 @@ def test_status_says_what_a_point_is(tmp_path, monkeypatch, speed, tokens):
     value = {"investigation_quota": {"spent_points": 0.6, "budget_points": 10}, "codex_week": "29% used on pro"}
     from rich.text import Text
     # What a point is goes with --verbose: the budget is two lines (UI audit, 2026-10-15).
-    text = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments),
+    text = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments),
                                                  verbose=True)).plain
     assert "0.6 of 10 investigation points" in text
     assert "1% of your Codex week" in text and f"{tokens} tokens a point" in text

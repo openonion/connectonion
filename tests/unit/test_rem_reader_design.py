@@ -29,12 +29,26 @@ def test_both_themes_define_every_colour_token():
     light = re.search(r":root \{(.*?)\n  \}", css, re.S).group(1)
     # Every token whose light value is a colour; sizes, grid and motion do not change with the theme.
     colours = set(re.findall(r"(--[\w-]+): (?:#[\da-f]{6}|rgba\([^)]*\));", light))
-    assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim"}
+    # #3309: the 3D knowledge graph's four kinds, the one place hue names a kind (tag pages take the accent).
+    kinds = {f"--kind-{kind}" for kind in ("people", "orgs", "projects", "notes")}
+    # #3362 (art director): the full-screen writer's backdrop is black at an alpha in both themes, never ink, which
+    # turns near-white at night; so it is a colour defined in light and dark like the rest.
+    assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim",
+                       "--overlay"} | kinds
     # #3144: the accent is ink, so it inverts at night like every other colour (it was one green in both themes, D-123).
     # The shadows are drawn in colour too (a dark hairline on paper, a light one at night), so they change with it.
     shadows = {"--e1", "--e2", "--e3", "--e-fuse", "--e-green"}
     assert blocks["dark-auto"] == colours | shadows
     assert blocks["dark-forced"] == blocks["dark-auto"]
+
+
+def test_only_the_3d_graph_paints_with_the_kind_colours():
+    """The reader says kinds by shape and amounts by steps of ink; hue for a kind is the 3D graph's alone (#3309):
+    its tone table, its list and legend dots, and nothing else."""
+    css = TEMPLATE.read_text(encoding="utf-8")
+    outside_sheet = css.split("/* /fuse:tokens */", 1)[1]
+    uses = [line.strip() for line in outside_sheet.splitlines() if "--kind-" in line]
+    assert uses and all(line.startswith((".gx-dot", "const GRAPH_3D_TONE")) for line in uses), uses
 
 
 def test_the_template_names_no_remote_host_and_loads_no_font():
