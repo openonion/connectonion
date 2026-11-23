@@ -3802,6 +3802,7 @@
   .qhead-acts .ibtn:hover { color: var(--ink); }
   .qcard:hover .qhead-acts, .qcard:focus-within .qhead-acts { opacity: 1; }
   .qhead .qage { color: var(--grey); font: var(--w-bold) var(--s-ui)/1 var(--font); white-space: nowrap; }
+  .qhead .qage.soon { padding: 3px 6px; border-radius: var(--radius); color: var(--ink); background: var(--paper); }
   .qhead .qage.late { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--r-pill); color: var(--red); box-shadow: var(--e-fuse); }
   .qhead .qage.late::before { content: ""; width: 7px; height: 7px; border-radius: var(--round); background: var(--red); animation: n3-ember var(--t-ember) var(--ease-out) infinite; }
   .qitems { display: grid; gap: 2px; margin: 16px 0 18px; padding: 0; }
@@ -5400,7 +5401,7 @@ const UI = {
     "today": "今天",
     "1 day": "1 天",
     "{n} days": "{n} 天",
-    "waiting {age}": "已等 {age}",
+    "waiting {age}": "已等 {age}", "passed": "已过", "started": "已开始",
     " ago": "前",
     "gone quiet": "久未推进",
     " and {n} is waiting on someone else": "，另有 {n} 件等对方处理",
@@ -9596,7 +9597,8 @@ function cardHead(group, late, skippable, tick = group.entries.length > 1, pos =
     el("a", { class: "today-who", href: href(r), text: threadWho(r) }),
     org ? el(page ? "a" : "span", { class: "meta org-chip", title: role ? plainLine(role) : "", ...(page ? { href: href(page) } : {}) }, [el("span", { class: "org-mark", "aria-hidden": "true", text: org.trim()[0]?.toUpperCase() || "" }), org]) : null,
     el("span", { class: "qhead-acts" }, [done, skip]),
-    el("span", { class: "qage" + (late ? " late" : ""), text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t, r) })]);
+    el("span", { class: "qage" + (late ? " late" : momentClass(entries[0].t, r)), ...momentData(late ? null : entries[0].t, r),
+      text: late ? t(late === 1 ? "1 day overdue" : "{n} days overdue", { n: late }) : threadAge(entries[0].t, r) })]);
 }
 // On a 中文 reader the card speaks his language where REM already wrote it: the draft's gist.
 function ownerLine(draft) {
@@ -14920,6 +14922,7 @@ function orgWebsite(r, people) {
     const url = /^https?:\/\//i.test(raw) ? raw : /^[\w.-]+\.[a-z]{2,}(?:\/[^\s]*)?$/i.test(raw) ? "https://" + raw : "";
     return url && /^https?:\/\/[^\s/]+(?:\/[^\s]*)?$/i.test(url) ? { url, derived: false } : null;
   }
+  const shared = /(?:^|\.)(?:student|students|alumni|stu|mail|my)\.|\.(?:edu|ac)(?:\.[a-z]{2})?$/i;
   const free = /^(?:(?:gmail|googlemail|outlook|hotmail|live|msn|yahoo|ymail|icloud|me|mac|aol|proton|protonmail|pm|gmx|mail|fastmail|hey|qq|163|126|139|yeah|foxmail|sina|sohu|naver|daum|hanmail|rediffmail|zoho|yandex|tuta|tutanota)\.[a-z.]+)$/i;
   // The mailbox and home-internet providers excluded by scan.personal_mailbox are not employers.
   const home = new Set(["bigpond.com", "bigpond.net.au", "optusnet.com.au", "xtra.co.nz", "tpg.com.au", "iinet.net.au", "internode.on.net", "ozemail.com.au", "dodo.com.au", "comcast.net", "verizon.net", "att.net", "btinternet.com", "sky.com", "virginmedia.com"]);
@@ -14927,7 +14930,9 @@ function orgWebsite(r, people) {
     const domains = unlabelled(orgFact(p, "Email", true)).matchAll(/@[a-z0-9.-]+\.[a-z]{2,}/gi);
     for (const match of domains) {
       const domain = match[0].slice(1).toLowerCase();
-      if (!free.test(domain) && !home.has(domain)) return { url: "https://" + domain, derived: true };
+      // A university's mail is shared by every student and staff member: it is the university's, never a team's or
+      // a course's website (13:25 hunt: a student team's 网站 read as the university's student mail domain).
+      if (!free.test(domain) && !home.has(domain) && !shared.test(domain)) return { url: "https://" + domain, derived: true };
     }
   }
   return null;
@@ -16403,18 +16408,53 @@ function statedDays(text, today) {
 // When a thread's thing happens, if that is today or tomorrow: the person's next calendar event on those days, else a
 // due date or an ISO date in the thread's words, with its time when the words give one. Never guessed from 今天/today
 // in old words: those meant the day they were written.
-function upcomingWhen(thread, r) {
+function upcomingWhen(thread, r) { return upcomingMoment(thread, r).label; }
+// The clock a card is read against: the render's moment, moved on by the real clock while the page stays open, so
+// 「今天 14:00」 turns into 「今天 14:00 · 已过」 after two (13:25 hunt: a card still said 14:00 at 14:40).
+// Within the hour before it, a card's time gets the quiet "today" mark; once it has gone by, it greys (13:25 hunt).
+function momentClass(thread, r) { const s = upcomingMoment(thread, r).state; return s === "soon" || s === "started" ? " soon" : s === "passed" ? " passed" : ""; }
+function momentBucket(at, now) { return at <= now ? "past" : at - now <= 3600e3 ? "soon" : "later"; }
+function momentData(thread, r) {
+  const at = thread ? upcomingMoment(thread, r).at : null;
+  return at == null ? {} : { "data-at": String(at), "data-bucket": momentBucket(at, readNow()) };
+}
+// The page is read for hours: once a minute, a card whose time crossed into the hour before it, or past it, is drawn again.
+setInterval(() => {
+  const now = readNow();
+  if ([...document.querySelectorAll("#main .qage[data-at]")].some(node => momentBucket(Number(node.dataset.at), now) !== node.dataset.bucket)) redraw();
+}, 60e3);
+function readNow() { return Math.max(Date.parse(REM.as_of || "") || 0, clockNow()); }
+// When a thread's thing happens, if that is today or tomorrow: the person's next calendar event on those days, else a
+// due date or a date in the thread's words, with its time when the words give one. Never guessed from 今天/today in old
+// words: those meant the day they were written. {label, at, state}: state is "later", "soon" (within the hour before),
+// "started" (an event under way) or "passed" (a time in the words that has gone by). A day without a time never turns.
+function upcomingMoment(thread, r) {
   const today = agToday(), tomorrow = agDay(today, 1), soon = day => day === today || day === tomorrow;
   const word = day => agT(day === today ? "Today" : "Tomorrow");
-  const now = Date.parse(REM.as_of || "") || clockNow();
-  const event = r && !REM.shared ? timedEvents(now).find(e => soon(e.first) && Date.parse(e.start) > now && e.people.some(p => p.path === r.path)) : null;
-  if (event) return word(event.first) + " " + agTime(event.start);
+  const now = readNow(), HOUR = 3600e3;
+  const turn = at => at == null ? "later" : at <= now ? "passed" : at - now <= HOUR ? "soon" : "later";
+  const marked = (label, s) => label + (s === "passed" ? " · " + t("passed") : s === "started" ? " · " + t("started") : "");
+  // An event still running keeps its card's time ("started"); one that ended falls back to the thread's own words.
+  const event = r && !REM.shared ? timedEvents(now).find(e => soon(e.first) && e.people.some(p => p.path === r.path)) : null;
+  if (event) {
+    const at = Date.parse(event.start), s = at <= now ? "started" : turn(at);
+    return { label: marked(word(event.first) + " " + agTime(event.start), s), at, state: s };
+  }
   const text = thread.text || "", day = soon(thread.due) ? thread.due : statedDays(text, today).find(soon);
-  if (!day) return "";
+  if (!day) return { label: "", at: null, state: "later" };
   const clock = text.match(/\b([01]?\d|2[0-3])[:：]([0-5]\d)\b/), meridiem = text.match(/\b(1[0-2]|[1-9])\s?([ap])\.?m\b/i);
   const time = clock ? clock[1].padStart(2, "0") + ":" + clock[2]
     : meridiem ? String((Number(meridiem[1]) % 12) + (meridiem[2].toLowerCase() === "p" ? 12 : 0)).padStart(2, "0") + ":00" : "";
-  return word(day) + (time ? " " + time : "");
+  const at = time ? zonedMoment(day, time) : null, s = turn(at);
+  return { label: marked(word(day) + (time ? " " + time : ""), s), at, state: s };
+}
+// A day and HH:MM on the notebook's clock as epoch ms: read the UTC guess back through agTime and remove the offset.
+function zonedMoment(day, time) {
+  const guess = Date.parse(day + "T" + time + ":00Z");
+  if (isNaN(guess)) return null;
+  const iso = new Date(guess).toISOString(), minutes = hm => hm.split(":").reduce((h, m) => Number(h) * 60 + Number(m));
+  const shownDay = Date.parse(calendarDay(iso) + "T00:00:00Z"), wantDay = Date.parse(day + "T00:00:00Z");
+  return guess - (shownDay - wantDay) - (minutes(agTime(iso)) - minutes(time)) * 60e3;
 }
 function threadPreview(text) {
   const summary = withoutDateClutter(plainLine(text));
@@ -16529,8 +16569,14 @@ const RELATION_HISTORY = /^[-*\s]*(?:Changed|变化|变更)[:：]/i;
 function relationReason(basis, ...pages) {
   if (!basis || RELATION_HISTORY.test(basis)) return "";
   const reason = closeStripped(basis).replace(/^[-*\s]*(?:Now|Pattern|At stake|现在|规律|关键所在|利害|模式)[:：]\s*/i, "").trim();
-  const names = pages.filter(Boolean).flatMap(page => [page.title, pageName(page)]).filter(Boolean);
-  const left = names.reduce((text, name) => text.split(name).join(""), reason).replace(/^[^:：\n]{1,40}[:：]/, "");
+  // Longest name first: taking "9900" out before 「课程 9900」 left 「课程」 behind, so 「上级组织: 课程 9900」 read as a
+  // reason (13:25 hunt). A kind word a coded name carries (课程, 团队, course, team) left on its own says nothing either.
+  const names = [...new Set(pages.filter(Boolean).flatMap(page => [page.title, pageName(page)]).filter(Boolean))].sort((a, b) => b.length - a.length);
+  // The basis still carries its links and citations ("Parent: [[orgs/1234-….md]] [2]", the org page's own line):
+  // a link's path or a citation number is not a reason either, so they go before the names do.
+  const bare = reason.replace(/\[\[[^\]]*\]\]/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\[W?\d{1,3}\]/g, "");
+  const left = names.reduce((text, name) => text.split(name).join(""), bare).replace(/^[^:：\n]{1,40}[:：]/, "")
+    .replace(/(?:课程|团队|小组|course|team|unit|group)/gi, "");
   return /[\p{L}\p{N}]/u.test(left) ? reason : "";
 }
 function relationCard(link, currentPath = "") {
