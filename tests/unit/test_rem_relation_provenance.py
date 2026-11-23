@@ -64,6 +64,7 @@ def test_compacted_marker_private_excerpt_keeps_its_card_provenance_private(mark
       const youify = text => text, singular = () => '', inline = text => text;
       const originalMark = () => null;
       const pageName = page => page.title;  // course/team codes: tested in the browser
+      const factWords = text => text;  // fact labels in Chinese (#3410): tested in the browser
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
       const output = dedupeRelationSnippets(''' + json.dumps(links) + r''');

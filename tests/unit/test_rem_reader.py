@@ -1795,7 +1795,7 @@ def test_mapped_gaps_keep_count_while_written_pages_name_remaining_sections(lang
         '调查后会写出 2 个章节。' if language == 'zh'
         else '2 sections will be written when it is investigated.')
     assert written['children'][-1]['text'] == (
-        '仍不明确：Insight, Who they are.' if language == 'zh' else 'Still unknown: Insight, Who they are.')
+        '仍不明确：洞察、他们是谁。' if language == 'zh' else 'Still unknown: Insight, Who they are.')
 
 
 def test_today_includes_three_day_boundary_and_preserves_shared_page_context():
@@ -1947,7 +1947,7 @@ def test_role_lede_is_the_title_and_parse_facts_splits_like_facts_py():
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['parseFacts', 'topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
     line = 'Events Coordinator (Entrepreneurship; email signature through 2026-10-29); Mentor [3]'
-    result = _run_reader_js(functions + r'''
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const PARSED_FACTS = new Map(), el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const rawSection = page => page.text, inline = text => text, youify = text => text, roleSummary = () => null;
       const r = {path: 'people/tamsin.md', text: '- Role: ' + LINE + '\n'};
@@ -1965,7 +1965,7 @@ def test_role_lede_keeps_when_a_role_ended_or_started():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
-    result = _run_reader_js(functions + r'''
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const inline = text => text, youify = text => text, roleSummary = () => null;
       const lede = (value, qualifier) => roleLede([{value, qualifier}, {value: 'Advisor', qualifier: ''}], value, '').children[0].html;
@@ -1982,7 +1982,7 @@ def test_role_lede_sends_provenance_in_any_language_to_the_tooltip():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['topLevelParts', 'roleLede', 'plainLine', 'pageWords'])
-    result = _run_reader_js(functions + r'''
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean)});
       const inline = text => text, youify = text => text, roleSummary = () => null;
       const lede = (value, qualifier) => roleLede([{value, qualifier}], value + ' (' + qualifier + ')', '');
@@ -2011,7 +2011,7 @@ def test_role_summary_shows_first_and_count_with_full_title():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['roleSummary', 'topLevelParts', 'plainLine', 'pageWords'])
-    result = _run_reader_js(functions + r'''
+    result = _run_reader_js(functions + '\nconst labelWord = value => value;\n' + r'''
       const el = (tag, attrs, children = []) => ({tag, ...attrs, children});
       const youify = text => text, inline = text => text, privateFallback = node => node;
       const roles = 'Head of Partnerships; Pilot lead; Research liaison';
@@ -2071,7 +2071,7 @@ def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personSub', 'roleSummary', 'roleLede', 'topLevelParts', 'changedValue', 'factText', 'plainLine', 'pageWords'])
-    result = _run_reader_js(functions + r"""
+    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r"""
       const role = '合作负责人; 试点负责人; 研究联络人', original = 'Head of Partnerships; Pilot lead; Research liaison';
       const r = {path: 'people/mara-ostrowski.md'};
       const facts = () => ({role}), personOrg = () => null, personProject = () => null, knownValue = Boolean;
@@ -2098,7 +2098,7 @@ def test_changed_role_keeps_full_list_tooltip_inside_change_tooltip():
 def test_fact_citations_stay_with_the_last_word_or_chinese_character(value, tail):
     page = TEMPLATE.read_text()
     function = re.search(r'function oneDate\(.*?\n\}', page, re.S).group(0) + '\n' + re.search(r'function factValue\(.*?\n\}', page, re.S).group(0)
-    result = _run_reader_js(function + r'''
+    result = _run_reader_js(function + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r'''
       const inline = text => text, softBreaks = node => node;
       const citeChip = n => '<a class="cite">' + n + '</a>';
       const citeChips = ns => ns.map(n => citeChip(n)).join('');
@@ -2149,7 +2149,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + labels + columns + '\nUI.zh = ' + ui + r''';
+    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null; const upcomingWhen = () => '';\n" + labels + columns + '\nUI.zh = ' + ui + r''';
       const PARSED_FACTS = new Map(), FACTS = new Map(), COMMENT = /<!--[\s\S]*?-->/g;
       const r = ''' + json.dumps(mara) + r''';
       const REM = {as_of: '2026-10-20'};
@@ -2287,9 +2287,9 @@ def test_project_coverage_limit_has_chinese_copy(days, inputs, expected):
 def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
+                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'localizedRelation', 'resolve', 'originalMark', 'pageWords', 'englishProse'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
-    result = _run_reader_js(functions + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
+    result = _run_reader_js(functions + '\nconst originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', title: 'Fernhill Labs', category: 'orgs', translations: {zh:
         '# Fernhill Labs\n## People here\n- [Theo Park](../people/theo-park.md) — 代表试点团队确认了计划 [2].\n\n## Sources\n- [2] mail:invented'}};
       const person = {path: 'people/theo-park.md', title: 'Theo Park', category: 'people'};
@@ -2324,7 +2324,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
                                        'connectedContext', 'closeStripped', 'relationCard', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden', 'pageWords'])
-    result = _run_reader_js(functions + r'''
+    result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
         translations: {zh: '# Fernhill Labs\n- [Theo Park](../people/theo-park.md) 和 [Mia Chen](../people/mia-chen.md) 共同审阅了试点计划 [2].'}};
