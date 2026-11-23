@@ -57,7 +57,7 @@ def cli(mock_http):
 
 
 def test_bare_asana_without_token_says_how_to_connect(cli, mock_http, monkeypatch):
-    """Bare co asana shows content like bare co gmail: here check, so no token says how to save one."""
+    """Bare co asana shows content like bare co gmail: here check, so no token means co auth asana."""
     monkeypatch.delenv('ASANA_ACCESS_TOKEN')
     result = cli(['asana'])
 
@@ -2078,3 +2078,259 @@ def test_colour_keeps_columns_aligned_and_names_plain(monkeypatch):
     assert cell_len(plain[0][:-len('[urgent] 发布 🌿')]) == cell_len(plain[1][:-len('Plain')])
     for r in rows:
         console.print(r)                                            # every co.* name resolves in the theme
+
+
+# -- changes and show: what co rem reads -------------------------------------
+
+SINCE = '2026-11-01T09:00+11:00'
+OTHER_WORKSPACE = '000120012345678901234567899'
+
+
+@pytest.fixture
+def changes_client(monkeypatch, listing_dir):
+    from connectonion.useful_tools import asana
+    client = SimpleNamespace(get_user=Mock(return_value=_user()),
+                             list_projects=Mock(return_value=[_project()]),
+                             list_my_tasks=Mock(return_value=[_task()]),
+                             list_tasks=Mock(return_value=[_task()]))
+    monkeypatch.setattr(asana, 'Asana', Mock(return_value=client))
+    return client
+
+
+def _changes(cli, *args):
+    return cli(['asana', 'changes', '--since', SINCE, *args])
+
+
+def test_changes_default_reads_your_tasks_in_every_workspace(cli, changes_client):
+    changes_client.get_user.return_value = _user([{'gid': WORKSPACE_GID, 'name': 'Engineering'},
+                                                  {'gid': OTHER_WORKSPACE, 'name': 'Home'}])
+    result = _changes(cli, '--json')
+
+    assert result.exit_code == 0, result.output
+    asked = [c.args for c in changes_client.list_my_tasks.call_args_list]
+    assert [a[0] for a in asked] == [WORKSPACE_GID, OTHER_WORKSPACE]
+    assert asked[0][1] == datetime(2026, 11, 1, 9, 0, tzinfo=timezone(timedelta(hours=11)))
+    changes_client.list_tasks.assert_not_called()
+
+
+def test_changes_json_lists_each_task_once_oldest_change_first(cli, changes_client):
+    changes_client.get_user.return_value = _user([{'gid': WORKSPACE_GID, 'name': 'Engineering'},
+                                                  {'gid': OTHER_WORKSPACE, 'name': 'Home'}])
+    late = _task('1200000000000402', name='Late 🌿', modified_at='2026-11-03T00:00:00Z')
+    early = _task('1200000000000401', name='Early', modified_at='2026-11-02T00:00:00Z', projects=[])
+    changes_client.list_my_tasks.side_effect = [[late, early], [late]]
+    result = _changes(cli, '--json')
+
+    body = json.loads(result.stdout)
+    assert body['since'] == '2026-11-01T09:00:00+11:00'
+    until = datetime.fromisoformat(body['until'])
+    assert until.tzinfo is not None and abs(datetime.now(timezone.utc) - until) < timedelta(minutes=1)
+    assert body['items'] == [
+        {'id': '1200000000000401', 'time': '2026-11-02T00:00:00Z', 'title': 'Early', 'project': None,
+         'link': 'https://app.asana.com/0/1200000000000401'},
+        {'id': '1200000000000402', 'time': '2026-11-03T00:00:00Z', 'title': 'Late 🌿', 'project': 'Website',
+         'link': 'https://app.asana.com/0/1200000000000402'}]
+    assert 'Next: co asana show 1200000000000401 --json' in result.stderr
+
+
+def test_changes_project_reads_those_projects_instead(cli, changes_client):
+    result = _changes(cli, '--project', PROJECT_GID, '--project', 'Website', '--json')
+
+    assert result.exit_code == 0, result.output
+    assert [c.args[0] for c in changes_client.list_tasks.call_args_list] == [PROJECT_GID, PROJECT_GID]
+    assert all(c.kwargs['modified_since'].utcoffset() == timedelta(hours=11)
+               for c in changes_client.list_tasks.call_args_list)
+    changes_client.list_my_tasks.assert_not_called()
+    assert [i['id'] for i in json.loads(result.stdout)['items']] == [TASK_GID]
+
+
+def test_changes_human_view_names_the_scope_and_the_next_task(cli, changes_client):
+    result = _changes(cli)
+
+    assert result.exit_code == 0, result.output
+    assert '1 task assigned to you changed since' in result.stdout
+    assert 'Ship website' in result.stdout and TASK_GID in result.stdout
+    assert result.stdout.strip().splitlines()[-1] == f'Next: co asana show {TASK_GID}'
+
+
+@pytest.mark.parametrize('as_json', [False, True])
+def test_changes_nothing_changed_exits_zero(as_json, cli, changes_client):
+    changes_client.list_my_tasks.return_value = []
+    result = _changes(cli, *(['--json'] if as_json else []))
+
+    assert result.exit_code == 0, result.output
+    if as_json:
+        assert json.loads(result.stdout)['items'] == []
+        assert 'Next: co asana check' in result.stderr
+    else:
+        assert '0 tasks assigned to you changed since' in result.stdout
+        assert 'Next: co asana projects' in result.stdout
+
+
+@pytest.mark.parametrize('since', ['2026-11-01', '2026-11-01T09:00', 'yesterday', ''])
+def test_changes_refuses_a_time_without_a_zone_before_any_request(since, cli, mock_http):
+    result = cli(['asana', 'changes', '--since', since, '--json'])
+
+    _assert_usage_failure(result, 'co asana changes --help')
+    assert mock_http.requests == []
+
+
+def test_changes_needs_since(cli, mock_http):
+    result = cli(['asana', 'changes', '--json'])
+
+    assert result.exit_code == 2
+    assert '--since' in unstyle(result.output)
+    assert mock_http.requests == []
+
+
+def test_changes_stopped_list_prints_nothing_and_exits_one(cli, mock_http):
+    mock_http.responses.extend([_success(), _page([_task()], 'next'), _failure(500, 'Server error')])
+    result = _changes(cli, '--json')
+
+    _assert_safe_failure(result)
+    assert 'Read 1 task, incomplete' in result.stderr
+
+
+def test_changes_without_token_says_how_to_connect(cli, mock_http, monkeypatch):
+    monkeypatch.delenv('ASANA_ACCESS_TOKEN')
+    result = _changes(cli, '--json')
+
+    _assert_safe_failure(result, SET_TOKEN)
+    assert mock_http.requests == []
+
+
+@pytest.mark.parametrize('command', ['changes', 'show'])
+def test_changes_and_show_help_without_token_never_request(command, cli, mock_http, monkeypatch):
+    monkeypatch.delenv('ASANA_ACCESS_TOKEN')
+    result = cli(['asana', command, '--help'])
+
+    assert result.exit_code == 0, result.output
+    assert '--json' in unstyle(result.stdout) and 'Read-only' in unstyle(result.stdout)
+    assert mock_http.requests == []
+
+
+def test_show_json_is_one_item_with_comments_oldest_first(cli, mock_detail_client):
+    mock_detail_client.get_task.return_value = _task_detail(created_by={'gid': USER_GID, 'name': 'Alice'},
+                                                            due_on='2026-11-30')
+    mock_detail_client.list_stories.return_value = [
+        _story('1200000000000902', created_at='2026-11-05T00:00:00Z', text='Second',
+               created_by={'gid': '1200000000000801', 'name': 'Bob'}),
+        _story('1200000000000903', type='system', resource_subtype='assigned', text='assigned to Alice'),
+        _story('1200000000000901', created_at='2026-11-04T00:00:00Z', text='First')]
+    result = cli(['asana', 'show', TASK_GID, '--json'])
+
+    assert result.exit_code == 0, result.output
+    item = json.loads(result.stdout)
+    assert {k: item[k] for k in ('id', 'title', 'author', 'time', 'link', 'status', 'assignee', 'due')} == {
+        'id': TASK_GID, 'title': 'Ship website', 'author': 'Alice', 'time': '2026-10-07T01:00:00Z',
+        'link': f'https://app.asana.com/0/{TASK_GID}', 'status': 'open', 'assignee': 'Alice', 'due': '2026-11-30'}
+    assert item['projects'] == ['Website', 'Mobile']
+    assert item['comments'] == [
+        {'author': 'Alice', 'author_id': USER_GID, 'you': True, 'time': '2026-11-04T00:00:00Z', 'text': 'First'},
+        {'author': 'Bob', 'author_id': '1200000000000801', 'you': False, 'time': '2026-11-05T00:00:00Z',
+         'text': 'Second'}]
+    assert (item['author_id'], item['assignee_id'], item['assigned_to_you'], item['completed_at']) == (
+        USER_GID, USER_GID, True, None)
+    assert item['text'].startswith('Original notes [literal]\n第二段 🌿')
+    assert item['text'].index('Alice (you): First') < item['text'].index('Bob: Second')
+    assert 'assigned to Alice' not in item['text'] and '1 activity record(s)' in item['text']
+    assert f'Next: co asana stories {TASK_GID}' in result.stderr
+
+
+def test_show_json_task_without_description_or_comments(cli, mock_detail_client):
+    mock_detail_client.get_task.return_value = _task_detail(notes='', completed=True,
+                                                            completed_at='2026-11-03T09:55:00Z', assignee=None)
+    mock_detail_client.list_stories.return_value = []
+    item = json.loads(cli(['asana', 'show', TASK_GID, '--json']).stdout)
+
+    assert (item['text'], item['comments'], item['status'], item['author']) == ('(no description)', [], 'done', None)
+    assert (item['completed_at'], item['assignee'], item['assigned_to_you']) == ('2026-11-03T09:55:00Z', None, False)
+
+
+def test_show_human_view_is_the_task_view(cli, mock_detail_client):
+    shown = cli(['asana', 'show', TASK_GID])
+    task = cli(['asana', 'task', TASK_GID])
+
+    assert shown.exit_code == 0, shown.output
+    assert shown.stdout == task.stdout
+
+
+
+
+@pytest.mark.parametrize('as_json', [False, True])
+def test_show_task_gone_from_asana_is_a_safe_failure(as_json, cli, detail_http):
+    detail_http.detail_failure = _failure(404, 'Not Found')
+    result = cli(['asana', 'show', TASK_GID, *(['--json'] if as_json else [])])
+
+    _assert_safe_failure(result)
+
+
+def test_show_json_tells_two_people_with_one_name_apart_by_id(cli, mock_detail_client):
+    """Only the token owner's own comment can be their commitment; a namesake's never is."""
+    namesake = {'gid': '1200000000000809', 'name': 'Alice'}
+    mock_detail_client.list_stories.return_value = [
+        _story('1200000000000901', created_at='2026-11-04T00:00:00Z', text="I'll do it", created_by=namesake),
+        _story('1200000000000902', created_at='2026-11-05T00:00:00Z', text='Me too')]
+    item = json.loads(cli(['asana', 'show', TASK_GID, '--json']).stdout)
+
+    assert [(c['author'], c['author_id'], c['you']) for c in item['comments']] == [
+        ('Alice', '1200000000000809', False), ('Alice', USER_GID, True)]
+    assert "Alice: I'll do it" in item['text'] and 'Alice (you): Me too' in item['text']
+
+
+def test_show_human_view_does_not_read_the_account_for_a_gid(cli, mock_detail_client):
+    assert cli(['asana', 'show', TASK_GID]).exit_code == 0
+    mock_detail_client.get_user.assert_not_called()
+
+
+def test_changes_refuses_a_since_later_than_now_before_any_request(cli, mock_http):
+    later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    result = cli(['asana', 'changes', '--since', later, '--json'])
+
+    _assert_usage_failure(result, 'co asana changes --help')
+    assert 'later than now' in result.stderr
+    assert mock_http.requests == []
+
+
+def test_changes_until_is_never_before_since(cli, changes_client):
+    just_now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    body = json.loads(cli(['asana', 'changes', '--since', just_now, '--json']).stdout)
+
+    assert datetime.fromisoformat(body['until']) >= datetime.fromisoformat(body['since'])
+
+
+def test_changes_task_without_modified_at_comes_last_with_null_time(cli, changes_client):
+    changes_client.list_my_tasks.return_value = [_task('1200000000000403', modified_at=None),
+                                                 _task('1200000000000404', modified_at='2026-11-02T00:00:00Z')]
+    items = json.loads(_changes(cli, '--json').stdout)['items']
+
+    assert [(i['id'], i['time']) for i in items] == [('1200000000000404', '2026-11-02T00:00:00Z'),
+                                                     ('1200000000000403', None)]
+
+
+def test_changes_workspace_limits_your_tasks_to_one_workspace(cli, changes_client):
+    changes_client.get_user.return_value = _user([{'gid': WORKSPACE_GID, 'name': 'Engineering'},
+                                                  {'gid': OTHER_WORKSPACE, 'name': 'Home'}])
+    result = _changes(cli, '--workspace', 'Home', '--json')
+
+    assert result.exit_code == 0, result.output
+    assert [c.args[0] for c in changes_client.list_my_tasks.call_args_list] == [OTHER_WORKSPACE]
+
+
+def test_changes_project_name_needs_workspace_when_there_are_several(cli, changes_client):
+    changes_client.get_user.return_value = _user([{'gid': WORKSPACE_GID, 'name': 'Engineering'},
+                                                  {'gid': OTHER_WORKSPACE, 'name': 'Home'}])
+    refused = _changes(cli, '--project', 'Website', '--json')
+    named = _changes(cli, '--project', 'Website', '--workspace', 'Engineering', '--json')
+
+    assert refused.exit_code == 2 and 'several workspaces' in refused.stderr
+    assert named.exit_code == 0, named.output
+    changes_client.list_projects.assert_called_with(WORKSPACE_GID)
+    assert [c.args[0] for c in changes_client.list_tasks.call_args_list] == [PROJECT_GID]
+
+
+def test_changes_unknown_workspace_is_a_usage_error(cli, changes_client):
+    result = _changes(cli, '--workspace', 'Nowhere', '--json')
+
+    _assert_usage_failure(result, 'co asana check')
+    changes_client.list_my_tasks.assert_not_called()

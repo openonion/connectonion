@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [time.sleep, httpx, environment.py (setting: process, env file, then the --secret store)] | imported by [cli/commands/asana_commands.py] | tested by [tests/unit/test_asana.py, tests/unit/test_asana_commands.py]
   Data flow: Asana(token) or ASANA_ACCESS_TOKEN → _request(path, params, method, data) sends GET (reads), PUT (update_task) or POST (add_comment) to https://app.asana.com/api/1.0<path> with `Authorization: Bearer <token>` → Asana's whole reply ({data, next_page, ...}) → get_user() returns its `data`; list_projects()/list_tasks()/list_stories() follow next_page through _paginate() to the end, then list_tasks() filters locally; get_task() returns one task's `data`
   State/Effects: reads ASANA_ACCESS_TOKEN | network only; update_task() and add_comment() change Asana as the token's owner, every other method only reads
-  Integration: exposes has_token() (configured or not, from names only; never decrypts) and Asana with get_user(user="me" | gid | email), list_projects(workspace_gid), list_tasks(project_gid, filters), get_task(task_gid), list_stories(task_gid), update_task(task_gid, due_on, completed=True|False), add_comment(task_gid, text), is_comment(story), story_time(story), due_day(task) so the CLI shows the same due day the filters compare, and local_time(value) for times shown in this machine's zone | gids are always requested and stay strings, and records keep Asana's own field names and order, so listings, account binding, exports and co rem can cite them | CLI row numbers and names never reach these methods: they take gids only
+  Integration: exposes has_token() (configured or not, from names only; never decrypts) and Asana with get_user(user="me" | gid | email), list_projects(workspace_gid), list_tasks(project_gid, filters), list_my_tasks(workspace_gid, modified_since), get_task(task_gid), list_stories(task_gid), update_task(task_gid, due_on, completed=True|False), add_comment(task_gid, text), is_comment(story), story_time(story), due_day(task) so the CLI shows the same due day the filters compare, and local_time(value) for times shown in this machine's zone | gids are always requested and stay strings, and records keep Asana's own field names and order, so listings, account binding, exports and co rem can cite them | CLI row numbers and names never reach these methods: they take gids only
   Errors: AsanaError(message, next_step, status, read_count, outcome_unknown) for a missing or rejected token, an Asana error reply, a reply that is not JSON or not the shape asked for, and a connection that fails or times out; a 429 is waited out (Retry-After in seconds, a decimal or an HTTP date, rounded up; 1 s when absent; at most 3 retries, at most a minute of waiting in all) before it becomes one that names the wait | a list is all or nothing: any page that fails (the first one too) raises "Read N <items>, incomplete; nothing was listed: <cause>" with read_count, N = 0 included, never a short list | a change whose result cannot be confirmed (sent, then the connection broke, a 5xx, or a success reply that cannot be read) raises with outcome_unknown=True: it may have been saved, so nothing retries it | ValueError for a gid, filter or change the caller got wrong, before anything is sent
 
 Asana tool: read your Asana account with a personal access token.
@@ -31,7 +31,8 @@ import httpx
 URL = "https://app.asana.com/api/1.0"
 KEY = "ASANA_ACCESS_TOKEN"
 TOKEN_PAGE = "https://app.asana.com/0/my-apps"
-SET_KEY = f"co env set {KEY} <pat> --secret"     # a personal access token, encrypted at rest
+SET_KEY = "co auth asana"                         # makes the token in the co browser (or asks for it), saves it encrypted
+MANUAL_KEY = f"co env set {KEY} <pat> --secret"   # the same, by hand
 TIMEOUT = 30
 
 # What `co asana check` shows: one /users/me call answers both "who am I" and
@@ -52,7 +53,8 @@ TASK_FIELDS = ("gid,name,completed,due_on,due_at,modified_at,permalink_url,"
 # notes), who follows the task, its custom fields as Asana displays them, and where
 # and when it was made. Story fields keep who wrote what and when; the type tells a
 # comment from system activity, which stays even when it has no text.
-TASK_DETAIL_FIELDS = (TASK_FIELDS + ",notes,created_at,completed_at,workspace.gid,workspace.name,"
+TASK_DETAIL_FIELDS = (TASK_FIELDS + ",notes,created_at,completed_at,created_by.gid,created_by.name,"
+                      "workspace.gid,workspace.name,"
                       "followers.gid,followers.name,custom_fields.gid,custom_fields.name,custom_fields.display_value")
 STORY_FIELDS = "gid,created_at,created_by.gid,created_by.name,text,type,resource_subtype,target.gid,target.name"
 
@@ -103,7 +105,8 @@ def _token() -> str:
     if token:
         return token
     raise AsanaError(f"{KEY} is not set in {display_path(selected_env_file())}. "
-                     f"Create a personal access token at {TOKEN_PAGE}, then save it", SET_KEY)
+                     f"Create a personal access token at {TOKEN_PAGE}; co auth asana saves it "
+                     f"(or {MANUAL_KEY})", SET_KEY)
 
 
 def has_token() -> bool:
@@ -166,6 +169,17 @@ class Asana:
             params["modified_since"] = modified_since.isoformat()
         tasks = self._paginate("/tasks", params, _is_task, "task")
         return [t for t in tasks if _keeps(t, assignee_gid, completed, due_from, due_to)]
+
+    def list_my_tasks(self, workspace_gid: str, modified_since: datetime) -> list[dict]:
+        """Tasks assigned to the token's owner in one workspace, changed since that time, completed ones included. Read-only.
+
+        Asana answers GET /tasks?assignee=me&workspace=... with the owner's
+        tasks across every project, and those in no project.
+        """
+        _check_filters(None, None, None, None, modified_since)
+        params = {"assignee": "me", "workspace": _gid(workspace_gid, "workspace"),
+                  "modified_since": modified_since.isoformat(), "opt_fields": TASK_FIELDS}
+        return self._paginate("/tasks", params, _is_task, "task")
 
     def get_task(self, task_gid: str) -> dict:
         """One task as it is now: description, assignee, followers, due date, projects, custom fields. Read-only.
@@ -577,7 +591,8 @@ def _body(response: httpx.Response, *, write: bool = False) -> dict:
         raise AsanaError(f"Asana answered HTTP {status} without a readable result; the change may have been saved",
                          "co asana check", status=status, outcome_unknown=True)
     if status == 401:
-        raise AsanaError(f"Asana rejected {KEY}: {message}. Make a new token at {TOKEN_PAGE}", SET_KEY, status=401)
+        raise AsanaError(f"Asana rejected {KEY}: {message}. Make a new token at {TOKEN_PAGE} and save it "
+                         "with co auth asana", SET_KEY, status=401)
     if status == 429:
         asked = _retry_after(response)
         wait = f"Wait {asked} s" if asked is not None else "Wait a minute"

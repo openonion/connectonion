@@ -488,16 +488,21 @@ def deploy(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack")
-def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack"),
+@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack  |  co auth asana")
+def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack, asana"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions"),
          core: bool = typer.Option(False, "--core",
-                                   help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do")):
-    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create. status is Read-only."""
+                                   help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do"),
+         paste: bool = typer.Option(False, "--paste",
+                                    help="Asana: paste a token you make yourself instead; the co browser is not used at all")):
+    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create; asana makes a token in the co browser (it copies your Chrome cookies for asana.com into it for the run and removes them afterwards; an Asana sign-in it already had is left alone), falls back to pasting one, and saves it encrypted instead. status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
+    if paste and service != "asana":
+        print("--paste is only supported for Asana. Next: co auth asana --help")
         raise typer.Exit(2)
     if app_id is not None and service not in ("feishu", "lark"):
         print("--app-id is only supported for Feishu and Lark. Next: co auth feishu --help")
@@ -517,6 +522,9 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
     elif service == "slack":
         from .commands.slack_auth import handle_slack_auth
         handle_slack_auth()
+    elif service == "asana":
+        from .commands.asana_auth import handle_asana_auth
+        handle_asana_auth(paste=paste)
     elif service == "status":
         from .commands.auth_commands import handle_auth_status
         handle_auth_status()
@@ -532,7 +540,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
         # A word we do not know must not do the one thing that writes secrets.
         from .commands.command_tips import print_tip
         print(f"Unknown auth target: {service}. Use one of: login, status, logout, "
-              "google, microsoft, feishu, lark, slack.")
+              "google, microsoft, feishu, lark, slack, asana.")
         print_tip("Next: co auth status")
         raise typer.Exit(2)
 
@@ -3188,12 +3196,14 @@ app.add_typer(mcp_app, name="mcp")
 
 # Obsidian: local Markdown notes with explicit folder selection.
 obsidian_app = _typer_app(
-    help="Browse Obsidian vaults, find changed notes, and read their current text.\n\n"
+    help="Browse Obsidian vaults, find changed notes, and read or search selected notes. "
+         "Preview changes before creating or appending to notes.\n\n"
          "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
          "If a vault is available, the output suggests a command to browse it. "
          "Use --folder to choose where to look for notes.\n\n"
-         "Writes: Numbered lists save temporary row numbers outside the vault for later commands. "
-         "JSON output does not save them.\n\n"
+         "Writes: Numbered lists save row numbers outside the vault for 15 minutes. "
+         "JSON lists do not save row numbers. "
+         "create and append save a note only with --yes --expect from a preview.\n\n"
          "All Obsidian commands work offline.\n\n"
          "Exit 0 means the list loaded, even if it is empty. "
          "Exit 1 means the list could not be read or its row numbers could not be saved. "
@@ -3389,6 +3399,86 @@ def _obsidian_search(
     """
     from .commands.obsidian_commands import handle_obsidian_search
     handle_obsidian_search(query, vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("create", epilog="Example:\n\n"
+                                      "co obsidian create Lab/plan.md --folder Lab --content Draft")
+def _obsidian_create(
+    note_path: str = typer.Argument(..., help="Vault-relative .md path; parent folder must already exist"),
+    content: str = typer.Option(..., "--content", help="Exact UTF-8 text; '-' reads standard input"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    yes: bool = typer.Option(False, "--yes", help="Create with --expect from a preview; otherwise preview without writing"),
+    expect: Optional[str] = typer.Option(None, "--expect", help="Required with --yes: unchanged confirmation hash from the preview"),
+    json_output: bool = typer.Option(False, "--json", help="Print the preview or operation result as JSON; Next goes to stderr"),
+):
+    """Create a Markdown note in an existing folder. It previews until --yes --expect. Writes one note.
+
+    The path is relative to the vault and must be inside the selected folders.
+    An existing note stays as it is. Choose a folder that already exists.
+    Saving notes is only supported on macOS and Linux.
+    The command rejects paths in .obsidian, .trash and .git and paths through
+    symbolic links.
+    You can create an empty note. The command works offline.
+
+    --yes requires --expect from a preview; neither flag alone writes.
+    The preview shows a command under Next to save the note. Its --expect
+    value checks that the path, folders and text match the preview. If you
+    used --content -, pipe the same text into the command again.
+    --content - requires a pipe; it never waits for interactive typing.
+
+    Exit 0 means the preview or write succeeded. Use the suggested read
+    command to check a saved note.
+    Exit 1 means the file already exists, a file or folder could not be
+    opened or written, or the preview no longer matches. See the error
+    message. If anything changed since the preview, run it again.
+    Exit 2 means an argument or path is invalid. Check this help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_write
+    handle_obsidian_write("create", note_path, content, vault=vault, folders=folders,
+                          yes=yes, expect=expect, json_output=json_output)
+
+
+@obsidian_app.command("append", epilog='Example:\n\nco obsidian ls --vault Personal --folder Course\n\n'
+                                      'Example:  co obsidian append 1 --content "Review complete"')
+def _obsidian_append(
+    note_path: str = typer.Argument(..., help="Note row number for a preview, or a vault-relative path"),
+    content: str = typer.Option(..., "--content", help="Exact UTF-8 text to append; '-' reads standard input"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path; omit for a numbered row or when one vault is available"),
+    folders: List[str] = typer.Option(None, "--folder", help="Vault-relative folder, required for a note path; repeat to select several; '.' selects the whole vault"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Use the rows from a specific ls or search list (lasts 15 minutes)"),
+    yes: bool = typer.Option(False, "--yes", help="Write to a note path. For a row, preview and run the command shown after Next"),
+    expect: Optional[str] = typer.Option(None, "--expect", help="Required with --yes: unchanged confirmation hash from the preview"),
+    json_output: bool = typer.Option(False, "--json", help="Print the preview or operation result as JSON; Next goes to stderr"),
+):
+    """Append to an existing Markdown note. It previews until --yes --expect. Writes one note.
+
+    Pick a note number such as 1 from ls with --folder, or from
+    search. The list supplies the vault and folders for the preview.
+    Note rows last 15 minutes. Use --listing to choose a specific list.
+
+    Saving changes is only supported on macOS and Linux.
+    Keeps the original text and frontmatter. Adds a line break if needed,
+    using CRLF if present, otherwise LF. Empty input changes nothing.
+    Append replaces the file, keeping permission bits but not ownership,
+    extended attributes or ACLs. Pause other editors or sync tools while
+    confirming, because they can still write to the file and cause lost changes.
+
+    --yes requires --expect from a preview; neither flag alone writes.
+    The preview shows a command under Next to save the change. Its --expect
+    value checks that the note, folders and text match the preview. If you
+    used --content -, pipe the same text into the command again.
+    --content - requires a pipe; it never waits for interactive typing.
+
+    Exit 0 means the preview or write succeeded. Read the note to verify a
+    write or check an interrupted append.
+    Exit 1 means the note is missing, the write failed, or the preview no
+    longer matches. See the error message and preview again if needed.
+    Exit 2 means an argument or path is invalid. Check this help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_write
+    handle_obsidian_write("append", note_path, content, vault=vault, folders=folders or (),
+                          yes=yes, expect=expect, json_output=json_output, listing=listing)
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.

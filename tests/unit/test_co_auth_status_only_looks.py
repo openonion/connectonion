@@ -106,3 +106,31 @@ def test_logout_with_nothing_signed_in_creates_nothing():
     assert result.exit_code == 0, _plain(result.output)
     assert not (_co_dir() / "keys.env").exists()
     assert not (_co_dir() / "keys").exists()
+
+
+def test_status_says_whether_an_asana_token_is_saved_without_reading_or_asking_asana(monkeypatch):
+    """`co auth asana` connects Asana; `co auth status` only says whether a token is saved, and where."""
+    monkeypatch.delenv("ASANA_ACCESS_TOKEN", raising=False)
+    with patch("connectonion.cli.commands.auth_commands.authenticate", _fail_if_called):
+        missing = _plain(CliRunner().invoke(app, ["auth", "status"]).output)
+    assert "Asana token: missing (co auth asana connects it)" in missing
+
+    _co_dir().mkdir(parents=True, exist_ok=True)
+    keys_env = _co_dir() / "keys.env"
+    keys_env.write_text("ASANA_ACCESS_TOKEN=2/1/2:" + "c" * 32 + "\n", encoding="utf-8")
+    with patch("connectonion.useful_tools.asana.Asana", _fail_if_called), \
+            patch("connectonion.secret_store.get", _fail_if_called):
+        in_file = _plain(CliRunner().invoke(app, ["auth", "status"]).output)
+    assert "Asana token: present (~/.co/keys.env; co asana check verifies it)" in in_file
+    assert "c" * 32 not in in_file
+
+    keys_env.write_text("", encoding="utf-8")
+    with patch("connectonion.secret_store.stored_names", lambda co_dir: ["asana_access_token"]), \
+            patch("connectonion.secret_store.get", _fail_if_called):
+        stored = _plain(CliRunner().invoke(app, ["auth", "status"]).output)
+    assert "Asana token: present (encrypted; co asana check verifies it)" in stored
+
+    monkeypatch.setenv("ASANA_ACCESS_TOKEN", "2/1/2:" + "d" * 32)
+    shell = _plain(CliRunner().invoke(app, ["auth", "status"]).output)
+    assert "Asana token: present (process environment; co asana check verifies it)" in shell
+    assert "d" * 32 not in shell
