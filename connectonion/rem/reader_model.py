@@ -21,6 +21,7 @@ CITATION = re.compile(r"\[(W?\d{1,3})\]")
 SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
+SENSITIVE = re.compile(r"[\[［]sensitive[\]］]", re.I)
 WIKILINK = re.compile(r"\[\[((?:orgs|people|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 
 
@@ -211,8 +212,14 @@ def _relation(origin: str, target: str, line: str, kind: str) -> dict:
     basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
     # The citation goes with the space before it: "at Fernhill [1]." reads "at Fernhill.", never "at Fernhill ." (rc36).
     basis = _clip(re.sub(r"[ \t]*" + CITATION.pattern, "", basis).lstrip("- ").strip())
-    return {"path": target, "kind": kind, "basis": basis,
-            "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
+    return {"path": target, "kind": kind, "basis": basis, "private": bool(PRIVATE.search(line)), "level": _level(line),
+            "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
+
+
+def _level(text: str) -> str:
+    """The strongest privacy mark on a line: the reader curtains a relation reason by it (#3425). The basis can be
+    clipped before its mark, so the level is read from the whole line, not from what the card shows."""
+    return "sensitive" if SENSITIVE.search(text) else "personal" if PRIVATE.search(text) else ""
 
 
 def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re.Pattern[str], str, str]]) -> dict:
@@ -286,11 +293,14 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     # Keep their explicit links, but avoid scanning every name in every stub.
     forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])
                for path, row in paths.items()}
-    private_topics = {path for path, row in paths.items() if row['category'] == 'knowledge'
-                      and PRIVATE.search(row['text'].split('\n', 1)[0])}
+    private_topics = {path: _level(row['text'].split('\n', 1)[0]) for path, row in paths.items()
+                      if row['category'] == 'knowledge' and PRIVATE.search(row['text'].split('\n', 1)[0])}
     for origin, rows in forward.items():
         for target, relation in rows.items():
             relation['private'] |= origin in private_topics or target in private_topics
+            topic = private_topics.get(origin) or private_topics.get(target) or ""
+            if topic == "sensitive" or (topic and not relation.get('level')):
+                relation['level'] = topic
     found = {path: dict(rows) for path, rows in forward.items()}
     # Finish every page's own links before adding incoming navigation. Otherwise
     # a reverse hint can replace a later page's explicit link and its provenance.

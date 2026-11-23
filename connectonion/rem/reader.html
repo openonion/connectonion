@@ -6002,8 +6002,36 @@ function passageLevel(node) {
 }
 // Applied to whatever the page draws (a MutationObserver below), so every place gets it: pages, cards, sheets,
 // search, side cards, tag pages.
+// The net under every place that draws page words as plain text, a title or an aria-label without going through
+// inline() (a relation reason was one, #3425): a raw [personal]/[sensitive] mark is a label, never a word, so it is
+// taken out at every level, and the element that held it becomes a passage at that level, which the rules below then
+// curtain (遮敏感) or remove (只看公开). A title or aria-label that held one is dropped below 全部显示.
+const RAW_MARK = /[ \t]*[\[［](personal|sensitive)[\]］]/gi;
+function sweepRawMarks(root) {
+  const marked = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!/[\[［](?:personal|sensitive)[\]］]/i.test(node.nodeValue) || node.parentElement?.closest("textarea, input, code, pre, script, style")) continue;
+    marked.push(node);
+  }
+  for (const node of marked) {
+    const level = /[\[［]sensitive[\]］]/i.test(node.nodeValue) ? "sensitive" : "personal";
+    node.nodeValue = node.nodeValue.replace(RAW_MARK, "");
+    const host = node.parentElement;
+    if (host && !host.closest("[data-level]")) { host.classList.add("private"); host.dataset.level = level; }
+  }
+  for (const el of [...(root.matches("[title], [aria-label]") ? [root] : []), ...root.querySelectorAll("[title], [aria-label]")]) {
+    for (const name of ["title", "aria-label"]) {
+      const value = el.getAttribute(name);
+      if (!value || !/[\[［](?:personal|sensitive)[\]］]/i.test(value)) continue;
+      if (privacyLevel === "all") el.setAttribute(name, value.replace(RAW_MARK, "")); else el.removeAttribute(name);
+    }
+  }
+}
 function applyPrivacy(root) {
-  if (!(root instanceof Element) || privacyLevel === "all") return;
+  if (!(root instanceof Element)) return;
+  sweepRawMarks(root);
+  if (privacyLevel === "all") return;
   const within = selector => [...(root.matches(selector) ? [root] : []), ...root.querySelectorAll(selector)];
   if (privacyLevel === "cover") {
     for (const node of within(".private")) {
@@ -6585,6 +6613,14 @@ function inline(text, from) {
   if (uiLanguage === "zh") s = s.replace(/\bUnknown\b/g, t("Unknown"));
   s = privatePassages(s, (passage, level) => '<span class="private" data-level="' + level + '">' +
     passage.replace(/[\[［](personal|sensitive)[\]］]/gi, (_, tag) => '<span class="privacy-tag ' + tag.toLowerCase() + '">' + esc(t(tag.toLowerCase() === "sensitive" ? "Sensitive" : "Personal passage")) + '</span>') + '</span>');
+  // A mark the passage rule could not attach to its words (one beside a citation, one inside a link's text) is still a
+  // label, never a word: printed raw it showed even at 只看公开 (#3425). The line it sits on is covered at its level,
+  // whole, because the words it labels are not known; covering too much is safe, showing them is not.
+  const stray = /[\[［](personal|sensitive)[\]］]/gi;
+  if (stray.test(s.replace(/<span class="privacy-tag[^"]*">[^<]*<\/span>/g, ""))) {
+    const level = /[\[［]sensitive[\]］]/i.test(s) ? "sensitive" : "personal";
+    s = '<span class="private" data-level="' + level + '">' + s.replace(stray, "").replace(/[ \t]{2,}/g, " ") + '</span>';
+  }
   // Full-width citation brackets carry the same source ids.
   s = s.replace(/［(W?\d{1,3})］/g, "[$1]");
   // Adjacent claim numbers share one quiet marker: one chip says how many, and names them on hover.
@@ -16233,7 +16269,8 @@ function sectionBody(r, s) {
     const out = el("div", { class: "block" });
     let quoted = [];
     const flush = () => {
-      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (hasPrivacy(quoted.join("\n")) ? " private" : ""), text: quoted.join("\n") }));
+      const marked = markedText(quoted.join("\n"));
+      if (quoted.length) out.appendChild(el("blockquote", { class: "session-quote" + (marked.level ? " private" : ""), ...(marked.level ? { "data-level": marked.level } : {}), text: marked.text }));
       quoted = [];
     };
     for (const line of s.text.split("\n")) {
@@ -16648,18 +16685,31 @@ function relationReason(basis, ...pages) {
     .replace(/(?:课程|团队|小组|course|team|unit|group)/gi, "");
   return /[\p{L}\p{N}]/u.test(left) ? reason : "";
 }
+// A line drawn as text, outside inline(): its [personal]/[sensitive] marks leave the words, and the strongest one
+// becomes the element's data-level, so applyPrivacy curtains or removes it like any passage (#3425). A relation
+// reason was drawn as plain text: the raw mark printed, and its .private carried no level, so 遮敏感 passed it by.
+function markedText(text) {
+  const value = String(text || "");
+  const level = /[\[［]sensitive[\]］]/i.test(value) ? "sensitive" : /[\[［]personal[\]］]/i.test(value) ? "personal" : "";
+  return { text: value.replace(/[ \t]*[\[［](?:personal|sensitive)[\]］]/gi, "").trim(), level };
+}
 function relationCard(link, currentPath = "") {
-  const other = byPath(link.path), origin = byPath(link.via), basis = relationReason(link.basis, other, origin, byPath(currentPath));
-  const labelled = link.private || hasPrivacy(basis || "");
+  const other = byPath(link.path), origin = byPath(link.via);
+  const marked = markedText(relationReason(link.basis, other, origin, byPath(currentPath)));
+  const basis = marked.text;
+  // The mark's own level first; a line on a private topic, or one clipped before its mark, is at least personal.
+  const level = marked.level || link.level || (link.private ? "personal" : "");
+  const labelled = !!level;
   const labels = { linked: "Mentioned on this page", "linked from": "Its page mentions this one",
     "cited mention": "Mentions it", mentioned: "Mentions it", "mentioned by": "Mentioned elsewhere" };
   const entry = el("div", { class: "relation-entry" + (other.private || origin?.private ? " private" : "") }, [
     el("a", { class: "relation-card", href: href(other) }, [
       el("span", { class: "relation-kind", text: singular(other.category) + " · " + t(labels[link.kind] || link.kind) }),
       el("strong", { text: pageName(other) }),
-      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), text: youify(pageWords(factWords(basis))) }) : null,
+      basis ? el("span", { class: "relation-basis" + (labelled ? " private" : ""), ...(level ? { "data-level": level } : {}), text: youify(pageWords(factWords(basis))) }) : null,
       // 原文 only while the line still reads as English: a Facts line now says its label in Chinese (#3416).
-      basis && link.original && englishProse(factWords(basis)) ? originalMark() : null])]);
+      // A curtained reason has no words on show, so nothing to call original either.
+      basis && level !== "sensitive" && link.original && englishProse(factWords(basis)) ? originalMark() : null])]);
   if (origin) entry.appendChild(el("div", { class: "relation-provenance" + (labelled ? " private" : "") }, [
     origin.path !== currentPath ? el("span", {}, [t("On "), el("a", { href: href(origin), text: origin.title })]) : null,
     el("span", { html: inline((link.sources || []).map(n => "[" + n + "]").join(""), origin.path) })]));
