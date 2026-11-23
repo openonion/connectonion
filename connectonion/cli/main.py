@@ -911,6 +911,11 @@ def send(
     raise typer.Exit(handle_send(address, paths, relay))
 
 
+from .commands.agent_message_commands import make_agent_message_app
+
+app.add_typer(make_agent_message_app(_typer_app), name="agent")
+
+
 @app.command(epilog="Examples:  co receive  |  co receive --json")
 def receive(
     json_output: bool = typer.Option(False, "--json", help="Print the list as JSON"),
