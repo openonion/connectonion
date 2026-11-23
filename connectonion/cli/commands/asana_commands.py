@@ -2,7 +2,7 @@
 Purpose: `co asana` — check the Asana personal access token, list projects and tasks, read one task with its comments, and change a task's due day or completion or comment on it, from the terminal
 LLM-Note:
   Dependencies: imports from [typer, rich.markup, cli/style.py, cli/typer_groups.py, command_tips.py, gmail_listings.py, environment.global_config_dir, useful_tools/asana.py] | imported by [cli/main.py] | tested by [tests/unit/test_asana_commands.py]
-  Data flow: argv → typer leaf → Asana() reads ASANA_ACCESS_TOKEN → get_user("me") (the account and its workspaces) → check prints them; projects lists a workspace's projects; tasks resolves <project> (row number, gid or exact name) and lists its tasks → newest first, -n rows → numbered rows (or --json) → one Next line; task and stories take a row number from the last tasks list (or a task gid) → get_task + list_stories → the task and its comments, or every story → one Next line; update (--due-on, --done or --open) and comment take a task gid (or a row number with its --listing) → get_task → a preview of the change, or with --yes update_task/add_comment → the result → one Next line
+  Data flow: argv → typer leaf → Asana() reads ASANA_ACCESS_TOKEN → get_user("me") (the account and its workspaces) → check prints them; projects lists a workspace's projects; tasks resolves <project> (row number, gid or exact name) and lists its tasks → newest first, -n rows → numbered rows (or --json) → one Next line; task and stories take a row number from the last tasks list (or a task gid) → get_task + list_stories → the task and its comments, or every story → one Next line; changes --since lists the tasks assigned to you (or every task in --project) changed since then, oldest first, and show <task> prints one task now (--json: the item shape REM reads) → one Next line; update (--due-on, --done or --open) and comment take a task gid (or a row number with its --listing) → get_task → a preview of the change, or with --yes update_task/add_comment → the result → one Next line
   State/Effects: reads ASANA_ACCESS_TOKEN | projects and tasks save the shown rows' gids under ~/.co/asana-listings (15 min, bound to the Asana account, ids only) unless --json | only update --yes and comment --yes change Asana (as the token's owner); without --yes they preview and change nothing
   Integration: asana_app is added to the root app in main.py; every handler names its own next command, so the tip sweep in tests/unit/test_cli_tips_name_real_commands.py checks each one
   Errors: exit codes are documented in every --help page: 0 ok/preview/empty · 1 failure · 2 usage | AsanaError → `✗ <cause>` and `Next: <command>` on stderr, exit 1, a list that stops leading with `Read N <items>, incomplete` (N may be 0); Next follows a success on stdout, or on stderr under --json; a ValueError from an argument (bad date, unknown name, stale row number) → the same, exit 2 | a change whose result is unknown (sent, then no readable answer) exits 1 and names the read command that shows whether it was saved; it is never re-sent
@@ -14,7 +14,7 @@ import re
 import shlex
 import sys
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from functools import wraps
 from pathlib import Path
 from typing import Optional
@@ -618,6 +618,153 @@ def stories(ref: str = typer.Argument(..., help=REF_HELP),
     lines = [f"{style.count(len(found))} {'story' if len(found) == 1 else 'stories'} on {escape(target)}"]
     _print(lines + [_story_line(s, True) for s in _oldest_first(found)])
     _tip(_ref_command("task", ref, listing), False)
+
+
+# -- for REM: what changed, and one task now ------------------------------
+
+def _since(value: str, now: datetime) -> datetime:
+    """--since: a time with its zone, not after now; Asana would read a zoneless time in UTC."""
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        moment = None
+    if moment is None or moment.tzinfo is None:
+        raise UsageError(f"--since takes a time with its zone, like 2026-11-01T09:00+11:00, not {value!r}",
+                         "co asana changes --help")
+    if moment > now:
+        raise UsageError(f"--since {value} is later than now ({now.isoformat()}); nothing can have changed after it",
+                         "co asana changes --help")
+    return moment
+
+
+def _changed(client, me: dict, project_refs: list[str], workspace: Optional[str], since: datetime) -> list[dict]:
+    """Every task changed since then, once each, oldest change first: your own tasks, or the projects named.
+
+    A task without modified_at (Asana always sends it; a reply may not) goes last rather than being dropped.
+    """
+    found: dict[str, dict] = {}
+    if project_refs:
+        for ref in project_refs:
+            gid, _ = _project(client, me, ref, workspace, None)
+            found.update((t["gid"], t) for t in client.list_tasks(gid, modified_since=since))
+    else:
+        spaces = [_workspace(me, workspace)] if workspace else me.get("workspaces") or []
+        for space in spaces:
+            found.update((t["gid"], t) for t in client.list_my_tasks(space["gid"], since))
+    return sorted(found.values(), key=lambda t: (t.get("modified_at") is None, t.get("modified_at") or "", t["gid"]))
+
+
+def _change_item(t: dict) -> dict:
+    projects = [p for p in t.get("projects") or [] if isinstance(p, dict)]
+    return {"id": t["gid"], "time": t.get("modified_at"), "title": t.get("name") or "(untitled)",
+            "project": (projects[0].get("name") or projects[0].get("gid")) if projects else None,
+            "link": t.get("permalink_url")}
+
+
+@asana_app.command("changes", epilog="Example:  co asana changes --since 2026-11-01T00:00Z  |  "
+                                     'co asana changes --since 2026-11-01T00:00Z --project "Website" --json')
+@_reported
+def changes(since: str = typer.Option(..., "--since", help="Only tasks changed after this time, with its zone (2026-11-01T09:00+11:00)"),
+            project: Optional[list[str]] = typer.Option(None, "--project", help="Read this project's tasks instead of your own: row number, ID or exact name; repeat for more"),
+            workspace: Optional[str] = typer.Option(None, "--workspace", help=WORKSPACE_HELP + "; without --project, only your tasks there"),
+            as_json: bool = typer.Option(False, "--json", help='Print {"since", "until", "items": [{"id", "time", "title", "project", "link"}]}')):
+    """List tasks changed since a time, oldest change first: by default the tasks assigned to you. Read-only.
+
+    Without --project it reads the tasks assigned to you in every workspace
+    of the account (--workspace: one); with --project it reads every task
+    in those projects instead. Completed tasks count: completing one is a
+    change. A new comment changes a task too. Deleted tasks are not listed,
+    and neither is a task reassigned away from you, unless --project names
+    its project. --since must not be later than now.
+    "until" in --json is when reading began: pass it as the next --since
+    and nothing in between is missed. A task changed while it was being
+    read can appear in both lists, so keep one per id and time. "time" is
+    null when Asana sent no modified_at; those come last. REM reads this
+    list; it changes nothing in Asana and writes no file.
+
+    Exit 0 on success (an empty list too), 1 on a failure from Asana, the
+    token or the network, 2 on a wrong argument. If reading stops part way,
+    nothing is listed and the error says "Read N items, incomplete".
+    Errors go to stderr.
+    """
+    until = datetime.now(timezone.utc).replace(microsecond=0)
+    start = _since(since, datetime.now(timezone.utc))
+    client = _api().Asana()
+    found = _changed(client, client.get_user(), project or [], workspace, start)
+    items = [_change_item(t) for t in found]
+    if as_json:
+        print(json.dumps({"since": start.isoformat(), "until": until.isoformat(), "items": items},
+                         indent=2, ensure_ascii=False))
+        return _tip(f"co asana show {items[0]['id']} --json" if items else "co asana check", True)
+    scope = "in the projects named" if project else "assigned to you"
+    lines = [f"{style.count(len(items))} {'task' if len(items) == 1 else 'tasks'} {scope} changed since "
+             f"{escape(_when(start.isoformat()))}"]
+    # The name goes last, as in co asana tasks: its length varies most.
+    lines += [f"  {style.muted(_when(i['time']))}  {style.muted(i['id'])}  {escape(i['title'])}" for i in items]
+    _print(lines)
+    _tip(f"co asana show {items[0]['id']}" if items else "co asana projects", False)
+
+
+def _comment(story: dict, me_gid: str) -> dict:
+    """One comment: who wrote it by name and ID (two people may share a name), and whether it is the token's owner."""
+    author_id = (story.get("created_by") or {}).get("gid")
+    return {"author": _author(story), "author_id": author_id, "you": author_id == me_gid,
+            "time": story.get("created_at"), "text": story.get("text") or ""}
+
+
+def _show_item(t: dict, history: list[dict], me_gid: str) -> dict:
+    """One task now, in the shape REM reads from every source: id, title, text, author, time, link.
+
+    "you" marks the token's owner by ID, never by name: only their own comment can be their commitment.
+    """
+    comments = [_comment(s, me_gid) for s in _oldest_first(history) if _api().is_comment(s)]
+    activity = sum(1 for s in history if not _api().is_comment(s))
+    text = [t.get("notes") or "(no description)"]
+    if comments:
+        text += ["", "Comments (oldest first):"] + [
+            f"- {c['time']} {c['author']}{' (you)' if c['you'] else ''}: {c['text']}" for c in comments]
+    if activity:
+        text += ["", f"({activity} activity record(s) by Asana, such as assignment or completion, not quoted)"]
+    creator, assignee = t.get("created_by") or {}, t.get("assignee") or {}
+    return {"id": t["gid"], "title": t.get("name") or "(untitled)", "text": "\n".join(text),
+            "author": creator.get("name"), "author_id": creator.get("gid"), "time": t.get("modified_at"),
+            "link": t.get("permalink_url"), "status": "done" if t.get("completed") else "open",
+            "completed_at": t.get("completed_at") if t.get("completed") else None,
+            "assignee": assignee.get("name"), "assignee_id": assignee.get("gid"),
+            "assigned_to_you": bool(assignee.get("gid")) and assignee.get("gid") == me_gid,
+            "due": t.get("due_at") or t.get("due_on"),
+            "projects": [p.get("name") or p.get("gid") for p in t.get("projects") or [] if isinstance(p, dict)],
+            "comments": comments}
+
+
+@asana_app.command("show", epilog="Example:  co asana show 1209876543210987  |  co asana show 1209876543210987 --json")
+@_reported
+def show(ref: str = typer.Argument(..., help=REF_HELP),
+         listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co asana tasks; keeps row numbers pointing at that list even after you list something else"),
+         as_json: bool = typer.Option(False, "--json", help='Print {"id", "title", "text", "author", "time", "link", "status", "completed_at", "assignee", "due", "projects", "comments", ...}')):
+    """Show one task as it is now, as co asana task does; --json gives the shape REM reads. Read-only.
+
+    "text" is the description, then every comment oldest first with its
+    author and time, "(you)" after the token owner's own; Asana's own
+    activity is counted, not quoted. Each comment carries "author_id" and
+    "you", since two people can share a name. "time" is when the task last
+    changed, so a reader can tell it changed since it was cited;
+    "completed_at" is when it was completed, or null while it is open.
+    --json also reads who the token acts as. Changes nothing in Asana and
+    writes no file.
+
+    Exit 0 on success, 1 on a failure from Asana, the token or the network
+    (a task deleted or no longer visible too), 2 on a wrong argument.
+    Errors go to stderr.
+    """
+    client = _api().Asana()
+    gid = _task_ref(client, ref, listing)
+    found, history = client.get_task(gid), client.list_stories(gid)
+    if as_json:
+        print(json.dumps(_show_item(found, history, client.get_user()["gid"]), indent=2, ensure_ascii=False))
+        return _tip(_ref_command("stories", ref, listing), True)
+    _print(_detail_lines(found, [s for s in _oldest_first(history) if _api().is_comment(s)]))
+    _tip(_ref_command("stories", ref, listing), False)
 
 
 # -- changes ------------------------------------------------
