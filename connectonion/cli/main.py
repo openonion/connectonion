@@ -1966,7 +1966,7 @@ def email_download(
     attachment_id: int = typer.Argument(..., min=1, help="Attachment # shown by co email read"),
     output_path: str = typer.Option(..., "--out", "-o", help="New local file to save"),
 ):
-    """Save one received attachment without overwriting existing files."""
+    """Writes one received attachment to a new local file. Leaves unread state unchanged."""
     from .commands.email_commands import handle_email_download
     handle_email_download(email_id, attachment_id, output_path)
 
