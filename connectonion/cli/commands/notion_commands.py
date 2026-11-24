@@ -8,6 +8,7 @@ LLM-Note:
   Errors: NotionError → `✗ <cause>` and `Next: <command>` on stderr, exit 1; a wrong argument or a stale row number → exit 2 naming the command to run
 """
 
+import hashlib
 import json
 import os
 import re
@@ -24,6 +25,7 @@ from ...environment import global_config_dir
 from .. import style
 from ..typer_groups import _OneSuggestion
 from . import notion_api as api
+from . import notion_markdown
 from .command_tips import mark_next_step_named, print_tip, selected_tip
 from .gmail_listings import ListingError, resolve_reference, save_listing
 
@@ -45,6 +47,8 @@ SOURCE_HELP = "Which data source, by id or name, when the database has more than
 LISTING_HELP = "Listing ID printed under a list; keeps row numbers pointing at that list after you list another"
 IDS_HELP = "Also show each row's Notion id"
 JSON_HELP = "Print the same fields as JSON (ids included); no row numbers are saved"
+LIST_LIMIT = 100                          # one Notion request: most lists are whole without a cursor
+CURSOR_HELP = "Continue a list from the --cursor its last line printed; only for that same command"
 
 
 @notion_app.callback()
@@ -138,6 +142,29 @@ def _ref(value: str, listing: Optional[str]) -> str:
         _usage(str(error), "co notion pages")
 
 
+# -- cursors ---------------------------------------------------------------
+# Notion's cursor plus a check of the query it came from, as co gmail binds its mailbox
+# cursors to their query: reused with other words, --type, columns or -n, it is refused
+# instead of continuing a different list.
+
+def _query_check(*query) -> str:
+    return hashlib.sha256(json.dumps(query, ensure_ascii=False).encode()).hexdigest()[:8]
+
+
+def _bind(after: str, *query) -> str:
+    return f"{after}.{_query_check(*query)}" if after else ""
+
+
+def _unbind(cursor: str, again: str, *query) -> str:
+    if not cursor:
+        return ""
+    after, _, check = cursor.strip().rpartition(".")
+    if not after or check != _query_check(*query):
+        _usage("This --cursor belongs to another list (other words, --type, columns or -n); "
+               "run the original command again", again)
+    return after
+
+
 def _listing_note(token: Optional[str]) -> list[str]:
     return [f"Listing: {token} (15 min; optional --listing ID pins these rows)"] if token else []
 
@@ -224,8 +251,8 @@ def check(target: str = typer.Option("", "--target", help="Also check that this 
 @notion_app.command("pages", epilog="Example:  co notion pages  |  co notion pages --type database -n 50")
 @_reported
 def pages(kind: str = typer.Option("", "--type", help="page or database; without it, both"),
-          last: int = typer.Option(20, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
-          cursor: str = typer.Option("", "--cursor", help="Continue a previous listing from its next_cursor"),
+          last: int = typer.Option(LIST_LIMIT, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
+          cursor: str = typer.Option("", "--cursor", help=CURSOR_HELP),
           ids: bool = typer.Option(False, "--ids", help=IDS_HELP),
           as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """List every page and database this key can read, newest edit first. Read-only.
@@ -234,8 +261,9 @@ def pages(kind: str = typer.Option("", "--type", help="page or database; without
     under them); with a personal access token, what your account can read.
     It is not a list of the whole workspace. Rows are numbered for co notion
     page, db and columns; the numbers stay valid for 15 minutes. When there
-    are more, the last line names the --cursor command for the next page. To
-    find one by its title, use co notion search.
+    are more than -n (100 by default, one request to Notion), the first line
+    says so and the last line names the --cursor command for the next page.
+    To find one by its title, use co notion search.
     """
     _listing("", kind, last, cursor, ids, as_json)
 
@@ -244,8 +272,8 @@ def pages(kind: str = typer.Option("", "--type", help="page or database; without
 @_reported
 def search(text: str = typer.Argument(..., help='Words in page or database titles (required; co notion pages lists everything)'),
            kind: str = typer.Option("", "--type", help="page or database; without it, both"),
-           last: int = typer.Option(20, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
-           cursor: str = typer.Option("", "--cursor", help="Continue a previous search from its next_cursor"),
+           last: int = typer.Option(LIST_LIMIT, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
+           cursor: str = typer.Option("", "--cursor", help=CURSOR_HELP),
            ids: bool = typer.Option(False, "--ids", help=IDS_HELP),
            as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """Search titles of pages and databases this key can read, newest edit first. Read-only.
@@ -270,14 +298,18 @@ def _listing(text: str, kind: str, last: int, cursor: str, ids: bool, as_json: b
         command = "search" if text else "pages"
         print_tip(f"--type takes page or database. Next: co notion {command} --help")
         raise typer.Exit(2)
+    again = f"co notion search {shlex.quote(text)}" if text else "co notion pages"
+    query = ("search" if text else "pages", text, kind, last)
+    after_given = _unbind(cursor, again, *query)
     account = None if as_json else _account()
-    found, after = api.search(text, kind or None, last, cursor)
+    found, after = api.search(text, kind or None, last, after_given)
+    bound = _bind(after, *query)
     rows = [api.row(obj) for obj in found]
     for r in rows:
         if r["type"] == "data_source":
             r["type"] = "database"
     if as_json:
-        _dump({"results": rows, "next_cursor": after or None, "complete": not after, "note": api.SEARCH_NOTE})
+        _dump({"results": rows, "next_cursor": bound or None, "complete": not after, "note": api.SEARCH_NOTE})
     else:
         token = _store_rows(account, [r["id"] for r in rows])
         noun = "result" if len(rows) == 1 else "results"
@@ -290,9 +322,9 @@ def _listing(text: str, kind: str, last: int, cursor: str, ids: bool, as_json: b
         for line in _listing_note(token):
             style.console().print(style.muted(line))
         style.console().print(style.muted(api.SEARCH_NOTE + "."))
-    again = f"co notion search {shlex.quote(text)}" if text else "co notion pages"
     if after:
-        return _tip(again + (f" --type {kind}" if kind else "") + f" -n {last} --cursor {after}", as_json)
+        return _tip(again + (f" --type {kind}" if kind else "") + (f" -n {last}" if last != LIST_LIMIT else "")
+                    + f" --cursor {bound}", as_json)
     if not rows:
         # Nothing listed at all means nothing is shared; nothing matching a title may just be unshared.
         return _tip("co notion check --target <the page's link>", as_json)
@@ -300,23 +332,33 @@ def _listing(text: str, kind: str, last: int, cursor: str, ids: bool, as_json: b
     _tip(f"co notion {'columns' if first['type'] == 'database' else 'page'} {first['id'] if as_json else 1}", as_json)
 
 
-@notion_app.command("page", epilog="Example:  co notion page 1  |  "
-                                    "co notion page https://www.notion.so/Roadmap-1f2e3d4c5b6a79881726354433221100")
+@notion_app.command("page", epilog="Example:  co notion page 1  |  co notion page 1 --md > roadmap.md")
 @_reported
 def page(target: str = typer.Argument(..., help=PAGE_HELP),
          max_blocks: int = typer.Option(api.DEFAULT_BLOCK_LIMIT, "--max-blocks", min=1, max=20000,
                                         help="Stop after reading this many blocks"),
          depth: int = typer.Option(api.DEFAULT_DEPTH, "--depth", min=1, max=30, help="How deep nested blocks are read"),
          listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+         as_md: bool = typer.Option(False, "--md", help="Print the page as a Markdown document (front matter, "
+                                                          "title, content) to save as a .md file"),
          as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """Show one page: title, link, every property, and its content with nesting, files and coverage. Read-only.
 
     The last lines say whether the whole page was read. If a limit stopped it,
     the content is partial and says so; child pages and databases are listed
     with the command that opens each. Under --json every property keeps its
-    type, ids and empty values (0, false, null).
+    type, ids and empty values (0, false, null). --md prints the page as a
+    Markdown document (properties in front matter) to redirect to a .md file;
+    a partial read says so at its top.
     """
+    if as_md and as_json:
+        print_tip("--md and --json are two outputs; pick one. Next: co notion page --help")
+        raise typer.Exit(2)
     detail = api.read_page(_ref(target, listing), max_blocks=max_blocks, max_depth=depth)
+    if as_md:
+        # Raw text, never through Rich: the document is the output, and the Next line goes to stderr.
+        print(notion_markdown.document(detail, _value_text), end="")
+        return _tip("co notion pages", True)
     out_detail = {key: value for key, value in detail.items() if key not in ("raw", "blocks")}
     if as_json:
         _dump(out_detail)
@@ -378,7 +420,7 @@ def db(target: str = typer.Argument(..., help=DB_HELP),
                                                            "edited>2026-10-01 filters by last edit"),
        sort: List[str] = typer.Option([], "--sort", help="Column to sort by, -Column for descending; edited, created"),
        last: int = typer.Option(20, "--last", "-n", min=1, max=100, help="At most this many rows"),
-       cursor: str = typer.Option("", "--cursor", help="Continue from a previous listing's next_cursor"),
+       cursor: str = typer.Option("", "--cursor", help=CURSOR_HELP),
        listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
        ids: bool = typer.Option(False, "--ids", help=IDS_HELP),
        as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
@@ -392,13 +434,16 @@ def db(target: str = typer.Argument(..., help=DB_HELP),
     cursor continues, so narrow the query with --where (edited>… works).
     """
     ds = api.data_source(_ref(target, listing), source)
+    query = ("db", ds["id"], list(where), list(sort), last)
+    after_given = _unbind(cursor, f"co notion db {ds['id']}", *query)
     account = None if as_json else _account()
     found, after, capped = api.query(ds["id"], filter=api.build_filter(ds, where), sorts=api.build_sorts(ds, sort),
-                                     first=last, cursor=cursor)
+                                     first=last, cursor=after_given)
+    bound = _bind(after, *query)
     rows = [{**api.row(obj), "properties": api.full_properties(obj)} for obj in found]
     info = _source_row(ds)
     if as_json:
-        _dump({"data_source": info, "rows": rows, "next_cursor": after or None,
+        _dump({"data_source": info, "rows": rows, "next_cursor": bound or None,
                "complete": not after and not capped, "capped": capped})
     else:
         out = style.console()
@@ -415,7 +460,7 @@ def db(target: str = typer.Argument(..., help=DB_HELP),
             out.print(style.muted(line))
     if after:
         words = ["db", ds["id"], *[w for c in where for w in ("--where", c)], *[w for s in sort for w in ("--sort", s)],
-                 "-n", str(last), "--cursor", after]
+                 "-n", str(last), "--cursor", bound]
         return _tip("co notion " + " ".join(shlex.quote(w) for w in words), as_json)
     if capped:
         return _tip(f'co notion db {ds["id"]} --where "edited>{(rows[-1]["edited"] if rows else "2026-01-01")[:10]}"'
