@@ -73,8 +73,8 @@ def test_a_tap_on_the_edges_deals_the_next_on_a_phone(reader):
     phone = page.context.browser.new_context(viewport={"width": 390, "height": 844}, locale="en-US", has_touch=True, is_mobile=True).new_page()
     phone.route("http*://**/*", lambda route: route.abort())
     phone.goto(uri)
-    phone.locator(".night-card .count").wait_for()
-    faces = phone.locator(".deal").evaluate_all(FACES)
+    phone.locator("#main .qcard.focal").wait_for()  # the phone shows its count above the cards, not on the night card
+    faces = phone.locator("#main .today-brief .qcard").evaluate_all(FACES)  # a phone draws no row of faces: the cards give the order
     start = phone.evaluate(RAISED, isolated_context=False)
     phone.locator("#main .deck-next").tap()
     assert phone.evaluate(RAISED, isolated_context=False) == faces[(faces.index(start) + 1) % len(faces)]
