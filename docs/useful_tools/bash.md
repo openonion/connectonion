@@ -93,8 +93,10 @@ agent.input("read main.py, fix the import error, then run python main.py to veri
 
 ## Notes
 
-- Output is truncated at 10,000 characters to prevent token overflow
-- stdout and stderr are merged in the returned string
+- Output is capped at 10,000 characters to prevent token overflow. The cap
+  applies to stdout and stderr; the `STDERR:` label and `Exit code:` line are
+  always kept, so a long failing command never reads as a truncated success
+- stdout and stderr are merged in the returned string, stderr last
 - Non-zero exit codes are included in the output (`Exit code: 1`)
 - A timeout raises `subprocess.TimeoutExpired`; agent tool execution records it
   as an error, so an orchestrator cannot mistake a killed command for success
