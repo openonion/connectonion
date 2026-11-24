@@ -1068,7 +1068,7 @@ class Gmail(GmailMailbox):
             recipient = headers['to']
 
         if reply_all:
-            cc = self._reply_all_cc(headers, recipient, cc, mine, own_mail)
+            recipient, cc = self._reply_all_recipients(headers, recipient, cc, mine, own_mail)
 
         subject = original_subject if original_subject.startswith('Re: ') else f"Re: {original_subject}"
         threading = {}
@@ -1078,18 +1078,29 @@ class Gmail(GmailMailbox):
         return recipient, subject, cc, threading, original.get('threadId', '')
 
     @staticmethod
-    def _reply_all_cc(headers: dict, recipient: str, cc: str | None, mine: set, own_mail: bool) -> str | None:
-        """Everyone else on the original (To and Cc), plus the given Cc, without me or the To."""
+    def _reply_all_recipients(headers: dict, recipient: str, cc: str | None, mine: set,
+                              own_mail: bool) -> tuple[str, str | None]:
+        """Keep each other address once, with the reply recipient in To."""
         from email.utils import formataddr, getaddresses
 
+        taken = set(mine)
+
+        def collect(fields: list[str]) -> list[str]:
+            kept = []
+            for name, address in getaddresses(fields):
+                if address and address.lower() not in taken:
+                    taken.add(address.lower())
+                    kept.append(formataddr((name, address)))
+            return kept
+
+        direct = collect([recipient])
         fields = [headers.get('cc', '')] if own_mail else [headers.get('to', ''), headers.get('cc', '')]
-        taken = {address.lower() for _, address in getaddresses([recipient]) if address} | mine
-        kept = []
-        for name, address in getaddresses([*fields, cc or '']):
-            if address and address.lower() not in taken:
-                taken.add(address.lower())
-                kept.append(formataddr((name, address)))
-        return ', '.join(kept) or None
+        copied = collect([*fields, cc or ''])
+        if not direct and copied:
+            direct.append(copied.pop(0))
+        if not direct:
+            raise ValueError("Reply all found no recipients other than your own addresses.")
+        return ', '.join(direct), ', '.join(copied) or None
 
     # === Actions ===
 

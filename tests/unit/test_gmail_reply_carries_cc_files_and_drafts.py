@@ -88,7 +88,7 @@ def test_reply_all_keeps_everyone_but_me_once(tmp_path):
 
 def test_reply_all_to_my_own_mail_follows_up_with_its_recipients(tmp_path):
     gmail, service = _gmail(tmp_path, [
-        ("From", "Me <me@mybiz.com>"), ("To", "dana@uni.example.edu"),
+        ("From", "Me <me@mybiz.com>"), ("To", "me@mybiz.com, dana@uni.example.edu, DANA@uni.example.edu"),
         ("Cc", "sam@mybiz.com, me@mybiz.com"), ("Subject", "Quote"), ("Message-ID", "<q@mybiz.com>")])
 
     gmail.reply("M1", "Following up", reply_all=True)
