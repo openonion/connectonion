@@ -21,6 +21,8 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
+Release candidate **1.9.7rc27** updates the REM Today reply workspace. See [1.9.7rc27 notes](releases/1.9.7rc27.md).
+
 Release candidate **1.9.7rc26** adds attachment sending and downloads for the agent mailbox (#3440). See [1.9.7rc26 notes](releases/1.9.7rc26.md).
 
 Release candidate **1.9.7rc25**: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation, with explicit choices preserved (#3426); sensitive relation reasons and stray privacy marks are curtained (#3427, #3425). Also includes standalone Obsidian live reads (#3064), sync/agenda fixes (#3055) and memory regex errors (#3255). See [1.9.7rc25 notes](releases/1.9.7rc25.md).
@@ -52,7 +54,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc26'
+python -m pip install --upgrade 'connectonion==1.9.7rc27'
 ```
 
 ## Current release
