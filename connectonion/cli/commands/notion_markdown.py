@@ -74,16 +74,16 @@ def block_markdown(block: dict, terminal: bool = False) -> str:
     kind = block.get("type", "")
     data = block.get(kind) or {}
     if terminal and kind == "child_page":
-        return f"**{data.get('title') or 'Untitled'}** *(child page)*"
+        return f"**{api.one_line(data.get('title')) or 'Untitled'}** *(child page)*"
     if terminal and kind == "child_database":
-        return f"**{data.get('title') or 'Untitled database'}** *(child database)*"
+        return f"**{api.one_line(data.get('title')) or 'Untitled database'}** *(child database)*"
     if terminal and kind == "link_to_page":
         return "*(link to another page)*"
     if terminal and kind in api.MEDIA:
         found = api.media(block)
         return f"*[{found['kind']}: {found['name']}]*"
-    if kind in HEADINGS:
-        return HEADINGS[kind] + inline(data.get("rich_text"))
+    if kind in HEADINGS:              # a Markdown heading is one line
+        return HEADINGS[kind] + api.one_line(inline(data.get("rich_text")))
     if kind == "to_do":
         return f"- [{'x' if data.get('checked') else ' '}] {inline(data.get('rich_text'))}"
     if kind in LIST_KINDS:
@@ -99,9 +99,9 @@ def block_markdown(block: dict, terminal: bool = False) -> str:
     if kind == "equation":
         return f"$$\n{data.get('expression', '')}\n$$"
     if kind == "child_page":
-        return f"[{data.get('title') or 'Untitled'}]({notion_link(block['id'])})"
+        return f"[{api.one_line(data.get('title')) or 'Untitled'}]({notion_link(block['id'])})"
     if kind == "child_database":
-        return f"[{data.get('title') or 'Untitled database'}]({notion_link(block['id'])}) (database)"
+        return f"[{api.one_line(data.get('title')) or 'Untitled database'}]({notion_link(block['id'])}) (database)"
     if kind == "link_to_page":
         target = data.get(data.get("type", "")) or ""
         return f"[Linked page]({notion_link(target)})" if target else ""
@@ -175,7 +175,7 @@ def document(detail: dict, value_text) -> str:
         front.append("in_trash: true")
     front.append("---")
     coverage = detail["coverage"]
-    parts = ["\n".join(front), f"# {detail['title'] or 'Untitled'}"]
+    parts = ["\n".join(front), f"# {api.one_line(detail['title']) or 'Untitled'}"]
     if not coverage["complete"]:
         parts.append("> **Incomplete:** " + "; ".join(coverage["stopped"])
                      + f". Read {coverage['blocks']} blocks; the rest of the page is not below.")
