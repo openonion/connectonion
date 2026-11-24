@@ -118,7 +118,9 @@ stderr, so the redirected file is only the document.
 - **page** reads nested blocks depth first (to `--depth`, default 8) up to
   `--max-blocks` (default 2000), following Notion's pagination. The last lines
   say `complete` or `INCOMPLETE: <what stopped it>`, which block types were not
-  rendered and every file (hosted by Notion with its link expiry, or external).
+  rendered as Markdown in the terminal (headings, lists, tables, bold), and
+  every file listed once after it (hosted by Notion with its link expiry, or
+  external).
   The pages a relation links to are listed by title under the properties, as
   Notion shows them, and the child pages and databases after the content; all
   of them are numbered, so `co notion page 2` opens the second. Each title is
