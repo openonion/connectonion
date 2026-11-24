@@ -816,8 +816,8 @@ def load_permission_patterns(co_dir=None) -> dict:
 # as the whitelist. So a prompt-injected turn could write itself `Bash(*)` and
 # every later turn, in every later session, was unrestricted (#722).
 #
-# Not all of `.co/`: agents write `dashboard.html` on purpose — it *is* the Home
-# page, built by the dashboard skill — and logs, docs and skills are content
+# Not all of `.co/`: agents write `control_center.html` on purpose — it *is* the
+# Control Center page, built by the control-center skill — and logs, docs and skills are content
 # too. The line is what a file decides, not where it lives.
 #
 # approvals.jsonl is the record of what the agent did (#2408). An agent that

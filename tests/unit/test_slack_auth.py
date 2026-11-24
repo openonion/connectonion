@@ -46,7 +46,7 @@ def slack(bot_scopes=ALL_BOT, user_scopes="search:read", errors=None):
         if method == "apps.connections.open":
             return httpx.Response(200, json={"ok": True, "url": "wss://wss.slack.test/link"})
         scopes = bot_scopes if token.startswith("xoxb-") else user_scopes
-        who = "opsbot" if token.startswith("xoxb-") else "aaron"
+        who = "opsbot" if token.startswith("xoxb-") else "ellis"
         return httpx.Response(200, headers={"x-oauth-scopes": scopes},
                               json={"ok": True, "user": who, "team": "Acme", "url": "https://acme.slack.com/"})
 

@@ -140,14 +140,34 @@ def _stage(root, record, name) -> dict:
     return getattr(muse, name)(root, record)
 
 
+def _failure(error) -> tuple[str, str]:
+    """What went wrong without local paths, and its first clause: the night's line prints the clause.
+
+    2026-11-16: the line carried 200 raw characters of a refusal, a task directory included.
+    """
+    from .refusals import LOCAL_PATH
+    text = LOCAL_PATH.sub("<path>", str(error)).removeprefix("Candidate rejected, kept at <path>: ")
+    return text[:200], re.split(r":\s|;\s", text, maxsplit=1)[0][:100]
+
+
 def _run(root, record, name, stage) -> dict:
     # A failed enrich must leave a round record and still let muse think (#2533).
     try:
         result = stage(root, record, name)
         return {**result, "outcome": result.get("outcome", "completed")}
     except RemError as error:
-        return {"outcome": "refused" if "rejected" in str(error) else f"failed: {str(error)[:200]}",
+        text, cause = _failure(error)
+        return {"outcome": "refused" if "rejected" in str(error) else f"failed: {text}", "cause": cause,
                 "usage": getattr(error, "usage", None)}
+
+
+def _points(root, *results) -> float:
+    """What enrich and muse spent, from their tokens at the effort and tier they ran at (#3099)."""
+    from .inquiry import stage_config
+    config = read_config(root)
+    return sum(quota._token_points(result.get("usage"), config["speed"],
+                                   stage_config(root, config, name)["effort"])
+               for name, result in zip(("enrich", "muse"), results))
 
 
 def deepen(root, record, *, stage=None) -> dict:
@@ -159,13 +179,17 @@ def deepen(root, record, *, stage=None) -> dict:
     thought = _run(root, record, "muse", stage or _stage)
     text = notebook.read(record)
     after = page_metrics(text)
+    from .runner import _add_usage
     row = {"at": service.now().isoformat(),
+           "usage": _add_usage(enrich.get("usage"), thought.get("usage")),
            **{key: [before[key], after[key]] for key in before},
            "after_enrich": after_enrich,
            "insights": thought.get("insights", 0), "lost_quotes": len(quotes - page_quotes(text)),
            "insights_rejected": len(thought.get("insights_rejected", [])),
            "enrich": enrich["outcome"], "muse": thought["outcome"],
-           "points": sum(quota._token_points(result.get("usage"), read_config(root)["speed"]) for result in (enrich, thought))}
+           **{f"{name}_cause": result["cause"] for name, result in (("enrich", enrich), ("muse", thought))
+              if "cause" in result},
+           "points": _points(root, enrich, thought)}
     with _HISTORY_LOCK:
         history = read_json(state_path(root, "depth.json"), {})
         rounds = history.setdefault(record, [])
@@ -207,11 +231,12 @@ def _deepen_choices(root, choices, config, started, stage, say):
     return rounds, picked, reason
 
 
-def slot(root, *, records=None, pages=None, stage=None, say=None) -> dict:
+def slot(root, *, records=None, pages=None, stage=None, say=None, skip=()) -> dict:
+    """`skip`: pages a round has open (its investigation's draft, a pending task); not chosen."""
     started = time.monotonic()
     config = read_config(root)
     if records is None:
-        choices = candidates(root)
+        choices = [row for row in candidates(root) if row["record"] not in skip]
         pages = config["limits"]["depth_pages_per_slot"] if pages is None else pages
     else:
         history = read_json(state_path(root, "depth.json"), {})

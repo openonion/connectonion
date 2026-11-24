@@ -5,16 +5,21 @@ description: The steps for investigating an organisation's page, composed after 
 
 # Investigating an organisation
 
+## Research beyond the mailbox
+
+Follow `rem-investigate` for research tools, privacy, own browser tab, the
+LinkedIn prohibition and saved captures. Establish what the organisation does, who is involved and how it relates to the user from its public site and independent sources as well as mail. Put answered identity questions in the lead/Insight, with citations, not Uncertainties.
+
 - Project documents that name the subject are the owner's record: cite them as
   such; a contact detail only from them is not the person's own.
 - The material includes mail on this page's domains and, when another domain
   page shares a canonical contact candidate, their dated primary correspondence.
   A shared page or display name is a lead, not identity proof. Verify the person
   and company from the messages before drawing cross-domain conclusions; keep
-  uncertain address/domain ownership explicit. Do not merge legal entities.
+  uncertain address/domain ownership explicit. Do not merge separately registered companies.
   Existing notebook pages are context, not independent evidence.
 - Read the material for what is
-  agreed with the **entity**: terms, dates, signed or unsigned documents, who
+  agreed with the **organisation**: terms, dates, signed or unsigned documents, who
   decides. What is true of one person belongs on that person's page.
 - `People here` links existing people pages; never copy their contents. A person
   who writes from the domain but has no page: name them, do not create a page.
@@ -32,5 +37,6 @@ description: The steps for investigating an organisation's page, composed after 
 ## What to produce
 
 Follow `rem-page-org` exactly, every section present, in order.
+Fill its cited `Kind` and `To you` Facts from evidence; unsupported stays `Unknown`.
 
 - Keep Facts dates scoped to confirmed target-domain correspondence when cross-domain identity remains unverified. Put candidate-domain dates in explicitly qualified related context instead.

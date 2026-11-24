@@ -77,7 +77,7 @@ def sdk(monkeypatch):
     for name in ("ConnectedEv", "ConnectFailureEv", "DisconnectedEv", "GroupInfoEv",
                  "JoinedGroupEv", "KeepAliveRestoredEv", "KeepAliveTimeoutEv",
                  "LoggedOutEv", "MessageEv", "PairStatusEv", "StreamReplacedEv",
-                 "TemporaryBanEv", "UndecryptableMessageEv"):
+                 "TemporaryBanEv", "UndecryptableMessageEv", "ClientOutdatedEv"):
         setattr(connection, name, type(name, (), {}))
     client_module = ModuleType("neonize.client")
     client_module.NewClient = lambda path: None      # each test replaces this
@@ -570,10 +570,10 @@ def test_a_sender_arrives_with_a_name_a_person_would_recognise(sdk, tmp_path, mo
 def test_a_lid_sender_is_named_through_its_own_contact_row(sdk, tmp_path, monkeypatch):
     # Most of them have one: 857 of the 2020 rows on a real store are @lid.
     session = tmp_path / "session.db"
-    contacts_db(session, rows=[("126121882435737@lid", None, None, "aaronplus1996", None)])
+    contacts_db(session, rows=[("126121882435737@lid", None, None, "ellis.a", None)])
     monkeypatch.setenv("WHATSAPP_SESSION", str(session))
 
-    assert WhatsApp().name_of("126121882435737@lid") == "aaronplus1996"
+    assert WhatsApp().name_of("126121882435737@lid") == "ellis.a"
 
 
 def test_a_lid_with_no_row_is_named_through_the_number_it_belongs_to(sdk, tmp_path, monkeypatch):
@@ -811,6 +811,20 @@ def test_a_temporary_ban_stops_the_listener_and_says_when(sdk, monkeypatch):
                        (ev.TemporaryBanEv, SimpleNamespace(Code=402, Expire=3600)))
 
     assert "402" in str(stopped.value) and "3600" in str(stopped.value)
+
+
+def test_whatsapp_refusing_an_outdated_client_stops_the_listener_with_the_upgrade(sdk, monkeypatch):
+    # neonize 0.4.3 got "Client outdated (405)" at every connect and the
+    # listener kept retrying with only a raw log line to show for it (#2853).
+    import neonize.events as ev
+
+    inbox = Inbox("whatsapp")
+
+    with pytest.raises(ListenerStopped) as stopped:
+        listen_through(monkeypatch, inbox, (ev.ClientOutdatedEv, SimpleNamespace()))
+
+    assert "rejected this client as outdated (405)" in str(stopped.value)
+    assert "connectonion[whatsapp]" in str(stopped.value)
 
 
 def test_an_ordinary_disconnection_is_logged_and_survived(sdk, monkeypatch):
@@ -1381,6 +1395,27 @@ def test_a_photo_is_fetched_while_its_keys_are_still_in_hand(tmp_path, sdk):
     assert asked["message"] is event.Message   # the protobuf, not a copy of the record
 
 
+def test_a_document_keeps_its_own_extension_and_name(tmp_path, sdk):
+    """A PDF saved as `<id>.bin` was a file neither `read_file` nor a person
+    browsing media/ could place (#2853). The real name is on documentMessage."""
+    from connectonion.inbox.whatsapp import WhatsApp
+
+    class Client:
+        def download_any(self, message, path=None):
+            Path(path).write_bytes(b"%PDF-1.7 itinerary")
+
+    provider = linked(WhatsApp())
+    event = media_event("documentMessage", message_id="3EB0DOC")
+    variant = event.Message.ListFields()[0][1]
+    variant.mimetype, variant.fileName = "application/pdf", "Acme itinerary.PDF"
+    message = provider.to_message(event)
+    provider.fetch_media(Inbox("whatsapp", tmp_path), message, event, Client())
+
+    assert Path(message.media["path"]).name == "3EB0DOC.PDF"
+    assert message.media["name"] == "Acme itinerary.PDF"
+    assert message.media["mime"] == "application/pdf"
+
+
 def test_a_media_download_that_fails_says_so_on_the_message(tmp_path, sdk):
     """Expired media is the normal failure and a zero-byte file is worse than an
     error: a caller reads an empty document as an empty document."""
@@ -1450,3 +1485,78 @@ def test_what_the_user_types_on_their_phone_is_kept_but_never_queued(tmp_path, s
     assert not any(inbox.new.iterdir())                        # nothing queued for a consumer
     provider.keep_own(inbox, mine, Client())                   # the same event twice is kept once
     assert len((tmp_path / "own.jsonl").read_text().splitlines()) == 1
+
+
+class PairingSocket(Socket):
+    """An unlinked device: the socket comes up and shows QR codes until a phone links it.
+
+    `event` is an object, as neonize's is: called as a decorator for an event
+    type, and with `.qr` to replace the QR printer.
+    """
+
+    def __init__(self, code="H7J4-6CTZ", refuse=""):
+        super().__init__()
+        self.code, self.refuse = code, refuse
+        self.asked, self.answered, self.qr = [], threading.Event(), None
+        socket = self
+
+        class Events:
+            def __call__(self, kind):
+                return Socket.event(socket, kind)
+
+            def qr(self, handler):
+                socket.qr = handler
+
+        self.event = Events()
+
+    def PairPhone(self, phone, show_push_notification):
+        self.asked.append(phone)
+        self.answered.set()
+        if self.refuse:
+            raise RuntimeError(self.refuse)
+        return self.code
+
+    def connect(self):
+        for data in (b"qr-1", b"qr-2", b"qr-3"):   # it rotates while nobody scans
+            self.qr(self, data)
+        self.answered.wait(5)
+        time.sleep(0.2)   # the code thread prints after PairPhone returns
+
+
+def test_listen_with_a_phone_prints_a_code_to_type_instead_of_a_qr(sdk, monkeypatch, capsys):
+    """#2161: a QR rotating every ~20 s could not be relayed to an owner who was not at the screen."""
+    inbox = Inbox("whatsapp")
+    socket = PairingSocket()
+    monkeypatch.setattr("neonize.client.NewClient", lambda path: socket)
+
+    WhatsApp().run(inbox, phone="61412345678")
+
+    assert socket.asked == ["61412345678"]          # once, however many QRs went by
+    err = capsys.readouterr().err
+    assert "Pairing code: H7J4-6CTZ" in err
+    assert "Link with phone number instead" in err
+    assert "pairing code issued" in (inbox.root / "log").read_text(encoding="utf-8")
+
+
+def test_a_number_whatsapp_will_not_pair_stops_the_listener_with_its_reason(sdk, monkeypatch):
+    inbox = Inbox("whatsapp")
+    socket = PairingSocket(refuse="phone number is not registered")
+    monkeypatch.setattr("neonize.client.NewClient", lambda path: socket)
+
+    with pytest.raises(ListenerStopped) as stopped:
+        WhatsApp().run(inbox, phone="61412345678")
+
+    assert "phone number is not registered" in str(stopped.value)
+    assert "without --phone" in str(stopped.value)
+    assert socket.disconnected
+
+
+def test_a_millisecond_timestamp_is_the_real_time_not_now():
+    # neonize's live MessageInfo.Timestamp is milliseconds. As seconds it is
+    # out of range: ValueError on POSIX (silently "now"), OSError 22 on
+    # Windows, where every incoming message was skipped.
+    from connectonion.inbox.whatsapp import _iso
+
+    assert _iso(1756808267000) == "2025-09-02T10:17:47Z"
+    assert _iso(1756808267) == "2025-09-02T10:17:47Z"
+    assert _iso(SimpleNamespace(seconds=1756808267)) == "2025-09-02T10:17:47Z"

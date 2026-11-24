@@ -22,6 +22,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -53,6 +55,8 @@ def test_the_e2e_gate_collects_no_paid_tests():
     assert _collect('tests/e2e/real_api', '-m', 'e2e and not real_api') == 0
 
 
+# Full e2e collection can exceed the default 60s under parallel unit load.
+@pytest.mark.timeout(600)
 def test_the_e2e_gate_still_covers_our_own_system():
     """Excluding paid providers must not empty the gate."""
     assert _collect('tests/e2e', '-m', 'e2e and not real_api') > 100

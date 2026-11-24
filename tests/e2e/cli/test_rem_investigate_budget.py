@@ -24,7 +24,7 @@ def invoke(root, *args):
 
 
 def _queue(monkeypatch, rows):
-    monkeypatch.setattr("connectonion.rem.queue.order", lambda root, category: [
+    monkeypatch.setattr("connectonion.rem.queue.order", lambda root, category, today=None: [
         {"path": path, "recent": False, "weight": weight, "unknown": 1, "last_investigated": None}
         for path, weight in rows.get(category, [])])
 

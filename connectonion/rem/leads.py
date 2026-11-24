@@ -79,7 +79,37 @@ def page_leads(notebook: Notebook, items: list[dict]) -> list[str]:
         if hits and all(record != lead for _, lead in leads):
             leads.append((hits, record))
     leads.sort(key=lambda lead: (-lead[0], lead[1]))
-    return [record for _, record in leads[:MAX_LEADS]]
+    return _with_agendas(notebook, [record for _, record in leads[:MAX_LEADS]])
+
+
+def _with_agendas(notebook: Notebook, leads: list[str]) -> list[str]:
+    """The leads, then each project lead's agenda pages after all of them.
+
+    An agenda page keeps one dated line per item of one project. It names the
+    project, never the item, so a batch about the item never names it: a moved
+    due date reached the project page and left the agenda on the old date
+    (2026-11-14). An agenda page belongs to a project when it shares the
+    project page's file name or links to it (any link the reader follows:
+    a relative Markdown link or a [[projects/name]] wikilink), whatever source
+    wrote it.
+
+    Agendas come after every page the material named, never between them: a
+    batch reads only its first PAGES_PER_BATCH leads, and an agenda placed
+    after its project pushed a named project out of the batch. They fill only
+    the room left under MAX_LEADS, and each is added once.
+    """
+    from .reader_model import notebook_links
+    projects = [lead for lead in leads if lead.startswith("projects/")]
+    if not projects:
+        return leads
+    agendas = {record: notebook_links(record, notebook.read(record)) for record in notebook.list("agenda")}
+    added = []
+    for lead in projects:
+        name = lead.removeprefix("projects/")
+        added += [record for record, links in sorted(agendas.items())
+                  if record not in leads and record not in added
+                  and (record.removeprefix("agenda/") == name or lead in links)]
+    return leads + added[:max(0, MAX_LEADS - len(leads))]
 
 
 def project_writer_pages(notebook: Notebook, leads: list[str]) -> list[str]:
@@ -100,7 +130,8 @@ NO_CHANGE_HOURS = 24
 
 
 def remember_no_change(root: Path, record: str, unchanged: bool) -> None:
-    path = state_path(root, NO_CHANGE)
+    from .catchup import marker
+    path = marker(root, NO_CHANGE)
     seen = read_json(path, {})
     if unchanged:
         seen[record] = datetime.now(timezone.utc).isoformat()
@@ -112,7 +143,8 @@ def remember_no_change(root: Path, record: str, unchanged: bool) -> None:
 def cooling(root: Path, records: list[str], *, now: datetime | None = None) -> list[str]:
     """The records whose last turn, within NO_CHANGE_HOURS, changed nothing."""
     cutoff = ((now or datetime.now(timezone.utc)) - timedelta(hours=NO_CHANGE_HOURS)).isoformat()
-    seen = read_json(state_path(root, NO_CHANGE), {})
+    from .catchup import marker
+    seen = read_json(marker(root, NO_CHANGE), {})
     return [record for record in records if seen.get(record, "") > cutoff]
 
 

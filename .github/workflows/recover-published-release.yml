@@ -1,6 +1,7 @@
 name: Recover Published Release
 
-# Use only when the tag-driven release has already passed tests, built artifacts,
+# Use only when the tag-driven release has already passed tests (its own matrix,
+# or the gate's green Tests run for the exact SHA), built artifacts,
 # and published to PyPI, but finalization failed after publication. This is a
 # second finalizer, never a second registry writer.
 on:
@@ -75,7 +76,12 @@ jobs:
 
           jobs = {job["name"]: job["conclusion"] for job in run["jobs"]}
           tests = [state for name, state in jobs.items() if name.startswith("tests /")]
-          if not tests or any(state != "success" for state in tests):
+          # Since the gate job, a release whose commit already had a green
+          # Tests run skips its own matrix: then the gate passed and "tests"
+          # is one skipped job. Otherwise every matrix job must have passed.
+          proven_by_gate = jobs.get("gate") == "success" and jobs.get("tests") == "skipped"
+          ran_matrix = bool(tests) and all(state == "success" for state in tests)
+          if not (proven_by_gate or ran_matrix):
               raise SystemExit("The tag-driven test matrix did not pass")
           if jobs.get("build") != "success" or jobs.get("publish") != "success":
               raise SystemExit("The reviewed artifacts were not built and published")

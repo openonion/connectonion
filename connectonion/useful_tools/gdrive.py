@@ -1,12 +1,12 @@
 """
 Purpose: Google Drive integration tool for listing, searching, downloading, and uploading files via the Drive API
 LLM-Note:
-  Dependencies: imports from [io, mimetypes, os, pathlib, googleapiclient.discovery, googleapiclient.http, google.oauth2.credentials] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gdrive.py]
-  Data flow: Agent calls GDrive methods → _get_service() validates the ambient OpenOnion account and refreshes the access token via oo-api once per instance → Drive v3 API → returns file dicts or confirmations | list_files()/search_files() page through files().list() with 'trashed = false' | download() picks get_media() for binary files and export_media() for Google-native docs | upload() sends a MediaFileUpload
+  Dependencies: imports from [hashlib, io, mimetypes, os, time, pathlib, requests, google.auth.transport.requests, googleapiclient.discovery, googleapiclient.http, google.oauth2.credentials] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gdrive.py]
+  Data flow: Agent calls GDrive methods → _get_service() validates the ambient OpenOnion account and refreshes the access token via oo-api once per instance → Drive v3 API → returns file dicts or confirmations | list_files()/search_files() page through files().list() with 'trashed = false' | download() streams a binary file's media with one Range GET into NAME.part (resumed on a rerun, size- and md5-checked, renamed when complete) and uses export_media() in memory for Google-native docs | upload() sends a MediaFileUpload
   State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to the Drive API | creates new local files on download (never overwrites: a taken name gets a -N suffix; agents stay inside the project unless allow_external_downloads) and remote files on upload | token refresh atomically saves the selected credential record
   Integration: exposes GDrive class with list_files(), search_files(), download(), upload(), delete() | private metadata/byte helpers let the Gmail CLI stage a Drive file without writing it locally | used as agent tool via Agent(tools=[GDrive()])
   Performance: network I/O per API call | listings page at 100/request | downloads stream in chunks
-  Errors: raises ValueError if OAuth not configured, if the Drive scope is missing, on unknown file ids, and on Google-native types with no export format | HttpError from the Drive API propagates
+  Errors: raises DriveDownloadError when a download stays stalled or arrives wrong, ValueError if OAuth not configured, if the Drive scope is missing, on unknown file ids, and on Google-native types with no export format | HttpError from the Drive API propagates
 
 Google Drive tool for managing files.
 
@@ -35,12 +35,15 @@ Example:
     agent.input("What did I change in Drive this week?")
 """
 
+import hashlib
 import io
 import mimetypes
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
@@ -66,6 +69,20 @@ EXPORT_FORMATS = {
 # the file fields have to be nested under files(...).
 FILE_FIELDS = "id, name, mimeType, modifiedTime, size, webViewLink"
 LIST_FIELDS = f"nextPageToken, files({FILE_FIELDS})"
+
+# A binary download is one streamed GET of the file's media, resumed with
+# Range from what the .part file already holds (#3002).
+DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
+# Bytes are read and written this many at a time. A read waits for a whole
+# chunk, so what a stall or a dropped connection loses is at most one chunk.
+READ_CHUNK = 256 * 1024
+STALL_SECONDS = 60       # no byte from Drive for this long counts as a stall
+STALL_RETRIES = 5        # reconnects, from the bytes already on disk, before giving up
+PROGRESS_SECONDS = 5     # how often a progress line is reported
+
+
+class DriveDownloadError(Exception):
+    """A download that stalled or arrived wrong; the message says what is on disk and what to do."""
 
 
 class GDrive:
@@ -132,6 +149,7 @@ class GDrive:
             scopes=self._credentials.scopes or None
         )
 
+        self._google_credentials = creds
         self._service = build('drive', 'v3', credentials=creds)
         return self._service
 
@@ -275,7 +293,7 @@ class GDrive:
             if file_id in seen:
                 raise ValueError("Drive shortcut cycle; select the target file directly.")
             seen.add(file_id)
-            item = service.files().get(fileId=file_id, fields=f"{FILE_FIELDS}, shortcutDetails, trashed",
+            item = service.files().get(fileId=file_id, fields=f"{FILE_FIELDS}, md5Checksum, shortcutDetails, trashed",
                                        supportsAllDrives=True).execute()
             if item.get("trashed"):
                 raise ValueError("Drive file or shortcut is in the trash; restore it before attaching.")
@@ -346,42 +364,57 @@ class GDrive:
             "export_type": mime if item["mimeType"].startswith(NATIVE_PREFIX) else None,
         }
 
-    def download(self, file_id: str, dest: str = ".") -> str:
+    def download(self, file_id: str, dest: str = ".", progress=None) -> str:
         """Download a Drive file, exporting Google-native docs to a real format.
 
         Args:
             file_id: Drive file id
             dest: Destination directory, or a full file path (default: cwd).
                 An existing file is never replaced; the new one gets a -N suffix.
+            progress: optional callable given one status line at a time
+                (bytes, rate, ETA, stalls) while a file streams.
+
+        A file with bytes of its own streams into "<name>.part" and is renamed
+        when its size and md5 match Drive's. Running the same download again
+        resumes from what the .part file already holds.
 
         Returns:
             Confirmation with the path written
         """
-        item = self._read_file(file_id)
+        item = self._get_meta(file_id)
+        if item["mimeType"].startswith(NATIVE_PREFIX):
+            exported = self._read_file(file_id)
+            return f"Downloaded to {self._write_new(self._target(dest, exported['name']), exported['data'])}"
+        return f"Downloaded to {self._stream(item, self._target(dest, item['name']), progress)}"
 
+    def _target(self, dest: str, name: str) -> Path:
+        """The path a download should take: dest itself, or a safe form of name inside it."""
         path = Path(dest).expanduser()
         if path.is_dir():
             # The name is chosen by whoever shared the file, and Drive allows
             # '/' in names: keep the last segment only, so "../../.zshrc"
             # cannot climb out of the folder the user picked (#1753).
-            name = os.path.basename(str(item["name"]).replace("\\", "/"))
+            name = os.path.basename(str(name).replace("\\", "/"))
             # Control characters can forge CLI output (including ANSI escapes).
             name = "".join("_" if ord(c) < 32 or ord(c) == 127 else c for c in name)
             path = path / (name if name not in {"", ".", ".."} else "download")
 
-        directory = path.parent.resolve()
         if not self._allow_external_downloads:
             try:
-                directory.relative_to(self._download_root)
+                path.parent.resolve().relative_to(self._download_root)
             except ValueError:
                 raise PermissionError(f"Download directory is outside the project: {dest}") from None
+        return path
 
+    @staticmethod
+    def _write_new(path: Path, data: bytes) -> Path:
+        """Write data to the first free name: path, then path-1, path-2 ..."""
         # Never replace what is already there — a same-named file, or a symlink
         # planted at the name, gets a "-N" suffix instead of being written through.
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         attempt = 0
         while True:
-            candidate = path if attempt == 0 else directory / f"{path.stem}-{attempt}{path.suffix}"
+            candidate = path if attempt == 0 else path.parent / f"{path.stem}-{attempt}{path.suffix}"
             try:
                 descriptor = os.open(candidate, flags, 0o600)
                 break
@@ -389,11 +422,73 @@ class GDrive:
                 attempt += 1
         try:
             with os.fdopen(descriptor, "wb") as handle:
-                handle.write(item["data"])
+                handle.write(data)
         except Exception:
             candidate.unlink(missing_ok=True)
             raise
-        return f"Downloaded to {candidate}"
+        return candidate
+
+    def _stream(self, item: dict, path: Path, progress=None) -> Path:
+        """Stream a binary file into <final>.part, resuming what it holds, then rename it to final."""
+        final = _free_name(path)
+        part = _PartFile(final.with_name(final.name + ".part"))
+        total = int(item["size"])
+        say = progress or (lambda line: None)
+        if part.size > total:
+            part.reset()
+        if part.size:
+            say(f"resuming {part.path.name}: {_human(part.size)} of {_human(total)} already on disk")
+        meter = _Meter(total, part.size, say)
+        with self._media_session() as session, part:
+            self._fill(session, item["id"], part, total, meter, say)
+        _check(part, item, total)
+        if os.path.lexists(final):  # appeared while we downloaded: never replace it
+            final = _free_name(final)
+        os.rename(part.path, final)
+        say(f"done: {_human(total)} in {meter.elapsed()}")
+        return final
+
+    def _fill(self, session, file_id: str, part: "_PartFile", total: int, meter: "_Meter", say) -> None:
+        """Fetch until part holds total bytes, reconnecting from what is on disk; give up after STALL_RETRIES."""
+        stalls = 0
+        while part.size < total:
+            before, why = part.size, "the stream ended early"
+            try:
+                self._fetch(session, file_id, part, meter)
+            except (requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError) as error:
+                timed_out = "timed out" in str(error).lower()
+                why = f"no data from Drive for {STALL_SECONDS} s" if timed_out else "the connection dropped"
+            where = f"at {_human(part.size)} of {_human(total)}"
+            if part.size > before:
+                stalls = 0
+                if part.size < total:
+                    say(f"{why} {where}; resuming from there")
+                continue
+            stalls += 1
+            if stalls > STALL_RETRIES:
+                raise DriveDownloadError(
+                    f"Stuck: {why} {where}, {stalls} times in a row. The partial download is kept at "
+                    f"{part.path}; run the same command again to resume from there.")
+            say(f"stalled: {why} {where}; reconnecting from there (attempt {stalls} of {STALL_RETRIES})")
+
+    def _media_session(self):
+        """An HTTP session that signs requests with this instance's Google credentials."""
+        from google.auth.transport.requests import AuthorizedSession
+        self._get_service()
+        return AuthorizedSession(self._google_credentials)
+
+    @staticmethod
+    def _fetch(session, file_id: str, part: "_PartFile", meter: "_Meter") -> None:
+        """One streamed GET of the file's bytes from part.size onward, appended to part as they arrive."""
+        headers = {"Range": f"bytes={part.size}-"} if part.size else {}
+        with session.get(f"{DRIVE_FILES_URL}/{file_id}", params={"alt": "media", "supportsAllDrives": "true"},
+                         headers=headers, stream=True, timeout=(30, STALL_SECONDS)) as response:
+            response.raise_for_status()
+            if part.size and response.status_code != 206:
+                part.reset()  # the server sent the whole file, not the rest of it
+            for chunk in response.iter_content(READ_CHUNK):
+                part.append(chunk)
+                meter.update(part.size)
 
     def upload(self, path: str, name: str = None) -> dict:
         """Upload a local file to Drive.
@@ -443,3 +538,86 @@ class GDrive:
             supportsAllDrives=True,
         ).execute()
         return f"Moved to trash: {file_id}"
+
+
+def _free_name(path: Path) -> Path:
+    """The first of path, path-1, path-2 ... with nothing at it and no symlink at its .part.
+
+    A download's .part file sits beside this name, so running the same
+    download again finds the same name and resumes its .part.
+    """
+    attempt = 0
+    while True:
+        candidate = path if attempt == 0 else path.parent / f"{path.stem}-{attempt}{path.suffix}"
+        if not os.path.lexists(candidate) and not os.path.islink(candidate.with_name(candidate.name + ".part")):
+            return candidate
+        attempt += 1
+
+
+class _PartFile:
+    """The .part file a download appends to, with its size and the md5 of what it holds."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        self._handle = os.fdopen(os.open(path, flags, 0o600), "r+b")
+        self.digest, self.size = hashlib.md5(), 0
+        for block in iter(lambda: self._handle.read(READ_CHUNK), b""):
+            self.digest.update(block)
+            self.size += len(block)
+
+    def append(self, chunk: bytes) -> None:
+        self._handle.write(chunk)
+        self.digest.update(chunk)
+        self.size += len(chunk)
+
+    def reset(self) -> None:
+        self._handle.seek(0)
+        self._handle.truncate()
+        self.digest, self.size = hashlib.md5(), 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._handle.close()
+
+
+class _Meter:
+    """Reports bytes, rate and time left every PROGRESS_SECONDS while a download runs."""
+
+    def __init__(self, total: int, start: int, say):
+        self.total, self.start, self.say = total, start, say
+        self.began = self.last = time.monotonic()
+
+    def update(self, done: int) -> None:
+        now = time.monotonic()
+        if now - self.last < PROGRESS_SECONDS:
+            return
+        self.last = now
+        rate = (done - self.start) / max(now - self.began, 1e-9)
+        left = f"{(self.total - done) / rate:.0f} s left" if rate else "time left unknown"
+        self.say(f"{_human(done)} of {_human(self.total)} ({done * 100 // max(self.total, 1)}%), "
+                 f"{_human(rate)}/s, {left}")
+
+    def elapsed(self) -> str:
+        return f"{time.monotonic() - self.began:.0f} s"
+
+
+def _check(part: _PartFile, item: dict, total: int) -> None:
+    """Size and md5 must match Drive's before the .part becomes the file; a mismatch removes it."""
+    expected = item.get("md5Checksum")
+    if part.size == total and (not expected or part.digest.hexdigest() == expected):
+        return
+    part.path.unlink()
+    raise DriveDownloadError(
+        f"The download of {item['name']} did not match Drive ({_human(part.size)} of {_human(total)}"
+        f"{', md5 differs' if part.size == total else ''}); the partial file was removed. "
+        "Run the same command again to download it afresh.")
+
+
+def _human(count: float) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if count < 1024 or unit == "GB":
+            return f"{count:.0f} {unit}" if unit == "B" else f"{count:.1f} {unit}"
+        count /= 1024

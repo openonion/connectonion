@@ -28,6 +28,7 @@ USAGE = (
     "  co browser -t TAB network requests|request <n>|har start|har stop [FILE]   what the tab sent; HAR\n"
     "  co browser -t TAB cookies [set|clear|save|load] [--all] [--raw]   the tab's site cookies\n"
     "  co browser import [--domain SITE] [--dry-run]   carry Chrome's logins (cookies) into this browser\n"
+    "  co browser history [--days N] [--json]     read local Chrome visits; no browser or network\n"
     "  co browser status                        open or not, engine, last command, the tab board\n"
     "  co browser close                         close the browser and stop the daemon\n"
     "  co browser install-onion                  install the onionwright driver (--engine wtf does this for you)\n"
@@ -188,7 +189,7 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
         args = [*args[:-1], sys.stdin.read()]
     if engine_mode == "onion" and _starts_a_session(args):
         # Before the spend, not in the receipt. The Airbnb round of 2026-09-12
-        # ran an authenticated host dashboard on the paid engine for 40 minutes,
+        # ran an authenticated host Control Center on the paid engine for 40 minutes,
         # then finished the same work on the free one with the logins intact —
         # nothing anywhere had said which engine was about to bill (#1510).
         print(
@@ -203,10 +204,10 @@ def handle_browser(args, headless: bool = False, engine_mode: str = "auto") -> i
             print(failure, file=sys.stderr)
             return 1
     code = send(shlex.join(args), headless=headless, tab=tab, engine_mode=engine_mode)
-    from .command_tips import tips_enabled
-    if code == 0 and tips_enabled():
-        # Not gated on a terminal: an agent captures stdout, and it is the
-        # reader this tip exists for. stderr keeps stdout pure data.
+    from .command_tips import success_tips_enabled
+    if code == 0 and success_tips_enabled():
+        # Not gated on a terminal (except on Windows, #3113): an agent captures
+        # stdout, and it is the reader this tip exists for. stderr keeps stdout pure data.
         tip = f"💡 {_next_tip()}"
         if sys.stderr.isatty():
             tip = f"\033[2m{tip}\033[0m"

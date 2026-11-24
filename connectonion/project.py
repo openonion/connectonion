@@ -4,7 +4,7 @@ The directory that owns ``.co/`` is the project, not wherever the process was
 started. An agent run from a subdirectory is the same agent, with the same
 skills, the same trust lists and the same ``host.yaml``.
 
-This walk was written five times before it had a home — in the dashboard, the
+This walk was written five times before it had a home — in the Control Center, the
 logger, the host config, the trust lists — and each copy was added by a separate
 bug where something resolved against the bare cwd instead. Two of those bugs
 failed open: a project configured ``trust: strict`` ran as ``careful``, and an

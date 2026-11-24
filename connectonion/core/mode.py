@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Mapping
 
+# The read-only protocol ID means approval before changes, not a write ban.
 Mode = Literal["read-only", "auto", "full-access"]
 
 READ_ONLY: Mode = "read-only"
@@ -20,6 +21,8 @@ AUTO: Mode = "auto"
 FULL_ACCESS: Mode = "full-access"
 MODES: tuple[Mode, ...] = (READ_ONLY, AUTO, FULL_ACCESS)
 DEFAULT_MODE: Mode = AUTO
+ASK_FIRST_DESCRIPTION = "Asks you before every change."
+MODE_NAMES = {READ_ONLY: "Ask first", AUTO: "Auto", FULL_ACCESS: "Full access"}
 
 
 def mode_id(value: Any) -> Mode:
@@ -112,6 +115,7 @@ __all__ = [
     "DEFAULT_MODE",
     "FULL_ACCESS",
     "MODES",
+    "MODE_NAMES",
     "Mode",
     "READ_ONLY",
     "consume_full_access_turn",

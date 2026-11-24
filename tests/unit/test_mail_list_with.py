@@ -56,19 +56,19 @@ class FakeGmailService:
 def test_gmail_searches_all_three_fields_and_follows_page_tokens():
     service = FakeGmailService(
         pages=[{"messages": [{"id": "g2"}], "nextPageToken": "t1"}, {"messages": [{"id": "g1"}]}],
-        headers={"g1": {"From": "Corin <zhouodywork@gmail.com>", "To": "me@gmail.com", "Subject": "a",
+        headers={"g1": {"From": "Corin <corin.work@example.org>", "To": "me@gmail.com", "Subject": "a",
                         "Date": "Mon, 07 Sep 2026 10:00:00 +1000"},
-                 "g2": {"From": "me@gmail.com", "To": "zhouodywork@gmail.com", "Cc": "x@y.z", "Subject": "b",
+                 "g2": {"From": "me@gmail.com", "To": "corin.work@example.org", "Cc": "x@y.z", "Subject": "b",
                         "Date": "Tue, 08 Sep 2026 10:00:00 +1000"}})
     gmail = Gmail.__new__(Gmail)
     gmail._get_service = lambda: service
-    rows = gmail.list_with("zhouodywork@gmail.com", "2026-06-25T00:00:00+00:00", "2026-09-23T00:00:00+00:00")
+    rows = gmail.list_with("corin.work@example.org", "2026-06-25T00:00:00+00:00", "2026-09-23T00:00:00+00:00")
     assert [r["id"] for r in rows] == ["g1", "g2"]
     q, token = service.queries[0]
-    assert q.startswith("{from:zhouodywork@gmail.com to:zhouodywork@gmail.com cc:zhouodywork@gmail.com}")
+    assert q.startswith("{from:corin.work@example.org to:corin.work@example.org cc:corin.work@example.org}")
     assert "after:" in q and "before:" in q
     assert service.queries[1][1] == "t1"
-    assert rows[1]["to"] == ["zhouodywork@gmail.com"] and rows[1]["cc"] == ["x@y.z"]
+    assert rows[1]["to"] == ["corin.work@example.org"] and rows[1]["cc"] == ["x@y.z"]
 
 
 def test_outlook_waits_out_throttling_instead_of_failing(monkeypatch):

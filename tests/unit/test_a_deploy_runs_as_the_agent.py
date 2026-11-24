@@ -32,7 +32,7 @@ AGENT = "0xcf1619cb4cd96c6d5bcb8f8a0cac4e7e0091c511fbce329e3acb6b8d4fb0c8c6"
 PROJECT_ENV = {
     "OPENONION_API_KEY": "eyJ-operators-token",
     "AGENT_ADDRESS": OPERATOR,
-    "AGENT_EMAIL": "aaron.xie@mail.openonion.ai",
+    "AGENT_EMAIL": "ellis.yew@example.org",
     "IS_EMAIL_ACTIVE": "true",
     "AGENT_CONFIG_PATH": "/Users/someone/.co",
     "GEMINI_API_KEY": "AIza-app-secret",
@@ -94,7 +94,7 @@ def test_the_operators_account_does_not_reach_the_server(tmp_path):
     written = _env_written_over_ssh(tmp_path, AGENT_ACCOUNT)
 
     assert OPERATOR not in written.values(), "operator's address was shipped"
-    assert "aaron.xie@mail.openonion.ai" not in written.values(), \
+    assert "ellis.yew@example.org" not in written.values(), \
         "operator's mailbox was shipped — the agent would send mail as them"
     assert written["OPENONION_API_KEY"] != "eyJ-operators-token", \
         "operator's token was shipped — every model call bills them"

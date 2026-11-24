@@ -1,0 +1,2 @@
+version: v1.9.3rc38
+no_visual_change: "CLI flow change only: global co init runs the REM first run (mailbox offer, consent, scheduler, estimate pause). New terminal text, no reader layout, CSS or component changes; the REM pages and reader are untouched."

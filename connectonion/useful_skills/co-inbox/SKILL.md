@@ -1,6 +1,6 @@
 ---
 name: co-inbox
-description: Drive `co feishu` / `co lark` — a chat bot as a directory of files. Use when an agent must receive messages from a Feishu or Lark group, reply to them, or run a command per message. Covers setup by QR, the nine verbs, the queue's guarantees, and every exit code.
+description: Drive `co feishu` / `co lark` — a chat bot as a directory of files. Use when an agent must receive messages from a Feishu or Lark group, reply to them, or run a command per message. Covers setup by QR, the nine verbs, finding a person or group by email, phone or name, the queue's guarantees, and every exit code.
 ---
 
 # The inbox
@@ -35,10 +35,17 @@ docs/cli/slack.md.
 | answer a message you took | `co feishu reply <id> "text"` |
 | decide not to answer one | `co feishu done <id>` |
 | send without being asked | `co feishu send <chat> "text"` |
+| **send to a person or group by email, phone or name** | `co feishu send alex@example.com "text"` |
+| **find a person's id by email or phone** | `co feishu lookup <email or +phone>` |
+| **list every group the bot is in, with names** | `co feishu groups` |
+| **save a name for a person or chat** | `co feishu contacts add Alex <email, +phone or id>` |
 | **fix something you already said** | `co feishu edit <id> "text"` |
 | **take back something you said** | `co feishu delete <id>` |
 | **acknowledge a message without a reply** | `co feishu react <id> 👍` |
 | **start a group with people (WhatsApp)** | `co whatsapp group create "<name>" <phone>…` |
+| **check a new number, save a name (WhatsApp)** | `co whatsapp lookup +61…`, then `co whatsapp contacts add <jid> --name "<name>"`; send to the name |
+| **fetch a photo or file again (WhatsApp)** | `co whatsapp download <id>` |
+| **link WhatsApp when the phone's owner is not at this screen** | `co whatsapp listen --phone +61…`, then send them the 8-character code; a QR changes every ~20 s |
 | see what is waiting | `co feishu ls` |
 | **find out which conversations exist** | `co feishu chats` |
 | **read one conversation back** | `co feishu log --chat <id>` |
@@ -76,8 +83,34 @@ co whatsapp log --sender "Eric Fu"          # by name or by id
 ```
 
 A filtered `log` answers from the record and stops; `-f` tails the whole inbox.
+With `--chat` or `--since` it includes what this account said there, marked
+`"from_me": true`, so you can see what you already replied.
 `-n` keeps the **most recent** N, because a conversation is read backwards from
 its last turn.
+
+### Finding a person or a group on Feishu and Lark
+
+On `co feishu` and `co lark`, `send` takes whoever you were told to message,
+not only an `oc_…` chat id:
+
+```bash
+co lark send alex@example.com "Hello"      # an email: sent directly, no extra scope
+co lark send +61412345678 "Hello"          # a phone: looked up first (+country code outside China)
+co lark send "Ops Room" "Deploy done"      # a group the bot is in, by its exact name
+co lark send on_7c6d "Hello"               # a person's id: the `sender` of any message in the log
+co lark contacts add Alex alex@example.com # then: co lark send Alex "Hello"
+```
+
+`co lark groups` lists every group the bot is in with its name, from Lark
+itself; `chats` only knows where messages arrived. So "reply to the last
+message in the ops group" is `co lark groups` → `co lark log --chat <id> -n 1`
+→ `co lark reply <that id> "…"`. `co lark lookup <email or phone>` prints the
+person's id. Two scopes may be missing on an older bot:
+`contact:user.id:readonly` (phone lookups) and `im:chat:readonly` (groups, and
+sending by group name). The refusal names the scope and prints the one link
+that grants it; approve it and run the same command again. A name or phone
+that matches nobody, or two groups with one name, is refused before anything
+is sent.
 
 ## The 80%
 
@@ -360,7 +393,8 @@ the bot already exists and is already in the groups you need,
 `co auth feishu --app-id cli_…` authorizes that one instead, keeping its groups
 and permissions — a freshly created application is in no group at all.
 
-`listen` additionally needs the SDK, and says so: `pip install lark-oapi`.
+`listen` uses the Feishu SDK (`lark-oapi`), which ships with connectonion. An
+environment that lost it says so, with the command that reinstalls connectonion.
 
 ## What this does not do
 

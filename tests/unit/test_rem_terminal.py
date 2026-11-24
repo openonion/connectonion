@@ -9,6 +9,7 @@ file paths; and the CLI said "Organizations" where the reader said
 "Organisations".
 """
 
+import re
 import json
 from datetime import date, timedelta
 
@@ -18,6 +19,11 @@ from typer.testing import CliRunner
 from connectonion.cli.main import app
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, state_path, write_json
+
+
+def shows_host(host, text):
+    """The host appears as its own token (not inside a longer name): what a reader sees after a link is shortened."""
+    return re.search(r"(?<![\w.-])" + re.escape(host) + r"(?![\w-])", text) is not None
 
 
 def invoke(root, *args):
@@ -85,6 +91,7 @@ def test_status_names_only_pages_its_command_would_write(tmp_path):
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/avery.md", "addresses": ["avery@maralabs.example"]},
                                                   "people": [], "projects": [], "orgs": []})
     assert notebook(tmp_path)["orgs"] == {"mapped": 1, "written": 0}
+    assert next_to_write(tmp_path, notebook(tmp_path), scheduled=True) == ("1 organisations page queued for tonight", [])
     assert next_to_write(tmp_path, notebook(tmp_path)) == ("1 organisations page not written", ["investigate", "orgs"])
 
 
@@ -148,7 +155,7 @@ def test_list_projects_prints_titles_with_the_path_beside_them(tmp_path):
 # ------------------------------------------------ #10: what waits on you, the budget, the last run
 
 
-THREADS = ("## Open threads\n- Aaron owes Corin the signed contract by 2026-10-20. [1]\n"
+THREADS = ("## Open threads\n- Ellis owes Corin the signed contract by 2026-10-20. [1]\n"
            "- Corin promised the deck. [2]\n- Unknown — not investigated yet\n\n")
 
 
@@ -156,7 +163,7 @@ def test_open_threads_are_counted_as_the_reader_counts_them(tmp_path):
     from connectonion.rem.census import direction, open_threads
     prepare(tmp_path)
     book = Notebook(tmp_path)
-    book.stub_person("people/me.md", "Aaron Xie", ["me@example.org"], email="me@example.org")
+    book.stub_person("people/me.md", "Ellis Yew", ["me@example.org"], email="me@example.org")
     book.stub_person("people/corin.md", "Corin Marsh", ["corin@example.org"], email="corin@example.org")
     page = book.read("people/corin.md")
     book.write("people/corin.md", page.replace(page[page.index("## Open threads"):page.index("## ", page.index(
@@ -175,12 +182,12 @@ def test_status_leads_with_what_waits_on_you_and_keeps_budget_to_two_lines(tmp_p
     monkeypatch.setattr("connectonion.rem.census.open_threads", lambda root, found=None: {"open": 159, "mine": 31})
     value = {"investigation_quota": {"spent_points": 0.1, "budget_points": 35},
              "codex_week": "0% used on pro; resets Thu 22 Oct 17:24"}
-    plain = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "")).plain.splitlines()
+    plain = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "")).plain.splitlines()
     assert plain[2] == "Waiting on you   31 of 159 open threads"
     budget = plain.index(next(line for line in plain if line.startswith("Budget")))
     assert plain[budget + 1].strip() == "Codex week 0% used on pro · resets Thu 22 Oct 17:24"
     assert plain[budget + 2] == ""
-    verbose = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "", verbose=True)).plain
+    verbose = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "", verbose=True)).plain
     assert "1% of your Codex week" in verbose
 
 
@@ -199,6 +206,18 @@ def test_the_last_run_is_the_last_one_that_finished(tmp_path, monkeypatch):
     assert lines[0] == "Last run         sync · completed"
     assert lines[1].strip() == "2026-10-15 19:01 · 1 page changed"
     assert lines[2].strip() == "daily-update running since 19:05"
+
+
+def test_the_last_run_says_the_model_and_effort_its_worker_ran_at(tmp_path, monkeypatch):
+    from zoneinfo import ZoneInfo
+    from connectonion.cli.commands import rem_status
+    prepare(tmp_path)
+    write_json(state_path(tmp_path, "runs/run_" + "a" * 32 + ".json"), {
+        "id": "run_" + "a" * 32, "started_at": "2026-10-15T08:01:43+00:00", "phase": "daily-update",
+        "outcome": "completed", "changed": [], "model": "gpt-6-luna", "effort": "medium", "speed": "fast"})
+    monkeypatch.setattr(rem_status, "_zone", lambda root: ZoneInfo("Australia/Sydney"))
+    lines = Text.from_markup("\n".join(rem_status._last_runs(tmp_path))).plain.splitlines()
+    assert lines[1].strip() == "2026-10-15 19:01 · 0 pages changed · gpt-6-luna at medium effort, fast"
 
 
 # ------------------------------------------------ #4: investigate all --list
@@ -237,3 +256,27 @@ def test_status_still_answers_waiting_on_you_when_only_quiet_threads_remain(tmp_
     monkeypatch.setattr("connectonion.rem.census.open_threads", lambda root, found=None: {
         "mine": 0, "theirs": 0, "other": 0, "quiet": 3, "open": 0})
     assert "0 of 0 open threads" in Text.from_markup("\n".join(_waiting(tmp_path, {}))).plain
+
+
+# ------------------------------------------------ rc35 hunt: "Your day" printed [sensitive] text and full links
+
+
+def test_status_hides_sensitive_day_plan_text_and_full_links_unless_asked(tmp_path, monkeypatch):
+    from connectonion.cli.commands import rem_status
+    for name in ("_notebook", "_today", "_mailboxes", "_archive", "_waiting"):
+        monkeypatch.setattr(rem_status, name, lambda *a, **k: [])
+    monkeypatch.setattr(rem_status, "_header", lambda *a: ["co rem status"])
+    value = {"day_plan": {"text": "Your day (2026-11-20); 10:00–10:30 Studio lease — https://meet.example.com/abc-defg-hij; "
+                                  "Proposed: The landlord may sell the building [sensitive] [4]"},
+             "calendar": {"text": "Calendar: Ivy's private diary https://calendar.example.com/ical/secret-token/basic.ics"}}
+    plain = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "")).plain
+    assert "landlord" not in plain and "[hidden]" in plain
+    assert "abc-defg-hij" not in plain and "secret-token" not in plain
+    assert shows_host("meet.example.com", plain) and shows_host("calendar.example.com", plain) and "Studio lease" in plain
+    shown = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "", show_private=True)).plain
+    assert "landlord" in shown and "abc-defg-hij" in shown
+
+
+def test_status_offers_show_private_in_its_help(tmp_path):
+    out = CliRunner().invoke(app, ["rem", "status", "--help"]).output
+    assert "--show-private" in out

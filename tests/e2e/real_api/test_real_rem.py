@@ -90,7 +90,7 @@ def test_extract_and_maintain_enrich_one_existing_person_through_coai(tmp_path):
     notebook.stub_person("people/alice.md", "Alice Chen", ["Alice"], email="alice@example.org")
     items = [{"role": "other", "speaker": "Alice Chen", "timestamp": "2026-09-12T10:00:00Z",
               "source": "outlook:synthetic:1", "correspondent": "alice@example.org",
-              "text": "Hi Aaron, I lead Project Aurora at Example Labs. Please send the Markdown "
+              "text": "Hi Ellis, I lead Project Aurora at Example Labs. Please send the Markdown "
                       "prototype on Monday. Phone: +61 2 5550 0100. Regards, Alice."}]
     digest = run_extract(items, config, "outlook")
     result = run_stage(notebook, [extraction_item(digest["notes"], items)], config, "outlook")

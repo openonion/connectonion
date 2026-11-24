@@ -25,7 +25,9 @@ def test_a_subcommand_help_page_moves_nothing(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     old = _old_notebook(tmp_path)
-    for args in (["rem", "projects", "--help"], ["rem", "init", "--help"], ["rem", "investigate", "--help"]):
+    for args in (["rem", "projects", "--help"], ["rem", "init", "--help"], ["rem", "investigate", "--help"],
+                 ["rem", "decisions", "--help"], ["rem", "collect", "--help"],
+                 ["rem", "abstract", "--help"], ["rem", "catchup", "--help"]):
         result = CliRunner().invoke(app, args)
         assert result.exit_code == 0, (args, result.output)
         assert old.is_dir() and not (tmp_path / ".co" / "rem").exists(), args
@@ -38,3 +40,10 @@ def test_a_real_command_still_carries_the_notebook_over(tmp_path, monkeypatch):
     old = _old_notebook(tmp_path)
     CliRunner().invoke(app, ["rem", "list", "people"])
     assert not old.exists() and (tmp_path / ".co" / "rem" / "people" / "someone.md").is_file()
+
+
+def test_investigate_help_explains_manual_daily_cap_and_reservations():
+    shown = CliRunner().invoke(app, ["rem", "investigate", "--help"])
+    assert shown.exit_code == 0, shown.output
+    assert "Manual investigations are not limited by\nlimits.runner_calls_per_day" in shown.output
+    assert "unused reservations are not returned\nto the daily cap" in shown.output

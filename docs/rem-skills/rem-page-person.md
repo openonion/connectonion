@@ -44,9 +44,9 @@ is open, last contact.
 
 ## One voice: `the user`
 
-The same notebook wrote the owner as "Aaron" on 58 person pages, "the user" on
+The same notebook wrote the owner as "Ellis" on 58 person pages, "the user" on
 9, and both on 9 more. The reader turns "the user" into "you" and leaves a
-name alone, so one page read "you" in one paragraph and "Aaron" in the next.
+name alone, so one page read "you" in one paragraph and "Ellis" in the next.
 Pages now always say `the user`; the Markdown stays unambiguous for an agent
 and reads as `you` for the owner.
 
@@ -278,7 +278,7 @@ failures and remaining automatic-writer and broader page-review gaps.
 `Open threads` and the terms in `Our relationship` quote the exact words with
 their date (`“<exact words>” (YYYY-MM-DD) [n]`) instead of restating them. On
 the 1.9.2b3 notebook the errors that misled were retellings: Corin "approved" a
-scope Aaron had approved, a cc'd person became a party, a February check-in
+scope Ellis had approved, a cc'd person became a party, a February check-in
 became a current debt, and a fee changed from net to gross. A quote can be
 checked against its source, and the runner does: a `“…”` not word for word in
 a source its line cites is sent back for repair, then removed. The longer

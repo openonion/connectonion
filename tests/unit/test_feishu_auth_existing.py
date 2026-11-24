@@ -89,7 +89,7 @@ class TestTheHintFromLarkCli:
         lark_cli_config([
             {"appId": "cli_aaa", "brand": "lark",
              "appSecret": {"source": "keychain", "id": "appsecret:cli_aaa"},
-             "users": [{"userName": "xie Aaron"}]},
+             "users": [{"userName": "yew Ellis"}]},
             {"appId": "cli_bbb", "brand": "feishu", "appSecret": {"source": "keychain"}},
         ])
         register = FakeRegistration()
@@ -137,11 +137,11 @@ class TestTheHintFromLarkCli:
     def test_reading_it_finds_the_ids(self, rig):
         tmp_path, _ = rig
         lark_cli_config([
-            {"appId": "cli_aaa", "brand": "lark", "users": [{"userName": "xie Aaron"}]},
+            {"appId": "cli_aaa", "brand": "lark", "users": [{"userName": "yew Ellis"}]},
             {"appId": "cli_bbb", "brand": "feishu"},
         ])
         found = feishu_auth.lark_cli_applications()
         assert [a["app_id"] for a in found] == ["cli_aaa", "cli_bbb"]
         assert found[0]["brand"] == "lark"
-        assert found[0]["user"] == "xie Aaron"
+        assert found[0]["user"] == "yew Ellis"
         assert "secret" not in json.dumps(found).lower()

@@ -403,7 +403,7 @@ def test_a_work_room_turn_after_a_normal_turn_can_still_be_stopped(monkeypatch):
 
 def test_a_device_whose_home_is_still_rendering_sees_the_next_turn(monkeypatch):
     from connectonion.network.host.ws_router import connect as ws_connect
-    from connectonion.network.host.ws_router import dashboard
+    from connectonion.network.host.ws_router import control_center as dashboard
 
     laptop, phone = Device(), Device()
     release = threading.Event()
@@ -416,18 +416,21 @@ def test_a_device_whose_home_is_still_rendering_sees_the_next_turn(monkeypatch):
         # Only the phone's Home is slow, standing in for a fresh host's first render.
         if send_msg == phone.send_msg:
             await gate["rendered"].wait()
-        await send_msg({"type": "DASHBOARD_SNAPSHOT", "session_id": session_id})
+        await send_msg({"type": "CONTROL_CENTER_SNAPSHOT", "session_id": session_id})
 
     class Storage:
         def get(self, session_id):
             return None
 
     class Trust:
+        def get_level(self, address):
+            return "contact"
+
         def is_admin(self, address):
             return False
 
     monkeypatch.setattr(ws_connect, "authenticate_connect_frame", authenticate)
-    monkeypatch.setattr(dashboard, "send_dashboard", slow_home)
+    monkeypatch.setattr(dashboard, "send_control_center_page", slow_home)
 
     async def main():
         gate["rendered"] = asyncio.Event()

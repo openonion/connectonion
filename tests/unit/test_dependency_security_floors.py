@@ -15,13 +15,13 @@ PATCHED_FLOORS = {
     "idna": "3.15",
     "pillow": "13.0.0",
     "protobuf": "6.33.5",
-    "pyasn1": "0.6.4",
-    "pypdf": "6.21.2",
+    "pyasn1": "0.6.5",  # CVE-2026-119194..119197
+    "pypdf": "6.21.4",  # CVE-2026-119203..119209
     "pygments": "2.20.0",
     "pynacl": "1.6.2",
     "python-dotenv": "1.2.2",
     "requests": "2.33.0",
-    "soupsieve": "2.8.4",
+    "soupsieve": "2.10",
     "urllib3": "2.8.0",  # CVE-2026-97687/97688/97689
 }
 

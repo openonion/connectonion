@@ -36,7 +36,7 @@ class LocalLLM(LLM):
     def structured_complete(self, messages, output_schema, **kwargs):
         self.calls.append(output_schema.__name__)
         self.last_structured_usage = TokenUsage(input_tokens=10, output_tokens=5, cost=0.0)
-        fields = {"ack": "Writing it.", "is_build": False,
+        fields = {"ack": "Writing it.", "is_connectonion_agent_build": False,
                   "passed": True, "summary": "done"}
         return output_schema(**{k: v for k, v in fields.items()
                                 if k in output_schema.model_fields})

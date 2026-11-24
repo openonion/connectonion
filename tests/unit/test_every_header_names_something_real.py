@@ -43,6 +43,7 @@ only sees module-level defs would call it missing.
 """
 
 import ast
+import functools
 import pathlib
 import re
 
@@ -85,7 +86,9 @@ def _available_names(tree):
     return names
 
 
+@functools.cache
 def _scan():
+    """Read once for the three tests that use it; each scan parses the whole package."""
     stale, checked = set(), 0
     for path in sorted(ROOT.rglob("*.py")):
         if "__pycache__" in str(path):

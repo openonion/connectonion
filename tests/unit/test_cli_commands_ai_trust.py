@@ -16,7 +16,6 @@ import typer
 
 import connectonion.cli.commands.ai_commands as ai_mod
 import connectonion.cli.commands.trust_commands as trust_mod
-from connectonion.cli.co_ai.agent import GLOBAL_CO_DIR
 from connectonion.core.exceptions import LLMAuthenticationError
 from connectonion.useful_plugins import eval as eval_plugin
 
@@ -57,7 +56,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
-    assert created["co_dir"] == GLOBAL_CO_DIR
+    assert created["co_dir"] == Path.home() / ".co"
     assert created["full_access_turns"] is None
     assert created["extra_plugins"] == ()
 
@@ -79,7 +78,7 @@ def test_co_ai_records_its_runs_in_the_project_it_ran_in(tmp_path, monkeypatch, 
 
     ai_mod._create_agent("m", 3, False, None)
 
-    assert created["co_dir"] == GLOBAL_CO_DIR
+    assert created["co_dir"] == Path.home() / ".co"
     if in_project:
         assert Path(created["state_dir"]).resolve() == (project / ".co").resolve()
     else:
@@ -243,7 +242,7 @@ def test_isolated_agent_keeps_global_config_and_redirects_only_state(
         state_dir=state_dir,
     )
 
-    assert created["co_dir"] == GLOBAL_CO_DIR
+    assert created["co_dir"] == Path.home() / ".co"
     assert created["state_dir"] == state_dir
 
 
@@ -301,16 +300,16 @@ def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     # Smoke test list
     trust_mod.handle_trust_list()
 
-    monkeypatch.setattr(trust_mod, "get_level", lambda addr: "contact")
+    monkeypatch.setattr(trust_mod, "get_level", lambda addr, co_dir=None: "contact")
     trust_mod.handle_trust_level(ADDR)
 
-    monkeypatch.setattr(trust_mod, "promote_to_contact", lambda addr: "ok")
-    monkeypatch.setattr(trust_mod, "promote_to_whitelist", lambda addr: "ok")
-    monkeypatch.setattr(trust_mod, "demote_to_stranger", lambda addr: "ok")
-    monkeypatch.setattr(trust_mod, "block", lambda addr, reason="": "ok")
-    monkeypatch.setattr(trust_mod, "unblock", lambda addr: "ok")
-    monkeypatch.setattr(trust_mod, "add_admin", lambda addr: "ok")
-    monkeypatch.setattr(trust_mod, "remove_admin", lambda addr: "ok")
+    monkeypatch.setattr(trust_mod, "promote_to_contact", lambda addr, co_dir=None: "ok")
+    monkeypatch.setattr(trust_mod, "promote_to_whitelist", lambda addr, co_dir=None: "ok")
+    monkeypatch.setattr(trust_mod, "demote_to_stranger", lambda addr, co_dir=None: "ok")
+    monkeypatch.setattr(trust_mod, "block", lambda addr, reason="", co_dir=None: "ok")
+    monkeypatch.setattr(trust_mod, "unblock", lambda addr, co_dir=None: "ok")
+    monkeypatch.setattr(trust_mod, "add_admin", lambda addr, co_dir=None: "ok")
+    monkeypatch.setattr(trust_mod, "remove_admin", lambda addr, co_dir=None: "ok")
 
     trust_mod.handle_trust_add(ADDR)
     trust_mod.handle_trust_add(ADDR, whitelist=True)

@@ -242,6 +242,25 @@ are most likely to want to take back (#1314):
 Next: co outlook scheduled
 ```
 
+**Save as a draft** — `--draft` puts the message in your Outlook Drafts instead
+of sending it, for you to finish and send yourself. It takes `--cc`, `--bcc` and
+`--attach`, needs the same `Mail.ReadWrite` scope, and prints a link that opens
+the draft. `reply --draft` keeps the reply in its thread with To and Cc filled
+in. A draft is never sent, so `--draft` with `--at` is refused (#2729):
+
+```bash
+co outlook send bob@example.com "Intro" "Draft for me to edit" --draft
+co outlook reply 3 "Draft reply" --listing <listing-id> --draft
+co outlook drafts          # unsent drafts, newest first, numbered, with links; scheduled sends are left out
+co outlook send-draft 1               # send draft 1 as it now reads in Outlook
+co outlook send-draft 1 --at +2h      # or schedule it: it moves to co outlook scheduled
+co outlook delete-draft 2             # delete draft 2
+```
+
+`send-draft` and `delete-draft` take numbers only from the last `co outlook
+drafts` listing, and read the message first: anything that is not a draft (a
+received or sent email) is refused rather than sent or deleted.
+
 **Long bodies** — pass `-` as the message to read the body from stdin:
 
 ```bash

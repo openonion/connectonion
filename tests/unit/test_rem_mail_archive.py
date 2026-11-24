@@ -592,20 +592,24 @@ def test_init_archive_is_private_resumable_and_people_read_it_without_listing(tm
         def list_with(self, address, start, end):
             self.calls.append((address, start, end))
             return []
-        def download_attachments(self, message_id, folder):
+        def list_attachments(self, message_id):
             self.attachments.append(message_id)
             if message_id != "shared":
                 return []
-            path = Path(folder) / "decision.txt"
-            path.write_text("Decision attached", encoding="utf-8")
-            return [str(path)]
+            return [{"id": "decision", "filename": "decision.txt",
+                     "mime_type": "text/plain", "size": 17}]
+        def download_attachments(self, message_id, folder):
+            raise AssertionError("Gather indexes attachments; the investigator selects downloads")
     delta = DeltaMail()
     items, _ = gather("A", ["a@example.org"], days=1, clients={"gmail": delta}, subscriptions={},
                       archive_root=tmp_path, record=a, attachments_dir=tmp_path / ".state/attachments")
     assert len(delta.calls) == 1
     assert delta.calls[0][1] >= archive["range_end"]
-    assert sorted(delta.attachments) == ["reply", "shared"]  # fetched in parallel since 1.9.1a2
-    assert any(item["role"] == "attachment" and item["text"] == "Decision attached" for item in items)
+    assert sorted(delta.attachments) == ["reply", "shared"]
+    indexes = [item for item in items if item["role"] == "attachments-index"]
+    assert len(indexes) == 1 and indexes[0]["reference"] == "gmail:shared"
+    assert indexes[0]["attachments"] == [{"id": "decision", "filename": "decision.txt",
+                                          "mime_type": "text/plain", "size": 17}]
 
 
 def test_all_history_map_archives_recent_bodies_only(tmp_path):
@@ -744,7 +748,7 @@ def test_first_archive_fetches_bodies_concurrently_and_reuses_them(tmp_path):
     assert reused["reused"] == 10 and reused["saved"] == 0
 
 
-def test_a_stalled_archive_says_so_with_the_command_that_resumes_it(tmp_path):
+def test_a_stalled_archive_reports_automatic_scheduled_resumption(tmp_path):
     """#2035: archive.json sat at `phase: running` (550 of 3,152) for a day and status said nothing."""
     from connectonion.rem.files import read_json, state_path, write_json
     from connectonion.rem.mail_archive import archive_state
@@ -761,7 +765,8 @@ def test_a_stalled_archive_says_so_with_the_command_that_resumes_it(tmp_path):
     stalled = archive_state(tmp_path, now=T0 + timedelta(hours=20))
     assert stalled["stalled"] and (stalled["on_disk"], stalled["target"]) == (2, 6)
     assert "no progress since 2026-09-30T09:00" in stalled["summary"]
-    assert "co rem sync" in stalled["summary"]
+    assert "next scheduled run resumes it" in stalled["summary"]
+    assert "co rem sync" not in stalled["summary"]
     write_json(state_path(tmp_path, "mail/archive.json"), {**manifest, "phase": "complete"})
     assert archive_state(tmp_path, now=T0) is None                       # nothing to say
 

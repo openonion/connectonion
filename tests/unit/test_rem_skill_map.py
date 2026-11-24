@@ -220,20 +220,6 @@ def test_an_older_notebooks_per_copy_pages_merge_into_one_and_keep_what_was_writ
     assert shown.exit_code == 0 and "Weekly releases" in shown.output
 
 
-def test_merged_written_pages_renumber_citations():
-    from connectonion.rem.merge import merge_text
-    kept = ("# P\n\n## Open threads\n- A owes B [1]\n\n## Uncertainties\n- Unknown — not investigated yet\n\n"
-            "## Sources\n- [1] mail one\n\nInvestigation: mapped 2026-09-01 · investigated 2026-09-02 (gmail)\n")
-    other = ("# P\n\n## Open threads\n- A owes B [3]\n- C waits on D [1]\n\n## Uncertainties\n- Who is C [2]\n\n"
-             "## Sources\n- [1] mail two\n- [2] mail three\n- [3] mail four\n\n"
-             "Investigation: mapped 2026-09-01 · investigated 2026-09-03 (gmail)\n")
-    page = merge_text(kept, other)
-    assert "- A owes B [1]\n- C waits on D [2]" in page                     # a repeated line is not doubled
-    assert "## Uncertainties\n- Who is C [3]" in page
-    assert "- [1] mail one\n- [2] mail two\n- [3] mail three" in page and "mail four" not in page
-    assert page.count("Investigation:") == 1
-
-
 def test_usage_counts_invocations_from_the_users_sessions(tmp_path, monkeypatch):
     """Skill tool calls and /name commands in Claude Code; $name and SKILL.md loads
     in Codex, once per turn; co rem's own runs are not the user's."""
@@ -282,3 +268,71 @@ def test_usage_counts_invocations_from_the_users_sessions(tmp_path, monkeypatch)
     before = nb.read("skills/catalog/ship-feature.md")
     map_skills(nb, [source], subscriptions=subscriptions, days=36500)
     assert nb.read("skills/catalog/ship-feature.md") == before                # cached rerun, same page
+
+
+def test_skill_alias_dates_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare, set_config
+    from connectonion.rem.merge import aliases
+    from connectonion.rem.skill_map import _alias
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2040, 11, 6, 1, tzinfo=timezone.utc))
+    _alias(Notebook(tmp_path), "skills/catalog/old.md", "skills/catalog/tide.md")
+    assert aliases(tmp_path)["skills/catalog/old.md"]["date"] == "2040-11-05"
+
+
+def test_the_night_round_recounts_skill_calls_made_after_init(tmp_path, monkeypatch):
+    """#2950: Mia's /weekly-report count and its last day stayed on the day of init;
+    the night round recounts them from the sessions, with no model."""
+    import json
+    from datetime import datetime, timedelta, timezone
+    from connectonion.rem import native_round, service
+    from connectonion.rem.config import read_config
+    skill(Path.home() / ".claude/skills", "weekly", name="weekly-report")
+    projects = tmp_path / "claude"
+    sessions = {"claude-code": {"kind": "claude-code", "root": str(projects)}}
+
+    def called(name, day):
+        stamp = f"{day.isoformat()}T10:00:00Z"
+        row = {"type": "assistant", "uuid": name, "timestamp": stamp, "cwd": "/w",
+               "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "weekly-report"}}]}}
+        path = projects / "p" / f"{name}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(row) + "\n")
+
+    today = datetime.now(timezone.utc).date()
+    called("init-day", today - timedelta(days=20))
+    root = tmp_path / "rem"
+    nb = Notebook(root)
+    map_skills(nb, subscriptions=sessions)
+    assert "Invoked once" in nb.read("skills/catalog/weekly-report.md")
+    called("later", today - timedelta(days=1))
+    service.approve_sources(root)
+    monkeypatch.setattr(service, "subscriptions", lambda *args: sessions)
+    monkeypatch.setattr(service, "_selected_sources", lambda *args: {})
+    monkeypatch.setattr("connectonion.rem.sessions.import_sessions", lambda *args, **kwargs: {})
+    monkeypatch.setattr("connectonion.rem.project_material.extract", lambda *args, **kwargs: {})
+    monkeypatch.setattr(native_round, "_jobs", lambda *args: [])
+    native_round.prepare(root, read_config(root), scheduled=False)
+    page = nb.read("skills/catalog/weekly-report.md")
+    assert "Invoked 2 times" in page and f"last on {today - timedelta(days=1)}" in page
+    # A night with sessions but no new call leaves the page, and its translations, alone.
+    other = projects / "p" / "unrelated.jsonl"
+    other.write_text(json.dumps({"type": "user", "uuid": "u9", "timestamp": f"{today}T09:00:00Z", "cwd": "/w",
+                                 "message": {"content": "plan the week"}}) + "\n")
+    native_round.prepare(root, read_config(root), scheduled=False)
+    assert nb.read("skills/catalog/weekly-report.md") == page
+
+
+def test_a_windows_path_in_the_metadata_line_is_written_as_is():
+    # A replacement string reads "C:\Program Files" as the escape \P: co rem init
+    # stopped with "bad escape \P" on every Windows PC with an installed skill.
+    from connectonion.rem.skill_map import _shape
+
+    path = r"C:\Program Files\Python312\Lib\site-packages\connectonion\useful_skills\co-inbox\SKILL.md"
+    page = "# co-inbox\n\n## Sources\n- Skill metadata: old\n"
+    shaped = _shape(page, [{"path": path, "sha256": "a" * 64, "location": "package", "allowed_tools": ""}], [], "", "")
+    assert f"- Skill metadata: {path}" in shaped

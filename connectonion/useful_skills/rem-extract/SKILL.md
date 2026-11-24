@@ -55,6 +55,18 @@ not investigate other sources or edit notebook pages.
 - **Opportunities**: worth exploring, not committed. **Works**: a reusable output
   and where it lives. **Notes**: reflections, open questions, other durable facts.
 
+## Topics
+
+Add short rows for named subjects (market, technology, course, place or matter):
+`- name | aliases separated by semicolons | concerned record path | speaker, YYYY-MM-DD, source id | one sentence`.
+Use an English alias for the slug when known. Keep each source separate, with its
+actual date and speaker; never count copied notes as new sources. Include the
+user's explicit "remember/learn X" words. Do not emit generic words, vendors,
+people, orgs, skills or another name for a project. A topic earns a page at three
+sources over fourteen days and two records, or an explicit user request; emit
+below-threshold evidence too. Mark health, family, personal money and legal
+subjects `[personal]` in the sentence. Never emit another person's health.
+
 ## What to drop
 
 - The assistant's routine work: tests and counts, lint, formatting, files edited,
@@ -102,7 +114,7 @@ supports it and `Unknown` when the batch touches the question without answering 
       - Quote: “Clause 4: please change gross to net, otherwise fine.”
   - How they write: English for legal (numbered, "Regards, Elodie"), brief Mandarin
     for operations ("收到"). Quote: "Please see attached signed document." (2026-08-07)
-  - How the user writes to them: opens "Elodie，你好，", signs "Aaron"; leads with
+  - How the user writes to them: opens "Elodie，你好，", signs "Ellis"; leads with
     the conclusion, then the math.
   - Cadence: same-day replies through 2026-08-05→07.
   - Open: nothing owed by either side as of 2026-08-07.

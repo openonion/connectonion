@@ -107,7 +107,7 @@ bare issue numbers describes the execution and was already stale when written.
 Four things that produced pages in a real 60-day run and should not have:
 
 - **A person from one line.** `people/fuzz.md` = "Expressed definite interest in
-  Aaron's property opportunity." -- no role, no company, no relationship. That
+  Ellis's property opportunity." -- no role, no company, no relationship. That
   is a line on the outreach page it came from.
 - **Someone else's article as knowledge.** A newsletter's takeaways, an
   investor's essay, a vendor's product update are their thinking, not the

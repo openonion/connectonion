@@ -226,17 +226,68 @@ def _track_token_dir(directory: str, live: bool) -> None:
 
 
 @contextmanager
-def scoped_bridge_settings(permission_handler: Callable[[dict], bool] | None = None):
-    """Install per-process Hooks with a private authenticated loopback receiver."""
+def scoped_bridge_settings(permission_handler: Callable[[dict], bool] | None = None,
+                           tool_rules: list[str] | tuple[str, ...] | None = None):
+    """Install per-process Hooks with a private authenticated loopback receiver.
+
+    tool_rules: a restricted turn's rules; a PreToolUse guard then refuses
+    every tool call none of them names (see tool_use_allowed).
+    """
     with TemporaryDirectory(prefix="co-claude-") as directory:
         _track_token_dir(directory, True)
         try:
-            yield from _serve_bridge(Path(directory), permission_handler)
+            yield from _serve_bridge(Path(directory), permission_handler, tool_rules)
         finally:
             _track_token_dir(directory, False)
 
 
-def _serve_bridge(root: Path, permission_handler):
+# Characters that would let one allowed command run another, redirect, or
+# substitute: `python tool.py 2; cat .env`, `$(cat .env)`, `> file`.
+_SHELL_CONTROL = frozenset(";&|<>`$()\n\r")
+_COMMAND_TOOLS = {"Bash": "command", "PowerShell": "command", "Skill": "skill"}
+
+
+def tool_use_allowed(tool: object, tool_input: object, rules) -> bool:
+    """Whether one of a restricted turn's rules names this exact tool call."""
+    for rule in rules:
+        name, _, pattern = rule.partition("(")
+        if name.strip() == tool and (not pattern or _matches(tool, tool_input, pattern.removesuffix(")"))):
+            return True
+    return False
+
+
+def _matches(tool: str, tool_input: object, pattern: str) -> bool:
+    field = _COMMAND_TOOLS.get(tool)
+    value = tool_input.get(field) if field and isinstance(tool_input, dict) else None
+    if not isinstance(value, str) or _SHELL_CONTROL.intersection(value):
+        return False
+    value = value.strip()
+    for wildcard in (":*", " *"):
+        if pattern.endswith(wildcard):
+            prefix = pattern[: -len(wildcard)]
+            return value == prefix or value.startswith(prefix + " ")
+    return value == pattern
+
+
+def guard_tool_use(rules_file: str) -> None:
+    """PreToolUse Hook of a restricted turn: exit 2 (the claude CLI blocks the call) unless a rule names it."""
+    event = json.loads(sys.stdin.buffer.read(_MAX_HOOK_INPUT + 1))
+    rules = json.loads(Path(rules_file).read_text(encoding="utf-8"))
+    if not tool_use_allowed(event.get("tool_name"), event.get("tool_input"), rules):
+        sys.stderr.write("Refused: this Host's restricted: block in host.yaml does not allow this tool call. "
+                         f"Allowed: {', '.join(rules) or 'nothing'}. Run an allowed command on its own, "
+                         "from the working directory: no cd, ; & | < > $ ` or parentheses.")
+        sys.exit(2)
+
+
+def _guard_hook(root: Path, tool_rules) -> dict:
+    rules = root / "tool-rules.json"
+    rules.write_text(json.dumps(list(tool_rules)), encoding="utf-8")
+    return {"type": "command", "command": sys.executable,
+            "args": [str(Path(__file__).resolve()), "--guard", str(rules)], "timeout": 30}
+
+
+def _serve_bridge(root: Path, permission_handler, tool_rules=None):
     """Serve the Hook receiver for one scoped settings directory."""
     events = root / "events.jsonl"
     events.touch(mode=0o600)
@@ -255,9 +306,11 @@ def _serve_bridge(root: Path, permission_handler):
         "timeout": 5,
     }
     permission_hook = {**hook, "timeout": 180}
+    hooks = {event: [permission_hook if event == "PermissionRequest" else hook] for event in _OBSERVED_EVENTS}
+    if tool_rules is not None:
+        hooks["PreToolUse"].append(_guard_hook(root, tool_rules))
     settings.write_text(json.dumps({
-        "hooks": {event: [{"hooks": [permission_hook if event == "PermissionRequest" else hook]}]
-                  for event in _OBSERVED_EVENTS},
+        "hooks": {event: [{"hooks": entries}] for event, entries in hooks.items()},
     }))
     os.chmod(settings, 0o600)
     thread = Thread(target=receiver.serve_forever, name="co-claude-hooks", daemon=True)
@@ -456,4 +509,10 @@ class ClaudeTranscriptTailer:
 
 
 if __name__ == "__main__":
-    forward_hook(sys.argv[1], sys.argv[2])
+    if sys.argv[1] == "--guard":
+        # Any other exit, a crash included, is non-blocking to the claude CLI:
+        # the guard fails closed.
+        sys.excepthook = lambda *exc: os._exit(2)
+        guard_tool_use(sys.argv[2])
+    else:
+        forward_hook(sys.argv[1], sys.argv[2])

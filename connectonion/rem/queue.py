@@ -20,12 +20,12 @@ Left out on purpose:
 """
 
 import re
-from datetime import date, datetime, timezone
+from datetime import date
 
 from .files import Notebook, read_json, state_path
 from .map import needs_review
 
-CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/"}
+CATEGORIES = {"people": "people/", "projects": "projects/", "orgs": "orgs/", "skills": "skills/catalog/", "topics": "knowledge/"}
 RECENT_DAYS = 7
 
 
@@ -51,6 +51,7 @@ def weights(state: dict, excluded: frozenset | set = frozenset()) -> dict:
     weight.update({row.get("record"): row.get("sessions") or 0 for row in state.get("projects", [])})
     weight.update({row.get("record"): len([p for p in row.get("people") or [] if p not in excluded])
                    for row in state.get("orgs", [])})
+    weight.update({row.get('record'): row.get('source_count', 0) for row in state.get('topics', [])})
     return weight
 
 
@@ -141,7 +142,8 @@ def _stamped_from_nothing(page: str) -> bool:
 def order(root, category: str, today: date | None = None) -> list[dict]:
     if category not in CATEGORIES:
         raise ValueError(category)
-    today = today or datetime.now(timezone.utc).date()
+    from .service import notebook_today
+    today = today or notebook_today(root)
     prefix = CATEGORIES[category]
     state = read_json(state_path(root, "map.json"), {})
     from .merge import resolve
@@ -184,14 +186,15 @@ def own_orgs(notebook: Notebook, owner: dict | None) -> set:
     """Own-company pages still need investigation when all their contacts were excluded."""
     from .investigate import org_domains
     from .org_map import own_company
-    page = notebook.read(owner["record"]) if owner and notebook.path(owner["record"]).is_file() else ""
+    record = (owner or {}).get("record")
+    page = notebook.read(record) if record and notebook.path(record).is_file() else ""
     projects = [notebook.read(p) for p in notebook.list("projects")]
     return {record for record in notebook.list("orgs")
             if any(own_company(domain, page, projects, (owner or {}).get("addresses", []))
                    for domain in org_domains(notebook.read(record)))}
 
 
-ALL = ("people", "projects", "orgs", "skills")
+ALL = ("people", "projects", "orgs", "skills", "topics")
 
 
 def order_all(root) -> list[dict]:
@@ -203,3 +206,41 @@ def order_all(root) -> list[dict]:
     rows = [row for category in ALL for row in order(root, category)]
     rows.sort(key=lambda row: (row["recent"], -row["weight"], -row.get("unknown", 0), row["path"]))
     return rows
+
+
+THROUGHPUT_NIGHTS = 7
+
+
+def nightly_throughput(logs: list[dict], zone) -> int | None:
+    """Investigations the night really completes, as the median of the last nights that ran (#3420).
+
+    A night is the run's local start moved back 12 hours, so 23:00 and 03:00 count as one night. Only
+    nights with any run count: a night the computer slept says nothing about the pace. None when no
+    night has run, so the reader promises nothing rather than a number it made up.
+    """
+    from datetime import datetime, timedelta
+    from statistics import median
+    nights: dict = {}
+    for run in logs:
+        try:
+            started = datetime.fromisoformat(run["started_at"]).astimezone(zone) - timedelta(hours=12)
+        except (KeyError, TypeError, ValueError):
+            continue
+        done = run.get("phase") == "investigate" and run.get("outcome") == "completed"
+        nights[started.date()] = nights.get(started.date(), 0) + done
+    recent = [nights[day] for day in sorted(nights, reverse=True)[:THROUGHPUT_NIGHTS]]
+    return int(median(recent)) if recent else None
+
+
+def positions(root) -> dict[str, int]:
+    """Each queued page's place in the one queue the scheduled round takes from (`order_all`), from 1."""
+    return {row["path"]: place for place, row in enumerate(order_all(root), 1)}
+
+
+def night_pace(root, logs: list[dict]) -> int | None:
+    """The pace the reader and `co rem status` promise by: measured, else the cap the night is set to spend."""
+    from .config import read_config
+    from .service import notebook_zone
+    config = read_config(root)
+    measured = nightly_throughput(logs, notebook_zone(config))
+    return measured if measured is not None else config["limits"].get("investigations_per_night")

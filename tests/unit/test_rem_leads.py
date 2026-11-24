@@ -1,5 +1,7 @@
 """Where a maintenance batch should start, found without a model."""
 
+import pytest
+
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
 from connectonion.rem.leads import page_leads
@@ -64,14 +66,14 @@ def test_the_owner_is_not_a_lead_and_projects_are_found_by_name(tmp_path):
     from connectonion.rem.files import state_path, write_json
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/me.md", "Aaron Xie", ["Aaron"], email="me@example.org")
-    notebook.stub_person("people/me-too.md", "Aaron", [], email="me@other.example")
+    notebook.stub_person("people/me.md", "Ellis Yew", ["Ellis"], email="me@example.org")
+    notebook.stub_person("people/me-too.md", "Ellis", [], email="me@other.example")
     notebook.stub_project("projects/one.md", "One", [])
     notebook.stub_project("projects/connectonion.md", "ConnectOnion", [])
     notebook.stub_project("projects/lark.md", "Lark", ["/w/lark"])
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/me.md"},
                                                   "possible_own_addresses": [{"record": "people/me-too.md"}]})
-    items = [{"role": "extract", "text": "Aaron wants the One bot in Lark; ConnectOnion needs a release. one more."}]
+    items = [{"role": "extract", "text": "Ellis wants the One bot in Lark; ConnectOnion needs a release. one more."}]
     leads = page_leads(notebook, items)
     assert set(leads) == {"projects/one.md", "projects/connectonion.md"}
 
@@ -94,3 +96,121 @@ def test_notes_route_to_the_project_they_name_and_say_which_names_have_no_page(t
     found, unrouted = note_leads(notebook, notes)
     assert found == ["projects/connectonion.md", "projects/chat.md"]   # by title, and by folder name
     assert unrouted == ["Night Runner"]
+
+
+def test_a_project_lead_brings_its_agenda_page(tmp_path):
+    """A moved due date reached projects/atlas.md and left agenda/atlas.md on the
+    old date (2026-11-14): the agenda names the project, never the item, so no
+    batch names it. It follows its project, by file name or by link, whatever
+    source the batch came from; an agenda for another project stays out."""
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/atlas.md", "Atlas", [])
+    notebook.stub_project("projects/kite.md", "Kite", [])
+    notebook.write("agenda/atlas.md", "# Atlas agenda\n\n- 2026-11-27 ship the beta\n")
+    notebook.write("agenda/launch-dates.md", "# Launch dates\n\nFor [Atlas](../projects/atlas.md).\n")
+    notebook.write("agenda/kite.md", "# Kite agenda\n\n- 2026-12-01 logo\n")
+    items = [{"role": "other", "source": "tick:T4@5", "text": "Atlas: the beta moved to 2026-11-27."}]
+
+    leads = page_leads(notebook, items)
+
+    assert leads == ["projects/atlas.md", "agenda/atlas.md", "agenda/launch-dates.md"]
+
+
+def test_without_a_project_lead_no_agenda_is_added(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.write("agenda/atlas.md", "# Atlas agenda\n\n- 2026-11-27 ship the beta\n")
+    assert page_leads(notebook, [{"role": "other", "text": "nothing about a project"}]) == []
+
+
+def test_an_agenda_two_projects_share_is_added_once(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/atlas.md", "Atlas", [])
+    notebook.stub_project("projects/kite.md", "Kite", [])
+    notebook.write("agenda/atlas.md", "# Atlas agenda\n\nAlso [Kite](../projects/kite.md).\n")
+    items = [{"role": "other", "text": "Atlas and Kite both slipped a week."}]
+
+    leads = page_leads(notebook, items)
+
+    assert leads.count("agenda/atlas.md") == 1
+    assert set(leads) == {"projects/atlas.md", "projects/kite.md", "agenda/atlas.md"}
+    assert leads[-1] == "agenda/atlas.md"            # after every page the material named
+
+
+def test_agendas_only_fill_the_room_left_and_never_push_out_a_named_page(tmp_path):
+    from connectonion.rem.leads import MAX_LEADS
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    names = [f"Project{i:02d}" for i in range(MAX_LEADS)]
+    for name in names:
+        notebook.stub_project(f"projects/{name.lower()}.md", name, [])
+        notebook.write(f"agenda/{name.lower()}.md", f"# {name} agenda\n\n- 2026-12-01 a date\n")
+    items = [{"role": "other", "text": " ".join(names) + " all moved."}]
+
+    leads = page_leads(notebook, items)
+
+    assert len(leads) == MAX_LEADS
+    assert all(lead.startswith("projects/") for lead in leads)       # every named project kept, no agenda squeezed in
+
+
+def test_agendas_take_the_room_that_is_left(tmp_path):
+    from connectonion.rem.leads import MAX_LEADS
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    names = [f"Project{i:02d}" for i in range(MAX_LEADS - 2)]
+    for name in names:
+        notebook.stub_project(f"projects/{name.lower()}.md", name, [])
+        notebook.write(f"agenda/{name.lower()}.md", f"# {name} agenda\n")
+    items = [{"role": "other", "text": " ".join(names) + " all moved."}]
+
+    leads = page_leads(notebook, items)
+
+    assert len(leads) == MAX_LEADS
+    assert sum(lead.startswith("agenda/") for lead in leads) == 2
+    assert sum(lead.startswith("projects/") for lead in leads) == MAX_LEADS - 2
+
+
+def test_agendas_never_push_a_named_project_out_of_the_batch(tmp_path):
+    """A batch reads only its first PAGES_PER_BATCH leads (service.py). With an agenda
+    placed after its project, the fifth named project fell out of a five-page batch."""
+    from connectonion.rem.service import PAGES_PER_BATCH
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    names = [f"Project{i:02d}" for i in range(PAGES_PER_BATCH)]
+    for name in names:
+        notebook.stub_project(f"projects/{name.lower()}.md", name, [])
+        notebook.write(f"agenda/{name.lower()}.md", f"# {name} agenda\n")
+    items = [{"role": "other", "text": " ".join(names) + " all moved."}]
+
+    batch = page_leads(notebook, items)[:PAGES_PER_BATCH]
+
+    assert sorted(batch) == sorted(f"projects/{name.lower()}.md" for name in names)
+
+
+def test_one_named_project_still_brings_its_agenda_into_the_batch(tmp_path):
+    from connectonion.rem.service import PAGES_PER_BATCH
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/atlas.md", "Atlas", [])
+    notebook.write("agenda/atlas.md", "# Atlas agenda\n")
+    items = [{"role": "other", "text": "Atlas: the beta moved to 2026-11-27."}]
+
+    assert page_leads(notebook, items)[:PAGES_PER_BATCH] == ["projects/atlas.md", "agenda/atlas.md"]
+
+
+@pytest.mark.parametrize("link", [
+    "[[projects/atlas]]",
+    "[[projects/atlas|the Atlas project]]",
+    "[[projects/atlas#Dates]]",
+    "[Atlas](../projects/atlas.md)",
+])
+def test_an_agenda_is_found_by_any_link_the_reader_follows(tmp_path, link):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    notebook.stub_project("projects/atlas.md", "Atlas", [])
+    notebook.write("agenda/launch-dates.md", f"# Launch dates\n\nFor {link}.\n")
+    items = [{"role": "other", "text": "Atlas: the beta moved to 2026-11-27."}]
+
+    assert page_leads(notebook, items) == ["projects/atlas.md", "agenda/launch-dates.md"]

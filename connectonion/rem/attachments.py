@@ -8,11 +8,35 @@ is named but not read, which is a finding the page can carry.
 """
 
 import re
+import shlex
+import sys
+import tomllib
+from functools import lru_cache
 from pathlib import Path
 
 from .files import state_path
 
 READABLE = {".pdf", ".docx", ".txt", ".md", ".csv", ".json", ".html", ".htm", ".ics"}
+
+
+def spreadsheet_install_command() -> str:
+    """Install the optional spreadsheet reader into the running co environment."""
+    from .._version import __version__
+
+    package = f"'connectonion[rem]=={__version__}'"
+    prefix = Path(sys.prefix)
+    receipt = prefix / "uv-receipt.toml"
+    if prefix.parent.parts[-2:] == ("uv", "tools") or receipt.is_file():
+        command = f"uv tool install --force {package}"
+        if receipt.is_file():
+            tool = tomllib.loads(receipt.read_text(encoding="utf-8"))["tool"]
+            for requirement in tool.get("requirements", []):
+                if requirement["name"] != "connectonion":
+                    command += " --with " + shlex.quote(requirement["name"] + requirement.get("specifier", ""))
+            if "python" in tool:
+                command += " --python " + shlex.quote(tool["python"])
+        return command
+    return f"{shlex.quote(str(Path(sys.executable).absolute()))} -m pip install {package}"
 
 
 def attachment_context(root: Path, source: str) -> dict | None:
@@ -23,13 +47,20 @@ def attachment_context(root: Path, source: str) -> dict | None:
     path = state_path(root, f"attachments/{provider}/{message}/{filename}")
     if not path.is_file():
         return None
-    text = extract_text(path, limit=None, preview_limit=640)
+    stat = path.stat()
+    text = _preview(path, stat.st_mtime_ns, stat.st_size)
     if not text:
         return None
     return {"source": "attachment", "excerpt": text[:640], "truncated": len(text) > 640,
             "filename": filename, "file": path.as_uri(),
             "body_format": "Local attachment text extraction; images and signature appearances are not verified.",
             "input_scope": "Current local attachment. Original capture time and the version read by the writer are unknown."}
+
+
+@lru_cache(maxsize=512)
+def _preview(path: Path, mtime_ns: int, size: int) -> str:
+    """The live reader asks again on every load; an unchanged file is read once per process."""
+    return extract_text(path, limit=None, preview_limit=640)
 
 
 def _pdf_page_text(page, number: int) -> str:
@@ -94,7 +125,7 @@ def extract_text(path: Path, limit: int | None = 20_000, *, preview_limit: int |
             # An optional extra (see pyproject.toml). One unreadable attachment is a
             # finding the page can carry, not a reason to stop the investigation.
             return ("[XLSX not read: spreadsheet support is optional; "
-                    "run pip install 'connectonion[rem]', then investigate again]")
+                    f"run {spreadsheet_install_command()}, then investigate again]")
         try:
             workbook = load_workbook(path, read_only=True, data_only=True)
             try:

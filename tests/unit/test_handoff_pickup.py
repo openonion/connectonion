@@ -109,13 +109,13 @@ def test_the_sender_is_named_by_their_git_name_not_only_an_address(tmp_path, mon
     from connectonion.cli.commands import handoff_commands
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     assert handoff_commands._my_name() == ""
-    subprocess.run(["git", "config", "--global", "user.name", "Aaron Xie"], check=True)
-    assert handoff_commands._my_name() == "Aaron Xie"
-    named = bundles.seal({**_bundle(RECIPIENT["mail"]), "from_name": "Aaron Xie"})
-    assert bundles.sender_name(named) == "Aaron Xie"
+    subprocess.run(["git", "config", "--global", "user.name", "Ellis Yew"], check=True)
+    assert handoff_commands._my_name() == "Ellis Yew"
+    named = bundles.seal({**_bundle(RECIPIENT["mail"]), "from_name": "Ellis Yew"})
+    assert bundles.sender_name(named) == "Ellis Yew"
     # The agent mailbox is how replies route, not who sent the mail: a person reads a name (Aaron, 2026-10-13:
     # "默认不应该是用 Gmail 发出去吗 怎么又用 agent email 发出去了", reading the preview's From line).
-    assert "From: Aaron Xie ·" in bundles.brief_markdown(named) and SENDER["mail"] not in bundles.header(named)
+    assert "From: Ellis Yew ·" in bundles.brief_markdown(named) and SENDER["mail"] not in bundles.header(named)
     nameless = bundles.seal(dict(_bundle(RECIPIENT["mail"]), **{"from": "0x9c0a8bf90c@mail.openonion.ai"}))
     assert "From: Someone ·" in bundles.header(nameless)
 
@@ -279,8 +279,8 @@ def test_a_sender_with_no_name_is_someone_never_an_agent_address():
     mail = bundles.notice(nameless, "LINE", "https://o.openonion.ai/h/x")
     assert "0x9c0a8bf90c" not in mail["subject"] and "0x9c0a8bf90c" not in mail["text"]
     assert "Thanks,\nSomeone" not in mail["text"]                       # a nameless note is signed off by no one
-    named = bundles.seal(dict(_bundle(RECIPIENT["mail"]), from_name="Aaron Xie"))
-    assert "Thanks,\nAaron Xie" in bundles.notice(named, "LINE")["text"]
+    named = bundles.seal(dict(_bundle(RECIPIENT["mail"]), from_name="Ellis Yew"))
+    assert "Thanks,\nEllis Yew" in bundles.notice(named, "LINE")["text"]
 
 
 
@@ -326,7 +326,7 @@ def test_send_shows_the_sender_the_page_the_recipient_will_see(world, drops):
     assert _invoke("handoff", "status", "ho-1a2b3c4d").output.count(f"https://o.openonion.ai/h/{drop_id}") == 1
 
 
-# ---- the b24 mail as Aaron's Gmail on iOS showed it (2026-10-13 screenshot) ----
+# ---- the b24 mail as Ellis's Gmail on iOS showed it (2026-10-13 screenshot) ----
 
 def test_the_button_survives_a_client_that_drops_cell_backgrounds():
     """Gmail iOS dropped the cell's `background`, leaving white text on white: a blank gap, no button."""
@@ -346,7 +346,7 @@ def test_no_mail_carries_a_plaintext_copy_only_the_boxed_inbox_copy_does():
 
 
 def test_the_mail_never_mixes_languages():
-    """b24: "Aaron Xie 一直在和 Claude Code 一起做「co handoff refinement…」…他们讨论了：switching handoff…"."""
+    """b24: "Ellis Yew 一直在和 Claude Code 一起做「co handoff refinement…」…他们讨论了：switching handoff…"."""
     zh = dict(_bundle("bob@gmail.com"), conversation=[{"at": "", "user": "邮件里不需要把所有的内容都写清楚", "ai": ""}],
               discussed=["Switching handoff delivery to lightweight notifications"])
     text = bundles.notice(bundles.seal(zh), "LINE")["text"]
@@ -379,22 +379,22 @@ def test_an_unanswered_question_ends_in_a_stated_assumption_not_a_wait_forever(w
     assert "about 10 minutes" in said and "Assumed:" in said
 
 
-# ---- the replayed Codex thread, as Aaron looked for it in the app on Parrot ----
+# ---- the replayed Codex thread, as Ellis looked for it in the app on Parrot ----
 
 def test_the_replayed_thread_is_listed_in_the_codex_app_with_short_labels_and_real_times(tmp_path):
     """b24 audit: "source": "exec" threads are omitted from thread/list, so the app's sidebar never showed
-    it; labels read "(from Aaron Test, who handed this over · 2026-10-13)"; every row said "now"; turns
+    it; labels read "(from Ellis Test, who handed this over · 2026-10-13)"; every row said "now"; turns
     where the AI only ran tools showed "(no reply recorded)"."""
     from connectonion.handoff import opener
-    zh = dict(_bundle(RECIPIENT["mail"]), from_name="Aaron Xie", lang="zh", conversation=[
+    zh = dict(_bundle(RECIPIENT["mail"]), from_name="Ellis Yew", lang="zh", conversation=[
         {"at": "2026-10-13T02:13:00Z", "user": "看一下日志", "ai": ""},
         {"at": "2026-10-13T02:18:00Z", "user": "邮件只做提醒", "ai": "好的"}])
     rows = opener.replay_lines(bundles.seal(zh), "t1", tmp_path, "2026-10-13T09:00:00.000Z", "m")
     assert rows[0]["payload"]["source"] == "cli"
     said = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "user_message"]
-    assert said[0].startswith("(Aaron Xie · 10月13日)") and "who handed this over" not in said[0]
+    assert said[0].startswith("(Ellis Yew · 10月13日)") and "who handed this over" not in said[0]
     replied = [r["payload"]["message"] for r in rows if r["payload"].get("type") == "agent_message"]
-    assert replied == ["(Aaron Xie 的 Codex)\n\n好的"]             # no empty bubble for a tools-only turn
+    assert replied == ["(Ellis Yew 的 Codex)\n\n好的"]             # no empty bubble for a tools-only turn
     assert {r["timestamp"] for r in rows[1:6]} == {"2026-10-13T02:13:00.000Z"}        # a turn with no reply: 5 rows
     assert opener.REPORT.startswith("(co handoff)")
 
@@ -491,7 +491,7 @@ def test_the_rollout_is_named_in_local_time_like_codexs_own(tmp_path, monkeypatc
 
 
 def test_done_ends_with_the_thread_line_again(world, tmp_path, monkeypatch, fake_codex):
-    """1.9.3b2 review: Bob's Codex ended at "Sent Aaron the completed patch" and never named the thread; done
+    """1.9.3b2 review: Bob's Codex ended at "Sent Ellis the completed patch" and never named the thread; done
     is the last thing it runs before it reports."""
     monkeypatch.setenv("CODEX_THREAD_ID", "the-pasted-thread")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
@@ -597,18 +597,18 @@ def test_other_peoples_addresses_and_numbers_are_masked_on_the_page():
     """Aaron, 2026-10-14: "mailto:ivvli0000@outlook.com 这个是错误的". A co rem run had quoted a relative's
     address; the handoff copied it onto a page anyone with the link can open. The sender's and the
     recipient's own addresses stay, and so do example addresses."""
-    talk = [{"at": "2026-10-13T01:00:00Z", "user": "Mail me at aaron@home.net, not ivvli0000@outlook.com",
+    talk = [{"at": "2026-10-13T01:00:00Z", "user": "Mail me at ellis.home@example.org, not ivvli0000@outlook.com",
              "ai": "Done. people/ivvli0000-outlook-com-e381998ef8.md (grep ivvli0000 *.md) has her number +61 412 000 111 and "
                    "0491 570 156; bob@example.com is the test user; corin@x.co got it.",
              "final": "", "steps": 0}]
     talk[0]["final"] = talk[0]["ai"]
     bundle = bundles.assemble(handoff_id="h", sender="0xabc@mail.openonion.ai", to="corin@x.co", what="w",
-                              source={"kind": "claude"}, code=[], keep=["aaron@home.net"],
+                              source={"kind": "claude"}, code=[], keep=["ellis.home@example.org"],
                               top=bundles.Top(title="t", task="ask ivvli0000@outlook.com", where_it_stands="w"),
                               exchanges=talk)
     text = json.dumps(bundle, ensure_ascii=False)
     assert "ivvli0000" not in text and "412 000 111" not in text and "525 634" not in text
-    assert "aaron@home.net" in text and "corin@x.co" in text and "bob@example.com" in text
+    assert "ellis.home@example.org" in text and "corin@x.co" in text and "bob@example.com" in text
     assert "[email removed]" in bundle["conversation"][0]["user"]
 
 
@@ -624,9 +624,9 @@ def test_the_session_copy_masks_them_too(tmp_path, monkeypatch):
 def test_masking_leaves_ordinary_words_and_the_kept_addresses_alone():
     """#2493 review: "anyone" and "notify" became "someone" because anyone@x.com and notify@x.com were
     masked; a literal \\n before an address read as part of it, so a kept address was not recognised."""
-    text = "anyone@x.com said anyone can read notify.py; log: 'sent\\nxietianle@outlook.com\\nnotify@x.com'"
-    out = bundles.mask(text, ["xietianle@outlook.com"])
-    assert "anyone can read notify.py" in out and "xietianle@outlook.com" in out
+    text = "anyone@x.com said anyone can read notify.py; log: 'sent\\nellis@example.org\\nnotify@x.com'"
+    out = bundles.mask(text, ["ellis@example.org"])
+    assert "anyone can read notify.py" in out and "ellis@example.org" in out
     assert "anyone@x.com" not in out and "notify@x.com" not in out
 
 
@@ -670,8 +670,8 @@ def test_the_title_is_the_work_not_an_order_so_the_subject_does_not_repeat_its_v
 
 def test_a_one_word_lowercase_git_name_reads_as_a_name():
     from connectonion.cli.commands import handoff_commands
-    assert handoff_commands._as_name("aaron") == "Aaron"
-    assert handoff_commands._as_name("Aaron Xie") == "Aaron Xie" and handoff_commands._as_name("") == ""
+    assert handoff_commands._as_name("ellis") == "Ellis"
+    assert handoff_commands._as_name("Ellis Yew") == "Ellis Yew" and handoff_commands._as_name("") == ""
     assert handoff_commands._as_name("de la cruz") == "de la cruz"      # several words: written as they chose
 
 

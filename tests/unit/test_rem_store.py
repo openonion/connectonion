@@ -212,6 +212,35 @@ def test_stale_session_line_never_returns_another_messages_body(tmp_path):
     assert cited_conversations(root, context) == {}
 
 
+def test_citing_many_lines_of_one_session_reads_its_file_once(tmp_path, monkeypatch):
+    """The reader cites thousands of session lines; each re-read the whole project JSONL (91s on a real notebook)."""
+    from pathlib import Path
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context
+    root = notebook(tmp_path)
+    path = state_path(root, 'projects/atlas/messages.jsonl')
+    _jsonl(path, [{'source': f'codex:s1:{n}', 'text': f'input {n}', 'tool': 'codex'} for n in range(1, 41)])
+    store.refresh(root)
+    reads, original = [], Path.read_text
+    monkeypatch.setattr(Path, 'read_text', lambda self, *a, **k: reads.append(self) or original(self, *a, **k))
+    context = cited_context(root, [{'text': '\n'.join(f'- [{n}] codex:s1:{n}' for n in range(1, 41))}])
+    assert context['codex:s1:40']['excerpt'] == 'input 40'
+    assert reads.count(path) == 1
+
+
+def test_cited_mail_is_kept_before_a_session_pages_source_list(tmp_path):
+    """A real notebook's 504 session pages list 8,000+ typed lines under Sources. Sorted
+    by id, they spent the reader's whole budget before any gmail:/outlook: citation."""
+    from connectonion.rem import store
+    from connectonion.rem.reader_model import cited_context
+    root = notebook(tmp_path)
+    store.refresh(root)
+    session = {'category': 'sessions', 'text': '# Atlas\n\n## Sources\n- codex:s1:1\n- codex:s1:2\n'}
+    person = {'category': 'people', 'text': 'Corin asked for a signature. [1]\n\n## Sources\n- [1] gmail:m1\n'}
+    context = cited_context(root, [session, person], budget=len('Please sign.') + 5)
+    assert context['gmail:m1']['excerpt'] == 'Please sign.'
+
+
 def test_edges_join_people_to_orgs_and_projects(tmp_path):
     from connectonion.rem import store
     root = notebook(tmp_path)
@@ -419,4 +448,26 @@ def test_the_table_before_any_build_says_how_to_make_one(tmp_path):
     root = notebook(tmp_path)
     result = CliRunner().invoke(app, ["rem", "--root", str(root), "list", "people", "--table"])
     assert result.exit_code == 0 and "No people table yet" in result.output
-    assert result.output.rstrip().endswith(f"{root} sync")     # the Next line, spelled with this --root
+    assert "the next scheduled run builds it" in result.output
+    body, next_line = result.output.rsplit("Next:", 1)
+    assert "co rem" not in body
+    assert "co rem" in next_line
+
+
+def test_people_recent_filter_uses_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service, store
+    from connectonion.rem.config import set_config
+
+    root = notebook(tmp_path)
+    set_config(root, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 9, 30, 1, tzinfo=timezone.utc))
+    book = Notebook(root)
+    book.stub_person("people/boundary.md", "Boundary", ["boundary@example.org"])
+    book.write("people/boundary.md", book.read("people/boundary.md").replace(
+        "## Who they are\n", "## Who they are\nLast contact: 2026-09-19. [1]\n"))
+    store.refresh(root)
+    assert store.people_table(root, recent_days=10) == store.people_table(root, recent_days=10, today="2026-09-29")
+    assert "people/boundary.md" in {row["record"] for row in store.people_table(root, recent_days=10)}
+    assert "people/boundary.md" not in {row["record"] for row in store.people_table(
+        root, recent_days=10, today="2026-09-30")}

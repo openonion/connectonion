@@ -30,11 +30,11 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import (WRITE_WAIT_SECONDS, SECRET_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
+from .files import (WRITE_WAIT_SECONDS, KEY_SHAPES, Notebook, RemError, atomic_write, maintenance_lock, read_json, state_path,
                     write_json)
 from .investigate import project_paths
-from .scan import project_exclusion
-from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, session_source, timestamp
+from .scan import is_repository, nameable, project_exclusion
+from .source import KINDS, SKIPPED, UNFAMILIAR, parse_session_source, read_session, session_paths, session_source, timestamp
 
 # The widest window a coding source may read (service.MAX_LOOKBACK_DAYS).
 LOOKBACK_DAYS = 180
@@ -45,7 +45,10 @@ CONTAINER = "multi-repository workspace container"
 # A path a tool call names: absolute (or ~/), or the target of `cd`, `git -C`, `workdir`.
 _STOP = r"\s'\"`;|&<>(){}\[\],:\\"
 ABSOLUTE = re.compile(rf"(?<![\w.~/-])(~?/[^{_STOP}]+)")
-MOVED = re.compile(rf"(?:\bcd|\bgit\s+-C|\bworkdir\\?[\"']?\s*[:=])\s*\\?[\"']?([^{_STOP}]+)")
+# `cd` and `git -C` are words of their own with a space after them: with neither
+# asked for, the "cd" inside a base64url token (`…-cdAb3…`) named the rest of the
+# token as a folder (2026-11-16).
+MOVED = re.compile(rf"(?:(?<![\w-])cd\s+|(?<![\w-])git\s+-C\s+|\bworkdir\\?[\"']?\s*[:=]\s*)\\?[\"']?([^{_STOP}]+)")
 # Claude Code tool inputs that name a path. Never `content`/`new_string`: the
 # text an edit writes is not a place the session worked.
 CLAUDE_PATH_KEYS = ("file_path", "path", "notebook_path", "command", "cwd", "workdir")
@@ -91,7 +94,7 @@ def session_messages(subscriptions: dict, *, since: datetime, rem_root: Path | N
         if not root.is_dir() or root.is_symlink():
             continue
         parse, read_meta = KINDS[kind]["message"], KINDS[kind]["meta"]
-        paths = sessions.files[name] if sessions is not None else sorted(root.rglob(KINDS[kind]["glob"]))
+        paths = sessions.files[name] if sessions is not None else session_paths(root, kind)
         for path in paths:
             stat = sessions.stats[str(path)] if sessions is not None else path.stat()
             if path.is_symlink() or datetime.fromtimestamp(stat.st_mtime, timezone.utc) < since:
@@ -106,7 +109,7 @@ def session_messages(subscriptions: dict, *, since: datetime, rem_root: Path | N
 
 
 def _file_messages(path, kind, parse, read_meta, since, rem_root, counts, owner) -> list[dict]:
-    material = _file_material(path.read_bytes(), path, kind, parse, read_meta, since)
+    material = _file_material(read_session(path), path, kind, parse, read_meta, since)
     return _material_messages(material, rem_root, counts, owner)
 
 
@@ -143,7 +146,7 @@ def _file_material(data: bytes, path, kind, parse, read_meta, since) -> dict:
             messages.append((at, {"source": session_source(kind, session, at, item["text"]), "tool": kind,
                 "timestamp": timestamp(item["timestamp"]).isoformat(),
                 "cwd": item.get("cwd") or meta.get("cwd") or "",
-                "text": SECRET_SHAPES.sub(REDACTED, item["text"]),
+                "text": KEY_SHAPES.sub(REDACTED, item["text"]),
                 **({"input_scope": item["input_scope"]} if item.get("input_scope") else {})}))
     # Attribution used a second disk read: 256 s for filing alone (2026-10-21).
     # Keep raw paths until map has created the project pages that own them.
@@ -212,7 +215,7 @@ def _choose(calls: list[tuple[int, set, bool]], turns: list[int]):
 
 
 def _evidence(path: Path, kind: str, container: str, owner) -> list[tuple[int, set, bool]]:
-    return _owned_evidence(_raw_evidence(path.read_bytes(), kind, container), container, owner)
+    return _owned_evidence(_raw_evidence(read_session(path), kind, container), container, owner)
 
 
 def _owned_evidence(calls, container, owner) -> list[tuple[int, set, bool]]:
@@ -280,7 +283,7 @@ def _paths(text: str, here: str) -> set[str]:
     """Absolute paths named in a call, and `cd` / `git -C` / `workdir` targets resolved against `here`."""
     named = {m.group(1) for m in ABSOLUTE.finditer(text)}
     named |= {os.path.join(here, os.path.expanduser(m.group(1))) for m in MOVED.finditer(text)}
-    return {os.path.normpath(os.path.expanduser(p)) for p in named if len(p) < 4096}
+    return {os.path.normpath(os.path.expanduser(p)) for p in named if len(p) < 4096 and nameable(p)}
 
 
 class _Owners:
@@ -297,7 +300,7 @@ class _Owners:
         if not path.startswith(container.rstrip("/") + "/"):
             return None  # the workspace itself, or outside it: no evidence
         if path not in self.cache:
-            if path in self.folders or os.path.exists(os.path.join(path, ".git")):
+            if path in self.folders or is_repository(path):
                 self.cache[path] = path if self._usable(path) else None
             else:
                 self.cache[path] = self(os.path.dirname(path), container)
@@ -322,7 +325,7 @@ class _Owners:
                 branch = ref.removeprefix("ref: refs/heads/") if ref.startswith("ref: refs/heads/") else ""
                 named = self._named_owner([folder.name, branch], repo.name)
                 return named or (str(repo) if repo.is_dir() and self._usable(str(repo))
-                                 and (str(repo) in self.folders or (repo / ".git").exists()) else None)
+                                 and (str(repo) in self.folders or is_repository(repo)) else None)
             if self._marker(folder) == "dir":
                 return None
         temporary = re.match(r"^/(?:private/)?(?:tmp/|var/folders/)(.*)", str(path))
@@ -339,7 +342,7 @@ class _Owners:
         """
         if folder not in self.markers:
             git = folder / ".git"
-            self.markers[folder] = "file" if git.is_file() else "dir" if git.exists() else ""
+            self.markers[folder] = ("file" if git.is_file() else "dir") if is_repository(folder) else ""
         return self.markers[folder]
 
     def _named_owner(self, names, repo_name="") -> str | None:
@@ -406,7 +409,7 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, rep
                 or not parse_session_source(source)
                 or not isinstance(body, str)):
             continue
-        text = SECRET_SHAPES.sub(REDACTED, body)
+        text = KEY_SHAPES.sub(REDACTED, body)
         path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
         previous = read_json(path, {})
         if previous and not replace and (previous.get("source") != source or previous.get("text") != text):
@@ -416,17 +419,25 @@ def retain_cited_sessions(root: Path, items: list[dict], cited: set[str], *, rep
                               "input_scope": item.get("input_scope") or ""})
 
 
-def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
-    """A cited original unavailable in the mapped archive, from the accepted run."""
-    from .reader_model import PRIVATE
+def retained_session(root: Path, source: str) -> dict | None:
+    """The full, retained owner input for a citation; never an assistant reply."""
     if not parse_session_source(source):
         return None
     path = state_path(root, "session-sources/" + hashlib.sha256(source.encode()).hexdigest() + ".json")
     saved = read_json(path, {})
     body = saved.get("text")
-    if (saved.get("source") != source or not isinstance(body, str)
-            or SECRET_SHAPES.search(body) or (PRIVATE.search(body) and not private)):
+    if saved.get("source") != source or not isinstance(body, str) or KEY_SHAPES.search(body):
         return None
+    return saved
+
+
+def retained_session_context(root: Path, source: str, private: bool = False) -> dict | None:
+    """A cited original unavailable in the mapped archive, from the accepted run."""
+    from .reader_model import PRIVATE
+    saved = retained_session(root, source)
+    if saved is None or (PRIVATE.search(saved["text"]) and not private):
+        return None
+    body = saved["text"]
     excerpt = body.strip()[:4_096]
     return {"excerpt": excerpt, "truncated": len(body.strip()) > len(excerpt),
             "time": saved.get("timestamp") or "", "sender": "", "thread": "",

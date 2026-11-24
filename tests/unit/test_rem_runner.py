@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from connectonion.rem.config import default_config, prepare
+from connectonion.rem.config import LEVEL_MODELS, default_config, prepare
 from connectonion.rem.extract import run_extract
 from connectonion.rem.files import Notebook
 from connectonion.rem import runner
@@ -467,11 +467,12 @@ def delegate(monkeypatch):
         newest = max(tasks, key=lambda path: path.stat().st_mtime_ns) if tasks else None
         kw = {**kw, 'material': json.loads(newest.read_text()) if newest else None}
         calls.append((argv, kw))
-        if argv[-1].startswith('/rem-investigate'):
+        prompt = kw.get('input') or argv[-1]  # a long prompt goes on stdin
+        if prompt.startswith('/rem-investigate'):
             import re
-            path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
+            path = Path(re.search(r'page is the file (.+?candidate.md)', prompt)[1])
             path.write_text((Path(kw['cwd']).parent.parent / 'notes/old.md').read_text())
-        if argv[-1].startswith('/rem-maintain'):
+        if prompt.startswith('/rem-maintain'):
             workspace = Path(kw['cwd'])
             directory = max(workspace.glob('maintain-*'), key=lambda path: path.stat().st_mtime_ns)
             items = json.loads((directory / 'material.json').read_text())
@@ -490,8 +491,18 @@ def test_run_task_drops_null_bytes_from_prompt(tmp_path, delegate):
     result = runner.run_task(tmp_path, "Continue\0 investigating\0.", default_config(), "investigate")
     argv = delegate[0][0]
     assert all("\0" not in argument for argument in argv)
-    assert argv[-1] == "Continue investigating."
+    assert argv[-1] == "Continue investigating.\n\n" + runner.NO_DISCOVERY_NOTE
     assert result["outcome"] == "natural"
+
+
+def test_every_runner_turn_is_told_not_to_explore_co(tmp_path, delegate):
+    """#3099 A/B trial: manual investigations, which run here and not as native task packets,
+    ran 63 `co commands` and 24 help calls on the global co rule; the note follows any /skill."""
+    runner.run_task(tmp_path, "/rem-tag Tag the pages.", default_config(), "tag")
+    prompt = delegate[0][0][-1]
+    assert prompt.startswith("/rem-tag") and prompt.endswith(runner.NO_DISCOVERY_NOTE)
+    runner.run_task(tmp_path, prompt, default_config(), "tag")
+    assert delegate[1][0][-1].count("do not run `co commands`") == 1
 
 
 def test_model_runs_use_the_running_installation_not_the_first_co_on_path(notebook, monkeypatch):
@@ -512,7 +523,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     prompts = []
 
     def stop_after_capture(argv, **kwargs):
-        prompts.append(argv[-1])
+        prompts.append(kwargs.get('input') or argv[-1])  # a long prompt goes on stdin
         raise OSError('synthetic stop')
 
     monkeypatch.setattr('connectonion.rem.runner.subprocess.run', stop_after_capture)
@@ -525,7 +536,7 @@ def test_project_investigation_authorizes_live_repo_search(notebook, monkeypatch
     assert 'alone is not an insight. Each is about the project' in prompts[0]
     assert 'None: `- Unknown`.' in prompts[0]
     assert 'local mail archives and project repositories' in prompts[0]
-    assert 'stop using tools and return a brief coverage summary' in prompts[0]
+    assert 'return the lead ledger with each lookup (tool, query, result)' in prompts[0]
     assert 'investigation:coverage, investigation:project-scope' in prompts[0]
     assert 'reading guides, never citable originals' in prompts[0]
     assert 'nearby checkouts outside those Paths cannot be retained' in prompts[0]
@@ -542,7 +553,7 @@ def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook,
     prompts = []
 
     def stop_after_capture(argv, **kwargs):
-        prompts.append(argv[-1])
+        prompts.append(kwargs.get('input') or argv[-1])  # a long prompt goes on stdin
         raise OSError('synthetic stop')
 
     monkeypatch.setattr('connectonion.rem.runner.subprocess.run', stop_after_capture)
@@ -550,8 +561,9 @@ def test_a_person_page_near_the_limit_is_told_its_size_before_the_turn(notebook,
         run_stage(notebook, [{'role': 'page', 'record': record, 'text': notebook.read(record),
                               'source': 'investigation:page'}], default_config(), stage='investigate')
     size = len(notebook.read(record))
-    assert f'The page is {size:,} characters; it must end under 20,000' in prompts[0]
-    assert 'fold the oldest History' in prompts[0]
+    assert f'The page is {size:,} characters; it should end under 20,000' in prompts[0]
+    # An append may drop no cited line (#3105): the program archives the oldest History, the turn keeps it.
+    assert "keep every cited line" in prompts[0] and "the program moves it to the page's archive" in prompts[0]
 
 
 def test_quick_investigation_reads_complete_bounded_material_once(tmp_path):
@@ -592,7 +604,7 @@ def test_investigation_does_not_claim_another_concurrent_page_change(notebook, m
 @pytest.mark.parametrize("harness", ["codex", "coai", "claude-code"])
 def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stage, harness):
     config = default_config()
-    config.update(runner=harness, model="default")
+    config.update(runner=harness, model="default", models=dict.fromkeys(LEVEL_MODELS, "default"))
     item = {"role": "page", "record": "notes/old.md", "text": "x" * 300000}
     result = run_stage(notebook, [item], config, stage=stage)
     argv, options = delegate[0]
@@ -602,7 +614,8 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert len(argv[-1]) < 8000  # Large material must not go through argv.
     assert options["cwd"] == str(notebook.root / ".state/tasks")
     seconds = config["limits"]["timeout_seconds"]
-    assert options["timeout"] == seconds + (0 if harness == "coai" else 15)
+    # Longer than the adapter's own cleanup at its deadline: interrupt, archive, kill.
+    assert options["timeout"] == seconds + (0 if harness == "coai" else 30)
     if harness != "coai":
         assert argv[argv.index("--timeout") + 1] == str(seconds)
     investigating = stage in ("init", "investigate")
@@ -612,7 +625,7 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     else:
         assert "--permission-mode" not in argv
     if harness == "codex":
-        assert argv[argv.index("--speed") + 1] == "fast"
+        assert argv[argv.index("--speed") + 1] == "standard"
         assert argv[argv.index("--sandbox") + 1] == (
             "danger-full-access" if investigating else "workspace-write")
     else:
@@ -621,7 +634,7 @@ def test_every_stage_uses_same_cli_and_explicit_harness(notebook, delegate, stag
     assert options["material"] == [item]
     assert not list((notebook.root / ".state/tasks").glob("*/material.json")), "no private copy is left"
     metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
-    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "fast")
+    assert (metrics["harness"], metrics["model"], metrics["speed"]) == (harness, "default", "standard")
     assert result["usage"] == {"input_tokens": 13}
     assert result["changed"] == []
 
@@ -633,6 +646,22 @@ def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
     assert argv[argv.index("--speed") + 1] == "standard"
     metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
     assert metrics["speed"] == "standard"
+
+
+def test_a_codex_worker_is_started_at_the_notebooks_effort_and_its_record_says_so(notebook, delegate):
+    """2026-11-17: no effort was passed, so all 81 worker turns of a night ran at the owner's
+    own ~/.codex setting (max) while config.yaml said medium. Maintain is level 3: medium (#3426)."""
+    run_stage(notebook, [], default_config())
+    argv = delegate[0][0]
+    assert argv[argv.index("--effort") + 1] == "medium"
+    metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
+    assert metrics["effort"] == "medium"
+    high = runner.harness_flags({**default_config(), "effort": "high"}, "maintain")
+    assert high[high.index("--effort") + 1] == "high"
+    # Claude Code and co's own loop take no effort from us: nothing is passed or claimed.
+    for other in ("claude-code", "coai"):
+        config = {**default_config(), "runner": other}
+        assert "--effort" not in runner.harness_flags(config, "maintain") and runner.worker_effort(config) == ""
 
 
 def test_claude_rem_does_not_inherit_an_api_billing_key(notebook, delegate, monkeypatch):
@@ -664,12 +693,13 @@ def test_abstract_writes_disposable_copy_then_promotes(notebook, monkeypatch, de
         workspace = Path(kw["cwd"])
         working = next(workspace.glob("abstract-*/notebook"))
         assert working != notebook.root
-        Notebook(working).write("decisions/example.md", "# Why use Markdown\n\n## Why\nReadable pages.\n")
+        Notebook(working).write("decisions/example.md", '# Why use Markdown\n\n“Use Markdown for readable pages.” [1]\n\n## Why\nReadable pages. [1]\n\n## Sources\n- [1] codex:fixture:7\n')
         return SimpleNamespace(returncode=0, stdout=json.dumps({
             "outcome": "natural", "result": "done", "usage": {"input_tokens": 2}}), stderr="")
 
     monkeypatch.setattr("connectonion.rem.runner.subprocess.run", write_decision)
-    result = run_stage(notebook, [], default_config(), stage="abstract")
+    result = run_stage(notebook, [{"source": "codex:fixture:7", "text": "Use Markdown for readable pages."}],
+                       default_config(), stage="abstract")
     assert result["changed"] == ["decisions/example.md"]
     assert notebook.read("decisions/example.md").startswith("# Why use Markdown")
 
@@ -683,6 +713,17 @@ def test_timeout_reports_partial_changes(notebook, monkeypatch, delegate):
     with pytest.raises(RunFailed, match="timed out") as caught:
         run_stage(notebook, [], default_config())
     assert caught.value.changed == ["notes/new.md"]
+
+
+def test_a_turn_the_adapter_timed_out_is_a_timed_out_task_with_its_usage(tmp_path, monkeypatch, delegate):
+    """2026-11-17: the adapter always beats the outer deadline, so its timeout left as a
+    plain RunFailed, exec did not park the task and one slow page ended the whole night."""
+    monkeypatch.setattr("connectonion.rem.runner.subprocess.run", lambda *a, **kw: SimpleNamespace(
+        returncode=1, stderr="", stdout=json.dumps({"outcome": "timeout", "error": "turn timed out after 900s",
+                                                    "usage": {"input_tokens": 40}, "session_id": "fictional"})))
+    with pytest.raises(runner.TimedOut, match="co ai timed out after 1200s") as caught:
+        runner.run_task(tmp_path, "Continue.", default_config(), "investigate")
+    assert caught.value.usage == {"input_tokens": 40}
 
 
 @pytest.mark.parametrize("payload", ['[]', '42', '{}', '{"outcome":"natural","usage":"oops"}'])
@@ -748,7 +789,7 @@ def test_offline_maintenance_benchmark(notebook, monkeypatch, scenario, accepted
     source = "codex:synthetic:1"
 
     def simulated_agent(argv, **kw):
-        prompt = argv[-1]
+        prompt = kw.get('input') or argv[-1]  # a long prompt goes on stdin
         task = next(Path(kw['cwd']).glob('maintain-*'))
         assert 'no shell' not in prompt
         assert 'local file reads and writes' in prompt
@@ -1006,6 +1047,60 @@ def test_a_promoted_person_page_has_newest_first_history(notebook, tmp_path):
     assert json.loads((tmp_path / 'review.json').read_text())['accepted']
 
 
+@pytest.mark.parametrize('promotion', ['candidate', 'carried', 'last-resort', 'maintenance',
+                                     'large-maintenance', 'raw-correction', 'raw-maintenance'])
+def test_promotion_compares_resolved_mail_sources(notebook, tmp_path, monkeypatch, promotion):
+    from connectonion.rem import page_review
+
+    record, raw, digest = 'people/avery.md', 'gmail:1a02327b9e6d2c51', 'gmail:94449e945db3'
+    monkeypatch.setattr(page_review, '_mail_digest', lambda root, source:
+                        digest if source in (raw, digest) else source)
+    notebook.stub_person(record, 'Avery Lin')
+    lead = '- Avery Lin builds small research tools. [23]'
+    if promotion == 'large-maintenance':
+        lead += '\n' + 'Avery builds tools for researchers to search their own notes. ' * 24 + '[23]'
+    original = (notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+                .replace('## Who they are\n- Unknown', '## Who they are\n' + lead)
+                .replace('- Location: Unknown', '- Location: Sydney [23]')
+                .replace('- (none yet)', f'- [23] {raw} — 2026-08-21'))
+    notebook.write(record, original)
+    text = original.replace(raw, digest).replace('[23]', '[1]')
+    if promotion.startswith('raw-'):
+        text = text.replace(digest, raw).replace('- Location: Sydney [1]', '- Location: Unknown')
+    items = [{'source': digest, 'text': 'Avery Lin builds small research tools in Sydney.'}]
+    reviewed = []
+    validate = page_review.validate
+
+    def review(record, candidate, before, *args, **kwargs):
+        reviewed.append((before, candidate))
+        return validate(record, candidate, before, *args, **kwargs)
+
+    monkeypatch.setattr(page_review, 'validate', review)
+    if 'maintenance' in promotion:
+        before = {r: notebook.read(r) for r in notebook.list()}
+        working = Notebook(tmp_path / 'working')
+        for r, page in before.items():
+            working.write(r, page)
+        working.write(record, text)
+        assert runner._promote_maintenance(notebook, working, before, items, tmp_path, None, False) == []
+        assert before[record] == original  # Raw snapshot still guards concurrent writes.
+    else:
+        candidate = tmp_path / 'candidate.md'
+        candidate.write_text(text)
+        runner._promote_candidate(notebook, record, candidate, original, items, tmp_path, None,
+                                  carried=original if promotion != 'candidate' else '',
+                                  last_resort=promotion == 'last-resort',
+                                  report='- Removed fact: Location — Unsupported' if promotion == 'raw-correction' else '')
+        assert json.loads((tmp_path / 'review.json').read_text())['accepted']
+
+    assert reviewed and all(page_review.dropped(before, after) == [] for before, after in reviewed)
+    sources = notebook.read(record).partition('\n## Sources\n')[2]
+    assert raw not in sources
+    assert sources.count(digest) == 1
+    assert len(page_review._cited_sources(notebook.read(record))) == 1
+    assert '- Location: Sydney [' in notebook.read(record)
+
+
 @pytest.mark.parametrize('promotion', ['candidate', 'maintenance'])
 def test_person_promotion_repairs_owner_pronouns(notebook, tmp_path, promotion):
     record = 'people/avery.md'
@@ -1230,7 +1325,7 @@ def test_unretained_original_records_unverified_status_without_refusal(notebook,
     review = json.loads((tmp_path / 'review.json').read_text())
     assert review['accepted'] is True
     assert review['factual_quality'] == ('bounded citation audit insufficient; '
-                                         '1 citations unverified (originals not retained)')
+                                         '1 citations unverified (originals unavailable)')
 
 
 @pytest.mark.parametrize('stage', ['enrich', 'muse'])
@@ -1703,9 +1798,8 @@ def test_mistyped_skill_citation_repairs_the_finding_once_instead_of_losing_it(n
 
 
 def test_a_turn_may_ask_for_mail_searches_and_gets_one_more_turn_with_their_results(notebook, monkeypatch):
-    """The model has no network (its sandbox is the defence against mail that
-    carries instructions); it names searches, our code runs them read-only,
-    and the results come back as cited material for one more turn."""
+    """The optional read-only mail bridge adds requested searches and their
+    cited originals to one more turn; direct research is also available."""
     import json as jsonlib
     import re as regex
     from connectonion.rem.config import set_config
@@ -1831,22 +1925,33 @@ def test_material_carries_local_times_without_changing_the_sources(notebook, del
     assert delegate[0][1]["material"] == shown
 
 
-def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate):
+def test_every_page_turn_is_told_what_day_it_is_in_the_notebooks_timezone(notebook, delegate, monkeypatch):
     """Corin's page kept 13 and 14 October events as open threads on the 15th:
     no turn was told the date."""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
     from connectonion.rem.config import set_config
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 5, 13, 1, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(runner, "datetime", Clock)
     set_config(notebook.root, ["schedule.timezone", "Australia/Sydney"])
-    today = datetime.now(ZoneInfo("Australia/Sydney")).date().isoformat()
     note = runner.today_note(notebook.root)
-    assert f"Today is {today} (Australia/Sydney)" in note and "never an open thread" in note
+    assert "Today is 2026-11-06 (Australia/Sydney)" in note
+    assert "never an open thread" not in note
     assert "local_time" in note
     run_stage(notebook, [{"role": "page", "record": "notes/old.md", "text": "x"}], default_config(), stage="maintain")
     argv, options = delegate[0]
-    handed = argv[-1] + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
+    handed = (options.get('input') or argv[-1]) + "".join(path.read_text() for path in Path(options["cwd"]).rglob("*.md")
                                 if path.is_file())
-    assert f"Today is {today}" in handed
+    assert "Today is 2026-11-06" in handed
+    assert "A past scheduled date alone does not establish occurrence or completion" in handed
+    assert "an unanswered request remains dated with its outcome unknown" in handed
+    assert "a promise past its due date with no delivery stays overdue and open" in handed
+    assert "answer, delivery, cancellation or withdrawal for the matching ask" in handed
+    assert "do not present a past scheduled event as upcoming" in handed
 
 
 def test_a_maintenance_turn_cannot_give_a_person_a_relay_or_a_stranger_s_address(tmp_path):

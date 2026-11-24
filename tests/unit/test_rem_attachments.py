@@ -2,8 +2,12 @@
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import shlex
+import sys
 
-from connectonion.rem.attachments import extract_text
+import pytest
+
+from connectonion.rem.attachments import extract_text, spreadsheet_install_command
 
 
 def test_a_pdf_is_read_as_text(tmp_path):
@@ -84,74 +88,48 @@ def test_calendar_attachment_keeps_dates_and_organizer(tmp_path):
     assert "20260915T100000Z" in text and "alice@example.org" in text
 
 
-def test_gather_reads_attachments_of_matched_mail_into_items(tmp_path, monkeypatch):
+def test_gather_lists_files_without_creating_attachment_store(tmp_path):
     from connectonion.rem import investigate as inv
-    monkeypatch.setattr("time.sleep", lambda s: None)
 
-    class WithFiles:
-        def my_addresses(self): return {"me@x.y"}
-        def list_between(self, s, e, n):
-            # window-aware, like a provider: one mail, in one week, not once per week
-            rows = [{"id": "m1", "from": "Elodie <elodie526@example.com>", "to": ["me@x.y"], "cc": [],
-                     "date": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
-                     "subject": "contract v9"}]
-            return [r for r in rows if s[:10] <= r["date"][:10] < e[:10]]
-        def get_email_body(self, i): return "--- Email Body ---\nplease see attached"
-        def download_attachments(self, email_id, out_dir):
-            folder = Path(out_dir); folder.mkdir(parents=True, exist_ok=True)
-            f = folder / "v9.txt"; f.write_text("Fee 7.5% of Net Booking Revenue", encoding="utf-8")
-            return [str(f)]
+    class Mail:
+        def my_addresses(self): return {"me@example.org"}
+        def list_between(self, start, end, limit):
+            row = {"id": "mail-terms", "from": "ivy@lantern.example", "to": ["me@example.org"],
+                   "date": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+                   "subject": "Pilot contract"}
+            return [row] if start <= row["date"] < end else []
+        def get_email_body(self, email_id): return "Please see the contract."
+        def list_attachments(self, email_id):
+            return [{"id": "a1", "filename": "pilot.pdf", "mime_type": "application/pdf", "size": 2048}]
+        def download_attachments(self, *args, **kwargs):
+            pytest.fail("Indexing must not download attachments")
 
-    monkeypatch.setattr(inv, "datetime", __import__("datetime").datetime)
-    items, coverage = inv.gather("Elodie", ["elodie526"], days=60, clients={"gmail": WithFiles()},
-                                 subscriptions={}, attachments_dir=tmp_path / "att")
-    kinds = [i["role"] for i in items]
-    assert kinds == ["other", "attachment"]
-    assert "7.5%" in items[1]["text"] and items[1]["source"].endswith(":v9.txt")
-    assert any("1 attachments read" in c for c in coverage)
-    assert (tmp_path / "att" / "gmail").is_dir()
+    store = tmp_path / "attachments"
+    items, coverage = inv.gather("Ivy", ["ivy@lantern.example"], days=1, clients={"gmail": Mail()},
+                                 subscriptions={}, attachments_dir=store)
+    assert [item["role"] for item in items] == ["other", "attachments-index"]
+    assert "pilot.pdf" in items[1]["text"]
+    assert any("1 attachments indexed" in line for line in coverage)
+    assert not store.exists()
 
 
-def test_gmails_result_dict_yields_only_the_files_actually_saved():
-    """Gmail reports per-file status; a failed row has no path and is not a file.
-    Reading the wrong key would have returned [] for every Gmail mail, silently."""
-    from connectonion.rem.investigate import _saved_paths
-    result = {"items": [{"id": "a", "filename": "deck.pdf", "status": "saved", "path": "/x/deck.pdf"},
-                        {"id": "b", "filename": "bad.bin", "status": "failed", "error": "length mismatch"}],
-              "complete": False, "decoded_bytes": 10}
-    assert _saved_paths(result) == ["/x/deck.pdf"]
-    assert _saved_paths(["/y/a.docx", "/y/b.txt"]) == ["/y/a.docx", "/y/b.txt"]   # Outlook's list
-    assert _saved_paths(None) == []
-
-
-def test_gather_creates_gmail_download_directory(tmp_path):
-    from datetime import datetime, timedelta, timezone
-    from connectonion.rem.investigate import gather
-
-    class Gmail:
-        def my_addresses(self): return {"me@example.com"}
-        def list_between(self, *args):
-            return [{"id": "one", "from": "alice@example.com", "to": "me@example.com",
-                     "date": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
-                     "subject": "Signed terms"}]
-        def get_email_body(self, email_id): return "Please see attached"
-        def download_attachments(self, email_id, directory, *, all_attachments=False):
-            destination = Path(directory).resolve(strict=True)  # Gmail's actual contract.
-            assert all_attachments
-            path = destination / "terms.txt"
-            path.write_text("Signed on 2026-09-14")
-            return {"items": [{"status": "saved", "path": str(path)}], "complete": True}
-
-    items, coverage = gather("Alice", ["alice@example.com"], days=1, clients={"gmail": Gmail()},
-                             subscriptions={}, attachments_dir=tmp_path / "attachments")
-    assert any(i["role"] == "attachment" and "Signed on" in i["text"] for i in items)
-    assert not any("could not be saved" in line for line in coverage)
-
-
-def test_without_the_rem_extra_a_spreadsheet_says_how_to_install_it(tmp_path, monkeypatch):
+@pytest.mark.parametrize("environment", ["uv/tools/connectonion", "plain venv", "custom-tools/connectonion"])
+def test_without_the_rem_extra_a_spreadsheet_says_how_to_install_it(tmp_path, monkeypatch, environment):
     """openpyxl is the `co rem` extra, not a core dependency; a plain install names the
     spreadsheet as unread and gives the exact command, rather than crashing."""
     import builtins
+    from connectonion._version import __version__
+
+    prefix = tmp_path / environment
+    executable = prefix / "bin" / "python"
+    monkeypatch.setattr(sys, "prefix", str(prefix))
+    monkeypatch.setattr(sys, "executable", str(executable))
+    if environment.startswith("custom-tools"):
+        prefix.mkdir(parents=True)
+        (prefix / "uv-receipt.toml").write_text("[tool]\n")
+    installer = ([str(executable), "-m", "pip", "install"] if environment == "plain venv"
+                 else ["uv", "tool", "install", "--force"])
+    command = shlex.join([*installer, f"connectonion[rem]=={__version__}"])
     real_import = builtins.__import__
 
     def no_openpyxl(name, *args, **kwargs):
@@ -162,7 +140,29 @@ def test_without_the_rem_extra_a_spreadsheet_says_how_to_install_it(tmp_path, mo
     monkeypatch.setattr(builtins, "__import__", no_openpyxl)
     path = tmp_path / "terms.xlsx"
     path.write_bytes(b"PK")
-    assert "pip install 'connectonion[rem]'" in extract_text(path)
+    assert extract_text(path) == (
+        f"[XLSX not read: spreadsheet support is optional; run {command}, then investigate again]"
+    )
+
+
+@pytest.mark.parametrize("specifier", ["", ">=0.0.14,<1"])
+def test_spreadsheet_install_preserves_uv_companion_requirements(tmp_path, monkeypatch, specifier):
+    from connectonion._version import __version__
+
+    (tmp_path / "uv-receipt.toml").write_text(
+        '[tool]\nrequirements = [\n'
+        '  { name = "connectonion", specifier = "==1.9.3rc47" },\n'
+        f'  {{ name = "onionwright", specifier = "{specifier}" }},\n'
+        '  { name = "other-package", specifier = "==2.0" },\n'
+        ']\npython = "3.14"\n'
+    )
+    monkeypatch.setattr(sys, "prefix", str(tmp_path))
+
+    command = spreadsheet_install_command()
+    assert command == (
+        f"uv tool install --force 'connectonion[rem]=={__version__}'"
+        f" --with {shlex.quote('onionwright' + specifier)} --with other-package==2.0 --python 3.14"
+    )
 
 
 def test_pdf_annotation_text_is_not_mistaken_for_blank_party_fields(tmp_path):

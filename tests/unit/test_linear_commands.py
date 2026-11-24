@@ -30,7 +30,7 @@ LABELS = [{"id": "l-bug", "name": "Bug", "isGroup": False, "team": None},
           {"id": "l-auth", "name": "auth", "isGroup": False, "team": {"id": "t-eng", "key": "ENG"}},
           {"id": "l-ops", "name": "pager", "isGroup": False, "team": {"id": "t-ops", "key": "OPS"}},
           {"id": "l-group", "name": "Area", "isGroup": True, "team": None}]
-USERS = [{"id": "u-me", "name": "Aaron", "email": "aaron@example.com", "active": True},
+USERS = [{"id": "u-me", "name": "Ellis", "email": "ellis@example.com", "active": True},
          {"id": "u-bo", "name": "Bo", "email": "bo@example.com", "active": True},
          {"id": "u-gone", "name": "Gone", "email": "gone@example.com", "active": False}]
 PROJECTS = [{"name": "Q4 Launch", "url": "https://linear.app/x/project/q4", "updatedAt": "2026-09-30T00:00:00Z",
@@ -84,7 +84,7 @@ def answer(query: str, variables: dict) -> dict:
     if "users(" in query:
         return {"users": {"nodes": USERS}}
     if "viewer" in query:
-        return {"viewer": {"id": "u-me", "name": "Aaron", "email": "aaron@example.com"},
+        return {"viewer": {"id": "u-me", "name": "Ellis", "email": "ellis@example.com"},
                 "organization": {"name": "Acme", "urlKey": "acme"}}
     raise AssertionError(f"unexpected query: {query}")
 
@@ -136,7 +136,7 @@ def test_issues_mine_sends_the_key_and_lists_open_issues_with_a_next_step(linear
     assert variables["first"] == 20 and "orderBy: updatedAt" in query
     assert "2 open issues assigned to you" in result.stdout
     assert "ENG-2" in result.stdout and "In Progress" in result.stdout and "Login redirect loops" in result.stdout
-    assert "2026-09-30" in result.stdout and "Aaron" in result.stdout and "High" in result.stdout
+    assert "2026-09-30" in result.stdout and "Ellis" in result.stdout and "High" in result.stdout
     assert last_line(result.stdout) == "Next: co linear issue ENG-2"
 
 
@@ -172,7 +172,7 @@ def test_issues_json_is_the_same_fields_and_stdout_stays_parseable(linear):
     result = run("issues", "--json")
     assert result.exit_code == 0, result.output
     rows = json.loads(result.stdout)
-    assert rows[0] == {"id": "ENG-2", "title": "Login redirect loops", "state": "In Progress", "assignee": "Aaron",
+    assert rows[0] == {"id": "ENG-2", "title": "Login redirect loops", "state": "In Progress", "assignee": "Ellis",
                        "priority": "High", "updated": "2026-09-30T08:00:00.000Z"}
     assert rows[1]["assignee"] is None
     assert "Next: co linear issue ENG-2" in result.stderr
@@ -230,8 +230,8 @@ def test_search_uses_linear_full_text_search(linear):
     (["projects", "--team", "ENG"], ["Q4 Launch"], 'co linear issues --project "Q4 Launch"'),
     (["states", "--team", "ENG"], ["Todo", "In Progress", "Done", "started"], 'co linear issues --team ENG --state "Todo"'),
     (["labels", "--team", "ENG"], ["Bug", "auth", "workspace"], 'co linear create "<title>" --team ENG --label "Bug"'),
-    (["users"], ["Bo", "bo@example.com"], "co linear update <ENG-123> --assignee aaron@example.com"),
-    (["check"], ["Acme", "linear.app/acme", "Aaron <aaron@example.com>"], "co linear issues --mine"),
+    (["users"], ["Bo", "bo@example.com"], "co linear update <ENG-123> --assignee ellis@example.com"),
+    (["check"], ["Acme", "linear.app/acme", "Ellis <ellis@example.com>"], "co linear issues --mine"),
 ])
 def test_listings_show_the_names_other_commands_take(linear, args, shows, tip):
     result = run(*args)
@@ -267,7 +267,7 @@ def test_create_previews_with_names_resolved_and_sends_nothing(linear):
     assert mutations(linear) == []
     out = result.stdout
     assert "Preview" in out and "Nothing changed in Linear" in out
-    assert "ENG (Engineering)" in out and "Aaron <aaron@example.com>" in out and "Bug, auth" in out and "High" in out
+    assert "ENG (Engineering)" in out and "Ellis <ellis@example.com>" in out and "Bug, auth" in out and "High" in out
     assert last_line(out) == ("Next: co linear create 'Login loops' --team ENG --assignee me --priority high "
                               "--label bug --label AUTH --yes")
 
@@ -285,7 +285,7 @@ def test_create_with_yes_sends_ids_and_prints_the_new_id(linear):
 @pytest.mark.parametrize("args, said, command", [
     (["--label", "nope"], "Valid: Bug, auth", "co linear labels --team ENG"),
     (["--label", "pager"], "Valid: Bug, auth", "co linear labels --team ENG"),
-    (["--assignee", "who@example.com"], "Valid: aaron@example.com, bo@example.com", "co linear users"),
+    (["--assignee", "who@example.com"], "Valid: bo@example.com, ellis@example.com", "co linear users"),
     (["--priority", "9"], "Valid: 0 none, 1 urgent, 2 high, 3 medium, 4 low", "co linear create --help"),
 ])
 def test_create_refuses_an_unknown_name_before_creating_anything(linear, args, said, command):
@@ -300,7 +300,7 @@ def test_update_previews_each_change_from_and_to(linear):
     assert result.exit_code == 0, result.output
     assert mutations(linear) == []
     out = result.stdout
-    assert "In Progress → Done" in out and "Aaron → Bo" in out and "High → Urgent" in out
+    assert "In Progress → Done" in out and "Ellis → Bo" in out and "High → Urgent" in out
     assert last_line(out) == "Next: co linear update ENG-2 --state done --assignee bo@example.com --priority urgent --yes"
 
 

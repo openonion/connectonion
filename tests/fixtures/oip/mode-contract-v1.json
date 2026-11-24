@@ -2,7 +2,7 @@
   "schema": "connectonion.mode.v1",
   "defaultMode": "auto",
   "modes": [
-    {"id": "read-only", "name": "Read only", "requiresTurnsLeft": false},
+    {"id": "read-only", "name": "Ask first", "description": "Asks you before every change.", "requiresTurnsLeft": false},
     {"id": "auto", "name": "Auto", "requiresTurnsLeft": false},
     {"id": "full-access", "name": "Full access", "requiresTurnsLeft": true}
   ],

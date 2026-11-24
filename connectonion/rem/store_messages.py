@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from .files import read_json, state_path
@@ -48,7 +49,7 @@ def _mail_row(root: Path, row: dict, owner: set) -> dict:
     return {"id": f"{provider}:{message_id}", "source": provider, "thread": thread,
             "sender": sender, "recipients": dumps(to + cc), "time": utc(row.get("date", "")),
             "subject": row.get("subject", ""), "body_line": None,
-            "body_path": str(path.relative_to(root / ".state")) if path.is_file() else None}
+            "body_path": path.relative_to(root / ".state").as_posix() if path.is_file() else None}
 
 
 def build_mail(db, root: Path) -> None:
@@ -71,7 +72,7 @@ def build_sessions(db, root: Path) -> None:
             rows.append({"id": message["source"], "source": message.get("tool", ""),
                          "thread": "session:" + message["source"].rsplit(":", 1)[0], "sender": owner,
                          "recipients": dumps([message.get("tool", "")]), "time": utc(message.get("timestamp", "")),
-                         "subject": record, "body_path": str(path.relative_to(root / ".state")), "body_line": number})
+                         "subject": record, "body_path": path.relative_to(root / ".state").as_posix(), "body_line": number})
     db.execute("delete from messages where thread like 'session:%'")
     insert(db, "messages", rows)
 
@@ -99,7 +100,8 @@ def archived_message(root: Path, row: dict):
     if not path.is_file():
         return None
     if row.get("body_line"):
-        lines = path.read_text(encoding="utf-8").splitlines()
+        stat = path.stat()
+        lines = _jsonl_lines(path, stat.st_mtime_ns, stat.st_size)
         number = row["body_line"]
         saved = json.loads(lines[number - 1]) if 0 < number <= len(lines) else None
         return saved if saved and saved.get("source") == row.get("id") else None
@@ -109,6 +111,12 @@ def archived_message(root: Path, row: dict):
             saved.get("provider") != provider or f"{provider}:{saved.get('id')}" != row.get("id")):
         return None
     return saved
+
+
+@lru_cache(maxsize=8)
+def _jsonl_lines(path: Path, mtime_ns: int, size: int) -> tuple[str, ...]:
+    """One read per project JSONL while it is unchanged: the reader cites thousands of its lines."""
+    return tuple(path.read_text(encoding="utf-8").splitlines())
 
 
 def body(root: Path, row: dict):

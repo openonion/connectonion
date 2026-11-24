@@ -6,7 +6,7 @@ FULL_SKILLS = [
     {"name": "ship-feature", "description": "ship", "location": "builtin"},
     {"name": "my-project-skill", "description": "proj", "location": "project"},
     {"name": "lark-approval", "description": "private", "location": "user"},
-    {"name": "aaron-review", "description": "private", "location": "claude-user"},
+    {"name": "private-review", "description": "private", "location": "claude-user"},
 ]
 METADATA = {"name": "oo", "address": "0xabc", "model": "gemini-3.6-flash",
             "tools": ["read_file", "bash"], "skills": FULL_SKILLS, "balance_usd": 12.5}
@@ -20,7 +20,7 @@ def test_info_publishes_only_project_tree_skills():
     names = {s["name"] for s in result["skills"]}
     assert names == {"my-project-skill"}, "/info is unauthenticated; only published skills belong in it"
     # The operator's machine must not be advertised by the agent.
-    assert "lark-approval" not in names and "aaron-review" not in names
+    assert "lark-approval" not in names and "private-review" not in names
     assert result["protocol"] == {
         "name": "oip",
         "version": "0.1",

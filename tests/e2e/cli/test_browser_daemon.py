@@ -336,14 +336,14 @@ def test_ago_formats_durations():
 def test_status_reports_last_command_and_tabs(tmp_path):
     """`status` shows browser state, the active tab, the last command, and tabs (with who/purpose)."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon.dispatch('go_to x.com --purpose=launch --who=aaron')
+    daemon.dispatch('go_to x.com --purpose=launch --who=ellis')
 
     ok, payload = daemon.dispatch("status")
     assert ok is True
     assert "Browser: open" in payload
     assert "targeting is per-command" in payload
     assert "go_to x.com" in payload
-    assert "who=aaron" in payload
+    assert "who=ellis" in payload
     assert "launch" in payload
     assert "Tabs (1):" in payload
 
@@ -361,7 +361,7 @@ def test_newtab_allocates_incrementing_tab_ids(tmp_path):
     """Each `newtab` occupies a fresh tab id and makes it active."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
 
-    ok, payload = daemon.dispatch('newtab a.com --purpose=work --who=aaron')
+    ok, payload = daemon.dispatch('newtab a.com --purpose=work --who=ellis')
     assert ok is True
     assert payload.startswith("[tab 1]")
 
@@ -524,12 +524,28 @@ def test_tip_shown_on_success_tty(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
     monkeypatch.setattr(bc, "send", lambda *a, **k: 0)
     monkeypatch.setattr(bc.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(bc.sys.stderr, "isatty", lambda: True)
 
     code = bc.handle_browser(["go_to", "x.com"])
     captured = capsys.readouterr()
     assert code == 0
     assert "💡" in captured.err          # advisory text on stderr, keeping stdout pure data
     assert "💡" not in captured.out
+
+
+def test_tip_not_on_captured_stderr_on_windows(tmp_path, monkeypatch, capsys):
+    """#3113: PowerShell 5.1 shows every captured stderr line as a red NativeCommandError."""
+    import pathlib
+
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(bc, "send", lambda *a, **k: 0)
+    monkeypatch.setattr(bc.sys, "platform", "win32")
+    monkeypatch.setattr(bc.sys.stderr, "isatty", lambda: False)
+
+    assert bc.handle_browser(["go_to", "x.com"]) == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_handle_browser_no_args_is_usage_error(capsys):
@@ -1550,6 +1566,39 @@ def test_permission_error_never_unlinks_a_live_socket(short_sock, monkeypatch):
     assert os.path.exists(short_sock), "live daemon's socket was unlinked"
     assert c.send("go_to survivor.com", headless=True) == 0
     assert ("go_to", "survivor.com") in daemon.browser.calls
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX socket path")
+def test_a_client_never_reads_a_half_written_pid_file(short_sock):
+    """The pid file is absent or whole, never empty, while a daemon binds.
+
+    A client that read it empty took the live daemon for a dead one and unlinked
+    its socket (the test above failed main that way, run 43215710328). Two
+    hundred binds against a reader that never stops looking: before the pid was
+    published by rename, a few of them were caught empty on every run.
+    """
+    pid_file = tp.pid_path(short_sock)
+    seen, binding = set(), threading.Event()
+    binding.set()
+
+    def read_while_binding():
+        while binding.is_set():
+            with contextlib.suppress(FileNotFoundError):
+                seen.add(Path(pid_file).read_text(encoding="utf-8"))
+
+    reader = threading.Thread(target=read_while_binding, daemon=True)
+    reader.start()
+    try:
+        for _ in range(200):
+            daemon = d.BrowserDaemon(short_sock, headless=True)
+            daemon._bind_posix()
+            daemon._srv.close()
+            os.unlink(short_sock)
+            os.unlink(pid_file)
+    finally:
+        binding.clear()
+        reader.join(timeout=5)
+    assert seen <= {str(os.getpid())}, f"a client read the pid file as {sorted(seen - {str(os.getpid())})!r}"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX socket path")

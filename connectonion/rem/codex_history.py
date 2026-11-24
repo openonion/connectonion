@@ -71,7 +71,12 @@ def _archive_thread(client, row: dict, workspace: Path, home: Path) -> tuple[str
             return row["id"], "kept"
     if set(_eligible_family(row, workspace, home)) != set(family):
         return row["id"], "kept"
-    client.request("thread/archive", {"threadId": row["id"]}, timeout=60)
+    try:
+        client.request("thread/archive", {"threadId": row["id"]}, timeout=60)
+    except RuntimeError as error:
+        if f"thread {row['id']} already has an active writer" not in str(error):
+            raise
+        return row["id"], "kept"
     return row["id"], "archived"
 
 

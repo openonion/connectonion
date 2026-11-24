@@ -197,9 +197,9 @@ def test_session_window_migrates_v1_without_recollecting_unchanged_files(
         metadata_reads.append(first['payload']['id'])
         return original_meta(first)
 
-    def collecting(subscription, progress, *limits):
+    def collecting(subscription, progress, *limits, **options):
         calls.append(progress)
-        return collect(subscription, progress, *limits)
+        return collect(subscription, progress, *limits, **options)
 
     monkeypatch.setitem(source.KINDS['codex'], 'meta', meta)
     monkeypatch.setattr(investigate, '_WINDOWS', {})
@@ -213,6 +213,10 @@ def test_session_window_migrates_v1_without_recollecting_unchanged_files(
         assert [item['text'] for item in items] == [
             'Ask Avery Lin about delivery.', 'Previously retained message.']
         assert metadata_reads == [interactive.stem, executable.stem]
+    elif missing_progress:
+        # A rollout that is gone takes its own messages with it; the others are not read again (1.9.6rc18).
+        assert calls[0] == {name: entry for name, entry in batch.progress.items() if name != 'rollout-gone.jsonl'}
+        assert [item['text'] for item in items] == ['Ask Avery Lin about delivery.']
     else:
         assert calls[0] == {}
         assert [item['text'] for item in items] == ['Ask Avery Lin about delivery.']
@@ -489,3 +493,21 @@ def test_cited_desktop_message_keeps_a_table_cell_after_640_chars(tmp_path):
     assert len(message) > 640
     assert context['excerpt'] == message
     assert not context['truncated']
+
+
+def test_rem_v1_window_migration_counts_a_rollout_that_vanishes_at_read(tmp_path, monkeypatch):
+    from connectonion.rem import investigate
+
+    path = rollout(tmp_path / 'rollout-vanishing.jsonl', [bare('Ask Mira about Atlas.')])
+    saved = {'items': [{'reference': path.as_uri(), 'text': 'Ask Mira about Atlas.'}], 'version': 1}
+    opened = Path.open
+
+    def vanish(file, *args, **kwargs):
+        if file == path:
+            path.unlink(missing_ok=True)
+        return opened(file, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'open', vanish)
+    migrated = investigate._migrate_session_window(saved, 'codex', root=tmp_path)
+    assert migrated['missing_files'] == ['rollout-vanishing.jsonl']
+    assert migrated['items'] == saved['items']

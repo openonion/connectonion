@@ -28,7 +28,7 @@ def test_one_census_counts_written_pages_and_leaves_services_out(tmp_path):
     found = pages(tmp_path)
     assert counts(tmp_path, found) == {"people": {"mapped": 2, "written": 1}, "projects": {"mapped": 1, "written": 0},
                                        "orgs": {"mapped": 0, "written": 0}, "skills": {"mapped": 1, "written": 0},
-                                       "sessions": {"mapped": 0, "written": 0}}
+                                       "sessions": {"mapped": 0, "written": 0}, "knowledge": {"mapped": 0, "written": 0}}
     assert found["people/apple.md"]["service"]
     # Each page's own last activity, never the mtime a map just gave every file.
     assert found["people/corin.md"]["last"] == "2026-09-20"      # last contact, not the day it was investigated
@@ -92,12 +92,12 @@ def test_the_last_run_is_in_the_notebooks_zone(tmp_path):
     assert "2026-10-01 06:02" in line and "20:02" not in line
 
 
-def test_status_next_is_the_first_thing_to_write(tmp_path):
+def test_status_next_does_not_delegate_scheduled_writing_to_owner(tmp_path):
     from connectonion.cli.commands.rem_status import status_next
     _notebook(tmp_path)
     write_json(state_path(tmp_path, "map.json"), {"owner": {"record": "people/gret.md", "addresses": []}})
     value = {"configured": True, "root": str(tmp_path), "state": "Running in background (launchd)"}
-    assert status_next(value) == ["investigate", "me"]
+    assert status_next(value) == ["logs"]
 
 
 def test_a_progress_line_prints_above_the_spinner_not_over_it():
@@ -127,17 +127,17 @@ def test_a_folder_named_copy_joins_the_skill_it_copies(tmp_path):
 
 def test_structured_thread_direction_wins_over_words_in_the_body():
     from connectonion.rem.census import direction
-    for owner in ("The user", "the user", "THE USER", "you", "You", "Aaron"):
-        assert direction(f"{owner} owes Mara: she promised the deck.", "Aaron") == "mine"
-        assert direction(f"{owner} asked Mara: you promised to review her answer.", "Aaron") == "theirs"
-        assert direction(f"Mara owes {owner}: you promised to review her answer.", "Aaron") == "theirs"
+    for owner in ("The user", "the user", "THE USER", "you", "You", "Ellis"):
+        assert direction(f"{owner} owes Mara: she promised the deck.", "Ellis") == "mine"
+        assert direction(f"{owner} asked Mara: you promised to review her answer.", "Ellis") == "theirs"
+        assert direction(f"Mara owes {owner}: you promised to review her answer.", "Ellis") == "theirs"
     assert direction("- The user owes Mara: an answer.") == "mine"
     assert direction("Yu at Heidi Health owes Corin A$123.38; you asked about it.") == "third"
     assert direction("Yu owes Corin: the user promised to check.") == "third"
     assert direction("Dr. Yu owes Corin the expense reimbursement.") == "third"
     assert direction("Yu (Heidi Health, Inc.) owes Corin the reimbursement.") == "plain"
     assert direction("The user needs to reply to Mara") == "mine"
-    assert direction("Aaron asked Anselm to arrange a call", "Aaron") == "theirs"
+    assert direction("Ellis asked Anselm to arrange a call", "Ellis") == "theirs"
     assert direction("Mara promised the deck") == "theirs"
     assert direction("Scope to decide together") == "plain"
 
@@ -157,7 +157,7 @@ def test_shared_thread_census_excludes_third_parties_skills_and_quiet(tmp_path):
     prepare(tmp_path)
     book = Notebook(tmp_path)
     records = {
-        "people/me.md": "# Aaron Xie\n",
+        "people/me.md": "# Ellis Yew\n",
         "people/mara.md": "# Mara\n\n## Open threads\n"
         "- The user owes Mara: reply since 2026-10-15.\n"
         "- The user asked Mara: answer since 2026-08-17.\n"  # exactly 60 days stays active
@@ -178,7 +178,7 @@ def test_shared_thread_census_excludes_third_parties_skills_and_quiet(tmp_path):
     found = {record: {"category": record.split('/')[0], "held": record == "people/held.md",
                       "service": False, "duplicate": False} for record in records}
     assert open_threads(tmp_path, found, as_of=date(2026, 10, 16)) == {
-        "mine": 2, "theirs": 2, "other": 1, "quiet": 3, "open": 5}
+        "mine": 3, "theirs": 2, "other": 1, "quiet": 2, "open": 6}
 
 
 
@@ -193,7 +193,7 @@ def test_shared_thread_census_groups_copied_letter_of_support(tmp_path):
     records = [("people/cc-one.md", "Copied One", "7", quote),
                ("people/cc-two.md", "Copied Two", "W5", longer),
                ("people/liesel.md", "Liesel Voss", "3", quote.replace("'", "’")),
-               ("people/me.md", "Aaron Xie", "3", longer)]
+               ("people/me.md", "Ellis Yew", "3", longer)]
     for record, title, n, words in records:
         sources_heading = "## sources " if n == "W5" else "## Sources"
         book.write(record, f"# {title}\n\n## Open threads\n"
@@ -264,3 +264,79 @@ def test_direction_only_treats_short_name_phrases_as_debt_prefixes():
     assert direction("liesel owes the bank") == "plain"
     assert direction("Yu at Heidi Health owes Corin the reimbursement") == "third"
     assert direction("Liesel owes you the draft") == "theirs"
+
+
+def test_a_support_desk_that_replies_is_a_service_and_its_engineer_a_person(tmp_path):
+    """#3004: Acmecloud's ticket desk answered the owner's tickets, so its thread was two-way
+    and the page led People. A role or ticket mailbox, or a page titled with a bare domain,
+    is a service; Mia, who works there and writes from her own name, stays a person."""
+    from connectonion.rem.census import listed, pages
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.stub_person("people/acmecloud.md", "acmecloud.com", ["support@acmecloud.com"], email="support@acmecloud.com")
+    book.stub_person("people/acme-help.md", "Acme Cloud", ["help+4417@acmecloud.com"], email="help+4417@acmecloud.com")
+    book.stub_person("people/mia.md", "Mia Tan", ["mia.tan@acmecloud.com"], email="mia.tan@acmecloud.com")
+    two_way = {"sent": 6, "received": 7}
+    write_json(state_path(tmp_path, "map.json"), {"people": [
+        {"record": "people/acmecloud.md", "address": "support@acmecloud.com", "name": "acmecloud.com", **two_way},
+        {"record": "people/acme-help.md", "address": "help+4417@acmecloud.com", "name": "Acme Cloud", **two_way},
+        {"record": "people/mia.md", "address": "mia.tan@acmecloud.com", "name": "Mia Tan", **two_way}]})
+    found = pages(tmp_path)
+    assert found["people/acmecloud.md"]["service"] and found["people/acme-help.md"]["service"]
+    assert not found["people/mia.md"]["service"] and listed(found["people/mia.md"])
+
+
+# #3157 (bug hunt on the owner's notebook): People listed a shop's ordering inbox, a notifications sender, and an
+# agent's own mailbox as people. A page whose every address is a desk, a bot or an agent is not a person.
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("emails", [["orders@fine-wines.example"], ["notifications@app.example"],
+                                      ["0xab12cd34ef@mail.openonion.ai"], ["bookings@harbour-hotel.example"],
+                                      ["enquiries@council.example", "alerts@council.example"],
+                                      # rc35 hunt: a desk word after one prefix is still a desk.
+                                      ["kiln.orders@mail.fernhill.example"], ["team-notifications@app.example"]])
+def test_a_page_whose_every_address_is_a_desk_a_bot_or_an_agent_is_not_a_person(emails):
+    from connectonion.rem.census import non_person
+    text = "# Somebody\n\n## Facts\n- Email: " + "; ".join(emails) + "\n"
+    assert non_person("Somebody", text, emails, None, set())
+
+
+@_pytest.mark.parametrize("emails", [["ines.halvorsen@fernhill.example"], ["ody@gmail.com", "0xab12cd34ef@mail.openonion.ai"],
+                                      # Only one prefix, and only before a whole desk word: a person stays a person.
+                                      ["mara.ostrowski@fernhill.example"], ["theo.salesky@fernhill.example"]])
+def test_a_person_with_their_own_address_stays_a_person(emails):
+    from connectonion.rem.census import non_person
+    assert not non_person("Ines Halvorsen", "# Ines Halvorsen\n", emails, None, set())
+
+
+# rc34 check (Mac session): an AI assistant writing for someone, and a fund named like a company, were still
+# listed as people. The page says so itself in its Role line, or its title is a company's name.
+@_pytest.mark.parametrize("title, role", [
+    ("Pip", "- Role: Not a person: the shared team inbox [1]"),
+    ("Pip", "- Role: AI assistant that writes on Mara's behalf [2]"),
+    ("Pip", "- Role: Agent mailbox used for order tests [3]"),
+    ("Harbour Street Ventures", "- Role: Unknown"),
+    ("Fernhill Capital", "- Role: Unknown"),
+    ("Kiln Works Pty Ltd", "- Role: Unknown"),
+    # rc35 check: a mailbox described mid-line still led People as an unnamed row.
+    ("orders@kiln.example", "- Role: Automated order-intake and result mailbox for the Kiln pilot [8]"),
+    ("frontdesk@kiln.example", "- Role: Building management (shared mailbox used by successive managers) [7]"),
+])
+def test_an_assistant_agent_or_company_page_is_not_a_person(title, role):
+    from connectonion.rem.census import non_person
+    text = f"# {title}\n\n## Facts\n- Email: pip@kiln.example\n{role}\n"
+    assert non_person(title, text, ["pip@kiln.example"], None, set())
+
+
+@_pytest.mark.parametrize("title, role", [
+    ("Mara Ostrowski", "- Role: Executive assistant to the CEO [2]"),
+    ("Theo Capitalé", "- Role: Partner at Fernhill [1]"),
+    ("Ines Halvorsen", "- Role: Head of agent platforms [1]"),
+    ("Quinn Avery", "- Role: Research Assistant, Fernhill University [2]"),
+    ("Quinn Avery", "- Role: Office manager; looks after the team's shared calendar [2]"),
+])
+def test_a_human_assistant_or_a_name_like_a_company_word_stays_a_person(title, role):
+    from connectonion.rem.census import non_person
+    text = f"# {title}\n\n## Facts\n- Email: someone@kiln.example\n{role}\n"
+    assert not non_person(title, text, ["someone@kiln.example"], None, set())

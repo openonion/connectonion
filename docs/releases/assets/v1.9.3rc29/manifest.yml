@@ -1,0 +1,2 @@
+version: v1.9.3rc29
+no_visual_change: "Browser repair candidate: on macOS the paid browser runtime asks for Chromium 154.0.8037.100, which renews every billing period instead of ending after the first fifteen minutes. Linux stays on 154.0.8037.58. No reader HTML, CSS, navigation or CLI output changes."

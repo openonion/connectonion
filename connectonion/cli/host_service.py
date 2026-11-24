@@ -19,17 +19,25 @@ class HostServiceError(ValueError):
     """Actionable lifecycle failure, without launchctl environment/log contents."""
 
 
+class HostServiceUnavailable(HostServiceError):
+    """This machine has no user service manager to keep a Host running; `co init` skips the step."""
+
+
 class HostService:
     def __init__(self, project: Path, *, home: Path | None = None,
                  runner=subprocess.run, uid: int | None = None,
                  port: int | None = None, env_file: Path | None = None,
-                 native_codex: bool | None = None):
+                 builtin: bool | None = None, native_codex: bool | None = None):
         self.project = project.resolve()
         self.home = home or Path.home()
         self.runner = runner
         self.uid = uid if uid is not None else getattr(os, 'getuid', lambda: 0)()
         self.port = port
-        self.native_codex = native_codex
+        # builtin: serve the built-in agent that host.yaml's `model:` picks
+        # (`co host --serve`); otherwise the project's own agent.py. None
+        # decides from the project: no agent.py means built-in (#3170).
+        # native_codex is the pre-#3170 name, kept for callers and saved options.
+        self.builtin = builtin if builtin is not None else native_codex
         self.env_file = env_file.expanduser().resolve() if env_file else None
         self.explicit_config_root = os.environ.get('AGENT_CONFIG_PATH')
         self.config_root = Path(self.explicit_config_root or self.home/'.co').expanduser().resolve()
@@ -44,15 +52,25 @@ class HostService:
         self.logs = self.home/'.co'/'host-services'/digest
         self.baseline = self.logs/'service.json'
 
+    @property
+    def native_codex(self):
+        """The pre-#3170 name for `builtin`."""
+        return self.builtin
+
+    @native_codex.setter
+    def native_codex(self, value):
+        self.builtin = value
+
     def _prepare_provider(self):
         # Observation and shutdown must work even with invalid provider settings.
         # Generic agent.py services load their provider configuration normally.
-        if not self.native_codex:
+        if not self.builtin:
             self.provider_paths = {}
             return
         if 'CODEX_HOME' in self.provider_paths:
             self.provider_paths['CODEX_HOME'] = str(Path(self.provider_paths['CODEX_HOME']).expanduser().resolve())
-        command = self.provider_paths.get('CODEX_CMD') or shutil.which('codex')
+        from ..codex_cli import resolve_codex
+        command = self.provider_paths.get('CODEX_CMD') or resolve_codex()
         if command:
             expanded = Path(command).expanduser()
             if expanded.is_file():
@@ -92,8 +110,7 @@ class HostService:
         if self.env_file:
             arguments.extend(['--env-file', str(self.env_file.expanduser().resolve())])
         arguments.append('host')
-        if self.native_codex:
-            arguments.append('--native-codex')
+        arguments.extend(['--serve'] if self.builtin else ['--agent', 'agent.py'])
         if self.port is not None:
             if not 1 <= self.port <= 65535:
                 raise HostServiceError('Port must be between 1 and 65535. Next: co host --help')
@@ -125,6 +142,7 @@ class HostService:
                     or not isinstance(provider_paths, dict) or set(provider_paths) - {'CODEX_HOME', 'CODEX_CMD'}
                     or any(not isinstance(value, str) or not value or any(char in value for char in '\0\r\n') for value in provider_paths.values())
                     or type(options.get('native_codex', False)) is not bool
+                    or type(options.get('builtin', False)) is not bool
                     or not isinstance(options.get('execution_path', ''), str)):
                 raise ValueError('invalid saved options')
             if not self.plist.exists():
@@ -184,10 +202,12 @@ class HostService:
             self.provider_paths = {**options.get('provider_paths', {}), **self.provider_paths}
             self.execution_path = os.pathsep.join(dict.fromkeys([*self.execution_path.split(os.pathsep),
                                                                 *options.get('execution_path', '').split(os.pathsep)]))
-            if self.native_codex is None:
-                self.native_codex = options.get('native_codex', False)
-        if not self.native_codex and not (self.project/'agent.py').is_file():
-            raise HostServiceError('No agent.py in this project. Next: co create my-agent')
+            if self.builtin is None:
+                self.builtin = options.get('builtin', options.get('native_codex', False))
+        if self.builtin is None:
+            self.builtin = not (self.project/'agent.py').is_file()
+        if not self.builtin and not (self.project/'agent.py').is_file():
+            raise HostServiceError('No agent.py in this project. Next: co host --background, to serve the built-in agent')
         self._prepare_provider()
         definition = self._definition()
         self.plist.parent.mkdir(parents=True, exist_ok=True)
@@ -200,7 +220,7 @@ class HostService:
             record = {'version': 1, 'project': str(self.project), 'definition': definition,
                       'previous_definition': plistlib.loads(self.plist.read_bytes()) if self.plist.exists() else None,
                       'options': {'port': self.port, 'env_file': str(self.env_file) if self.env_file else None,
-                                  'config_root': str(self.config_root), 'native_codex': bool(self.native_codex),
+                                  'config_root': str(self.config_root), 'builtin': bool(self.builtin),
                                   'provider_paths': self.provider_paths, 'execution_path': self.execution_path}}
             # Save old+new known definitions before replacing the plist. A crash
             # between files is recoverable without accepting arbitrary edits.
@@ -209,8 +229,8 @@ class HostService:
         self._ctl('enable', self.target)
         state = self.status()
         if state['running'] and not changed:
-            if not self.native_codex or self._native_healthy(state['pid']):
-                return {**state, **({'host_healthy': True} if self.native_codex else {})}
+            if not self.builtin or self._native_healthy(state['pid']):
+                return {**state, **({'host_healthy': True} if self.builtin else {})}
         loaded = self._ctl('print', self.target, allowed=(0, 3, 113)).returncode == 0
         if loaded:
             self._ctl('bootout', self.target)
@@ -228,8 +248,8 @@ class HostService:
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             state = self.status()
-            if state['running'] and (not self.native_codex or self._native_healthy(state['pid'])):
-                return {**state, **({'host_healthy': True} if self.native_codex else {})}
+            if state['running'] and (not self.builtin or self._native_healthy(state['pid'])):
+                return {**state, **({'host_healthy': True} if self.builtin else {})}
             time.sleep(.25)
         raise HostServiceError('Service is configured but a matching healthy Host was not observed; inspect its status and logs. Next: co host --status')
 
@@ -283,3 +303,255 @@ class HostService:
             self.plist.unlink(missing_ok=True)
             self.baseline.unlink(missing_ok=True)
             return self.status()
+
+
+class SystemdHostService:
+    """The Linux counterpart of HostService: one systemd user unit per project Host.
+
+    Same lifecycle (start, status, stop, uninstall) and the same command line,
+    `co host --serve` for the built-in agent or `co host --agent agent.py`.
+    No root: a user unit, with linger needed to keep running after logout.
+    """
+
+    def __init__(self, project: Path, *, home: Path | None = None, runner=subprocess.run,
+                 port: int | None = None, env_file: Path | None = None,
+                 builtin: bool | None = None, native_codex: bool | None = None):
+        self.project = project.resolve()
+        self.home = home or Path.home()
+        self.runner = runner
+        self.port = port
+        self.env_file = env_file.expanduser().resolve() if env_file else None
+        builtin = builtin if builtin is not None else native_codex
+        self.builtin = (not (self.project/'agent.py').is_file()) if builtin is None else builtin
+        self.config_root = Path(os.environ.get('AGENT_CONFIG_PATH') or self.home/'.co').expanduser().resolve()
+        digest = hashlib.sha256(str(self.project).encode()).hexdigest()[:16]
+        self.unit_name = f'connectonion-host-{digest}.service'
+        self.unit = self.home/'.config'/'systemd'/'user'/self.unit_name
+        self.logs = self.home/'.co'/'host-services'/digest
+
+    def _systemctl(self, *args, allowed=(0,)):
+        try:
+            result = self.runner(['systemctl', '--user', *args], stdin=subprocess.DEVNULL,
+                                 capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            raise HostServiceError('systemctl is not available. Next: co host --serve, to run it in this terminal') from None
+        if result.returncode not in allowed:
+            raise HostServiceError(f"systemctl --user {' '.join(args)} failed. Log into a systemd user session; "
+                                   "to keep it running while logged out, run: loginctl enable-linger")
+        return result
+
+    def _definition(self) -> str:
+        def quote(value: str) -> str:
+            return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+        arguments = [sys.executable, '-m', 'connectonion.cli.main']
+        if self.env_file:
+            arguments.extend(['--env-file', str(self.env_file)])
+        arguments.append('host')
+        arguments.extend(['--serve'] if self.builtin else ['--agent', 'agent.py'])
+        if self.port is not None:
+            if not 1 <= self.port <= 65535:
+                raise HostServiceError('Port must be between 1 and 65535. Next: co host --help')
+            arguments.extend(['--port', str(self.port)])
+        path = os.pathsep.join(dict.fromkeys([str(Path(sys.executable).parent),
+                                              *os.environ.get('PATH', os.defpath).split(os.pathsep)]))
+        return '\n'.join([
+            '[Unit]', 'Description=ConnectOnion Host', '',
+            '[Service]',
+            'ExecStart=' + ' '.join(quote(argument) for argument in arguments),
+            f'WorkingDirectory={self.project}',
+            f'Environment={quote("HOME=" + str(self.home))}',
+            f'Environment={quote("AGENT_CONFIG_PATH=" + str(self.config_root))}',
+            f'Environment={quote("PATH=" + path)}',
+            'Restart=always', 'RestartSec=10',
+            f'StandardOutput=append:{self.logs/"stdout.log"}',
+            f'StandardError=append:{self.logs/"stderr.log"}', '',
+            '[Install]', 'WantedBy=default.target', '',
+        ])
+
+    def status(self) -> dict:
+        result = self._systemctl('show', self.unit_name, '-p', 'MainPID', '-p', 'ActiveState', allowed=(0, 1, 3, 4, 5))
+        fields = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+        pid = int(fields.get('MainPID', '0') or 0)
+        running = fields.get('ActiveState') == 'active' and pid > 0
+        return {'configured': self.unit.exists(), 'running': running, 'pid': pid if running else None,
+                'device_ready': False}
+
+    def start(self) -> dict:
+        if not self.builtin and not (self.project/'agent.py').is_file():
+            raise HostServiceError('No agent.py in this project. Next: co host --background, to serve the built-in agent')
+        self.logs.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.unit.parent.mkdir(parents=True, exist_ok=True)
+        definition = self._definition()
+        changed = not self.unit.exists() or self.unit.read_text() != definition
+        if changed:
+            with tempfile.NamedTemporaryFile('w', dir=self.unit.parent, delete=False) as file:
+                file.write(definition)
+            os.replace(file.name, self.unit)
+            self._systemctl('daemon-reload')
+        self._systemctl('enable', self.unit_name)
+        self._systemctl('restart' if changed else 'start', self.unit_name)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            state = self.status()
+            if state['running']:
+                return state
+            time.sleep(.25)
+        raise HostServiceError(f'Service is configured but not running; inspect it. Next: systemctl --user status {self.unit_name}')
+
+    def stop(self) -> dict:
+        self._systemctl('disable', '--now', self.unit_name, allowed=(0, 1, 5))
+        return self.status()
+
+    def uninstall(self) -> dict:
+        self.stop()
+        self.unit.unlink(missing_ok=True)
+        self._systemctl('daemon-reload')
+        return self.status()
+
+
+class ScheduledTaskHostService(SystemdHostService):
+    """The Windows counterpart: one Scheduled Task per project Host, run at logon.
+
+    Same lifecycle and command line as the systemd unit. Task Scheduler has no
+    Restart=always, so the task runs a small .cmd that starts the Host again ten
+    seconds after it exits; its output goes to the same logs folder. No admin:
+    the task runs as the logged-in user, only while that user is logged on.
+    """
+
+    def __init__(self, project: Path, **options):
+        super().__init__(project, **options)
+        digest = self.unit_name.removeprefix('connectonion-host-').removesuffix('.service')
+        self.task_name = f'ConnectOnion Host {digest}'
+        self.unit = self.logs/'run-host.cmd'
+
+    def _schtasks(self, *args, allowed=(0,)):
+        try:
+            result = self.runner(['schtasks', *args], stdin=subprocess.DEVNULL,
+                                 capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            raise HostServiceError('schtasks is not available. Next: co host --serve, to run it in this terminal') from None
+        if result.returncode not in allowed:
+            raise HostServiceError(f"schtasks {args[0]} failed: {(result.stderr or result.stdout).strip()}. "
+                                   "Next: co host --serve, to run it in this terminal")
+        return result
+
+    def _definition(self) -> str:
+        arguments = [sys.executable, '-m', 'connectonion.cli.main']
+        if self.env_file:
+            arguments.extend(['--env-file', str(self.env_file)])
+        arguments.append('host')
+        arguments.extend(['--serve'] if self.builtin else ['--agent', 'agent.py'])
+        if self.port is not None:
+            if not 1 <= self.port <= 65535:
+                raise HostServiceError('Port must be between 1 and 65535. Next: co host --help')
+            arguments.extend(['--port', str(self.port)])
+        command = subprocess.list2cmdline(arguments)
+        return '\n'.join([
+            '@echo off', 'rem ConnectOnion Host, started at logon by Task Scheduler.',
+            f'cd /d "{self.project}"',
+            f'set "AGENT_CONFIG_PATH={self.config_root}"', 'set "PYTHONIOENCODING=utf-8"',
+            ':run', f'{command} >> "{self.logs/"stdout.log"}" 2>> "{self.logs/"stderr.log"}"',
+            'timeout /t 10 /nobreak > nul', 'goto run', '',
+        ])
+
+    def _task(self) -> tuple[bool, bool]:
+        """(configured, running) as Task Scheduler sees it: the loop in run-host.cmd, not the Host."""
+        result = self._schtasks('/Query', '/TN', self.task_name, '/FO', 'CSV', '/NH', allowed=(0, 1))
+        return self.unit.exists() and result.returncode == 0, result.returncode == 0 and '"Running"' in result.stdout
+
+    def _serving(self) -> bool:
+        """Whether this project's Host holds its port, like macOS's matching healthy Host.
+
+        run-host.cmd starts the Host again every ten seconds, so the task stays
+        Running while every start exits (#3225). /info alone cannot tell: projects
+        share the global key, so the always-on Host answers with the same address.
+        A Host records which folder serves its key, and on which port, only once
+        that port was free and no live Host held the key.
+        """
+        keys = self.project/'.co'/'keys'
+        claim = (keys.parent if (keys/'agent.key').exists() else self.config_root)/'served_by.json'
+        if not claim.exists():
+            return False
+        record = json.loads(claim.read_text(encoding='utf-8'))
+        if Path(record.get('project', '')).resolve() != self.project:
+            return False
+        import httpx
+        try:
+            with httpx.Client(timeout=1, trust_env=False) as client:
+                info = client.get(f"http://127.0.0.1:{record['port']}/info").json()
+        except (httpx.HTTPError, ValueError):
+            return False
+        return info.get('address') == record['address']
+
+    def _log_tails(self) -> str:
+        """The end of both logs: an exit raised in Python lands in stderr, an error the CLI prints in stdout."""
+        tails = []
+        for log in (self.logs/'stderr.log', self.logs/'stdout.log'):
+            lines = log.read_text(encoding='utf-8', errors='replace').strip().splitlines() if log.exists() else []
+            tails += [f'{log.name}: {line}' for line in lines[-5:]]
+        return '\n'.join(tails) or 'both logs are empty'
+
+    def status(self) -> dict:
+        configured, task_running = self._task()
+        return {'configured': configured, 'running': task_running and self._serving(),
+                'pid': None, 'device_ready': False}
+
+    def start(self) -> dict:
+        if not self.builtin and not (self.project/'agent.py').is_file():
+            raise HostServiceError('No agent.py in this project. Next: co host --background, to serve the built-in agent')
+        # No mode=0o700: on Windows it sets an owner-only ACL, and from an elevated
+        # shell the owner is Administrators, which the task's limited token cannot write.
+        # The folder is in the user's profile, which is already private to them.
+        self.logs.mkdir(parents=True, exist_ok=True)
+        definition = self._definition()
+        if not self.unit.exists() or self.unit.read_text(encoding='utf-8') != definition:
+            self.unit.write_text(definition, encoding='utf-8', newline='\r\n')
+        self._schtasks('/Create', '/F', '/SC', 'ONLOGON', '/RL', 'LIMITED', '/TN', self.task_name,
+                       '/TR', f'"{self.unit}"')
+        if not self._task()[1]:
+            self._schtasks('/Run', '/TN', self.task_name)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            state = self.status()
+            if state['running']:
+                return state
+            time.sleep(.25)
+        raise HostServiceError(f'The task is running but no Host answered within 30 s:\n{self._log_tails()}\n'
+                               f'Logs: {self.logs}. Next: co host --serve, to see it in this terminal')
+
+    def stop(self) -> dict:
+        self._schtasks('/End', '/TN', self.task_name, allowed=(0, 1))
+        self._schtasks('/Change', '/TN', self.task_name, '/DISABLE', allowed=(0, 1))
+        return self.status()
+
+    def uninstall(self) -> dict:
+        self._schtasks('/End', '/TN', self.task_name, allowed=(0, 1))
+        self._schtasks('/Delete', '/TN', self.task_name, '/F', allowed=(0, 1))
+        self.unit.unlink(missing_ok=True)
+        return self.status()
+
+
+def host_service(project: Path, **options):
+    """The background-service manager for this platform: launchd on macOS,
+    systemd on Linux, Task Scheduler on Windows."""
+    if sys.platform == 'darwin':
+        return HostService(project, **options)
+    if sys.platform.startswith('linux') and shutil.which('systemctl'):
+        if not _user_systemd_ready():
+            raise HostServiceUnavailable('A background Host needs a systemd user session, and systemctl --user is not '
+                                         'reachable here (a container, CI, or SSH without linger). '
+                                         'Next: co host --serve, to run it in this terminal')
+        return SystemdHostService(project, **options)
+    if sys.platform == 'win32':
+        return ScheduledTaskHostService(project, **options)
+    raise HostServiceUnavailable('A background Host needs macOS or Linux with systemd, or Windows. Next: co host --serve, to run it in this terminal')
+
+
+def _user_systemd_ready() -> bool:
+    """Whether this login has a systemd user manager to talk to; the binary alone is not enough."""
+    try:
+        result = subprocess.run(['systemctl', '--user', 'show-environment'], stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0

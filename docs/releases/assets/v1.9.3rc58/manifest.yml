@@ -1,0 +1,2 @@
+version: v1.9.3rc58
+no_visual_change: "Promotion validator only (resolved source ids). No reader layout, CSS or component changes; rc56's visuals stand."

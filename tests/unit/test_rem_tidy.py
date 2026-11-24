@@ -2,6 +2,8 @@
 
 import re
 
+import pytest
+
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook, read_json, state_path, write_json
 from connectonion.rem.tidy import tidy
@@ -18,13 +20,28 @@ def _state(root, **state):
     write_json(state_path(root, "map.json"), state)
 
 
+def test_archiving_a_recreated_page_keeps_both_copies(tmp_path):
+    from connectonion.rem.tidy import _archive
+
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    record = "people/robin.md"
+    notebook.write(record, "# Robin\n\nInvestigated history.\n")
+    first = _archive(notebook, record)
+    notebook.write(record, "# Robin\n\nRecreated map stub.\n")
+    second = _archive(notebook, record)
+    assert (tmp_path / first).read_text() == "# Robin\n\nInvestigated history.\n"
+    assert first != second
+    assert (tmp_path / second).read_text() == "# Robin\n\nRecreated map stub.\n"
+
+
 def test_services_an_older_map_made_people_are_archived_and_investigated_pages_stay(tmp_path):
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
     _person(notebook, "people/apple.md", "Apple", "appleid@id.apple.com")                 # no row: its title is its domain
     _person(notebook, "people/github.md", "unsub+abc@reply.github.com", "unsub+abc@reply.github.com")
     _person(notebook, "people/clarity.md", "Microsoft Clarity", "maccount@microsoft.com")
-    _person(notebook, "people/x.md", "X", "notify@x.com", investigated=True)             # someone's work: stays
+    _person(notebook, "people/x.md", "X", "notify@x.com", investigated=True)             # written service: moves intact
     _person(notebook, "people/mia.md", "Mia Tan", "mia@acme.example")
     _state(tmp_path, people=[
         {"record": "people/clarity.md", "address": "maccount@microsoft.com", "name": "Microsoft Clarity",
@@ -36,10 +53,11 @@ def test_services_an_older_map_made_people_are_archived_and_investigated_pages_s
     done = tidy(tmp_path)
 
     assert done["archived service"] == ["people/apple.md", "people/clarity.md", "people/github.md"]
-    assert sorted(notebook.list("people")) == ["people/mia.md", "people/x.md"]
+    assert sorted(notebook.list("people")) == ["people/mia.md"]
+    assert notebook.path("notes/x.md").is_file()
     assert (tmp_path / ".state/archived/people/apple.md").is_file()          # moved, never deleted
     log = read_json(state_path(tmp_path, "tidy.json"), [])
-    assert {entry["page"] for entry in log} == set(done["archived service"])
+    assert {entry["page"] for entry in log} == {*done["archived service"], "people/x.md"}
     assert tidy(tmp_path) == {}                                             # idempotent: nothing left to do
     assert len(read_json(state_path(tmp_path, "tidy.json"), [])) == len(log)
 
@@ -62,6 +80,37 @@ def test_a_link_to_an_archived_page_keeps_its_name_and_loses_the_dead_link(tmp_p
     assert "- Apple Support; [Mia Tan](../people/mia.md)" in text      # the live link stays
     assert done["unlinked archived page"] == ["orgs/apple.md"]
     assert tidy(tmp_path) == {}
+
+
+@pytest.mark.parametrize("link", [
+    "[x](../.state/archived/gone.md)",
+    "[y](../../../outside.md)",
+], ids=["hidden-state", "above-root"])
+def test_tidy_preserves_links_outside_notebook_content(tmp_path, link):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    page = f"# Lantern\n\n{link}\n"
+    notebook.write("notes/lantern.md", page)
+
+    assert tidy(tmp_path) == {}
+
+    assert notebook.read("notes/lantern.md") == page
+    assert read_json(state_path(tmp_path, "tidy.json"), []) == []
+
+
+def test_tidy_preserves_above_root_link_with_matching_archive(tmp_path):
+    prepare(tmp_path)
+    notebook = Notebook(tmp_path)
+    page = "# Lantern\n\n[y](../../../outside.md)\n"
+    notebook.write("notes/lantern.md", page)
+    archived = state_path(tmp_path, "archived/outside.md")
+    archived.parent.mkdir(parents=True)
+    archived.write_text("# Outside\n", encoding="utf-8")
+
+    assert tidy(tmp_path) == {}
+
+    assert notebook.read("notes/lantern.md") == page
+    assert read_json(state_path(tmp_path, "tidy.json"), []) == []
 
 
 def test_lines_about_the_run_leave_pages_already_written(tmp_path):
@@ -91,34 +140,34 @@ def test_the_owners_own_addresses_fold_into_their_page_and_real_people_never_do(
     answer on other channels. Only addresses carrying the owner's words fold."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/aaron-xie.md", "Aaron Xie", ["openonionai@gmail.com"], email="openonionai@gmail.com")
-    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
-    _person(notebook, "people/confirmed.md", "xietianle@outlook.com", "xietianle@outlook.com")
-    _person(notebook, "people/fenwick.md", "Fenwick", "larryleework7@gmail.com")
-    _person(notebook, "people/aaron-smith.md", "Aaron Smith", "aaron.smith@firm.example")
-    rows = [{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108, "received": 0},
-            {"record": "people/fenwick.md", "address": "larryleework7@gmail.com", "name": "Fenwick", "sent": 17,
+    notebook.stub_person("people/ellis-yew.md", "Ellis Yew", ["team@example.org"], email="team@example.org")
+    _person(notebook, "people/cx.md", "林川", "ellis.a@example.com")
+    _person(notebook, "people/confirmed.md", "ellis@example.org", "ellis@example.org")
+    _person(notebook, "people/fenwick.md", "Fenwick", "fenwick.work@example.org")
+    _person(notebook, "people/ellis-smith.md", "Ellis Smith", "ellis.smith@example.org")
+    rows = [{"record": "people/cx.md", "address": "ellis.a@example.com", "name": "林川", "sent": 108, "received": 0},
+            {"record": "people/fenwick.md", "address": "fenwick.work@example.org", "name": "Fenwick", "sent": 17,
              "received": 0},
-            {"record": "people/aaron-smith.md", "address": "aaron.smith@firm.example", "name": "Aaron Smith",
+            {"record": "people/ellis-smith.md", "address": "ellis.smith@example.org", "name": "Ellis Smith",
              "sent": 9, "received": 3}]                                     # he replies: someone else
     asked = [{"address": row["address"], "sent": row["sent"], "record": row["record"]} for row in rows[:2]]
-    _state(tmp_path, owner={"record": "people/aaron-xie.md",
-                            "addresses": ["openonionai@gmail.com", "xietianle@outlook.com"]},
-           people=[{"record": "people/aaron-xie.md", "classification": "account owner"}, *rows],
+    _state(tmp_path, owner={"record": "people/ellis-yew.md",
+                            "addresses": ["team@example.org", "ellis@example.org"]},
+           people=[{"record": "people/ellis-yew.md", "classification": "account owner"}, *rows],
            possible_own_addresses=asked)
 
     done = tidy(tmp_path)
 
     assert done["folded into the owner's page"] == ["people/confirmed.md", "people/cx.md"]
-    assert sorted(notebook.list("people")) == ["people/aaron-smith.md", "people/aaron-xie.md", "people/fenwick.md"]
-    page = notebook.read("people/aaron-xie.md")
-    assert "- Email: openonionai@gmail.com, xietianle@outlook.com [1], aaronplus1996@gmail.com [2]" in page
+    assert sorted(notebook.list("people")) == ["people/ellis-smith.md", "people/ellis-yew.md", "people/fenwick.md"]
+    page = notebook.read("people/ellis-yew.md")
+    assert "- Email: team@example.org, ellis@example.org [1], ellis.a@example.com [2]" in page
     assert "classification unassessed" not in page                          # not a correspondent of their own
     state = read_json(state_path(tmp_path, "map.json"), {})
-    assert "aaronplus1996@gmail.com" in state["owner"]["addresses"]
+    assert "ellis.a@example.com" in state["owner"]["addresses"]
     assert state["possible_own_addresses"] == []                            # Fenwick is not offered to --mine
     aliases = read_json(state_path(tmp_path, "aliases.json"), {})
-    assert aliases["people/cx.md"]["into"] == "people/aaron-xie.md"
+    assert aliases["people/cx.md"]["into"] == "people/ellis-yew.md"
 
 
 def test_a_skill_named_by_its_folder_folds_into_the_named_skill(tmp_path):
@@ -169,7 +218,7 @@ def test_an_address_confirmed_once_stays_the_owners_at_the_next_map(tmp_path, mo
     from connectonion.rem.map import build_map
     prepare(tmp_path)
     (tmp_path / "installed").mkdir()
-    row = {"name": "", "address": "aaronplus1996@gmail.com", "mails": 106, "sent": 106, "received": 0, "one_way": True}
+    row = {"name": "", "address": "ellis.a@example.com", "mails": 106, "sent": 106, "received": 0, "one_way": True}
 
     def mail_rows(clients, days, mine, coverage, errors=None, progress=None, **kw):
         own = {address.lower() for address in mine}
@@ -177,9 +226,9 @@ def test_an_address_confirmed_once_stays_the_owners_at_the_next_map(tmp_path, mo
 
     monkeypatch.setattr("connectonion.rem.map._mail_rows", mail_rows)
     monkeypatch.setattr("connectonion.rem.map.scan_projects", lambda *a: [])
-    build_map(tmp_path, {}, {}, skill_directories=[tmp_path / "installed"], mine=["aaronplus1996@gmail.com"])
+    build_map(tmp_path, {}, {}, skill_directories=[tmp_path / "installed"], mine=["ellis.a@example.com"])
     again = build_map(tmp_path, {}, {}, skill_directories=[tmp_path / "installed"])   # no --mine this time
-    assert "aaronplus1996@gmail.com" in again["owner"]["addresses"]
+    assert "ellis.a@example.com" in again["owner"]["addresses"]
     assert again["possible_own_addresses"] == []
 
 
@@ -191,27 +240,27 @@ def test_the_owners_possibly_yours_lines_follow_what_is_still_asked(tmp_path):
     same three addresses at different counts, two already confirmed and folded."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.stub_person("people/aaron.md", "Aaron Xie", ["openonionai@gmail.com"], email="openonionai@gmail.com")
-    asked = ["aaronplus1996@gmail.com (108 sent", "aaron@openonion.ai (22 sent", "aaronplus1996@gmail.com (101 sent",
-             "aaron@openonion.ai (10 sent", "aaronchen@openonion.ai (10 sent", "aaronchen@openonion.ai (8 sent"]
+    notebook.stub_person("people/ellis.md", "Ellis Yew", ["team@example.org"], email="team@example.org")
+    asked = ["ellis.a@example.com (108 sent", "ellis.work@example.org (22 sent", "ellis.a@example.com (101 sent",
+             "ellis.work@example.org (10 sent", "ellischen@example.org (10 sent", "ellischen@example.org (8 sent"]
     lines = "".join(f"- Possibly also the owner's: {one}, none received). If it is yours: co rem init --mine x\n"
                     for one in asked)
-    page = notebook.read("people/aaron.md").replace("## Uncertainties\n", "## Uncertainties\n" + lines)
-    notebook.write("people/aaron.md", page.replace("- Unknown — not investigated yet\n\n## Sources", "\n## Sources"))
-    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
-    _state(tmp_path, owner={"record": "people/aaron.md", "addresses": ["openonionai@gmail.com", "aaron@openonion.ai"]},
-           people=[{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108,
+    page = notebook.read("people/ellis.md").replace("## Uncertainties\n", "## Uncertainties\n" + lines)
+    notebook.write("people/ellis.md", page.replace("- Unknown — not investigated yet\n\n## Sources", "\n## Sources"))
+    _person(notebook, "people/cx.md", "林川", "ellis.a@example.com")
+    _state(tmp_path, owner={"record": "people/ellis.md", "addresses": ["team@example.org", "ellis.work@example.org"]},
+           people=[{"record": "people/cx.md", "address": "ellis.a@example.com", "name": "林川", "sent": 108,
                     "received": 0}],
-           possible_own_addresses=[{"address": "aaronchen@openonion.ai", "sent": 10, "record": "people/ac.md"}])
+           possible_own_addresses=[{"address": "ellischen@example.org", "sent": 10, "record": "people/ac.md"}])
 
     tidy(tmp_path)
 
-    page = notebook.read("people/aaron.md")
+    page = notebook.read("people/ellis.md")
     kept = [line for line in page.splitlines() if line.startswith("- Possibly also the owner's:")]
-    assert kept == ["- Possibly also the owner's: aaronchen@openonion.ai (10 sent, none received). "
+    assert kept == ["- Possibly also the owner's: ellischen@example.org (10 sent, none received). "
                     "If it is yours: co rem init --mine x"]                   # confirmed ones gone, one line each
-    assert "- Email: openonionai@gmail.com, aaronplus1996@gmail.com" in page
-    assert tidy(tmp_path) == {} and notebook.read("people/aaron.md") == page  # idempotent
+    assert "- Email: team@example.org, ellis.a@example.com" in page
+    assert tidy(tmp_path) == {} and notebook.read("people/ellis.md") == page  # idempotent
 
 
 def test_organisation_pages_for_mailbox_providers_and_relays_are_archived(tmp_path):
@@ -236,39 +285,39 @@ def test_organisation_pages_for_mailbox_providers_and_relays_are_archived(tmp_pa
 
 
 def test_a_folded_address_carries_its_evidence_and_the_uncertainty_it_resolved_goes(tmp_path):
-    """#2028: `xietianle@outlook.com [1], aaron@openonion.ai, aaronplus1996@gmail.com` -- the
+    """#2028: `ellis@example.org [1], ellis.work@example.org, ellis.a@example.com` -- the
     folded two uncited -- and Uncertainties still calling them unresolved."""
     prepare(tmp_path)
     notebook = Notebook(tmp_path)
-    notebook.write("people/aaron-xie.md", (
-        "# Aaron Xie\n\n## Contact\n- Email: openonionai@gmail.com, xietianle@outlook.com [1]\n"
+    notebook.write("people/ellis-yew.md", (
+        "# Ellis Yew\n\n## Contact\n- Email: team@example.org, ellis@example.org [1]\n"
         "- Handles: Unknown\n\n## Uncertainties\n"
-        "- Whether aaronplus1996@gmail.com and aaron@openonion.ai are his remains unresolved. [1]\n"
-        "- Whether aaronchen@openonion.ai is his remains unresolved. [1]\n- Role: not in the mail. [1]\n\n"
+        "- Whether ellis.a@example.com and ellis.work@example.org are his remains unresolved. [1]\n"
+        "- Whether ellischen@example.org is his remains unresolved. [1]\n- Role: not in the mail. [1]\n\n"
         "## Sources\n- [1] gmail:abc — a mail\n\nInvestigation: investigated 2026-09-30\n"))
-    _person(notebook, "people/cx.md", "常兴", "aaronplus1996@gmail.com")
-    _person(notebook, "people/oo.md", "aaron@openonion.ai", "aaron@openonion.ai")
-    _state(tmp_path, owner={"record": "people/aaron-xie.md",
-                            "addresses": ["openonionai@gmail.com", "xietianle@outlook.com", "aaron@openonion.ai"]},
-           people=[{"record": "people/cx.md", "address": "aaronplus1996@gmail.com", "name": "常兴", "sent": 108,
+    _person(notebook, "people/cx.md", "林川", "ellis.a@example.com")
+    _person(notebook, "people/oo.md", "ellis.work@example.org", "ellis.work@example.org")
+    _state(tmp_path, owner={"record": "people/ellis-yew.md",
+                            "addresses": ["team@example.org", "ellis@example.org", "ellis.work@example.org"]},
+           people=[{"record": "people/cx.md", "address": "ellis.a@example.com", "name": "林川", "sent": 108,
                     "received": 0}])
 
     tidy(tmp_path)
 
-    page = notebook.read("people/aaron-xie.md")
+    page = notebook.read("people/ellis-yew.md")
     email = next(line for line in page.split("\n") if line.startswith("- Email: "))
-    assert email == ("- Email: openonionai@gmail.com, xietianle@outlook.com [1], aaronplus1996@gmail.com [2], "
-                     "aaron@openonion.ai [3]")
+    assert email == ("- Email: team@example.org, ellis@example.org [1], ellis.a@example.com [2], "
+                     "ellis.work@example.org [3]")
     sources = page.split("## Sources\n", 1)[1]
     assert "- [2] .state/map.json — 108 sent, none received, carrying the owner's name" in sources
     assert "- [3] .state/map.json — confirmed as the owner's own address" in sources
-    assert "aaronplus1996@gmail.com and aaron@openonion.ai are his" not in page        # resolved: gone
-    assert "- Whether aaronchen@openonion.ai is his remains unresolved. [1]" in page   # still open: kept
+    assert "ellis.a@example.com and ellis.work@example.org are his" not in page        # resolved: gone
+    assert "- Whether ellischen@example.org is his remains unresolved. [1]" in page   # still open: kept
     assert "- Role: not in the mail. [1]" in page
     lines = [entry.get("line", "") for entry in read_json(state_path(tmp_path, "tidy.json"), [])]
-    assert any("aaronplus1996@gmail.com and aaron@openonion.ai" in line for line in lines)
+    assert any("ellis.a@example.com and ellis.work@example.org" in line for line in lines)
     assert tidy(tmp_path) == {}                                                   # idempotent
-    assert notebook.read("people/aaron-xie.md") == page
+    assert notebook.read("people/ellis-yew.md") == page
 
 
 # ------------------------------------------- fewer pages (#2057)
@@ -399,3 +448,187 @@ def test_the_owners_company_is_preserved_even_when_its_contacts_were_archived(tm
     assert notebook.list("orgs") == ["orgs/bigcorp.example.md", "orgs/example.edu.au.md",
                                     "orgs/maralabs.example.md"]
     assert tidy(tmp_path) == {}
+
+
+def test_tidy_log_dates_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Honolulu"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2040, 11, 6, 1, tzinfo=timezone.utc))
+    book = Notebook(tmp_path)
+    _person(book, "people/robin.md", "Robin Hale", "robin@tide.example", investigated=True)
+    book.write("people/robin.md", book.read("people/robin.md").replace("## Sources\n", "## Sources\n- [2] investigation:coverage\n"))
+    assert tidy(tmp_path)
+    assert all(row["date"] == "2040-11-05" for row in read_json(state_path(tmp_path, "tidy.json"), []))
+
+
+def test_tidy_prunes_only_old_uncited_attachments_and_keeps_originals(tmp_path):
+    import os
+    from datetime import timedelta
+    from connectonion.rem import service
+    from connectonion.rem.attachments import attachment_context
+    from connectonion.rem.reader_model import cited_context
+
+    prepare(tmp_path)
+    now = service.now().timestamp()
+    old = now - timedelta(days=31).total_seconds()
+    folder = state_path(tmp_path, 'attachments/gmail/123456789abc')
+    folder.mkdir(parents=True)
+    for name in ('.fetched', 'Signed agreement.txt', 'archived.txt', 'unused.txt', 'recent-read.txt', 'recent-download.txt'):
+        path = folder / name
+        path.write_text('Fictional pilot terms. ' * (4000 if name == 'unused.txt' else 400))
+        os.utime(path, (old, old))
+    os.utime(folder / 'recent-read.txt', (now, old))
+    os.utime(folder / 'recent-download.txt', (old, now))
+    book = Notebook(tmp_path)
+    source = 'gmail:123456789abc:Signed agreement.txt'
+    book.write('notes/pilot.md', f'# Pilot\n\nPilot terms. [1]\n\n## Sources\n- [1] {source}\n')
+    records = [{'text': book.read('notes/pilot.md')}]
+    archived = state_path(tmp_path, 'archived/notes/old-pilot.md')
+    archived.parent.mkdir(parents=True)
+    archived.write_text('# Old pilot\n\n## Sources\n- [1] gmail:123456789abc:archived.txt\n')
+    before = cited_context(tmp_path, records)
+    # Citation protection must work even for an original that has not been read recently.
+    os.utime(folder / 'Signed agreement.txt', (old, old))
+    total = sum(p.stat().st_size for p in (tmp_path / '.state').rglob('*') if p.is_file())
+
+    done = tidy(tmp_path)
+
+    assert not (folder / 'unused.txt').exists()
+    assert {p.name for p in folder.iterdir()} == {
+        '.fetched', 'Signed agreement.txt', 'archived.txt', 'recent-read.txt', 'recent-download.txt'}
+    assert done['pruned attachment'] == ['.state/attachments/gmail/123456789abc/unused.txt']
+    assert cited_context(tmp_path, records) == before
+    assert attachment_context(tmp_path, source)['excerpt']
+    assert sum(p.stat().st_size for p in (tmp_path / '.state').rglob('*') if p.is_file()) <= total * 0.6
+    assert tidy(tmp_path) == {}
+
+
+def test_tidy_removes_finished_native_and_empty_tasks_but_keeps_active_round(tmp_path):
+    import os
+    from connectonion.rem import runner
+
+    prepare(tmp_path)
+    active = {'started_at': '2040-11-06T00:00:00+00:00', 'done': False}
+    write_json(state_path(tmp_path, 'round.json'), active)
+    for name, status, started in [('finished', 'accepted', '2040-11-05T00:00:00+00:00'),
+                                  ('discarded', 'discarded', '2040-11-05T00:00:00+00:00'),
+                                  ('dependency', 'accepted', active['started_at']),
+                                  ('pending', 'pending', active['started_at'])]:
+        folder = state_path(tmp_path, f'tasks/{name}')
+        write_json(folder / 'task.json', {'status': status, 'round_started_at': started})
+        (folder / 'material.md').write_text('Fictional private material')
+    empty = state_path(tmp_path, 'tasks/empty')
+    empty.mkdir()
+    os.utime(empty, (1, 1))  # An abandoned workspace, rather than one being prepared.
+    preparing = state_path(tmp_path, 'tasks/preparing')
+    preparing.mkdir()
+    legacy = state_path(tmp_path, 'tasks/legacy')
+    legacy.mkdir()
+    (legacy / 'material.md').write_text('Disposable material')
+    runner.scrub_task(legacy)
+
+    tidy(tmp_path)
+
+    assert not legacy.exists()
+    assert sorted(p.name for p in empty.parent.iterdir()) == ['dependency', 'pending', 'preparing']
+    assert (empty.parent / 'dependency/material.md').is_file()
+    write_json(state_path(tmp_path, 'round.json'), {**active, 'done': True})
+    tidy(tmp_path)
+    assert sorted(p.name for p in empty.parent.iterdir()) == ['pending', 'preparing']
+
+
+def test_tidy_prunes_finished_evidence_and_preserves_running_evidence(tmp_path):
+    import os
+
+    prepare(tmp_path)
+    for name, stamp in [('finished', 100), ('running', 300)]:
+        folder = state_path(tmp_path, f'evidence/{name}')
+        folder.mkdir(parents=True)
+        original = folder / 'originals.json'
+        original.write_text('[]')
+        os.utime(original, (stamp, stamp))
+        os.utime(folder, (stamp, stamp))
+    write_json(state_path(tmp_path, 'runs/run_' + 'a' * 32 + '.json'),
+               {'started_at': '1970-01-01T00:00:00+00:00', 'finished_at': '1970-01-01T00:03:20+00:00',
+                'outcome': 'completed'})
+    write_json(state_path(tmp_path, 'runs/run_' + 'b' * 32 + '.json'),
+               {'started_at': '1970-01-01T00:04:10+00:00', 'outcome': 'running'})
+
+    tidy(tmp_path)
+
+    assert not state_path(tmp_path, 'evidence/finished').exists()
+    assert state_path(tmp_path, 'evidence/running/originals.json').is_file()
+
+
+def test_tidy_moves_explicit_org_pages_out_of_people_without_losing_links(tmp_path):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    text = ('# Lantern Works\n\n## Domains\n- lantern.example\n\n'
+            '## History\n- Pilot agreed with [Robin](./robin.md). [1]\n\n'
+            '## Sources\n- [1] gmail:123456789abc\n\nInvestigation: investigated 2040-11-05\n')
+    book.write('people/lantern.md', text)
+    book.write('people/robin.md', '# Robin\n\n[Lantern](./lantern.md)\n')
+    unrelated = '# Separate\n\n[Robin](./robin.md)\n'
+    book.write('people/separate.md', unrelated)
+
+    done = tidy(tmp_path)
+
+    assert not book.path('people/lantern.md').exists()
+    assert book.read('orgs/lantern.md') == text.replace('./robin.md', '../people/robin.md')
+    assert '[Lantern](../orgs/lantern.md)' in book.read('people/robin.md')
+    assert book.read('people/separate.md') == unrelated
+    assert done['moved non-person page'] == ['people/lantern.md']
+    assert tidy(tmp_path) == {}
+
+
+def test_tidy_does_not_follow_attachment_directory_symlinks(tmp_path):
+    import os
+
+    root = tmp_path / 'notebook'
+    prepare(root)
+    external = tmp_path / 'external'
+    external.mkdir()
+    original = external / 'original.txt'
+    original.write_text('Fictional original outside the notebook')
+    os.utime(original, (1, 1))
+    provider = state_path(root, 'attachments/gmail')
+    provider.mkdir(parents=True)
+    (provider / 'linked-message').symlink_to(external, target_is_directory=True)
+
+    tidy(root)
+
+    assert original.is_file()
+    assert original.read_text() == 'Fictional original outside the notebook'
+
+
+def test_tidy_moves_written_service_pages_to_notes_and_keeps_the_owner(tmp_path):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    for record, name, address in [('people/service.md', 'Lantern Team', 'notify@lantern.example'),
+                                   ('people/owner.md', 'Owner', 'owner@example.test')]:
+        _person(book, record, name, address, investigated=True)
+    _state(tmp_path, owner={'record': 'people/owner.md'})
+    original = book.read('people/service.md')
+
+    done = tidy(tmp_path)
+
+    assert book.read('notes/service.md') == original
+    assert not book.path('people/service.md').exists()
+    assert book.path('people/owner.md').is_file()
+    assert done['moved non-person page'] == ['people/service.md']
+    assert tidy(tmp_path) == {}
+
+
+def test_tidy_moved_page_preserves_link_fragments(tmp_path):
+    prepare(tmp_path)
+    book = Notebook(tmp_path)
+    book.write('people/lantern.md', '# Lantern\n\n## Domains\n- lantern.example\n\n## History\n- Pilot.\n')
+    book.write('notes/pilot.md', '# Pilot\n\n[History](../people/lantern.md#history)\n')
+
+    tidy(tmp_path)
+
+    assert '[History](../orgs/lantern.md#history)' in book.read('notes/pilot.md')

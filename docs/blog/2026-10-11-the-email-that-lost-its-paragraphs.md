@@ -8,7 +8,7 @@ tags: [Email]
 While testing a release this morning we sent ourselves an ordinary email:
 
 ```
-co email send openonionai@gmail.com "[TEST]" "First paragraph, line one.
+co email send team@example.org "[TEST]" "First paragraph, line one.
 First paragraph, line two.
 
 Second paragraph: 1 < 2 & 3 > 2.

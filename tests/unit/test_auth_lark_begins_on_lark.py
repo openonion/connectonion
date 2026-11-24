@@ -108,7 +108,7 @@ def test_the_reuse_command_names_the_apps_own_brand(rig, monkeypatch, capsys):
     lark_cli_config([
         {"appId": "cli_aaa", "brand": "lark",
          "appSecret": {"source": "keychain", "id": "x"},
-         "users": [{"userName": "xie Aaron"}]},
+         "users": [{"userName": "yew Ellis"}]},
     ])
     register = FakeRegistration()
     monkeypatch.setattr(feishu_auth, "_register_app", lambda: register)

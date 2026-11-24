@@ -247,3 +247,25 @@ def test_rem_consumers_use_the_read_snapshot_when_a_live_session_grows(invented,
     saved = json.loads(state_path(ws.root, 'sessions.json').read_bytes())
     assert saved['files'][str(path)]['size'] == len(original)
     assert 'Later turn' not in ''.join(Notebook(ws.root).read(record) for record in Notebook(ws.root).list('sessions'))
+
+
+@pytest.mark.parametrize('vanish_at', ['stat', 'open'])
+def test_rem_shared_session_pass_skips_vanished_rollouts(invented, monkeypatch, vanish_at):
+    ws = invented
+    missing = ws.codex / 'rollout-owner.jsonl'
+    original = getattr(Path, vanish_at)
+
+    def vanish(path, *args, **kwargs):
+        if path == missing:
+            path.unlink(missing_ok=True)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, vanish_at, vanish)
+    result = session_pass.read_sessions(ws.root, ws.subs, now=NOW, days=180)
+    assert result.missing == [str(missing)]
+    assert all(missing not in paths for paths in result.files.values())
+    saved = json.loads(result.windows['codex'].read_text())
+    assert saved['missing_files'] == ['rollout-owner.jsonl']
+    # Every downstream consumer can still use the shared snapshot.
+    sessions.import_sessions(ws.root, consented_only=True, sessions=result)
+    project_material.session_messages(ws.subs, since=NOW - timedelta(days=180), sessions=result)

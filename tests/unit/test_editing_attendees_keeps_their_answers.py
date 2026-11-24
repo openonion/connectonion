@@ -93,7 +93,7 @@ def test_everything_google_knows_about_a_kept_attendee_survives():
 
 
 def test_the_address_is_matched_case_insensitively():
-    """Someone typing Aaron@Example.com must not un-answer aaron@example.com."""
+    """Someone typing Ellis@Example.com must not un-answer ellis@example.com."""
     out = run("A@Example.com")
 
     assert out["A@Example.com"]["responseStatus"] == "accepted", (

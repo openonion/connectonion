@@ -173,7 +173,7 @@ co browser get_text                              # the page's visible text
 co browser get_links_from_page                   # every link, one per line
 co browser take_screenshot                       # saves a PNG, prints its path
 co browser click_element_by_selector "#submit"   # deterministic click by CSS selector
-co browser type_text_by_selector "#email" "aaron@example.com"
+co browser type_text_by_selector "#email" "ellis@example.com"
 co browser fill_text_by_selector "#invite" --stdin < invite.txt  # controlled input; keep secrets out of argv
 co browser save_state auth.json                  # export cookies/localStorage (keep it secret!)
 ```
@@ -501,6 +501,12 @@ downgrading so an older client never talks to a newer daemon.
 - **"Chrome failed to start"** — usually running over ssh/cron without a desktop
   session (start from a logged-in Terminal, or use `--headless`), or a leftover
   Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
+- **The WTF Browser you double-click in /Applications is refused as out of
+  date (macOS)** — that app is a second copy of the build `co` runs, and `co`
+  brings it to that build after each `--engine wtf` launch: the old one goes to
+  the Trash, and an app that is open is left until it is closed. Close it, run
+  one `co browser --engine wtf` command, and read the `WTF Browser app:` line of
+  `co browser status`. Details: [cli/browser.md](cli/browser.md).
 - **"browser daemon is busy at connection capacity"** — 32 commands are in
   flight (or all bounded Windows transport workers are occupied). Retry shortly;
   an unrelated slow browser action on another named tab no longer blocks yours.
@@ -532,7 +538,8 @@ downgrading so an older client never talks to a newer daemon.
   `$CO_BROWSER_SOCK` that another script or agent is using.
 
 - **State locations** — profile (cookies/logins): `~/.co/browser_profile/`
-  (the paid Onion engine's: `~/.onionwright/profiles/<address>`), or
+  (the paid Onion engine's on macOS: `~/Library/Application Support/WTF Browser/profile`,
+  the same profile WTF Browser.app opens on a double-click), or
   `$CO_BROWSER_PROFILE_DIR` and `$CO_BROWSER_PROFILE_DIR/onion` for the paid
   engine when that is set, so an isolated run is isolated on every engine ·
   daemon log: `~/.co/browser.log` · socket: `/tmp/co-<user>/browser.sock` on

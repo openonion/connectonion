@@ -288,3 +288,30 @@ def test_a_refresh_waits_for_other_workers_refreshing_the_same_file(tmp_path, mo
 
     pc.refresh_credentials(record, backend="https://x", api_key="k", post=lambda *a, **k: Response())
     assert waits == [pc.REFRESH_WAIT_SECONDS] and pc.REFRESH_WAIT_SECONDS >= 60
+
+
+def test_rem_child_keeps_selected_credential_file_and_latest_rotation(selected, monkeypatch, tmp_path):
+    import json
+    import subprocess
+    import sys
+    from connectonion.rem import runner
+    save_authorization("microsoft", selected, grant("microsoft"))
+    child_environment = runner.child_env()
+    command = runner.co_command()
+    assert command[-2:] == ["--env-file", str(selected)]
+    assert "MICROSOFT_REFRESH_TOKEN" not in child_environment
+    save_authorization("microsoft", selected, grant("microsoft", refresh_token="latest-refresh"))
+    result = subprocess.run([*command, "env", "path"], env=child_environment,
+                            capture_output=True, text=True, check=True, timeout=15)
+    assert result.stdout.strip() == str(selected)
+    code = """
+import json, sys
+from connectonion.environment import select_env_file
+from connectonion.provider_credentials import resolve_provider_credentials
+select_env_file(__import__('pathlib').Path(sys.argv[1]))
+r = resolve_provider_credentials('microsoft')
+print(json.dumps({'path': str(r.path), 'latest': r.get('REFRESH_TOKEN') == 'latest-refresh'}))
+"""
+    result = subprocess.run([sys.executable, "-c", code, str(selected)], env=child_environment,
+                            capture_output=True, text=True, check=True, timeout=15)
+    assert json.loads(result.stdout) == {"path": str(selected), "latest": True}

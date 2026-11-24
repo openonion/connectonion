@@ -201,10 +201,12 @@ def test_rem_session_idempotent_append_and_changed_title_keep_the_record(noteboo
     assert import_sessions(root, now=NOW)["imported"] == 1
     record, = Notebook(root).list("sessions")
     again = import_sessions(root, now=NOW)
+    assert again['changed'] == []
     assert again["imported"] == 0 and again["unchanged"] == 1
     with path.open("a") as stream:
         stream.write(json.dumps(codex("Use day headings", stamp="2026-10-16T13:12:00Z")) + "\n")
     updated = import_sessions(root, now=NOW)
+    assert updated['changed'] == [record]
     assert updated["updated"] == 1 and updated["imported"] == 0
     assert Notebook(root).list("sessions") == [record]
     assert "- Turns: 2" in Notebook(root).read(record)
@@ -310,6 +312,10 @@ def test_rem_session_project_ties_unmapped_and_bounded_calls(notebook):
     assert paths == Counter({"/work/demo/a.py": 2, "/work/demo": 1})
     assert _touched(json.dumps({"cmd": "cd demo && pwd", "workdir": "/elsewhere"}), "/work") == Counter({
         "/elsewhere": 1, "/elsewhere/demo": 1})
+    # A name no filesystem holds (over 255 bytes) is not a path the session touched:
+    # asking whether it is a repository raises ENAMETOOLONG (2026-11-16).
+    assert _touched(f"cd {'a' * 256} && cat /work/{'b' * 256}/a.py /work/demo/a.py", "/work") == Counter({
+        "/work/demo/a.py": 1})
     transcript(notebook, cwd="/work", rows=[codex(), {"type": "response_item", "payload": {
         "type": "function_call", "arguments": json.dumps({"cmd": "cat /unmapped/file.py"})}}])
     import_sessions(notebook[0], now=NOW)
@@ -505,7 +511,7 @@ def test_rem_session_mentions_typed_names_aliases_and_newest_first():
                 session("sessions/tie.md", "ask Corin", clock="10:00"),
                 session("sessions/will.md", "ask Will and Al"),
                 session("sessions/no.md", "the melody will play", "Corin Marsh and 周小明 and Will"),
-                session("sessions/boundary.md", "xOdy Zhou2")]
+                session("sessions/boundary.md", "xCorin Marsh2")]
     assert mentions(people, sessions) == {
         "people/corin.md": ["sessions/alias.md", "sessions/tie.md", "sessions/new.md", "sessions/old.md"],
         "people/will.md": ["sessions/will.md"]}
@@ -657,7 +663,10 @@ def test_rem_import_sessions_cli_json(notebook):
     from connectonion.cli.main import app
     root, _, _ = notebook
     transcript(notebook)
-    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--days", "30", "--json"])
+    # The transcript is stamped STAMP and the CLI reads the wall clock: a fixed "--days 30" began
+    # failing on 2026-11-15, thirty days after STAMP, on every branch at once.
+    days = (datetime.now(timezone.utc) - datetime.fromisoformat(STAMP.replace("Z", "+00:00"))).days + 30
+    result = CliRunner().invoke(app, ["rem", "--root", str(root), "import", "sessions", "--days", str(days), "--json"])
     assert result.exit_code == 0, result.output
     output = json.loads(result.stdout)
     assert output["ok"] is True and output["data"]["imported"] == 1
@@ -746,6 +755,44 @@ def test_rem_session_summarise_drops_empty_decision_spans(notebook, summary_read
     report = summarise_sessions(root, run=lambda *a: answer)
     assert report["summarised"] == 1 and report["dropped_quotes"] == 5
     assert read_summary(root, "codex:3456-abcdef12")["decisions"] == []
+
+
+@pytest.mark.parametrize("original,misquote", [
+    ("not able to pay", "notable to pay"),
+    ("notable progress", "not able progress"),
+])
+def test_rem_session_summary_word_separation(notebook, summary_ready, original, misquote):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex(original)])
+    import_sessions(root, now=NOW)
+    answer = summary_answer("s1")
+    data = json.loads(answer["result"])
+    data["sessions"][0]["decisions"] = [{"time": "09:12", "quote": quote}
+                                       for quote in (misquote, original)]
+    answer["result"] = json.dumps(data)
+    report = summarise_sessions(root, run=lambda *a: answer)
+    assert report["summarised"] == 1 and report["dropped_quotes"] == 1
+    assert read_summary(root, "codex:3456-abcdef12")["decisions"] == [
+        {"time": "09:12", "quote": original}]
+
+
+@pytest.mark.parametrize("original,misquote", [
+    ("not able to pay", "notable to pay"),
+    ("notable progress", "not able progress"),
+])
+def test_rem_session_saved_summary_word_separation(notebook, original, misquote):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex(original)])
+    import_sessions(root, now=NOW)
+    key = "codex:3456-abcdef12"
+    saved = {"key": key, "decisions": [{"time": "09:12", "quote": quote}
+                                      for quote in (misquote, original)]}
+    write_json(summary_path(root, key), saved)
+    record = rewrite_session(root, key)
+    text = Notebook(root).read(record)
+    assert f'“{misquote}”' not in text
+    assert f'“{original}” (09:12)' in text
+    assert read_summary(root, key) == saved
 
 
 @pytest.mark.parametrize("reply", ["Here is your summary.", '{"sessions": []}',
@@ -911,3 +958,89 @@ def test_rem_session_daily_summarise_preserves_investigation_budget(notebook, su
     assert result["outcome"] == "completed" and investigated == ["people/corin.md"]
     assert service.status(root)["runner_attempts_today"] == 1
     assert any(line.startswith("Summarised") and "left for next time" in line for line in lines)
+
+
+@pytest.mark.parametrize("skipped, suffix", [
+    ({"program_prompt": 3}, "3 skipped (program prompt)"),
+    ({"temporary_directory": 1, "outside_window": 1}, "2 skipped (temporary directory, outside window)"),
+    ({}, "0 skipped;"),
+])
+def test_session_summary_appends_skip_reasons(skipped, suffix):
+    from connectonion.rem.sessions import summary
+
+    text = summary({"imported": 3, "updated": 0, "unchanged": 0, "skipped": skipped, "seconds": 0.012})
+    assert suffix in text
+
+
+def test_rem_session_earlier_reply_is_not_final_after_a_later_owner_turn(notebook):
+    root, _, _ = notebook
+    transcript(notebook, rows=[codex(), codex('An earlier result', role='assistant'),
+                              codex('One more change', stamp='2026-10-15T22:24:00Z')])
+    import_sessions(root, now=NOW)
+    book = Notebook(root)
+    page = book.read(book.list('sessions')[0])
+    assert '## Final reply' not in page
+    assert '- Ended: 2026-10-16 09:24' in page
+
+
+def test_session_summary_uses_summary_model_only(notebook, summary_ready):
+    from connectonion.rem.config import read_config
+    root, _, _ = notebook
+    # Summaries are level 1 since #3426; a distinct model shows which level ran.
+    set_config(root, ["runner", "codex", "model", "gpt-6.1-sol", "models.level1", "gpt-6.1-terra"])
+    transcript(notebook)
+    import_sessions(root, now=NOW)
+    def run(directory, prompt, settings, stage):
+        assert settings["model"] == "gpt-6.1-terra"
+        assert read_config(root)["model"] == "gpt-6.1-sol"
+        return summary_answer("s1")
+    assert summarise_sessions(root, run=run)["summarised"] == 1
+    assert read_summary(root, "codex:3456-abcdef12")["model"] == "gpt-6.1-terra"
+
+
+def test_code_evidence_excludes_sessions_that_change_cwd(notebook):
+    root, _, _ = notebook
+    transcript(notebook, kind="claude-code", session="cedar-session", rows=[
+        claude("Inspect cedar", cwd="/work/lanterns"),
+        claude("Inspect birch", cwd="/work/birch", timestamp="2026-10-15T23:12:00Z"),
+    ])
+    assert import_sessions(root, now=NOW)["imported"] == 1
+    index = read_json(state_path(root, "sessions.json"), {})
+    evidence, = [row["code_evidence"] for row in index["files"].values()]
+    assert evidence["cwd"] == ""
+
+
+def test_code_evidence_keeps_printed_commits_only(notebook):
+    root, _, _ = notebook
+    transcript(notebook, cwd="/work/lanterns", rows=[codex("Inspect cedar"),
+        {"type": "response_item", "timestamp": STAMP, "payload": {
+            "type": "function_call", "name": "exec_command", "call_id": "cedar-call",
+            "arguments": json.dumps({"cmd": "git switch -c requested-branch"})}},
+        {"type": "response_item", "timestamp": STAMP, "payload": {
+            "type": "function_call_output", "call_id": "cedar-call",
+            "output": "[printed-cedar abcdef1] Add a cedar light.\n"}},
+    ])
+    assert import_sessions(root, now=NOW)["imported"] == 1
+    index = read_json(state_path(root, "sessions.json"), {})
+    evidence, = [row["code_evidence"] for row in index["files"].values()]
+    assert evidence["printed_commits"] == [{"sha": "abcdef1", "branch": "printed-cedar"}]
+    assert evidence["started"].endswith("+00:00")
+
+
+def test_code_evidence_backfills_recent_sessions_without_a_full_reimport(notebook):
+    root, _, _ = notebook
+    old = transcript(notebook, session="1111-cedar001")
+    recent = transcript(notebook, session="2222-cedar002")
+    os.utime(old, (NOW.timestamp() - 30 * 86400,) * 2)
+    os.utime(recent, (NOW.timestamp() - 86400,) * 2)
+    assert import_sessions(root, now=NOW)["imported"] == 2
+    index = read_json(state_path(root, "sessions.json"), {})
+    for entry in index["files"].values():
+        entry.pop("code_evidence")  # an index written by rc61, before code evidence existed
+    index["settings"]["format"] = 4
+    write_json(state_path(root, "sessions.json"), index)
+    counts = import_sessions(root, now=NOW)
+    assert (counts["updated"], counts["unchanged"]) == (1, 1)
+    files = read_json(state_path(root, "sessions.json"), {})["files"]
+    assert "code_evidence" in files[str(recent)]
+    assert "code_evidence" not in files[str(old)]

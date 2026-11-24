@@ -63,10 +63,10 @@ def test_default_open_page_loads_navigates_and_goes_back(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(data["link"])
-            contents = page.locator(".brief-header h1")
+            contents = page.locator("#main .count-line .count")
             contents.wait_for()
             page.locator("a[href='#c=people']").first.click()
-            page.get_by_role("heading", name="People", exact=True).wait_for()
+            page.locator(".r4-people h1").wait_for()
             assert page.evaluate("location.hash") == "#c=people"
             assert "Alice" in page.locator("#main").inner_text()
             page.go_back()
@@ -81,7 +81,7 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
     """A page the mapper just built is mostly "Unknown — not investigated yet".
     The reader once printed every one of those lines, so each page opened on
     what the assistant does not know (#1836). Known facts come first; the
-    empty headings are named once, with the command that fills them."""
+    empty headings are counted once, beside the background queue status."""
     sync_playwright = _sync_playwright()
     monkeypatch.setattr("connectonion.rem.service.mail_available", lambda kind: False)
     root = tmp_path / "rem"
@@ -105,17 +105,21 @@ def test_a_mapped_page_leads_with_what_is_known(tmp_path, monkeypatch):
             text = page.locator("#main").inner_text()
             assert "Unknown" not in text
             status = page.locator('.missing.primary .lead')
-            assert status.inner_text() == 'Only mapped so far'
+            assert status.inner_text() == 'Page pending — background updates off'
             assert status.is_visible()
             assert status.evaluate('e => e.getBoundingClientRect().top >= 0 && e.getBoundingClientRect().bottom <= innerHeight')
-            assert page.locator('details.deep-note').get_attribute('open') is None
+            # #3104: the full memory opens by itself, even on a page only mapped so far; when all it held were the
+            # facts the profile card already says, it is not drawn at all (#3131).
+            note = page.locator('details.deep-note')
+            assert page.locator('.factlist').count() == 0
+            assert note.count() == 0 or note.get_attribute('open') is not None
             assert page.locator('.missing.primary .names').inner_text() == '8 sections will be written when it is investigated.'
-            assert "co rem --root '" in text and "investigate 'people/quiet.md'" in text
+            assert page.locator('.missing.primary button, .missing.primary code').count() == 0
 
             page.goto(link + "#c=people")
-            page.get_by_role("heading", name="People", exact=True).wait_for()
-            titles = page.locator(".sheet tbody .name a").all_inner_texts()
+            page.locator(".r4-people h1").wait_for()
+            # People opens on its table (#2991); without mail statistics the page's own activity orders it.
+            titles = page.locator(".people-table tbody td.c-name a").all_inner_texts()
             assert titles.index("Known Person") < titles.index("Recent Person") < titles.index("Quiet Person")
-            assert "Runs the Aurora pilot with us." in page.locator(".sheet").inner_text()
         finally:
             browser.close()

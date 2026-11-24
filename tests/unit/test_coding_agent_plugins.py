@@ -220,7 +220,7 @@ def test_invocation_terminal_summary_uses_only_recorded_safe_activity(monkeypatc
     ("session", "sandbox", "approval"),
     [
         ({"mode": "read-only"}, "read-only", "manual"),
-        ({"mode": "auto"}, "workspace-write", "manual"),
+        ({"mode": "auto"}, "workspace-write", "auto"),
         (
             {
                 "mode": "full-access",
@@ -232,7 +232,7 @@ def test_invocation_terminal_summary_uses_only_recorded_safe_activity(monkeypatc
         (
             {"mode": "auto", "requester": {"level": "contact"}},
             "workspace-write",
-            "manual",
+            "auto",
         ),
     ],
 )
@@ -331,6 +331,8 @@ def test_hosted_contact_uses_the_same_claude_mode_contract(monkeypatch, tmp_path
             "requester": {"address": "0xcontact", "level": "contact"},
         },
         io=io,
+        record_dir=tmp_path / ".co",
+        _record_trace=MagicMock(),
     )
 
     result = json.loads(

@@ -6,6 +6,43 @@ round of a co rem investigation (#1851). This file holds the reasons, incidents 
 examples behind those rules. It is not loaded at runtime. When you change a rule
 there, update its reason here in the same change.
 
+## Active research (2026-11-06)
+
+Investigations now choose 1–3 questions that change the user's next action and
+pursue them through mail and outside sources. Established identity, project
+state and capabilities belong in the cited lead/Insight; answered questions
+leave Uncertainties. Missing Facts require an attempted outside lookup, with
+its tool, query and result recorded in the reply's lead ledger.
+
+Both child investigations and native scheduled project/session tasks can use
+read-only `co search`, `co fetch`, their own `co browser` tab, connected mail,
+Feishu, GitHub and local coding sessions. Never open LinkedIn pages; a search
+result snippet may be saved and cited as that search. Queries expose only the
+subject's name, company, domain, project/repo name or public handle.
+
+The task saves raw captures under `web/` and registers URL/native ID, filename
+and read date in `web/sources.json`. Captures are text; a file that is not UTF-8
+(a screenshot, image or PDF) is refused by name so the task can save the page's
+text instead. Validation reads those files without
+network calls, checks quotes against their text, and gives the claim audit the
+same originals. Newly cited web URLs need a capture. Accepted cited captures
+are retained by source, date and content hash under `.state/research`, so task
+cleanup does not remove the reader's evidence. These are agent-saved snapshots,
+not independent proof that the remote server supplied them. Existing mail
+originals take precedence over CLI captures, and private labels retain their
+reader filtering.
+
+Labelled inference with cited reasoning is welcome; quoted words remain exact.
+A claim audit finding returns to the existing repair turn (or pending native
+writer) before final refusal. Supported existing page content stays in place;
+15k characters remains the aim, with superseded/duplicated content removed.
+The instruction budget grew to 22.5k so these rules can be added without
+compressing or removing the existing rules and examples.
+
+Earlier offline-run notes below describe historical behavior; they are
+superseded by this policy and the runtime skills. No live investigation or
+rendered notebook review was performed for this change; the owner runs the pilot.
+
 ## Group replies after a recipient is dropped
 
 A real person page still said the client owed scope approval, while another
@@ -406,6 +443,18 @@ into "launch must follow that review".
 ## Reading the CLI reference only when a command is run (#1960)
 
 The rule used to say "read the CLI reference first". In the 1.9.0a1 acceptance run (2026-09-30), the model obeyed it in every investigation: its first action was to `cat` the 12.6k-character reference. A 14.8k turn really carried about 27k, which undid the 15k ceiling from #1851. Offline runs, the common case, never run a `co` command, so they never need the reference.
+
+## Exact research calls instead of "run `--help` first" (#3083)
+
+The research block opened with "run `co commands` and the relevant `--help`
+first". In one audited day of real runs (2026-11-16) that was obeyed on every
+task: 145 help calls, 7–14 per investigation, each a model request that re-sent
+the whole context. The Skill now gives the calls it expects, with flags copied
+from each command's own `--help` (`co search`, `co fetch`, the `co browser` tab
+commands, `co gmail`/`co outlook` search, read, attachments and download), and
+keeps one sentence: `--help` is for a command not listed. It is the same lesson
+as #1960 below. When a flag of one of these commands changes, change the Skill
+with it; `tests/unit/test_rem_research.py` pins the calls.
 
 ## Moved out of the runtime Skill when it was split by page kind (2026-09-30)
 

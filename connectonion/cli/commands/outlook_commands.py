@@ -3,6 +3,7 @@ Purpose: CLI surface for Outlook email and contacts — send/read/search mail an
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
   Data flow: _microsoft_record() loads MICROSOFT_* from the global default or explicit --env-file and checks the operation scope (shared with outlook_calendar_commands) → _outlook() wraps it in an Outlook() instance | mail commands use list/read/send/reply methods and the numbered inbox cache | send and reply share _check_attachments() to reject missing or oversize --attach files before megabytes are base64-encoded | handle_outlook_reply(email_id, message, at, *, attachments, cc, bcc) keeps `at` third positional for pre-attachment callers, so attachments/cc/bcc are keyword-only | every handler ends with one print_tip() next command that survives piping; a scheduled send or reply names the cancel path (#1314) | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
+  Drafts: send/reply --draft save to Drafts and print the Outlook link | drafts numbers unsent drafts (scheduled sends left out) into the same remembered-listing file under kind "drafts" | send-draft <#> [--at] and delete-draft <#> resolve only numbers from that listing (#2729)
   State/Effects: writes one ~/.co/outlook-listings/<token>.json per inbox/search listing (15-minute, account-bound, via gmail_listings; numbers need --listing) and ~/.co/outlook_last_inbox.json for scheduled-send numbering | read changes mailbox state only with --mark-read; send/reply/contact commands mutate their named data | Outlook auto-refreshes expired tokens via oo-api and saves the selected credential record
   Integration: exposes handle_outlook_* functions for cli/main.py, including handle_outlook_contact_add/list/search | presentation mirrors existing mail tables | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
   Errors: guarded failures print a hint and exit 1 (typer.Exit) — missing auth/Mail/Contacts.ReadWrite scopes, invalid files/times/ids | Graph API errors propagate from Outlook
@@ -15,6 +16,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from .mail_window import print_json_listing, window_listing
@@ -169,8 +171,9 @@ def _check_attachments(attachments: list):
 
 @microsoft_errors("co outlook sent")
 def handle_outlook_send(to: str, subject: str, message: str, cc: str = None, bcc: str = None,
-                        attachments: list = None, at: str = None):
+                        attachments: list = None, at: str = None, draft: bool = False):
     """Send an email from the connected Outlook account. A message of '-' reads the body from stdin."""
+    _refuse_draft_at(draft, at)
     if message == "-":
         message = sys.stdin.read()
     send_at = _parse_send_at(at) if at else None
@@ -178,9 +181,12 @@ def handle_outlook_send(to: str, subject: str, message: str, cc: str = None, bcc
         _check_attachments(attachments)
 
     outlook = _outlook()
-    outlook.send(to, subject, message, cc=cc, bcc=bcc, attachments=attachments, send_at=send_at)
+    result = outlook.send(to, subject, message, cc=cc, bcc=bcc, attachments=attachments,
+                          send_at=send_at, draft=draft)
 
-    if send_at:
+    if draft:
+        _print_draft(result)
+    elif send_at:
         console.print(f"\n[green]✓ Scheduled[/green] for [bold]{send_at}[/bold] to [cyan]{to}[/cyan]")
     else:
         console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
@@ -192,10 +198,23 @@ def handle_outlook_send(to: str, subject: str, message: str, cc: str = None, bcc
     if attachments:
         names = ", ".join(Path(p).name for p in attachments)
         console.print(f"  Attached: {names}")
-    _after_send(send_at)
+    _after_send(send_at, draft)
 
 
-def _after_send(send_at: str | None) -> None:
+def _refuse_draft_at(draft: bool, at: str | None) -> None:
+    """--draft is never sent, so a send time on it would be ignored, silently. Exits 1."""
+    if draft and at:
+        console.print("\n❌ [bold red]--draft and --at do not go together:[/bold red] a draft waits for you to send it.\n")
+        raise typer.Exit(1)
+
+
+def _print_draft(result: str) -> None:
+    console.print("\n[green]✓ Saved to Drafts[/green]")
+    # soft_wrap: a link broken across lines no longer opens.
+    console.print(f"  {result}", markup=False, highlight=False, soft_wrap=True)
+
+
+def _after_send(send_at: str | None, draft: bool = False) -> None:
     """The send most likely to be taken back is the one that says how (#1314).
 
     Four emails queued for the next morning, wording that then had to change,
@@ -203,7 +222,9 @@ def _after_send(send_at: str | None) -> None:
     any CLI output. So the confirmation names it, and the same tip survives
     piping — the agent that scheduled the mail is the one that needs it.
     """
-    if send_at:
+    if draft:
+        print_tip("Next: co outlook drafts")
+    elif send_at:
         console.print("  Cancel before it goes out: co outlook scheduled, then co outlook cancel <#>",
                       markup=False, highlight=False)
         print_tip("Next: co outlook scheduled")
@@ -360,13 +381,14 @@ def handle_outlook_download(email_id: str, out_dir: str = ".", include_inline: b
 @microsoft_errors("co outlook sent")
 def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachments: list = None,
                          cc: str = None, bcc: str = None, listing: str | None = None,
-                         reply_all: bool = False):
+                         reply_all: bool = False, draft: bool = False):
     """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin.
 
     `at` keeps its third-positional slot from before attachments existed;
     attachments, cc and bcc are keyword-only so no caller can pass a schedule
     as a file or an address.
     """
+    _refuse_draft_at(draft, at)
     if message == "-":
         message = sys.stdin.read()
     send_at = _parse_send_at(at) if at else None
@@ -379,9 +401,11 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachm
         print_tip(f"\n[yellow]No email #{email_id} in that listing — run co outlook, then co outlook reply <#> <message> --listing <listing-id>.[/yellow]\n")
         raise typer.Exit(1)
 
-    outlook.reply(resolved, message, attachments=attachments, send_at=send_at, cc=cc, bcc=bcc,
-                  reply_all=reply_all)
-    if send_at:
+    result = outlook.reply(resolved, message, attachments=attachments, send_at=send_at, cc=cc, bcc=bcc,
+                           reply_all=reply_all, draft=draft)
+    if draft:
+        _print_draft(result)
+    elif send_at:
         console.print(f"\n[green]✓ Reply scheduled[/green] for [bold]{send_at}[/bold] to email {email_id}")
     else:
         console.print(f"\n[green]✓ Replied{' to all' if reply_all else ''}[/green] to email {email_id}")
@@ -392,7 +416,7 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None, *, attachm
     if attachments:
         names = ", ".join(Path(p).name for p in attachments)
         console.print(f"  Attached: {names}")
-    _after_send(send_at)
+    _after_send(send_at, draft)
 
 
 @microsoft_errors("co outlook inbox")
@@ -515,6 +539,68 @@ def handle_outlook_scheduled():
     console.print()
     console.print(table)
     print_tip("\n[dim]Cancel one with:[/dim] [bold]co outlook cancel <#>[/bold]\n")
+
+
+@microsoft_errors("co outlook inbox")
+def handle_outlook_drafts(last: int = 25):
+    """List unsent drafts, newest first, numbered for send-draft and delete-draft."""
+    drafts = _outlook().get_drafts(last)
+    # Recorded even when empty, for the reason handle_outlook_scheduled gives.
+    _remember_listing("drafts", drafts)
+    if not drafts:
+        console.print("\n[cyan]No drafts.[/cyan]\n")
+        print_tip('Next: co outlook send <to> "<subject>" "<message>" --draft')
+        return
+
+    if not console.is_terminal:
+        for i, draft in enumerate(drafts, 1):
+            console.print(f"{i}  {draft['saved_at']}  {draft['to']}  {draft['subject']}  {draft['link']}",
+                          markup=False, highlight=False, soft_wrap=True)
+        print_tip("Send one with: co outlook send-draft <#> [--at +2h]  ·  delete one with: co outlook delete-draft <#>")
+        return
+
+    table = Table(title="📝 Outlook — drafts", show_header=True, header_style="bold cyan")
+    table.add_column("#", justify="right")
+    table.add_column("To", max_width=32, no_wrap=True)
+    table.add_column("Subject", overflow="ellipsis", no_wrap=True)
+    table.add_column("Saved")
+    for i, draft in enumerate(drafts, 1):
+        table.add_row(str(i), draft["to"] or "(no recipient)",
+                      f"[link={draft['link']}]{escape(draft['subject'] or '(no subject)')}[/link]",
+                      _when(draft["saved_at"]))
+    console.print()
+    console.print(table)
+    print_tip("\n[dim]Click a subject to edit it in Outlook. Then:[/dim] [bold]co outlook send-draft <#> [--at +2h][/bold]"
+              " [dim]or[/dim] [bold]co outlook delete-draft <#>[/bold]\n")
+
+
+def _resolve_draft(outlook, number: str) -> str:
+    """A row of the last `co outlook drafts` listing, or a full id. Exits 1 on a number from anywhere else."""
+    resolved = _resolve_email_id(outlook, number, expect="drafts")
+    if not resolved:
+        errors.print(f"\n[yellow]No draft #{number}: numbers come from the last co outlook drafts listing.[/yellow]\n")
+        print_tip("Next: co outlook drafts")
+        raise typer.Exit(1)
+    return resolved
+
+
+@microsoft_errors("co outlook drafts")
+def handle_outlook_send_draft(number: str, at: str = None):
+    """Send a draft as it is now in Outlook, or schedule it with --at."""
+    send_at = _parse_send_at(at) if at else None
+    outlook = _outlook()
+    result = outlook.send_draft(_resolve_draft(outlook, number), send_at=send_at)
+    console.print(f"\n[green]✓[/green] {escape(result)}")
+    _after_send(send_at)
+
+
+@microsoft_errors("co outlook drafts")
+def handle_outlook_delete_draft(number: str):
+    """Delete a draft. Anything that is not a draft is refused."""
+    outlook = _outlook()
+    result = outlook.delete_draft(_resolve_draft(outlook, number))
+    console.print(f"\n[green]✓[/green] {escape(result)}")
+    print_tip("Next: co outlook drafts")
 
 
 @microsoft_errors("co outlook inbox")

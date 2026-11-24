@@ -13,7 +13,7 @@ from connectonion.rem import languages
 from connectonion.rem.config import prepare, read_config, set_config
 from connectonion.rem.files import RemError, read_json, write_json
 
-OWNER = ["aaron@openonion.ai"]
+OWNER = ["ellis.work@example.org"]
 NOW = datetime.now(timezone.utc)
 
 
@@ -51,17 +51,17 @@ def transcript(home, rows):
 def notebook(tmp_path):
     root = tmp_path / "rem"
     prepare(root)
-    (root / "people" / "aaron.md").write_text("# Aaron\n\n## Facts\n- Language: Unknown\n")
-    write_json(root / ".state" / "map.json", {"owner": {"record": "people/aaron.md", "addresses": OWNER}})
+    (root / "people" / "ellis.md").write_text("# Ellis\n\n## Facts\n- Language: Unknown\n")
+    write_json(root / ".state" / "map.json", {"owner": {"record": "people/ellis.md", "addresses": OWNER}})
     return root
 
 
 def test_mixed_chinese_and_english_owner_is_detected_from_own_words_only(notebook, tmp_path):
     mail(notebook, [
-        ("aaron@openonion.ai", "From: Aaron <aaron@openonion.ai>\nTo: briar@x.com\n\n你好，明天下午我们再聊一下这个合同的细节吧。"),
-        ("Aaron@OpenOnion.ai", "Hi Briar, the contract looks good, let's sign it next week.\n\n"
+        ("ellis.work@example.org", "From: Ellis <ellis.work@example.org>\nTo: briar@x.com\n\n你好，明天下午我们再聊一下这个合同的细节吧。"),
+        ("Ellis.Work@Example.org", "Hi Briar, the contract looks good, let's sign it next week.\n\n"
                                "On Mon, 12 Oct 2026, Briar wrote:\n> 我们这边已经准备好了所有的文件和材料"),
-        ("aaron@openonion.ai", "收到，谢谢你帮忙安排这次会议和后续的事情。"),
+        ("ellis.work@example.org", "收到，谢谢你帮忙安排这次会议和后续的事情。"),
         ("briar@x.com", "今天天气很好我们去公园散步吧然后吃晚饭怎么样"),   # someone else's words
         ("briar@x.com", "这是别人的邮件不是你写的内容所以不应该算进去"),
     ])
@@ -81,7 +81,7 @@ def test_mixed_chinese_and_english_owner_is_detected_from_own_words_only(noteboo
 
 
 def test_quoted_thread_and_headers_are_not_the_owners_words():
-    body = ("From: Aaron <a@x.com>\nSubject: Re: plan\n\nSounds good.\n\n"
+    body = ("From: Ellis <a@x.com>\nSubject: Re: plan\n\nSounds good.\n\n"
             "在 2026年10月12日，Briar 写道：\n> 我们下周见面讨论吧")
     assert languages.own_words(body).strip() == "Sounds good."
     assert languages.language_of("ok") is None                       # too short to vote
@@ -89,23 +89,23 @@ def test_quoted_thread_and_headers_are_not_the_owners_words():
 
 
 def test_refresh_keeps_detection_on_the_map_and_fills_an_empty_language_fact(notebook):
-    mail(notebook, [("aaron@openonion.ai", "我们明天再讨论一下这个项目的进展吧")] * 3
-         + [("aaron@openonion.ai", "Let's discuss the project progress tomorrow then")])
+    mail(notebook, [("ellis.work@example.org", "我们明天再讨论一下这个项目的进展吧")] * 3
+         + [("ellis.work@example.org", "Let's discuss the project progress tomorrow then")])
     assert languages.refresh(notebook)["languages"] == ["zh", "en"]
     assert read_json(notebook / ".state" / "map.json", {})["owner"]["languages"]["shares"] == {"zh": 0.75, "en": 0.25}
     assert "- Language: 中文, English (detected from your own mail and sessions)" in \
-        (notebook / "people" / "aaron.md").read_text()
+        (notebook / "people" / "ellis.md").read_text()
 
 
 def test_a_language_fact_already_written_is_left_alone(notebook):
-    (notebook / "people" / "aaron.md").write_text("# Aaron\n\n## Facts\n- Language: English and Chinese [2]\n")
-    mail(notebook, [("aaron@openonion.ai", "我们明天再讨论一下这个项目的进展吧")])
+    (notebook / "people" / "ellis.md").write_text("# Ellis\n\n## Facts\n- Language: English and Chinese [2]\n")
+    mail(notebook, [("ellis.work@example.org", "我们明天再讨论一下这个项目的进展吧")])
     languages.refresh(notebook)
-    assert "- Language: English and Chinese [2]" in (notebook / "people" / "aaron.md").read_text()
+    assert "- Language: English and Chinese [2]" in (notebook / "people" / "ellis.md").read_text()
 
 
 def test_the_owner_can_set_languages_and_unset_falls_back_to_detected(notebook):
-    mail(notebook, [("aaron@openonion.ai", "我们明天再讨论一下这个项目的进展吧")])
+    mail(notebook, [("ellis.work@example.org", "我们明天再讨论一下这个项目的进展吧")])
     languages.refresh(notebook)
     assert languages.owner_languages(notebook)["languages"] == ["zh"]
     assert languages.owner_languages(notebook)["from"].startswith("detected")

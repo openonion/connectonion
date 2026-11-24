@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -64,19 +65,35 @@ def run_extract(items: list[dict], config: dict, kind: str = "", *, root: Path) 
     tasks.mkdir(parents=True, exist_ok=True, mode=0o700)
     with tempfile.TemporaryDirectory(prefix="extract-", dir=tasks) as temporary:
         directory = Path(temporary)
-        prompt = task_prompt(directory, items, "extract", kind)
-        output = directory / "notes.md"
-        # A summary-tier model has no tool to write a file with (#1847): its notes are its reply.
-        summary = current(root, config) == "summary"
-        prompt += ("Reply with ONLY the complete extraction notes; do not call tools or write files. "
-                   if summary else f"Write the complete extraction notes to {output}; this file is your output. ")
-        prompt += ("If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
-                   "Do not edit notebook pages, read other sources, or start nested co rem jobs.")
-        result = run_task(tasks, prompt, config, "extract")
-        if summary:
-            output.write_text(str(result.get("result") or ""), encoding="utf-8")
-        notes = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
-        if not notes:
-            raise RunFailed("co ai extraction returned no notes file", result.get("usage"))
-        return {"notes": notes, "usage": result.get("usage"),
-                "instructions_chars": len((directory / "instructions.md").read_text(encoding="utf-8"))}
+        task = prepare(items, config, kind, root=root, directory=directory)
+        from .inquiry import stage_config
+        return check(task, run_task(tasks, task["prompt"], stage_config(root, config, "extract"), "extract"))
+
+
+def prepare(items, config, kind="", *, root, directory, native=False):
+    prompt = task_prompt(directory, items, "extract", kind, native=native)
+    output = directory / "notes.md"
+    # A summary-tier model has no tool to write a file with (#1847): its notes are its reply.
+    summary = not native and current(root, config) == "summary"
+    prompt += ("Reply with ONLY the complete extraction notes; do not call tools or write files. "
+               if summary else f"Write the complete extraction notes to {output}; this file is your output. ")
+    prompt += ("If nothing is worth keeping, write exactly 'Nothing worth keeping.' "
+               "Do not edit notebook pages, read other sources, or start nested co rem jobs.")
+    return {"directory": str(directory), "candidate": str(output), "prompt": prompt, "summary": summary,
+            "root": str(root)}
+
+
+def check(task, result):
+    directory, output = Path(task["directory"]), Path(task["candidate"])
+    summary = task["summary"]
+    if summary:
+        output.write_text(str(result.get("result") or ""), encoding="utf-8")
+    notes = output.read_text(encoding="utf-8").strip() if output.is_file() else ""
+    if not notes:
+        raise RunFailed("co ai extraction returned no notes file", result.get("usage"))
+    topics = re.search(r'^## Topics\s*\n.*?(?=^## |\Z)', notes, re.M | re.S)
+    if topics and task.get('root'):
+        digest = hashlib.sha256(topics[0].encode()).hexdigest()
+        write_json(state_path(Path(task['root']), f'extracts/topics/{digest}.json'), {'notes': topics[0]})
+    return {"notes": notes, "usage": result.get("usage"),
+            "instructions_chars": len((directory / "instructions.md").read_text(encoding="utf-8"))}

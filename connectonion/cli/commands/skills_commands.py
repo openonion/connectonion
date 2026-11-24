@@ -504,6 +504,22 @@ def _link_one(source: Path, target: Path, force: bool) -> str:
     return "linked"
 
 
+def link_missing() -> list[str]:
+    """Silently link missing bundled skills, leaving every existing path alone."""
+    skills = sorted(d for d in BUNDLED_SKILLS.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
+    linked = []
+    for _, root in link_targets():
+        if not root.parent.is_dir() or not writable(root):
+            continue
+        for skill in skills:
+            target = root / skill.name
+            if target.exists() or target.is_symlink():
+                continue
+            _link_one(skill, target, force=False)
+            linked.append(skill.name)
+    return linked
+
+
 def handle_skills_link(force: bool = False, brief: bool = False):
     """Link the bundled ConnectOnion skills into ~/.claude/skills and ~/.codex/skills.
 

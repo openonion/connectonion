@@ -48,7 +48,7 @@ PROMPT = (
     "Create a Rust command-line tool called greeter in the directory ./greeter "
     "(relative to the current directory). It takes --name <name> and prints "
     "'Hello, <name>!'. Include a unit test for the greeting function. Build it "
-    "with cargo, run the tests, then run the binary with --name Aaron and show "
+    "with cargo, run the tests, then run the binary with --name Ellis and show "
     "the first line of its output. You are running unattended: nobody can "
     "approve anything, so stay inside ./greeter and do not delete files."
 )
@@ -116,5 +116,5 @@ def test_a_real_model_builds_tests_and_runs_the_cli_unattended(tmp_path, monkeyp
     assert binary.exists(), f"no binary; model said: {answer!r}"
     tests = subprocess.run([CARGO, "test", "--quiet"], cwd=project, capture_output=True, text=True, timeout=600)
     assert tests.returncode == 0, tests.stdout + tests.stderr
-    run = subprocess.run([str(binary), "--name", "Aaron"], capture_output=True, text=True, timeout=60)
-    assert run.stdout.strip().splitlines()[0] == "Hello, Aaron!", run.stdout
+    run = subprocess.run([str(binary), "--name", "Ellis"], capture_output=True, text=True, timeout=60)
+    assert run.stdout.strip().splitlines()[0] == "Hello, Ellis!", run.stdout

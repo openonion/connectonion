@@ -120,6 +120,19 @@ def process_environment() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if _loaded.get(key) != value}
 
 
+def subprocess_environment() -> dict[str, str]:
+    """Children reload file-backed OAuth records so refreshes keep their provenance.
+
+    Exported tokens look like shell overrides in a fresh process: they bypass
+    the file lock, rotation recovery and atomic save. Keep genuine overrides.
+    Ordinary settings (including OpenOnion authentication) remain inherited.
+    """
+    oauth = {key for provider in PROVIDER_PREFIXES for key in provider_keys(provider)}
+    inherited = process_environment()
+    return {key: value for key, value in os.environ.items()
+            if key not in oauth or key in inherited}
+
+
 def provider_keys(provider: str) -> tuple[str, ...]:
     return tuple(f"{provider.upper()}_{field}" for field in PROVIDER_FIELDS)
 

@@ -6,7 +6,7 @@ owner's Mac. Before telling the owner to re-map, we checked what the re-map
 would actually change on their notebook.
 
 It would have changed nothing for those 176 people. Their pages already
-existed, made by an older map and titled `larryleework7@gmail.com`, and the
+existed, made by an older map and titled `fenwick.work@example.org`, and the
 map never rewrites a page that already exists. The new code worked in every
 test, and every one of those tests started from an empty notebook.
 

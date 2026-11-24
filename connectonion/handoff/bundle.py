@@ -210,9 +210,15 @@ def find_credentials(bundle: dict, known_secrets: list[str] = ()) -> list[str]:
     return hits
 
 
+def _without_private_pages(text: str) -> str:
+    return re.sub(r'^# [^\n]*[\[［](?:personal|sensitive)[\]］][^\n]*\n.*?(?=^# |\Z)',
+                  '[removed: private notebook page]\n', text, flags=re.M | re.S | re.I)
+
+
 def redact(text: str, known_secrets: list[str] = ()) -> str:
     """`text` with every credential-looking string replaced: for the session copy, which no one reviews
     line by line the way a person reviews the brief's preview."""
+    text = _without_private_pages(text)
     for kind, pattern in CREDENTIAL_PATTERNS.items():
         text = re.sub(pattern, f"[removed: {kind}]", text)
     for secret in known_secrets:
@@ -293,6 +299,7 @@ def mask(text: str, keep=(), emails: set[str] = None, names=()) -> str:
     """`text` with other people's addresses, numbers and IPs removed, and what else points at them.
     `emails` names the addresses when they were found across more than this one text; `names` are
     people's names to remove (rem_names)."""
+    text = _without_private_pages(text)
     emails = others(text, keep)[0] if emails is None else emails
     text = HANDOFF_LINK.sub("[handoff link]", text)
     if names:

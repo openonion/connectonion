@@ -23,7 +23,7 @@ import os
 import re
 from pathlib import Path
 
-from .files import WRITE_WAIT_SECONDS, Notebook, maintenance_lock
+from .files import WRITE_WAIT_SECONDS, Notebook, archive_path, maintenance_lock
 from .page_review import prose
 
 COPIES = ("<!-- rem-installed-copies -->", "<!-- /rem-installed-copies -->")
@@ -225,7 +225,10 @@ def _shape(page: str, copies: list[dict], gone: list[str], usage: str, descripti
     def sources(body):  # the metadata citation names the page's File, not a merged copy's
         if not copies:
             return body
-        return re.sub(r"^- Skill metadata: .*$", f"- Skill metadata: {copies[0]['path']}", body, count=1, flags=re.M)
+        # A function, not a string: a Windows path's backslashes ("C:\\Program
+        # Files") are escapes in a replacement string ("bad escape \\P").
+        line = f"- Skill metadata: {copies[0]['path']}"
+        return re.sub(r"^- Skill metadata: .*$", lambda match: line, body, count=1, flags=re.M)
 
     page = _with_section(page, "Source", source)
     page = _with_section(page, "Sources", sources)
@@ -310,7 +313,7 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
                          and all(transient(path) or not Path(path).exists()
                                  for path in _listed_files(notebook.read(page)) or ["/tmp/"])]
                 for page in stale:
-                    target = notebook.root / ".state" / "archived" / page
+                    target = archive_path(notebook.root, page, new=True)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     notebook.path(page).replace(target)
                     archived.append(page)
@@ -323,7 +326,7 @@ def map_skills(notebook: Notebook, directories: list[Path] | None = None, *, loc
                 base = max(pages, key=lambda page: (weight(notebook.read(page)), page), default=None)
                 if base:  # the page with the most written content becomes the name's page
                     notebook.write(record, notebook.read(base))
-                    target = notebook.root / ".state" / "archived" / base
+                    target = archive_path(notebook.root, base, new=True)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     notebook.path(base).replace(target)
                     pages = [page for page in pages if page != base]
@@ -373,12 +376,12 @@ def _alias(notebook: Notebook, old: str, new: str, reason: str = "one page per s
     """The base page moved to its name's record: the old record is an alias; nothing to merge."""
     from .files import read_json, state_path, write_json
     from .merge import ALIASES, _relink
-    from datetime import date
+    from .service import notebook_today
     table = read_json(state_path(notebook.root, ALIASES), {})
     for entry in table.values():
         if entry["into"] == old:
             entry["into"] = new
-    table[old] = {"into": new, "reason": reason, "date": date.today().isoformat(),
-                  "archived": f".state/archived/{old}"}
+    table[old] = {"into": new, "reason": reason, "date": notebook_today(notebook.root).isoformat(),
+                  "archived": archive_path(notebook.root, old).relative_to(notebook.root).as_posix()}
     write_json(state_path(notebook.root, ALIASES), table)
     _relink(notebook, old, new)

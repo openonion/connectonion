@@ -119,9 +119,8 @@ def _warn_if_headed(sock_path: str) -> None:
     global _mode_warned
     if _mode_warned:
         return
-    if sys.platform.startswith("linux") and not (
-        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-    ):
+    from ...useful_tools.browser_tools.chrome_finder import has_a_display
+    if not has_a_display():
         return  # with no display the daemon is headless whatever it was told
     pid = _owner_pid(sock_path)
     if pid is None or pid == os.getpid() or _daemon_headless(pid) is not False:

@@ -45,7 +45,7 @@ Measured from `received.jsonl`, 19 September traffic only:
 | flagged `mentioned: true` | 5 |
 | flagged `mentioned: false` | 6 |
 
-Sender identity resolves to names, not just ids: `aaronplus1996`, `Han (John)`.
+Sender identity resolves to names, not just ids: `ellis.a`, `Han (John)`.
 
 The gating was checked case by case rather than by count. Two of the five are
 `@132754033377342 …`. One is a `joined` record, which a6 decided is addressed
@@ -164,7 +164,7 @@ untested here for want of old enough mail, not for want of trying.
 
 ```
 $ co gmail inbox --since 5d --json -n 20
-status: success | complete: True | account: openonionai@gmail.com
+status: success | complete: True | account: team@example.org
 rows: 20   oldest 2026-09-17T10:31:39-05:00 (1.71 days ago)
 ```
 

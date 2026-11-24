@@ -39,15 +39,15 @@ APP_TOKEN = "xapp-1-A0-secret-app-token"
 BOT_TOKEN = "xoxb-secret-bot-token"
 
 DM = {
-    "type": "message", "channel": "D0123456789", "channel_type": "im", "user": "U0AARON000",
+    "type": "message", "channel": "D0123456789", "channel_type": "im", "user": "U0ELLIS000",
     "text": "check the failed deployment", "ts": "1727500000.123456", "event_ts": "1727500000.123456",
 }
 MENTION = {
-    "type": "app_mention", "channel": "C0123456789", "user": "U0AARON000",
+    "type": "app_mention", "channel": "C0123456789", "user": "U0ELLIS000",
     "text": f"<@{ME}> deploy status?", "ts": "1727500100.000200", "event_ts": "1727500100.000200",
 }
 CHANNEL = {
-    "type": "message", "channel": "C0123456789", "channel_type": "channel", "user": "U0AARON000",
+    "type": "message", "channel": "C0123456789", "channel_type": "channel", "user": "U0ELLIS000",
     "text": "lunch?", "ts": "1727500200.000300",
 }
 
@@ -121,7 +121,7 @@ class TestAnEventBecomesAMessage:
         assert record["id"] == "D0123456789:1727500000.123456"
         assert record["chat"] == "D0123456789"
         assert record["thread"] is None
-        assert record["sender"] == "U0AARON000"
+        assert record["sender"] == "U0ELLIS000"
         assert record["text"] == "check the failed deployment"
         assert record["kind"] == "text"
         assert record["mentioned"] is True
@@ -151,8 +151,8 @@ class TestAnEventBecomesAMessage:
         assert bot.to_message(pdf).kind == "document"
 
     def test_the_profile_name_is_used_when_slack_sends_one(self, bot):
-        named = {**DM, "user_profile": {"real_name": "Aaron Yu", "display_name": "aaron"}}
-        assert bot.to_message(named).sender_name == "aaron"
+        named = {**DM, "user_profile": {"real_name": "Ellis Yu", "display_name": "ellis"}}
+        assert bot.to_message(named).sender_name == "ellis"
 
     @pytest.mark.parametrize("change", [
         {"bot_id": "B0SOMEBOT"},

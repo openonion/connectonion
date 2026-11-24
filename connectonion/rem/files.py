@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import subprocess
 import tempfile
 import threading
 from collections import deque
@@ -19,6 +20,16 @@ from .facts import FIELDS
 # Person-page labels the roster reads back. Contact lines are skipped when
 # looking for the opening line: "Phone: Unknown" is not who somebody is.
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+# A chat handle: a WeChat id (wxid_… or a custom id) or another chat's bare id. One plain token, never a pattern;
+# a WhatsApp jid (…@s.whatsapp.net) already reads as EMAIL. Lets 不是人 mark a chat-only contact (#3339).
+CHAT_HANDLE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{4,63}")
+
+
+def person_handle(text: str) -> bool:
+    """One address or chat handle the owner can mark 是人 / 不是人."""
+    return bool(EMAIL.fullmatch(text) or CHAT_HANDLE.fullmatch(text))
+
+
 DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 ALIAS_LABELS = ("also known as:", "aka:", "别名:", "别名：")
 CITATION = re.compile(r"\s*\[W?\d+\]")
@@ -45,7 +56,7 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "location:", "time zone:", "links:", "how we know them:", "first contact:", "last contact:",
     "电话:", "电话：", "公司:", "公司：")
 
-CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "opportunities",
+CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "keys", "opportunities",
               "decisions", "principles", "works", "agenda", "sessions", "notes", "logs")
 MAX_NOTE_BYTES = 1_000_000
 # The map's default window. 90 days left out people the owner works with every
@@ -54,7 +65,7 @@ MAP_DAYS = 180
 # The maintainer has a read-only shell and this is its only write path; a key it
 # was tricked into cat-ing must not become a page. Shapes, not words: prose about
 # "the API key" is fine, the key itself is not.
-SECRET_SHAPES = re.compile(
+KEY_SHAPES = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----|\bsk-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|"
     r"\bxox[abpr]-[A-Za-z0-9-]{8,}|\bAIza[0-9A-Za-z_-]{30,}|\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.")
 
@@ -63,16 +74,29 @@ class RemError(Exception):
     """Safe, user-facing co rem error (never include source body or credentials)."""
 
 
+def _relative_form(relative: str) -> bool:
+    return bool(relative) and not (
+        relative.startswith("/") or "\\" in relative
+        or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in relative))
+
+
+def _hidden(relative: str) -> bool:
+    return any(part.startswith(".") for part in relative.split("/"))
+
+
+def notebook_path(relative: str) -> bool:
+    """Whether a relative path names notebook content, without checking the disk."""
+    return _relative_form(relative) and not _hidden(relative)
+
+
 def safe_path(root: Path, relative: str) -> Path:
     """Reject traversal and links instead of following them into another store."""
-    parts = PurePosixPath(relative).parts
-    if (not parts or relative.startswith("/") or "\\" in relative
-            or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in relative)):
+    if not _relative_form(relative):
         raise RemError("Expected a relative notebook path")
-    if any(part in (".", "..") or part.startswith(".") for part in parts):
+    if _hidden(relative):
         raise RemError("Hidden paths and traversal are not notebook content")
     path = root
-    for part in parts:
+    for part in PurePosixPath(relative).parts:
         path = path / part
         if path.is_symlink():
             raise RemError("Symlinks are not supported inside the notebook")
@@ -94,6 +118,31 @@ def atomic_write(path: Path, text: str) -> None:
     finally:
         if os.path.exists(name):
             os.unlink(name)
+    _changed(path)
+
+
+# The reader's cache key reads this one file instead of listing the notebook
+# (31,136 files took 17 s of stat calls per open). atomic_write and
+# Notebook.delete touch it; the lock's own files, rewritten or created by every
+# Host minute tick, are bookkeeping and do not (nor does the reader's full walk).
+CHANGED = "reader-changed"
+QUIET_STATE = {"maintenance-owner.json", "maintenance.lock", CHANGED}
+
+
+def _changed(path: Path) -> None:
+    """Mark the notebook a written file belongs to: the folder holding `.state`."""
+    if path.name in QUIET_STATE:
+        return
+    # Under `.state` the notebook is the folder above it, even for a candidate
+    # notebook a task keeps there: a marker inside the task would be new input.
+    inside = [parent for parent in path.parents if parent.name == ".state"]
+    for parent in inside[-1:] or list(path.parents)[:5]:
+        state = parent if parent.name == ".state" else parent / ".state"
+        if state.is_dir() and not state.is_symlink():
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+            with os.fdopen(os.open(state / CHANGED, flags, 0o600), "w") as output:
+                output.write(str(time.time_ns()))
+            return
 
 
 def state_path(root: Path, name: str) -> Path:
@@ -110,13 +159,46 @@ def read_json(path: Path, default):
     if not path.exists():
         return default
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"), object_hook=_text_parts)
     except (ValueError, UnicodeError) as error:
         raise RemError(f"Invalid operational file: {path.name}; preserve it for diagnosis") from error
 
 
-def write_json(path: Path, value) -> None:
-    atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+def _text_parts(value):
+    if set(value) == {"__rem_text_parts__"}:
+        return "".join(value["__rem_text_parts__"])
+    return value
+
+
+def _readable_json(value):
+    """Lossless strings in bounded lines, including escaped transcript newlines.
+
+    Native state still needs exact strings for hashes and validation. Merely
+    indenting JSON leaves a whole transcript on one physical line.
+    """
+    if isinstance(value, str) and len(json.dumps(value, ensure_ascii=False)) > 3000:
+        parts = [line[i:i + 400] for line in value.splitlines(keepends=True) for i in range(0, len(line), 400)]
+        return {"__rem_text_parts__": parts}
+    if isinstance(value, dict):
+        return {key: _readable_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_readable_json(item) for item in value]
+    return value
+
+
+def write_json(path: Path, value, *, readable=False) -> None:
+    atomic_write(path, json.dumps(_readable_json(value) if readable else value, ensure_ascii=False, indent=2) + "\n")
+
+
+def archive_path(root: Path, record: str, *, new: bool = False) -> Path:
+    """The latest page archive, or the next unused name; caller holds the lock."""
+    base = state_path(root, f"archived/{record}")
+    target, latest, version = base, base, 0
+    while target.exists():
+        latest = target
+        version += 1
+        target = state_path(root, f"archived/{record}.{version}")
+    return target if new else latest
 
 
 # How long a write of work already done waits for the notebook lock. A promotion
@@ -135,20 +217,31 @@ class _InOrder:
         self._queue = deque()
         self._held = False
 
-    def acquire(self, timeout: float = 0) -> bool:
+    def acquire(self, timeout: float = 0, on_busy=None) -> bool:
         me = object()
         with self._changed:
             if not self._held and not self._queue:
                 self._held = True
                 return True
+            if on_busy:
+                on_busy()
             if timeout <= 0:
                 return False
             self._queue.append(me)
-            turn = self._changed.wait_for(lambda: not self._held and self._queue[0] is me, timeout)
-            self._queue.remove(me)
-            self._held = self._held or turn
-            self._changed.notify_all()
-            return turn
+            deadline = time.monotonic() + timeout
+            try:
+                while self._held or self._queue[0] is not me:
+                    if on_busy:
+                        on_busy()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    self._changed.wait(min(1, remaining) if on_busy else remaining)
+                self._held = True
+                return True
+            finally:
+                self._queue.remove(me)
+                self._changed.notify_all()
 
     def release(self) -> None:
         with self._changed:
@@ -161,21 +254,60 @@ class _InOrder:
 # while a waiter slept between tries: three organisation pages waited ten
 # minutes and failed (1.9.2b2 trial).
 _THREADS = _InOrder()
+MAINTENANCE_BUSY = "co rem is busy; wait for the active maintenance run, then retry co rem next (the round is not over)"
+
+
+def maintenance_busy(root: Path) -> str:
+    owner = read_json(state_path(root, "maintenance-owner.json"), {})
+    pid = owner.get("pid")
+    command = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip() if pid else ""
+    return (f"MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid {pid or 'unknown'}: "
+            f"{command or owner.get('operation') or 'command unavailable'}. Report this message and end the turn without retrying.")
+
+
+def _native_waiter(root: Path, waited_for: dict, *, scheduled=False):
+    announced = False
+    missing_since = None
+
+    def on_busy():
+        nonlocal announced, missing_since
+        owner = read_json(state_path(root, "maintenance-owner.json"), {})
+        # Metadata is published after acquisition and cleared before release.
+        # Give those windows one polling interval, including an older holder
+        # that cannot identify itself, rather than misclassify a native next.
+        if not owner and missing_since is None:
+            missing_since = time.monotonic()
+        if not scheduled and (owner and owner.get("operation") not in ("next", "submit") or (
+                not owner and time.monotonic() - missing_since >= 1)):
+            raise RemError(MAINTENANCE_BUSY)
+        if owner:
+            waited_for.update(owner)
+            missing_since = None
+        if not announced:
+            print("Waiting for another co rem next to finish preparing (or submit to finish)…",
+                  file=sys.stderr, flush=True)
+            announced = True
+
+    return on_busy
 
 
 @contextmanager
-def maintenance_lock(root: Path, wait: float = 0):
+def maintenance_lock(root: Path, wait: float = 0, *, operation=None, wait_for_native=False, scheduled=False):
     """One OS-owned lock for every write path; process death releases it.
 
-    `wait` is how many seconds to keep trying. A scheduled tick gives up at
-    once and retries on the next one; a finished investigation has no next
-    tick, so it waits rather than lose a page it already paid for.
+    `wait` bounds thread and file waits together. Manual next waits only for
+    another next/submit; scheduled next waits for any maintenance holder.
     """
-    if not _THREADS.acquire(timeout=wait):
-        raise RemError("co rem is busy; wait for the active maintenance run")
+    deadline = time.monotonic() + wait
+    waited_for = {}
+    on_busy = _native_waiter(root, waited_for, scheduled=scheduled) if wait_for_native else None
+    if not _THREADS.acquire(timeout=wait, on_busy=on_busy):
+        raise RemError(maintenance_busy(root) if scheduled else MAINTENANCE_BUSY)
     try:
-        with _file_lock(root, wait):
-            yield
+        with _file_lock(root, max(0, deadline - time.monotonic()), operation=operation, on_busy=on_busy,
+                        scheduled=scheduled):
+            yield waited_for
     finally:
         _THREADS.release()
 
@@ -207,7 +339,7 @@ def _try_lock(fd: int) -> None:
 
 
 @contextmanager
-def _file_lock(root: Path, wait: float):
+def _file_lock(root: Path, wait: float, *, operation=None, on_busy=None, scheduled=False):
     """The lock other processes see: a scheduled tick, a second terminal."""
     path = state_path(root, "maintenance.lock")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -219,10 +351,19 @@ def _file_lock(root: Path, wait: float):
                 _try_lock(fd)
                 break
             except BlockingIOError as error:
+                if on_busy:
+                    on_busy()
                 if time.monotonic() >= deadline:
-                    raise RemError("co rem is busy; wait for the active maintenance run") from error
-                time.sleep(min(1.0, max(0.05, deadline - time.monotonic())))
-        yield
+                    raise RemError(maintenance_busy(root) if scheduled else MAINTENANCE_BUSY) from error
+                time.sleep(min(1.0, max(0, deadline - time.monotonic())))
+        owner = state_path(root, "maintenance-owner.json")
+        write_json(owner, {"pid": os.getpid(), "operation": operation,
+                           "turn_id": os.environ.get("CO_REM_TURN_ID")})
+        try:
+            yield
+        finally:
+            # Keep the path stable: deleting it races a waiter's read_json.
+            write_json(owner, {})
     finally:
         os.close(fd)
 
@@ -244,9 +385,9 @@ def _warn_skipped(record: str, why: str) -> None:
     print(f"co rem: skipped {record}: {why}", file=sys.stderr)
 
 
-def _today() -> str:
-    from datetime import date
-    return date.today().isoformat()
+def _today(root: Path) -> str:
+    from .service import notebook_today
+    return notebook_today(root).isoformat()
 
 
 def _latest_passes(parts: list[str]) -> str:
@@ -357,15 +498,17 @@ class Notebook:
         # stage had, and sends the paid stage looking for it.
         # Addresses are not names: seeded into Also known as too, 64 of 295 pages
         # in the 1.9.2b3 run said nothing there but the Email line again.
+        # An address is a real mail address only: a WeCom contact's WeChat id ends "@openim" and is a handle, not
+        # mail; written to Handles alone it never reached the roster and the night stubbed that friend again (#3347).
         seeded = {"Handles": ", ".join(handles),
-                  "Also known as": ", ".join(handle for handle in handles if "@" not in handle)}
+                  "Also known as": ", ".join(handle for handle in handles if not EMAIL.fullmatch(handle))}
         seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
         lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Facts"]
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
         for section in ("Insight", *self.PERSON_SECTIONS):
             lines += ["", f"## {section}", "- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
     ORG_SECTIONS = ("Who they are", "Our relationship", "People here", "Terms",
@@ -394,8 +537,22 @@ class Notebook:
             else:
                 lines += ["- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
+
+    TOPIC_SECTIONS = ('What it is', 'Where you stand', 'People', 'Orgs', 'Projects',
+                      'Timeline', 'Open threads', 'Uncertainties', 'Sources')
+
+    def stub_topic(self, record: str, name: str, aliases=(), *, private=False) -> bool:
+        """A candidate's identity only; investigation owns its claims and links."""
+        if self.path(record).is_file():
+            return False
+        lines = [f"# {name}" + (' [personal]' if private else ''), '',
+                 '- Also known as: ' + '; '.join(aliases), '']
+        for section in self.TOPIC_SECTIONS:
+            lines += [f'## {section}', '- Unknown — not investigated yet', '']
+        lines += [f'Investigation: mapped {_today(self.root)} · not investigated yet', '']
+        return self.write(record, '\n'.join(lines))
 
     # The first screen answers what, why, where it stands and what is next;
     # reference detail follows (the owner, 2026-10-15: "like an ordinary memory").
@@ -424,7 +581,7 @@ class Notebook:
             else:
                 lines += ["- Unknown — not investigated yet"]
         lines += ["", "## Sources", "- (none yet)", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
     def stub_skill(self, record: str, name: str, source: str, description: str = "", location: str = "") -> bool:
@@ -444,7 +601,7 @@ class Notebook:
         lines += ["", "## Source", f"- File: {source}", f"- Discovery: {location}",
                   "- Status: mapped from metadata; behavior not verified"]
         lines += ["", "## Sources", f"- Skill metadata: {source}", "",
-                  f"Investigation: mapped {_today()} · not investigated yet", ""]
+                  f"Investigation: mapped {_today(self.root)} · not investigated yet", ""]
         return self.write(record, "\n".join(lines))
 
     def unfinished(self, category: str = "") -> list[dict]:
@@ -473,7 +630,7 @@ class Notebook:
         """
         text = self.read(record)
         lines = text.splitlines()
-        stamp = f"{verb} {_today()} ({what})"
+        stamp = f"{verb} {_today(self.root)} ({what})"
         for i, line in enumerate(lines):
             if line.startswith("Investigation:"):
                 parts = line.removeprefix("Investigation:").strip().split(" · ")
@@ -560,9 +717,13 @@ class Notebook:
         path = self.path(record, writing=True)
         if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_NOTE_BYTES:
             raise RemError("Markdown exceeds the one-megabyte writing limit")
-        if SECRET_SHAPES.search(content):
+        if KEY_SHAPES.search(content):
             raise RemError("Refusing to write secret-shaped content (a key or token) into a notebook page")
-        if path.exists() and self.read(record) == content:
+        previous = self.read(record) if path.exists() else None
+        # A masked knowledge page keeps its number, or is given the next one, here where pages are written (#3385).
+        from .masked import numbered
+        content = numbered(self.root, record, content, previous)
+        if previous == content:
             return False
         atomic_write(path, content)
         return True
@@ -572,6 +733,7 @@ class Notebook:
         if not path.exists():
             return False
         path.unlink()
+        _changed(path)
         return True
 
     def search(self, query: str, category: str = "") -> list[dict]:

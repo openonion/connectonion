@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from .mode import AUTO, FULL_ACCESS, READ_ONLY
+from .mode import AUTO, FULL_ACCESS, READ_ONLY, MODE_NAMES
 
 _OPTION_DEFINITIONS = {
     "codex": (
         {"id": "codex:read-only", "nativeProfileId": ":read-only", "reviewer": "user", "label": "Read Only", "description": "Codex can inspect the workspace but cannot change it.", "ceiling": 0, "risk": "standard"},
         {"id": "codex:workspace-ask", "nativeProfileId": ":workspace", "reviewer": "user", "label": "Ask for approval", "description": "Codex can work in the workspace and asks before protected actions.", "ceiling": 1, "risk": "standard"},
-        {"id": "codex:workspace-auto", "nativeProfileId": ":workspace", "reviewer": "auto", "label": "Approve for me", "description": "Codex automatically reviews actions inside the workspace boundary.", "ceiling": 1, "risk": "standard"},
+        {"id": "codex:workspace-auto", "nativeProfileId": ":workspace", "reviewer": "auto", "label": "Work automatically", "description": "Codex works inside the workspace sandbox without approval prompts.", "ceiling": 1, "risk": "standard"},
         {"id": "codex:full-access", "nativeProfileId": ":danger-full-access", "reviewer": "auto", "label": "Full Access", "description": "Codex can act outside the workspace boundary for the next provider turn.", "ceiling": 2, "risk": "elevated"},
     ),
     "claude_code": (
@@ -22,11 +22,11 @@ _OPTION_DEFINITIONS = {
     ),
 }
 _DEFAULT_OPTIONS = {
-    "codex": {READ_ONLY: "codex:read-only", AUTO: "codex:workspace-ask", FULL_ACCESS: "codex:full-access"},
+    "codex": {READ_ONLY: "codex:read-only", AUTO: "codex:workspace-auto", FULL_ACCESS: "codex:full-access"},
     "claude_code": {READ_ONLY: "claude:plan", AUTO: "claude:auto", FULL_ACCESS: "claude:auto"},
 }
 _CEILING = {READ_ONLY: 0, AUTO: 1, FULL_ACCESS: 2}
-_CEILING_LABEL = {READ_ONLY: "Read Only", AUTO: "Auto", FULL_ACCESS: "Full Access"}
+_CEILING_LABEL = {READ_ONLY: MODE_NAMES[READ_ONLY], AUTO: "Auto", FULL_ACCESS: MODE_NAMES[FULL_ACCESS]}
 
 
 def default_provider_permission_option(provider: str, host_mode: str) -> str:

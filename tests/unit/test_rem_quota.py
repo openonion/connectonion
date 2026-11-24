@@ -10,6 +10,9 @@ import pytest
 
 from connectonion.rem import quota
 
+pytestmark = pytest.mark.usefixtures("rem_clock")
+
+
 WEEK = 10080
 RESETS = 1_791_067_743  # 2026-10-04, a week after the runs below
 WINDOW_START = RESETS - WEEK * 60
@@ -54,7 +57,8 @@ def test_a_failed_read_says_why_and_does_not_raise(monkeypatch, tmp_path):
     assert "method not found" in reading["unknown"]
 
 
-def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch):
+@pytest.mark.parametrize("runner", ["codex", "claude-code"])
+def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch, runner):
     from rich.text import Text
     from connectonion.cli.commands import rem_status
     from connectonion.rem import service
@@ -62,17 +66,19 @@ def test_status_with_an_unknown_meter_keeps_pages_running(tmp_path, monkeypatch)
 
     root = tmp_path / "rem"
     prepare(root)
-    monkeypatch.setattr(quota, "read", lambda config: {
-        "unknown": "Codex did not report its quota (RuntimeError: boom)"})
-    bits = service._quota_status(read_config(root), [])
-    assert "RuntimeError" not in bits["codex_week"]
-    assert "unknown" in bits["codex_week"] or "unavailable" in bits["codex_week"]
+    monkeypatch.setattr(quota, "read", lambda config: pytest.fail("status read the meter live"))
+    config = {**read_config(root), "runner": runner}
+    bits = service._quota_status(config, [])
+    assert "unknown" in bits["codex_week"]
     assert "pages still run" in bits["codex_week"]
     assert "within the daily call cap" in bits["codex_week"]
-    assert "RuntimeError" in bits["quota"]["unknown"]
+    assert bits["quota"]["unknown"] == (
+        "No saved quota reading for the current window" if runner == "codex"
+        else "the claude-code runner has no quota meter")
+    assert quota.blocks(bits["quota"], 99, config["limits"]) == ""
 
     value = {"root": str(root), "state": "Stopped", "configured": True, **bits}
-    text = Text.from_markup(rem_status.dashboard(root, value, lambda args: "co rem " + " ".join(args))).plain
+    text = Text.from_markup(rem_status.card(root, value, lambda args: "co rem " + " ".join(args))).plain
     assert "RuntimeError" not in text
     assert "pages still run" in text
     assert "within the daily call cap" in text
@@ -104,6 +110,28 @@ def test_the_budget_and_the_floor_stop_a_new_investigation():
     assert "70%" in quota.blocks({**week, "used_percent": 70}, 0, limits)
     # No meter: the call cap is the only bound, as before this change.
     assert quota.blocks({"unknown": "no meter"}, 99, limits) == ""
+
+
+def test_a_spent_budget_holds_investigation_in_words_with_the_reset_and_the_floor_is_not_its_business():
+    limits = {"investigation_quota_points": 10, "quota_floor_percent": 70}
+    week = {"window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.investigation_hold({**week, "used_percent": 40}, 9, limits) is None
+    hold = quota.investigation_hold({**week, "used_percent": 40}, 10, limits)
+    assert hold["until"] == RESETS
+    assert hold["reason"].startswith("investigation is waiting for its weekly budget (10 of 10 points used; "
+                                     "the Codex week resets ")
+    # The floor holds every stage and is asked separately; no meter, no budget.
+    assert quota.investigation_hold({**week, "used_percent": 70}, 0, limits) is None
+    assert quota.investigation_hold({"unknown": "no meter"}, 99, limits) is None
+
+
+def test_a_rounds_abstract_task_is_not_an_investigation_point():
+    """It carries the round's phase (stages.py reads its stage), so it was charged to investigation."""
+    now = {"used_percent": 30, "window_minutes": WEEK, "resets_at": RESETS}
+    logs = [_run("2026-09-28T01:00:00+00:00", 5, 8),
+            {**_run("2026-09-29T01:00:00+00:00", 8, 14, phase="daily-update"), "stage": "abstract"},
+            {**_run("2026-09-29T03:00:00+00:00", 14, 15, phase="daily-update"), "stage": "investigate"}]
+    assert quota.points_spent(logs, now) == 4
 
 
 def test_old_notebooks_get_the_new_limits_without_rewriting_config(tmp_path):
@@ -179,14 +207,15 @@ def test_runs_the_whole_percent_meter_cannot_see_are_counted_from_their_tokens()
     unread = {"started_at": "2026-09-30T02:00:00+00:00", "phase": "projects write",
               "quota": {"before": {"unknown": "x"}, "after": {"unknown": "x"}},
               "usage": {"input_tokens": 900_000, "output_tokens": 0}}
+    # The meter moved 2, but its tokens are known: they count, the meter only caps them (#3099).
     measured = {**_run("2026-09-30T03:00:00+00:00", 29, 31, phase="daily-update"),
-                "usage": {"input_tokens": 100_000}}   # the meter moved: it, not the tokens, counts
+                "usage": {"input_tokens": 100_000}}
     maintenance = {**_run("2026-09-30T04:00:00+00:00", 29, 29, phase=None),
                    "usage": {"input_tokens": 9_000_000}}
-    assert quota.points_spent([unmoved, unread, measured, maintenance], now) == 2.1
+    assert quota.points_spent([unmoved, unread, measured, maintenance], now) == 0.1
 
 
-@pytest.mark.parametrize("speed, tokens", [("standard", "12,000,000"), ("fast", "6,000,000")])
+@pytest.mark.parametrize("speed, tokens", [("standard", "1,660,000"), ("fast", "830,000")])
 def test_status_says_what_a_point_is(tmp_path, monkeypatch, speed, tokens):
     from connectonion.cli.commands import rem_status
     from connectonion.rem.config import prepare, set_config
@@ -201,7 +230,7 @@ def test_status_says_what_a_point_is(tmp_path, monkeypatch, speed, tokens):
     value = {"investigation_quota": {"spent_points": 0.6, "budget_points": 10}, "codex_week": "29% used on pro"}
     from rich.text import Text
     # What a point is goes with --verbose: the budget is two lines (UI audit, 2026-10-15).
-    text = Text.from_markup(rem_status.dashboard(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments),
+    text = Text.from_markup(rem_status.card(tmp_path, value, lambda arguments: "co rem " + " ".join(arguments),
                                                  verbose=True)).plain
     assert "0.6 of 10 investigation points" in text
     assert "1% of your Codex week" in text and f"{tokens} tokens a point" in text
@@ -216,7 +245,9 @@ def test_a_category_runs_own_budget_counts_its_runs_tokens_when_the_meter_stays_
     mine = [{**_run(f"2026-09-30T0{n}:00:00+00:00", 29, 29, phase="investigate"),
              "usage": {"input_tokens": 14_400_000, "cached_input_tokens": 2_400_000}} for n in (1, 2)]
     assert quota.run_spent(start, now, [earlier, *mine], began) == 2
-    assert quota.run_spent(start, {**week, "used_percent": 34}, mine, began) == 5   # the meter, when it says more
+    # Known tokens are the run's spend; the meter, which the owner's coding also moves, does not overrule them (#3099).
+    assert quota.run_spent(start, {**week, "used_percent": 34}, mine, began) == 2
+    assert quota.run_spent(start, {**week, "used_percent": 34}, [_run(began, 29, 29, phase="investigate")], began) == 5
 
 
 @pytest.mark.parametrize("known", [True, False])
@@ -277,9 +308,6 @@ def test_a_flat_or_unknown_overlapping_group_counts_fresh_tokens_at_each_runs_sp
     if unknown:
         standard["quota"] = {"before": {"unknown": "unavailable"}, "after": {"unknown": "unavailable"}}
     fast = {**standard, "speed": "fast"}
-    assert quota.run_points(standard) == 1
-    assert quota.run_points({**standard, "speed": "standard"}) == 1
-    assert quota.run_points(fast) == 2
     now = {"used_percent": 40, "window_minutes": WEEK, "resets_at": RESETS}
     assert quota.points_spent([standard, fast], now) == 3
     assert quota.run_spent(now, now, [standard, fast], standard["started_at"]) == 3
@@ -290,7 +318,6 @@ def test_a_group_crossing_a_weekly_reset_counts_tokens_even_if_the_meter_ends_hi
     run = {**_run("2026-09-30T01:00:00+00:00", 90, after, finished="2026-09-30T02:00:00+00:00"),
            "usage": {"input_tokens": 12_000_000}}
     run["quota"]["after"]["resets_at"] += WEEK * 60
-    assert quota.run_points(run) == 1
     assert quota.group_points([run, run]) == 2
 
 
@@ -301,3 +328,111 @@ def test_group_readings_allow_reset_timestamp_jitter_but_not_drift():
     assert quota.group_points(runs) == 2
     runs[1]["quota"]["after"]["resets_at"] += 3600
     assert quota.group_points(runs) == 0
+
+
+def _umbrella(started, finished, phase="daily-investigation"):
+    """A native round's own record: hours long, no stage, no usage, no reading (native_round.prepare)."""
+    return {"started_at": started, "finished_at": finished, "phase": phase, "native_round": True,
+            "usage": None, "quota": {"before": {}}}
+
+
+def test_a_rounds_own_record_has_no_reading_and_does_not_join_the_days_runs_into_one_group():
+    """2026-11-16: the round records spanned the day, every investigation task fell inside one, and
+    the group's highest reading minus its lowest (44 - 6) was the whole day's Codex week, the owner's
+    own coding included: "investigation is waiting for its weekly budget (38 of 35)", 332 pages waiting."""
+    morning = {**_run("2026-09-30T01:00:00+00:00", 6, 6, finished="2026-09-30T01:10:00+00:00"), "stage": "investigate",
+               "usage": {"input_tokens": 2_400_000}}
+    evening = {**_run("2026-09-30T20:00:00+00:00", 43, 44, phase="daily-update", finished="2026-09-30T20:10:00+00:00"),
+               "stage": "investigate", "usage": {"input_tokens": 3_000_000}}
+    rounds = [_umbrella("2026-09-30T00:55:00+00:00", "2026-09-30T12:00:00+00:00"),
+              _umbrella("2026-09-30T11:00:00+00:00", "2026-09-30T21:00:00+00:00", phase="daily-update")]
+    now = {"used_percent": 44, "window_minutes": WEEK, "resets_at": RESETS}
+    # 0.2 and 0.25 in tokens: the evening's tokens, not its 1-point move, since #3099.
+    assert quota.points_spent([*rounds, morning, evening], now) == 0.5
+    assert quota.run_spent(now, now, [*rounds, morning, evening], "2026-09-30T00:00:00+00:00") == 0.5
+    assert list(quota._groups([*rounds, morning, evening])) == [[rounds[0]], [rounds[1]], [morning], [evening]]
+
+
+def test_a_run_whose_meter_could_not_be_read_is_counted_from_its_own_tokens_beside_a_measured_group():
+    unread = {"started_at": "2026-09-30T01:05:00+00:00", "finished_at": "2026-09-30T03:00:00+00:00",
+              "phase": "investigate", "quota": {"before": {"unknown": "x"}, "after": {"unknown": "x"}},
+              "usage": {"input_tokens": 6_000_000}}
+    first = _run("2026-09-30T01:00:00+00:00", 40, 42, finished="2026-09-30T01:30:00+00:00")
+    later = _run("2026-09-30T02:30:00+00:00", 47, 48, finished="2026-09-30T02:50:00+00:00")
+    now = {"used_percent": 48, "window_minutes": WEEK, "resets_at": RESETS}
+    assert quota.points_spent([unread, first, later], now) == 3.5   # not 48 - 40
+
+
+# #3099: a group's whole meter movement was charged to it, the owner's own coding included.
+# When a run's tokens are known they are the charge, at its effort; the meter only caps it.
+
+def _spent(started, before, after, fresh, effort, speed="standard", finished=None):
+    return {**_run(started, before, after, phase="enrich", finished=finished), "stage": "enrich",
+            "usage": {"input_tokens": fresh}, "effort": effort, "speed": speed}
+
+
+def test_a_group_with_known_tokens_is_charged_its_tokens_at_its_effort_not_the_whole_meter():
+    """rc20 night: the token formula said 0.67 points while the meter moved 16 and 21; at medium
+    on the standard tier a point is about 1.66M fresh tokens (0.83M measured at fast)."""
+    run = _spent("2026-09-30T01:00:00+00:00", 40, 78, 3_320_000, "medium", finished="2026-09-30T02:00:00+00:00")
+    assert quota.group_points([run]) == pytest.approx(2)
+
+
+def test_the_meter_caps_a_token_charge_and_still_measures_runs_without_tokens():
+    """The max-effort night: 1.40M fresh tokens moved the meter 20 points on the fast tier."""
+    deep = _spent("2026-09-30T01:00:00+00:00", 40, 58, 1_400_000, "max", speed="fast",
+                  finished="2026-09-30T02:00:00+00:00")
+    assert quota.group_points([deep]) == 18          # tokens say 20; the meter moved 18
+    assert quota._token_points(deep["usage"], "fast", "max") == pytest.approx(20)
+    bare = _run("2026-09-30T01:00:00+00:00", 40, 42)
+    assert quota.group_points([bare]) == 2
+
+
+def test_tokens_a_point_fall_with_effort_and_runs_without_an_effort_keep_the_old_calibration():
+    per = quota.TOKENS_PER_POINT
+    assert per["low"] >= per["medium"] > per["high"] > per["xhigh"] > per["max"]
+    assert quota._token_points({"input_tokens": 12_000_000}, "standard", "") == 1
+    assert quota._token_points({"input_tokens": 12_000_000}, "fast", None) == 2
+
+
+def test_the_depth_budget_counts_deepening_by_its_tokens(tmp_path):
+    now = {"used_percent": 78, "window_minutes": WEEK, "resets_at": RESETS}
+    run = _spent("2026-09-30T01:00:00+00:00", 40, 78, 3_320_000, "medium", finished="2026-09-30T02:00:00+00:00")
+    assert quota.depth_points([run], now) == 2
+
+
+def test_a_saved_reading_without_a_plan_name_still_prints_the_week(tmp_path, monkeypatch):
+    """CI, 2026-11-19: a recorded meter with no `plan` made `co rem` exit with KeyError('plan')."""
+    from connectonion.rem import service
+    from connectonion.rem.config import prepare, read_config
+
+    root = tmp_path / "rem"
+    prepare(root)
+    config = {**read_config(root), "runner": "codex"}
+    reading = {"used_percent": 37, "window_minutes": WEEK, "resets_at": service.now().timestamp() + 3600}
+    bits = service._quota_status(config, [{"quota": {"after": reading}}])
+    assert bits["codex_week"].startswith("37% used (last recorded); resets ")
+
+
+def test_inside_the_codex_sandbox_the_meter_is_the_launchers_reading_never_a_new_app_server(monkeypatch, tmp_path):
+    """#3128: `co rem next` runs inside the Codex worker's sandbox, where `codex app-server` cannot write
+    ~/.codex and exits ("failed to initialize sqlite state runtime"). Every run logged an unknown meter. The turn's
+    launcher, outside the sandbox, reads it and hands it down; inside, nothing is started."""
+    import json, time
+    from connectonion.rem import quota
+    from pathlib import Path
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    (Path.home() / ".codex").mkdir()  # the test's own home (tests/conftest.py)
+    (Path.home() / ".codex/auth.json").write_text("{}")
+    monkeypatch.setenv("CODEX_SANDBOX", "seatbelt")
+    never = lambda method, params: pytest.fail("started an app-server inside the sandbox")
+    monkeypatch.delenv(quota.HANDED_DOWN, raising=False)
+    assert "inside the Codex sandbox" in quota.read({"runner": "codex"}, request=never)["unknown"]
+    reading = {"used_percent": 79, "window_minutes": WEEK, "resets_at": int(time.time()) + 3600, "plan": "pro"}
+    monkeypatch.setenv(quota.HANDED_DOWN, json.dumps({**reading, "read_at": time.time() - 60}))
+    assert quota.read({"runner": "codex"}, request=never) == reading
+    monkeypatch.setenv(quota.HANDED_DOWN, json.dumps({**reading, "read_at": time.time() - 4 * 3600}))
+    assert "unknown" in quota.read({"runner": "codex"}, request=never)  # too old to stand for now
+    monkeypatch.delenv("CODEX_SANDBOX")
+    assert quota.handed_down({"runner": "codex"}, request=lambda method, params: {"rateLimits": {
+        "primary": {"usedPercent": 79, "windowDurationMins": WEEK, "resetsAt": reading["resets_at"]}, "planType": "pro"}}).startswith('{"used_percent": 79')

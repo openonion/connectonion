@@ -20,10 +20,10 @@ Usage:
     >>> text = transcribe("meeting.mp3")
 
     # With context hints (improve accuracy for domain-specific terms)
-    >>> text = transcribe("meeting.mp3", prompt="Technical AI discussion, speakers: Aaron, Maren")
+    >>> text = transcribe("meeting.mp3", prompt="Technical AI discussion, speakers: Ellis, Maren")
 
     # Different model
-    >>> text = transcribe("meeting.mp3", model="co/gemini-3.8-flash")
+    >>> text = transcribe("meeting.mp3", model="co/gemini-4-hydrogen")
 
 Supported formats: WAV, MP3, AIFF, AAC, OGG, FLAC
 Token cost: 32 tokens per second of audio (1 minute = 1,920 tokens)
@@ -93,8 +93,8 @@ def transcribe(
     Args:
         audio: Path to audio file (WAV, MP3, AIFF, AAC, OGG, FLAC)
         prompt: Optional context hints for better accuracy
-                (e.g., "Technical AI discussion, speakers: Aaron, Maren")
-        model: Model to use (default: co/gemini-3.8-flash)
+                (e.g., "Technical AI discussion, speakers: Ellis, Maren")
+        model: Model to use (default: co/gemini-4-hydrogen)
         timestamps: If True, include timestamps in output
 
     Returns:

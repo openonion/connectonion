@@ -1,0 +1,16 @@
+version: v1.9.6rc1
+images:
+- file: rem-today-desktop.png
+  alt: 'Today on a desktop in Chinese: the open reply to Inès shows whole lines of the letter and of the 中文对照, and the slot question row sits clear below them'
+  caption: The letter window holds whole lines; the draft summary ends in an ellipsis on its own line instead of running into the row below.
+  scenario: Open Today in the fictional notebook with a long draft, a long letter and a slot question, interface in Chinese.
+  viewport: 1440x1000, light, zh-CN
+  commit: b8ad0f46201725ab96f51f3d73131da5376b75b8
+  source_run: 'local: CO_REM_BROWSER_TEST=1 CO_REM_SHOTS=<dir> pytest tests/e2e/cli/test_rem_today_fuse_browser.py -k overlap'
+- file: rem-today-phone.png
+  alt: 'Today on a phone with two items on the card: the letter starts on screen, the question and its answer box sit above the Send bar, and Send, Write full screen and Skip are whole on one row'
+  caption: On a phone the letter comes first, Send's words stay whole, and the second item and hand-off lines wait under More.
+  scenario: Open Today in the fictional notebook with two owed items on Inès's card, interface in English.
+  viewport: 390x844, light, en-US
+  commit: b8ad0f46201725ab96f51f3d73131da5376b75b8
+  source_run: 'local: CO_REM_BROWSER_TEST=1 CO_REM_SHOTS=<dir> pytest tests/e2e/cli/test_rem_today_phone_reply_browser.py'

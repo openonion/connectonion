@@ -134,8 +134,77 @@ _CHANGED = "this code is cut off or has a typo; copy it again, character for cha
 # 1.9.3rc23: no handoff transport change; the recipient installs this release too.
 # 1.9.3rc24: no handoff transport change; the recipient installs this release too.
 # 1.9.3rc25: no handoff transport change; the recipient installs this release too.
-# 1.9.3rc27: no handoff transport change; the recipient installs this release too.
-MIN_VERSION = "1.9.3rc27"
+# 1.9.3rc28: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc29: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc30: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc31: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc32: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc33: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc34: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc35: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc36: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc37: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc38: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc39: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc40: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc41: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc42: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc43: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc44: no handoff transport change; the recipient installs this release too.
+# 1.9.3rc64: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc2: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc3: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc4: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc5: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc6: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc7: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc8: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc9: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc10: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc11: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc20: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc21: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc22: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc23: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc25: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc26: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc27: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc28: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc29: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc30: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc32: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc33: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc34: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc36: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc39: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc40: no handoff transport change; rc39 never reached PyPI, so the floor skips it.
+# 1.9.6rc41: no handoff transport change; rc40 never reached PyPI either.
+# 1.9.6rc42: no handoff transport change; rc41 never reached PyPI either.
+# 1.9.6rc43: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc44: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc45: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc46: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc47: no handoff transport change; the recipient installs this release too.
+# 1.9.6rc48: no handoff transport change; the recipient installs this release too.
+# 1.9.6: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc1: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc2: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc3: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc4: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc5: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc6: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc8: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc13: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc14: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc15: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc17: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc18: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc19: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc20: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc21: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc22: no handoff transport change; the recipient installs this release too.
+# 1.9.7rc23: no handoff transport change; the recipient installs this release too.
+MIN_VERSION = "1.9.7rc26"
 # From the floor's own tag, so what runs is the script that was released, not whatever main has now.
 INSTALLER = f"https://raw.githubusercontent.com/openonion/connectonion/v{MIN_VERSION}/install.sh"
 

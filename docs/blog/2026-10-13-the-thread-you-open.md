@@ -8,7 +8,7 @@ of it said what the other person had been talking about, or what they had
 decided, which is the one thing a person handed a session wants to know.
 
 So `co handoff open` now opens that session. In Codex it is a thread named
-`Handoff from Aaron: Fix invoice dedupe`, and in it the sender's conversation
+`Handoff from Ellis: Fix invoice dedupe`, and in it the sender's conversation
 is replayed turn by turn, each bubble labelled with who said it. The last
 bubble is the recipient's own agent: one line on who handed what, then what
 was discussed, what was concluded and why, what is still open, and a small

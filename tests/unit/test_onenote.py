@@ -124,7 +124,7 @@ def test_recent_pages_need_no_section_and_keep_copyable_page_ids():
 
 
 def test_read_by_exact_title_escapes_apostrophes_and_detects_duplicates():
-    title = "Aaron's plan"
+    title = "Ellis's plan"
     request, calls = _graph({
         ("GET", "/me/onenote/pages"): (200, {"value": [{"id": "0-A!42", "title": title}]}),
         ("GET", "/me/onenote/pages/0-A!42/content"): (200, "<p>Done</p>"),
@@ -132,7 +132,7 @@ def test_read_by_exact_title_escapes_apostrophes_and_detects_duplicates():
     with patch("connectonion.useful_tools.outlook.httpx.request", request), \
          patch("connectonion.useful_tools.onenote.httpx.request", request):
         assert "Done" in OneNote().read_page_by_title(title)
-    assert calls[0][3]["params"]["$filter"] == "title eq 'Aaron''s plan'"
+    assert calls[0][3]["params"]["$filter"] == "title eq 'Ellis''s plan'"
 
     duplicates = {"value": [{"id": "0-A!42", "title": title},
                             {"id": "0-A!43", "title": title}]}

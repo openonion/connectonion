@@ -1,0 +1,2 @@
+version: v1.9.3rc41
+no_visual_change: "CLI text only: a shorter consent summary, a material-scaled first-run estimate with an empty-map exit, skip reasons, and co rem show by name. No reader layout, CSS or component changes."

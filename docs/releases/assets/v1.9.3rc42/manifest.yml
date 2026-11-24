@@ -1,0 +1,2 @@
+version: v1.9.3rc42
+no_visual_change: "REM scheduling and bookkeeping only: lock waits, outcome names, quota accounting and archive file names. One new status phrase (daily cap reached); no reader layout, CSS or component changes."

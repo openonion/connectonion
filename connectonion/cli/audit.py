@@ -80,8 +80,15 @@ FIXES = {
     "params": "an option or argument has no description",
     "look": "a terminal and a pipe must show the same words, in colour only in the terminal",
     "review": "a model reviewer flagged this page",
+    "coverage": "a source command must say how much of the source it can read and how to fix a gap",
 }
-RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private", "params", "look")
+RULES = ("prints", "hangs", "writes", "usage", "example", "self_example", "flags", "private", "params", "look",
+         "coverage")
+# Source commands whose root page must document their coverage line (#3353): what exists, what is read, what is
+# missing and its fix, so an agent running them sees a gap instead of a silent shortfall. Grows as each source
+# reports coverage.
+SOURCE_ROOTS = ("co wechat",)
+COVERAGE_WORDS = re.compile(r"\bcoverage\b|覆盖|读到", re.I)
 
 
 @dataclass(frozen=True)
@@ -289,18 +296,21 @@ def pages(root: list, runner=help_page) -> dict:
             following = []
             for path in level:
                 page = found[path]
-                if page.code != 0:
+                if page.code != 0 or _repeats_parent(path, found):
                     continue
                 for name in listed_commands(page.text):
                     child = f"{path} {name}"
                     if child not in found and child not in following:
                         following.append(child)
             level = following
-    # A "subcommand" whose page is its parent's page word for word was a word
-    # in the parent's text (gh codespace cp lists "mod" and "sum" as examples
-    # of its arguments), not a command.
-    return {path: page for path, page in found.items()
-            if " " not in path or page.text != found.get(path.rsplit(" ", 1)[0], Page(0, "")).text}
+    return {path: page for path, page in found.items() if not _repeats_parent(path, found)}
+
+
+def _repeats_parent(path: str, found: dict) -> bool:
+    """A "subcommand" whose page is its parent's page word for word was a word
+    in the parent's text (gh codespace cp lists "mod" and "sum" as examples of
+    its arguments), not a command; its own listed words are the same again."""
+    return " " in path and found[path].text == found.get(path.rsplit(" ", 1)[0], Page(0, "")).text
 
 
 def examples(text: str, name: str):
@@ -381,6 +391,8 @@ def check(path: str, page: Page, found: dict) -> list:
     missing = undocumented(text)
     if missing:
         add("params", ", ".join(missing))
+    if path in SOURCE_ROOTS and not COVERAGE_WORDS.search(text):
+        add("coverage", "the page never says what it reports when part of the source can't be read")
     return out
 
 

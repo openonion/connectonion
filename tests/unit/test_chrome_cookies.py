@@ -4,6 +4,7 @@ Every profile here is fake and encrypted with a known password: no real
 Chrome, no Keychain, no network.
 """
 
+import sqlite3
 import time
 
 import pytest
@@ -12,6 +13,27 @@ from connectonion.useful_tools.browser_tools import chrome_cookies as chrome
 from tests.fixtures.chrome_profile import PASSWORD, cookie, make_profile
 
 HOUR = 3600
+
+
+def test_text_stored_ciphertext_is_read_as_bytes_and_decrypted(tmp_path):
+    profile = make_profile(tmp_path, "Profile 1", [
+        cookie(".linkedin.com", "li_at", "secret-session"),
+        cookie(".linkedin.com", "other", "blob-session"),
+    ])
+    with sqlite3.connect(profile / "Network" / "Cookies") as connection:
+        encrypted = connection.execute("SELECT encrypted_value FROM cookies WHERE name = 'li_at'").fetchone()[0]
+        connection.execute("UPDATE cookies SET encrypted_value = CAST(encrypted_value AS TEXT) "
+                           "WHERE name = 'li_at'")
+        assert connection.execute("SELECT typeof(encrypted_value) FROM cookies WHERE name = 'li_at'").fetchone() == ("text",)
+    connection.close()
+
+    version, cookies = chrome.read_cookies(profile)
+    rows = {c.name: c for c in cookies}
+
+    assert rows["li_at"].encrypted_value == encrypted
+    key = chrome.derive_key(PASSWORD)
+    assert chrome.decrypt(rows["li_at"], key, version) == ("secret-session", "")
+    assert chrome.decrypt(rows["other"], key, version) == ("blob-session", "")
 
 
 @pytest.mark.parametrize("meta_version", [23, 24])
@@ -55,7 +77,7 @@ def test_falls_back_to_the_older_cookies_location(tmp_path):
 
 
 def test_a_profile_is_found_by_folder_or_by_the_name_chrome_shows(tmp_path):
-    make_profile(tmp_path, "Default", [], shown_name="Aaron")
+    make_profile(tmp_path, "Default", [], shown_name="Ellis")
     make_profile(tmp_path, "Profile 1", [], shown_name="openonion")
 
     assert chrome.resolve_profile(tmp_path, "Profile 1").name == "Profile 1"

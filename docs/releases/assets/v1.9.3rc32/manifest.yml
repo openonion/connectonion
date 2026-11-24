@@ -1,0 +1,2 @@
+version: v1.9.3rc32
+no_visual_change: "Scheduling-only REM change: the daily round refreshes the owner page with the existing investigate-me reading. No reader layout, CSS, component or CLI output changes; the page itself is ordinary notebook content. Release images would require a real notebook; none are published."

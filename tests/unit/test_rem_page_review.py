@@ -12,6 +12,21 @@ from connectonion.rem.page_review import normalize, normalize_numbered_sources, 
 from connectonion.rem.runner import RunFailed, run_stage, task_prompt
 
 
+def test_numbered_card_source_is_defined_and_survives_page_review():
+    from connectonion.rem.page_review import drop_unresolved
+
+    page = ('# Elara Finch\n\n## Facts\n- Email: elara@example.com [1]\n\n'
+            '## Notes\nMet at the Lantern meetup. [1]\n\n## Sources\n'
+            '1. Business card handed over at the Lantern meetup (photo on 2026-11-01)\n')
+    errors = validate('people/elara-finch.md', page, page, [])
+    assert not any('citation' in error.lower() for error in errors), errors
+    assert drop_unresolved('people/elara-finch.md', page, page, []) == (page, {'citations': [], 'lines': 0})
+    missing = page.replace('[1]', '[9]')
+    assert 'Missing or duplicate citation: 9' in validate('people/elara-finch.md', missing, page, [])
+    duplicate = page + '- [1] gmail:followup\n'
+    assert 'Missing or duplicate citation: 1' in validate('people/elara-finch.md', duplicate, page, [])
+
+
 @pytest.mark.parametrize('heading', ['Open threads', 'Where it stands', 'Who they are'])
 @pytest.mark.parametrize('prefix', ['- ', ''])
 @pytest.mark.parametrize('reverse', [False, True])
@@ -138,7 +153,7 @@ def test_a_substantive_forbidden_owner_section_fails_validation_and_keeps_the_ci
     notebook = Notebook(tmp_path)
     record = 'people/avery.md'
     notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
-    cited = '- Opens with “你好” and signs “Aaron”. [1]'
+    cited = '- Opens with “你好” and signs “Ellis”. [1]'
     page = notebook.read(record).replace(FORBIDDEN, '## How the user writes to them\n' + cited)
     page = page.replace('- (none yet)', '- [1] gmail:avery:1 — 2026-10-01')
     out = normalize(record, page, owner=True)
@@ -198,6 +213,17 @@ def test_project_with_no_assigned_session_input_cannot_claim_current_work():
     assert 'No assigned project session inputs: keep Insight Unknown' in errors
     assert 'No assigned project session inputs: keep Open threads Unknown' in errors
     assert 'Project input scope is not a citable original: 1' in errors
+
+
+def test_a_project_page_with_no_new_session_keeps_the_open_threads_it_already_had():
+    """#3105: the append A/B was refused for keeping onionwright's Open threads with no new session."""
+    original = ('# Atlas\n\n## Open threads\n- Merge the branch. [1]\n'
+                '\n## Sources\n- [1] codex:session:4 — 2026-10-01\n')
+    items = [{'role': 'project-input-scope', 'source': 'investigation:project-scope', 'inputs_read': 0}]
+    kept = original.replace('[1]', '[2]').replace('- [2] codex', '- [2] codex')
+    assert not any('No assigned project session inputs' in error for error in validate('projects/atlas.md', kept, original, items))
+    added = kept.replace('- Merge the branch. [2]', '- Merge the branch. [2]\n- Ship the release. [2]')
+    assert 'No assigned project session inputs: keep Open threads Unknown' in validate('projects/atlas.md', added, original, items)
 
 
 def test_skill_cannot_cite_collector_summary_or_old_page_as_original():
@@ -1309,7 +1335,7 @@ def test_the_owners_phone_from_a_quoted_signature_is_taken_off_a_contacts_page()
     """1.9.2b1 (2026-10-09) gave Liesel the user's phone from his own signature, against the instructions."""
     from connectonion.rem.page_review import drop_owner_addresses
     page = "## Facts\n- Email: liesel.voss@rmit.edu.au\n- Phone: +61 491 570 156 [2]\n- Role: Professor [1]\n"
-    text, removed = drop_owner_addresses(page, {"aaron@openonion.ai", "0491 570 156 (work)"})
+    text, removed = drop_owner_addresses(page, {"ellis.work@example.org", "0491 570 156 (work)"})
     assert "- Phone: Unknown\n" in text and removed == ["+61 491 570 156"]
     assert "- Email: liesel.voss@rmit.edu.au" in text
     other = page.replace("+61 491 570 156", "+61 400 111 222")
@@ -1618,6 +1644,24 @@ def test_a_project_fact_resting_only_on_the_run_keeps_its_label_as_unknown():
     fixed = repair_run_citations("projects/atlas.md", page, "")
     assert "- People: Unknown\n" in fixed and "- Repository: example/atlas [1]" in fixed
     assert "investigation:page" not in fixed
+
+
+def test_resolved_mail_spelling_is_not_dropped_or_restored(tmp_path, monkeypatch):
+    from connectonion.rem import page_review
+
+    raw, digest = 'gmail:1a02327b9e6d2c51', 'gmail:94449e945db3'
+    monkeypatch.setattr(page_review, '_mail_digest', lambda root, source:
+                        digest if source in (raw, digest) else source)
+    before = ('# Avery\n\n## Who they are\n- Builds small research tools. [23]\n'
+              '\n## Sources\n- [23] ' + raw + ' — 2026-08-21\n')
+    after = before.replace(raw, digest).replace('[23]', '[1]')
+    resolved = page_review.resolve_sources(tmp_path, 'people/avery.md', before)
+
+    assert page_review.dropped(resolved, after) == []
+    assert page_review.restore_dropped(resolved, after) == after
+    assert page_review.shrinkage(resolved, after) == ''
+    assert page_review.dropped(resolved, after.replace(digest, 'gmail:different')) == [
+        f'Dropped source id the page had: {digest}']
 
 
 def test_dropped_reports_exact_quote_and_source_losses():
@@ -2103,3 +2147,320 @@ def test_strip_hedge_leaves_a_line_whose_quote_marks_do_not_pair():
     from connectonion.rem.page_review import strip_hedge
     line = "- 2026-09-12: Avery wrote “not confirmed. Friday [2]; whether it moved is unknown [3]."
     assert strip_hedge(line) == line
+
+
+@pytest.mark.parametrize('record', ['people/ivy.md', 'orgs/partner.md', 'projects/pilot.md'])
+def test_review_drops_identifiers_of_another_entity(tmp_path, record):
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/lantern.md', 'Lantern Labs', ['lantern.example'])
+    notebook.write('orgs/lantern.md', notebook.read('orgs/lantern.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Lantern Labs Pty Ltd; ABN 12 345 678 901; ACN 345 678 901 [1]'))
+    page = ('# Partner\n\n## Facts\n- Legal entity: ABN 12345678901 [1]\n\n'
+            '## Terms\n- Company number 345678901 [1]\n- Pilot costs $200. [2]\n\n'
+            '## Sources\n- [1] gmail:invoice\n- [2] gmail:pilot\n')
+    cleaned, removed = drop_foreign_identifiers(notebook, record, page)
+    assert '12345678901' not in cleaned and '345678901' not in cleaned
+    assert '- Legal entity: Unknown' in cleaned
+    assert '- Pilot costs $200. [2]' in cleaned
+    assert set(removed) == {'ABN 12345678901', 'Company number 345678901'}
+    assert drop_foreign_identifiers(notebook, 'orgs/lantern.md', page) == (page, [])
+
+
+def test_review_keeps_target_identifiers_and_unlabelled_amounts(tmp_path):
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/lantern.md', 'Lantern Labs', ['lantern.example'])
+    notebook.write('orgs/lantern.md', notebook.read('orgs/lantern.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Lantern Labs; ABN 12 345 678 901 [1]'))
+    page = ('# Partner\n\n## Facts\n- Legal entity: Partner; ABN 98 765 432 109 [1]\n\n'
+            '## Terms\n- Reference 12345678901; amount $345678901. [1]\n')
+    assert drop_foreign_identifiers(notebook, 'orgs/partner.md', page) == (page, [])
+
+
+def test_attachment_metadata_is_not_citable_document_evidence():
+    from connectonion.rem.page_review import drop_unresolved
+    source = 'investigation:attachments-index:gmail:0123456789ab'
+    page = f'# Lantern\n\n## Terms\n- Fee is $200. [1]\n\n## Sources\n- [1] {source}\n'
+    items = [{'role': 'attachments-index', 'source': source, 'text': 'agreement.pdf, application/pdf, 2048 bytes'}]
+    cleaned, dropped = drop_unresolved('orgs/lantern.md', page, '# Lantern\n', items)
+    assert 'Fee is $200' not in cleaned
+    assert dropped['citations'] == ['1']
+
+
+def test_promotion_removes_carried_foreign_identifiers_and_records_reason(tmp_path):
+    from connectonion.rem import runner
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/northstar.md', 'Northstar Studio', ['northstar.example'])
+    notebook.write('orgs/northstar.md', notebook.read('orgs/northstar.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Northstar Studio; ABN 12 345 678 901 [1]'))
+    record = 'orgs/lantern.md'
+    notebook.stub_org(record, 'Lantern Labs', ['lantern.example'])
+    original = notebook.read(record).replace('- Legal entity: Unknown', '- Legal entity: ABN 12345678901 [1]')
+    original = original.replace('## Sources\n', '## Sources\n- [1] gmail:buyer\n')
+    notebook.write(record, original)
+    directory = tmp_path / '.state/tasks/identifiers'
+    directory.mkdir(parents=True)
+    candidate = directory / 'candidate.md'
+    text = original.replace('Unknown — not investigated yet', 'Unknown')
+    text = text.replace('## Terms\n', '## Terms\n“Pilot fee is $200.” [2]\n')
+    candidate.write_text(text.replace('## Sources\n', '## Sources\n- [2] gmail:pilot\n'))
+    items = [{'source': 'gmail:buyer', 'text': 'Buyer Northstar Studio ABN 12345678901.'},
+             {'source': 'gmail:pilot', 'text': 'Pilot fee is $200.'}]
+    runner._promote_candidate(notebook, record, candidate, original, items, directory, None, carried=original)
+    saved = notebook.read(record)
+    assert '- Legal entity: Unknown' in saved and '12345678901' not in saved
+    assert 'Pilot fee is $200.' in saved
+    review = json.loads((directory / 'review.json').read_text())
+    assert review['foreign_identifiers_removed'] == ['ABN 12345678901']
+
+
+def test_review_keeps_owner_company_identifier_despite_existing_wrong_copy(tmp_path):
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_person('people/ellis.md', 'Ellis Reed', email='ellis@northstar.example')
+    notebook.write('people/ellis.md', notebook.read('people/ellis.md').replace('- Company: Unknown', '- Company: Northstar'))
+    write_json(state_path(tmp_path, 'map.json'), {
+        'owner': {'record': 'people/ellis.md', 'addresses': ['ellis@northstar.example']}})
+    for record, title, domain in [('orgs/northstar.md', 'Northstar', 'northstar.example'),
+                                  ('orgs/lantern.md', 'Lantern', 'lantern.example')]:
+        notebook.stub_org(record, title, [domain])
+        notebook.write(record, notebook.read(record).replace(
+            '- Legal entity: Unknown', '- Legal entity: ABN 12 345 678 901 [1]'))
+    own = notebook.read('orgs/northstar.md')
+    assert drop_foreign_identifiers(notebook, 'orgs/northstar.md', own) == (own, [])
+    other, removed = drop_foreign_identifiers(notebook, 'orgs/lantern.md', notebook.read('orgs/lantern.md'))
+    assert '12 345 678 901' not in other and removed == ['ABN 12 345 678 901']
+
+
+def test_attachment_index_stays_uncitable_inside_evidence_wrapper():
+    from connectonion.rem.page_review import drop_unresolved
+    source = 'investigation:attachments-index:gmail:0123456789ab'
+    page = f'# Lantern\n\n## Terms\n- Fee is $200. [1]\n\n## Sources\n- [1] {source}\n'
+    items = [{'role': 'evidence-index', 'source': 'investigation:original-evidence',
+              'sources': [source], 'text': 'Read the indexed files.'}]
+    cleaned, dropped = drop_unresolved('orgs/lantern.md', page, '# Lantern\n', items)
+    assert 'Fee is $200' not in cleaned
+    assert dropped['citations'] == ['1']
+
+
+def test_review_preserves_target_entity_and_terms_beside_foreign_identifier(tmp_path):
+    from connectonion.rem.page_review import drop_foreign_identifiers
+    notebook = Notebook(tmp_path)
+    notebook.stub_org('orgs/northstar.md', 'Northstar', ['northstar.example'])
+    notebook.write('orgs/northstar.md', notebook.read('orgs/northstar.md').replace(
+        '- Legal entity: Unknown', '- Legal entity: Northstar; ABN 12 345 678 901 [1]'))
+    page = ('# Lantern\n\n## Facts\n- Legal entity: Lantern; ABN 98 765 432 109; ABN 12 345 678 901 [1]\n\n'
+            '## Terms\n- Pilot fee is $200; Company number 12345678901 [1]\n\n'
+            '## Sources\n- [1] gmail:pilot\n')
+    cleaned, removed = drop_foreign_identifiers(notebook, 'orgs/lantern.md', page)
+    assert '- Legal entity: Lantern; ABN 98 765 432 109 [1]' in cleaned
+    assert '- Pilot fee is $200 [1]' in cleaned
+    assert '12 345 678 901' not in cleaned and '12345678901' not in cleaned
+
+
+REWRITE = ("# Fern\n\nFern is a pilot. [1]\n\n## What it is\n- A new summary of the pilot. [1]\n\n"
+           "## Sources\n- [1] codex:fern:9\n\nInvestigation: complete\n")
+
+
+def _fern_before(body, sources):
+    return ("# Fern\n\nFern is a pilot. [1]\n\n## What it is\n" + body + "\n\n## Sources\n- [1] codex:fern:9\n"
+            + sources + "\nInvestigation: complete\n")
+
+
+@pytest.mark.parametrize("body,sources", [
+    ("- Avery ran the first pilot. [2]", "- [2] gmail:aaaaaaaaaaaa\n"),
+    # Listed, and cited by no sentence: review removes such an entry from every candidate.
+    ("- Avery ran the first pilot. [2]", "- [2] gmail:aaaaaaaaaaaa\n- [3] gmail:bbbbbbbbbbbb\n"),
+    # Cited only inside a diagram, which is not prose.
+    ("- Avery ran the first pilot. [2]\n```\nflow [3]\n```", "- [2] gmail:aaaaaaaaaaaa\n- [3] gmail:bbbbbbbbbbbb\n"),
+    # A link, not a citation.
+    ("- Avery ran the first pilot. [2] See [3](https://example.test/plan).", "- [2] gmail:aaaaaaaaaaaa\n- [3] gmail:bbbbbbbbbbbb\n"),
+])
+def test_restoring_what_a_rewrite_dropped_leaves_nothing_the_dropped_check_refuses(body, sources):
+    """2026-11-17: the last resort put 4 lines back and the page was still parked for a
+    "Dropped source id the page had". The check counted every listed id, while only an id a
+    sentence cites can be put back, by the restore or by any repair."""
+    from connectonion.rem.page_review import drop_uncited_sources, dropped, restore_dropped
+    before = _fern_before(body, sources)
+    assert "Dropped source id the page had: gmail:aaaaaaaaaaaa" in dropped(before, REWRITE)
+    restored = drop_uncited_sources(restore_dropped(before, REWRITE))
+    assert "Avery ran the first pilot." in restored and "gmail:aaaaaaaaaaaa" in restored
+    assert dropped(before, restored) == []
+    assert "gmail:bbbbbbbbbbbb" not in " ".join(dropped(before, REWRITE))
+
+
+# #3105: an append keeps every cited line it was given, or marks it corrected.
+APPEND_BEFORE = ('# Avery Lin\n\nAvery runs the Lantern pilot with the user. [1]\n\n'
+                 '## Who they are\n- Avery leads design at Lantern. [1]\n'
+                 '- Avery prefers calls on Fridays. [2]\n\n'
+                 '## History\n- 2026-09-01: Pilot started. [1]\n\n'
+                 '## Uncertainties\n- Will the pilot extend?\n\n'
+                 '## Sources\n- [1] gmail:aaaaaaaaaaaa — 2026-09-01\n- [2] gmail:bbbbbbbbbbbb — 2026-09-03\n')
+
+
+def test_claims_dropped_names_a_cited_line_an_append_removed():
+    from connectonion.rem.page_review import dropped
+    after = APPEND_BEFORE.replace('- Avery prefers calls on Fridays. [2]\n', '- Mentions calls. [2]\n')
+    assert dropped(APPEND_BEFORE, after) == []
+    assert dropped(APPEND_BEFORE, after, claims=True) == [
+        'Dropped claim line the page had: - Avery prefers calls on Fridays.']
+
+
+def test_claims_survive_renumbering_extension_moves_and_marked_corrections():
+    from connectonion.rem.page_review import dropped
+    renumbered = (APPEND_BEFORE.replace('[1]', '[9]').replace('[2]', '[8]')
+                  .replace('- [9] gmail:aaaaaaaaaaaa', '- [9] gmail:aaaaaaaaaaaa').replace(
+                      '- Avery leads design at Lantern. [9]',
+                      '- Avery leads design at Lantern, and since October its research too. [9][3]'))
+    renumbered = renumbered.replace('## Sources\n', '## Sources\n- [3] gmail:cccccccccccc — 2026-10-02\n')
+    assert dropped(APPEND_BEFORE, renumbered, claims=True) == []
+    corrected = APPEND_BEFORE.replace('- Avery prefers calls on Fridays. [2]',
+                                      '- Avery prefers calls on Mondays (was Fridays until 2026-10-02). [2][3]')
+    corrected = corrected.replace('## Sources\n', '## Sources\n- [3] gmail:cccccccccccc — 2026-10-02\n')
+    assert dropped(APPEND_BEFORE, corrected, claims=True) == []
+
+
+def test_claims_leave_the_lead_history_and_uncertainties_to_their_own_rules():
+    from connectonion.rem.page_review import dropped
+    after = (APPEND_BEFORE.replace('Avery runs the Lantern pilot with the user. [1]', 'Avery and the user run Lantern. [1]')
+             .replace('- 2026-09-01: Pilot started. [1]\n', '- 2026-09: Pilot. [1]\n')
+             .replace('- Will the pilot extend?\n', ''))
+    assert dropped(APPEND_BEFORE, after, claims=True) == []
+
+
+def test_restore_dropped_puts_a_lost_claim_line_back_beside_the_new_work():
+    from connectonion.rem.page_review import dropped, restore_dropped
+    after = APPEND_BEFORE.replace('- Avery prefers calls on Fridays. [2]\n', '- Avery joined the board. [3]\n').replace(
+        '## Sources\n', '## Sources\n- [3] gmail:cccccccccccc — 2026-10-02\n')
+    restored = restore_dropped(APPEND_BEFORE, after, claims=True)
+    assert '- Avery joined the board. [3]' in restored
+    assert '- Avery prefers calls on Fridays. [2]' in restored
+    assert dropped(APPEND_BEFORE, restored, claims=True) == []
+    assert restore_dropped(APPEND_BEFORE, after) == after  # without claims, nothing was lost
+
+
+def test_an_append_draft_that_drops_a_cited_line_is_refused_then_restored_at_the_last_resort(tmp_path):
+    """#3105: the program, not the prompt, keeps an append's lines."""
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'projects/atlas.md'
+    notebook.stub_project(record, 'Atlas')
+    original = (notebook.read(record).replace('- Unknown — not investigated yet', '- Unknown')
+                .replace('## What it is\n- Unknown',
+                         '## What it is\n- Atlas plans the launch calendar for the team. [1]\n'
+                         '- Atlas exports a weekly report to the board. [2]')
+                .replace('- (none yet)', '- [1] codex:first — 2026-10-01\n- [2] codex:second — 2026-10-02'))
+    path = tmp_path / 'candidate.md'
+    items = [{'source': 'codex:first', 'text': 'Atlas plans the launch calendar for the team.'},
+             {'source': 'codex:second', 'text': 'Atlas exports a weekly report to the board.'},
+             {'source': 'codex:third', 'text': 'Atlas now also tracks hiring.'}]
+    path.write_text(original)
+    runner._promote_candidate(notebook, record, path, notebook.read(record), items, tmp_path, None)
+    original = notebook.read(record)
+    draft = original.replace('- Atlas exports a weekly report to the board. [2]',
+                             '- Atlas reports. [2]\n- Atlas now also tracks hiring. [3]').replace(
+        '- [2] codex:second — 2026-10-02', '- [2] codex:second — 2026-10-02\n- [3] codex:third — 2026-10-03')
+    path.write_text(draft)
+    page = [{'role': 'page', 'record': record, 'append': True, 'source': 'investigation:page', 'text': original}]
+    with pytest.raises(runner.RunFailed, match='Dropped claim line the page had: - Atlas exports a weekly report'):
+        runner._promote_candidate(notebook, record, path, original, [*page, *items], tmp_path, None,
+                                  carried=original)
+    assert notebook.read(record) == original
+    runner._promote_candidate(notebook, record, path, original, [*page, *items], tmp_path, None,
+                              carried=original, last_resort=True)
+    saved = notebook.read(record)
+    assert 'Atlas exports a weekly report to the board.' in saved and 'Atlas now also tracks hiring.' in saved
+
+
+# 2026-11-19: a person page already over the size limit could never be appended to: the append keeps every
+# cited line, and the size check asked for History to be folded. The program now moves the oldest History.
+def _long_person(history_lines=16, relationship_lines=12, width=640):
+    filler = 'and the thread went on with details of the plan, the dates and who was waiting on what ' * 8
+    history = '\n'.join(f'- 2026-{1 + i // 2:02d}-{10 + i % 2:02d}: Thread {i} ended with an agreed next step, '
+                        f'{filler[:width]} [{i + 1}]' for i in range(history_lines))
+    relationship = '\n'.join(f'- Avery and the user worked on part {i} of the pilot, {filler[:width]} [{i + 1}]'
+                             for i in range(relationship_lines))
+    sources = '\n'.join(f'- [{i + 1}] gmail:avery{i:04d}' for i in range(max(history_lines, relationship_lines)))
+    return ('# Avery Lin\n\nAvery runs the Lantern pilot with the user. [1]\n\n'
+            f'## Our relationship\n{relationship}\n\n## History\n{history}\n\n## Sources\n{sources}\n')
+
+
+def test_an_over_limit_page_moves_its_oldest_history_to_an_archive_word_for_word():
+    from connectonion.rem.page_review import (PAGE_LIMIT, archive_history, archive_record, dropped, with_moved,
+                                              _sources, _archived)
+    before = _long_person(relationship_lines=20)
+    assert len(before) > PAGE_LIMIT
+    page, archive, moved = archive_history('people/avery-lin.md', before)
+    assert len(moved) > 1 and len(page) <= PAGE_LIMIT
+    assert all(line not in page for line in moved)
+    # The page says where the rest went, in one linked line at the end of History.
+    history = page.partition('\n## History\n')[2].split('\n## ', 1)[0].strip().splitlines()
+    assert history[-1] == f'- Earlier history: {len(moved)} entries moved to [archive](../{archive_record("people/avery-lin.md")}).'
+    # The oldest go first, and the newest four always stay.
+    dates = sorted(line[2:12] for line in before.splitlines() if line.startswith('- 2026-'))
+    assert sorted(line[2:12] for line in moved) == dates[:len(moved)] and len(history) - 1 >= 4
+    # Word for word in the archive, each number pointing at the source the page cited.
+    page_sources, kept = _sources(before), _sources(archive)
+    for line, archived in zip(sorted(moved), sorted(_archived(archive))):
+        assert re.sub(r'\[\d+\]', '', line) == re.sub(r'\[\d+\]', '', archived)
+        assert page_sources[re.search(r'\[(\d+)\]$', line)[1]] == kept[re.search(r'\[(\d+)\]$', archived)[1]]
+    # Nothing is lost: not a source (the page keeps its Sources), not a line.
+    assert dropped(before, with_moved(page, moved), claims=True) == []
+    assert _sources(page) == page_sources
+    assert archive.startswith('# Avery Lin: earlier history\n') and '](../../../people/avery-lin.md)' in archive
+
+
+def test_a_page_under_the_limit_is_left_alone_and_a_second_move_adds_to_the_archive():
+    from connectonion.rem.page_review import archive_history, _archived, _sources
+    short = _long_person(history_lines=6, relationship_lines=2, width=40)
+    assert archive_history('people/avery-lin.md', short) == (short, '', [])
+    page, archive, moved = archive_history('people/avery-lin.md', _long_person(relationship_lines=20))
+    # The next append: the page renumbered its sources and grew again.
+    grown = page.replace('## History\n', '## History\n' + ''.join(
+        f'- 2026-12-{20 + i}: A new thread {i} ended, {"with more detail " * 40}[{i + 1}]\n' for i in range(3)))
+    grown = re.sub(r'(?m)^- \[(\d+)\] gmail:avery(\d+)$', lambda m: f'- [{m[1]}] gmail:avery{m[2]}', grown)
+    grown += '\n'.join(f'- Avery and the user worked on extra part {i}, {"more words " * 60}[1]' for i in range(8))
+    page2, archive2, moved2 = archive_history('people/avery-lin.md', grown, archive)
+    assert moved2 and len(_archived(archive2)) == len(moved) + len(moved2)
+    assert len(set(_sources(archive2).values())) == len(_sources(archive2))  # one number per source
+    assert page2.count('- Earlier history: ') == 1 and f'{len(moved) + len(moved2)} entries' in page2
+
+
+def test_an_append_to_an_over_limit_page_is_saved_with_its_oldest_history_archived(tmp_path):
+    """The live failure, reproduced: 22,670 characters appended to 32,360 was refused on every repair."""
+    from connectonion.rem import runner
+    from connectonion.rem.config import prepare
+    from connectonion.rem.files import Notebook
+    from connectonion.rem.page_review import PAGE_LIMIT, PAGE_REFUSED, archive_record
+    prepare(tmp_path)
+    notebook, record = Notebook(tmp_path), 'people/avery-lin.md'
+    notebook.stub_person(record, 'Avery Lin', ['avery@example.com'])
+    filler = 'with the dates, the owners and the next step written out in full for the team ' * 9
+    history = '\n'.join(f'- 2026-{1 + i // 2:02d}-{10 + i % 2:02d}: Thread {i} ended with a plan, {filler[:620]} [{i + 1}]'
+                        for i in range(16))
+    sources = '\n'.join(f'- [{i + 1}] gmail:avery{i:02d} — 2026-{1 + i // 28:02d}-{1 + i % 28:02d}' for i in range(30))
+    items = [{'source': f'gmail:avery{i:02d}', 'text': f'Thread {i} ended with a plan {filler[:620]} part {i}'}
+             for i in range(30)]
+    original = (notebook.read(record)
+                .replace('## Our relationship\n- Unknown — not investigated yet', '## Our relationship\n' + '\n'.join(
+                    f'- Avery and the user ran part {i} of the pilot, {filler[:600]} [{i + 1}]' for i in range(14)))
+                .replace('## History\n- Unknown — not investigated yet', '## History\n' + history)
+                .replace('- (none yet)', sources))
+    path = tmp_path / 'candidate.md'
+    notebook.write(record, original)  # a page already over the limit, as the live one was
+    assert PAGE_LIMIT < len(original) < PAGE_REFUSED
+    draft = original.replace('## Our relationship\n', '## Our relationship\n' + '\n'.join(
+        f'- Avery and the user also covered area {i}, {filler[:600]} [{14 + i}]' for i in range(16)) + '\n')
+    assert len(draft) > PAGE_REFUSED and len(draft) > len(original)
+    path.write_text(draft)
+    page = [{'role': 'page', 'record': record, 'append': True, 'source': 'investigation:page', 'text': original}]
+    runner._promote_candidate(notebook, record, path, original, [*page, *items], tmp_path, None, carried=original)
+    saved, archive = notebook.read(record), notebook.read(archive_record(record))
+    assert '- Earlier history: ' in saved and len(saved) < len(draft)
+    assert 'also covered area 15' in saved and 'ran part 13 of the pilot' in saved
+    for i in range(16):  # every History line is on the page or in the archive
+        assert f'Thread {i} ended' in saved or f'Thread {i} ended' in archive

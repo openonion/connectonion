@@ -96,7 +96,7 @@ def test_the_owner_s_page_comes_first_until_it_is_investigated(root):
     assert "init --mine me.personal@example.net,me.backup@example.com" in result.output
     assert "co wiki" not in result.output
     listing = invoke(root, "investigate", "people", "--list")
-    assert listing.output.index("investigate me") < listing.output.index("people/new.md")
+    assert listing.output.index("Your own page (people/me.md) has not been written.") < listing.output.index("people/new.md")
 
 
 def test_an_investigated_owner_page_does_not_hold_the_next_line(root):

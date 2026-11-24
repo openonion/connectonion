@@ -4,7 +4,8 @@ LLM-Note:
   Dependencies: imports from [subprocess, shutil, pathlib, yaml, rich] | imported by [cli/main.py via handle_server_*] | tested by [tests/unit/test_server_commands.py]
   Data flow: handle_server_add(name, ssh_target) → _load()/_save() ~/.co/servers.yaml → handle_server_list() renders the table | handle_server_check(name) → _ssh(target, probe script) → parses one KEY=value line per requirement → prints every failure by name, and caches the first as `needs <requirement>` (the bare name read as a fact about the server in the LAST CHECK column)
   State/Effects: reads and writes ~/.co/servers.yaml (name → ssh target, last check result) | shells out to the system ssh binary | never stores a credential
-  Integration: exposes handle_server_add(), handle_server_list(), handle_server_check(), load_server() for deploy | requirement list is Ubuntu 24.04, python 3.11+, systemd the user may manage, free disk
+  Integration: exposes handle_server_add(), handle_server_list(), handle_server_check(), handle_server_new(), handle_server_destroy(), handle_server_invoice(), load_server() for deploy | requirement list is Ubuntu 24.04, python 3.11+, systemd the user may manage, free disk
+  Billing: oo-api /servers/pricing `billing == "monthly_prepaid"` selects the monthly wording (first month charged at create, each month charged as it starts, destroy refunds the unused part, invoices and credit notes); without it the backend is the older 12-months-up-front one and the prepaid wording is kept | amounts are always the backend's, never recomputed (the pre-create quote uses the formula the backend publishes) | --pdf is drawn with pypdf, already a dependency
   Performance: one ssh round trip per check; the probe is a single command, not one per requirement
   Errors: an unreachable host fails with ssh's own message and a short timeout, never a hang | a missing requirement is named
 """
@@ -267,8 +268,7 @@ def handle_server_list() -> bool:
         row = [name, entry.get("ssh", "[red]?[/red]"), shown]
         if billed is not None:
             record = billed_by_name.get(name)
-            row.append(f"[dim]until {record['expires_at'][:10]}[/dim]" if record
-                       else "[dim]not ours[/dim]")
+            row.append(_billing_cell(record) if record else "[dim]not ours[/dim]")
         table.add_row(*row)
 
     # The expensive row: charged for, absent locally.
@@ -278,7 +278,7 @@ def handle_server_list() -> bool:
             f"[yellow]{record['name']}[/yellow]",
             f"[dim]{record.get('ssh_target') or '—'}[/dim]",
             "[yellow]not registered here[/yellow]",
-            f"[yellow]until {record['expires_at'][:10]}[/yellow]",
+            _billing_cell(record),
         )
 
     console.print()
@@ -290,6 +290,9 @@ def handle_server_list() -> bool:
                       f"registered on this machine:[/yellow] {names}")
         console.print("[dim]co server add <name> --ssh <target>   to use one from here[/dim]")
         console.print("[dim]co server destroy <name>              to stop paying for one[/dim]")
+    _print_moved_addresses(servers, billed or [])
+    _print_grace(billed or [])
+    _print_balance_cover(billed or [])
 
     console.print(f"\n[dim]{_short(SERVERS_FILE)}[/dim]")
     console.print("[dim]Preflight one:[/dim] [bold]co server check <name from this list>[/bold]\n")
@@ -323,6 +326,123 @@ def _fetch_billed_servers():
         return response.json().get("servers", [])
     except ValueError:
         return None
+
+
+# What oo-api calls monthly billing in advance (#287): the first month at
+# create, each next one as it starts, the unused part back at a destroy.
+MONTHLY = "monthly_prepaid"
+
+
+def _billing_cell(record: dict) -> str:
+    """One server's money, in the backend's numbers: price, paid until, owed.
+
+    Three shapes, because three kinds of server exist at once: monthly in
+    advance, a year bought on the old term and not yet run out, and any server
+    from a backend before monthly billing (no `billing` key at all).
+    """
+    billing = record.get("billing")
+    if billing == "prepaid_12_months":
+        return f"[dim]prepaid until {record['prepaid_until'][:10]}[/dim]"
+    if billing != MONTHLY:
+        return f"[dim]until {record['expires_at'][:10]}[/dim]"
+    if record.get("status") == "suspended":
+        return (f"[red]suspended for non-payment — ${record['unpaid_usd']:.2f} unpaid, "
+                f"disk kept[/red]")
+    if record.get("status") == "suspending":
+        return f"[red]stopping for non-payment — ${record['unpaid_usd']:.2f} unpaid[/red]"
+    if record.get("status") == "deleting":
+        return "[dim]being deleted[/dim]"
+    if record.get("paid_until"):
+        cell = (f"${record['usd_month']:.2f}/mo · paid until {record['paid_until'][:10]}, "
+                f"renews from credits")
+    else:
+        cell = f"${record['usd_month']:.2f}/mo · [red]this month not paid[/red]"
+    if record.get("unpaid_usd"):
+        cell += f" · [red]${record['unpaid_usd']:.2f} unpaid[/red]"
+    return cell
+
+
+def _print_moved_addresses(servers: Dict[str, dict], billed: list) -> None:
+    """A suspended server comes back on a new IP; say so before a deploy hits the old one."""
+    for record in billed:
+        entry = servers.get(record["name"]) or {}
+        target = record.get("ssh_target")
+        if entry.get("ssh") and target and entry["ssh"] != target:
+            console.print(f"\n[yellow]{record['name']} now answers at {target}, "
+                          f"not {entry['ssh']}.[/yellow]")
+            console.print(f"[dim]co server add {record['name']} --ssh {target}   "
+                          f"to update this machine's entry[/dim]")
+
+
+def _print_grace(billed: list) -> None:
+    """For a server that owes a month: when it stops and when it is deleted.
+
+    The days come from `pricing.unpaid`, counted from the start of the month
+    that could not be charged. A server that is still running and owes is in
+    that month (it stops three days in, by default).
+    """
+    owing = [s for s in billed
+             if s.get("billing") == MONTHLY and s.get("unpaid_usd")]
+    if not owing:
+        return
+    timeline = (_fetch_pricing() or {}).get("unpaid")
+    if not timeline:
+        return
+    for record in owing:
+        console.print(f"\n[yellow]{_grace_line(record, timeline)}[/yellow]")
+
+
+def _grace_line(record: dict, timeline: dict) -> str:
+    """Stop and delete dates from `unpaid_since`, the start of the oldest month owed.
+
+    A backend that does not send it leaves an estimate: a running server that
+    owes is in the month that could not be charged, the open one.
+    """
+    from datetime import datetime, timedelta
+
+    owes = f"{record['name']} owes ${record['unpaid_usd']:.2f}"
+    if record.get("status") == "deleting":
+        return f"{owes} and is being deleted."
+    since = record.get("unpaid_since") or record.get("period_start")
+    if not since:
+        return (f"{owes} and is stopped; it is deleted {timeline['delete_after_days']} days "
+                f"after its month went unpaid unless you top up.")
+    since = datetime.fromisoformat(since)
+    stop = (since + timedelta(days=timeline["stop_after_days"])).date()
+    delete = (since + timedelta(days=timeline["delete_after_days"])).date()
+    if record.get("status") in ("suspending", "suspended"):
+        return f"{owes} and is stopped; it is deleted on {delete} unless you top up."
+    return f"{owes}: it stops on {stop} and is deleted on {delete} unless you top up."
+
+
+def _print_balance_cover(billed: list) -> None:
+    """Will the balance pay the next month's charges? Best effort, like the lookup.
+
+    The balance is shared by every server, so the comparison is against all of
+    them together: each running one's month plus anything already owed.
+    """
+    from .project_cmd_lib import load_api_key
+
+    monthly = [s for s in billed if s.get("billing") == MONTHLY]
+    if not monthly:
+        return
+    balance = _fetch_balance(load_api_key())
+    if balance is None:
+        return
+    stopped = ("suspending", "suspended", "deleting")
+    due = sum((s.get("unpaid_usd") or 0)
+              + (0 if s.get("status") in stopped else s.get("usd_month") or 0)
+              for s in monthly)
+    dates = sorted(s["next_charge_at"][:10] for s in monthly if s.get("next_charge_at"))
+    if balance >= due:
+        console.print(f"\n[dim]Balance ${balance:.2f} covers the next month of these "
+                      f"servers (${due:.2f}).[/dim]")
+        return
+    console.print(f"\n[yellow]Balance ${balance:.2f} does not cover the next month of these "
+                  f"servers (${due:.2f}).[/yellow]")
+    when = f" before {dates[0]}" if dates else ""
+    console.print(f"[dim]A month left unpaid stops the server, then deletes it. "
+                  f"Top up{when}: https://discord.gg/4xfD9k8AUF[/dim]")
 
 
 def _short(p: Path) -> str:
@@ -547,11 +667,12 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
                       "operation.\n")
         return False
 
+    record = {s["name"]: s for s in (_fetch_billed_servers() or [])}.get(name)
     if not yes:
         console.print(f"\n[red]This destroys the machine '{name}' and everything on it.[/red]")
         console.print("[dim]The disk, the agent's identity, its logs — none of it is "
                       "recoverable.[/dim]")
-        console.print("[dim]The unused part of the term is refunded to your credit.[/dim]")
+        console.print(f"[dim]{_destroy_terms(record)}[/dim]")
         console.print()
 
         import questionary
@@ -588,10 +709,74 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
     _update(lambda servers: servers.pop(name, None))
 
     console.print(f"[green]✓ {name} destroyed[/green]")
+    result = response.json() if response.content else {}
+    if result.get("billing") == MONTHLY:
+        _print_final_charge(name, result, record)
+    else:
+        _print_refund(result)
+    return True
 
+
+def _destroy_terms(record: Optional[dict]) -> str:
+    """What destroying this server does to the money, said before it happens.
+
+    Read from the backend's own record of the server: a monthly one gets back
+    the unused part of the month it paid for, a year bought on the old term
+    refunds what is left of it. When the lookup fails we do not guess which.
+    """
+    if record is None:
+        return "Whatever it owes or is owed is settled now and shown below."
+    if record.get("billing") == MONTHLY:
+        return _monthly_destroy_terms(record.get("refund_if_destroyed_usd") or 0,
+                                      record.get("unpaid_usd") or 0)
+    if record.get("billing") == "prepaid_12_months":
+        return "The unused part of the year it was bought for is refunded to your credit."
+    return "The unused part of the term is refunded to your credit."
+
+
+def _monthly_destroy_terms(refund: float, owed: float) -> str:
+    """A paid month gives back its unused part; a month never paid owes the part used."""
+    if owed:
+        return (f"The monthly billing stops; what is owed (${owed:.2f}, plus the days used "
+                f"of a month that was never paid) stays owed.")
+    if refund:
+        return (f"The unused part of this month (about ${refund:.2f}) is refunded to your "
+                f"credits, and the monthly billing stops.")
+    return "The monthly billing stops."
+
+
+def _print_final_charge(name: str, result: dict, record: Optional[dict]) -> None:
+    """What the backend gave back for the unused part, then anything still owed.
+
+    The response's `unpaid_usd` is only this destroy's part; what the server
+    already owed was read before the delete, so the total is said once more.
+    That figure counts an open month that was never paid in full; the destroy
+    replaces it with the days used of it (this response's `unpaid_usd`).
+    """
+    if result.get("refunded_usd"):
+        note = result.get("credit_note_number")
+        console.print(f"[dim]${result['refunded_usd']:.2f} refunded to your credits for the "
+                      f"unused part of this month"
+                      + (f" — credit note {note}." if note else ".") + "[/dim]")
+        if note:
+            console.print(f"[dim]co server invoice {name} {note}   to see it[/dim]")
+    record = record or {}
+    owed = record.get("unpaid_usd") or 0
+    if owed and not record.get("paid_until") and record.get("period_start"):
+        owed -= record.get("usd_month") or 0            # the open month, now ended
+    owed = round(max(owed, 0) + (result.get("unpaid_usd") or 0), 2)
+    if owed:
+        console.print(f"[yellow]You still owe ${owed:.2f} for {name}; it is charged at your "
+                      f"next top-up: https://discord.gg/4xfD9k8AUF[/yellow]")
+    if not result.get("refunded_usd") and not owed:
+        console.print("[dim]Nothing refunded — the month was already used up.[/dim]")
+    console.print()
+
+
+def _print_refund(result: dict) -> None:
+    """A year bought up front: the unused part comes back, as an amount."""
     # State the amount, not the policy. "Prorated" tells the user nothing they
     # can check; a number against what they paid does.
-    result = response.json() if response.content else {}
     refunded = result.get("refunded_usd")
     if refunded:
         charged = result.get("charged_usd")
@@ -600,7 +785,6 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
                       f"the unused part of the term.[/dim]\n")
     else:
         console.print("[dim]Nothing refunded — the term had already run out.[/dim]\n")
-    return True
 
 
 # Stricter than DEPLOY_NAME_PATTERN, which allows a leading digit: a server name
@@ -665,49 +849,51 @@ def _fetch_pricing() -> Optional[dict]:
     return response.json() if response.status_code == 200 else None
 
 
+def _monthly(pricing: Optional[dict]) -> bool:
+    """Is this backend billing servers monthly in advance (oo-api #287)?
+
+    The backend before it charged twelve months at create and sends no
+    `billing` key. Everything that talks about money asks this first, so the
+    CLI never quotes "one month now" against a backend that is about to charge
+    them a year.
+    """
+    return (pricing or {}).get("billing") == MONTHLY
+
+
+def _monthly_price(pricing: dict, machine_type: str, disk_gb: int) -> float:
+    """The quote shown before create, by the formula the backend publishes.
+
+    The create response's `usd_month` is authoritative and is what is printed
+    afterwards; this only exists because the prompt has to come first.
+    """
+    disk = pricing["disk"]
+    extra = round((disk_gb - disk["included_gb"]) * disk["usd_per_gb_month"], 2)
+    return round(pricing["machine_types"][machine_type]["usd_month"] + extra, 2)
+
+
 def _confirm(name: str, machine_type: str, region: str, pricing: dict,
-            balance: Optional[float]) -> bool:
+            balance: Optional[float], disk_gb: Optional[int] = None) -> bool:
     """Show what this costs and what is left, then ask.
 
     Every other `co` command is either free or spends metered credit in
-    fractions of a cent. This is the first one that spends a large discrete
-    amount, and the verb cannot carry that — `new` is honest about the machine
-    and says nothing about the money. The prompt has to.
-
-    Balance-after is shown rather than just the price: what decides whether
-    someone can afford it is what is left, not what it costs.
-
-    The monthly figure leads. A server is a monthly thing in everybody's head,
-    and "$360" alone is a number nobody can compare to anything they already pay
-    for — while "$30 a month" places it immediately. The year is how we charge,
-    so it is said too, right next to it, and never instead of it.
+    fractions of a cent. A server is a large recurring amount, and the verb
+    cannot carry that — `new` is honest about the machine and says nothing
+    about the money. The prompt has to.
     """
-    from datetime import datetime, timedelta
-
     entry = pricing["machine_types"][machine_type]
-    price = entry["usd_12mo"]
-    months = pricing["term_months"]
-    # Published by the backend rather than divided here: one price, one place,
-    # and no chance of the CLI rounding its way to a different number than the
-    # one on the website. Older backends do not send it — fall back rather than
-    # crash, since the yearly price is the one actually charged.
-    monthly = entry.get("usd_month")
-    if monthly is None:
-        monthly = price / months
-    expires = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
 
     console.print()
     console.print(f"  [cyan]name[/cyan]          {name}")
     console.print(f"  [cyan]region[/cyan]        {region}")
     console.print(f"  [cyan]machine[/cyan]       {machine_type} [dim]— {entry['description']}[/dim]")
-    console.print(f"  [cyan]cost[/cyan]          [bold]${monthly:.0f} / month[/bold] "
-                  f"[dim]— ${price:.2f} for {months} months, charged now[/dim]")
-    if balance is not None:
-        console.print(f"  [cyan]your balance[/cyan]  ${balance:.2f} → "
-                      f"[bold]${balance - price:.2f}[/bold] after")
-    console.print(f"  [cyan]expires[/cyan]       {expires} "
-                  f"[dim]— the server stops on that date unless renewed[/dim]")
+    if _monthly(pricing):
+        stake = _print_monthly_terms(pricing, machine_type, disk_gb, balance)
+    else:
+        stake = _print_prepaid_terms(pricing, entry, balance)
     console.print()
+    if not stake:
+        console.print("[dim]https://discord.gg/4xfD9k8AUF to top up.[/dim]")
+        return False
 
     # Nothing can be answered on a stdin that is not a terminal, and the prompt
     # library does not decline politely — it registers the descriptor with
@@ -717,13 +903,68 @@ def _confirm(name: str, machine_type: str, region: str, pricing: dict,
     if not sys.stdin.isatty():
         console.print(
             f"[red]Cannot confirm: stdin is not a terminal.[/red]\n"
-            f"  ${price:.2f} would be charged now. "
+            f"  {stake} "
             f"Re-run with [bold]--yes[/bold] to confirm without being asked."
         )
         return False
 
     import questionary
     return bool(questionary.confirm("Create it?", default=False).ask())
+
+
+def _print_monthly_terms(pricing: dict, machine_type: str, disk_gb: Optional[int],
+                         balance: Optional[float]) -> str:
+    """Monthly in advance: the first month now, then a month as each one starts.
+
+    The balance line answers the one question that decides the create: it must
+    cover this first month, which is charged now. A balance below it returns ""
+    and the prompt is never shown. Anything else (an unpaid month elsewhere on
+    the account) is the backend's to refuse, in its own words.
+    """
+    disk = pricing["disk"]
+    disk_gb = disk_gb or disk["default_gb"]
+    monthly = _monthly_price(pricing, machine_type, disk_gb)
+    required = monthly * pricing.get("minimum_balance_months", 1)
+
+    console.print(f"  [cyan]disk[/cyan]          {disk_gb} GB {disk['type']} "
+                  f"[dim]— {disk['included_gb']} GB included, "
+                  f"${disk['usd_per_gb_month']:.2f} / GB / month beyond[/dim]")
+    console.print(f"  [cyan]cost[/cyan]          [bold]${monthly:.2f} / month[/bold] "
+                  f"[dim]— first month charged now, then at the start of each month "
+                  f"from credits; destroy refunds the unused part[/dim]")
+    if balance is not None and balance >= required:
+        console.print(f"  [cyan]your balance[/cyan]  ${balance:.2f} [dim]→ "
+                      f"${balance - monthly:.2f} after the first month[/dim]")
+    elif balance is not None:
+        console.print(f"  [cyan]your balance[/cyan]  [red]${balance:.2f} — below the first month "
+                      f"(${required:.2f}), which is charged now[/red]")
+        return ""
+    return f"${monthly:.2f} would be charged now, then ${monthly:.2f} at the start of each month."
+
+
+def _print_prepaid_terms(pricing: dict, entry: dict, balance: Optional[float]) -> str:
+    """The backend before monthly billing: twelve months, charged at create.
+
+    Kept for as long as that backend is the one in production, so the prompt
+    states the charge it is about to make rather than the one we plan to.
+    """
+    from datetime import datetime, timedelta
+
+    price = entry["usd_12mo"]
+    months = pricing["term_months"]
+    monthly = entry.get("usd_month")
+    if monthly is None:
+        monthly = price / months
+    expires = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
+
+    console.print(f"  [cyan]cost[/cyan]          [bold]${monthly:.0f} / month[/bold] "
+                  f"[dim]— ${price:.2f} for {months} months, charged now[/dim]")
+    if balance is not None:
+        console.print(f"  [cyan]your balance[/cyan]  ${balance:.2f} → "
+                      f"[bold]${balance - price:.2f}[/bold] after")
+    console.print(f"  [cyan]expires[/cyan]       {expires} "
+                  f"[dim]— the server stops on that date unless renewed[/dim]")
+    return f"${price:.2f} would be charged now."
 
 
 def _forget_host_key(ssh_target: str) -> None:
@@ -873,8 +1114,60 @@ def handle_server_fix_key(name: str) -> bool:
     return False
 
 
+def _choose(pricing: dict, machine_type: Optional[str], region: Optional[str],
+            disk_gb: Optional[int]) -> Optional[tuple]:
+    """Resolve the machine and region against what the backend sells, or say why not.
+
+    Everything is checked against the pricing response, never a list kept
+    here: the machines and disk sizes are whatever the backend offers today.
+    """
+    machine_type = machine_type or pricing["default"]
+    region = region or pricing["default_region"]
+    if machine_type not in pricing["machine_types"]:
+        console.print(f"\n[red]Unknown machine type: {machine_type}[/red]")
+        console.print("[dim]Available:[/dim]")
+        for option, entry in pricing["machine_types"].items():
+            price = f"${entry['usd_month']:.0f} / month  " if "usd_month" in entry else ""
+            console.print(f"  [cyan]{option:<14}[/cyan] {price}[dim]{entry.get('description', '')}[/dim]")
+        console.print()
+        return None
+    if region not in pricing["regions"]:
+        console.print(f"\n[red]Unknown region: {region}[/red]")
+        console.print(f"[dim]Available: {', '.join(sorted(pricing['regions']))}[/dim]\n")
+        return None
+    if disk_gb is not None and not _monthly(pricing):
+        console.print(f"\n[red]{backend_url()} does not offer --disk yet.[/red]")
+        console.print("[dim]Leave it out for the standard disk. Nothing was created or charged.[/dim]\n")
+        return None
+    if disk_gb is not None and disk_gb not in pricing["disk"]["sizes_gb"]:
+        console.print(f"\n[red]Unsupported disk size: {disk_gb} GB[/red]")
+        sizes = ", ".join(str(size) for size in pricing["disk"]["sizes_gb"])
+        console.print(f"[dim]Available: {sizes} GB[/dim]\n")
+        return None
+    return machine_type, region
+
+
+def _print_created(name: str, server: dict) -> None:
+    """What was made and what it costs, in the backend's own numbers."""
+    console.print(f"\n[green]✓ {name} is ready[/green]")
+    console.print(f"  [cyan]{server['ssh_target']}[/cyan]")
+    if server.get("hostname"):
+        console.print(f"  [cyan]https://{server['hostname']}[/cyan] "
+                      f"[dim]— once you deploy something to it[/dim]")
+    if server.get("billing") == MONTHLY:
+        console.print(f"  [dim]${server['usd_month']:.2f} / month — "
+                      f"${server['charged_usd']:.2f} charged now, paid until "
+                      f"{(server.get('paid_until') or server['next_charge_at'])[:10]}; "
+                      f"renews from credits[/dim]")
+    else:
+        console.print(f"  [dim]expires {server['expires_at'][:10]} — "
+                      f"${server['charged_usd']:.2f} charged[/dim]")
+    console.print(f"\n[dim]Next:[/dim] co server check {name}  ·  co deploy --to {name}\n")
+
+
 def handle_server_new(name: str, machine_type: Optional[str] = None,
-                      region: Optional[str] = None, yes: bool = False) -> bool:
+                      region: Optional[str] = None, yes: bool = False,
+                      disk_gb: Optional[int] = None) -> bool:
     """Have a server created for you, and register it locally."""
     import requests
 
@@ -911,30 +1204,30 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         console.print("[dim]Nothing was created or charged.[/dim]\n")
         return False
 
-    machine_type = machine_type or pricing["default"]
-    if machine_type not in pricing["machine_types"]:
-        console.print(f"\n[red]Unknown machine type: {machine_type}[/red]")
-        console.print(f"[dim]Available: {', '.join(sorted(pricing['machine_types']))}[/dim]\n")
+    chosen = _choose(pricing, machine_type, region, disk_gb)
+    if not chosen:
         return False
-
-    region = region or pricing["default_region"]
-    if region not in pricing["regions"]:
-        console.print(f"\n[red]Unknown region: {region}[/red]")
-        console.print(f"[dim]Available: {', '.join(sorted(pricing['regions']))}[/dim]\n")
-        return False
+    machine_type, region = chosen
 
     if not yes:
-        if not _confirm(name, machine_type, region, pricing, _fetch_balance(api_key)):
+        if not _confirm(name, machine_type, region, pricing, _fetch_balance(api_key), disk_gb):
             console.print("[dim]Nothing was created or charged.[/dim]\n")
             return False
 
+    body = {"name": name, "ssh_public_key": ssh_public_line,
+            "machine_type": machine_type, "region": region}
+    if disk_gb is not None:
+        body["disk_gb"] = disk_gb
+    if _monthly(pricing):
+        # The acknowledgement the monthly backend requires: this client has
+        # shown monthly-in-advance terms. The older backend gets nothing new.
+        body["billing"] = MONTHLY
     console.print(f"\n[dim]Creating {name} … this takes about a minute.[/dim]")
     try:
         response = requests.post(
             f"{backend_url()}/api/v1/servers",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"name": name, "ssh_public_key": ssh_public_line,
-                  "machine_type": machine_type, "region": region},
+            json=body,
             timeout=300,
         )
     except requests.RequestException as exc:
@@ -944,7 +1237,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         return False
 
     if response.status_code != 200:
-        _report_failure(response)
+        _report_failure(response, monthly=_monthly(pricing))
         return False
 
     server = response.json()
@@ -963,15 +1256,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
 
     _forget_host_key(server["ssh_target"])
     _wait_until_it_accepts_your_key(server["ssh_target"], name)
-
-    console.print(f"\n[green]✓ {name} is ready[/green]")
-    console.print(f"  [cyan]{server['ssh_target']}[/cyan]")
-    if server.get("hostname"):
-        console.print(f"  [cyan]https://{server['hostname']}[/cyan] "
-                      f"[dim]— once you deploy something to it[/dim]")
-    console.print(f"  [dim]expires {server['expires_at'][:10]} — "
-                  f"${server['charged_usd']:.2f} charged[/dim]")
-    console.print(f"\n[dim]Next:[/dim] co server check {name}  ·  co deploy --to {name}\n")
+    _print_created(name, server)
     return True
 
 
@@ -1000,8 +1285,12 @@ def _fetch_balance(api_key: str) -> Optional[float]:
     return None
 
 
-def _report_failure(response) -> None:
-    """Say what happened to the money, first."""
+def _report_failure(response, monthly: bool = False) -> None:
+    """Say what happened to the money, first.
+
+    On the monthly backend `balance` in an insufficient-credits refusal is what
+    is left after a month of every other live server, so it is labelled so.
+    """
     try:
         detail = response.json().get("detail", {})
     except ValueError:
@@ -1013,15 +1302,306 @@ def _report_failure(response) -> None:
 
     error = detail.get("error")
     if error == "insufficient_credits":
+        have = "left after your other servers' months" if monthly else "have"
+        need = "this server's month" if monthly else "need"
+        width = max(len(have), len(need), len("short by"))
         console.print("\n[red]Not enough credit.[/red]")
-        console.print(f"  have      ${detail.get('balance', 0):.2f}")
-        console.print(f"  need      ${detail.get('required', 0):.2f}")
-        console.print(f"  short by  [bold]${detail.get('shortfall', 0):.2f}[/bold]")
+        console.print(f"  {have:<{width}}  ${detail.get('balance', 0):.2f}")
+        console.print(f"  {need:<{width}}  ${detail.get('required', 0):.2f}")
+        console.print(f"  {'short by':<{width}}  [bold]${detail.get('shortfall', 0):.2f}[/bold]")
+        if detail.get("message"):
+            console.print(detail["message"], style="dim", markup=False)
         console.print("\n[dim]Nothing was created or charged.[/dim]")
         console.print("[dim]https://discord.gg/4xfD9k8AUF to top up.[/dim]\n")
+    elif error == "unpaid_server_months":
+        console.print(f"\n[red]Your servers owe ${detail.get('unpaid_usd', 0):.2f}.[/red]")
+        if detail.get("message"):
+            console.print(detail["message"], style="dim", markup=False)
+        console.print("\n[dim]Nothing was created or charged. Top up, then try again: "
+                      "https://discord.gg/4xfD9k8AUF[/dim]\n")
     elif error == "provisioning_failed":
         colour = "yellow" if detail.get("refunded") else "red"
         console.print(f"\n[{colour}]{detail.get('message', 'Provisioning failed.')}[/{colour}]\n")
+    elif detail.get("message"):
+        # The backend's own words, e.g. a create refused while a month is unpaid.
+        console.print(f"\n{detail['message']}\n", style="red", markup=False)
     else:
         console.print(f"\n[red]Server creation failed ({response.status_code}).[/red]")
         console.print(f"[dim]{detail or response.text[:300]}[/dim]\n")
+
+
+MONTH_PATTERN = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+INVOICE_NUMBER_PATTERN = re.compile(r"^[A-Z]+-\d{4}-\d{2}-\d+$")
+
+
+def invoice_usage_error(name: Optional[str], number: Optional[str], month: Optional[str],
+                        every: bool, pdf: Optional[str], as_json: bool) -> Optional[str]:
+    """Why these arguments cannot go together, or None. The caller exits 2 on one."""
+    if every and (name or number):
+        return "--all is every server's invoices; leave out the server name and number."
+    if not every and not name:
+        return "Name a server, or pass --all. Example: co server invoice prod"
+    if name and not SERVER_NAME_PATTERN.match(name):
+        return f"'{name}' is not a server name. co server ls lists yours."
+    if number and not (number.isdigit() or INVOICE_NUMBER_PATTERN.match(number)):
+        return (f"'{number}' is not an invoice: give its row (#) from co server invoice {name}, "
+                f"or its number, e.g. SRV-2026-12-000123.")
+    if number and month:
+        return "Pass an invoice number or --month, not both."
+    if month and not MONTH_PATTERN.match(month):
+        return f"--month takes YYYY-MM, e.g. 2026-12 (got {month})."
+    if pdf and as_json:
+        return "Pass --pdf or --json, not both."
+    return None
+
+
+def handle_server_invoice(name: Optional[str] = None, number: Optional[str] = None,
+                          month: Optional[str] = None, every: bool = False,
+                          pdf: Optional[str] = None, as_json: bool = False) -> bool:
+    """Show the invoices the backend issued for a server's monthly charges.
+
+    Rendered, never recomputed: every amount and line is the backend's, so the
+    total printed is `total_usd` and nothing a rounding here could move.
+    """
+    api_key = _invoice_preflight()
+    if not api_key:
+        return False
+    if every:
+        month = month or _this_month()
+        found = _get_json(api_key, "/api/v1/invoices", {"month": month})
+        return found is not None and _show_invoices(found["invoices"], pdf, as_json,
+                                                    f"issued in {month}")
+    if number and not number.isdigit():
+        found = _get_json(api_key, f"/api/v1/servers/{name}/invoices/{number}")
+        return found is not None and _show_invoices([found], pdf, as_json, number)
+
+    found = _get_json(api_key, f"/api/v1/servers/{name}/invoices")
+    if found is None:
+        return False
+    summaries = found["invoices"]
+    if number:
+        return _show_row(api_key, name, summaries, int(number), pdf, as_json)
+    if not month and not pdf:
+        return _show_invoice_list(name, summaries, as_json)
+    picked = [s for s in summaries if s["issued_at"][:7] == month] if month else summaries
+    if not month and len(picked) > 1:
+        return _refuse_to_guess(name, picked)
+    invoices = [_get_json(api_key, f"/api/v1/servers/{name}/invoices/{s['number']}")
+                for s in picked]
+    if None in invoices:
+        return False
+    return _show_invoices(invoices, pdf, as_json,
+                          f"for {name}" + (f" issued in {month}" if month else ""))
+
+
+def _show_row(api_key: str, name: str, summaries: list, row: int, pdf: Optional[str],
+              as_json: bool) -> bool:
+    """The invoice in row `row` of the list (1 = oldest), as the list numbers them."""
+    if not 1 <= row <= len(summaries):
+        console.print(f"\n[red]{name} has no invoice #{row}; it has {len(summaries)}.[/red]")
+        console.print(f"[dim]co server invoice {name}   to list them[/dim]\n")
+        return False
+    number = summaries[row - 1]["number"]
+    found = _get_json(api_key, f"/api/v1/servers/{name}/invoices/{number}")
+    return found is not None and _show_invoices([found], pdf, as_json, number)
+
+
+def _refuse_to_guess(name: str, summaries: list) -> bool:
+    """--pdf with neither a number nor a month, and more than one invoice to pick from."""
+    console.print(f"\n[red]{name} has {len(summaries)} invoices; say which one.[/red]")
+    for s in summaries:
+        console.print(f"  co server invoice {name} {s['number']} --pdf {s['number']}.pdf",
+                      markup=False)
+    console.print()
+    return False
+
+
+def _invoice_preflight() -> Optional[str]:
+    """The API key, once we know this backend issues invoices."""
+    from .project_cmd_lib import load_api_key
+
+    api_key = load_api_key()
+    if not api_key:
+        console.print("\n[red]Not authenticated.[/red]")
+        console.print("[cyan]co auth[/cyan] first — invoices belong to your account.\n")
+        return None
+    if not _monthly(_fetch_pricing()):
+        console.print(f"\n[yellow]{backend_url()} does not issue server invoices yet.[/yellow]")
+        console.print("[dim]It bills servers 12 months up front; invoices arrive with "
+                      "monthly billing.[/dim]\n")
+        return None
+    return api_key
+
+
+def _this_month() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def _get_json(api_key: str, path: str, params: Optional[dict] = None) -> Optional[dict]:
+    """GET an invoice endpoint; on anything but 200, say what the backend said."""
+    import requests
+
+    response = requests.get(f"{backend_url()}{path}", params=params, timeout=30,
+                            headers={"Authorization": f"Bearer {api_key}"})
+    if response.status_code == 200:
+        return response.json()
+    console.print(f"\n[red]{path} answered {response.status_code}.[/red]")
+    console.print(response.text[:300] + "\n", style="dim", markup=False)
+    return None
+
+
+def _show_invoice_list(name: str, summaries: list, as_json: bool) -> bool:
+    """One line per invoice; the full document is one --month away."""
+    import json
+
+    if as_json:
+        print(json.dumps({"invoices": summaries}, indent=2))
+        return True
+    if not summaries:
+        console.print(f"\n[dim]No invoices for {name} yet. The first is issued when its "
+                      f"first month ends, or when it is destroyed.[/dim]\n")
+        return True
+    table = Table(box=None, padding=(0, 2))
+    for column in ("#", "NUMBER", "ISSUED", "PERIOD", "AMOUNT", "STATUS"):
+        table.add_column(column, justify="right" if column in ("#", "AMOUNT") else "left")
+    for row, s in enumerate(summaries, 1):
+        table.add_row(str(row), s["number"], s["issued_at"][:10],
+                      f"{s['period_start'][:10]} to {s['period_end'][:10]}",
+                      f"${s['amount_usd']:.2f}", s["status"])
+    console.print()
+    console.print(table)
+    latest = summaries[-1]["number"]
+    console.print(f"\n[dim]Full invoice:[/dim] [bold]co server invoice {name} {len(summaries)}[/bold]  "
+                  f"[dim](the row, or its number; add --pdf {latest}.pdf to save it)[/dim]\n")
+    return True
+
+
+def _show_invoices(invoices: list, pdf: Optional[str], as_json: bool, what: str) -> bool:
+    """Full invoices: the backend's JSON, readable text, or a PDF of that text."""
+    import json
+
+    if as_json:
+        print(json.dumps({"invoices": invoices}, indent=2))
+        return True
+    if not invoices:
+        console.print(f"\n[dim]No invoices {what}.[/dim]\n")
+        return True
+    if pdf:
+        _write_invoice_pdf(invoices, Path(pdf))
+        console.print(f"\n[green]✓[/green] {len(invoices)} invoice(s) {what} → {pdf}\n")
+        return True
+    for invoice in invoices:
+        console.print()
+        for line in _invoice_text(invoice):
+            console.print(line, markup=False, highlight=False)
+    console.print()
+    return True
+
+
+def _invoice_text(invoice: dict) -> list:
+    """The invoice as plain lines: the terminal prints them, the PDF lays them out."""
+    issuer, bill_to, server, period = (invoice["issuer"], invoice["bill_to"],
+                                       invoice["server"], invoice["period"])
+    lines = [f"INVOICE {invoice['number']}   {invoice['status'].upper()}",
+             f"Issued    {invoice['issued_at'][:10]}",
+             f"From      {issuer['name']}" + (f", ABN {issuer['abn']}" if issuer.get("abn") else "")]
+    lines += [f"          {value}" for value in (issuer.get("address"), issuer.get("email")) if value]
+    lines.append(f"Bill to   {bill_to.get('name') or bill_to['agent_address']}")
+    if bill_to.get("name"):
+        lines.append(f"          {bill_to['agent_address']}")
+    if bill_to.get("address"):
+        lines.append(f"          {bill_to['address']}")
+    if bill_to.get("tax_id"):
+        lines.append(f"          Tax ID {bill_to['tax_id']}")
+    lines.append(f"Server    {server['name']} ({server['machine_type']}, {server['disk_gb']} GB disk)")
+    lines.append(f"Period    {period['start'][:10]} to {period['end'][:10]}, {period['days']} days")
+    if not period["full_month"]:
+        lines.append("          Part of a month: the server was destroyed before it ended")
+    return lines + [""] + _invoice_line_table(invoice) + [
+        "", invoice["gst_treatment"], invoice["payment"]["note"]]
+
+
+def _invoice_line_table(invoice: dict) -> list:
+    width = max([len("Description")] + [len(line["description"]) for line in invoice["lines"]])
+    rows = [f"{'Description':<{width}}  {'Months':>7}  {'Per month':>10}  {'Amount':>10}"]
+    for line in invoice["lines"]:
+        rows.append(f"{line['description']:<{width}}  {line['months']:>7g}  "
+                    f"{'$%.2f' % line['unit_usd_month']:>10}  {'$%.2f' % line['amount_usd']:>10}")
+    total = f"${invoice['total_usd']:.2f}"
+    rows.append(f"{'Total ' + invoice['currency']:>{width + 21}}  {total:>10}")
+    return rows
+
+
+# 9pt Courier is 5.4pt a character; 95 of them fit between 40pt margins on A4.
+PDF_LINE_CHARS = 95
+PDF_LINES_PER_PAGE = 64
+
+
+def _write_invoice_pdf(invoices: list, path: Path) -> None:
+    """A4 pages in Courier so the columns line up; an invoice starts on a new page.
+
+    Built with pypdf, already a dependency, and the PDF base-14 font, so no
+    font file and no new package. The pages carry `_invoice_text`, wrapped.
+    """
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    font = DictionaryObject({NameObject("/Type"): NameObject("/Font"),
+                             NameObject("/Subtype"): NameObject("/Type1"),
+                             NameObject("/BaseFont"): NameObject("/Courier"),
+                             NameObject("/Encoding"): NameObject("/WinAnsiEncoding")})
+    writer = PdfWriter()
+    for invoice in invoices:
+        lines = _pdf_lines(invoice)
+        for top in range(0, len(lines), PDF_LINES_PER_PAGE):
+            page = writer.add_blank_page(width=595, height=842)
+            page[NameObject("/Resources")] = DictionaryObject(
+                {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})})
+            stream = DecodedStreamObject()
+            stream.set_data(_pdf_text_ops(lines[top:top + PDF_LINES_PER_PAGE]))
+            page.replace_contents(stream)
+    with open(path, "wb") as handle:
+        writer.write(handle)
+
+
+def _shows_in_pdf(text: str) -> bool:
+    """Can the base-14 font's encoding (cp1252) draw every character of this?"""
+    return text.encode("cp1252", "replace") == text.encode("cp1252", "ignore")
+
+
+def _pdf_lines(invoice: dict) -> list:
+    """The invoice's lines, wrapped to the page, with a bill-to the font cannot draw left out.
+
+    Courier carries no Chinese, Japanese or other non-Latin glyphs. Rather than
+    a row of question marks where a company name should be, the page names the
+    account address and says where the full name is.
+    """
+    import textwrap
+
+    bill_to = invoice["bill_to"]
+    hidden = [k for k in ("name", "address") if bill_to.get(k) and not _shows_in_pdf(bill_to[k])]
+    shown = {**invoice, "bill_to": {**bill_to, **{k: None for k in hidden}}}
+    lines = _invoice_text(shown)
+    if hidden:
+        at = next(i for i, line in enumerate(lines) if line.startswith("Bill to")) + 1
+        lines.insert(at, f"          (bill-to {' and '.join(hidden)} not shown: this PDF's font "
+                         f"cannot draw it; co server invoice {invoice['server']['name']} "
+                         f"{invoice['number']} prints it)")
+    wrapped = []
+    for line in lines:
+        wrapped += textwrap.wrap(line, PDF_LINE_CHARS, subsequent_indent=" " * 10,
+                                 drop_whitespace=False, replace_whitespace=False) or [""]
+    return wrapped
+
+
+def _pdf_text_ops(lines: list) -> bytes:
+    """PDF text operators for these lines, top of the page down, 9pt Courier."""
+    def literal(text: str) -> bytes:
+        raw = text.encode("cp1252", "replace")
+        return b"(" + raw.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)") + b")"
+
+    ops = [b"BT /F1 9 Tf 40 800 Td 12 TL"]
+    ops += [literal(line) + b" Tj T*" for line in lines]
+    return b"\n".join(ops + [b"ET"])

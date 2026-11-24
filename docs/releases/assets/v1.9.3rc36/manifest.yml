@@ -1,0 +1,2 @@
+version: v1.9.3rc36
+no_visual_change: "Scheduling-only REM change: a scheduled sync up to 10 minutes before a saved time serves it. No reader layout, CSS, component or CLI output changes beyond one sentence in the co rem start note."

@@ -15,8 +15,8 @@ The only symptom was silence, and silence is what you expect while you wait.
 
 ## The mail was never lost
 
-The address was `aaron@mail.openonion.ai`. The account doing the work owns
-`aaron.xie@mail.openonion.ai` — a rename from a month earlier that a document
+The address was `ellis@example.com`. The account doing the work owns
+`ellis.yew@example.org` — a rename from a month earlier that a document
 had not caught up with. Two accounts, one person, one of them not the one
 holding the mailbox.
 

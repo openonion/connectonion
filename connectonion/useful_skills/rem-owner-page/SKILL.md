@@ -32,7 +32,7 @@ threads` line, `Last contact` or `Cadence`.
 
 - `Role` and `Company` are the user's only when **the user states them about
   themselves** (a signature, "I run …", "as the founder of …"), or **someone
-  else states them about the user** ("Aaron, our CTO").
+  else states them about the user** ("Ellis, our CTO").
 - **A role in a list the user writes about someone else is that person's, not
   the user's.** "Corin: partner at OpenOnion, runs marketing, Airbnb co-host" in
   the user's mail describes Corin. Leave it off this page.

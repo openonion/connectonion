@@ -25,7 +25,12 @@ INSIGHT = re.compile(r"verdict:\s*\**\s*insight\b", re.I)
 MUSE_TURNS = ("Now do Turn 1 only.",
               *(f"Turn {n}: study chosen question {n - 1} (the next of your five). "
                 "Follow the skill's Turns 2–6 rules. "
-                "Add a new bullet; never edit an existing Insight bullet." for n in range(2, 7)),
+                # Four is the page's limit (the page rule's "2–4 cited bullets", the Skill, the
+                # critic's over_limit); five is the number of questions. "Add a new bullet" in each
+                # of five turns asked for five, and for one from a question that yields none (#3083).
+                "If the verdict is insight, add it as a new bullet; never edit an existing Insight bullet. "
+                "`Insight` keeps at most four bullets: when a new one would make a fifth, name the weakest "
+                "bullet it supersedes in your reply and leave replacement to the reviewer." for n in range(2, 7)),
               "Last turn — look back, as the skill says.")
 
 
@@ -119,7 +124,7 @@ def _github_checkouts(page) -> list[tuple[str, str]]:
         if not Path(path).is_dir():
             continue
         remote = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"],
-                                capture_output=True, text=True, timeout=120)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         match = re.fullmatch(r"(?:https?://|ssh://git@|git://|git@)github\.com[:/]"
                              r"([\w.-]+/[\w.-]+?)(?:\.git)?/?", remote.stdout.strip())
         if remote.returncode == 0 and match:
@@ -150,7 +155,7 @@ def _github_items(page, title="") -> tuple[list[dict], list[str]]:
         for kind in ("issue", "pr"):
             result = subprocess.run(["gh", kind, "list", "-R", repo, "--state", "all", "--limit", str(GITHUB_LIST_LIMIT),
                                      "--json", "number,title,body,author,createdAt,state,url,comments"],
-                                    capture_output=True, text=True, timeout=600)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
             if result.returncode:
                 coverage.append(f"github {repo}: not read ({result.stderr.strip()[:200]})")
                 break
@@ -181,7 +186,7 @@ def _github_search(owner, title, *, history=False) -> tuple[list[dict], str]:
         result = subprocess.run(["gh", "search", kind, query, "--owner", owner, *order,
                                  "--limit", "300" if history else "100", "--json",
                                  "number,title,body,author,createdAt,state,url,repository"],
-                                capture_output=True, text=True, timeout=120)
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode:
             return [], f"{label}: not read ({result.stderr.strip()[:200]})"
         rows.append([_github_item(row["repository"]["nameWithOwner"], row,
@@ -194,10 +199,10 @@ def _git_log_items(page) -> list[dict]:
     items = []
     for path, _ in _github_checkouts(page):
         argv = ["git", "-C", path, "log", "origin/HEAD", "--date=short", "--format=%h %ad %an %s", "--", "."]
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode:
             argv[4] = "HEAD"
-            result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode == 0:
             items.append({"role": "git-log", "source": f"git-log:{path}", "timestamp": now().isoformat(),
                           "text": result.stdout})
@@ -223,10 +228,10 @@ def _history_rows(page, github, title="") -> list[dict]:
             continue
         argv = ["git", "-C", path, "log", "origin/HEAD", "--first-parent", "--reverse",
                 "--date=short", "--format=%h %ad %s", "--", "."]
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode:
             argv[4] = "HEAD"
-            result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if result.returncode == 0:
             for line in result.stdout.splitlines():
                 sha, date, subject = line.split(" ", 2)
@@ -342,7 +347,8 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
     ledger = _ledger_items(root, record)
     coverage_item = {"role": "coverage", "source": "investigation:coverage", "timestamp": now().isoformat(),
                      "text": "\n".join(coverage) + "\n" + _archive_note(root)}
-    items = [_page_item(root, record, page), coverage_item, *timeline, *ledger,
+    # Enrich adds and corrects; it never removes a line, and review checks that (#3105).
+    items = [{**_page_item(root, record, page), "append": True}, coverage_item, *timeline, *ledger,
              *_cited_originals(root, page, set(ledger[0]["sources"])), *_prior_runs(root, record)]
     if stage_progress:
         stage_progress("following leads")
@@ -352,14 +358,22 @@ def enrich(root, record, *, runner=None, stage_progress=None) -> dict:
             "periods": len(periods)}
 
 
-def _prior_runs(root: Path, record: str) -> list[dict]:
+def prior_reports(root: Path, record: str) -> list[dict]:
+    """The latest completed report of each kind for this page: its heading and its run."""
     logs = run_logs(root)
     reports = []
-    for phase, label in (("enrich", "Open leads from enrich"), ("muse", "Questions the last muse run left")):
-        latest = next((run for run in logs if run.get("phase") == phase and run.get("record") == record
+    for stages, label in ((("enrich",), "Open leads from enrich"), (("muse",), "Questions the last muse run left"),
+                          (("investigate", "continue"), "Open questions from the predecessor's investigate/continue report")):
+        latest = next((run for run in logs if run.get("render_stage", run.get("stage", run.get("phase"))) in stages
+                       and run.get("record") == record and run.get("report") and not run.get("pending_review")
                        and run.get("outcome") == "completed"), None)
         if latest and latest.get("report"):
-            reports.append(f"## {label}\n{latest['report']}")
+            reports.append({"label": label, "kind": stages[0], "run": latest})
+    return reports
+
+
+def _prior_runs(root: Path, record: str) -> list[dict]:
+    reports = [f"## {row['label']}\n{row['run']['report']}" for row in prior_reports(root, record)]
     return [{"role": "prior-runs", "source": "investigation:prior-runs", "timestamp": now().isoformat(),
              "text": "\n\n".join(reports)}] if reports else []
 

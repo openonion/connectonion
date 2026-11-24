@@ -7,11 +7,12 @@ import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import WRITE_WAIT_SECONDS, RemError, atomic_write, is_address, maintenance_lock, read_json, state_path, write_json
-from .mail import _address, _addresses, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE
+from .mail import MissingMail, _address, _addresses, on_domains, org_mail, org_member, notice_addresses, participants, RELATED_ORG_SCOPE
 
 
 def _key(value: str) -> str:
@@ -30,7 +31,8 @@ def observed_message_path(root: Path, provider: str, message_id: str) -> Path:
 
 
 def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_at: str,
-                   input_scope: str = "Provider read during investigation; not initial-window coverage.") -> dict:
+                   input_scope: str = "Provider read during investigation; not initial-window coverage.",
+                   lock_held: bool = False) -> dict:
     """Keep the first full provider rendering and its metadata outside the init inventory.
 
     A recovered body uses an empty fetched_at when its original retrieval time
@@ -40,7 +42,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
     if not isinstance(body, str):
         raise RemError("Mail provider returned no text body")
     metadata = state_path(root, f"mail/observed-metadata/{provider}/{_key(row['id'])}.json")
-    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+    with nullcontext() if lock_held else maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         path = original if original.is_file() else observed_message_path(root, provider, row["id"])
         for folder in ("mail", "mail/observed", f"mail/observed/{provider}",
                        "mail/observed-metadata", f"mail/observed-metadata/{provider}"):
@@ -48,7 +50,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
         saved = read_json(path, {}) if path.is_file() else {
             "provider": provider, "id": row["id"], "body": body,
             **{key: row.get(key) or ([] if key in ("to", "cc") else "")
-               for key in ("date", "from", "to", "cc", "subject")},
+               for key in ("date", "from", "to", "cc", "subject", "reply_to")},
             "body_format": "provider-rendered text, not original MIME",
             "fetched_at": fetched_at, "retained_at": _utcnow().isoformat(), "input_scope": input_scope}
         if saved.get("provider") != provider or saved.get("id") != row["id"]:
@@ -59,7 +61,7 @@ def retain_message(root: Path, provider: str, row: dict, body: str, *, fetched_a
             write_json(path, saved)
         if not metadata.is_file():
             write_json(metadata, {"type": "mail", "source": provider, "id": row["id"],
-                **{key: saved.get(key) for key in ("date", "from", "to", "cc", "subject")},
+                **{key: saved.get(key) for key in ("date", "from", "to", "cc", "subject", "reply_to")},
                 "thread": row.get("thread_id") or row.get("thread") or ""})
     return saved
 
@@ -99,7 +101,7 @@ def _person_indexes(root: Path, report: dict, messages: list[dict]) -> int:
         for record, roles in found.items():
             indexes[record].append({"provider": row["source"], "id": row["id"],
                                     "date": row.get("date", ""), "roles": sorted(roles),
-                                    "message": str(message_path(root, row["source"], row["id"]).relative_to(root))})
+                                    "message": message_path(root, row["source"], row["id"]).relative_to(root).as_posix()})
     for record, rows in indexes.items():
         _jsonl(person_index_path(root, record), sorted(rows, key=lambda item: (item["date"], item["id"])))
     return len(indexes)
@@ -132,7 +134,8 @@ def _archive_message(root: Path, row: dict, clients: dict) -> str:
     client = clients.get(provider)
     if client is None:
         raise RemError("Mail provider unavailable during body archive")
-    body = client.get_email_body(message_id)
+    from .mail import read_mail
+    body = read_mail(client.get_email_body, message_id, provider=provider, root=root)
     if not isinstance(body, str):
         raise RemError("Mail provider returned no text body")
     snapshot = {"provider": provider, "id": message_id, "date": row.get("date", ""),
@@ -185,6 +188,7 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
     result = {"phase": "running", "started": started, "range_start": start.isoformat(),
               "range_end": end.isoformat(), "target": len(messages), "saved": 0,
               "reused": 0, "failed": missing_ids,
+              "dropped_missing": [],
               "failed_keys": [{"key": "missing-id", "error": "MissingId"}] if missing_ids else [],
               "people_indexes": 0,
               "project_indexes": 0, "providers": sorted(clients),
@@ -206,9 +210,11 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
             try:
                 saved = futures[index - 1].result() if futures else _archive_message(root, row, clients)
                 result[saved] += 1
+            except MissingMail as error:
+                result['dropped_missing'].append({'provider': provider, 'id': message_id, 'reason': str(error)})
             except Exception as error:  # A single unavailable message must not discard the map.
                 result["failed"] += 1
-                result["failed_keys"].append({"key": key, "error": type(error).__name__})
+                result["failed_keys"].append({"key": key, "id": message_id, "error": type(error).__name__, 'reason': str(error)})
             if progress and (index == 1 or index % 25 == 0 or index == len(messages)):
                 progress(f"saving mail bodies ({result['saved']} saved, {result['reused']} reused, "
                          f"{result['failed']} failed)", f"{index}/{len(messages)}")
@@ -217,7 +223,8 @@ def archive_init(root: Path, report: dict, clients: dict, progress=None, *, seco
             if index % 25 == 0:
                 result["updated"] = now().isoformat()
                 write_json(state, result)
-    result["people_indexes"] = _person_indexes(root, report, messages)
+    gone = {(row['provider'], row['id']) for row in result['dropped_missing']}
+    result["people_indexes"] = _person_indexes(root, report, [row for row in messages if (row['source'], row['id']) not in gone])
     result["project_indexes"] = _project_indexes(root, report, sessions)
     mail_scan_errors = [error for error in report.get("errors", [])
                         if error.get("source") in ("gmail", "outlook")]
@@ -282,7 +289,7 @@ def mail_metadata(root: Path) -> list[dict]:
     # the parse it saved. read_json still refuses a linked file when it is parsed.
     paths = sorted(state_path(root, "mail/observed-metadata").glob("*/*.json"))
     for folder in {path.parent for path in paths}:
-        state_path(root, str(folder.relative_to(root / ".state")))   # refuses a linked provider folder
+        state_path(root, folder.relative_to(root / ".state").as_posix())   # refuses a linked provider folder
     observed = []
     for path in paths:
         stat = path.lstat()
@@ -326,7 +333,7 @@ def _saved_ref(root: Path, row: dict, *, addresses: set | None = None) -> dict |
         raise RemError("Retained mail identity does not match its metadata")
     if addresses is not None and not addresses.intersection(participants(saved)):
         return None
-    return {"provider": provider, "id": native, "message": str(path.relative_to(root))}
+    return {"provider": provider, "id": native, "message": path.relative_to(root).as_posix()}
 
 
 def _thread_context(root: Path, refs: list[dict], rows: list[dict]) -> list[dict]:
@@ -427,14 +434,37 @@ def domain_material(root: Path, domains: list[str], *, contact_addresses=(),
             snapshot = read_json(path, {})
             if not isinstance(snapshot, dict) or snapshot.get("provider") != provider or "body" not in snapshot:
                 return None
-            own_domain = org_member(snapshot, domains, own | notices)
+            own_domain = org_member(snapshot, domains, own)
             if keep(snapshot):
                 if not own_domain:
                     snapshot["relationship_scope"] = RELATED_ORG_SCOPE
                 snapshots.append(snapshot)
     if include_observed:
-        snapshots = _domain_observations(root, domains, snapshots, keep, own | notices)
+        snapshots = _domain_observations(root, domains, snapshots, keep, own)
     return _material(manifest, snapshots)
+
+
+def topic_material(root: Path, aliases: list[str]):
+    """Search saved mail bodies by topic alias, including separately observed mail."""
+    from .topic_map import _pattern
+    pattern = _pattern(aliases)
+    manifest = read_json(state_path(root, 'mail/archive.json'), {})
+    own = set(manifest.get('owner_addresses', []))
+    found, seen = {}, set()
+    for folder in ('mail/messages', 'mail/observed'):
+        for path in sorted(state_path(root, folder).glob('*/*.json')):
+            snapshot = read_json(path, {})
+            key = (snapshot.get('provider'), snapshot.get('id'))
+            if key in seen or not isinstance(snapshot.get('body'), str):
+                continue
+            if pattern.search(snapshot['body'] + ' ' + str(snapshot.get('subject', ''))):
+                found.setdefault(snapshot['provider'], []).append(_material_item(snapshot, own))
+                seen.add(key)
+    if not found:
+        return None
+    start = datetime.fromisoformat(manifest['range_start']) if manifest.get('range_start') else None
+    end = datetime.fromisoformat(manifest['range_end']) if manifest.get('range_end') else None
+    return found, start, end
 
 
 # No checkpoint for this long means no process is saving: init stamps `updated`
@@ -463,7 +493,7 @@ def archive_state(root: Path, now: datetime | None = None) -> dict | None:
     if stalled:
         summary = (f"Mail archive incomplete: {on_disk} of {target} bodies saved, no progress since "
                    f"{updated[:16]}; investigations ask the mail servers until it is done. The next "
-                   f"`co rem sync` resumes it from the saved bodies.")
+                   f"scheduled run resumes it from the saved bodies.")
     else:
         summary = f"Mail archive saving: {on_disk} of {target} bodies so far."
     return {"phase": manifest["phase"], "target": target, "on_disk": on_disk, "updated": updated,

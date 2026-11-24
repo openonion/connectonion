@@ -51,6 +51,36 @@ def test_ellipses_join_parts_that_appear_in_order():
     assert misquoted(NOWHERE, 'people/x.md', backwards, items)
 
 
+@pytest.mark.parametrize('quoted,original', [
+    ('notable progress', 'not able progress'),
+    ('not able progress', 'notable progress'),
+    ('now here to help', 'nowhere to help'),
+    ('nowhere to help', 'now here to help'),
+    ('아버지가방에', '아버지 가방에'),
+    ('아버지 가방에', '아버지가방에'),
+])
+def test_quote_word_separation_cannot_change(tmp_path, quoted, original):
+    text = page(f'- “{quoted}” [1]', '- [1] gmail:example\n')
+    assert misquoted(tmp_path, 'projects/example.md', text,
+                     [{'source': 'gmail:example', 'text': original}]) == [
+        f'Quote is not in its cited source: “{quoted}”']
+
+
+@pytest.mark.parametrize('quoted,original', [
+    ('not able to pay', 'We are NOT\n> able\tto  pay today.'),
+    ('send the [draft](https://example.com)', 'Please **send** the __draft__.'),
+    ('Ready, then send', 'Ready,\nthen send'),
+    ('Ready,then send', 'Ready , then send'),
+    ('请发送草稿', '请发送\n草稿'),
+    ('送ってください', '送って\nください'),
+    ('아버지 가방에', '아버지\n가방에'),
+])
+def test_quote_word_separation_keeps_layout_tolerance(tmp_path, quoted, original):
+    text = page(f'- “{quoted}” [1]', '- [1] gmail:example\n')
+    assert misquoted(tmp_path, 'projects/example.md', text,
+                     [{'source': 'gmail:example', 'text': original}]) == []
+
+
 def test_a_quote_whose_original_is_not_here_is_left_to_the_audit():
     text = page('- “anything at all” [1]', '- [1] gmail:unread — 2026-10-01\n')
     assert misquoted(NOWHERE, 'people/x.md', text, []) == []
@@ -230,7 +260,12 @@ def test_a_page_kept_after_its_audit_failed_says_how_many_claims_went(tmp_path, 
     assert review['factual_quality'] == 'bounded citation audit failed; 1 refuted claims removed'
 
 
-def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monkeypatch):
+@pytest.mark.parametrize('decision', [
+    {'verdict': 'INSUFFICIENT', 'findings': []},
+    {'verdict': 'UNKNOWN', 'findings': []},
+    {'verdict': 'INSUFFICIENT'},
+])
+def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monkeypatch, decision):
     """"insufficient" means the audit read too little; nobody showed a claim wrong."""
     notebook, old, written, items = _person(tmp_path)
     written = written.replace('- 2026-10-02 — Corin offered: “I can intro you to Jonah” [1] — open',
@@ -238,7 +273,7 @@ def test_an_audit_that_could_not_judge_is_recorded_not_a_refusal(tmp_path, monke
     candidate = tmp_path / 'candidate.md'
     candidate.write_text(written)
     monkeypatch.setattr(runner, 'run_claim_task', lambda *_args: {
-        'result': json.dumps({'verdict': 'INSUFFICIENT', 'findings': []}), 'usage': {}})
+        'result': json.dumps(decision), 'usage': {}})
     monkeypatch.setattr(runner, 'run_task', lambda *args: pytest.fail('nothing to repair'))
     runner.promote_with_repairs(notebook, 'people/corin.md', candidate, old, items, tmp_path, {},
                                 workdir=tmp_path, config={}, stage='investigate')

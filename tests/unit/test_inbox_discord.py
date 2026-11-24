@@ -36,7 +36,7 @@ MESSAGE = {
     "id": "123456789012345678",
     "channel_id": "234567890123456789",
     "guild_id": "345678901234567890",
-    "author": {"id": "456789012345678901", "bot": False, "username": "aaron", "global_name": "Aaron"},
+    "author": {"id": "456789012345678901", "bot": False, "username": "ellis", "global_name": "Ellis"},
     "content": "check the failed deployment",
     "mentions": [{"id": ME}],
     "timestamp": "2026-09-05T05:00:00.000000+00:00",
@@ -117,7 +117,7 @@ class TestAnEventBecomesAMessage:
         assert record["chat"] == "234567890123456789"
         assert record["thread"] is None
         assert record["sender"] == "456789012345678901"
-        assert record["sender_name"] == "Aaron"
+        assert record["sender_name"] == "Ellis"
         assert record["text"] == "check the failed deployment"
         assert record["kind"] == "text"
         assert record["mentioned"] is True

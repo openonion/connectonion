@@ -21,6 +21,11 @@ work, keep it on your machine, and carry it into the next task.
 
 </div>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/co-harness.webp" alt="CLI as your harness. No MCP servers, adapters or glue: a CLI's --help is the prompt, its commands are the tools, and together they are an agent. Any model runs it from Claude Code, Codex or Cursor. All you need is to install the CLI. Only simple things scale." width="100%">
+  <br><sub><a href="https://github.com/openonion/connectonion/raw/main/assets/co-harness.mp4">Watch it with sound</a> · illustrative UI</sub>
+</p>
+
 <!-- connections: generated, do not edit by hand. Refresh with
      curl -s https://www.connectonion.com/connections.md
      and paste the output between these two comments. -->
@@ -37,10 +42,13 @@ work, keep it on your machine, and carry it into the next task.
 <a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/gcal.svg?v=3" width="80" height="80" alt="Google Calendar" title="Google Calendar · co gcalendar"></a>
 <a href="docs/cli/gcalendar.md"><img src="https://www.connectonion.com/logos/meet.svg?v=3" width="80" height="80" alt="Google Meet" title="Google Meet · co gcalendar meet"></a>
 <a href="docs/cli/onenote.md"><img src="https://www.connectonion.com/logos/onenote.svg?v=3" width="80" height="80" alt="OneNote" title="OneNote · co onenote"></a>
+<a href="docs/cli/obsidian.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/obsidian.svg" width="80" height="80" alt="Obsidian" title="Obsidian · co obsidian"></a>
+<a href="docs/cli/notion.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/notion.svg" width="80" height="80" alt="Notion" title="Notion · co notion"></a>
 <a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/teams.svg?v=3" width="80" height="80" alt="Teams meetings" title="Teams meetings · co outlook calendar"></a></p>
 
 <p><b>Chat apps</b><br>
 <a href="docs/cli/whatsapp.md"><img src="https://www.connectonion.com/logos/whatsapp.svg?v=3" width="80" height="80" alt="WhatsApp" title="WhatsApp · co whatsapp"></a>
+<a href="docs/wechat-read.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/wechat.svg" width="80" height="80" alt="WeChat" title="WeChat · co wechat"></a>
 <a href="docs/cli/telegram.md"><img src="https://www.connectonion.com/logos/telegram.svg?v=3" width="80" height="80" alt="Telegram" title="Telegram · co telegram"></a>
 <a href="docs/cli/discord.md"><img src="https://www.connectonion.com/logos/discord.svg?v=3" width="80" height="80" alt="Discord" title="Discord · co discord"></a>
 <a href="docs/cli/slack.md"><img src="https://www.connectonion.com/logos/slack.svg?v=3" width="80" height="80" alt="Slack" title="Slack · co slack"></a>
@@ -58,7 +66,8 @@ work, keep it on your machine, and carry it into the next task.
 
 <p><b>Issues &amp; feedback</b><br>
 <a href="docs/cli/linear.md"><img src="https://www.connectonion.com/logos/linear.svg?v=3" width="80" height="80" alt="Linear" title="Linear · co linear"></a>
-<a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg?v=3" width="80" height="80" alt="Canny" title="Canny · co canny"></a></p>
+<a href="docs/cli/canny.md"><img src="https://www.connectonion.com/logos/canny.svg?v=3" width="80" height="80" alt="Canny" title="Canny · co canny"></a>
+<a href="docs/cli/asana.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/asana.svg" width="80" height="80" alt="Asana" title="Asana · co asana"></a></p>
 
 <p><b>Coding agents</b><br>
 <a href="docs/cli/ai.md"><img src="https://www.connectonion.com/logos/ai.svg?v=3" width="80" height="80" alt="co ai" title="co ai · co ai"></a>
@@ -92,6 +101,9 @@ work, keep it on your machine, and carry it into the next task.
 
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
+
+<p><b>Integrations in review</b><br>
+<a href="https://github.com/openonion/connectonion/pull/3223"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/granola.svg" width="80" height="80" alt="Granola" title="Granola · integration PR"></a></p>
 
 <a id="co-rem--your-agents-memory"></a>
 
@@ -138,14 +150,14 @@ Captured with `python scripts/capture_rem_reader.py --readme docs/assets/rem-rea
 - **Keep context in your hands.** Local Markdown pages can be read by you and
   your agents. An approved schedule keeps them current.
 
-### Try co rem · 1.9.2
+### Try co rem · 1.9.6
 
 Start with [the setup guide](https://docs.connectonion.com/rem#start)
 for account setup, source choices and model costs. Daily scheduling currently
 requires **macOS**. Then run:
 
 ```bash
-pip install --upgrade 'connectonion==1.9.2'
+pip install --upgrade 'connectonion==1.9.6'
 # build your map and first pages; approve nightly upkeep when prompted
 co rem init
 # read the local notebook
@@ -332,9 +344,18 @@ the result back as a patch. Neither side gets more than the handoff. See
 [openonion/handoff](https://github.com/openonion/handoff) and
 [the guide](docs/cli/handoff.md).
 
+### REM does the work · 1.9.3
+
+Overnight, co rem reads your new mail, drafts the replies you owe and runs the
+tasks you approved. In the morning every unfinished item in the reader has
+"Hand to Codex", "Hand to Claude" and "Talk it over": your own agent does the
+work while you watch the row, Stop and Undo stay one click away, and the result
+opens in place. Replies to people you trust can go on their own through a
+10-minute hold. See [the 1.9.3 notes](docs/releases/1.9.3.md).
+
 ## Project
 
-**Stable 1.9.2** is what `pip install connectonion` installs; previews
+**Stable 1.9.6** is what `pip install connectonion` installs; previews
 remain opt-in ([release channels](docs/releases.md),
 [release notes](https://github.com/openonion/connectonion/releases)).
 Questions go to [Discussions](https://github.com/openonion/connectonion/discussions)

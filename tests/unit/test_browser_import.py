@@ -15,6 +15,7 @@ import time
 import pytest
 
 from connectonion.cli.commands import browser_import
+from connectonion.network.oip.framing import MAX_FRAME_BYTES
 from connectonion.useful_tools.browser_tools import chrome_cookies as chrome
 from tests.fixtures.chrome_profile import PASSWORD, cookie, make_profile
 
@@ -35,7 +36,14 @@ class FakeDaemon:
         if argv[:1] == ["open_browser"]:
             return 0, "Browser opened"
         if argv[:2] == ["cookies", "ls"]:
-            return 0, json.dumps(self.target_cookies)
+            found = self.target_cookies
+            if "--domain" in argv:
+                domain = argv[argv.index("--domain") + 1]
+                found = [c for c in found if chrome.matches(c["domain"].lstrip("."), domain)]
+            payload = json.dumps(found)
+            if len(payload.encode()) > MAX_FRAME_BYTES:
+                return 1, f"frame exceeds the {MAX_FRAME_BYTES}-byte metadata limit"
+            return 0, payload
         if argv[:2] == ["cookies", "load"]:
             batch = json.loads(open(argv[2]).read())["cookies"]
             if any(c["name"] in self.reject for c in batch):
@@ -49,7 +57,7 @@ class FakeDaemon:
 def chrome_home(tmp_path, monkeypatch):
     make_profile(tmp_path, "Default", [
         cookie("github.com", "user_session", "gh-SECRET-3", expires=LATER),
-    ], shown_name="Aaron")
+    ], shown_name="Ellis")
     make_profile(tmp_path, "Profile 1", [
         cookie(".linkedin.com", "li_at", "li-at-SECRET-1", expires=LATER, samesite=0),
         cookie(".www.linkedin.com", "JSESSIONID", "jsession-SECRET-2", expires=LATER, samesite=0),
@@ -139,6 +147,51 @@ def test_a_site_the_target_is_signed_in_to_is_left_alone(chrome_home, monkeypatc
     assert re.search(r"linkedin\.com\s+replaced the target.s login with 2 cookie\(s\)", text)
 
 
+@pytest.mark.parametrize("domains", [
+    ["--domain", "linkedin.com"],
+    ["--domain", "linkedin.com", "--domain", "example.com"],
+    [],
+])
+def test_large_target_is_read_one_imported_domain_at_a_time(chrome_home, monkeypatch, capsys, domains):
+    jar = [{"name": f"anonymous-{i}-" + "x" * 200, "domain": domain, "value": "<3 chars>"}
+           for domain in (".linkedin.com", ".example.com") for i in range(1000)]
+    assert len(json.dumps(jar).encode()) > MAX_FRAME_BYTES
+    assert len(json.dumps(jar[:1000]).encode()) < MAX_FRAME_BYTES
+    fake = FakeDaemon(target_cookies=jar)
+    monkeypatch.setattr(browser_import, "_daemon", fake)
+
+    code, text = run(capsys, "--profile", "Profile 1", "--yes", "--engine", "system", *domains)
+
+    assert code == 0, text
+    reads = [shlex.split(line) for line, _ in fake.lines if line.startswith("cookies ls")]
+    expected = {"linkedin.com", "example.com"} if len(domains) != 2 else {"linkedin.com"}
+    assert {args[args.index("--domain") + 1] for args in reads} == expected
+    assert len(reads) == len(expected)
+    assert {c["name"] for c in fake.loaded} == ({"li_at", "JSESSIONID", "other"}
+                                               if len(expected) == 2 else {"li_at", "JSESSIONID"})
+
+
+def test_a_failed_target_read_says_nothing_was_written(chrome_home, monkeypatch, capsys):
+    fake = FakeDaemon()
+    reads = []
+
+    def fail_second_read(line, **kwargs):
+        if line.startswith("cookies ls"):
+            reads.append(line)
+            if len(reads) == 2:
+                return 1, f"frame exceeds the {MAX_FRAME_BYTES}-byte metadata limit"
+        return fake(line, **kwargs)
+
+    monkeypatch.setattr(browser_import, "_daemon", fail_second_read)
+    code, text = run(capsys, "--profile", "Profile 1", "--yes", "--engine", "system")
+
+    assert code == 1
+    assert "nothing was written" in text
+    assert "327680-byte metadata limit" in text
+    assert fake.loaded == []
+    assert not any(line.startswith("cookies load") for line, _ in fake.lines)
+
+
 def test_a_rejected_cookie_is_named_and_the_rest_still_land(chrome_home, monkeypatch, capsys):
     fake = FakeDaemon(reject={"JSESSIONID"})
     monkeypatch.setattr(browser_import, "_daemon", fake)
@@ -176,7 +229,7 @@ def test_a_terminal_asks_once_and_no_means_nothing(chrome_home, daemon, capsys, 
 
 def test_a_terminal_yes_imports(chrome_home, daemon, capsys, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda text: "y")
-    code, _ = run(capsys, "--profile", "Aaron", "--domain", "github.com", "--engine", "system", tty=True)
+    code, _ = run(capsys, "--profile", "Ellis", "--domain", "github.com", "--engine", "system", tty=True)
     assert code == 0 and [c["name"] for c in daemon.loaded] == ["user_session"]
 
 

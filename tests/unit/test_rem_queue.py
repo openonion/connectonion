@@ -95,3 +95,19 @@ def test_the_owners_company_is_queued_even_when_its_contacts_are_excluded(tmp_pa
     })
     assert {row["path"] for row in order(tmp_path, "orgs")} == {
         "orgs/example.edu.au.md", "orgs/maralabs.example.md"}
+
+
+def test_queue_refresh_dates_use_the_notebook_day(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from connectonion.rem import service
+    from connectonion.rem.config import set_config
+
+    prepare(tmp_path)
+    set_config(tmp_path, ["schedule.timezone", "Pacific/Kiritimati"])
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 11, 5, 12, tzinfo=timezone.utc))
+    book = Notebook(tmp_path)
+    book.stub_person("people/robin.md", "Robin Hale")
+    book.write("people/robin.md", book.read("people/robin.md").replace(
+        "not investigated yet", "investigated 2026-10-30").replace("- (none yet)", "- [1] gmail:abc"))
+    [row] = order(tmp_path, "people")
+    assert row["recent"] is False  # Seven local dates since the last pass.

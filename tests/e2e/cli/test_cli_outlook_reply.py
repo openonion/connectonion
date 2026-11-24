@@ -18,7 +18,7 @@ def test_outlook_reply_routes_without_attachments():
         ])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", "Sounds good", attachments=None, at=None, cc=None, bcc=None, listing=None, reply_all=False)
+    handler.assert_called_once_with("3", "Sounds good", attachments=None, at=None, cc=None, bcc=None, listing=None, reply_all=False, draft=False)
 
 
 def test_outlook_reply_collects_repeated_attach_flags():
@@ -34,7 +34,7 @@ def test_outlook_reply_collects_repeated_attach_flags():
     assert result.exit_code == 0
     handler.assert_called_once_with(
         "3", "Both attached",
-        attachments=["report.pdf", "chart.png"], at=None, cc=None, bcc=None, listing=None, reply_all=False,
+        attachments=["report.pdf", "chart.png"], at=None, cc=None, bcc=None, listing=None, reply_all=False, draft=False,
     )
 
 
@@ -49,7 +49,7 @@ def test_outlook_reply_routes_attachments_with_schedule():
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
-        "3", "Tomorrow", attachments=["report.pdf"], at="+2h", cc=None, bcc=None, listing=None, reply_all=False,
+        "3", "Tomorrow", attachments=["report.pdf"], at="+2h", cc=None, bcc=None, listing=None, reply_all=False, draft=False,
     )
 
 
@@ -66,7 +66,7 @@ def test_outlook_reply_routes_cc_and_bcc():
     assert result.exit_code == 0
     handler.assert_called_once_with(
         "3", "Looping in Sam", attachments=None, at=None,
-        cc="sam@example.com", bcc="me@example.com", listing=None, reply_all=False,
+        cc="sam@example.com", bcc="me@example.com", listing=None, reply_all=False, draft=False,
     )
 
 
@@ -95,5 +95,5 @@ def test_outlook_reply_all_flag_reaches_the_handler():
     assert result.exit_code == 0
     handler.assert_called_once_with(
         "3", "Thanks both", attachments=None, at=None,
-        cc="sam@example.com", bcc=None, listing=None, reply_all=True,
+        cc="sam@example.com", bcc=None, listing=None, reply_all=True, draft=False,
     )

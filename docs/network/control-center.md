@@ -116,4 +116,4 @@ success, error, next run and revision. This does not schedule mail or provider m
 
 See [candidate acceptance](../acceptance/1.8.4-control-center.md),
 [DD071](../design-decisions/071-control-center-revisions-and-runtime-approval.md), and
-[the legacy dashboard](dashboard.md).
+[the Control Center page](control-center-page.md).

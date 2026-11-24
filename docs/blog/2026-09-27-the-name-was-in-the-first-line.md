@@ -1,7 +1,7 @@
 # The name was in the first line
 
 The morning's preview gave the Wiki a budget. The owner opened People and found
-another problem: page after page titled `larryleework7@gmail.com`,
+another problem: page after page titled `fenwick.work@example.org`,
 `vivianshi0511@gmail.com`, `lucannovak@gmail.com`. "The mail has their names on
 it," they said. "Why am I looking at addresses?"
 
