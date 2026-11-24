@@ -1,4 +1,4 @@
-> **Preview 1.9.3rc22.** This reference includes the send-budget and status behavior in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
+> **Preview 1.9.7rc26.** Attachment commands require this candidate and the matching mail backend. See the [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.7rc26).
 
 # OpenOnion email
 
@@ -147,7 +147,7 @@ co email transfer complete approval.json --yes
 
 Both keys sign the backend's exact five-minute transfer message, which names the address and its existing received/sent history. The first two commands write new mode-0600 files and refuse overwrites. Completion previews unless `--yes`; only then does it change ownership. The key-derived automatic address cannot be transferred. The backend verifies ownership and applies the address/history move atomically.
 
-Server-synchronized archive, trash, stars, drafts, attachments and threading are not exposed by the existing email API. OO Mail's personal organization remains browser-local; this CLI does not invent server endpoints for those features.
+Server-synchronized archive, trash, stars, drafts and threading are not exposed by the existing email API. OO Mail's personal organization remains browser-local; this CLI does not invent server endpoints for those features.
 
 ## Validation
 

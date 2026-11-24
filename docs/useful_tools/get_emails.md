@@ -521,3 +521,17 @@ mark_read([e['id'] for e in emails])  # Mark only after success ✅
 No complexity. No confusion. Just email.
 
 Keep simple things simple.
+
+## Download one attachment
+
+```python
+from connectonion import download_email_attachment, get_email
+
+mail = get_email(123)
+for attachment in mail["attachments"]:
+    print(attachment["id"], attachment["filename"], attachment["size"])
+download_email_attachment(123, 1, "report.pdf")
+```
+
+The output path must be new. The server checks that the account can read the
+mailbox before returning attachment bytes.

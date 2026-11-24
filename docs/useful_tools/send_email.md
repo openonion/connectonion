@@ -418,3 +418,14 @@ No templates to learn. No configuration files. No complex APIs.
 Just `send_email(to, subject, message)`.
 
 Keep simple things simple.
+
+## Attach files
+
+```python
+from connectonion import send_email
+
+send_email("alice@example.com", "Report", "See attached.", attachments=["report.pdf"])
+```
+
+The agent mailbox accepts up to 20 files and 10 MiB total per message.
+Reuse the same send ID, filenames and file contents when retrying.
