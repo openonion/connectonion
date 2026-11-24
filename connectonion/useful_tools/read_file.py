@@ -1,11 +1,11 @@
 """
 Purpose: One copyable tool that reads any file — text, images, PDF, LaTeX, PPTX, Word, audio, video — and returns the raw extracted content for the agent.
 LLM-Note:
-  Dependencies: imports from [base64, mimetypes, pathlib, shutil, subprocess, tempfile, charset_normalizer, docx, pypdf, pptx, connectonion.transcribe] | requires ffmpeg on PATH for video | imported by [copied into user projects via `co copy read_file`; not re-exported from useful_tools/__init__]
+  Dependencies: imports from [base64, codecs, mimetypes, pathlib, shutil, subprocess, tempfile, charset_normalizer, docx, pypdf, pptx, connectonion.transcribe] | requires ffmpeg on PATH for video | imported by [copied into user projects via `co copy read_file`; not re-exported from useful_tools/__init__]
   Data flow: read_file(path) → dispatch by extension → text/PDF/PPTX/DOCX return extracted text | images return a data:image/...;base64 URL (picked up by the image_result_formatter plugin so the vision model sees it) | audio transcribes via transcribe() | video extracts audio with ffmpeg then transcribes
   State/Effects: reads the file from disk | audio/video make a transcription API call (transcribe) | video shells out to ffmpeg into a temp dir | no caching
   Integration: exposes read_file(path) as an agent tool | supersedes the built-in text read_file — pass this one, not both (same tool name) | image results rely on the image_result_formatter plugin being enabled
-  Errors: returns "Error: ..." strings for the tool's own boundary checks (missing file, unsupported binary, legacy .ppt/.doc, ffmpeg missing) | lets transcribe()/pypdf/pptx/docx exceptions bubble to the tool executor
+  Errors: returns "Error: ..." strings for the tool's own boundary checks (missing file, unsupported binary, legacy .ppt/.doc, ffmpeg missing) | text with a BOM decodes by that BOM; NUL bytes without one still mean binary | lets transcribe()/pypdf/pptx/docx exceptions bubble to the tool executor
 
 Read any file and return its contents for the agent to use.
 
@@ -31,6 +31,7 @@ Video needs `ffmpeg` on PATH; the tool says so if it's missing.
 """
 
 import base64
+import codecs
 import mimetypes
 import shutil
 import subprocess
@@ -48,6 +49,15 @@ from connectonion import transcribe
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 AUDIO_EXTS = {".mp3", ".wav", ".aiff", ".aac", ".ogg", ".flac", ".m4a", ".webm"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".flv", ".wmv", ".m4v"}
+
+# Byte-order marks, longest first: UTF-32LE starts with the UTF-16LE mark.
+_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32"),
+    (codecs.BOM_UTF32_BE, "utf-32"),
+    (codecs.BOM_UTF8, "utf-8-sig"),
+    (codecs.BOM_UTF16_LE, "utf-16"),
+    (codecs.BOM_UTF16_BE, "utf-16"),
+)
 
 
 def read_file(path: str) -> str:
@@ -93,9 +103,15 @@ def read_file(path: str) -> str:
 
 
 def _read_text(file_path: Path, ext: str) -> str:
-    """Read a text/code/markup file. Rejects binary files."""
+    """Read a text/code/markup file. A BOM picks the encoding; otherwise NUL bytes mean binary."""
     data = file_path.read_bytes()
-    # NUL bytes almost never appear in text; their presence means binary.
+    # A byte-order mark is an explicit statement about the encoding, so honour
+    # it before the NUL check: UTF-16 and UTF-32 text is full of NUL bytes and
+    # would otherwise be reported as a binary file.
+    for bom, encoding in _BOMS:
+        if data.startswith(bom):
+            return data.decode(encoding, errors="replace")
+    # NUL bytes almost never appear in UTF-8/GB18030 text; their presence means binary.
     if b"\x00" in data[:8192]:
         return (
             f"Error: '{file_path}' looks like a binary file with an unsupported "

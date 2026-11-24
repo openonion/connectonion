@@ -29,7 +29,7 @@ agent.input("Describe diagram.png")     # the model actually sees the image
 
 | Extension | Returns |
 |-----------|---------|
-| `.txt .md .csv .json .tex` + code | the file's text, as-is (UTF-8, or GB18030 for Chinese) |
+| `.txt .md .csv .json .tex` + code | the file's text, as-is (UTF-8, GB18030 for Chinese, or whatever a byte-order mark declares — UTF-16/UTF-32 included) |
 | `.png .jpg .jpeg .gif .webp` | a `data:image/…;base64,…` URL the vision model sees ([how](#how-images-reach-the-vision-model)) |
 | `.pdf` | extracted text, one section per page |
 | `.pptx` | the text of each slide |
