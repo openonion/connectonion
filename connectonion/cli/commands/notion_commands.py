@@ -37,8 +37,8 @@ notion_app = typer.Typer(
          "database. Read-only: nothing in Notion changes. It reads what NOTION_API_KEY can read: an internal "
          "connection only the pages given to it, a personal access token everything your account can. Lists are "
          "numbered: page, db and columns take a row number from the last list, a link or an id.",
-    epilog="Example:  co notion pages  |  co notion page 1  |  co notion db 2  |  "
-           "Setup:  co env set NOTION_API_KEY ntn_... --secret  →  co notion check",
+    epilog="Example:  co notion check  →  co notion pages  →  co notion page 1  |  "
+           "co notion pages --type database  →  co notion db 1  →  co notion page 1",
 )
 
 ROW = re.compile(r"#?[0-9]{1,4}")          # a row number, as co asana reads one; a Notion id is 32 hex
