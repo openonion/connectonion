@@ -443,14 +443,75 @@ def test_db_keeps_the_cursor_when_notion_marks_the_first_page_incomplete(notion)
 # -- read-only, by construction ----------------------------------------------
 
 def test_co_notion_has_only_read_commands():
-    assert set(get_command(app).commands["notion"].commands) == {"check", "pages", "search", "page", "db", "columns"}
+    assert set(get_command(app).commands["notion"].commands) == {"check", "pages", "search", "page", "db", "columns", "changes", "show"}
 
 
 def test_every_request_a_command_makes_is_a_read(notion):
     """GET, or the two POSTs Notion uses for reading: search and a data source query."""
     for args in (["check", "--target", ROADMAP], ["pages"], ["search", "road"], ["page", ROADMAP],
-                 ["db", TASKS_DB, "--where", "Status=Done"], ["columns", TASKS_DB]):
+                 ["db", TASKS_DB, "--where", "Status=Done"], ["columns", TASKS_DB], ["changes", "--since", "2026-01-01T00:00Z", "--json"], ["show", ROW, "--json"]):
         assert run(*args).exit_code == 0, args
     assert notion.sent
     assert all(method == "GET" or (method == "POST" and (path == "search" or path.endswith("/query")))
                for method, path, _ in notion.sent if method != "SLEEP")
+
+
+# -- what REM reads: changes --since and show --json (#3249) -----------------------------
+
+def test_changes_lists_pages_edited_since_oldest_first_and_stops_at_older_ones(notion):
+    notion.add_page(uid(40), "Old", edited="2026-09-01T00:00:00.000Z")
+    notion.add_page(uid(41), "Newer", edited="2026-11-02T10:05:00.000Z")
+    notion.add_page(uid(42), "Newest", edited="2026-11-03T08:00:00.000Z")
+    result = run("changes", "--since", "2026-11-01T00:00Z", "--json")
+    assert result.exit_code == 0, result.output
+    found = json.loads(result.stdout)
+    assert [i["title"] for i in found["items"]] == ["Newer", "Newest"]
+    assert found["since"].startswith("2026-11-01T00:00") and found["until"]
+    assert set(found["items"][0]) == {"id", "time", "title", "parent", "link"}
+    assert "Next: co notion show" in result.stderr
+
+
+def test_changes_keeps_the_minute_since_falls_in(notion):
+    notion.add_page(uid(41), "Same minute", edited="2026-11-02T10:05:00.000Z")
+    found = json.loads(run("changes", "--since", "2026-11-02T10:05:20Z", "--json").stdout)
+    assert [i["title"] for i in found["items"]] == ["Same minute"]
+
+
+@pytest.mark.parametrize("since", ["2026-11-01", "yesterday", "2999-01-01T00:00Z"])
+def test_changes_refuses_a_time_without_a_zone_or_in_the_future(notion, since):
+    result = run("changes", "--since", since)
+    assert result.exit_code == 2 and not notion.sent
+
+
+def test_changes_that_would_not_end_says_incomplete_and_lists_nothing(notion, monkeypatch):
+    from connectonion.cli.commands import notion_commands
+    monkeypatch.setattr(notion_commands, "CHANGES_PAGE_LIMIT", 1)
+    for n in range(150):
+        notion.add_page(uid(1000 + n), f"P{n}", edited="2026-11-05T00:00:00.000Z")
+    result = run("changes", "--since", "2026-11-01T00:00Z", "--json")
+    assert result.exit_code == 1 and "incomplete" in result.stderr and not result.stdout.strip()
+
+
+def test_show_json_is_the_shape_rem_reads(notion):
+    result = run("show", ROW, "--json")
+    assert result.exit_code == 0, result.output
+    item = json.loads(result.stdout)
+    assert {"id", "title", "text", "author", "author_id", "time", "link", "properties", "complete"} <= set(item)
+    assert item["title"] == "Write docs" and item["author"] == "Ann" and item["author_id"] == "user-ann"
+    assert item["properties"]["Status"] == "In progress" and item["complete"] is True
+
+
+def test_show_never_guesses_an_author_this_key_cannot_read(notion):
+    notion.users.clear()
+    item = json.loads(run("show", ROW, "--json").stdout)
+    assert item["author"] is None and item["author_id"] == "user-ann"
+
+
+def test_show_says_when_the_page_was_not_read_whole(notion):
+    from connectonion.cli.commands.notion_commands import _show_item
+    shown = _show_item(api.read_page(ROADMAP, max_blocks=2))
+    assert shown["complete"] is False and "[INCOMPLETE:" in shown["text"]
+
+
+def test_a_deleted_or_unshared_page_exits_1(notion):
+    assert run("show", uid(999)).exit_code == 1

@@ -2,7 +2,7 @@
 Purpose: `co notion` — list, search and read Notion pages and databases (read-only)
 LLM-Note:
   Dependencies: imports from [typer, cli/style.py, cli/typer_groups.py, command_tips.py, notion_api.py] | imported by [cli/main.py] | tested by [tests/unit/test_notion_commands.py]
-  Data flow: argv → typer leaf → notion_api reads → print rows (or --json) → one Next line
+  Data flow: argv → typer leaf → notion_api reads → print rows (or --json) → one Next line | changes and show --json are what REM reads (#3249): pages edited since a time, and one page as it is now
   State/Effects: reads only; nothing in Notion or on disk changes
   Integration: notion_app is added to the root app in main.py; each "co notion <verb>" is HANDLER in command_tips.NEXT because every handler names its own next command | databases are read through their data source (Notion 2025-09-03)
   Errors: NotionError → `✗ <cause>` and `Next: <command>` on stderr, exit 1; a wrong argument → exit 2 naming the help page
@@ -10,6 +10,7 @@ LLM-Note:
 
 import json
 import shlex
+from datetime import datetime, timezone
 from functools import wraps
 from typing import List
 
@@ -357,3 +358,155 @@ def columns(target: str = typer.Argument(..., help=DB_HELP),
     choice = next((c for c in rows if c["options"]), None)
     where = f' --where "{choice["name"]}={choice["options"][0]}"' if choice else ""
     _tip(f'co notion db {ds["id"]}{where}', as_json)
+
+
+# -- what REM reads: changes since a time, and one page now (#3249) ----------------
+# A REM source is its command plus `changes --since <time> --json` and `show <id> --json`,
+# the shape co asana gives. REM keeps nothing: a citation notion:<id> opens live through show.
+
+CHANGES_PAGE_LIMIT = 50          # requests of 100: past 5,000 pages edited since a time, say so instead
+CHANGES_JSON_HELP = 'Print {"since", "until", "items": [{"id", "time", "title", "parent", "link"}]}'
+SHOW_JSON_HELP = ('Print {"id", "title", "text", "author", "author_id", "time", "created", "link", '
+                  '"properties", "parent", "in_trash", "complete"}')
+
+
+def _since(value: str, now: datetime) -> datetime:
+    """--since: a time with its zone, not after now, as co asana changes takes it."""
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        moment = None
+    if moment is None or moment.tzinfo is None:
+        print_tip(f"--since takes a time with its zone, like 2026-11-01T09:00+11:00, not {value!r}. "
+                  "Next: co notion changes --help")
+        raise typer.Exit(2)
+    if moment > now:
+        print_tip(f"--since {value} is later than now ({now.isoformat()}); nothing can have changed after it. "
+                  "Next: co notion changes --help")
+        raise typer.Exit(2)
+    return moment
+
+
+def _edited(obj: dict) -> datetime | None:
+    stamp = obj.get("last_edited_time") or ""
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _changed_pages(since: datetime) -> list[dict]:
+    """Pages this key can read edited at or after `since`'s minute, newest first, every page of the search.
+
+    Notion keeps last_edited_time to the minute, so a page edited at 10:05:30
+    reads 10:05:00: the minute `since` falls in is included, and a reader keeps
+    one item per id and time. The search is newest first, so it stops at the
+    first older page. Past CHANGES_PAGE_LIMIT requests it stops and says so.
+    """
+    floor = since.replace(second=0, microsecond=0)
+    found, cursor = [], ""
+    for _ in range(CHANGES_PAGE_LIMIT):
+        batch, cursor = api.search("", "page", 100, cursor)
+        for obj in batch:
+            edited = _edited(obj)
+            if edited is not None and edited < floor:
+                return found
+            found.append(obj)
+        if not cursor:
+            return found
+    raise api.NotionError(f"Read {len(found)} pages edited since {since.isoformat()}, incomplete: more than "
+                          f"{CHANGES_PAGE_LIMIT * 100:,}; nothing was listed. Use a later --since",
+                          "co notion changes --help", "incomplete")
+
+
+def _change_item(obj: dict) -> dict:
+    row = api.row(obj)
+    return {"id": row["id"], "time": row["edited"] or None, "title": row["title"],
+            "parent": {"type": row["parent"], "id": row["parent_id"]}, "link": row["url"] or None}
+
+
+@notion_app.command("changes", epilog="Example:  co notion changes --since 2026-11-01T00:00Z  |  "
+                                      "co notion changes --since 2026-11-01T00:00Z --json")
+@_reported
+def changes(since: str = typer.Option(..., "--since", help="Only pages edited after this time, with its zone "
+                                                           "(2026-11-01T09:00+11:00)"),
+            as_json: bool = typer.Option(False, "--json", help=CHANGES_JSON_HELP)):
+    """List the pages this key can read that were edited since a time, oldest edit first. Read-only.
+
+    Database rows are pages, so an edited row is listed. Notion keeps edit
+    times to the minute: the minute --since falls in is included, so a page
+    can appear in two consecutive lists; keep one per id and time. "until"
+    in --json is when reading began: pass it as the next --since and nothing
+    in between is missed. Pages in the trash and pages this key cannot read
+    are not listed. REM reads this list; it changes nothing in Notion.
+    """
+    now = datetime.now(timezone.utc)
+    until = now.replace(microsecond=0)
+    start = _since(since, now)
+    items = [_change_item(obj) for obj in reversed(_changed_pages(start))]
+    if as_json:
+        _dump({"since": start.isoformat(), "until": until.isoformat(), "items": items})
+        return _tip(f"co notion show {items[0]['id']} --json" if items else "co notion check", True)
+    out = style.console()
+    out.print(f"{style.count(len(items))} {'page' if len(items) == 1 else 'pages'} edited since "
+              f"{escape(start.isoformat())}")
+    for item in items:
+        out.print(f"  {style.muted((item['time'] or '-')[:16].replace('T', ' '))}  {style.muted(item['id'])}  "
+                  f"{escape(item['title'])}")
+    _tip(f"co notion show {items[0]['id']}" if items else "co notion pages", False)
+
+
+def _author(user_id: str) -> str | None:
+    """A person's name, when Notion lets this key read users; None otherwise, never a guess."""
+    if not user_id:
+        return None
+    try:
+        return api.call("GET", f"users/{user_id}").get("name")
+    except api.NotionError:
+        return None
+
+
+def _show_item(detail: dict) -> dict:
+    """One page now, in the shape REM reads from every source: id, title, text, author, time, link."""
+    coverage = detail["coverage"]
+    text = detail["content"] or "(no content)"
+    if not coverage["complete"]:
+        text += "\n\n[INCOMPLETE: " + "; ".join(coverage["stopped"]) + ". The rest of the page was not read.]"
+    author_id = detail.get("created_by") or ""
+    return {"id": detail["id"], "title": detail["title"], "text": text, "author": _author(author_id),
+            "author_id": author_id or None, "time": detail["edited"] or None, "created": detail.get("created") or None,
+            "link": detail["url"] or None,
+            "properties": {name: _value_text(prop) for name, prop in detail["properties"].items()
+                           if prop["type"] != "title" and _value_text(prop)},
+            "parent": {"type": detail["parent"], "id": detail["parent_id"]}, "in_trash": detail["in_trash"],
+            "complete": coverage["complete"]}
+
+
+@notion_app.command("show", epilog="Example:  co notion show 1f2e3d4c5b6a79881726354433221100  |  "
+                                   "co notion show 1f2e3d4c5b6a79881726354433221100 --json")
+@_reported
+def show(target: str = typer.Argument(..., help=PAGE_HELP),
+         as_json: bool = typer.Option(False, "--json", help=SHOW_JSON_HELP)):
+    """Show one page as it is now, as co notion page does; --json gives the shape REM reads. Read-only.
+
+    "text" is the page's content; when a limit stopped the read it ends with
+    an [INCOMPLETE: …] line and "complete" is false. "author" is the person
+    who created the page, or null when this key cannot read users; "time" is
+    its last edit, so a reader can tell it changed since it was cited. A page
+    deleted or no longer shared exits 1. Changes nothing in Notion.
+    """
+    detail = api.read_page(target)
+    if as_json:
+        _dump(_show_item(detail))
+        return _tip(f"co notion page {detail['id']}", True)
+    item = _show_item(detail)
+    out = style.console()
+    out.print(f"{style.heading(item['title'])}  {style.muted(item['id'])}")
+    out.print(escape(f"Edited: {(item['time'] or '-')[:16].replace('T', ' ')}   Created by: {item['author'] or item['author_id'] or '-'}"))
+    if item["link"]:
+        out.print(style.path(item["link"]))
+    for name, value in item["properties"].items():
+        out.print(escape(f"{name}: {value}"))
+    out.print()
+    out.print(escape(item["text"]))
+    _tip(f"co notion page {detail['id']}", False)
