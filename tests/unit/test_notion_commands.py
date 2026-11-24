@@ -714,3 +714,11 @@ def test_every_request_a_command_makes_is_a_read(notion):
     assert notion.sent
     assert all(method == "GET" or (method == "POST" and (path == "search" or path.endswith("/query")))
                for method, path, _ in notion.sent if method != "SLEEP")
+
+
+def test_a_database_command_given_a_page_says_so_and_points_at_the_databases(notion):
+    run("db", TASKS_DB)                     # the last list is now the rows of Tasks
+    result = run("columns", "1")            # row 1 is a page, not a database
+    assert result.exit_code == 1
+    assert "Write docs is a page (a row of a database), not a database" in result.stderr
+    assert last_line(result.stderr) == "Next: co notion pages --type database"

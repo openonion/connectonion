@@ -339,6 +339,17 @@ def data_source(given: str, source: str = "") -> dict:
     try:
         found = call("GET", f"databases/{target.id}")
     except NotionError as error:
+        if error.kind == "invalid":
+            # Notion answers a page id here with a validation error ("is a page, not a database"):
+            # a row number from a list of pages or rows. Say which page it is and where databases are.
+            try:
+                page_ = call("GET", f"pages/{target.id}")
+            except NotionError:
+                raise error from None
+            raise NotionError(f"{title_of(page_)} is a page" + (" (a row of a database)" if parent_of(page_)["type"]
+                              == "data_source" else "") + ", not a database. A row number means the last list "
+                              "shown; list the databases again", "co notion pages --type database",
+                              "invalid") from None
         if error.kind != "not_found":
             raise
         try:
