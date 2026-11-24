@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc26
+## Current Version: 1.9.7rc27
+Release candidate 1.9.7rc27 updates the REM Today reply workspace. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc27.md).
+
+- 1.9.7rc27 (review and edit a reply in REM Today, #3446).
+
+### Previous candidate: 1.9.7rc26
 Release candidate 1.9.7rc26 for 1.9.7 adds agent mail attachments (#3440). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc26.md).
 
 - 1.9.7rc26 (send, list, and download agent mail attachments #3440).

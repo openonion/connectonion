@@ -1,0 +1,56 @@
+version: v1.9.7rc27
+images:
+- file: before-today.webp
+  alt: The rc26 Outlook draft on Today shows the reply and its Send button.
+  caption: The rc26 Outlook draft on Today shows the reply and its Send button.
+  scenario: Reviewing the synthetic Q3 receipts reply in the REM browser test notebook
+  viewport: 1440x900, light
+  commit: 477d852aeec462d75b3fc2ee58d3785aa6a88b6a
+  source_run: Local Chrome capture using tests/e2e/cli/test_rem_reply_compose_browser.py;
+    https://github.com/openonion/connectonion/commit/477d852aeec462d75b3fc2ee58d3785aa6a88b6a
+- file: after-today.webp
+  alt: The rc27 Outlook draft keeps item actions available below the letter.
+  caption: The rc27 Outlook draft keeps item actions available below the letter.
+  scenario: Reviewing the synthetic Q3 receipts reply in the REM browser test notebook
+  viewport: 1440x900, light
+  commit: 97ec1601a50fdaf6bd5920bf6d25df06d731ad28
+  source_run: Local Chrome capture using tests/e2e/cli/test_rem_reply_compose_browser.py;
+    https://github.com/openonion/connectonion/commit/97ec1601a50fdaf6bd5920bf6d25df06d731ad28
+- file: before-writer.webp
+  alt: The rc26 writer shows the proposed letter alongside REM’s summary.
+  caption: The rc26 writer shows the proposed letter alongside REM’s summary.
+  scenario: Reviewing the synthetic Q3 receipts reply in the REM browser test notebook
+  viewport: 1440x900, light
+  commit: 477d852aeec462d75b3fc2ee58d3785aa6a88b6a
+  source_run: Local Chrome capture using tests/e2e/cli/test_rem_reply_compose_browser.py;
+    https://github.com/openonion/connectonion/commit/477d852aeec462d75b3fc2ee58d3785aa6a88b6a
+- file: after-writer.webp
+  alt: The rc27 writer shows the cited message above the editable reply and an earlier
+    reply alongside it.
+  caption: The rc27 writer shows the cited message above the editable reply and an
+    earlier reply alongside it.
+  scenario: Reviewing the synthetic Q3 receipts reply in the REM browser test notebook
+  viewport: 1440x900, light
+  commit: 97ec1601a50fdaf6bd5920bf6d25df06d731ad28
+  source_run: Local Chrome capture using tests/e2e/cli/test_rem_reply_compose_browser.py;
+    https://github.com/openonion/connectonion/commit/97ec1601a50fdaf6bd5920bf6d25df06d731ad28
+- file: after-choice.webp
+  alt: Choosing the shared-folder response fills the draft. Send remains a separate
+    action.
+  caption: Choosing the shared-folder response fills the draft. Send remains a separate
+    action.
+  scenario: Reviewing the synthetic Q3 receipts reply in the REM browser test notebook
+  viewport: 1440x900, light
+  commit: 97ec1601a50fdaf6bd5920bf6d25df06d731ad28
+  source_run: Local Chrome capture using tests/e2e/cli/test_rem_reply_compose_browser.py;
+    https://github.com/openonion/connectonion/commit/97ec1601a50fdaf6bd5920bf6d25df06d731ad28
+- file: phone-writer.webp
+  alt: On a phone the expanded original sits above the reply, with reply assistance
+    below.
+  caption: On a phone the expanded original sits above the reply, with reply assistance
+    below.
+  scenario: Reviewing the synthetic Q3 receipts reply in the REM browser test notebook
+  viewport: 390x844, light
+  commit: 97ec1601a50fdaf6bd5920bf6d25df06d731ad28
+  source_run: Local Chrome capture using tests/e2e/cli/test_rem_reply_compose_browser.py;
+    https://github.com/openonion/connectonion/commit/97ec1601a50fdaf6bd5920bf6d25df06d731ad28
