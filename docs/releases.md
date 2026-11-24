@@ -21,6 +21,8 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
+Release candidate **1.9.7rc26** adds attachment sending and downloads for the agent mailbox (#3440). See [1.9.7rc26 notes](releases/1.9.7rc26.md).
+
 Release candidate **1.9.7rc25**: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation, with explicit choices preserved (#3426); sensitive relation reasons and stray privacy marks are curtained (#3427, #3425). Also includes standalone Obsidian live reads (#3064), sync/agenda fixes (#3055) and memory regex errors (#3255). See [1.9.7rc25 notes](releases/1.9.7rc25.md).
 
 Release candidate **1.9.7rc24**: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). See [1.9.7rc24 notes](releases/1.9.7rc24.md).
@@ -50,7 +52,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc25'
+python -m pip install --upgrade 'connectonion==1.9.7rc26'
 ```
 
 ## Current release

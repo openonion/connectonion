@@ -1898,6 +1898,7 @@ def email_send(
     to: str = typer.Argument(..., help="Recipient email address"),
     subject: str = typer.Argument(..., help="Subject line"),
     message: str = typer.Argument(..., help="Body (plain text or HTML)"),
+    attach: Optional[list[str]] = typer.Option(None, "--attach", help="Attach a local file; repeat for more files (20 MiB total)"),
     idempotency_key: Optional[str] = typer.Option(
         None,
         "--idempotency-key",
@@ -1915,6 +1916,7 @@ def email_send(
     handle_email_send(
         to, subject, message,
         idempotency_key=idempotency_key, from_address=from_address,
+        **({"attachments": attach} if attach else {}),
         **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
     )
 
@@ -1956,6 +1958,57 @@ def email_read(
     """Show one email's body without changing its unread state. Read-only unless --mark-read."""
     from .commands.email_commands import handle_email_read
     handle_email_read(email_id, mark_read=mark_read)
+
+
+@email_app.command("attachments", epilog="Example:  co email attachments 123")
+def email_attachments(
+    email_id: str = typer.Argument(..., help="Email ID from inbox or sent"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Read-only. List attachment IDs, names, types and sizes."""
+    from .commands.email_commands import handle_email_attachments
+    handle_email_attachments(email_id, sent)
+
+
+@email_app.command("download", epilog="Example:  co email download 123 456 --to ./orders")
+def email_download(
+    email_id: str = typer.Argument(..., help="Email ID"),
+    attachment_id: str = typer.Argument(..., help="ID from co email attachments"),
+    to: str = typer.Option(".", "--to", help="Output directory; existing files are never overwritten"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Writes one attachment to a new file after checking its SHA256 checksum."""
+    from .commands.email_commands import handle_email_download
+    handle_email_download(email_id, attachment_id, to, sent)
+
+
+@email_app.command("attachment-text", epilog="Example:  co email attachment-text 123 456 --to ./orders")
+def email_attachment_text(
+    email_id: str = typer.Argument(..., help="Email ID"),
+    attachment_id: str = typer.Argument(..., help="Attachment ID"),
+    to: str = typer.Option(".", "--to", help="Directory to keep the original file"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Writes the original file, then prints extractable text or reports that manual review is needed."""
+    from .commands.email_commands import _require_auth
+    from ..useful_tools.email_attachments import read_email_attachment
+    _require_auth()
+    result = read_email_attachment(email_id, attachment_id, to, sent)
+    print(result.get("text") or result.get("error"))
+    if not result["readable"]:
+        raise typer.Exit(1)
+
+
+@email_app.command("raw", epilog="Example:  co email raw 123 --output ./original.eml")
+def email_raw(
+    email_id: str = typer.Argument(..., help="Received email ID"),
+    output: str = typer.Option(..., "--output", help="New .eml file to write"),
+):
+    """Writes the retained original email, including its attachments, to a new .eml file."""
+    from .commands.email_commands import _require_auth
+    from ..useful_tools.email_attachments import download_raw_email
+    _require_auth()
+    print(download_raw_email(email_id, output))
 
 
 sent_app = _typer_app(
@@ -2014,6 +2067,7 @@ def email_mark_unread(email_ids: List[str] = typer.Argument(...,help="Message ID
 def email_reply(
     email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
     message: str = typer.Argument(...,help="Your plain-text reply"),
+    attach: Optional[list[str]] = typer.Option(None,"--attach",help="Attach a local file; repeat for more files"),
     from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
     idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
     max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this reply; 0 uses included sends only'),
@@ -2021,7 +2075,8 @@ def email_reply(
     """Sends a reply immediately with a Re: subject and quoted original. Does not add threading headers."""
     from .commands.email_workflows import handle_email_reply
     handle_email_reply(email_id,message,from_address=from_address,idempotency_key=idempotency_key,
-        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
+        **({'attachments':attach} if attach else {}))
 
 
 @email_app.command("forward", epilog='Example:  co email forward 3 you@example.com "For your review."')
@@ -2029,14 +2084,18 @@ def email_forward(
     email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
     to: str = typer.Argument(...,help="Recipient address"),
     message: str = typer.Argument('',help="Optional note above the forwarded message"),
+    attach: Optional[list[str]] = typer.Option(None,"--attach",help="Attach a local file; repeat for more files"),
     from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
     idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
     max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this forward; 0 uses included sends only'),
+    without_attachments: bool = typer.Option(False,'--without-attachments',help='Omit the original attachments'),
 ):
-    """Sends the original message and your note to another address immediately. Attachments are not included."""
+    """Sends the original message and your note to another address immediately. Includes the original attachments."""
     from .commands.email_workflows import handle_email_reply
     handle_email_reply(email_id,message,to=to,from_address=from_address,idempotency_key=idempotency_key,
-        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
+        **({'attachments':attach} if attach else {}),
+        **({'include_attachments':False} if without_attachments else {}))
 
 
 @email_app.command('status',epilog='Example:  co email status <send-id>  |  co email status <send-id> --json')

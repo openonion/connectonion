@@ -67,6 +67,7 @@ def handle_email_send(
     to: str, subject: str, message: str,
     idempotency_key: str = None, from_address: str = None,
     max_cost_usd: str = '0',
+    attachments: list[str] = None,
 ):
     """Send an email from the agent's address."""
     if not _require_auth():
@@ -77,6 +78,7 @@ def handle_email_send(
     result = send_email(
         to, subject, message,
         idempotency_key=idempotency_key, from_address=from_address, **budget,
+        **({"attachments": attachments} if attachments else {}),
     )
 
     if result.get("success"):
@@ -109,6 +111,8 @@ def handle_email_send(
                 retry += ["--from", shlex.quote(from_address)]
             if budget:
                 retry += ['--max-cost',shlex.quote(str(max_cost_usd))]
+            for path in attachments or []:
+                retry += ["--attach", shlex.quote(path)]
             retry += ["--idempotency-key", shlex.quote(result["idempotency_key"])]
             # Plain print, not console.print: Rich wraps at the console width,
             # and a line-broken command is no longer copy-pasteable.
@@ -692,3 +696,21 @@ def handle_email_upgrade(
     if data.get("balance") is not None:
         console.print(f"  Balance: ${data['balance']:.2f}")
     console.print()
+
+
+def handle_email_attachments(email_id: str, sent: bool = False):
+    _require_auth()
+    from ...useful_tools.email_attachments import get_email_attachments
+    files = get_email_attachments(email_id, sent)
+    table = Table("ID", "Filename", "Type", "Bytes")
+    for file in files:
+        table.add_row(str(file["id"]), file["filename"], file["content_type"], str(file["size"]))
+    console.print(table if files else "No attachments saved for this email.")
+    console.print(f"Download: co email download {email_id} <attachment-id> --to <directory>" + (" --sent" if sent else ""))
+
+
+def handle_email_download(email_id: str, attachment_id: str, to: str, sent: bool = False):
+    _require_auth()
+    from ...useful_tools.email_attachments import download_email_attachment
+    result = download_email_attachment(email_id, attachment_id, to, sent)
+    console.print(f"Saved {result['path']} ({result['size']} bytes; SHA256 verified)", markup=False)

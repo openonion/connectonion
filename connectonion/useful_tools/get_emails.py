@@ -113,6 +113,7 @@ def get_emails(
             "subject": email.get("subject", ""),
             "message": email.get("text") or email.get("html") or email.get("text_body") or email.get("html_body", ""),
             "timestamp": email.get("received_at", ""),
+            "attachments": email.get("attachments") or [],
             "read": email.get("is_read", False)
         })
 
@@ -160,6 +161,7 @@ def get_sent(last: int = 10, to: str = None) -> List[Dict]:
         "status": email.get("status", ""),
         "message_id": email.get("message_id", ""),
         "timestamp": email.get("sent_at", ""),
+        "attachments": email.get("attachments") or [],
     } for email in response.json().get("emails", [])]
 
 
@@ -265,7 +267,8 @@ def get_email(email_id: Union[str, int]) -> Dict:
     return {'id': email.get('id', ''), 'from': email.get('from', email.get('from_email', '')),
             'to': email.get('to', email.get('to_email', '')), 'subject': email.get('subject', ''),
             'message': email.get('text') or email.get('text_body') or email.get('html') or email.get('html_body', ''),
-            'timestamp': email.get('received_at', ''), 'read': email.get('is_read', False)}
+            'timestamp': email.get('received_at', ''), 'read': email.get('is_read', False),
+            'attachments': email.get('attachments') or []}
 
 
 def get_sent_email(email_id: Union[str, int]) -> Dict:
