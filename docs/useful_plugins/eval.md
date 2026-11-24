@@ -29,6 +29,17 @@ Scoring calls use the agent's own model (`agent.llm`): an agent on
 `ollama/qwen3` or a direct provider key is scored by that model, and the cost of
 scoring is included in `agent.total_cost`.
 
+The scoring calls do not set a temperature, so the model uses its own default.
+OpenAI reasoning models such as `o4-mini` (the `OpenAILLM` default) and the
+gpt-5 family accept only the default temperature, so they can score turns too.
+On other models the provider default (often 1.0) applies, so the expected
+outcome and the evaluation summary can vary a little from run to run.
+
+Scoring never fails the turn. If the model refuses or cannot be reached, the
+plugin prints `/expected unavailable (...)` or `/evaluation unavailable (...)`
+and `agent.input()` still returns the agent's result. When the expectation is
+unavailable, the turn is scored without one.
+
 ## How It Works
 
 The plugin hooks into two lifecycle events:
