@@ -3166,7 +3166,7 @@ def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
       const icon = () => ({}), motionStilled = () => true, setTimeout = f => f();
       let answer = null;
       const slotChoices = (part, fills, i, onChange) => { answer = value => { fills[i] = value; onChange(); };
-        return {...el('span', {}, []), querySelector: () => ({focus() {}})}; };
+        return {...el('span', {}, []), getAnswerState: () => [fills[i] || ''], querySelector: () => ({focus() {}})}; };
       const mailbox = address => ({address, name: 'Fern'});
       const document = {body: {appendChild() {}}, createTextNode: text => ({nodeType: 3, nodeValue: text})};
       (async () => {
@@ -5195,9 +5195,9 @@ def test_scheduling_slot_buttons_respect_calendar_evidence_and_remain_editable()
       console.log(JSON.stringify({values: buttons.map(b => b.text), selected, received, unknown, shared, ordinary,
         alternatives, expired: make('时间').querySelectorAll('button').length, disabled: buttons[1].disabled}));
     """)
-    assert result['values'] == ['2026-10-06 10:00–10:30 (Australia/Sydney)',
-                                '2026-10-07 09:00–09:30 (Australia/Sydney)',
-                                '2026-10-08 09:00–09:30 (Australia/Sydney)']
+    assert result['values'] == ['6 October 2026 · 10:00–10:30 (Australia/Sydney)',
+                                '7 October 2026 · 09:00–09:30 (Australia/Sydney)',
+                                '8 October 2026 · 09:00–09:30 (Australia/Sydney)']
     assert result['selected'] == result['values'][0]
     assert result['received'] == [result['selected'], 'after lunch']
     assert all(not choices for choices in result['unknown'])

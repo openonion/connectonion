@@ -646,3 +646,15 @@ def test_reply_window_requires_all_own_calendars_and_all_pages(tmp_path, calenda
     answers['google'] = []
     calendar.save_upcoming(tmp_path, NIGHT)
     assert 'window' in calendar.upcoming(tmp_path, [], '')
+
+
+def test_reply_window_waits_for_previously_read_feed_to_return(tmp_path, calendars):
+    answers, _ = calendars
+    calendar.save_upcoming(tmp_path, NIGHT)
+    del answers['microsoft']
+    for day in (1, 2):
+        calendar.save_upcoming(tmp_path, NIGHT + timedelta(days=day))
+        assert 'window' not in calendar.upcoming(tmp_path, [], '')
+    answers['microsoft'] = []
+    calendar.save_upcoming(tmp_path, NIGHT + timedelta(days=3))
+    assert 'window' in calendar.upcoming(tmp_path, [], '')

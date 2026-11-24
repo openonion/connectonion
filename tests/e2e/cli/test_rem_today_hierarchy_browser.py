@@ -259,6 +259,16 @@ def test_single_reply_has_visible_item_actions_and_outlook_mark(today, width):
     footer = card.locator(".draft-triage")
     for name in ("Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude Code"):
         assert footer.get_by_role("button", name=name, exact=True).is_visible()
+    closes = [footer.locator(cls).bounding_box() for cls in (".strip-done", ".strip-later", ".strip-ignore")]
+    agents = [footer.locator(f'[data-agent="{agent}"]').bounding_box() for agent in ("codex", "claude")]
+    context = footer.locator(".strip-more").bounding_box()
+    for row in (closes, agents):
+        assert len({box["y"] for box in row}) == 1
+        assert all(left["x"] + left["width"] + 4 <= right["x"] for left, right in zip(row, row[1:]))
+    assert max(box["y"] + box["height"] for box in closes) + 4 <= agents[0]["y"]
+    assert max(box["y"] + box["height"] for box in agents) + 4 <= context["y"]
+    assert footer.locator("button").evaluate_all("""nodes => nodes.every(n =>
+        ['marginTop','marginBottom','marginLeft','marginRight'].every(k => parseFloat(getComputedStyle(n)[k]) >= 0))""")
     logo = card.locator(".mail-head").get_by_role("img", name="Outlook reply")
     assert logo.is_visible()
     assert "data:image/svg+xml" in logo.evaluate("el => getComputedStyle(el).backgroundImage")

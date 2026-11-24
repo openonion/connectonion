@@ -17,14 +17,13 @@ def _open(page, width=1440):
     card = _card(page, width)
     page.evaluate("""() => {
       const draft = REM.drafts[0];
-      const message = (from, to, excerpt) => ({source: 'outlook', participants: {from, to: [to]},
-        subject: 'Q3 receipts', thread: draft.thread, excerpt});
-      draft.sources = ['outlook:inbound'];
-      Object.assign(REM.source_context, {
-        'outlook:inbound': message('ines@example.test', draft.from, 'Please send the receipts by Friday.'),
-        'outlook:sample': message(draft.from, 'ines@example.test', 'Last quarter I attached the invoices.'),
-        'outlook:other': {...message(draft.from, 'other@example.test', 'Unrelated private reply.'), thread: 'other'}
-      });
+      setPrivacy("cover", {save: false, redraw: false});
+      const message = (sender, excerpt) => ({sender, subject: 'Q3 receipts', excerpt, level: 'personal'});
+      draft.writer_mail = {
+        original: message('ines@example.test', 'Please send the receipts by Friday.'),
+        examples: [message(draft.from, 'Last quarter I attached the invoices.')]
+      };
+      REM.source_context['outlook:other'] = message(draft.from, 'Unrelated private reply.');
       render();
     }""", isolated_context=False)
     card.locator(".mail-write").click()
@@ -160,3 +159,92 @@ def test_mixed_demo_question_keeps_location_open_until_owner_fills_it(today, fre
     send.click()
     dialog.wait_for(state="detached")
     assert calls[-1][1]["bodies"]["reply:ines"] == expected
+
+
+@pytest.mark.parametrize("language,question,expected", [
+    ("en", "meeting time and place", "26 November 2026 · 14:00–14:30 (Australia/Sydney)"),
+    ("zh", "meeting time / location", "2026年11月26日 · 14:00–14:30 (Australia/Sydney)"),
+])
+def test_sydney_time_and_place_on_card_and_in_writer(today, tmp_path, language, question, expected):
+    page, calls, _ = today
+    card = _card(page, body="Demo: 【需要你：" + question + "】")
+    page.clock.set_fixed_time("2026-11-26T02:59:00Z")
+    page.evaluate("""language => {
+      const at = '2026-11-26T02:59:00Z';
+      REM.calendar = {saved_at: at, errors: [], read: [{at, calendars: 1}], events: [],
+        window: {start: '2026-11-26T00:00:00+11:00', end: '2026-11-27T00:00:00+11:00', timezone: 'Australia/Sydney'}};
+      setInterfaceLanguage(language);
+    }""", language, isolated_context=False)
+    choices = card.locator(".owner-slot.choose")
+    choice = choices.get_by_role("button", name=expected, exact=True)
+    assert choice.is_visible() and choice.inner_text() == expected
+    assert choices.get_by_role("button").count() == 1
+    card.locator(".mail-write").click()
+    dialog = page.locator("dialog.writer[open]")
+    choices = dialog.locator(".writer-choices")
+    choice = choices.get_by_role("button", name=expected, exact=True)
+    assert choice.inner_text() == expected
+    choice.click()
+    send = dialog.get_by_role("button", name="Send" if language == "en" else "发送", exact=True)
+    send.click()
+    location = choices.get_by_role("textbox").nth(1)
+    assert location.evaluate("n => n === document.activeElement")
+    assert not [p for p, _ in calls if p in ("/rem/approve", "/rem/draft")]
+    location.fill("Room 4")
+    assert dialog.locator(".writer-body").inner_text() == f"Demo: {expected} · Room 4"
+    choices.screenshot(path=tmp_path / f"sydney-{language}.png")
+
+
+@pytest.mark.parametrize("location_on_card", ["", "North & South"])
+def test_card_answers_remain_editable_and_send_as_literal_text(today, location_on_card):
+    page, calls, answers = today
+    card = _card(page, body="Meet: 【需要你：meeting time and location】\n"
+                            "Bring: 【需要你：materials】\nFormat: 【需要你：PDF / Email】")
+    page.clock.set_fixed_time("2026-11-23T08:00:00Z")
+    page.evaluate("""() => {
+      const at = '2026-11-23T08:00:00Z';
+      REM.calendar = {saved_at: at, errors: [], read: [{at, calendars: 1}], events: [],
+        window: {start: '2026-11-23T00:00:00Z', end: '2026-11-26T00:00:00Z', timezone: 'UTC'}};
+      render();
+    }""", isolated_context=False)
+    rows = card.locator(".mail-choices .owner-slot")
+    first, second = rows.nth(0).get_by_role("button").all()[:2]
+    first.click()
+    second.click()
+    time_name = "Meeting time or alternatives"
+    place_name = "Meeting location (required)"
+    times = rows.nth(0).get_by_role("textbox", name=time_name).input_value()
+    assert " / " in times
+    rows.nth(0).get_by_role("textbox", name=place_name).fill(location_on_card)
+    materials = 'R&D <spec> "A" &amp; B'
+    rows.nth(1).get_by_role("textbox").fill(materials)
+    rows.nth(2).get_by_role("button", name="PDF", exact=True).click()
+    card.locator(".mail-write").click()
+    dialog = page.locator("dialog.writer[open]")
+    fields = dialog.locator(".writer-choices")
+    assert fields.get_by_role("textbox", name=time_name).input_value() == times
+    assert fields.locator('button[aria-pressed="true"]').count() == 3
+    assert fields.get_by_role("textbox", name="materials").input_value() == materials
+    place = fields.get_by_role("textbox", name=place_name)
+    assert place.input_value() == location_on_card
+    # Dismissing the inherited state needs no discard confirmation. Reopening
+    # still offers every control, even when all of the card answers were complete.
+    prompts = []
+    page.on("dialog", lambda prompt: (prompts.append(prompt.message), prompt.dismiss()))
+    dialog.get_by_role("button", name="Close", exact=True).click()
+    dialog.wait_for(state="detached")
+    assert not prompts
+    card.locator(".mail-write").click()
+    send = dialog.get_by_role("button", name="Send", exact=True)
+    if not location_on_card:
+        send.click()
+        assert place.evaluate("n => n === document.activeElement")
+    place.fill("Room <B> & east")
+    fields.get_by_role("button", name="Email", exact=True).click()
+    expected = f"Meet: {times} · Room <B> & east\nBring: {materials}\nFormat: Email"
+    assert dialog.locator(".writer-body").inner_text() == expected
+    assert not [p for p, _ in calls if p in ("/rem/approve", "/rem/draft")]
+    answers["/rem/approve"] = lambda payload: (200, {"results": [{"id": i, "status": "sent"} for i in payload["ids"]]})
+    send.click()
+    dialog.wait_for(state="detached")
+    assert [body["bodies"] for path, body in calls if path == "/rem/approve"] == [{"reply:ines": expected}]

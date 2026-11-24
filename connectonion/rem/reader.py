@@ -207,6 +207,7 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
 def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     """The page build's data; the whole-notebook tag scans run once in it (tags.held)."""
     from .tags import held
+    root = root.absolute()
     if local:
         # Tag pages an older writer titled "X [personal]" showed as one repeated "Personal" label; their titles are
         # unmarked once, here on this machine, before the pages are read (#3385).
@@ -223,7 +224,7 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     reader). Labelled excerpts are added only then; the O Chat view never has them.
     """
     import connectonion
-    from .store_messages import owner_addresses
+    from .store_messages import owner_addresses, has_message_index
     from .map import needs_review
     from .project_pages import private
     from .reviews import listing
@@ -255,7 +256,8 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     # place (`census`), the same that `co rem status` counts with (#2008).
     from .census import counts, pages, written
     found = pages(root, records=records)
-    mail, index = mail_facts(root), {} if today else index_rows(root)
+    indexed = has_message_index(state_path(root, "rem.db"))
+    mail, index = mail_facts(root), {} if today or not indexed else index_rows(root)
     record_paths = {record['path'] for record in records}
     person_names = frozenset(r["title"].casefold() for r in records if r["category"] == "people")
     for record in records:
@@ -293,7 +295,8 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
         from .page_runs import states
         found_states = states(root, [r["path"] for r in records if r["category"] in ("people", "orgs", "projects")
-                                     or (r["category"] == "knowledge" and "- Tags:" in r["text"])])
+                                     or (r["category"] == "knowledge" and "- Tags:" in r["text"])],
+                              mail_days=None if indexed else {})
         for record in records:
             if record["path"] in found_states:
                 record["investigation"] = found_states[record["path"]]
@@ -413,9 +416,9 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
             "tags": {slug: entry for slug, entry in tag_entries.items() if entry["count"]},
             "contact_candidates": candidates, "contact_coverage": contact_coverage,
             "people_coverage": current_status.get("people_coverage"),
-            "drafts": reply_drafts(root, local=local, records=records),
+            "drafts": reply_drafts(root, local=local, records=records, omitted=('sessions', 'logs', 'notes') if today else ()),
             "threads": threads.listing(root) if local else {},
-            "mail_versions": threads.observed_versions(root, records) if local else {},
+            "mail_versions": threads.observed_versions(root, records) if local and indexed else {},
             "source_context": contexts, "source_labels": source_labels(root, records, contexts), "conversations": {} if today else cited_conversations(root, contexts, private=local),
             "shared": not local,
             "status": current_status, "subscriptions": subscriptions(root),

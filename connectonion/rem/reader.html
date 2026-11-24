@@ -339,30 +339,29 @@
 
   .writer-letter { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--rule); }
   .writer-original { flex: none; max-height: 30%; overflow: auto; padding: 10px 24px; background: var(--fill-hover); border-bottom: 1px solid var(--rule); }
-  .writer-original summary, .writer-reply-title { font: var(--w-bold) var(--s-ui)/1.4 var(--font); }
+  .writer-original summary, .writer-reply-title { font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   .writer-original summary { cursor: pointer; }
   .writer-original p { margin: 8px 0; color: var(--grey); }
   .writer-reply-title { margin: 16px 24px 0; }
   .writer-letter .mail-head { padding: 18px 24px 12px; }
-  .writer-body { flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/1.65 var(--font); color: var(--ink); background: var(--paper); }
+  .writer-body { flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/var(--lh-read) var(--font); color: var(--ink); background: var(--paper); }
   /* An open question in the letter: a chip in its own words, the same as the card's marker; answered, the answer. */
   .slot-chip { padding: 1px 8px; border-radius: var(--r-pill); border: 1px dashed var(--red); background: var(--tint-red); color: var(--ink); cursor: pointer; white-space: normal; }
   .slot-chip.filled { border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 0; background: none; }
   .writer-actions { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--rule); }
-  .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: var(--s-body)/1.6 var(--font); color: var(--grey); }
-  .writer-side h3 { margin: 0 0 6px; font: var(--w-bold) var(--s-body)/1.3 var(--font); color: var(--ink); }
+  .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: var(--s-body)/var(--lh-body) var(--font); color: var(--grey); }
+  .writer-side h3 { margin: 0 0 6px; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); color: var(--ink); }
   .writer-side h3 a { color: inherit; }
-  .writer-side h4 { margin: 20px 0 6px; font: var(--w-bold) var(--s-meta)/1.4 var(--font); color: var(--grey); }
+  .writer-side h4 { margin: 20px 0 6px; font: var(--w-bold) var(--s-meta)/var(--lh-ui) var(--font); color: var(--grey); }
   .writer-side p { margin: 0; white-space: pre-wrap; }
   .writer-brief { color: var(--grey); }
   .writer-msg { padding: 10px 0; border-top: 1px solid var(--rule); }
-  .writer-msg-head { font: var(--w-bold) var(--s-meta)/1.4 var(--font); color: var(--grey); margin-bottom: 4px; }
-  .writer-msg-text { white-space: pre-wrap; font: var(--s-meta)/1.55 var(--font); color: var(--grey); overflow-wrap: anywhere; }
-  .writer-original .writer-msg-text { color: var(--ink); font-size: 15px; line-height: 1.6; }
-  .writer-examples .writer-msg-text { font-size: 14px; }
+  .writer-msg-head { font: var(--w-bold) var(--s-meta)/var(--lh-ui) var(--font); color: var(--grey); margin-bottom: 4px; }
+  .writer-msg-text { white-space: pre-wrap; font: var(--s-body)/var(--lh-body) var(--font); color: var(--grey); overflow-wrap: anywhere; }
+  .writer-original .writer-msg-text { color: var(--ink); line-height: var(--lh-read); }
   .writer-side .writer-examples h4 { color: var(--ink); font-size: var(--s-ui); }
   .writer-context { margin-top: 20px; border-top: 1px solid var(--rule); padding-top: 12px; }
-  .writer-context summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.5 var(--font); }
+  .writer-context summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   @media (max-width: 719px) {
     .writer { width: 100vw; height: 100dvh; border-radius: var(--radius); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
     .writer-letter { border-right: 0; min-height: 0; overflow: auto; }
@@ -398,11 +397,18 @@
   .outlook-mark { display: inline-block; width: 21px; height: 21px; vertical-align: middle; flex: none; background: center / contain no-repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMjguNSIgeTE9IjI1IiB4Mj0iMjguNSIgeTI9IjQ0IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMzViOGYxIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMjhhOGVhIi8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9ImIiIHgxPSI1LjgyMiIgeTE9IjExLjU2OCIgeDI9IjIwLjE3OCIgeTI9IjM2LjQzMiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzE3ODRkOSIvPjxzdG9wIG9mZnNldD0iLjUiIHN0b3AtY29sb3I9IiMxMDdhZDUiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwYTYzYzkiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNNDUgMjVhLjk2Ljk2IDAgMCAwLS40NTgtLjgyNWgtLjAwNWwtLjAxOC0uMDEtMTQuOS04LjgyYTIuMDI2IDIuMDI2IDAgMCAwLS4yLS4xMTkgMiAyIDAgMCAwLTEuODM0IDAgMi4wMjYgMi4wMjYgMCAwIDAtLjIuMTE5bC0xNC45IDguODItLjAxOC4wMWEuOTcxLjk3MSAwIDAgMCAuMDIzIDEuNjYzbDE0LjkgOC44MmEyLjI0MSAyLjI0MSAwIDAgMCAuMi4xMTkgMiAyIDAgMCAwIDEuODM0IDAgMi4yNDEgMi4yNDEgMCAwIDAgLjItLjExOWwxNC45LTguODJBLjk1OS45NTkgMCAwIDAgNDUgMjV6IiBmaWxsPSIjMGEyNzY3Ii8+PHBhdGggZmlsbD0iIzAzNjRiOCIgZD0iTTE0LjIyMiAxOS4xMTFIMjR2OC45NjNoLTkuNzc4ek00MyAxMFY1LjlBMS44NTggMS44NTggMCAwIDAgNDEuMTg3IDRIMTUuODEzQTEuODU4IDEuODU4IDAgMCAwIDE0IDUuOVYxMGwxNSA0eiIvPjxwYXRoIGZpbGw9IiMwMDc4ZDQiIGQ9Ik0xNCAxMGgxMHY5SDE0eiIvPjxwYXRoIGZpbGw9IiMyOGE4ZWEiIGQ9Ik0zNCAxMEgyNHY5bDEwIDloOXYtOWwtOS05eiIvPjxwYXRoIGZpbGw9IiMwMDc4ZDQiIGQ9Ik0yNCAxOWgxMHY5SDI0eiIvPjxwYXRoIGZpbGw9IiMwMzY0YjgiIGQ9Ik0yNCAyOGgxMHY5SDI0eiIvPjxwYXRoIGZpbGw9IiMxNDQ0N2QiIGQ9Ik0xNC4yMjIgMjguMDc0SDI0djguMTQ4aC05Ljc3OHoiLz48cGF0aCBmaWxsPSIjMDA3OGQ0IiBkPSJNMzQgMjhoOXY5aC05eiIvPjxwYXRoIGQ9Ik00NC41NDIgMjUuNzgzbC0uMDE5LjAxLTE0LjkgOC4zOGMtLjA2NS4wNC0uMTMxLjA3OC0uMi4xMTJhMi4wNzcgMi4wNzcgMCAwIDEtLjgwOC4ybC0uODE0LS40NzZhMi4wMzMgMi4wMzMgMCAwIDEtLjItLjExNWwtMTUuMS04LjYxOGgtLjAwN0wxMiAyNXYxNi45NjRBMi4wNSAyLjA1IDAgMCAwIDE0LjA2MyA0NGgyOC45MDZjLjAxNyAwIC4wMzItLjAwOC4wNS0uMDA4YTIuNTMxIDIuNTMxIDAgMCAwIC43LS4xNDZBMi4wMTkgMi4wMTkgMCAwIDAgNDQgNDMuN2MuMDY3LS4wMzguMTgyLS4xMjEuMTgyLS4xMjFBMi4wMTkgMi4wMTkgMCAwIDAgNDUgNDEuOTY0VjI1YS45LjkgMCAwIDEtLjQ1OC43ODN6IiBmaWxsPSJ1cmwoI2EpIi8+PHBhdGggZD0iTTQ0LjIgMjQuOTMzdjEuMDRMMjguNjIgMzYuNyAxMi40OSAyNS4yODNhLjAxLjAxIDAgMCAwLS4wMS0uMDFsLTEuNDgtLjg5di0uNzVsLjYxLS4wMSAxLjI5Ljc0LjAzLjAxLjExLjA3czE1LjE2IDguNjUgMTUuMiA4LjY3bC41OC4zNGMuMDUtLjAyLjEtLjA0LjE2LS4wNi4wMy0uMDIgMTUuMDUtOC40NyAxNS4wNS04LjQ3eiIgZmlsbD0iIzBhMjc2NyIgb3BhY2l0eT0iLjUiLz48cGF0aCBmaWxsPSJub25lIiBkPSJNMCAwaDQ4djQ4SDB6Ii8+PHBhdGggZD0iTTQ0LjU0MiAyNS43ODNsLS4wMTkuMDExLTE0LjkgOC4zOGMtLjA2NS4wNC0uMTMxLjA3OC0uMi4xMTJhMi4wODkgMi4wODkgMCAwIDEtMS44MzQgMCAyLjI2NCAyLjI2NCAwIDAgMS0uMi0uMTEybC0xNC45LTguMzgtLjAxOC0uMDExQS45LjkgMCAwIDEgMTIgMjV2MTYuOTY0QTIuMDQ5IDIuMDQ5IDAgMCAwIDE0LjA2MiA0NGgyOC44NzZBMi4wNDkgMi4wNDkgMCAwIDAgNDUgNDEuOTY0VjI1YS45LjkgMCAwIDEtLjQ1OC43ODN6IiBmaWxsPSIjMTQ5MGRmIi8+PHBhdGggZD0iTTI5Ljg0IDM0LjA1bC0uMjIzLjEyNWEyLjE4MyAyLjE4MyAwIDAgMS0uMi4xMTMgMi4wNzEgMi4wNzEgMCAwIDEtLjc4Ni4yMDhMMzQuMyA0MS4ybDkuODg5IDIuMzgzYTIuMDM4IDIuMDM4IDAgMCAwIC42MjctLjc4M3oiIG9wYWNpdHk9Ii4xIi8+PHBhdGggZD0iTTMwLjg1IDMzLjQ4MmwtMS4yMzMuNjkzYTIuMTgzIDIuMTgzIDAgMCAxLS4yLjExMyAyLjA3MSAyLjA3MSAwIDAgMS0uNzg2LjIwOGwyLjY1NiA3LjMyMyAxMi45MDUgMS43NjFBMi4wMjIgMi4wMjIgMCAwIDAgNDUgNDEuOTY0di0uMjE5eiIgb3BhY2l0eT0iLjA1Ii8+PHBhdGggZD0iTTE0LjA5IDQ0aDI4Ljg0NWEyLjA3NCAyLjA3NCAwIDAgMCAxLjIzNS0uNEwyNy44IDM0LjAxMWEyLjAzMyAyLjAzMyAwIDAgMS0uMi0uMTE1bC0xNS4xLTguNjE4aC0uMDA3TDEyIDI1djE2LjkwNkEyLjA5MiAyLjA5MiAwIDAgMCAxNC4wOSA0NHoiIGZpbGw9IiMyOGE4ZWEiLz48cGF0aCBkPSJNMjYgMTMuODMzdjIxLjMzYTEuODM4IDEuODM4IDAgMCAxLTEuMTUgMS43IDEuNzIzIDEuNzIzIDAgMCAxLS42OC4xNEgxMlYxM2gydi0xaDEwLjE3QTEuODM3IDEuODM3IDAgMCAxIDI2IDEzLjgzM3oiIG9wYWNpdHk9Ii4xIi8+PHBhdGggZD0iTTI1IDE0LjgzM3YyMS4zM2ExLjYyOSAxLjYyOSAwIDAgMS0uMTUuN0ExLjgyMiAxLjgyMiAwIDAgMSAyMy4xNyAzOEgxMlYxM2gxMS4xN2ExLjY3OSAxLjY3OSAwIDAgMSAuODMuMjEgMS44MTggMS44MTggMCAwIDEgMSAxLjYyM3oiIG9wYWNpdHk9Ii4yIi8+PHBhdGggZD0iTTI1IDE0LjgzM3YxOS4zM0ExLjg0NiAxLjg0NiAwIDAgMSAyMy4xNyAzNkgxMlYxM2gxMS4xN2ExLjY3OSAxLjY3OSAwIDAgMSAuODMuMjEgMS44MTggMS44MTggMCAwIDEgMSAxLjYyM3oiIG9wYWNpdHk9Ii4yIi8+PHBhdGggZD0iTTI0IDE0LjgzM3YxOS4zM0ExLjgzOSAxLjgzOSAwIDAgMSAyMi4xNyAzNkgxMlYxM2gxMC4xN0ExLjgzMSAxLjgzMSAwIDAgMSAyNCAxNC44MzN6IiBvcGFjaXR5PSIuMiIvPjxyZWN0IHg9IjIiIHk9IjEzIiB3aWR0aD0iMjIiIGhlaWdodD0iMjIiIHJ4PSIxLjgzMyIgZmlsbD0idXJsKCNiKSIvPjxwYXRoIGQ9Ik03LjcyOSAyMC42ODhhNS4zMzIgNS4zMzIgMCAwIDEgMi4wOTQtMi4zMTMgNi4zMyA2LjMzIDAgMCAxIDMuMzI3LS44MzQgNS44OTIgNS44OTIgMCAwIDEgMy4wNzkuNzkxIDUuMjg0IDUuMjg0IDAgMCAxIDIuMDM3IDIuMjEgNy4xMzMgNy4xMzMgMCAwIDEgLjcxNCAzLjI1IDcuNTI4IDcuNTI4IDAgMCAxLS43MzUgMy40IDUuNDEgNS40MSAwIDAgMS0yLjEgMi4yODcgNi4xMjYgNi4xMjYgMCAwIDEtMy4xOTQuODEyIDYuMDIgNi4wMiAwIDAgMS0zLjE0Ny0uOCA1LjM2NiA1LjM2NiAwIDAgMS0yLjA2NC0yLjIxNCA2Ljk2MyA2Ljk2MyAwIDAgMS0uNzIyLTMuMjExIDcuNzMzIDcuNzMzIDAgMCAxIC43MTEtMy4zNzh6bTIuMjMyIDUuNDNhMy40NjEgMy40NjEgMCAwIDAgMS4xNzggMS41MjIgMy4wNzcgMy4wNzcgMCAwIDAgMS44NC41NTQgMy4yMjMgMy4yMjMgMCAwIDAgMS45NjQtLjU3MiAzLjMxNSAzLjMxNSAwIDAgMCAxLjE0NC0xLjUyMiA1LjkwOCA1LjkwOCAwIDAgMCAuMzY1LTIuMTIzIDYuNDYzIDYuNDYzIDAgMCAwLS4zNDQtMi4xNUEzLjQgMy40IDAgMCAwIDE1IDIwLjI0MWEzLjA0MyAzLjA0MyAwIDAgMC0xLjk0Ny0uNiAzLjE3NSAzLjE3NSAwIDAgMC0xLjg4My41NTkgMy40OSAzLjQ5IDAgMCAwLTEuMiAxLjUzNSA2LjEgNi4xIDAgMCAwLS4wMDggNC4zODV6IiBmaWxsPSIjZmZmIi8+PHBhdGggZmlsbD0iIzUwZDlmZiIgZD0iTTM0IDEwaDl2OWgtOXoiLz48L3N2Zz4="); }
   .mail-row .outlook-mark { margin-right: 6px; }
   .draft-triage { border-top: 1px solid var(--rule); padding: 8px 16px; }
-  .draft-triage .handoff-line { margin: 0; align-items: center; gap: 4px; }
+  #main .draft-triage .handoff { margin: 0; }
+  #main .draft-triage .handoff-line { margin: 0; align-items: center; gap: 6px; }
+  #main .draft-triage .handoff-line:has(.triage-row) { display: grid; justify-items: start; }
+  .triage-row { display: flex; gap: 6px; max-width: 100%; }
+  #main .draft-triage .btn-quiet { margin: 0; white-space: normal; }
+  #main .draft-triage .strip-more { display: inline-flex; border-color: transparent; }
+  .draft-triage .handoff-status:empty { display: none; }
   .draft-triage .handoff-line > .sep { display: none; }
   .qcard .draft-triage .btn-quiet { padding: 4px 9px; border: 1px solid var(--rule); border-radius: var(--radius); color: var(--ink); }
   @media (max-width: 720px) {
     .qcard .draft-triage .btn-quiet { min-height: 44px; }
+    #main .draft-triage .triage-row [data-agent] { padding-inline: 5px; font-size: var(--s-ui); }
   }
   /* The footer owns this row's actions. Talk and status remain on the item. */
   .qcard.triage-footer .qitem .handoff-line { display: none; }
@@ -3106,7 +3112,7 @@
     #main :is(.btn-quiet, .page-crumb, .dek-org, .dek-unit) { display: inline-flex; align-items: center; }
     /* A text action's hit grows into the space around it, not the layout: 44px tall, but it takes the line it had, so
        Today's Send stays on the first screen. */
-    #main :is(.btn-quiet, .link-btn, .page-crumb, .thread .who a, .pc-v a, .row-quote > summary) { margin-block: -8px; }
+    #main :is(.btn-quiet, .link-btn, .page-crumb, .thread .who a, .pc-v a, .row-quote > summary):not(:where(.draft-triage *)) { margin-block: -8px; }
     #main .dek > :is(a, span) { min-height: 44px; display: inline-flex; align-items: center; }
     #main .ibtn { min-width: 44px; }
     .open-chips .chip { min-height: 44px; }
@@ -7618,35 +7624,19 @@ function replyChannel(draft, name) {
     note: draft.redrafted_from && !draft.channel_defect
       ? t("REM rewrote this as an email: the earlier draft was written for {channel}, but {name} isn't on {channel}.", { channel: chat(draft.redrafted_from), name }) : "" };
 }
-// Prefer the message this draft actually answers. Older snapshots may only have
-// citations or a matching mail thread. Examples must be mail the owner wrote.
+// Evidence comes from the local archive projection for this exact draft version.
 function writerMail(draft) {
-  const contexts = REM.source_context || {}, to = mailbox(draft.to).address, from = mailbox(draft.from).address;
-  const cited = new Set([draft.version, ...(draft.sources || [])]);
-  const originals = [], examples = [];
-  for (const [id, message] of Object.entries(contexts)) {
-    if (!["outlook", "gmail"].includes(message.source || id.split(":")[0])) continue;
-    const header = message.participants || {};
-    const sender = mailbox([header.from].flat()[0] || message.sender).address;
-    const sameThread = draft.thread && message.thread === draft.thread;
-    if (from && sender === from) {
-      if (to && [header.to || []].flat().some(value => mailbox(value).address === to) && message.excerpt && !hasPrivacy(message.excerpt))
-        examples.push(message);
-    } else if (cited.has(id) || sameThread) {
-      originals.push({ message, priority: id === draft.version ? 2 : cited.has(id) ? 1 : 0 });
-    }
-  }
-  const latest = (a, b) => (b.time || "").localeCompare(a.time || "");
-  originals.sort((a, b) => b.priority - a.priority || latest(a.message, b.message));
-  return { original: originals[0]?.message, examples: examples.sort(latest).slice(0, 3) };
+  const mail = draft.writer_mail;
+  if (REM.shared || !mail?.original || privacyLevel === "public") return { examples: [] };
+  return { original: mail.original, examples: mail.examples || [] };
 }
 function writerMessage(message) {
-  const excerpt = message.excerpt && !hasPrivacy(message.excerpt) ? message.excerpt : "";
-  return el("article", { class: "writer-msg" }, [
+  const level = message.level === "personal" ? "personal" : "sensitive";
+  return el("article", { class: "writer-msg private", "data-level": level }, [
     el("div", { class: "writer-msg-head", text: [sourceSender(message), message.time && fmtTime(message.time), message.subject].filter(Boolean).join(" · ") }),
-    el("div", { class: "writer-msg-text", text: excerpt ? excerpt + (message.truncated ? "…" : "") : t("Message text unavailable") })]);
+    el("div", { class: "writer-msg-text", text: message.excerpt ? message.excerpt + (message.truncated ? "…" : "") : t("Message text unavailable") })]);
 }
-function openWriter(draft, who, onSend, onFix) {
+function openWriter(draft, who, onSend, onFix, answers = {}) {
   const to = mailbox(draft.to);
   // The letter is editable text with REM's open questions as chips in it, as on the card (#3312 F): a chip reads
   // the question in its own words until it is answered on the right, then the answer. Bracket text never shows.
@@ -7671,8 +7661,6 @@ function openWriter(draft, who, onSend, onFix) {
   const letterText = () => [...body.childNodes].map(node => node.nodeType === 3 ? node.nodeValue
     : slotOf(node) !== undefined ? fills[slotOf(node)] ?? parts[slotOf(node)]
     : node.tagName === "BR" ? "\n" : node.innerText ?? node.textContent ?? "").join("");
-  const initial = letterText(), dirty = () => letterText() !== initial
-    || rows.some(row => [...row.querySelectorAll("input[required]")].some(field => field.value.trim()));
   // Enter and paste stay plain text, so the letter holds only text and chips.
   body.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); document.execCommand("insertText", false, "\n"); } });
   body.addEventListener("paste", event => { event.preventDefault(); document.execCommand("insertText", false, event.clipboardData.getData("text/plain")); });
@@ -7687,6 +7675,12 @@ function openWriter(draft, who, onSend, onFix) {
     chips[i].classList?.toggle("filled", !!fills[i]);
     notice.textContent = "";
   }));
+  // Keep the original template and restore each control independently, including a
+  // meeting time whose required location is still blank. Answers are plain text.
+  slots.forEach(([, i], n) => { if (answers[i]) rows[n].setAnswerState(answers[i]); });
+  const fieldState = () => JSON.stringify(rows.map(row => row.getAnswerState()));
+  const initial = letterText(), initialFields = fieldState();
+  const dirty = () => letterText() !== initial || fieldState() !== initialFields;
   // A chip deleted from the letter is a question the owner took out; one still there and unanswered holds Send.
   const unanswered = () => slots.filter(([, i]) => !fills[i] && chips[i].isConnected !== false);
   const did = el("p", { class: "writer-did", text: remDid(draft) });
@@ -7855,6 +7849,8 @@ function calendarSlotChoices(calendar, now = Date.now()) {
   // Start on the grid of the queried local midnight, including zones with a fractional UTC offset.
   const first = start + (Math.floor((now - start) / halfHour) + 1) * halfHour;
   const choices = [];
+  const displayDate = new Intl.DateTimeFormat(uiLanguage === "zh" ? "zh-CN" : "en-AU",
+    { timeZone: window.timezone, year: "numeric", month: "long", day: "numeric" });
   let lastDay;
   for (let at = first; at + halfHour <= Math.min(end, now + 21 * day) && choices.length < 3; at += halfHour) {
     const local = Object.fromEntries(clock.formatToParts(at).map(({type, value}) => [type, value]));
@@ -7864,17 +7860,16 @@ function calendarSlotChoices(calendar, now = Date.now()) {
         || busy.some(([from, to]) => from < at + halfHour && at < to)) continue;
     const until = new Date(at + halfHour);
     const finish = Object.fromEntries(clock.formatToParts(until).map(({type, value}) => [type, value]));
-    choices.push(date + " " + local.hour + ":" + local.minute + "–" + finish.hour + ":" + finish.minute + " (" + window.timezone + ")");
+    choices.push(displayDate.format(at) + " · " + local.hour + ":" + local.minute + "–" + finish.hour + ":" + finish.minute + " (" + window.timezone + ")");
     lastDay = date;
   }
   return choices;
 }
-function schedulingInputs(row, what, fills, i, onChange, keep) {
+function schedulingInputs(row, needsPlace, fills, i, onChange, keep) {
   const suggestions = REM.shared ? [] : calendarSlotChoices(REM.calendar);
   const field = (label, suffix) => el("input", { type: "text", "aria-label": t(label), placeholder: t(label),
     ...(keep ? { "data-keep": keep + ":" + i + suffix } : {}) });
   const time = field("Meeting time or alternatives", "");
-  const needsPlace = /地点|地址|场地|\b(?:location|venue|address|where to meet)\b/i.test(what);
   const place = needsPlace ? field("Meeting location (required)", ":location") : null;
   if (place) time.required = place.required = true;
   const buttons = new Map();
@@ -7907,10 +7902,12 @@ function schedulingInputs(row, what, fills, i, onChange, keep) {
 function slotChoices(part, fills, i, onChange, keep) {
   const what = slotWhat(part);
   const choices = what.split(/\s+\/\s+|\s*／\s*|\s*｜\s*|\s+\|\s+|\s*还是\s*|\s*或者\s*/).filter(Boolean);
-  const label = choices.length > 1 ? t("Your call") : what;
+  const needsPlace = /地点|地址|场地|\b(?:place|location|venue|address|where to meet)\b/i.test(what);
+  const schedule = schedulingQuestion(what) && (choices.length === 1 || needsPlace);
+  const label = choices.length > 1 && !schedule ? t("Your call") : what;
   const row = el("span", { class: "owner-slot choose", role: "group", "aria-label": label }, [el("span", { class: "k", text: label + (uiLanguage === "zh" ? "：" : ": ") })]);
-  if (choices.length === 1 && schedulingQuestion(what)) {
-    schedulingInputs(row, what, fills, i, onChange, keep);
+  if (schedule) {
+    schedulingInputs(row, needsPlace, fills, i, onChange, keep);
   } else if (choices.length > 1) for (const choice of choices) {
     const button = el("button", { type: "button", "aria-pressed": "false", text: choice });
     button.onclick = () => {
@@ -7924,6 +7921,21 @@ function slotChoices(part, fills, i, onChange, keep) {
     input.oninput = () => { fills[i] = input.value.trim() || undefined; onChange(); };
     row.appendChild(input);
   }
+  row.getAnswerState = () => {
+    const inputs = [...row.querySelectorAll("input")];
+    return inputs.length ? inputs.map(field => field.value) : [fills[i] || ""];
+  };
+  row.setAnswerState = state => {
+    const inputs = [...row.querySelectorAll("input")];
+    if (inputs.length) {
+      inputs.forEach((field, index) => { field.value = state[index] || ""; });
+      inputs[0].dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      fills[i] = choices.includes(state[0]) ? state[0] : undefined;
+      for (const button of row.querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.textContent === fills[i]));
+      onChange();
+    }
+  };
   return row;
 }
 // What a slot is called beside Send: the label the letter gives it ("Format: 【…】"), else REM's own words, short.
@@ -8116,8 +8128,8 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
     deliver(body === draft.body ? undefined : body);
   };
   write.onclick = () => {
-    const base = filled() ?? draft.body;
-    openWriter({ ...draft, body: base, ask: extra.ask }, who, body => deliver(body ?? (base === draft.body ? undefined : base)), () => backToMail.click());
+    const answers = Object.fromEntries(Object.entries(rowAt).map(([i, row]) => [i, row.getAnswerState()]));
+    openWriter({ ...draft, ask: extra.ask }, who, deliver, () => backToMail.click(), answers);
   };
   edit.onclick = () => run("open");
   skip.onclick = () => {
@@ -10148,6 +10160,8 @@ function handButtons(entry, show, panel, mark, lead, draftFooter = false) {
     return button;
   });
   const talk = entry.ask ? null : talkMenu(entry, panel), closes = stripDone(entry, mark, lead === "done");
+  if (draftFooter) return [el("div", {class: "triage-row"}, closes), el("div", {class: "triage-row"}, buttons),
+    moreButton(entry, talk), status].filter(Boolean);
   return [...dotted(todayStrip(buttons, talk, closes, entry)), status];
 }
 // The click is the hand-off (#3072: «点了交给 Codex 就显示正在交给 Codex，也不跳到下一张»). The row is the agent's from

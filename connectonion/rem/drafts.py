@@ -55,10 +55,10 @@ def candidates(root, *, refresh_index=True, records=None):
     """Resolve cited mail to its latest archived thread; a newer owner reply closes it."""
     from .store import refresh
     from .reader_model import _cited_row
-    from .store_messages import archived_message, owner_addresses
+    from .store_messages import archived_message, has_message_index, owner_addresses
     if refresh_index:
         refresh(root)
-    if not state_path(root, 'rem.db').is_file():
+    if not has_message_index(state_path(root, 'rem.db')):
         return []
     owner, ignored = owner_addresses(root), threads.ignored_senders(root)
     found = {}

@@ -290,11 +290,12 @@ def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
     events.sort(key=lambda event: event['start'])
     shown = {kind: {key: value for key, value in error.items() if key != 'traceback'} for kind, error in errors.items()}
     # Only this read can attest to its window. Older Agenda files and retained data cannot.
+    expected = set(saved.get('expected_feeds', saved.get('read_at', {}))) | set(read_at)
     coverage = {}
-    if (not errors and not capped and any(c['read'] for c in calendars.values())
+    if (expected == set(read_at) and not errors and not capped and any(c['read'] for c in calendars.values())
             and all(not c.get('incomplete') and not c['left_out'].get('unticked') for c in calendars.values())):
         coverage = {'window': {'start': start.isoformat(), 'end': end.isoformat(), 'timezone': _zone_name(zone)}}
-    write_json(path, {**coverage, 'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': shown, 'capped': capped,
+    write_json(path, {**coverage, 'expected_feeds': sorted(expected), 'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': shown, 'capped': capped,
                       'calendars': calendars, 'events': events})
     return {'events': len(events), 'read': sorted(set(read_at) - set(errors)), 'errors': errors, 'capped': capped}
 
