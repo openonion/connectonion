@@ -51,7 +51,7 @@ def test_the_writer_has_a_title_bar_with_close_at_the_top_right_and_esc_closes(t
     # The close sits in the dialog's top-right corner, where every dialog keeps it.
     assert box["x"] + box["width"] > frame["x"] + frame["width"] - 64 and box["y"] < frame["y"] + 64
     page.keyboard.press("Escape")
-    assert page.locator("dialog.writer").count() == 0
+    page.locator("dialog.writer").wait_for(state="detached")
 
 
 def test_on_a_phone_the_writer_is_a_sheet_with_cancel_left_and_send_right(today):
@@ -69,7 +69,7 @@ def test_on_a_phone_the_writer_is_a_sheet_with_cancel_left_and_send_right(today)
     assert letter.bounding_box()["y"] - dialog.locator(".writer-letter .mail-head").bounding_box()["y"] < 140
     assert letter.inner_text().startswith("Hi Ines,") and "【" not in letter.inner_text()
     cancel.click()
-    assert page.locator("dialog.writer").count() == 0
+    page.locator("dialog.writer").wait_for(state="detached")
 
 
 def test_the_page_behind_is_dimmed(today):
@@ -87,7 +87,7 @@ def test_a_click_outside_closes_an_unchanged_letter(today):
     page, _, _ = today
     _writer(page, 1440)
     page.mouse.click(8, 8)
-    assert page.locator("dialog.writer").count() == 0
+    page.locator("dialog.writer").wait_for(state="detached")
 
 
 def test_a_changed_letter_asks_once_before_esc_closes_it(today):
@@ -102,7 +102,7 @@ def test_a_changed_letter_asks_once_before_esc_closes_it(today):
     assert asked and page.locator("dialog.writer[open]").count() == 1
     page.once("dialog", lambda d: d.accept())
     dialog.get_by_role("button", name="Close", exact=True).click()
-    assert page.locator("dialog.writer").count() == 0
+    page.locator("dialog.writer").wait_for(state="detached")
 
 
 def test_rems_question_is_answered_on_the_right_and_lands_in_the_letter(today):

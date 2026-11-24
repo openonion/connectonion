@@ -108,7 +108,7 @@ def _google_events(start, end, zone) -> tuple[list[dict], dict]:
 
 def _graph_pages(client, endpoint, params, headers, limit=CAP) -> list[dict]:
     rows = []
-    while endpoint and len(rows) < limit:
+    while endpoint and (limit is None or len(rows) < limit):
         page = client._request('GET', endpoint, params=params, headers=headers)
         rows += page.get('value', [])
         # The next page is a whole URL with its query already in it.
@@ -124,7 +124,7 @@ def _microsoft_events(start, end, zone) -> tuple[list[dict], dict]:
     events = []
     # Graph has no access role. `canEdit` is true for a calendar he created and for one shared with write
     # access, which is Google's owner-or-writer; a calendar shared to read (free/busy included) has it false.
-    own, counts = _counted(_graph_pages(client, '/me/calendars', {'$select': 'id,name,canEdit'}, headers),
+    own, counts = _counted(_graph_pages(client, '/me/calendars', {'$select': 'id,name,canEdit'}, headers, limit=None),
                            lambda listed: None if listed.get('canEdit') else 'reader')
     for listed in own:
         if len(events) >= CAP:
@@ -251,8 +251,11 @@ def _read(kind: str, start, end, zone) -> tuple[list[dict], bool, dict] | None:
     unique = {}
     for row in rows:
         # One meeting can come from two of his calendars: keep the copy with a title.
-        if not row['skip'] and row['start'] and (row['id'] not in unique or (row['title'] and not unique[row['id']]['title'])):
-            unique[row['id']] = row
+        key = (row['id'], row['start'], row['end'])
+        if not row['skip'] and row['start'] and (key not in unique or (row['title'] and not unique[key]['title'])):
+            unique[key] = row
+    if any(not row['skip'] and not row['start'] for row in rows):
+        counts = {**counts, 'incomplete': True}
     return [{key: value for key, value in row.items() if key != 'skip'} for row in unique.values()], len(items) >= CAP, counts
 
 
@@ -263,9 +266,10 @@ def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
     stamp = moment.isoformat(timespec='seconds')
     events, errors, read_at, capped, calendars = [], {}, {}, [], {}
     start = moment.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    end = start + timedelta(days=days + 1)
     for kind in KINDS:
         try:
-            result = _read(kind, start, start + timedelta(days=days + 1), zone)
+            result = _read(kind, start, end, zone)
         except Exception as error:  # noqa: BLE001 - no calendar may stop the night; a fault in REM is named, not hidden
             reason = _reason(error)
             # A fault in REM carries its traceback to the night's run log (daily.py), never to the page.
@@ -285,7 +289,12 @@ def save_upcoming(root, moment, zone=timezone.utc, *, days: int = DAYS) -> dict:
                 capped.append(kind)
     events.sort(key=lambda event: event['start'])
     shown = {kind: {key: value for key, value in error.items() if key != 'traceback'} for kind, error in errors.items()}
-    write_json(path, {'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': shown, 'capped': capped,
+    # Only this read can attest to its window. Older Agenda files and retained data cannot.
+    coverage = {}
+    if (not errors and not capped and any(c['read'] for c in calendars.values())
+            and all(not c.get('incomplete') and not c['left_out'].get('unticked') for c in calendars.values())):
+        coverage = {'window': {'start': start.isoformat(), 'end': end.isoformat(), 'timezone': _zone_name(zone)}}
+    write_json(path, {**coverage, 'saved_at': stamp, 'days': days, 'read_at': read_at, 'errors': shown, 'capped': capped,
                       'calendars': calendars, 'events': events})
     return {'events': len(events), 'read': sorted(set(read_at) - set(errors)), 'errors': errors, 'capped': capped}
 
@@ -319,7 +328,7 @@ def upcoming(root, records: list[dict], owner: str) -> dict | None:
         events.append({**{key: value for key, value in event.items() if key != 'attendees'},
                        'people': pages, 'guests': len(event.get('attendees', []))})
     errors, read_at, counts = saved.get('errors', {}), saved.get('read_at', {}), saved.get('calendars', {})
-    return {'saved_at': saved.get('saved_at', ''),
+    return {**({'window': saved['window']} if 'window' in saved else {}), 'saved_at': saved.get('saved_at', ''),
             'read': [{'name': NAMES[kind], 'at': at, **({'capped': CAP} if kind in saved.get('capped', []) else {}),
                       **({'calendars': counts[kind]['read'], 'left_out': counts[kind]['left_out']} if kind in counts else {})}
                      for kind, at in read_at.items() if kind not in errors],

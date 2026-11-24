@@ -248,3 +248,23 @@ def test_with_nothing_waiting_on_you_the_header_never_names_people(today):
     line = page.locator("#main .count-line")
     assert line.inner_text().split("\n") == ["0", "Nobody is waiting on you today."]
     assert "Start with" not in line.inner_text()
+
+
+@pytest.mark.parametrize("width", [390, 1440])
+def test_single_reply_has_visible_item_actions_and_outlook_mark(today, width):
+    page, requests, _ = today
+    page.set_viewport_size({"width": width, "height": 900})
+    page.evaluate(DRAFT, True, isolated_context=False)
+    card = page.locator(".today-brief .qcard.focal")
+    footer = card.locator(".draft-triage")
+    for name in ("Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude Code"):
+        assert footer.get_by_role("button", name=name, exact=True).is_visible()
+    logo = card.locator(".mail-head").get_by_role("img", name="Outlook reply")
+    assert logo.is_visible()
+    assert "data:image/svg+xml" in logo.evaluate("el => getComputedStyle(el).backgroundImage")
+    footer.get_by_role("button", name="Not now").click()
+    assert all(" · " in text for text in footer.locator(".later-choice").all_inner_texts())
+    footer.get_by_role("button", name="Cancel").click()
+    assert footer.get_by_role("button", name="Not now").evaluate("el => el === document.activeElement")
+    assert not any(path in ("/rem/draft", "/rem/task") and body for path, body in requests)
+    assert card.locator(".qnav").is_visible()
