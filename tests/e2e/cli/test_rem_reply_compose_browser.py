@@ -110,6 +110,7 @@ def test_rems_question_is_answered_on_the_right_and_lands_in_the_letter(today):
     dialog = _writer(page)
     side = dialog.locator(".writer-side .writer-choices")
     assert side.is_visible()
+    dialog.locator(".writer-context summary").click()
     assert dialog.locator(".writer-did").inner_text().startswith("REM ") and "Q3 receipts" in dialog.locator(".writer-did").inner_text()
     # The letter never shows bracket text: the open question is a chip in its own words.
     letter = dialog.locator(".writer-body")

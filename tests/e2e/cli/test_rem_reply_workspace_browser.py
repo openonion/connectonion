@@ -37,6 +37,10 @@ def test_archived_request_and_example_stay_outside_the_sent_letter(today):
     original, body = dialog.locator(".writer-original"), dialog.get_by_role("textbox", name="Reply body")
     examples = dialog.locator(".writer-side .writer-examples")
     assert "Please send the receipts by Friday." in original.inner_text()
+    assert original.locator(".writer-msg-text").evaluate(
+        "n => parseFloat(getComputedStyle(n).fontSize) >= 14 && "
+        "getComputedStyle(n).color === getComputedStyle(n.closest('dialog')).color")
+    assert dialog.locator(".writer-context").get_attribute("open") is None
     assert "Last quarter I attached the invoices." in examples.inner_text()
     assert "Unrelated private reply." not in dialog.inner_text()
     assert original.bounding_box()["y"] < body.bounding_box()["y"]
@@ -108,3 +112,51 @@ def test_missing_calendar_leaves_time_as_an_editable_question(today):
     field.fill("after the presentation")
     assert dialog.locator(".writer-body").inner_text() == "Could we meet after the presentation?"
     assert not [p for p, _ in calls if p in ("/rem/approve", "/rem/draft")]
+
+
+@pytest.mark.parametrize("fresh", [True, False])
+def test_mixed_demo_question_keeps_location_open_until_owner_fills_it(today, fresh):
+    page, calls, answers = today
+    question = "确认是否接受11月23日周一14:00的演示时间，并填写具体见面地点；如不合适，给出替代时间"
+    card = _card(page, body="我的回复：【需要你：" + question + "】")
+    page.clock.set_fixed_time("2026-11-23T08:00:00Z")
+    page.evaluate("""fresh => {
+      const at = fresh ? '2026-11-23T08:00:00Z' : '2026-11-21T08:00:00Z';
+      REM.calendar = {saved_at: at, errors: [], read: [{at, calendars: 1}], events: [],
+        window: {start: '2026-11-21T00:00:00Z', end: '2026-11-27T00:00:00Z', timezone: 'UTC'}};
+    }""", fresh, isolated_context=False)
+    card.locator(".mail-write").click()
+    dialog = page.locator("dialog.writer[open]")
+    fields = dialog.locator(".writer-choices")
+    time = fields.get_by_role("textbox", name="Meeting time or alternatives")
+    location = fields.get_by_role("textbox", name="Meeting location (required)")
+    send = dialog.get_by_role("button", name="Send", exact=True)
+    if fresh:
+        first, second = fields.get_by_role("button").all()[:2]
+        first.click()
+        send.click()
+        assert location.evaluate("n => n === document.activeElement")
+        assert not [p for p, _ in calls if p in ("/rem/approve", "/rem/draft")]
+        second.click()
+        assert time.input_value() == first.inner_text() + " / " + second.inner_text()
+        first.click()
+        assert time.input_value() == second.inner_text()
+        assert second.get_attribute("aria-pressed") == "true"
+    else:
+        assert fields.get_by_role("button").count() == 0
+        assert "No verified calendar times. Enter a time manually." in fields.inner_text()
+    time.fill("周三下午两点或周四上午十点")
+    send.click()
+    assert dialog.is_visible() and not location.input_value()
+    assert not [p for p, _ in calls if p in ("/rem/approve", "/rem/draft")]
+    location.fill("西楼前台")
+    expected = "我的回复：周三下午两点或周四上午十点 · 西楼前台"
+    assert dialog.locator(".writer-body").inner_text() == expected
+    location.fill("")
+    send.click()
+    assert not [p for p, _ in calls if p in ("/rem/approve", "/rem/draft")]
+    location.fill("西楼前台")
+    answers["/rem/approve"] = lambda payload: (200, {"results": [{"id": i, "status": "sent"} for i in payload["ids"]]})
+    send.click()
+    dialog.wait_for(state="detached")
+    assert calls[-1][1]["bodies"]["reply:ines"] == expected

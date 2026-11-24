@@ -335,8 +335,7 @@
   }
   .writer-did { margin: 0 0 14px; color: var(--ink); }
   .writer-choices { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: var(--radius); }
-  .writer-choices h4 { margin: 0 0 8px; color: var(--ink); }
-  .writer-choices .owner-slot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .writer-choices .owner-slot.choose { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
   .writer-letter { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--rule); }
   .writer-original { flex: none; max-height: 30%; overflow: auto; padding: 10px 24px; background: var(--fill-hover); border-bottom: 1px solid var(--rule); }
@@ -359,6 +358,11 @@
   .writer-msg { padding: 10px 0; border-top: 1px solid var(--rule); }
   .writer-msg-head { font: var(--w-bold) var(--s-meta)/1.4 var(--font); color: var(--grey); margin-bottom: 4px; }
   .writer-msg-text { white-space: pre-wrap; font: var(--s-meta)/1.55 var(--font); color: var(--grey); overflow-wrap: anywhere; }
+  .writer-original .writer-msg-text { color: var(--ink); font-size: 15px; line-height: 1.6; }
+  .writer-examples .writer-msg-text { font-size: 14px; }
+  .writer-side .writer-examples h4 { color: var(--ink); font-size: var(--s-ui); }
+  .writer-context { margin-top: 20px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  .writer-context summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.5 var(--font); }
   @media (max-width: 719px) {
     .writer { width: 100vw; height: 100dvh; border-radius: var(--radius); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
     .writer-letter { border-right: 0; min-height: 0; overflow: auto; }
@@ -4710,7 +4714,10 @@ const UI = {
     "{n} days ago": "{n} 天前",
     "Red = days past the due date · ink starts at the oldest dated message": "红线 = 逾期天数 · 黑线从最早一封有日期的信开始",
     "No one": "无",
-    "Enter a time · availability unverified": "填写时间（日历未确认可用时段）",
+    "Choose one or more times, or enter your own.": "可以选一个或多个时段，也可以手动填写。",
+    "No verified calendar times. Enter a time manually.": "暂无日历已确认的可选时段，请手动填写时间。",
+    "Meeting time or alternatives": "会面时间或备选时段",
+    "Meeting location (required)": "见面地点（必填）",
     "Type your answer": "写下你的回答",
     "Your call": "我这边",
     "1 choice left: ": "还有 1 处要选：", "{n} choices left: ": "还有 {n} 处要选：",
@@ -4913,6 +4920,7 @@ const UI = {
     "Reply to {name}": "回复 {name}",
     "What they asked": "对方问的",
     "Original message": "原始消息", "Your reply": "你的回复", "Reply assistance": "回复参考",
+    "Reply context": "回复背景",
     "Write a reply before sending": "请先填写回复正文",
     "Your earlier replies": "你以前的回复", "No archived reply to this recipient": "没有给这位收件人的历史回复",
     "Message text unavailable": "没有可显示的正文", "No archived message available": "没有可显示的原始消息",
@@ -7663,7 +7671,8 @@ function openWriter(draft, who, onSend, onFix) {
   const letterText = () => [...body.childNodes].map(node => node.nodeType === 3 ? node.nodeValue
     : slotOf(node) !== undefined ? fills[slotOf(node)] ?? parts[slotOf(node)]
     : node.tagName === "BR" ? "\n" : node.innerText ?? node.textContent ?? "").join("");
-  const initial = letterText(), dirty = () => letterText() !== initial;
+  const initial = letterText(), dirty = () => letterText() !== initial
+    || rows.some(row => [...row.querySelectorAll("input[required]")].some(field => field.value.trim()));
   // Enter and paste stay plain text, so the letter holds only text and chips.
   body.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); document.execCommand("insertText", false, "\n"); } });
   body.addEventListener("paste", event => { event.preventDefault(); document.execCommand("insertText", false, event.clipboardData.getData("text/plain")); });
@@ -7713,15 +7722,16 @@ function openWriter(draft, who, onSend, onFix) {
       notice]),
     el("aside", { class: "writer-side" }, [
       el("h3", { text: t("Reply assistance") }),
-      rows.length ? el("section", { class: "writer-choices" }, [el("h4", { text: t("Your call") }), ...rows]) : null,
-      who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
-      who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
-      draft.ask ? el("section", {}, [el("h4", { text: t("What they asked") }), el("p", { text: draft.ask })]) : null,
-      el("section", {}, [el("h4", { text: t("What REM did") }), did]),
-      draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
-      draft.gist ? el("section", {}, [el("h4", { text: gistTitle(draft.gist) }), el("p", { text: draft.gist })]) : null,
+      rows.length ? el("section", { class: "writer-choices", "aria-label": t("Your call") }, rows) : null,
       el("section", { class: "writer-examples" }, [el("h4", { text: t("Your earlier replies") }),
-        ...(examples.length ? examples.map(writerMessage) : [el("p", { text: t("No archived reply to this recipient") })])])])]);
+        ...(examples.length ? examples.map(writerMessage) : [el("p", { text: t("No archived reply to this recipient") })])]),
+      el("details", { class: "writer-context" }, [el("summary", { text: t("Reply context") }),
+        who ? el("h4", {}, [el("a", { href: href(who), text: who.title })]) : null,
+        who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
+        draft.ask ? el("section", {}, [el("h4", { text: t("What they asked") }), el("p", { text: draft.ask })]) : null,
+        el("section", {}, [el("h4", { text: t("What REM did") }), did]),
+        draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
+        draft.gist ? el("section", {}, [el("h4", { text: gistTitle(draft.gist) }), el("p", { text: draft.gist })]) : null])])]);
   const mayLeave = () => !dirty() || confirm(t("Discard your changes to this reply?"));
   const leave = () => { if (mayLeave()) dialog.close(); };
   send.onclick = async () => {
@@ -7730,7 +7740,8 @@ function openWriter(draft, who, onSend, onFix) {
     const left = unanswered();
     if (left.length) {
       notice.textContent = t("Answer REM's question on the right first: {what}", { what: slotWhat(left[0][0]) });
-      rows[slots.indexOf(left[0])]?.querySelector("button, input")?.focus();
+      const row = rows[slots.indexOf(left[0])];
+      (row.querySelector("input:invalid") || row.querySelector("button, input"))?.focus();
       return;
     }
     const text = letterText();
@@ -7858,35 +7869,59 @@ function calendarSlotChoices(calendar, now = Date.now()) {
   }
   return choices;
 }
+function schedulingInputs(row, what, fills, i, onChange, keep) {
+  const suggestions = REM.shared ? [] : calendarSlotChoices(REM.calendar);
+  const field = (label, suffix) => el("input", { type: "text", "aria-label": t(label), placeholder: t(label),
+    ...(keep ? { "data-keep": keep + ":" + i + suffix } : {}) });
+  const time = field("Meeting time or alternatives", "");
+  const needsPlace = /地点|地址|场地|\b(?:location|venue|address|where to meet)\b/i.test(what);
+  const place = needsPlace ? field("Meeting location (required)", ":location") : null;
+  if (place) time.required = place.required = true;
+  const buttons = new Map();
+  const times = () => (time.value || "").split(" / ").map(value => value.trim()).filter(Boolean);
+  const update = () => {
+    const answer = time.value.trim(), location = place?.value.trim();
+    fills[i] = answer && (!place || location) ? [answer, location].filter(Boolean).join(" · ") : undefined;
+    const offered = times();
+    for (const [choice, button] of buttons) button.setAttribute("aria-pressed", String(offered.includes(choice)));
+    onChange();
+  };
+  row.appendChild(el("span", { text: t(suggestions.length ? "Choose one or more times, or enter your own."
+    : "No verified calendar times. Enter a time manually.") }));
+  for (const choice of suggestions) {
+    const button = el("button", { type: "button", "aria-pressed": "false", text: choice });
+    buttons.set(choice, button);
+    button.onclick = () => {
+      const offered = times();
+      if (offered.includes(choice)) time.value = offered.filter(value => value !== choice).join(" / ");
+      else if (calendarSlotChoices(REM.calendar).includes(choice)) time.value = [...offered, choice].join(" / ");
+      else { button.disabled = true; time.focus(); return; }
+      time.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    row.appendChild(button);
+  }
+  time.oninput = update;
+  row.appendChild(time);
+  if (place) { place.oninput = update; row.appendChild(place); }
+}
 function slotChoices(part, fills, i, onChange, keep) {
   const what = slotWhat(part);
   const choices = what.split(/\s+\/\s+|\s*／\s*|\s*｜\s*|\s+\|\s+|\s*还是\s*|\s*或者\s*/).filter(Boolean);
   const label = choices.length > 1 ? t("Your call") : what;
   const row = el("span", { class: "owner-slot choose", role: "group", "aria-label": label }, [el("span", { class: "k", text: label + (uiLanguage === "zh" ? "：" : ": ") })]);
-  const scheduling = choices.length === 1 && schedulingQuestion(what);
-  const suggestions = scheduling && !REM.shared ? calendarSlotChoices(REM.calendar) : [];
-  let input;
-  const press = selected => {
-    for (const other of row.querySelectorAll("button")) other.setAttribute("aria-pressed", String(other === selected));
-  };
-  for (const choice of choices.length > 1 ? choices : suggestions) {
+  if (choices.length === 1 && schedulingQuestion(what)) {
+    schedulingInputs(row, what, fills, i, onChange, keep);
+  } else if (choices.length > 1) for (const choice of choices) {
     const button = el("button", { type: "button", "aria-pressed": "false", text: choice });
     button.onclick = () => {
-      if (scheduling && !calendarSlotChoices(REM.calendar).includes(choice)) {
-        button.disabled = true;
-        input.focus();
-        return;
-      }
       fills[i] = choice;
-      if (input) input.value = choice;
-      press(button);
+      for (const other of row.querySelectorAll("button")) other.setAttribute("aria-pressed", String(other === button));
       onChange();
     };
     row.appendChild(button);
-  }
-  if (choices.length <= 1) {
-    input = el("input", { type: "text", "aria-label": what, placeholder: t(scheduling && !suggestions.length ? "Enter a time · availability unverified" : "Type your answer"), ...(keep ? { "data-keep": keep + ":" + i } : {}) });
-    input.oninput = () => { fills[i] = input.value.trim() || undefined; press(null); onChange(); };
+  } else {
+    const input = el("input", { type: "text", "aria-label": what, placeholder: t("Type your answer"), ...(keep ? { "data-keep": keep + ":" + i } : {}) });
+    input.oninput = () => { fills[i] = input.value.trim() || undefined; onChange(); };
     row.appendChild(input);
   }
   return row;
@@ -8074,7 +8109,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
       const open = parts.findIndex((part, i) => isSlot(part) && !fills[i]), first = rowAt[open];
       status.textContent = t("Answer REM's question first: {what}", { what: slotName(parts, open) });
       first?.scrollIntoView({ block: "center", behavior: motionStilled() ? "auto" : "smooth" });
-      first?.querySelector("input, button")?.focus({ preventScroll: true });
+      (first?.querySelector("input:invalid") || first?.querySelector("input, button"))?.focus({ preventScroll: true });
       first?.classList.remove("attention"); void first?.offsetWidth; first?.classList.add("attention");
       return;
     }

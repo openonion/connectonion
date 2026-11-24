@@ -1590,7 +1590,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'outlookMark', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1637,7 +1637,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
-                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'outlookMark', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const momentClass = () => '', momentData = () => ({}), ageNodes = text => [text], qageNode = (late, thread, r) => el(`span`, { class: `qage` + (late ? ` late` : ``), text: late ? t(late === 1 ? `1 day overdue` : `{n} days overdue`, { n: late }) : threadAge(thread, r) }); const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -3116,7 +3116,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'schedulingQuestion', 'calendarSlotChoices', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['slotWhat', 'schedulingQuestion', 'calendarSlotChoices', 'schedulingInputs', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'outlookMark', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -5160,7 +5160,7 @@ def test_a_today_line_whose_every_clause_is_labelled_says_so_and_show_all_keeps_
 def test_scheduling_slot_buttons_respect_calendar_evidence_and_remain_editable():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['slotWhat', 'schedulingQuestion', 'calendarSlotChoices', 'slotChoices'])
+                          for name in ['slotWhat', 'schedulingQuestion', 'calendarSlotChoices', 'schedulingInputs', 'slotChoices'])
     result = _run_reader_js(functions + r"""
       const saved = '2026-10-02T06:00:00Z', read = [{at: saved, calendars: 1}];
       let now = Date.parse(saved);
@@ -5173,7 +5173,7 @@ def test_scheduling_slot_buttons_respect_calendar_evidence_and_remain_editable()
           {start: '2026-10-05T22:15:00Z', end: '2026-10-05T23:00:00Z'}
         ]};
       const REM = {calendar};
-      const el = (tag, attrs, children = []) => ({tag, ...attrs, children, appendChild(c) {children.push(c)},
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children, value: "", dispatchEvent() {this.oninput()}, appendChild(c) {children.push(c)},
         querySelectorAll(tag) {return children.filter(c => c.tag === tag)}, setAttribute(k,v) {this[k]=v}, focus() {}});
       const fills = {}, received = [];
       const make = what => slotChoices('【需要你：' + what + ' — date not agreed】', fills, 1, () => received.push(fills[1]));
