@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .files import ALIAS_LABELS, split_handles, state_path
 from .source import SESSION_SOURCE_PATTERN
-from .store_messages import archived_message
+from .store_messages import archived_message, has_message_index
 
 REFERENCE = re.compile(r"\[([^\]]+)\]\(([^)]+\.md)\)")
 CITATION = re.compile(r"\[(W?\d{1,3})\]")
@@ -483,7 +483,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     if not ids or file.is_symlink():
         return {}
     output: dict[str, dict] = {}
-    db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True) if file.is_file() else None
+    db = sqlite3.connect(file.absolute().as_uri() + "?mode=ro", uri=True) if has_message_index(file) else None
     if db is not None:
         db.row_factory = sqlite3.Row
     try:
@@ -570,7 +570,7 @@ def cited_conversations(root: Path, contexts: dict[str, dict], *, max_threads: i
     owner-only boundary as cited_context.
     """
     file = state_path(root, "rem.db")
-    if not contexts or not file.is_file() or file.is_symlink():
+    if not contexts or not has_message_index(file):
         return {}
     db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
@@ -657,12 +657,15 @@ def later_in_threads(root: Path, sources, *, per_thread: int = 4, chars: int = 1
     return found
 
 
-def reply_drafts(root: Path, *, local=False, records=None) -> list[dict]:
+def reply_drafts(root: Path, *, local=False, records=None, omitted=()) -> list[dict]:
     """Reply bodies and mailboxes belong only in the owner's local reader."""
     if not local:
         return []
     from .drafts import listing
-    return listing(root, include_pending=True, **({'records': records} if records is not None else {}))
+    from .writer_mail import attach_writer_mail
+    drafts = listing(root, include_pending=True, **({'records': records} if records is not None else {}))
+    attach_writer_mail(root, drafts, records, omitted)
+    return drafts
 
 
 def session_detail(text: str, *, private: bool = False) -> dict:

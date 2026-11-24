@@ -54,7 +54,8 @@ def own_words(body: str) -> str:
 
 def sent_mail(root: Path, addresses: list[str]) -> list[str]:
     path = state_path(root, "rem.db")
-    if not addresses or not path.is_file():
+    from .store_messages import has_message_index
+    if not addresses or not has_message_index(path, required={"sender", "body_path"}):
         return []
     mine = {address.casefold() for address in addresses}
     db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)

@@ -1590,7 +1590,7 @@ def test_no_reply_reason_is_visible_in_open_threads_and_the_person_ledger(render
 def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['threadActions', 'primaryAction', 'threadUrl', 'mailtoLink', 'draftNowButton', 'threadDraft', 'draftNote', 'replyDraftCard', 'outlookMark', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const kindBadge = () => null, threadKind = () => null;\n" + r'''
       const REM = {live: true, drafts: [{thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', subject: 'Re: Pilot', body: 'I will review the pilot.'}], status: {worker: {enabled: true}}};
@@ -1637,7 +1637,7 @@ def test_person_card_prepared_draft_replaces_primary_action_with_mailcard():
     page = TEMPLATE.read_text()
     functions = re.search(r'const STEPS = .*?;', page).group(0) + '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['personCard', 'snapshotCloseLine', 'cardHead', 'cardItem', 'wordsLine', 'rowMark', 'snapshotWhy', 'ownerLine', 'cardDraft', 'stepAction', 'notDoneAction', 'cardStep', 'groupStep', 'mailboxLink', 'threadUrl',
-                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
+                                       'taskResult', 'threadDraft', 'draftNote', 'replyDraftCard', 'outlookMark', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName', 'draftNowButton', 'mailtoLink'])
     result = _run_reader_js(functions + "\nconst icon = () => null, groupLate = () => 0, liveHere = () => !!REM.live; const translationPending = () => false; const momentClass = () => '', momentData = () => ({}), ageNodes = text => [text], qageNode = (late, thread, r) => el(`span`, { class: `qage` + (late ? ` late` : ``), text: late ? t(late === 1 ? `1 day overdue` : `{n} days overdue`, { n: late }) : threadAge(thread, r) }); const kindBadge = () => null, threadKind = () => ({kind: 'gmail', channel: 'Gmail', thread: 'mail:gmail:pilot', mail: true});\n" + r'''
       const draft = {id: 'pilot-reply', thread: 'mail:gmail:pilot', provider: 'gmail', status: 'prepared',
         to: 'avery@example.com', from: 'owner@example.com', subject: 'Re: Pilot',
@@ -3116,7 +3116,7 @@ def test_undrafted_today_reason_and_action_follow_archived_reply_state(language)
 @pytest.mark.parametrize('live', [False, True])
 def test_reply_card_highlights_slots_and_snapshot_replaces_all_live_controls(live):
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-                          for name in ['slotWhat', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
+                          for name in ['slotWhat', 'schedulingQuestion', 'calendarSlotChoices', 'schedulingInputs', 'slotChoices', 'slotName', 'chooseHint', 'replyDraftCard', 'outlookMark', 'replyChannel', 'remDid', 'directSendItem', 'gistTitle', 'textLanguage', 'nativeName'])
     result = _run_reader_js(functions + 'const REM = {live: ' + json.dumps(live) + r''', drafts: []};
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children, replaceChildren(...nodes) {this.children = nodes;},
         appendChild(node) {this.children.push(node);}});
@@ -3157,7 +3157,8 @@ def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
     what = re.search(r'function slotWhat\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     did = re.search(r'function remDid\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
     channel = re.search(r'function replyChannel\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
-    result = _run_reader_js(split + what + did + channel + function + r'''
+    evidence = re.search(r'function writerMail\(.*?\n\}', TEMPLATE.read_text(), re.S).group(0)
+    result = _run_reader_js(split + what + did + channel + evidence + function + r'''
       const nodes = [], sent = [], REM = {}, innerWidth = 1440;
       const el = (tag, attrs = {}, children = []) => {const node = {tag, ...attrs, children, get childNodes() { return this.children; },
         append(child) { this.children.push(child); }, addEventListener() {}, showModal() {}, focus() {}, close() {this.closed = true;}, remove() {}};
@@ -3165,7 +3166,7 @@ def test_writer_refuses_slots_and_allows_send_after_owner_fills_them():
       const icon = () => ({}), motionStilled = () => true, setTimeout = f => f();
       let answer = null;
       const slotChoices = (part, fills, i, onChange) => { answer = value => { fills[i] = value; onChange(); };
-        return {...el('span', {}, []), querySelector: () => ({focus() {}})}; };
+        return {...el('span', {}, []), getAnswerState: () => [fills[i] || ''], querySelector: () => ({focus() {}})}; };
       const mailbox = address => ({address, name: 'Fern'});
       const document = {body: {appendChild() {}}, createTextNode: text => ({nodeType: 3, nodeValue: text})};
       (async () => {
@@ -5154,3 +5155,52 @@ def test_a_today_line_whose_every_clause_is_labelled_says_so_and_show_all_keeps_
     ''')
     assert expect in result['words']
     assert '[sensitive]' not in result['words']
+
+
+def test_scheduling_slot_buttons_respect_calendar_evidence_and_remain_editable():
+    page = TEMPLATE.read_text()
+    functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
+                          for name in ['slotWhat', 'schedulingQuestion', 'calendarSlotChoices', 'schedulingInputs', 'slotChoices'])
+    result = _run_reader_js(functions + r"""
+      const saved = '2026-10-02T06:00:00Z', read = [{at: saved, calendars: 1}];
+      let now = Date.parse(saved);
+      Date.now = () => now;
+      const calendar = {saved_at: saved, read, errors: [],
+        window: {start: '2026-10-01T00:00:00+10:00', end: '2026-10-08T09:30:00+11:00', timezone: 'Australia/Sydney'},
+        events: [
+          {all_day: true, start: '2026-10-05', end: '2026-10-06'},
+          {start: '2026-10-01T23:00:00Z', end: '2026-10-02T07:00:00Z'},
+          {start: '2026-10-05T22:15:00Z', end: '2026-10-05T23:00:00Z'}
+        ]};
+      const REM = {calendar};
+      const el = (tag, attrs, children = []) => ({tag, ...attrs, children, value: "", dispatchEvent() {this.oninput()}, appendChild(c) {children.push(c)},
+        querySelectorAll(tag) {return children.filter(c => c.tag === tag)}, setAttribute(k,v) {this[k]=v}, focus() {}});
+      const fills = {}, received = [];
+      const make = what => slotChoices('【需要你：' + what + ' — date not agreed】', fills, 1, () => received.push(fills[1]));
+      const row = make('meeting time'), buttons = row.querySelectorAll('button'), input = row.querySelectorAll('input')[0];
+      buttons[0].onclick();
+      const selected = input.value;
+      input.value = 'after lunch'; input.oninput();
+      const unknown = [null, {}, {...calendar, window: null}, {...calendar, window: {...calendar.window, timezone: 'Bad/Zone'}},
+        {...calendar, errors: [{}]}, {...calendar, read: [{...read[0], capped: 1000}]}, {...calendar, read: []},
+        {...calendar, read: [{...read[0], calendars: 0}]}, {...calendar, events: [{start: 'unknown'}]},
+        {...calendar, events: undefined}].map(c => calendarSlotChoices(c));
+      REM.shared = true;
+      const shared = make('时间').querySelectorAll('button').length;
+      REM.shared = false;
+      const ordinary = ['project feedback', 'product availability', 'meeting time zone'].map(
+        question => make(question).querySelectorAll('button').length);
+      const alternatives = make('邮件附件 / 共享文件夹').querySelectorAll('button').map(b => b.text);
+      now += 86400001; buttons[1].onclick();
+      console.log(JSON.stringify({values: buttons.map(b => b.text), selected, received, unknown, shared, ordinary,
+        alternatives, expired: make('时间').querySelectorAll('button').length, disabled: buttons[1].disabled}));
+    """)
+    assert result['values'] == ['6 October 2026 · 10:00–10:30 (Australia/Sydney)',
+                                '7 October 2026 · 09:00–09:30 (Australia/Sydney)',
+                                '8 October 2026 · 09:00–09:30 (Australia/Sydney)']
+    assert result['selected'] == result['values'][0]
+    assert result['received'] == [result['selected'], 'after lunch']
+    assert all(not choices for choices in result['unknown'])
+    assert result['ordinary'] == [0, 0, 0]
+    assert result['disabled'] and result['expired'] == result['shared'] == 0
+    assert result['alternatives'] == ['邮件附件', '共享文件夹']

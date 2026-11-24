@@ -307,7 +307,7 @@
   .btn-quiet:hover { color: var(--ink); background: var(--rule); }
   .thread-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
   /* ---- the writer: full screen, one letter ---- */
-  .writer { width: min(1180px, 96vw); height: min(860px, 94vh); max-width: none; max-height: none; padding: 0; border: 0; border-radius: var(--radius); background: var(--paper); color: var(--ink); display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); overflow: hidden; }
+  .writer { width: calc(100vw - 32px); height: calc(100dvh - 32px); max-width: none; max-height: none; padding: 0; border: 0; border-radius: var(--radius); background: var(--paper); color: var(--ink); display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); overflow: hidden; }
   /* The page behind is dimmed, not paper on paper: the owner could not tell the writer was a dialog (#3303). */
   .writer { position: relative; box-shadow: var(--e3); }
   /* Dimmed from the page's own ink (the palette is closed); at night the scrim is already dark. */
@@ -335,28 +335,39 @@
   }
   .writer-did { margin: 0 0 14px; color: var(--ink); }
   .writer-choices { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: var(--radius); }
-  .writer-choices h4 { margin: 0 0 8px; color: var(--ink); }
-  .writer-choices .owner-slot { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .writer-choices .owner-slot.choose { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
   .writer-letter { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--rule); }
+  .writer-original { flex: none; max-height: 30%; overflow: auto; padding: 10px 24px; background: var(--fill-hover); border-bottom: 1px solid var(--rule); }
+  .writer-original summary, .writer-reply-title { font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .writer-original summary { cursor: pointer; }
+  .writer-original p { margin: 8px 0; color: var(--grey); }
+  .writer-reply-title { margin: 16px 24px 0; }
   .writer-letter .mail-head { padding: 18px 24px 12px; }
-  .writer-body { flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/1.65 var(--font); color: var(--ink); background: var(--paper); }
+  .writer-body { flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 0; outline: none; padding: 20px 24px; font: var(--s-body)/var(--lh-read) var(--font); color: var(--ink); background: var(--paper); }
   /* An open question in the letter: a chip in its own words, the same as the card's marker; answered, the answer. */
   .slot-chip { padding: 1px 8px; border-radius: var(--r-pill); border: 1px dashed var(--red); background: var(--tint-red); color: var(--ink); cursor: pointer; white-space: normal; }
   .slot-chip.filled { border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 0; background: none; }
   .writer-actions { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--rule); }
-  .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: var(--s-body)/1.6 var(--font); color: var(--grey); }
-  .writer-side h3 { margin: 0 0 6px; font: var(--w-bold) var(--s-body)/1.3 var(--font); color: var(--ink); }
+  .writer-side { overflow-y: auto; padding: 22px 24px; background: var(--paper); font: var(--s-body)/var(--lh-body) var(--font); color: var(--grey); }
+  .writer-side h3 { margin: 0 0 6px; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); color: var(--ink); }
   .writer-side h3 a { color: inherit; }
-  .writer-side h4 { margin: 20px 0 6px; font: var(--w-bold) var(--s-meta)/1.4 var(--font); color: var(--grey); }
+  .writer-side h4 { margin: 20px 0 6px; font: var(--w-bold) var(--s-meta)/var(--lh-ui) var(--font); color: var(--grey); }
   .writer-side p { margin: 0; white-space: pre-wrap; }
   .writer-brief { color: var(--grey); }
   .writer-msg { padding: 10px 0; border-top: 1px solid var(--rule); }
-  .writer-msg-head { font: var(--w-bold) var(--s-meta)/1.4 var(--font); color: var(--grey); margin-bottom: 4px; }
-  .writer-msg-text { white-space: pre-wrap; font: var(--s-meta)/1.55 var(--font); color: var(--grey); max-height: 14em; overflow: hidden; }
+  .writer-msg-head { font: var(--w-bold) var(--s-meta)/var(--lh-ui) var(--font); color: var(--grey); margin-bottom: 4px; }
+  .writer-msg-text { white-space: pre-wrap; font: var(--s-body)/var(--lh-body) var(--font); color: var(--grey); overflow-wrap: anywhere; }
+  .writer-original .writer-msg-text { color: var(--ink); line-height: var(--lh-read); }
+  .writer-side .writer-examples h4 { color: var(--ink); font-size: var(--s-ui); }
+  .writer-context { margin-top: 20px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  .writer-context summary { cursor: pointer; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
   @media (max-width: 719px) {
     .writer { width: 100vw; height: 100dvh; border-radius: var(--radius); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
-    .writer-letter { border-right: 0; }
+    .writer-letter { border-right: 0; min-height: 0; overflow: auto; }
+    .writer-original { padding: 6px 16px; }
+    .writer-reply-title { margin: 8px 16px 0; }
+    .writer-body { min-height: 6em; }
     .writer-side { max-height: 38dvh; border-top: 1px solid var(--rule); }
   }
   .kind-badge { display: inline-block; margin-right: 10px; padding: 1px 7px; border-radius: var(--radius); border: 1px solid var(--rule); font: var(--w-regular) var(--s-meta)/1.6 var(--font); color: var(--grey); background: var(--paper); }
@@ -382,8 +393,25 @@
     background: none; color: var(--ink); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
   .owner-slot.attention { animation: slot-attention var(--t-burn) var(--ease-out); border-radius: var(--radius); }
   @keyframes slot-attention { 0%, 40% { box-shadow: var(--e-fuse); } 100% { box-shadow: none; } }
-  /* The row's buttons wait in ⋯; its talk slot and its notes stay on the row. */
-  .qcard.triage-menu .qitem .handoff-line { display: none; }
+  /* Microsoft's Outlook product mark, embedded for offline notebooks. */
+  .outlook-mark { display: inline-block; width: 21px; height: 21px; vertical-align: middle; flex: none; background: center / contain no-repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMjguNSIgeTE9IjI1IiB4Mj0iMjguNSIgeTI9IjQ0IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMzViOGYxIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMjhhOGVhIi8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9ImIiIHgxPSI1LjgyMiIgeTE9IjExLjU2OCIgeDI9IjIwLjE3OCIgeTI9IjM2LjQzMiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzE3ODRkOSIvPjxzdG9wIG9mZnNldD0iLjUiIHN0b3AtY29sb3I9IiMxMDdhZDUiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwYTYzYzkiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNNDUgMjVhLjk2Ljk2IDAgMCAwLS40NTgtLjgyNWgtLjAwNWwtLjAxOC0uMDEtMTQuOS04LjgyYTIuMDI2IDIuMDI2IDAgMCAwLS4yLS4xMTkgMiAyIDAgMCAwLTEuODM0IDAgMi4wMjYgMi4wMjYgMCAwIDAtLjIuMTE5bC0xNC45IDguODItLjAxOC4wMWEuOTcxLjk3MSAwIDAgMCAuMDIzIDEuNjYzbDE0LjkgOC44MmEyLjI0MSAyLjI0MSAwIDAgMCAuMi4xMTkgMiAyIDAgMCAwIDEuODM0IDAgMi4yNDEgMi4yNDEgMCAwIDAgLjItLjExOWwxNC45LTguODJBLjk1OS45NTkgMCAwIDAgNDUgMjV6IiBmaWxsPSIjMGEyNzY3Ii8+PHBhdGggZmlsbD0iIzAzNjRiOCIgZD0iTTE0LjIyMiAxOS4xMTFIMjR2OC45NjNoLTkuNzc4ek00MyAxMFY1LjlBMS44NTggMS44NTggMCAwIDAgNDEuMTg3IDRIMTUuODEzQTEuODU4IDEuODU4IDAgMCAwIDE0IDUuOVYxMGwxNSA0eiIvPjxwYXRoIGZpbGw9IiMwMDc4ZDQiIGQ9Ik0xNCAxMGgxMHY5SDE0eiIvPjxwYXRoIGZpbGw9IiMyOGE4ZWEiIGQ9Ik0zNCAxMEgyNHY5bDEwIDloOXYtOWwtOS05eiIvPjxwYXRoIGZpbGw9IiMwMDc4ZDQiIGQ9Ik0yNCAxOWgxMHY5SDI0eiIvPjxwYXRoIGZpbGw9IiMwMzY0YjgiIGQ9Ik0yNCAyOGgxMHY5SDI0eiIvPjxwYXRoIGZpbGw9IiMxNDQ0N2QiIGQ9Ik0xNC4yMjIgMjguMDc0SDI0djguMTQ4aC05Ljc3OHoiLz48cGF0aCBmaWxsPSIjMDA3OGQ0IiBkPSJNMzQgMjhoOXY5aC05eiIvPjxwYXRoIGQ9Ik00NC41NDIgMjUuNzgzbC0uMDE5LjAxLTE0LjkgOC4zOGMtLjA2NS4wNC0uMTMxLjA3OC0uMi4xMTJhMi4wNzcgMi4wNzcgMCAwIDEtLjgwOC4ybC0uODE0LS40NzZhMi4wMzMgMi4wMzMgMCAwIDEtLjItLjExNWwtMTUuMS04LjYxOGgtLjAwN0wxMiAyNXYxNi45NjRBMi4wNSAyLjA1IDAgMCAwIDE0LjA2MyA0NGgyOC45MDZjLjAxNyAwIC4wMzItLjAwOC4wNS0uMDA4YTIuNTMxIDIuNTMxIDAgMCAwIC43LS4xNDZBMi4wMTkgMi4wMTkgMCAwIDAgNDQgNDMuN2MuMDY3LS4wMzguMTgyLS4xMjEuMTgyLS4xMjFBMi4wMTkgMi4wMTkgMCAwIDAgNDUgNDEuOTY0VjI1YS45LjkgMCAwIDEtLjQ1OC43ODN6IiBmaWxsPSJ1cmwoI2EpIi8+PHBhdGggZD0iTTQ0LjIgMjQuOTMzdjEuMDRMMjguNjIgMzYuNyAxMi40OSAyNS4yODNhLjAxLjAxIDAgMCAwLS4wMS0uMDFsLTEuNDgtLjg5di0uNzVsLjYxLS4wMSAxLjI5Ljc0LjAzLjAxLjExLjA3czE1LjE2IDguNjUgMTUuMiA4LjY3bC41OC4zNGMuMDUtLjAyLjEtLjA0LjE2LS4wNi4wMy0uMDIgMTUuMDUtOC40NyAxNS4wNS04LjQ3eiIgZmlsbD0iIzBhMjc2NyIgb3BhY2l0eT0iLjUiLz48cGF0aCBmaWxsPSJub25lIiBkPSJNMCAwaDQ4djQ4SDB6Ii8+PHBhdGggZD0iTTQ0LjU0MiAyNS43ODNsLS4wMTkuMDExLTE0LjkgOC4zOGMtLjA2NS4wNC0uMTMxLjA3OC0uMi4xMTJhMi4wODkgMi4wODkgMCAwIDEtMS44MzQgMCAyLjI2NCAyLjI2NCAwIDAgMS0uMi0uMTEybC0xNC45LTguMzgtLjAxOC0uMDExQS45LjkgMCAwIDEgMTIgMjV2MTYuOTY0QTIuMDQ5IDIuMDQ5IDAgMCAwIDE0LjA2MiA0NGgyOC44NzZBMi4wNDkgMi4wNDkgMCAwIDAgNDUgNDEuOTY0VjI1YS45LjkgMCAwIDEtLjQ1OC43ODN6IiBmaWxsPSIjMTQ5MGRmIi8+PHBhdGggZD0iTTI5Ljg0IDM0LjA1bC0uMjIzLjEyNWEyLjE4MyAyLjE4MyAwIDAgMS0uMi4xMTMgMi4wNzEgMi4wNzEgMCAwIDEtLjc4Ni4yMDhMMzQuMyA0MS4ybDkuODg5IDIuMzgzYTIuMDM4IDIuMDM4IDAgMCAwIC42MjctLjc4M3oiIG9wYWNpdHk9Ii4xIi8+PHBhdGggZD0iTTMwLjg1IDMzLjQ4MmwtMS4yMzMuNjkzYTIuMTgzIDIuMTgzIDAgMCAxLS4yLjExMyAyLjA3MSAyLjA3MSAwIDAgMS0uNzg2LjIwOGwyLjY1NiA3LjMyMyAxMi45MDUgMS43NjFBMi4wMjIgMi4wMjIgMCAwIDAgNDUgNDEuOTY0di0uMjE5eiIgb3BhY2l0eT0iLjA1Ii8+PHBhdGggZD0iTTE0LjA5IDQ0aDI4Ljg0NWEyLjA3NCAyLjA3NCAwIDAgMCAxLjIzNS0uNEwyNy44IDM0LjAxMWEyLjAzMyAyLjAzMyAwIDAgMS0uMi0uMTE1bC0xNS4xLTguNjE4aC0uMDA3TDEyIDI1djE2LjkwNkEyLjA5MiAyLjA5MiAwIDAgMCAxNC4wOSA0NHoiIGZpbGw9IiMyOGE4ZWEiLz48cGF0aCBkPSJNMjYgMTMuODMzdjIxLjMzYTEuODM4IDEuODM4IDAgMCAxLTEuMTUgMS43IDEuNzIzIDEuNzIzIDAgMCAxLS42OC4xNEgxMlYxM2gydi0xaDEwLjE3QTEuODM3IDEuODM3IDAgMCAxIDI2IDEzLjgzM3oiIG9wYWNpdHk9Ii4xIi8+PHBhdGggZD0iTTI1IDE0LjgzM3YyMS4zM2ExLjYyOSAxLjYyOSAwIDAgMS0uMTUuN0ExLjgyMiAxLjgyMiAwIDAgMSAyMy4xNyAzOEgxMlYxM2gxMS4xN2ExLjY3OSAxLjY3OSAwIDAgMSAuODMuMjEgMS44MTggMS44MTggMCAwIDEgMSAxLjYyM3oiIG9wYWNpdHk9Ii4yIi8+PHBhdGggZD0iTTI1IDE0LjgzM3YxOS4zM0ExLjg0NiAxLjg0NiAwIDAgMSAyMy4xNyAzNkgxMlYxM2gxMS4xN2ExLjY3OSAxLjY3OSAwIDAgMSAuODMuMjEgMS44MTggMS44MTggMCAwIDEgMSAxLjYyM3oiIG9wYWNpdHk9Ii4yIi8+PHBhdGggZD0iTTI0IDE0LjgzM3YxOS4zM0ExLjgzOSAxLjgzOSAwIDAgMSAyMi4xNyAzNkgxMlYxM2gxMC4xN0ExLjgzMSAxLjgzMSAwIDAgMSAyNCAxNC44MzN6IiBvcGFjaXR5PSIuMiIvPjxyZWN0IHg9IjIiIHk9IjEzIiB3aWR0aD0iMjIiIGhlaWdodD0iMjIiIHJ4PSIxLjgzMyIgZmlsbD0idXJsKCNiKSIvPjxwYXRoIGQ9Ik03LjcyOSAyMC42ODhhNS4zMzIgNS4zMzIgMCAwIDEgMi4wOTQtMi4zMTMgNi4zMyA2LjMzIDAgMCAxIDMuMzI3LS44MzQgNS44OTIgNS44OTIgMCAwIDEgMy4wNzkuNzkxIDUuMjg0IDUuMjg0IDAgMCAxIDIuMDM3IDIuMjEgNy4xMzMgNy4xMzMgMCAwIDEgLjcxNCAzLjI1IDcuNTI4IDcuNTI4IDAgMCAxLS43MzUgMy40IDUuNDEgNS40MSAwIDAgMS0yLjEgMi4yODcgNi4xMjYgNi4xMjYgMCAwIDEtMy4xOTQuODEyIDYuMDIgNi4wMiAwIDAgMS0zLjE0Ny0uOCA1LjM2NiA1LjM2NiAwIDAgMS0yLjA2NC0yLjIxNCA2Ljk2MyA2Ljk2MyAwIDAgMS0uNzIyLTMuMjExIDcuNzMzIDcuNzMzIDAgMCAxIC43MTEtMy4zNzh6bTIuMjMyIDUuNDNhMy40NjEgMy40NjEgMCAwIDAgMS4xNzggMS41MjIgMy4wNzcgMy4wNzcgMCAwIDAgMS44NC41NTQgMy4yMjMgMy4yMjMgMCAwIDAgMS45NjQtLjU3MiAzLjMxNSAzLjMxNSAwIDAgMCAxLjE0NC0xLjUyMiA1LjkwOCA1LjkwOCAwIDAgMCAuMzY1LTIuMTIzIDYuNDYzIDYuNDYzIDAgMCAwLS4zNDQtMi4xNUEzLjQgMy40IDAgMCAwIDE1IDIwLjI0MWEzLjA0MyAzLjA0MyAwIDAgMC0xLjk0Ny0uNiAzLjE3NSAzLjE3NSAwIDAgMC0xLjg4My41NTkgMy40OSAzLjQ5IDAgMCAwLTEuMiAxLjUzNSA2LjEgNi4xIDAgMCAwLS4wMDggNC4zODV6IiBmaWxsPSIjZmZmIi8+PHBhdGggZmlsbD0iIzUwZDlmZiIgZD0iTTM0IDEwaDl2OWgtOXoiLz48L3N2Zz4="); }
+  .mail-row .outlook-mark { margin-right: 6px; }
+  .draft-triage { border-top: 1px solid var(--rule); padding: 8px 16px; }
+  #main .draft-triage .handoff { margin: 0; }
+  #main .draft-triage .handoff-line { margin: 0; align-items: center; gap: 6px; }
+  #main .draft-triage .handoff-line:has(.triage-row) { display: grid; justify-items: start; }
+  .triage-row { display: flex; gap: 6px; max-width: 100%; }
+  #main .draft-triage .btn-quiet { margin: 0; white-space: normal; }
+  #main .draft-triage .strip-more { display: inline-flex; border-color: transparent; }
+  .draft-triage .handoff-status:empty { display: none; }
+  .draft-triage .handoff-line > .sep { display: none; }
+  .qcard .draft-triage .btn-quiet { padding: 4px 9px; border: 1px solid var(--rule); border-radius: var(--radius); color: var(--ink); }
+  @media (max-width: 720px) {
+    .qcard .draft-triage .btn-quiet { min-height: 44px; }
+    #main .draft-triage .triage-row [data-agent] { padding-inline: 5px; font-size: var(--s-ui); }
+  }
+  /* The footer owns this row's actions. Talk and status remain on the item. */
+  .qcard.triage-footer .qitem .handoff-line { display: none; }
   .more-menu .menu .handoff, .more-menu .menu .handoff-line { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
   /* ‹ 3 / 19 ›, always visible at the card's top right (#3312 G). */
   .qhead-acts:has(.qnav) { opacity: 1; }
@@ -3084,7 +3112,7 @@
     #main :is(.btn-quiet, .page-crumb, .dek-org, .dek-unit) { display: inline-flex; align-items: center; }
     /* A text action's hit grows into the space around it, not the layout: 44px tall, but it takes the line it had, so
        Today's Send stays on the first screen. */
-    #main :is(.btn-quiet, .link-btn, .page-crumb, .thread .who a, .pc-v a, .row-quote > summary) { margin-block: -8px; }
+    #main :is(.btn-quiet, .link-btn, .page-crumb, .thread .who a, .pc-v a, .row-quote > summary):not(:where(.draft-triage *)) { margin-block: -8px; }
     #main .dek > :is(a, span) { min-height: 44px; display: inline-flex; align-items: center; }
     #main .ibtn { min-width: 44px; }
     .open-chips .chip { min-height: 44px; }
@@ -4692,6 +4720,10 @@ const UI = {
     "{n} days ago": "{n} 天前",
     "Red = days past the due date · ink starts at the oldest dated message": "红线 = 逾期天数 · 黑线从最早一封有日期的信开始",
     "No one": "无",
+    "Choose one or more times, or enter your own.": "可以选一个或多个时段，也可以手动填写。",
+    "No verified calendar times. Enter a time manually.": "暂无日历已确认的可选时段，请手动填写时间。",
+    "Meeting time or alternatives": "会面时间或备选时段",
+    "Meeting location (required)": "见面地点（必填）",
     "Type your answer": "写下你的回答",
     "Your call": "我这边",
     "1 choice left: ": "还有 1 处要选：", "{n} choices left: ": "还有 {n} 处要选：",
@@ -4893,6 +4925,11 @@ const UI = {
     "REM read the thread “{subject}” and drafted this reply.": "REM 读了〈{subject}〉这段往来，起草了这封回复。",
     "Reply to {name}": "回复 {name}",
     "What they asked": "对方问的",
+    "Original message": "原始消息", "Your reply": "你的回复", "Reply assistance": "回复参考",
+    "Reply context": "回复背景",
+    "Write a reply before sending": "请先填写回复正文",
+    "Your earlier replies": "你以前的回复", "No archived reply to this recipient": "没有给这位收件人的历史回复",
+    "Message text unavailable": "没有可显示的正文", "No archived message available": "没有可显示的原始消息",
     "What REM did": "REM 做了什么",
     "Show the whole letter": "展开全文",
     "REM drafted this reply from the thread.": "REM 根据这段往来起草了这封回复。",
@@ -7477,10 +7514,15 @@ function threadKind(entry) {
   const reply = (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
   return reply?.provider ? {kind: reply.provider, channel: sourceChannel(reply.provider), thread: reply.thread || "", mail: ["gmail", "outlook"].includes(reply.provider)} : null;
 }
+function outlookMark() {
+  const label = t("{channel} reply", {channel: "Outlook"});
+  return el("span", {class: "outlook-mark", role: "img", "aria-label": label, title: label});
+}
 function kindBadge(entry) {
   const kind = threadKind(entry), chat = threadDraft(entry)?.channel;
   // A reply rewritten for a chat says that chat, the same word as its draft and its footer (#3312 C).
   if (chat && chat !== "mail") return el("span", { class: "kind-badge", text: t("{channel} reply", { channel: { lark: "Lark", whatsapp: "WhatsApp" }[chat] || chat }) });
+  if (kind?.kind === "outlook") return outlookMark();
   if (!kind) return el("span", {class: "kind-badge", text: t("Task")});
   return el("span", { class: "kind-badge" + (kind.mail ? " mail" : ""), text: kind.mail ? t("{channel} reply", { channel: kind.channel }) : kind.channel });
 }
@@ -7582,7 +7624,19 @@ function replyChannel(draft, name) {
     note: draft.redrafted_from && !draft.channel_defect
       ? t("REM rewrote this as an email: the earlier draft was written for {channel}, but {name} isn't on {channel}.", { channel: chat(draft.redrafted_from), name }) : "" };
 }
-function openWriter(draft, who, onSend, onFix) {
+// Evidence comes from the local archive projection for this exact draft version.
+function writerMail(draft) {
+  const mail = draft.writer_mail;
+  if (REM.shared || !mail?.original || privacyLevel === "public") return { examples: [] };
+  return { original: mail.original, examples: mail.examples || [] };
+}
+function writerMessage(message) {
+  const level = message.level === "personal" ? "personal" : "sensitive";
+  return el("article", { class: "writer-msg private", "data-level": level }, [
+    el("div", { class: "writer-msg-head", text: [sourceSender(message), message.time && fmtTime(message.time), message.subject].filter(Boolean).join(" · ") }),
+    el("div", { class: "writer-msg-text", text: message.excerpt ? message.excerpt + (message.truncated ? "…" : "") : t("Message text unavailable") })]);
+}
+function openWriter(draft, who, onSend, onFix, answers = {}) {
   const to = mailbox(draft.to);
   // The letter is editable text with REM's open questions as chips in it, as on the card (#3312 F): a chip reads
   // the question in its own words until it is answered on the right, then the answer. Bracket text never shows.
@@ -7593,6 +7647,13 @@ function openWriter(draft, who, onSend, onFix) {
     if (!isSlot(part)) { if (part) body.append(document.createTextNode(part)); continue; }
     const chip = chips[i] = el("span", { class: "slot-chip", contenteditable: "false", role: "button", tabindex: "0", "data-slot": String(i), text: slotWhat(part) });
     chip.onclick = () => rows[slots.findIndex(([, k]) => k === i)]?.querySelector("button, input")?.focus();
+    chip.onkeydown = event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        event.stopPropagation();
+        chip.onclick();
+      }
+    };
     body.append(chip);
   }
   // What the letter says now: its text, an answered chip as its answer, an open one as REM's slot (so Send waits).
@@ -7600,14 +7661,13 @@ function openWriter(draft, who, onSend, onFix) {
   const letterText = () => [...body.childNodes].map(node => node.nodeType === 3 ? node.nodeValue
     : slotOf(node) !== undefined ? fills[slotOf(node)] ?? parts[slotOf(node)]
     : node.tagName === "BR" ? "\n" : node.innerText ?? node.textContent ?? "").join("");
-  const initial = letterText(), dirty = () => letterText() !== initial;
   // Enter and paste stay plain text, so the letter holds only text and chips.
   body.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); document.execCommand("insertText", false, "\n"); } });
   body.addEventListener("paste", event => { event.preventDefault(); document.execCommand("insertText", false, event.clipboardData.getData("text/plain")); });
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const close = el("button", { type: "button", class: "writer-close", "aria-label": t("Close"), title: t("Close") + " (Esc)" }, [icon("x")]);
   const notice = el("p", { class: "mail-status writer-notice", role: "status" });
-  const cited = (draft.sources || []).map(id => (REM.source_context || {})[id]).filter(Boolean);
+  const { original, examples } = writerMail(draft);
   // REM's open questions, answered on the right: the chip in the letter shows the answer.
   const slots = parts.map((part, i) => [part, i]).filter(([part]) => isSlot(part));
   const rows = slots.map(([part, i]) => slotChoices(part, fills, i, () => {
@@ -7615,6 +7675,12 @@ function openWriter(draft, who, onSend, onFix) {
     chips[i].classList?.toggle("filled", !!fills[i]);
     notice.textContent = "";
   }));
+  // Keep the original template and restore each control independently, including a
+  // meeting time whose required location is still blank. Answers are plain text.
+  slots.forEach(([, i], n) => { if (answers[i]) rows[n].setAnswerState(answers[i]); });
+  const fieldState = () => JSON.stringify(rows.map(row => row.getAnswerState()));
+  const initial = letterText(), initialFields = fieldState();
+  const dirty = () => letterText() !== initial || fieldState() !== initialFields;
   // A chip deleted from the letter is a question the owner took out; one still there and unanswered holds Send.
   const unanswered = () => slots.filter(([, i]) => !fills[i] && chips[i].isConnected !== false);
   const did = el("p", { class: "writer-did", text: remDid(draft) });
@@ -7633,6 +7699,10 @@ function openWriter(draft, who, onSend, onFix) {
   const dialog = el("dialog", { class: "writer " + (channel === "mail" ? "provider-" + (draft.provider || "mail") : "chat"), "aria-label": t("Reply draft") }, [
     title,
     el("div", { class: "writer-letter" }, [band,
+      el("details", { class: "writer-original", ...(innerWidth >= 720 ? { open: "" } : {}) }, [
+        el("summary", { text: t("Original message") }),
+        original ? writerMessage(original) : el("p", { text: t("No archived message available") })]),
+      el("h3", { class: "writer-reply-title", text: t("Your reply") }),
       el("div", { class: "mail-head" }, [
         el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v", text: (who?.title || to.name) + (channel === "mail" ? " <" + to.address + ">" : " · " + t({ lark: "Lark", whatsapp: "WhatsApp" }[channel] || "")) })]),
         channel === "mail" && draft.cc ? el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v", text: draft.cc })]) : null,
@@ -7645,16 +7715,17 @@ function openWriter(draft, who, onSend, onFix) {
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) })]),
       notice]),
     el("aside", { class: "writer-side" }, [
-      rows.length ? el("section", { class: "writer-choices" }, [el("h4", { text: t("Your call") }), ...rows]) : null,
-      who ? el("h3", {}, [el("a", { href: href(who), text: who.title })]) : el("h3", { text: to.name }),
-      who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
-      draft.ask ? el("section", {}, [el("h4", { text: t("What they asked") }), el("p", { text: draft.ask })]) : null,
-      el("section", {}, [el("h4", { text: t("What REM did") }), did]),
-      draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
-      draft.gist ? el("section", {}, [el("h4", { text: gistTitle(draft.gist) }), el("p", { text: draft.gist })]) : null,
-      cited.length ? el("section", {}, [el("h4", { text: t("The thread") }), ...cited.map(c => el("div", { class: "writer-msg" }, [
-        el("div", { class: "writer-msg-head", text: [sourceSender(c), c.time ? fmtDate(calendarDay(c.time)) : ""].filter(Boolean).join(" · ") }),
-        el("div", { class: "writer-msg-text", text: (c.excerpt || "").slice(0, 1200) })]))]) : null])]);
+      el("h3", { text: t("Reply assistance") }),
+      rows.length ? el("section", { class: "writer-choices", "aria-label": t("Your call") }, rows) : null,
+      el("section", { class: "writer-examples" }, [el("h4", { text: t("Your earlier replies") }),
+        ...(examples.length ? examples.map(writerMessage) : [el("p", { text: t("No archived reply to this recipient") })])]),
+      el("details", { class: "writer-context" }, [el("summary", { text: t("Reply context") }),
+        who ? el("h4", {}, [el("a", { href: href(who), text: who.title })]) : null,
+        who ? el("p", { class: "writer-brief", text: summaryLine(known(who).summary) }) : null,
+        draft.ask ? el("section", {}, [el("h4", { text: t("What they asked") }), el("p", { text: draft.ask })]) : null,
+        el("section", {}, [el("h4", { text: t("What REM did") }), did]),
+        draft.why ? el("section", {}, [el("h4", { text: t("Why this reply") }), el("p", { text: draft.why })]) : null,
+        draft.gist ? el("section", {}, [el("h4", { text: gistTitle(draft.gist) }), el("p", { text: draft.gist })]) : null])])]);
   const mayLeave = () => !dirty() || confirm(t("Discard your changes to this reply?"));
   const leave = () => { if (mayLeave()) dialog.close(); };
   send.onclick = async () => {
@@ -7663,13 +7734,15 @@ function openWriter(draft, who, onSend, onFix) {
     const left = unanswered();
     if (left.length) {
       notice.textContent = t("Answer REM's question on the right first: {what}", { what: slotWhat(left[0][0]) });
-      rows[slots.indexOf(left[0])]?.querySelector("button, input")?.focus();
+      const row = rows[slots.indexOf(left[0])];
+      (row.querySelector("input:invalid") || row.querySelector("button, input"))?.focus();
       return;
     }
+    const text = letterText();
+    if (!text.trim()) { notice.textContent = t("Write a reply before sending"); body.focus(); return; }
     send.disabled = close.disabled = sendTop.disabled = true;
     send.textContent = sendTop.textContent = t("Sending…");
     notice.textContent = "";
-    const text = letterText();
     const error = await onSend(text.trim() === draft.body.trim() ? undefined : text);
     if (!error) {
       send.textContent = sendTop.textContent = t("Reply sent");
@@ -7740,12 +7813,102 @@ function draftNote(draft, entry) {
 function slotWhat(part) {
   return part.replace(/^[\[［【]|[\]］】]$/g, "").replace(/^需要你[:：]\s*/, "").split(/\s+—\s+/)[0];
 }
+function schedulingQuestion(what) {
+  if (/\btime\s?zone\b|时区/i.test(what)) return false;
+  return /^(?:时间|时段|时间段|time|meeting time|(?:your |my )?availability|time slots?)$/i.test(what.trim())
+    || /(?:方便|可用|可选|空闲|有空|会面|开会|会议|通话|见面|约谈|面试|演示).{0,8}(?:时间|时段)|(?:时间|时段).{0,6}(?:方便|有空)/.test(what)
+    || /\b(?:available times?|time slots?|(?:your|my|meeting) availability|availability for (?:a |the )?(?:meeting|call)|times? that work for you|time (?:for|to) (?:a |the )?(?:meet(?:ing)?|call|chat|interview|demo)|(?:meeting|call|interview|demo) times?)\b/i.test(what);
+}
+function calendarSlotChoices(calendar, now = Date.now()) {
+  const window = calendar?.window;
+  const instant = text => typeof text === "string" && /T.*(?:Z|[+-]\d\d:\d\d)$/.test(text) ? Date.parse(text) : NaN;
+  const saved = instant(calendar?.saved_at), start = instant(window?.start), end = instant(window?.end);
+  const day = 86400000, halfHour = 1800000;
+  if (!(saved <= now && now - saved <= day && start <= now && now < end) || !window.timezone
+      || !Array.isArray(calendar.events) || calendar.errors?.length !== 0 || !Array.isArray(calendar.read)
+      || !calendar.read.some(r => r?.calendars > 0)
+      || !calendar.read.every(r => Number.isInteger(r?.calendars) && r.calendars >= 0 && !r.capped && !r.left_out?.unticked && instant(r.at) === saved)) return [];
+  let clock;
+  try {
+    clock = new Intl.DateTimeFormat("en-GB", {timeZone: window.timezone, weekday: "short", year: "numeric",
+      month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
+  } catch (error) { if (error instanceof RangeError) return []; throw error; }
+  const busy = [], allDay = [];
+  for (const event of calendar.events) {
+    if (event?.all_day === true) {
+      const date = text => /^\d{4}-\d\d-\d\d$/.test(text) && Number.isFinite(Date.parse(text))
+        && new Date(text).toISOString().slice(0, 10) === text;
+      if (!date(event.start) || !date(event.end) || event.end <= event.start) return [];
+      allDay.push([event.start, event.end]);
+    } else {
+      const from = instant(event?.start), to = instant(event?.end);
+      if (!(from < to)) return [];
+      busy.push([from, to]);
+    }
+  }
+  // Start on the grid of the queried local midnight, including zones with a fractional UTC offset.
+  const first = start + (Math.floor((now - start) / halfHour) + 1) * halfHour;
+  const choices = [];
+  const displayDate = new Intl.DateTimeFormat(uiLanguage === "zh" ? "zh-CN" : "en-AU",
+    { timeZone: window.timezone, year: "numeric", month: "long", day: "numeric" });
+  let lastDay;
+  for (let at = first; at + halfHour <= Math.min(end, now + 21 * day) && choices.length < 3; at += halfHour) {
+    const local = Object.fromEntries(clock.formatToParts(at).map(({type, value}) => [type, value]));
+    const date = [local.year, local.month, local.day].join("-");
+    if (date === lastDay || ["Sat", "Sun"].includes(local.weekday) || +local.hour < 9 || +local.hour >= 17
+        || allDay.some(([from, to]) => from <= date && date < to)
+        || busy.some(([from, to]) => from < at + halfHour && at < to)) continue;
+    const until = new Date(at + halfHour);
+    const finish = Object.fromEntries(clock.formatToParts(until).map(({type, value}) => [type, value]));
+    choices.push(displayDate.format(at) + " · " + local.hour + ":" + local.minute + "–" + finish.hour + ":" + finish.minute + " (" + window.timezone + ")");
+    lastDay = date;
+  }
+  return choices;
+}
+function schedulingInputs(row, needsPlace, fills, i, onChange, keep) {
+  const suggestions = REM.shared ? [] : calendarSlotChoices(REM.calendar);
+  const field = (label, suffix) => el("input", { type: "text", "aria-label": t(label), placeholder: t(label),
+    ...(keep ? { "data-keep": keep + ":" + i + suffix } : {}) });
+  const time = field("Meeting time or alternatives", "");
+  const place = needsPlace ? field("Meeting location (required)", ":location") : null;
+  if (place) time.required = place.required = true;
+  const buttons = new Map();
+  const times = () => (time.value || "").split(" / ").map(value => value.trim()).filter(Boolean);
+  const update = () => {
+    const answer = time.value.trim(), location = place?.value.trim();
+    fills[i] = answer && (!place || location) ? [answer, location].filter(Boolean).join(" · ") : undefined;
+    const offered = times();
+    for (const [choice, button] of buttons) button.setAttribute("aria-pressed", String(offered.includes(choice)));
+    onChange();
+  };
+  row.appendChild(el("span", { text: t(suggestions.length ? "Choose one or more times, or enter your own."
+    : "No verified calendar times. Enter a time manually.") }));
+  for (const choice of suggestions) {
+    const button = el("button", { type: "button", "aria-pressed": "false", text: choice });
+    buttons.set(choice, button);
+    button.onclick = () => {
+      const offered = times();
+      if (offered.includes(choice)) time.value = offered.filter(value => value !== choice).join(" / ");
+      else if (calendarSlotChoices(REM.calendar).includes(choice)) time.value = [...offered, choice].join(" / ");
+      else { button.disabled = true; time.focus(); return; }
+      time.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    row.appendChild(button);
+  }
+  time.oninput = update;
+  row.appendChild(time);
+  if (place) { place.oninput = update; row.appendChild(place); }
+}
 function slotChoices(part, fills, i, onChange, keep) {
   const what = slotWhat(part);
   const choices = what.split(/\s+\/\s+|\s*／\s*|\s*｜\s*|\s+\|\s+|\s*还是\s*|\s*或者\s*/).filter(Boolean);
-  const label = choices.length > 1 ? t("Your call") : what;
+  const needsPlace = /地点|地址|场地|\b(?:place|location|venue|address|where to meet)\b/i.test(what);
+  const schedule = schedulingQuestion(what) && (choices.length === 1 || needsPlace);
+  const label = choices.length > 1 && !schedule ? t("Your call") : what;
   const row = el("span", { class: "owner-slot choose", role: "group", "aria-label": label }, [el("span", { class: "k", text: label + (uiLanguage === "zh" ? "：" : ": ") })]);
-  if (choices.length > 1) for (const choice of choices) {
+  if (schedule) {
+    schedulingInputs(row, needsPlace, fills, i, onChange, keep);
+  } else if (choices.length > 1) for (const choice of choices) {
     const button = el("button", { type: "button", "aria-pressed": "false", text: choice });
     button.onclick = () => {
       fills[i] = choice;
@@ -7758,6 +7921,21 @@ function slotChoices(part, fills, i, onChange, keep) {
     input.oninput = () => { fills[i] = input.value.trim() || undefined; onChange(); };
     row.appendChild(input);
   }
+  row.getAnswerState = () => {
+    const inputs = [...row.querySelectorAll("input")];
+    return inputs.length ? inputs.map(field => field.value) : [fills[i] || ""];
+  };
+  row.setAnswerState = state => {
+    const inputs = [...row.querySelectorAll("input")];
+    if (inputs.length) {
+      inputs.forEach((field, index) => { field.value = state[index] || ""; });
+      inputs[0].dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      fills[i] = choices.includes(state[0]) ? state[0] : undefined;
+      for (const button of row.querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.textContent === fills[i]));
+      onChange();
+    }
+  };
   return row;
 }
 // What a slot is called beside Send: the label the letter gives it ("Format: 【…】"), else REM's own words, short.
@@ -7829,9 +8007,9 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   }));
   // Send is the one green action. Writing full screen stays in sight beside it: behind 更多 the owner could not find
   // it (sprint 22); editing in the mail app and Skip wait behind 更多 (D-120).
-  // Triage waits in ⋯ beside Send (#3312 B): 标为完成, 暂不处理, 忽略, 交给 Codex / Claude, and editing in the mail app.
+  // Provider tools stay in More. A single Today item has its own visible triage footer.
   const more = el("details", { class: "more-menu" }, [el("summary", { "aria-label": t("More"), title: t("More") }, [icon("more")]),
-    el("div", { class: "menu" }, [extra.triage || null, ...(channel === "mail" ? [edit] : []), extra.triage ? null : skip, directSendItem(who || person)].filter(Boolean))]);
+    el("div", { class: "menu" }, [...(channel === "mail" ? [edit] : []), extra.triage ? null : skip, directSendItem(who || person)].filter(Boolean))]);
   const actions = el("div", { class: "mail-actions" }, [hint, ...(reach.defect ? [el("span", { class: "choose-hint", text: reach.held })] : []),
       el("span", { class: "mail-note", text: reach.defect ? reach.footer : channel === "mail" ? t("Sends from {mailbox} via {provider}", { mailbox: draft.from, provider })
         : t("Sends as you via {tool}", { tool: channel === "lark" ? "lark-cli" : "co whatsapp" }) }), write, more, send]);
@@ -7846,7 +8024,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   const card = el("section", { class: "mailcard" + (channel === "mail" ? "" : " chat"), "aria-label": t("Reply draft") }, [
     el("div", { class: "mail-head" }, [channels, ...(channel === "mail" ? [
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [
-        who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }), el("span", { class: "addr", text: " <" + to.address + ">" })])]),
+        draft.provider === "outlook" ? outlookMark() : null, who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }), el("span", { class: "addr", text: " <" + to.address + ">" })])]),
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("CC") }), el("span", { class: "v" + (draft.cc ? "" : " addr"), text: draft.cc || t("No one") })]),
       el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("Subject") }), el("span", { class: "v subject", text: draft.subject })])]
       : [el("div", { class: "mail-row" }, [el("span", { class: "k", text: t("To") }), el("span", { class: "v" }, [who ? el("a", { href: href(who), text: who.title }) : el("span", { text: to.name }),
@@ -7859,7 +8037,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
       draft.gist ? el("div", { class: "mail-gist" }, [el("span", { class: "k", text: gistTitle(draft.gist) }), el("p", { text: draft.gist }), why]) : null]),
     // The dock: REM's choices, a defect if any, and Send. On a phone it is pinned above the tab bar together, so
     // the owner reads, picks and sends with the thumb and nothing he must tap ever sits under it (#3312 H).
-    draft.gist ? null : why, el("div", { class: "mail-dock" }, [choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, defect, actions]), status,
+    draft.gist ? null : why, el("div", { class: "mail-dock" }, [choiceRows.length ? el("div", { class: "mail-choices" }, choiceRows) : null, defect, actions, extra.triage ? el("div", {class: "draft-triage"}, [extra.triage]) : null]), status,
     el("p", { class: "mail-did" }, [remDid(draft)])]);
   // The letter is shown whole; past about fourteen lines it fades and 展开全文 opens the rest (#3312 B4).
   // Measured when the letter gets its size (a card raised later is laid out later), not once at the first frame.
@@ -7904,7 +8082,7 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
     }
     if (action === "redraft") {
       REM.drafts = REM.drafts.map(d => d.id === draft.id ? result : d);
-      card.replaceWith(replyDraftCard(result, onSent, person));
+      card.replaceWith(replyDraftCard(result, onSent, person, extra));
       return "";
     }
     const next = action === "send" ? "sent" : "discarded";
@@ -7943,15 +8121,15 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
       const open = parts.findIndex((part, i) => isSlot(part) && !fills[i]), first = rowAt[open];
       status.textContent = t("Answer REM's question first: {what}", { what: slotName(parts, open) });
       first?.scrollIntoView({ block: "center", behavior: motionStilled() ? "auto" : "smooth" });
-      first?.querySelector("input, button")?.focus({ preventScroll: true });
+      (first?.querySelector("input:invalid") || first?.querySelector("input, button"))?.focus({ preventScroll: true });
       first?.classList.remove("attention"); void first?.offsetWidth; first?.classList.add("attention");
       return;
     }
     deliver(body === draft.body ? undefined : body);
   };
   write.onclick = () => {
-    const base = filled() ?? draft.body;
-    openWriter({ ...draft, body: base, ask: extra.ask }, who, body => deliver(body ?? (base === draft.body ? undefined : base)), () => backToMail.click());
+    const answers = Object.fromEntries(Object.entries(rowAt).map(([i, row]) => [i, row.getAnswerState()]));
+    openWriter({ ...draft, ask: extra.ask }, who, deliver, () => backToMail.click(), answers);
   };
   edit.onclick = () => run("open");
   skip.onclick = () => {
@@ -9793,22 +9971,21 @@ function hostFound() { document.getElementById("host-lost")?.remove(); }
 function liveHere() { return REM.live && location.protocol !== "file:"; }
 // mark: how this row's Mark done closes it, when the page has its own way (Today slides the row out).
 // lead: on a Today card, which of the row's controls is its one primary ("task", "done" or null); see todayStrip.
-// inMenu: the copy of a row's strip in its reply's ⋯ (#3312 B). It talks into the row's own talk slot, so an open
-// conversation stays on the row where the owner sees it, never inside a closed menu after a redraw.
+// The single-item reply footer shares the row's talk panel and leaves status notes on the row.
 const ROW_TALK_SLOTS = new Map();
-function handOff(entry, mark, lead, inMenu = false) {
+function handOff(entry, mark, lead, draftFooter = false) {
   const key = obligationKey(entry);
   // A Today card's handed row: one primary step, the three closes in words, the rest under a worded More (#3312).
   // An unhanded row already has one lead and its hand-offs stay visible words (D-100), so it keeps its strip.
-  const compact = !!mark && !inMenu;
-  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark, compact) : handButtons(entry, show, panel, mark, lead);
+  const compact = !!mark && !draftFooter;
+  const parts = () => handed(rowTask(entry)) ? handState(entry, show, panel, mark, compact) : handButtons(entry, show, panel, mark, lead, draftFooter);
   const show = () => line.replaceChildren(...parts());
-  const panel = inMenu ? ROW_TALK_SLOTS.get(key) || el("div", { class: "talk-slot" }) : el("div", { class: "talk-slot" }, [OPEN_TALKS.get(key)]);
-  if (!inMenu) ROW_TALK_SLOTS.set(key, panel);
+  const panel = draftFooter ? ROW_TALK_SLOTS.get(key) || el("div", { class: "talk-slot" }) : el("div", { class: "talk-slot" }, [OPEN_TALKS.get(key)]);
+  if (!draftFooter) ROW_TALK_SLOTS.set(key, panel);
   const line = el("div", { class: "handoff-line" }, parts());
   line.handoffKey = key; line.handoffRefresh = show;
   // What the row has to say about itself before anything is pressed: a hand-off the Host refused, a put-off that is back.
-  return el("div", { class: "handoff" }, inMenu ? [line] : [line, panel, handFailedNote(entry), putOffNote(entry)]);
+  return el("div", { class: "handoff" }, draftFooter ? [line] : [line, panel, handFailedNote(entry), putOffNote(entry)]);
 }
 // 标为完成 sits in the strip on every row, before and after a hand-off (owner, 2026-11-11: «为什么不能标记
 // 已完成呢？标记完成不在那个里面啊»). It is the row's own setDone, so a failure or an offline save reads the
@@ -9859,7 +10036,7 @@ function laterChooser(line, choose) {
   const kept = [...line.childNodes];
   const back = () => { line.replaceChildren(...kept); line.onkeydown = null; line.querySelector(".strip-later")?.focus(); };
   const choices = laterChoices().map(([label, until]) => {
-    const button = el("button", { type: "button", class: "btn-quiet later-choice", text: t(label) });
+    const button = el("button", { type: "button", class: "btn-quiet later-choice", text: line.closest(".draft-triage") ? t(label) + " · " + new Date(until).toLocaleDateString(uiLocale(), {weekday: "short", month: "short", day: "numeric"}) : t(label) });
     button.onclick = choose(until);
     return button;
   });
@@ -9974,15 +10151,17 @@ function oneAction(status, primary, keep, rest) {
   }
   return [...(status ? [status] : []), ...dotted([primary, ...keep.filter(node => node !== primary), more])];
 }
-function handButtons(entry, show, panel, mark, lead) {
+function handButtons(entry, show, panel, mark, lead, draftFooter = false) {
   const status = el("span", { class: "handoff-status", role: "status" });
   const buttons = Object.entries(AGENT_NAMES).map(([agent, name]) => {
     const button = el("button", { type: "button", class: "btn-quiet" + (lead === "task" && agent === "codex" ? " strip-lead" : ""), "data-agent": agent,
-      text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: name }), ...snapshotWhy("Handing work to an agent happens in the live reader.") });
+      text: t(entry.ask ? "Ask {agent} to look" : "Hand to {agent}", { agent: draftFooter && agent === "claude" ? "Claude Code" : name }), ...snapshotWhy("Handing work to an agent happens in the live reader.") });
     button.onclick = event => handOver(entry, agent, show, event?.currentTarget?.closest(".qcard"), status);
     return button;
   });
   const talk = entry.ask ? null : talkMenu(entry, panel), closes = stripDone(entry, mark, lead === "done");
+  if (draftFooter) return [el("div", {class: "triage-row"}, closes), el("div", {class: "triage-row"}, buttons),
+    moreButton(entry, talk), status].filter(Boolean);
   return [...dotted(todayStrip(buttons, talk, closes, entry)), status];
 }
 // The click is the hand-off (#3072: «点了交给 Codex 就显示正在交给 Codex，也不跳到下一张»). The row is the agent's from
@@ -10488,8 +10667,8 @@ function personCard(group, focal, total = 1, index = 0) {
   // When every row is handled, that green step and the head's tick would both close all of them: the green step
   // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
-  const triageInMenu = !!draft && entries.length === 1 && liveHere();
-  const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : "") + (triageInMenu ? " triage-menu" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
+  const triageInFooter = !!draft && entries.length === 1 && liveHere();
+  const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : "") + (triageInFooter ? " triage-footer" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
     cardHead(group, late, total > 1, allClosed ? false : undefined, { i: index + 1, n: total }), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more,
       cardStep(entry) === "done" && !(step && closing.includes(entry)), entry === leadEntry ? leadKind : null))),
     draft ? cardDraft(draft, group) : null,

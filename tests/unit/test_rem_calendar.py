@@ -615,3 +615,46 @@ def test_an_event_brings_its_meeting_link_organiser_and_notes():
     assert zoom['meet'] == {'url': 'https://us02web.zoom.us/j/123?pwd=x', 'service': 'Zoom'}
     plain = calendar._microsoft({'id': 'o3', 'subject': 'Lunch', 'start': {}, 'end': {}, 'location': {'displayName': 'Cafe'}}, SYDNEY)
     assert plain['meet'] is None and plain['notes'] == '' and plain['organizer'] == ''
+
+
+def test_scheduling_window_comes_from_complete_owner_read_and_expires_on_partial_read(tmp_path, calendars):
+    answers, asked = calendars
+    calendar.save_upcoming(tmp_path, NIGHT, SYDNEY, days=7)
+    _, start, end, _ = asked[0]
+    assert calendar.upcoming(tmp_path, [], '')['window'] == {
+        'start': start.isoformat(), 'end': end.isoformat(), 'timezone': 'Australia/Sydney'}
+    assert start.utcoffset() != end.utcoffset()  # providers were queried across a DST change
+    answers['microsoft'] = TimeoutError()
+    calendar.save_upcoming(tmp_path, NIGHT + timedelta(days=1), SYDNEY)
+    assert 'window' not in calendar.upcoming(tmp_path, [], '')
+    answers['microsoft'] = []
+    answers['google'] = [{'id': 'unknown time', 'end': {'date': '2026-10-05'}}]
+    calendar.save_upcoming(tmp_path, NIGHT, SYDNEY)
+    assert 'window' not in calendar.upcoming(tmp_path, [], '')
+
+
+def test_reply_window_requires_all_own_calendars_and_all_pages(tmp_path, calendars, monkeypatch):
+    answers, _ = calendars
+    answers.pop('microsoft')
+    monkeypatch.setitem(LISTED['google']['left_out'], 'unticked', 1)
+    calendar.save_upcoming(tmp_path, NIGHT)
+    assert 'window' not in calendar.upcoming(tmp_path, [], '')
+    monkeypatch.delitem(LISTED['google']['left_out'], 'unticked')
+    monkeypatch.setattr(calendar, 'CAP', len(GOOGLE))
+    calendar.save_upcoming(tmp_path, NIGHT)
+    assert 'window' not in calendar.upcoming(tmp_path, [], '')
+    answers['google'] = []
+    calendar.save_upcoming(tmp_path, NIGHT)
+    assert 'window' in calendar.upcoming(tmp_path, [], '')
+
+
+def test_reply_window_waits_for_previously_read_feed_to_return(tmp_path, calendars):
+    answers, _ = calendars
+    calendar.save_upcoming(tmp_path, NIGHT)
+    del answers['microsoft']
+    for day in (1, 2):
+        calendar.save_upcoming(tmp_path, NIGHT + timedelta(days=day))
+        assert 'window' not in calendar.upcoming(tmp_path, [], '')
+    answers['microsoft'] = []
+    calendar.save_upcoming(tmp_path, NIGHT + timedelta(days=3))
+    assert 'window' in calendar.upcoming(tmp_path, [], '')
