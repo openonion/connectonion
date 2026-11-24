@@ -4,8 +4,18 @@ import asyncio
 import json
 from unittest.mock import MagicMock
 
+import pytest
+
 from connectonion import address
+from connectonion.network.host.ws_router import admin_home
 from connectonion.network.trust import TrustAgent
+
+
+@pytest.fixture(autouse=True)
+def isolate_admin_home(monkeypatch):
+    # create_app configures this process-wide state for each test Host.
+    for name in ("_trust_agent", "_log_path", "_started"):
+        monkeypatch.setattr(admin_home, name, None)
 
 
 class ASGIResponse:
