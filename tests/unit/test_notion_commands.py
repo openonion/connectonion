@@ -467,13 +467,17 @@ def test_page_reads_nested_blocks_tables_files_and_children(notion):
     result = run("page", ROADMAP)
     assert result.exit_code == 0, result.output
     out = result.stdout
-    assert "# Q4" in out and "▸ Details" in out
-    assert "\n  Nested line" in out and "\n  - deeper" in out and "\n    deepest" in out
-    assert "| Owner | Ann |" in out and "- [x] Write tests" in out
-    assert "[image: Architecture] (hosted by Notion, link expires 2026-10-24T01:00:00.000Z)" in out
-    assert "[unsupported block: ai_block]" in out and "Not rendered" in out and "ai_block ×1" in out
+    # The content is rendered as Markdown, as co obsidian renders a note: no raw # or | marks.
+    assert out.startswith(f"Roadmap  {ROADMAP}\nEdited: ") and "Created: " in out.splitlines()[1]
+    assert "\nQ4\n" in out and "# Q4" not in out and "• Details" in out
+    assert "   Nested line" in out and "• deeper" in out and "deepest" in out
+    assert re.search(r"Owner\s+Ann", out) and "| Owner |" not in out and "• [x] Write tests" in out
+    assert "[image: Architecture]\n" in out                       # named in the content, its file listed once
+    assert out.count("Architecture") == 2 and "File: Architecture (image; hosted by Notion" in out
+    assert "[unsupported block: ai_block]" in out and "Not rendered (shown as [unsupported block])" in out
+    assert "Notes (child page)" in out and CHILD not in out
     assert re.search(r"Child page:\n\s+1\.\s+Notes", out)
-    assert "; complete" in out
+    assert "; complete" in out and not any(line != line.rstrip() for line in out.splitlines())
 
 
 def test_a_limit_is_reported_and_never_presented_as_the_whole_page(notion):
@@ -667,7 +671,8 @@ def test_f05_links_in_content_are_shown_with_their_targets(notion):
         {"type": "text", "plain_text": "the spec", "href": "https://spec.test/v1",
          "text": {"content": "the spec", "link": {"url": "https://spec.test/v1"}}},
         {"type": "text", "plain_text": "!", "href": "javascript:alert(1)", "text": {"content": "!"}}]}}])
-    assert "See [the spec](https://spec.test/v1)!" in run("page", CHILD).stdout
+    assert "See the spec (https://spec.test/v1)!" in run("page", CHILD).stdout      # rendered, target kept
+    assert "See [the spec](https://spec.test/v1)!" in run("page", CHILD, "--md").stdout
 
 
 def test_restricted_resource_is_a_missing_capability_not_an_unshared_page(notion):
@@ -722,3 +727,9 @@ def test_a_database_command_given_a_page_says_so_and_points_at_the_databases(not
     assert result.exit_code == 1
     assert "Write docs is a page (a row of a database), not a database" in result.stderr
     assert last_line(result.stderr) == "Next: co notion pages --type database"
+
+
+def test_a_page_shows_its_properties_under_a_heading_and_its_times_labelled(notion):
+    out = run("page", ROW).stdout
+    assert out.splitlines()[1].startswith("Edited: ") and "Created: " in out.splitlines()[1]
+    assert "\nProperties\n  Status: In progress\n" in out and "No content." in out

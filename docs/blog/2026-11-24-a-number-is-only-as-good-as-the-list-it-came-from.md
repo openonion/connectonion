@@ -39,4 +39,6 @@ Notion request, so most of them are whole; a `--cursor` carries a check of the
 list it came from and is refused on a different one, as Gmail's mailbox
 cursors are. And `page --md` prints a real Markdown document, front matter
 and all, because the plain view was only Markdown-ish: tables had no header
-rule and bold text lost its marks.
+rule and bold text lost its marks. The terminal view now renders that same
+Markdown the way `co obsidian` renders a note, under a header laid out like
+`co asana task`'s: the title and id, the times labelled, then Properties.

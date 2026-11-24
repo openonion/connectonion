@@ -14,6 +14,7 @@ import os
 import re
 import shlex
 import tempfile
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from typing import List, Optional
@@ -178,7 +179,7 @@ def _numbered(lines: list[tuple[str, str, str]], ids: list[str], show_ids: bool)
         number = f"{i}.".rjust(width)
         ident = f"  {style.muted(ids[i - 1])}" if show_ids else ""
         out.print(f"{style.count(number)}  {style.muted(meta.ljust(meta_width))}  {escape(label)}{ident}"
-                  + (f"  {style.muted(escape(extra))}" if extra else ""))
+                  + (f"  {style.muted(extra)}" if extra else ""))
 
 
 def _print_rows(rows: list, show_ids: bool = False) -> None:
@@ -404,28 +405,7 @@ def page(target: str = typer.Argument(..., help=PAGE_HELP),
         _dump(out_detail)
     else:
         out = style.console()
-        out.print(f"{style.heading(detail['title'])}  {style.muted(detail['edited'][:16].replace('T', ' '))}")
-        out.print(style.path(detail["url"]))
-        if detail["in_trash"]:
-            out.print(style.warn("This page is in Notion's trash."))
-        if detail["anchor"]:
-            out.print(style.muted(f"The link points at block {detail['anchor']} on this page; the whole page is shown."))
-        for name, prop in detail["properties"].items():
-            if prop["type"] in ("title", "relation"):
-                continue
-            text = _value_text(prop)
-            if text:
-                out.print(escape(f"{name}: {text}"))
-        # As Notion shows them: a relation among the properties, child pages after the content.
-        width = len(f"{len(rows)}.")
-        related = [row for row in rows if row[0] in linked]
-        _print_page_rows(related, linked, 1, width)
-        out.print()
-        out.print(escape(detail["content"] or "(no content)"))
-        out.print()
-        for line in _coverage_lines(detail["coverage"]):
-            out.print(style.muted(escape(line)))
-        _print_page_rows(rows[len(related):], {}, len(related) + 1, width)
+        _print_page(out, detail, rows, linked)
         token = _store_rows(_account(), [row[2] for row in rows]) if rows else None
         for line in _listing_note(token):
             out.print(style.muted(line))
@@ -438,7 +418,62 @@ def page(target: str = typer.Argument(..., help=PAGE_HELP),
         _tip("co notion pages", as_json)
 
 
-def _print_page_rows(rows: list, linked: dict, first: int, width: int) -> None:
+def _when(stamp: str) -> str:
+    """A Notion time in this computer's zone, to the minute, as co asana shows times; '-' when there is none."""
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M")
+    except (ValueError, AttributeError):
+        return "-"
+
+
+def _print_page(out, detail: dict, rows: list, linked: dict) -> None:
+    """One page as co asana task and co obsidian show one item: title and id, times, link,
+    Properties (relations numbered under them), the content rendered as Markdown, then what
+    was read, the files, and the child pages numbered on."""
+    from rich.markdown import CodeBlock, Markdown
+    from rich.text import Text
+
+    out.print(f"{style.heading(detail['title'] or '(untitled)')}  {style.muted(detail['id'])}")
+    out.print(escape(f"Edited: {_when(detail['edited'])}   Created: {_when(detail.get('created', ''))}"))
+    out.print(style.path(detail["url"]))
+    if detail["in_trash"]:
+        out.print(style.warn("This page is in Notion's trash."))
+    if detail["anchor"]:
+        out.print(style.muted(f"The link points at block {detail['anchor']} on this page; the whole page is shown."))
+    shown = [(name, _value_text(prop)) for name, prop in detail["properties"].items()
+             if prop["type"] not in ("title", "relation")]
+    shown = [(name, text) for name, text in shown if text]
+    width = len(f"{len(rows)}.")
+    related = [row for row in rows if row[0] in linked]
+    if shown or linked:
+        out.print()
+        out.print(style.label("Properties"))
+        for name, text in shown:
+            out.print("  " + escape(f"{name}: {text}"))
+        _print_page_rows(related, linked, 1, width, indent="  ")
+    out.print()
+    content = notion_markdown.body(detail["blocks"], terminal=True)
+    if not content.strip():
+        out.print(style.muted("No content."))
+    else:
+        try:
+            markdown = Markdown(content, hyperlinks=False)
+            markdown.elements = {**markdown.elements, "html_block": CodeBlock}
+            # Rich pads each rendered line to the console width; drop the padding so a copied or
+            # piped page has no trailing spaces, and keep the colours a terminal gets.
+            with out.capture() as rendered:
+                out.print(markdown, soft_wrap=False)
+            for line in rendered.get().rstrip("\n").split("\n"):
+                out.print(Text.from_ansi(line.rstrip()), soft_wrap=False)
+        except IndexError:                      # Rich can fail on an unmatched inline tag, as in co obsidian
+            out.print(Text(content), soft_wrap=False)
+    out.print()
+    for line in _coverage_lines(detail["coverage"]):
+        out.print(style.muted(line))
+    _print_page_rows(rows[len(related):], {}, len(related) + 1, width)
+
+
+def _print_page_rows(rows: list, linked: dict, first: int, width: int, indent: str = "") -> None:
     """Under each heading (a relation column, Child page, Child database) its rows, numbered on from `first`."""
     out = style.console()
     heading, number = None, first - 1
@@ -447,16 +482,16 @@ def _print_page_rows(rows: list, linked: dict, first: int, width: int) -> None:
             heading = group
             entry = linked.get(group)
             count = f" ({len(entry['items']) + entry['unread']} linked)" if entry else ""
-            out.print(f"{style.label(escape(group))}{count}:")
+            out.print(f"{indent}{style.label(group)}{count}:")
         number += 1
-        out.print(f"  {style.count(f'{number}.'.rjust(width))}  {escape(title)}")
+        out.print(f"{indent}  {style.count(f'{number}.'.rjust(width))}  {escape(title)}")
         entry = linked.get(group)
         if entry and entry["unread"] and _id == entry["items"][-1]["id"]:
-            out.print(style.muted(f"  … and {entry['unread']} more not shown (this key cannot read them, or past "
+            out.print(indent + style.muted(f"  … and {entry['unread']} more not shown (this key cannot read them, or past "
                                   f"{LINKED_TITLES}); --json has every id"))
     for name, entry in linked.items():
         if entry["unread"] and not entry["items"]:
-            out.print(f"{style.label(escape(name))} ({entry['unread']} linked): "
+            out.print(f"{indent}{style.label(name)} ({entry['unread']} linked): "
                       + style.muted("none this key can read; --json has their ids"))
 
 

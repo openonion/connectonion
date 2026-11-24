@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [json, re, notion_api.py (plain, media, block_text)] | imported by [notion_commands.py page --md] | tested by [tests/unit/test_notion_commands.py]
   Data flow: read_page() detail (row fields, typed properties, flat (depth, block) list, coverage) → YAML front matter (title, id, link, edited, properties) → `# Title` → the blocks as CommonMark/GFM → coverage, visible when the read stopped short
   State/Effects: pure; reads nothing and writes nothing
-  Integration: the plain `page` output stays as it was (Markdown-ish text for a terminal); --md is the document form, so a file saved from it renders as Markdown
+  Integration: --md prints document(); the terminal view of `page` renders body(terminal=True) with Rich, as co obsidian renders a note: the same Markdown, with child pages and files named instead of linked (they are numbered and listed after it)
   Errors: none raised; a block type with no Markdown form is kept as an *[unsupported block: …]* line, never dropped silently
 """
 
@@ -65,10 +65,23 @@ def _media(block: dict) -> str:
     return f"[{found['name']}]({found['url']})"
 
 
-def block_markdown(block: dict) -> str:
-    """One block's own text; its children are placed by `body`."""
+def block_markdown(block: dict, terminal: bool = False) -> str:
+    """One block's own text; its children are placed by `body`.
+
+    terminal: for the `page` view, child pages and files are named, not linked:
+    the view numbers them after the content, and a long URL in the text helps no one.
+    """
     kind = block.get("type", "")
     data = block.get(kind) or {}
+    if terminal and kind == "child_page":
+        return f"**{data.get('title') or 'Untitled'}** *(child page)*"
+    if terminal and kind == "child_database":
+        return f"**{data.get('title') or 'Untitled database'}** *(child database)*"
+    if terminal and kind == "link_to_page":
+        return "*(link to another page)*"
+    if terminal and kind in api.MEDIA:
+        found = api.media(block)
+        return f"*[{found['kind']}: {found['name']}]*"
     if kind in HEADINGS:
         return HEADINGS[kind] + inline(data.get("rich_text"))
     if kind == "to_do":
@@ -108,7 +121,7 @@ def block_markdown(block: dict) -> str:
     return f"*[unsupported block: {kind}]*"
 
 
-def body(flat: list) -> str:
+def body(flat: list, terminal: bool = False) -> str:
     """The blocks as Markdown: lists nest under their item, a table gets its header rule, blocks are separated."""
     lines: list[str] = []
     indents: dict[int, str] = {0: ""}       # depth → indent its children use
@@ -117,7 +130,7 @@ def body(flat: list) -> str:
     for depth, block in flat:
         kind = block.get("type", "")
         indent = indents.get(depth, indents.get(max(d for d in indents if d <= depth), ""))
-        text = block_markdown(block)
+        text = block_markdown(block, terminal)
         # A child of a list item sits inside the item; under anything else it cannot nest in Markdown.
         marker = LIST_KINDS.get(kind)
         indents[depth + 1] = indent + (" " * len(marker) if marker else "")
