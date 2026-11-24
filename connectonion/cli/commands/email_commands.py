@@ -52,6 +52,9 @@ def _read_failure(exc, mailbox: str):
             console.print("Your mail session expired or access was denied. Run co auth login, then retry.", markup=False)
             return
         if status == 404:
+            if mailbox == "attachment":
+                console.print("No attachment with those IDs is available. Use co email read to list attachments.", markup=False)
+                return
             console.print(f"No {mailbox} email with that ID is available to this account.", markup=False)
             if mailbox == "received":
                 console.print("To select an existing message, run co email inbox, then co email read <#>.", markup=False)
@@ -67,6 +70,7 @@ def handle_email_send(
     to: str, subject: str, message: str,
     idempotency_key: str = None, from_address: str = None,
     max_cost_usd: str = '0',
+    attachments: list[str] | None = None,
 ):
     """Send an email from the agent's address."""
     if not _require_auth():
@@ -77,6 +81,7 @@ def handle_email_send(
     result = send_email(
         to, subject, message,
         idempotency_key=idempotency_key, from_address=from_address, **budget,
+        **({"attachments": attachments} if attachments else {}),
     )
 
     if result.get("success"):
@@ -109,6 +114,8 @@ def handle_email_send(
                 retry += ["--from", shlex.quote(from_address)]
             if budget:
                 retry += ['--max-cost',shlex.quote(str(max_cost_usd))]
+            for path in attachments or []:
+                retry += ["--attach", shlex.quote(path)]
             retry += ["--idempotency-key", shlex.quote(result["idempotency_key"])]
             # Plain print, not console.print: Rich wraps at the console width,
             # and a line-broken command is no longer copy-pasteable.
@@ -353,12 +360,29 @@ def handle_email_read(email_id: str, mark_read: bool = False):
         console.print("[dim](empty body)[/dim]")
     console.print()
 
+    for attachment in match.get("attachments", []):
+        filename = "".join(char if char.isprintable() else "_" for char in attachment["filename"])
+        console.print(f"  Attachment #{attachment['id']}  {filename}  ({attachment['size']:,} bytes)", markup=False)
+    if match.get("attachments"):
+        console.print(f"  Download: co email download {email_id} <attachment #> --out <path>", markup=False)
+
     if mark_read:
         from ...useful_tools.get_emails import mark_read as mark_email_read
         mark_email_read(str(email_id))
         console.print("[dim]Marked read.[/dim]")
     else:
         console.print("[dim]Unread state unchanged. Use --mark-read to change it.[/dim]")
+
+
+def handle_email_download(email_id: str, attachment_id: int, output_path: str):
+    _require_auth()
+    from ...useful_tools.get_emails import download_email_attachment
+    try:
+        saved = download_email_attachment(email_id, attachment_id, output_path)
+    except (OSError, requests.RequestException, ValueError) as exc:
+        _read_failure(exc, "attachment")
+        raise typer.Exit(1) from exc
+    console.print(f"Saved {saved}", markup=False)
 
 
 def handle_email_default(address: str):

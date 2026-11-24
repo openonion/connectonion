@@ -9,6 +9,8 @@ LLM-Note:
   Errors: invalid received page sizes or offsets raise ValueError before auth/network | missing/mismatched ambient credentials and HTTP failures raise | no credential value is included in errors
 """
 
+import os
+from pathlib import Path
 from typing import Dict, List, Union
 
 import requests
@@ -265,7 +267,32 @@ def get_email(email_id: Union[str, int]) -> Dict:
     return {'id': email.get('id', ''), 'from': email.get('from', email.get('from_email', '')),
             'to': email.get('to', email.get('to_email', '')), 'subject': email.get('subject', ''),
             'message': email.get('text') or email.get('text_body') or email.get('html') or email.get('html_body', ''),
-            'timestamp': email.get('received_at', ''), 'read': email.get('is_read', False)}
+            'timestamp': email.get('received_at', ''), 'read': email.get('is_read', False),
+            'attachments': email.get('attachments', [])}
+
+
+def download_email_attachment(email_id: Union[str, int], attachment_id: int, output_path: str) -> str:
+    """Save one received attachment to a new file and return the saved path.
+
+    Use an attachment ID listed by get_email(). The parent directory must exist.
+    """
+    message_id = _message_id(email_id)
+    if isinstance(attachment_id, bool) or not isinstance(attachment_id, int) or attachment_id < 1:
+        raise ValueError("attachment_id must be a positive integer from get_email")
+    token = require_ambient_api_key()
+    path = Path(output_path).expanduser()
+    url = f"{backend_url()}/api/v1/email/received/{message_id}/attachments/{attachment_id}"
+    with requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=40, stream=True) as response:
+        response.raise_for_status()
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    handle.write(chunk)
+        except (OSError, requests.RequestException):
+            path.unlink(missing_ok=True)
+            raise
+    return str(path)
 
 
 def get_sent_email(email_id: Union[str, int]) -> Dict:

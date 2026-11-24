@@ -677,3 +677,38 @@ def test_an_id_from_get_emails_goes_straight_into_mark_read(mock_get, mock_post,
     assert mutate(emails[0]["id"]) is True
     assert mutate([email["id"] for email in emails]) is True
     assert mock_post.call_args_list[0].args[0].endswith(f"email_id={emails[0]['id']}")
+
+
+@patch.dict("os.environ", {"OPENONION_API_KEY": TEST_JWT_TOKEN, "AGENT_EMAIL": TEST_ACCOUNT["email"]})
+@patch("requests.post")
+def test_send_email_submits_named_attachment(mock_post, tmp_path):
+    path = tmp_path / "report.bin"
+    path.write_bytes(b"\x00\xff")
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {"message_id": "attachment-send"}
+
+    assert send_email("to@example.net", "Report", "Body", attachments=[str(path)])["success"]
+    url = mock_post.call_args.args[0]
+    assert url.endswith("/send-with-attachments")
+    assert mock_post.call_args.kwargs["json"]["attachments"] == [
+        {"filename": "report.bin", "content": "AP8="}
+    ]
+
+
+def test_download_email_attachment_writes_binary_and_never_overwrites(tmp_path, monkeypatch):
+    module = importlib.import_module("connectonion.useful_tools.get_emails")
+    monkeypatch.setattr(module, "require_ambient_api_key", lambda: "test-token")
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.iter_content.return_value = [b"\x00", b"\xff"]
+    request = MagicMock(return_value=response)
+    monkeypatch.setattr(module.requests, "get", request)
+
+    path = tmp_path / "report.bin"
+    assert module.download_email_attachment(123, 1, str(path)) == str(path)
+    assert path.read_bytes() == b"\x00\xff"
+    assert request.call_args.args[0].endswith("/received/123/attachments/1")
+
+    with pytest.raises(FileExistsError):
+        module.download_email_attachment(123, 1, str(path))
+    assert path.read_bytes() == b"\x00\xff"

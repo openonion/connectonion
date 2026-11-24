@@ -9,9 +9,11 @@ LLM-Note:
   Errors: returns {success: False, error: str} for missing/mismatched credentials, invalid email format, and API failures | credential errors are redacted and non-retryable | HTTP errors caught and wrapped
 """
 
+import base64
 import html
 import os
 import re
+import stat
 import uuid
 from pathlib import Path
 from typing import Dict, Optional
@@ -26,6 +28,9 @@ from ..credentials import AmbientCredentialError, require_ambient_api_key
 from ..project import project_co_dir, project_root
 
 
+_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+_MAX_ATTACHMENTS = 20
+
 _HTML_TAG = re.compile(r"</?[a-zA-Z][^>]*>")
 
 
@@ -35,6 +40,30 @@ def _plain_text_as_html(text: str) -> str:
     return "\n".join("<p>" + p.replace("\n", "<br>\n") + "</p>" for p in paragraphs)
 
 
+def _encode_attachments(paths: list[str]) -> list[dict[str, str]]:
+    if len(paths) > _MAX_ATTACHMENTS:
+        raise ValueError(f"An email can carry at most {_MAX_ATTACHMENTS} attachments.")
+    remaining = _MAX_ATTACHMENT_BYTES
+    files = []
+    for given in paths:
+        path = Path(given).expanduser()
+        if not path.is_file():
+            raise ValueError(f"Attachment must be a regular file: {given}")
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+        with os.fdopen(os.open(path, flags), "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError(f"Attachment must be a regular file: {given}")
+            if info.st_size > remaining:
+                raise ValueError("Attachments exceed the 10 MiB total limit.")
+            data = handle.read(remaining + 1)
+        remaining -= len(data)
+        if remaining < 0:
+            raise ValueError("Attachments exceed the 10 MiB total limit.")
+        files.append({"filename": path.name, "content": base64.b64encode(data).decode("ascii")})
+    return files
+
+
 def send_email(
     to: str,
     subject: str,
@@ -42,6 +71,7 @@ def send_email(
     idempotency_key: Optional[str] = None,
     from_address: Optional[str] = None,
     max_cost_usd: float = 0,
+    attachments: Optional[list[str]] = None,
 ) -> Dict:
     """Send an email using the agent's email address.
 
@@ -58,6 +88,7 @@ def send_email(
         max_cost_usd: Maximum USD charge for this email. Defaults to 0 (included
             monthly sends only). Use 0.003 to authorize PAYG after the allowance.
             Reuse the original key and exact payload on an uncertain send.
+        attachments: Local files to send, up to 20 files and 10 MiB total.
 
     Returns:
         dict: Success status and details
@@ -125,8 +156,16 @@ def send_email(
     if budget:
         payload['max_cost_usd']=format(budget,'.8f')
 
-    # Send email via backend API
-    endpoint = f"{backend_url()}/api/v1/email/send"
+    route = "send"
+    if attachments:
+        try:
+            payload["attachments"] = _encode_attachments(attachments)
+        except (OSError, ValueError) as exc:
+            return {"success": False, "error": str(exc), "request_id": send_key,
+                    "idempotency_key": send_key, "retryable": False,
+                    "dispatched": False, "code": "invalid_attachments"}
+        route = "send-with-attachments"
+    endpoint = f"{backend_url()}/api/v1/email/{route}"
 
     headers = {
         "Authorization": f"Bearer {token}",

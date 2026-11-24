@@ -45,6 +45,19 @@ Received and Sent reads retrieve one record by ID, including older messages outs
 
 Search examines a bounded received-mail page: sender, recipient, subject and body. Its output names the number scanned and offset; use the next offset for older messages. It is not a server-wide search index. Replies and forwards call the existing idempotent send path with quoted plain text. They send immediately, include no attachments and add no RFC threading headers.
 
+## Attachments
+
+```sh
+co email send you@example.com "Report" "See attached." --attach report.pdf --attach data.csv
+co email read 123
+co email download 123 1 --out report.pdf
+```
+
+The mail service accepts up to 20 attached files and 10 MiB total per send.
+`read` lists each received attachment by number. `download` saves one attachment
+to a new path. Retry an unconfirmed send with the same idempotency key,
+attachment filenames, and file contents.
+
 ## Browser connection
 
 ```sh

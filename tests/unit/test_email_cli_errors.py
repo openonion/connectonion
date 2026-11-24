@@ -82,3 +82,15 @@ def test_sent_read_keeps_bracketed_content_literal(monkeypatch,capsys):
     email_commands.handle_email_sent_read('7')
     output=capsys.readouterr().out
     assert '[draft]' in output and '[bold]Literal[/bold]' in output and 'a[b]' in output
+
+
+def test_retry_command_preserves_attachments(monkeypatch, capsys):
+    monkeypatch.setattr(email_commands, "_require_auth", lambda: True)
+    send = MagicMock(return_value={
+        "success": False, "error": "Unconfirmed", "idempotency_key": "send-1", "retryable": True,
+    })
+    monkeypatch.setattr(send_email, "send_email", send)
+    with pytest.raises(typer.Exit):
+        email_commands.handle_email_send("to@example.com", "Report", "Body", attachments=["report 1.pdf"])
+    assert send.call_args.kwargs["attachments"] == ["report 1.pdf"]
+    assert "--attach 'report 1.pdf' --idempotency-key send-1" in capsys.readouterr().out

@@ -1908,6 +1908,7 @@ def email_send(
         "--from",
         help="Send as one of your owned addresses (server checks ownership)",
     ),
+    attachments: Optional[list[str]] = typer.Option(None, "--attach", help="Attach a local file. Repeat for multiple files (10 MiB total)."),
     max_cost: str = typer.Option('0','--max-cost',help='Maximum USD charge for this email; 0 uses included monthly sends only'),
 ):
     """Sends immediately using included monthly mail first. PAYG requires --max-cost; no subscription or automatic top-up."""
@@ -1915,6 +1916,7 @@ def email_send(
     handle_email_send(
         to, subject, message,
         idempotency_key=idempotency_key, from_address=from_address,
+        **({"attachments": attachments} if attachments else {}),
         **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
     )
 
@@ -1953,9 +1955,20 @@ def email_read(
     email_id: str = typer.Argument(..., help="Email # from the inbox list"),
     mark_read: bool = typer.Option(False, "--mark-read", help="Mark the email as read after showing it"),
 ):
-    """Show one email's body without changing its unread state. Read-only unless --mark-read."""
+    """Show one email's body and attachments. Read-only unless --mark-read."""
     from .commands.email_commands import handle_email_read
     handle_email_read(email_id, mark_read=mark_read)
+
+
+@email_app.command("download", epilog="Example:  co email download 42 1 --out report.pdf")
+def email_download(
+    email_id: str = typer.Argument(..., help="Email # from the inbox list"),
+    attachment_id: int = typer.Argument(..., min=1, help="Attachment # shown by co email read"),
+    output_path: str = typer.Option(..., "--out", "-o", help="New local file to save"),
+):
+    """Save one received attachment without overwriting existing files."""
+    from .commands.email_commands import handle_email_download
+    handle_email_download(email_id, attachment_id, output_path)
 
 
 sent_app = _typer_app(
