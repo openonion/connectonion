@@ -203,11 +203,47 @@ def _coverage_lines(coverage: dict) -> list:
         where = ("hosted by Notion" + (f", link expires {item['expires']}" if item["expires"] else "")
                  if item["hosted"] else f"external {item['url']}")
         lines.append(f"File: {item['name']} ({item['kind']}; {where})")
-    for child in coverage["child_pages"]:
-        lines.append(f"Child page: {child['title']} — co notion page {child['id']}")
-    for child in coverage["child_databases"]:
-        lines.append(f"Child database: {child['title']} — co notion db {child['id']}")
     return lines
+
+
+# -- what a page links to: its relations by title, and its child pages ------------
+
+LINKED_TITLES = 25          # titles read for one page view; past that, the count and --json's ids
+
+
+def _linked(detail: dict) -> dict:
+    """{relation column: {"items": [{"id", "title"}], "unread": n}} for every relation with a value.
+
+    Notion gives a relation only the linked pages' ids, so each title is one
+    read, at most LINKED_TITLES per page; past that, or for a page this key
+    cannot read, the page is counted, never named by guess.
+    """
+    found, budget = {}, LINKED_TITLES
+    for name, prop in detail["properties"].items():
+        if prop["type"] != "relation" or not prop["value"]:
+            continue
+        items, unread = [], 0
+        for linked_id in prop["value"]:
+            if budget <= 0:
+                unread += 1
+                continue
+            budget -= 1
+            try:
+                items.append({"id": linked_id, "title": api.title_of(api.call("GET", f"pages/{linked_id}"))})
+            except api.NotionError as error:
+                if error.kind not in ("not_found", "forbidden"):
+                    raise
+                unread += 1
+        found[name] = {"items": items, "unread": unread}
+    return found
+
+
+def _page_rows(linked: dict, coverage: dict) -> list:
+    """The numbered rows a page view shows: linked pages by column, then child pages and databases."""
+    rows = [(f"{name}", item["title"], item["id"], "page") for name, entry in linked.items() for item in entry["items"]]
+    rows += [("Child page", child["title"], child["id"], "page") for child in coverage["child_pages"]]
+    rows += [("Child database", child["title"], child["id"], "db") for child in coverage["child_databases"]]
+    return rows
 
 
 # -- reads -----------------------------------------------------------------
@@ -345,8 +381,9 @@ def page(target: str = typer.Argument(..., help=PAGE_HELP),
     """Show one page: title, link, every property, and its content with nesting, files and coverage. Read-only.
 
     The last lines say whether the whole page was read. If a limit stopped it,
-    the content is partial and says so; child pages and databases are listed
-    with the command that opens each. Under --json every property keeps its
+    the content is partial and says so. The pages a relation links to (by
+    title, up to 25) and the child pages and databases are numbered at the
+    end, for co notion page and db. Under --json every property keeps its
     type, ids and empty values (0, false, null). --md prints the page as a
     Markdown document (properties in front matter) to redirect to a .md file;
     a partial read says so at its top.
@@ -359,7 +396,10 @@ def page(target: str = typer.Argument(..., help=PAGE_HELP),
         # Raw text, never through Rich: the document is the output, and the Next line goes to stderr.
         print(notion_markdown.document(detail, _value_text), end="")
         return _tip("co notion pages", True)
+    linked = _linked(detail)
     out_detail = {key: value for key, value in detail.items() if key not in ("raw", "blocks")}
+    out_detail["linked"] = {name: entry["items"] for name, entry in linked.items()}
+    rows = _page_rows(linked, detail["coverage"])
     if as_json:
         _dump(out_detail)
     else:
@@ -371,23 +411,53 @@ def page(target: str = typer.Argument(..., help=PAGE_HELP),
         if detail["anchor"]:
             out.print(style.muted(f"The link points at block {detail['anchor']} on this page; the whole page is shown."))
         for name, prop in detail["properties"].items():
-            if prop["type"] == "title":
+            if prop["type"] in ("title", "relation"):
                 continue
             text = _value_text(prop)
             if text:
                 out.print(escape(f"{name}: {text}"))
+        # As Notion shows them: a relation among the properties, child pages after the content.
+        width = len(f"{len(rows)}.")
+        related = [row for row in rows if row[0] in linked]
+        _print_page_rows(related, linked, 1, width)
         out.print()
         out.print(escape(detail["content"] or "(no content)"))
         out.print()
         for line in _coverage_lines(detail["coverage"]):
             out.print(style.muted(escape(line)))
-    children = detail["coverage"]["child_pages"]
-    if detail["parent"] == "data_source":
+        _print_page_rows(rows[len(related):], {}, len(related) + 1, width)
+        token = _store_rows(_account(), [row[2] for row in rows]) if rows else None
+        for line in _listing_note(token):
+            out.print(style.muted(line))
+    if rows:
+        first = rows[0]
+        _tip(f"co notion {first[3]} {first[2] if as_json else 1}", as_json)
+    elif detail["parent"] == "data_source":
         _tip(f'co notion db {detail["parent_id"]}', as_json)       # the other rows of its database
-    elif children:
-        _tip(f'co notion page {children[0]["id"]}', as_json)
     else:
         _tip("co notion pages", as_json)
+
+
+def _print_page_rows(rows: list, linked: dict, first: int, width: int) -> None:
+    """Under each heading (a relation column, Child page, Child database) its rows, numbered on from `first`."""
+    out = style.console()
+    heading, number = None, first - 1
+    for group, title, _id, _kind in rows:
+        if group != heading:
+            heading = group
+            entry = linked.get(group)
+            count = f" ({len(entry['items']) + entry['unread']} linked)" if entry else ""
+            out.print(f"{style.label(escape(group))}{count}:")
+        number += 1
+        out.print(f"  {style.count(f'{number}.'.rjust(width))}  {escape(title)}")
+        entry = linked.get(group)
+        if entry and entry["unread"] and _id == entry["items"][-1]["id"]:
+            out.print(style.muted(f"  … and {entry['unread']} more not shown (this key cannot read them, or past "
+                                  f"{LINKED_TITLES}); --json has every id"))
+    for name, entry in linked.items():
+        if entry["unread"] and not entry["items"]:
+            out.print(f"{style.label(escape(name))} ({entry['unread']} linked): "
+                      + style.muted("none this key can read; --json has their ids"))
 
 
 def _value_text(prop: dict) -> str:
@@ -404,7 +474,7 @@ def _value_text(prop: dict) -> str:
     if kind in ("created_by", "last_edited_by"):
         return value.get("name") or value.get("id", "")
     if kind == "relation":
-        return f"{len(value)} linked: " + ", ".join(value[:5]) + (" …" if len(value) > 5 else "")
+        return f"{len(value)} linked"      # titles cost one read each: co notion page names them
     if kind == "files":
         return ", ".join(f.get("name") or "file" for f in value)
     if isinstance(value, list):
