@@ -23,7 +23,7 @@ time. That is fine until you want any of this:
 - **an identity that survives.** A redeploy used to mint a new agent address, which
   changed the agent's email and voided every trust relationship other agents had
   granted it.
-- **history that is continuous.** `.co/logs/` and `.co/evals/` are what a dashboard
+- **history that is continuous.** `.co/logs/` and `.co/evals/` are what a Control Center
   shows about the past.
 - **a fix you made by hand at 2am to still be there tomorrow.** With an image as the
   source of truth it is discarded on the next deploy.

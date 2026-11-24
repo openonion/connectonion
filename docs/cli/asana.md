@@ -6,7 +6,7 @@ REST API (`https://app.asana.com/api/1.0`) with a personal access token.
 The agent-facing guide is the `co-asana` Skill
 (`connectonion/useful_skills/co-asana/SKILL.md`).
 
-`check`, `projects`, `tasks`, `task` and `stories` are read-only. `update` and
+`check`, `projects`, `tasks`, `task`, `stories`, `changes` and `show` are read-only. `update` and
 `comment` print a preview and change nothing until you add `--yes`.
 
 > Status: the examples below were produced on 2026-11-02 by the real commands
@@ -18,13 +18,36 @@ The agent-facing guide is the `co-asana` Skill
 
 ## Setup
 
-1. In Asana, open <https://app.asana.com/0/my-apps> and create a personal
-   access token.
-2. Save it, encrypted:
+Run, in a terminal:
 
-   ```bash
-   co env set ASANA_ACCESS_TOKEN <pat> --secret
-   ```
+```bash
+co auth asana
+```
+
+It makes the token in the co browser, in a tab of its own (`co-auth-asana`;
+the shared main tab is left alone). If the co browser has no Asana cookies, it
+asks once to copy your Chrome cookies for asana.com into it (nothing else is
+copied), or waits while you sign in in its window. It opens Asana's developer
+console and the new-token form, names the token `co on <this computer> <date>`
+and marks what is left to you; you accept Asana's API terms and press
+**Create token**, and it reads the token back, checks it with
+Asana and saves it encrypted, as `co env set ASANA_ACCESS_TOKEN <pat> --secret`
+does (that works too). A token that already works is kept, and no new one is
+made. The token is never printed.
+
+However it ends, and before any paste is asked for, the console tab is
+replaced by one line, so the token is not left on screen, and the Asana cookies
+it copied or you signed in with are cleared from the co browser again. Asana
+cookies the co browser already had are left alone.
+
+If the co browser is not available, cannot say which cookies it holds, holds
+Asana cookies but no sign-in (a sign-in typed there could not be told apart and
+cleared), or does not get as far as a token (no sign-in, no Create within five
+minutes), it falls back to pasting: it opens <https://app.asana.com/0/my-apps> in your default
+browser and asks for the token, hidden. `co auth asana --paste` goes straight
+there and never uses the co browser. Without a terminal it reads one line from
+standard input (`co auth asana --paste < token.txt`) and stops after 30 seconds
+if nothing arrives.
 
    An `ASANA_ACCESS_TOKEN` exported in your shell wins over the saved one.
 3. Check it:
@@ -111,6 +134,84 @@ Next: co asana task 1
 
 `--json` prints Asana's own records on stdout and the `Next:` line on stderr.
 
+## For co rem: `changes` and `show`
+
+A REM source is its `co` command (design decision 081, #3249): REM asks
+`co asana changes` what changed and `co asana show` for one task, and keeps no
+copy of either. Both are read-only and you can run them yourself.
+
+`co asana changes --since <time>` lists the tasks changed after that time,
+oldest change first. The time needs its zone (`2026-11-01T09:00+11:00` or
+`...Z`); without one it exits 2 before anything is sent. By default it reads
+the tasks assigned to you, in every workspace of the account (one request per
+workspace; `--workspace` reads one). `--project <row, ID or exact name>`,
+repeatable, reads every task in those projects instead; with several
+workspaces, a project name needs `--workspace` too. Completed tasks are
+included, since completing one is a change, and so is a task with a new
+comment. Deleted tasks are not listed, and neither is a task reassigned away
+from you, unless `--project` names its project. A `--since` later than now
+exits 2.
+
+```text
+$ co asana changes --since 2026-11-01T00:00+11:00
+2 tasks assigned to you changed since 2026-11-01 00:00
+  2026-11-02 20:30  1209000000000300  Launch checklist
+  2026-11-03 20:55  1209000000000330  Book venue
+Next: co asana show 1209000000000300
+```
+
+With `--json`:
+
+```json
+{
+  "since": "2026-11-01T00:00:00+11:00",
+  "until": "2026-11-21T07:15:56+00:00",
+  "items": [
+    {"id": "1209000000000300", "time": "2026-11-02T09:30:00.000Z", "title": "Launch checklist",
+     "project": "Atlas Website", "link": "https://app.asana.com/0/1209000000000200/1209000000000300"}
+  ]
+}
+```
+
+`until` is when the read began: pass it as the next `--since` and nothing
+changed in between is missed. A task changed while it was being read can
+appear in both lists, so keep one per `id` and `time`. `time` is Asana's
+`modified_at`; it is `null` when Asana sent none, and those come last.
+
+`co asana show <ref>` prints what `co asana task` prints. With `--json` it is
+one item in the shape REM reads from every source:
+
+```json
+{
+  "id": "1209000000000300",
+  "title": "Launch checklist",
+  "text": "Final checks before the Atlas site goes live.\n\nComments (oldest first):\n- 2026-11-02T09:01:00.000Z Priya Nair: Alex, can you own this? ...\n- 2026-11-02T09:30:00.000Z Alex Chen (you): Yes, I'll finish it by 7 Nov.\n\n(1 activity record(s) by Asana, such as assignment or completion, not quoted)",
+  "author": "Priya Nair", "author_id": "1209000000000101",
+  "time": "2026-11-02T09:30:00.000Z",
+  "link": "https://app.asana.com/0/1209000000000200/1209000000000300",
+  "status": "open", "completed_at": null,
+  "assignee": "Alex Chen", "assignee_id": "1209000000000100", "assigned_to_you": true,
+  "due": "2026-11-07",
+  "projects": ["Atlas Website"],
+  "comments": [
+    {"author": "Priya Nair", "author_id": "1209000000000101", "you": false,
+     "time": "2026-11-02T09:01:00.000Z", "text": "Alex, can you own this? ..."},
+    {"author": "Alex Chen", "author_id": "1209000000000100", "you": true,
+     "time": "2026-11-02T09:30:00.000Z", "text": "Yes, I'll finish it by 7 Nov."}
+  ]
+}
+```
+
+`text` is the description, then every comment oldest first, `(you)` after the
+token owner's own; Asana's own activity is counted, not quoted. `you` and
+`assigned_to_you` compare Asana user IDs, never names, so a namesake is never
+taken for you (`--json` reads who the token acts as for this). `author` is who
+made the task. `completed_at` is when it was completed (`null` while open); a
+comment after that moves `time` later, not `completed_at`. A citation
+`asana:<id>` opens through `show`, so it shows the task as it is now; compare
+`time` with when it was cited to tell whether it changed. A task deleted or no
+longer visible exits 1.
+
 ## Write: preview, then `--yes`
 
 ```text
@@ -147,8 +248,8 @@ Every failure prints `✗ <cause>` and one `Next:` command on stderr.
 
 | exit | cause | printed (examples) | Next |
 |---|---|---|---|
-| 1 | no token | `ASANA_ACCESS_TOKEN is not set in ~/.co/keys.env. Create a personal access token at https://app.asana.com/0/my-apps, then save it` | `co env set ASANA_ACCESS_TOKEN <pat> --secret` |
-| 1 | token rejected | `Asana rejected ASANA_ACCESS_TOKEN: Not Authorized. Make a new token at https://app.asana.com/0/my-apps` | `co env set ASANA_ACCESS_TOKEN <pat> --secret` |
+| 1 | no token | `ASANA_ACCESS_TOKEN is not set in ~/.co/keys.env. Create a personal access token at https://app.asana.com/0/my-apps; co auth asana saves it (or co env set ASANA_ACCESS_TOKEN <pat> --secret)` | `co auth asana` |
+| 1 | token rejected | `Asana rejected ASANA_ACCESS_TOKEN: Not Authorized. Make a new token at https://app.asana.com/0/my-apps and save it with co auth asana` | `co auth asana` |
 | 1 | saved token will not open | `ASANA_ACCESS_TOKEN is saved encrypted but cannot be opened: no agent key at ~/.co/keys/agent.key. …` | `co init` (no agent key), otherwise save the token again |
 | 1 | unknown or hidden task | `No Asana task 1209000000009999, or this token cannot see it (… HTTP 404)` | `co asana tasks "<project>"` |
 | 1 | rate limit after retries | `Read 0 tasks, incomplete; nothing was listed: Asana asked to wait 30 s before the next request (HTTP 429). Try again later` | `co asana check` |
@@ -166,6 +267,10 @@ Every failure prints `✗ <cause>` and one `Next:` command on stderr.
   due at a time of day.
 - `tasks` reads every page and filters locally; a very large project takes
   as many requests as it has pages of 100.
+- `changes` without `--project` sees only tasks assigned to you now: a task
+  reassigned to someone else drops out without a change being listed.
+- `changes` uses `modified_at`. Asana documents that a new or deleted comment
+  updates it; an edited comment may not, so such a task may not be listed.
 - Personal access tokens only; no OAuth.
 
 ## Testing

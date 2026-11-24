@@ -10,7 +10,7 @@ from websockets.asyncio.server import serve
 from connectonion import address
 from connectonion.network import sealed
 from connectonion.network.transport_limits import MAX_WEBSOCKET_MESSAGE_BYTES
-from connectonion.network.host.ws_router import dashboard
+from connectonion.network.host.ws_router import control_center as dashboard
 
 
 @pytest.mark.slow
@@ -25,12 +25,12 @@ async def test_full_128_mib_dashboard_survives_sealed_websocket(tmp_path, monkey
     monkeypatch.setattr(dashboard, '_project_dir', tmp_path)
     # Multibyte text catches ASCII-escaping expansion; exact 128 MiB file.
     unit = '<p>房源价格🌍</p>\n'.encode()
-    count, rest = divmod(dashboard.MAX_DASHBOARD_BYTES, len(unit))
+    count, rest = divmod(dashboard.MAX_CONTROL_CENTER_BYTES, len(unit))
     raw = unit * count + b' ' * rest
     digest = hashlib.sha256(raw).hexdigest()
     (tmp_path / 'dashboard.html').write_bytes(raw)
     del raw
-    frame = dashboard.read_dashboard_snapshot('large', viewer=dashboard.viewer_for(None))
+    frame = dashboard.read_control_center_snapshot('large', viewer=dashboard.viewer_for(None))
     client_id, host_id = address.generate(), address.generate()
     hello, ephemeral = sealed.client_hello(client_id, host_id['address'])
     reply, sender = sealed.host_accept(hello, host_id)

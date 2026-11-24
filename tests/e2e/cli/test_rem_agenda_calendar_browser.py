@@ -84,7 +84,7 @@ def agenda(tmp_path, monkeypatch):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
         yield page
         browser.close()
     assert not errors, errors

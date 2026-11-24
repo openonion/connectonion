@@ -223,17 +223,30 @@ def check(root: Path, task: dict, output: dict) -> dict:
 
 
 def promote(root: Path, plan: dict) -> list[str]:
-    """Write each page's Tags line and nothing else; the caller holds the maintenance lock."""
-    book, marks, changed = Notebook(root), read_json(state_path(root, MARKS), {}), []
-    if plan["new"]:
-        tags.save(root, {**tags.entries(root), **plan["new"]})
+    """Write each page's Tags line and nothing else; the caller holds the maintenance lock.
+
+    Every page is checked before any is written. 2026-11-23: one page whose Tags line could not be
+    set alone raised "nothing written" partway through, after the pages before it were written; those
+    writes made the task's inputs stale and every later turn of the night failed "Task input changed".
+    A page that cannot be tagged alone is now left as it was, waiting, and named in `plan["refused"]`."""
+    book, marks, changed, writes = Notebook(root), read_json(state_path(root, MARKS), {}), [], []
     for record, entry in plan["pages"].items():
         current = book.read(record)
         if current != entry["before"]:
             continue   # changed since it was read: it waits for the next turn
-        after = tags.with_tags(current, entry["rows"])
+        try:
+            after = tags.with_tags(current, entry["rows"])
+        except ValueError as error:   # no title and no Facts to hold the line
+            plan["refused"].append({"record": record, "tag": "", "reason": f"{error}; page left untagged"})
+            continue
         if not tags.only_tags_changed(current, after):
-            raise RemError(f"{record}: tagging would change more than its Tags line; nothing written")
+            plan["refused"].append({"record": record, "tag": "",
+                                    "reason": "tagging would change more than its Tags line; page left untagged"})
+            continue
+        writes.append((record, current, after))
+    if plan["new"]:
+        tags.save(root, {**tags.entries(root), **plan["new"]})
+    for record, current, after in writes:
         if after != current:
             book.write(record, after)
             changed.append(record)

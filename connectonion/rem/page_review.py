@@ -238,7 +238,7 @@ def repair_project_overview(record: str, text: str) -> tuple[str, bool]:
     return text[:heading.end()] + '\n- Unknown\n\n' + text[end:], True
 
 
-SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|email|reflection|review|project-source)'
+SOURCE_ID = re.compile(r'\b(?:codex|claude-code|gmail|outlook|whatsapp|wechat|email|reflection|review|project-source)'
                        r'(?:-summary)?:[\w.:+-]+')
 
 
@@ -538,6 +538,31 @@ def renumber_sources(text: str) -> str:
         parts += [swap(text[last:code.start()]), code[0]]
         last = code.end()
     return ''.join(parts) + swap(text[last:])
+
+
+LEADING_MARK = re.compile(r'^([ \t]*(?:[-*][ \t]+)?)([\[［](?:personal|sensitive)[\]］])[ \t]*(\S[^\n]*?)'
+                          r'((?:[ \t]*\[\d+\])*)[ \t]*$', re.M | re.I)
+
+
+def trail_privacy_marks(text: str) -> str:
+    """Write a line-opening privacy mark where marks go: after the words it labels (#3410).
+
+    "- [sensitive] Health detail. [1]" becomes "- Health detail [sensitive]. [1]". A line of one sentence only: on a
+    line of several the leading mark labels them all, and moving it would label only the last, so it stays (the
+    reader hides a leading mark's whole line). Code is left alone.
+    """
+    def move(m):
+        words = m[3].rstrip()
+        end = words[-1] if words and words[-1] in '.!?。！？' else ''
+        body = words[:-1].rstrip() if end else words
+        if re.search(r'[.!?。！？]\s', body):
+            return m[0]
+        return f'{m[1]}{body} {m[2]}{end}{m[4]}'
+    parts, last = [], 0
+    for code in CODE.finditer(text):
+        parts += [LEADING_MARK.sub(move, text[last:code.start()]), code[0]]
+        last = code.end()
+    return ''.join(parts) + LEADING_MARK.sub(move, text[last:])
 
 
 def collapse_repeated_markers(text: str) -> str:

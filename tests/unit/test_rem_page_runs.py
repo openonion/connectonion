@@ -216,3 +216,64 @@ def test_a_failed_run_older_than_the_pages_last_change_is_not_shown(root):
     stamp = datetime(2026, 10, 5, tzinfo=timezone.utc).timestamp()
     os.utime(page, (stamp, stamp))
     assert page_runs.states(root, [PAGE], mail_days={})[PAGE]["run"] is None
+
+
+# #2235 follow-up (2026-11-23): a rejected draft showed "Candidate rejected, kept at candidate.md: Unused
+# citation: 41" under a project title. The reason is a plain sentence; the checker's words are a detail,
+# and no path or file name reaches the reader.
+REJECTED = "Candidate rejected, kept at /Users/someone/.co/rem/.state/tasks/abc/candidate.md: Unused citation: 41"
+
+
+def test_a_rejected_draft_is_said_plainly_with_the_checks_words_as_a_detail():
+    said = page_runs.explain(REJECTED)
+    assert said["reason_kind"] == "rejected"
+    assert "candidate" not in said["reason"].lower() and "/" not in said["reason"]
+    assert said["detail"] == "Unused citation: 41"
+
+
+def test_an_unknown_reason_never_carries_a_local_path():
+    said = page_runs.explain("Something broke reading /Users/someone/.co/rem/.state/tasks/abc/notes.md today")
+    assert said["reason_kind"] == "other" and "/Users" not in said["reason"] and "notes.md" not in said["reason"]
+
+
+def test_a_receipt_saved_with_the_raw_rejection_is_read_plainly(root):
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append"], "result": "failed",
+                                                    "started_at": "2026-10-01T23:00:00+00:00", "finished_at": "2026-10-02T00:20:00+00:00",
+                                                    "before_sha256": page_runs._sha(INVESTIGATED),
+                                                    "reason": REJECTED, "reason_kind": "other"})
+    run = page_runs.status(root, PAGE)
+    assert run["reason_kind"] == "rejected" and run["detail"] == "Unused citation: 41"
+    assert "candidate" not in run["reason"].lower()
+
+
+def _rejected_receipt(root):
+    write_json(page_runs.receipt_path(root, PAGE), {"record": PAGE, "mode": "full", "steps": ["append"], "result": "failed",
+                                                    "started_at": "2026-10-01T23:00:00+00:00", "finished_at": "2026-10-02T00:20:00+00:00",
+                                                    "before_sha256": page_runs._sha(INVESTIGATED),
+                                                    "reason": REJECTED, "reason_kind": "other"})
+
+
+def test_a_refused_page_the_night_will_retry_says_so_from_the_refusal_ledger(root):
+    from connectonion.rem.refusals import remember_refusal
+    _rejected_receipt(root)
+    remember_refusal(root, PAGE, ["gmail:aaaaaaaaaaaa"], "Unused citation: 41", stage="investigate")
+    assert page_runs.status(root, PAGE)["next"] == {"kind": "retry"}
+
+
+def test_a_refused_page_out_of_retries_is_parked_with_the_real_count(root):
+    from connectonion.rem.refusals import MAX_RETRIES, refused_pages
+    from connectonion.rem.files import write_json as save
+    _rejected_receipt(root)
+    save(state_path(root, "refused-investigations.json"),
+         {PAGE: {"sources": ["gmail:aaaaaaaaaaaa"], "at": "2026-10-02T00:20:00+00:00", "why": "Unused citation: 41",
+                 "stage": "investigate", "retries": MAX_RETRIES}})
+    assert refused_pages(root)[PAGE]["retries"] == MAX_RETRIES
+    _run(root, 1, phase="investigate", started="2026-09-01T00:00:00+00:00", changed=["x"])
+    for n, day in enumerate(("2026-09-20", "2026-09-21", "2026-09-22", "2026-10-01"), start=2):
+        _run(root, n, phase="investigate", started=f"{day}T00:00:00+00:00", outcome="refused")
+    assert page_runs.status(root, PAGE)["next"] == {"kind": "parked", "tries": 4}
+
+
+def test_a_refused_page_the_ledger_does_not_hold_promises_nothing(root):
+    _rejected_receipt(root)
+    assert page_runs.status(root, PAGE)["next"] is None

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from connectonion.network.host.ws_router import dashboard as dash
+from connectonion.network.host.ws_router import control_center as dash
 
 
 @pytest.fixture

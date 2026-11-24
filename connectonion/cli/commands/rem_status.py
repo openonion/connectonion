@@ -1,4 +1,4 @@
-"""`co rem status` as a small dashboard (#1996).
+"""`co rem status` as a small status card (#1996).
 
 Status printed every field it had: the schedule times twice, the launchd
 plist, "Known attempts / Total attempts" three times, a whole run record --
@@ -21,7 +21,7 @@ CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisa
               ("sessions", "Agent sessions"))
 
 
-def dashboard(root, value: dict, spell, *, verbose: bool = False, show_private: bool = False) -> str:
+def card(root, value: dict, spell, *, verbose: bool = False, show_private: bool = False) -> str:
     """The status result as markup (the plain text is the same markup read without its styles).
 
     `spell` turns arguments into the command as this user types it (`_next`).
@@ -48,10 +48,15 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False, show_private: 
     if value.get('last_turn'):
         turn = value['last_turn']
         exit_code = f" · exit {turn['exit_code']}" if turn.get('exit_code') is not None else ''
-        lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {turn.get('finished_at') or turn['started_at']}")]
+        lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {_local(root, turn.get('finished_at') or turn['started_at'])}")]
         if turn.get('started_codex_after_s') is not None:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
-        if turn.get('reason'):
+        handled = ((value.get('schedule_failure') or {}).get('stuck') or {}).get('handled')
+        if turn.get('reason') and handled:
+            # The installed build already sets this failure aside (#3413): its old advice (map-skills, start)
+            # cannot fix it and nothing needs restarting.
+            lines += [rem_look.follow(style.muted(_handled_said(value)), glyph='')]
+        elif turn.get('reason'):
             lines += [rem_look.follow(highlight(seen(turn['reason'])), glyph='')]
             if turn['result'] == 'failed' and not turn.get('produced_nothing'):
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
@@ -243,6 +248,29 @@ def _zone(root):
     return notebook_zone(read_config(root))
 
 
+def _sources_mapped(root) -> list[str]:
+    """One row per source that yields pages: when it was mapped, what it made, what still waits (#3331)."""
+    from ...rem.coverage import source_coverage
+    from ...rem.onboard import summary, yields
+    from ...rem.service import subscriptions
+    rows = []
+    for name, sub in subscriptions(root).items():
+        if not (sub.get("enabled") and sub.get("consented") and yields(sub)):
+            continue
+        done = summary(root, name)
+        made = ", ".join(f"{n} {kind}" for kind, n in done["created"].items() if n) or "no new pages"
+        when = {"never": "never mapped", "earlier": f"mapped earlier · {done.get('pages', 0)} pages"}.get(
+            done["mapped_at"], done["mapped_at"][:10])
+        text = f"{when} · {made} · {done['to_investigate']} to investigate" + (
+            f" · {done['coverage']}" if done.get("coverage") else "")
+        rows.append(rem_look.row(f"Source {name}", text + (f" · {done['error']}" if done.get("error") else "")))
+        # How much of the source REM can read (#3353): a gap and its fix, never a silent shortfall.
+        coverage = source_coverage(name, sub)
+        if coverage and coverage["skipped"]:
+            rows.append(rem_look.follow(coverage["line"], glyph=""))
+    return rows
+
+
 def _private_unwritten(root) -> int:
     """Mapped private projects require a named-page request, not a category write (#2079)."""
     from ...rem.files import Notebook
@@ -269,9 +297,19 @@ def next_to_write(root, counts: dict, *, scheduled: bool = False) -> tuple:
         left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
             if scheduled:
-                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued for tonight", []
+                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued{_pace(root, left)}", []
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
+
+
+def _pace(root, left: int) -> str:
+    """" for tonight" only when the night gets through the queue (#3420), else the pace it really keeps."""
+    from ...rem.queue import night_pace
+    from ...rem.service import run_logs
+    pace = night_pace(root, run_logs(root))
+    if pace and left <= pace:
+        return " for tonight"
+    return f" · the night investigates about {pace}" if pace else ""
 
 
 def queued_unwritten(root, category: str) -> int:
@@ -340,6 +378,8 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
     if coverage.get("missing"):
         lines.append(rem_look.follow(style.muted(
             f"{coverage['missing']} people you write to have no page yet"), glyph=""))
+    for line in _sources_mapped(root):
+        lines.append(line)
     if private := _private_unwritten(root):
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
     scheduled = bool(value.get("next_run") and value.get("worker", {}).get("enabled"))
@@ -389,9 +429,13 @@ def _today(root, value: dict) -> list[str]:
     failure = [highlight(f"Last scheduled turn did not finish: {warning['evidence']} · {action}")] if warning else []
     if warning and warning.get('failures'):
         count = warning['failures']
-        since = warning['since'][:16].replace('T', ' ')
-        failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
-                             f"since {since} UTC. Last error: {warning['evidence']}. Next: co rem logs")]
+        since = _local(root, warning['since'])
+        if (warning.get('stuck') or {}).get('handled'):
+            failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
+                                 f"since {since}, on one page. {_handled_said(value)}")]
+        else:
+            failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
+                                 f"since {since}. Last error: {warning['evidence']}. Next: co rem logs")]
     if not runs:
         return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}
@@ -403,6 +447,25 @@ def _today(root, value: dict) -> list[str]:
     return [*failure, rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
                              f"{_plural(runs, 'run')}"),
             rem_look.follow(spent, glyph="")]
+
+
+def _local(root, stamp: str) -> str:
+    """An ISO instant in the notebook's own zone, with the zone's name (#3413: status said UTC to an owner in Sydney)."""
+    try:
+        moment = datetime.fromisoformat(str(stamp).replace('Z', '+00:00'))
+    except ValueError:
+        return str(stamp)
+    if moment.tzinfo is None:
+        return str(stamp)
+    local = moment.astimezone(_zone(root))
+    return f"{local:%Y-%m-%d %H:%M} {local.tzname() or ''}".rstrip()
+
+
+def _handled_said(value: dict) -> str:
+    """The installed build already sets the repeated failure aside: say so, with the next round (#3413)."""
+    upcoming = value.get('next_run')
+    when = f" ({str(upcoming)[11:16]})" if upcoming and len(str(upcoming)) >= 16 else ''
+    return f"This release already handles it; the next round{when} skips it. Nothing to do."
 
 
 def _mailboxes(root, spell=lambda arguments: "co rem " + " ".join(arguments)) -> list[str]:

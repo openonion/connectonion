@@ -71,7 +71,7 @@ def handle_email_search(query: str,last: int = 100,offset: int = 0,json_output: 
     for m in matches:out.print(f"{m['id']}  {m['from']}  {m['subject']}",markup=False)
     if len(messages)==last:out.print(f'Older page: co email search {shlex.quote(query)} --last {last} --offset {offset+last}',markup=False)
 
-def handle_email_reply(email_id: str,message: str,*,to: str | None = None,from_address: str | None = None,idempotency_key: str | None = None,max_cost_usd: str = '0'):
+def handle_email_reply(email_id: str,message: str,*,to: str | None = None,from_address: str | None = None,idempotency_key: str | None = None,max_cost_usd: str = '0',attachments: list[str] | None = None,include_attachments: bool = True):
     original=_read(email_id)
     recipient=to or parseaddr(original['from'])[1]
     if '@' not in recipient:
@@ -89,7 +89,31 @@ def handle_email_reply(email_id: str,message: str,*,to: str | None = None,from_a
     quoted='\n'.join('> '+line for line in (original.get('message') or '').splitlines())
     body=f"{message}\n\nOn {original.get('timestamp','')}, {original['from']} wrote:\n{quoted}"
     budget={} if str(max_cost_usd) in ('0','0.0') else {'max_cost_usd':max_cost_usd}
-    handle_email_send(recipient,subject,body,from_address=from_address,idempotency_key=idempotency_key,**budget)
+    paths = list(attachments or [])
+    cache = None
+    if to and include_attachments and original.get('attachments'):
+        import tempfile
+        from ...useful_tools.email_attachments import download_email_attachment
+        cache = tempfile.mkdtemp(prefix='co-mail-forward-')
+        try:
+            for file in original['attachments']:
+                result = download_email_attachment(email_id,file['id'],cache+'/'+str(file['id']))
+                paths.append(result['path'])
+        except (requests.RequestException, ValueError, OSError):
+            import shutil
+            shutil.rmtree(cache)
+            raise
+    try:
+        handle_email_send(recipient,subject,body,from_address=from_address,idempotency_key=idempotency_key,
+                          **budget,**({'attachments':paths} if paths else {}))
+    except typer.Exit:
+        # The printed safe retry includes these paths; retain them after an uncertain send.
+        if cache: out.print(f'Forwarded files retained for retry: {cache}',markup=False)
+        raise
+    else:
+        if cache:
+            import shutil
+            shutil.rmtree(cache)
 
 def handle_email_tier(json_output: bool = False):
     data=_request('GET','tier')

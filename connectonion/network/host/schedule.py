@@ -667,7 +667,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         an agent left running never compacted -- which is the ordinary case for
         what this release is for. Its own docstring measures the cost: 17 MB
         for 222 sessions, about 7 MB a day and 2.5 GB a year on a
-        fifteen-minute schedule, with a dashboard that reparses the lot each
+        fifteen-minute schedule, with a Control Center that reparses the lot each
         time it is opened (#625).
 
         Here rather than on a timer of its own: this tick already runs every

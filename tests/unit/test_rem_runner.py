@@ -650,12 +650,12 @@ def test_codex_standard_speed_reaches_cli_and_task_metrics(notebook, delegate):
 
 def test_a_codex_worker_is_started_at_the_notebooks_effort_and_its_record_says_so(notebook, delegate):
     """2026-11-17: no effort was passed, so all 81 worker turns of a night ran at the owner's
-    own ~/.codex setting (max) while config.yaml said medium. Maintain is level 3: low (#3099)."""
+    own ~/.codex setting (max) while config.yaml said medium. Maintain is level 3: medium (#3426)."""
     run_stage(notebook, [], default_config())
     argv = delegate[0][0]
-    assert argv[argv.index("--effort") + 1] == "low"
+    assert argv[argv.index("--effort") + 1] == "medium"
     metrics = json.loads(next((notebook.root / ".state/tasks").glob("*/result.json")).read_text())
-    assert metrics["effort"] == "low"
+    assert metrics["effort"] == "medium"
     high = runner.harness_flags({**default_config(), "effort": "high"}, "maintain")
     assert high[high.index("--effort") + 1] == "high"
     # Claude Code and co's own loop take no effort from us: nothing is passed or claimed.

@@ -148,7 +148,7 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(page_path.as_uri())
-            page.locator(".night-card .count").wait_for()
+            page.locator("#main .count-line .count").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator('#nav a[href="#c=projects"]').click()
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
@@ -197,7 +197,7 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
         page.locator("iframe").evaluate("(frame, content) => frame.srcdoc = content",
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
-        frame.locator(".night-card .count").wait_for()
+        frame.locator("#main .count-line .count").wait_for()
         assert frame.locator('.today-brief').is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
@@ -319,7 +319,7 @@ def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_pat
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / f"reader-{width}.png"), full_page=True)
     page.evaluate("location.hash = ''")  # Today (the brand on a desk, the Today tab on a phone)
-    page.locator(".night-card .count").wait_for()
+    page.locator("#main .count-line .count").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.screenshot(path=str(shots / f"contents-{width}.png"), full_page=True)
     page.emulate_media(color_scheme="dark")
@@ -516,9 +516,11 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
           const template = REM.drafts.find(d => d.status === 'prepared');
           window.fetch = async (url, options) => {
             const request = JSON.parse(options.body); draftRequests.push(request);
+            // /rem/approve answers per approval, as the Host does; the full-screen writer now waits for that answer.
             const result = request.action === 'prepare'
               ? {...template, id: 'nova-ready', thread: 'mail:gmail:nova',
-                  to: 'nova@example.test', body: 'The demo is ready.', status: 'prepared'} : {status: 'sent'};
+                  to: 'nova@example.test', body: 'The demo is ready.', status: 'prepared'}
+              : request.ids ? {results: request.ids.map(id => ({id, status: 'sent'}))} : {status: 'sent'};
             return {ok: true, json: async () => result};
           };
           setInterfaceLanguage(language);
@@ -569,9 +571,9 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             assert ('今晚' if language == 'zh' else 'tonight') in note and 'co rem' not in note  # D-60: no command
         open_card(letter)
         if live:
-            # Build 3b re-review: an unanswered question keeps Send unready (aria-disabled since sprint 22, so a click
-            # still says what is missing), with a plain hint, so nothing is sent.
-            assert letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).is_disabled()
+            # An unanswered question no longer greys Send (#3312 E replaces the aria-disabled look the owner read as
+            # dead): Send stays the filled button, the hint names what is left, and nothing is sent until it is answered.
+            assert not letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).is_disabled()
             # Sprint 13: the hint names what is left to choose, in the reader's language.
             assert ('处要选：' if language == 'zh' else ' left: ') in letter.locator('.choose-hint').inner_text()
             assert page.evaluate('draftRequests.length', isolated_context=False) == 0
@@ -592,8 +594,9 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
             dialog = page.locator('dialog.writer')
             dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
             assert dialog.is_visible()
-            assert ('先填好标出的部分' if language == 'zh' else 'Fill the marked part first') in dialog.inner_text()
-            dialog.get_by_role('textbox').fill('The demo is ready for release.')
+            # Full screen names REM's open question and points to its choices on the right (#3312 E, F).
+            assert ('先在右边回答 REM 的问题' if language == 'zh' else "Answer REM's question on the right first") in dialog.inner_text()
+            dialog.locator('.writer-body').fill('The demo is ready for release.')
             dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
             # dialog.close() dispatches its removal through the close event.
             dialog.wait_for(state='detached')

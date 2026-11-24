@@ -1,15 +1,15 @@
 ---
-name: dashboard
-description: Update the agent's Control Center. Use when the user says "update my Control Center", "update my dashboard", "redesign my home", or "/dashboard".
+name: control-center
+description: Update the agent's Control Center. Use when the user says "update my Control Center", "redesign my home", or "/control-center".
 ---
 
 # Control Center Skill
 
-The agent's Control Center can be customized through the compatible single file `.co/dashboard.html`, beside `.co/skills/`. (Older agents keep theirs in the project root — if `dashboard.html` is there, that is the one being served: edit it where it is, don't create a second one.) OChat renders it in a sandboxed iframe beside the chat and re-reads it after every run. You edit it with your normal file tools (Read, Edit, Write, Bash) — there is no special API.
+The agent's Control Center can be customized through the single file `.co/control_center.html`, beside `.co/skills/`. (Older agents may still have the page under its old name; if `.co/control_center.html` does not exist, rename the old one to it before editing, so there is never a second copy.) OChat renders it in a sandboxed iframe beside the chat and re-reads it after every run. You edit it with your normal file tools (Read, Edit, Write, Bash) — there is no special API.
 
 ## Instructions
 
-1. **Read the file first** — `.co/dashboard.html`, or the root `dashboard.html` if that is where this agent's already is — so you preserve its structure and styles before changing anything.
+1. **Read the file first** — `.co/control_center.html` — so you preserve its structure and styles before changing anything.
 2. **Make the smallest edit that satisfies the request** — change the data or add a section; don't rewrite the whole file unless the user asks for a redesign.
 3. **Keep it visual, not textual.** Lead with state, big numbers, generous whitespace, and clear action buttons. A Control Center is glanceable, not a document.
 4. **Write the file** and stop. OChat picks up the change automatically after the run.
@@ -73,7 +73,7 @@ Declare the table sortable and the client makes its headers clickable:
 
 ## Rules
 
-- One file: `.co/dashboard.html`. No sidecar JSON, no build step.
+- One file: `.co/control_center.html`. No sidecar JSON, no build step.
 - **It does not exist until you write it.** Until then the client shows a built-in
   starter Control Center — identity/state, Now, quick actions, activity, schedules,
   searchable capabilities, and diagnostics — rendered fresh each

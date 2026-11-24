@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from connectonion.network.host import schedule as sched
-from connectonion.network.host.ws_router import dashboard
+from connectonion.network.host.ws_router import control_center as dashboard
 
 
 def setup_page(tmp_path, monkeypatch, body):

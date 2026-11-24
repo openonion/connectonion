@@ -328,7 +328,7 @@ protected, while project-authored configuration and skills still travel:
 | | |
 |---|---|
 | `.co/keys/` | **kept** — the agent's address, so its email and every trust relationship hold |
-| `.co/logs/`, `.co/evals/`, `.co/sessions/` | **kept** — history a dashboard can actually show |
+| `.co/logs/`, `.co/evals/`, `.co/sessions/` | **kept** — history a Control Center can actually show |
 | `.co/session_results.jsonl` | **kept** — every turn the deployed agent served; a laptop's copy never replaces it |
 | `.co/schedule-state.json` | **kept** — what the scheduler ran, and what is paused on the server |
 | `.co/contacts.txt`, `.co/admins.txt`, `.co/address.json` | **kept** — who onboarded and who is in charge, as the server knows it |

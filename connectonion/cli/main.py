@@ -325,8 +325,8 @@ def _host_target() -> Path:
     return profile_dir()
 
 
-def _print_host_status(target: Path) -> None:
-    """The human summary `co host` prints: is it running, what it serves, how to stop it."""
+def _print_host_status(target: Path) -> bool:
+    """The human summary `co host` prints: is it running, what it serves, how to stop it. Returns whether it runs."""
     import yaml
 
     from .co_ai.native_host import configured_model
@@ -334,14 +334,14 @@ def _print_host_status(target: Path) -> None:
     config_path = target/'.co'/'host.yaml'
     if not config_path.is_file():
         console.print("No Host is set up yet. Next: co init", markup=False)
-        return
+        return False
     config = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
     agent = 'agent.py' if (target/'agent.py').is_file() else f"built-in, model {configured_model(target/'.co')}"
     try:
         state = host_service(target).status()
     except HostServiceError as error:
         console.print(f"Host: {target}\nServes: {agent}\n{error}", markup=False)
-        return
+        return False
     if state['running']:
         line = f"Running in the background (pid {state['pid']})"
     elif state['configured']:
@@ -351,6 +351,25 @@ def _print_host_status(target: Path) -> None:
     console.print(f"Host: {target}\nServes: {agent}\nPort: {config.get('port', 8000)}\n{line}\n"
                   "Stop: co host --stop  ·  Run in this terminal: co host --serve  ·  Details: co host --status",
                   markup=False)
+    return bool(state['running'])
+
+
+def _show_host_or_fail(target: Path) -> None:
+    """Bare `co host`: print the status; exit 1 when it names a project nothing serves.
+
+    Before 1.9.7 a bare `co host` served the project, so a script or a Windows
+    logon task written then (run-host.cmd: `co host`) printed status, exited 0
+    and left the agent offline (#3297). A console window counts as a terminal,
+    so the TTY check alone cannot catch it; a non-zero exit and the replacement
+    command can.
+    """
+    from .mac_bootstrap import profile_dir
+    if _print_host_status(target) or target == profile_dir():
+        return
+    command = 'co host --agent agent.py' if (target/'agent.py').is_file() else 'co host --serve'
+    console.print(f"Not serving this project: since 1.9.7 a bare co host only shows status. To serve it: {command}",
+                  markup=False)
+    raise typer.Exit(1)
 
 
 @app.command(epilog="Example:  co host  |  co host --serve  |  co host --stop  |  co host --agent agent.py")
@@ -359,15 +378,19 @@ def host(
     serve: bool = typer.Option(False, '--serve', help="Run the Host in this terminal with the built-in agent; host.yaml's model: picks codex, claude-code or a model name"),
     agent_file: Optional[Path] = typer.Option(None, '--agent', exists=True, dir_okay=False, help="Run your own agent.py as the Host instead of the built-in agent"),
     background: bool = typer.Option(False, '--background', help='Install/start the background service (launchd on macOS, systemd on Linux); co init does this for you'),
-    status: bool = typer.Option(False, '--status', help='Read-only: the background service and process, as JSON; no device-ready claim'),
+    status: bool = typer.Option(False, '--status', help='Read-only: print service and process status as JSON without running readiness checks'),
     stop: bool = typer.Option(False, '--stop', help='Stop and disable the background service across login'),
     uninstall: bool = typer.Option(False, '--uninstall', help='Stop and remove the background service; preserve agent, identity, memory and logs'),
     native_codex: bool = typer.Option(False, '--native-codex', hidden=True, help='Pre-#3170: serve native Codex from this profile; set model: codex instead'),
 ):
     """Show the always-on Host that co init started, or manage it. With no option: its status. --serve runs it in this terminal; --agent runs your own agent.py.
 
-    One host serves everything: the agent over HTTP, WebSocket and the relay, REM for you, and the
-    channels in .co/host.yaml's listen:. The agent is the built-in one unless you pass --agent.
+    Upgrading from 1.9.6: a bare `co host` no longer serves a project. If no Host is running
+    for the project, bare `co host` exits 1 and prints the start command; use
+    `co host --serve` or `co host --agent agent.py` in scripts.
+
+    The Host exposes your agent over HTTP, WebSocket and the channels listed under listen: in
+    .co/host.yaml. It also serves REM, your private notebook of what you have worked on, to you only. The agent is the built-in one unless you pass --agent.
     """
     import os
     import subprocess
@@ -414,9 +437,7 @@ def host(
         if Path("agent.py").is_file() and not _in_terminal():
             agent_file = Path("agent.py")
         else:
-            _print_host_status(_host_target())
-            if Path("agent.py").is_file():
-                console.print("This folder has an agent.py. To serve it: co host --agent agent.py", markup=False)
+            _show_host_or_fail(_host_target())
             return
     # install.sh puts co in a uv tool environment the system python cannot import from (#2438).
     env = {**os.environ, **({"AGENT_PORT": str(port)} if port else {})}
@@ -467,16 +488,21 @@ def deploy(
         raise typer.Exit(1)
 
 
-@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack")
-def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack"),
+@app.command(epilog="Example:  co auth  |  co auth status  |  co auth google  |  co auth slack  |  co auth asana")
+def auth(service: Optional[str] = typer.Argument(None, help="login, status, logout, or a service: google, microsoft, feishu, lark, slack, asana"),
          scopes: Optional[str] = typer.Option(None, "--scopes", help="Google: comma-separated limited scopes. Default: Gmail, Calendar, Drive and YouTube."),
          app_id: Optional[str] = typer.Option(None, "--app-id", metavar="cli_…",
                                               help="Feishu/Lark: authorize an application you already have, keeping its groups and permissions"),
          core: bool = typer.Option(False, "--core",
-                                   help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do")):
-    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create. status is Read-only."""
+                                   help="Microsoft: mail, calendar, contacts and people only, not OneNote, OneDrive, Teams and To Do"),
+         paste: bool = typer.Option(False, "--paste",
+                                    help="Asana: paste a token you make yourself instead; the co browser is not used at all")):
+    """Sign in to OpenOnion (login, status, logout) or connect a service. Writes tokens to the env file; feishu and lark also create a Feishu application you own; slack asks you to paste tokens from an app you create; asana makes a token in the co browser (it copies your Chrome cookies for asana.com into it for the run and removes them afterwards; an Asana sign-in it already had is left alone), falls back to pasting one, and saves it encrypted instead. status is Read-only."""
     if scopes is not None and service != "google":
         print("--scopes is only supported for Google. Next: co auth google --help")
+        raise typer.Exit(2)
+    if paste and service != "asana":
+        print("--paste is only supported for Asana. Next: co auth asana --help")
         raise typer.Exit(2)
     if app_id is not None and service not in ("feishu", "lark"):
         print("--app-id is only supported for Feishu and Lark. Next: co auth feishu --help")
@@ -496,6 +522,9 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
     elif service == "slack":
         from .commands.slack_auth import handle_slack_auth
         handle_slack_auth()
+    elif service == "asana":
+        from .commands.asana_auth import handle_asana_auth
+        handle_asana_auth(paste=paste)
     elif service == "status":
         from .commands.auth_commands import handle_auth_status
         handle_auth_status()
@@ -511,7 +540,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="login, status, logo
         # A word we do not know must not do the one thing that writes secrets.
         from .commands.command_tips import print_tip
         print(f"Unknown auth target: {service}. Use one of: login, status, logout, "
-              "google, microsoft, feishu, lark, slack.")
+              "google, microsoft, feishu, lark, slack, asana.")
         print_tip("Next: co auth status")
         raise typer.Exit(2)
 
@@ -845,11 +874,15 @@ def proxy(
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-             epilog="Example:  co call 0x3d40... co status")
+             epilog="Example:  co call 0x3d40... co status  |  co call --global 0x3d40... co status")
 def call(
-    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),
+    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] [--global | --co-dir DIR] <address> <command...>"),
 ):
     """Run one command on a remote agent and print the result (no LLM). Runs it there as bash.
+
+    Signs with the project key in .co/keys if there is one (and says so on stderr),
+    else with your key in ~/.co. Use --global to force ~/.co, or --co-dir DIR for
+    another folder. A refusal names the address it signed with and its folder.
 
     Everything after the address runs on the remote agent as a shell command,
     if the allow list in its .co/host.yaml permits it:
@@ -1865,6 +1898,7 @@ def email_send(
     to: str = typer.Argument(..., help="Recipient email address"),
     subject: str = typer.Argument(..., help="Subject line"),
     message: str = typer.Argument(..., help="Body (plain text or HTML)"),
+    attach: Optional[list[str]] = typer.Option(None, "--attach", help="Attach a local file; repeat for more files (20 MiB total)"),
     idempotency_key: Optional[str] = typer.Option(
         None,
         "--idempotency-key",
@@ -1882,6 +1916,7 @@ def email_send(
     handle_email_send(
         to, subject, message,
         idempotency_key=idempotency_key, from_address=from_address,
+        **({"attachments": attach} if attach else {}),
         **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
     )
 
@@ -1923,6 +1958,57 @@ def email_read(
     """Show one email's body without changing its unread state. Read-only unless --mark-read."""
     from .commands.email_commands import handle_email_read
     handle_email_read(email_id, mark_read=mark_read)
+
+
+@email_app.command("attachments", epilog="Example:  co email attachments 123")
+def email_attachments(
+    email_id: str = typer.Argument(..., help="Email ID from inbox or sent"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Read-only. List attachment IDs, names, types and sizes."""
+    from .commands.email_commands import handle_email_attachments
+    handle_email_attachments(email_id, sent)
+
+
+@email_app.command("download", epilog="Example:  co email download 123 456 --to ./orders")
+def email_download(
+    email_id: str = typer.Argument(..., help="Email ID"),
+    attachment_id: str = typer.Argument(..., help="ID from co email attachments"),
+    to: str = typer.Option(".", "--to", help="Output directory; existing files are never overwritten"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Writes one attachment to a new file after checking its SHA256 checksum."""
+    from .commands.email_commands import handle_email_download
+    handle_email_download(email_id, attachment_id, to, sent)
+
+
+@email_app.command("attachment-text", epilog="Example:  co email attachment-text 123 456 --to ./orders")
+def email_attachment_text(
+    email_id: str = typer.Argument(..., help="Email ID"),
+    attachment_id: str = typer.Argument(..., help="Attachment ID"),
+    to: str = typer.Option(".", "--to", help="Directory to keep the original file"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Writes the original file, then prints extractable text or reports that manual review is needed."""
+    from .commands.email_commands import _require_auth
+    from ..useful_tools.email_attachments import read_email_attachment
+    _require_auth()
+    result = read_email_attachment(email_id, attachment_id, to, sent)
+    print(result.get("text") or result.get("error"))
+    if not result["readable"]:
+        raise typer.Exit(1)
+
+
+@email_app.command("raw", epilog="Example:  co email raw 123 --output ./original.eml")
+def email_raw(
+    email_id: str = typer.Argument(..., help="Received email ID"),
+    output: str = typer.Option(..., "--output", help="New .eml file to write"),
+):
+    """Writes the retained original email, including its attachments, to a new .eml file."""
+    from .commands.email_commands import _require_auth
+    from ..useful_tools.email_attachments import download_raw_email
+    _require_auth()
+    print(download_raw_email(email_id, output))
 
 
 sent_app = _typer_app(
@@ -1981,6 +2067,7 @@ def email_mark_unread(email_ids: List[str] = typer.Argument(...,help="Message ID
 def email_reply(
     email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
     message: str = typer.Argument(...,help="Your plain-text reply"),
+    attach: Optional[list[str]] = typer.Option(None,"--attach",help="Attach a local file; repeat for more files"),
     from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
     idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
     max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this reply; 0 uses included sends only'),
@@ -1988,7 +2075,8 @@ def email_reply(
     """Sends a reply immediately with a Re: subject and quoted original. Does not add threading headers."""
     from .commands.email_workflows import handle_email_reply
     handle_email_reply(email_id,message,from_address=from_address,idempotency_key=idempotency_key,
-        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
+        **({'attachments':attach} if attach else {}))
 
 
 @email_app.command("forward", epilog='Example:  co email forward 3 you@example.com "For your review."')
@@ -1996,14 +2084,18 @@ def email_forward(
     email_id: str = typer.Argument(...,help="Received message ID from co email inbox"),
     to: str = typer.Argument(...,help="Recipient address"),
     message: str = typer.Argument('',help="Optional note above the forwarded message"),
+    attach: Optional[list[str]] = typer.Option(None,"--attach",help="Attach a local file; repeat for more files"),
     from_address: Optional[str] = typer.Option(None,"--from",help="Owned or granted sender address"),
     idempotency_key: Optional[str] = typer.Option(None,"--idempotency-key",help="Reuse this key after a failed send"),
     max_cost: str = typer.Option('0','--max-cost',help='Maximum USD fee for this forward; 0 uses included sends only'),
+    without_attachments: bool = typer.Option(False,'--without-attachments',help='Omit the original attachments'),
 ):
-    """Sends the original message and your note to another address immediately. Attachments are not included."""
+    """Sends the original message and your note to another address immediately. Includes the original attachments."""
     from .commands.email_workflows import handle_email_reply
     handle_email_reply(email_id,message,to=to,from_address=from_address,idempotency_key=idempotency_key,
-        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}))
+        **({'max_cost_usd':max_cost} if max_cost not in ('0','0.0') else {}),
+        **({'attachments':attach} if attach else {}),
+        **({'include_attachments':False} if without_attachments else {}))
 
 
 @email_app.command('status',epilog='Example:  co email status <send-id>  |  co email status <send-id> --json')
@@ -2492,8 +2584,26 @@ app.add_typer(_people_verbs(_inbox_group("feishu", "Feishu bot as an inbox: list
 app.add_typer(_people_verbs(_inbox_group("lark", "Lark (global Feishu) bot as an inbox: listen, receive, send, reply, and find who to send to (lookup, groups, contacts). Sends as your bot."), "lark"), name="lark")
 # Discord too: its Gateway client is `websockets`, already a core dependency.
 # Experimental: ported in #1674 and tested against fakes only, never a live Gateway.
-app.add_typer(_inbox_group("discord", "Experimental: Discord bot as an inbox: listen, receive, send, reply. Sends as your bot."), name="discord",
-              short_help="Experimental: Discord bot as an inbox: listen, receive, send, reply.")
+# `link` (experimental) makes every verb act as the owner's own account instead.
+_discord_app = _inbox_group(
+    "discord", "Experimental: Discord as an inbox: listen, receive, send, reply. Sends as your bot, "
+               "or as your own account after co discord link (against Discord's terms; try a throwaway account first).")
+
+
+@_discord_app.command("link", epilog="Example:  co discord link --yes  |  co discord link --token --yes  |  "
+                                     "pbpaste | co discord link --token --yes")
+def _discord_link(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Accept the terms-of-service warning without the prompt"),
+    token: bool = typer.Option(False, "--token",
+                               help="Paste a token instead of scanning a QR: hidden input, or stdin when piped"),
+):
+    """Experimental: link your own Discord account, so listen, receive, send and reply act as you. Shows a QR for the Discord phone app. Writes the token to ~/.co/inbox/discord/user-session.json (mode 0600). Automating a user account is against Discord's terms and can get it limited or terminated: try a throwaway account first."""
+    from .commands.discord_commands import handle_link
+    handle_link(yes=yes, token=token)
+
+
+app.add_typer(_discord_app, name="discord",
+              short_help="Experimental: Discord as an inbox, as your bot or your own account.")
 # Slack over Socket Mode: the same outbound-WebSocket shape as Discord, the same
 # dependency. Experimental for 1.8.9: tested against fakes, never a live workspace.
 # Beside the inbox, four read verbs on Slack's Web API (#2051), for what was said
@@ -3146,6 +3256,9 @@ app.add_typer(canny_app, name="canny")
 # Asana: our own commands on Asana's REST API, with ASANA_ACCESS_TOKEN.
 from .commands.asana_commands import asana_app
 app.add_typer(asana_app, name="asana")
+# Notion: read-only commands on Notion's REST API, with NOTION_API_KEY.
+from .commands.notion_commands import notion_app
+app.add_typer(notion_app, name="notion")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
@@ -3153,10 +3266,14 @@ app.add_typer(mcp_app, name="mcp")
 
 # Obsidian: local Markdown notes with explicit folder selection.
 obsidian_app = _typer_app(
-    help="Browse Obsidian vaults and list, read, or search Markdown notes. Read-only.\n\n"
+    help="Browse Obsidian vaults, find changed notes, and read or search selected notes. "
+         "Preview changes before creating or appending to notes.\n\n"
          "Run co obsidian on its own to list all registered vaults, including unavailable ones. "
-         "The list is read-only. If a vault is available, the output suggests a command to browse it. "
+         "If a vault is available, the output suggests a command to browse it. "
          "Use --folder to choose where to look for notes.\n\n"
+         "Writes: Numbered lists save row numbers outside the vault for 15 minutes. "
+         "JSON lists do not save row numbers. "
+         "create and append save a note only with --yes --expect from a preview.\n\n"
          "All Obsidian commands work offline.\n\n"
          "Exit 0 means the list loaded, even if it is empty. "
          "Exit 1 means the list could not be read or its row numbers could not be saved. "
@@ -3166,6 +3283,59 @@ obsidian_app = _typer_app(
     invoke_without_command=True,
 )
 app.add_typer(obsidian_app, name="obsidian")
+
+
+@obsidian_app.command("changes", epilog="Example:  co obsidian changes --since 2026-11-20T00:00:00Z --folder Course --json")
+def _obsidian_changes(
+    since: str = typer.Option(..., "--since", help="List notes modified since this ISO date and time, including its timezone."),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path; required when several vaults are available."),
+    folders: List[str] = typer.Option(..., "--folder", help="Selected vault-relative folder path; repeat for several folders. Use . only for the whole vault."),
+    json_output: bool = typer.Option(False, "--json", help="Print since, until and items as JSON; send the next command to stderr."),
+):
+    """List notes changed in selected folders, oldest first. Read-only.
+
+    Checks filenames and modification times without opening note bodies.
+    Writes no files or saved row numbers. Each item has an ID, title, time,
+    path, folder and link. Use its short path or ID with show and the same scope.
+
+    --since needs a timezone and cannot be in the future. The returned until
+    is the time this call started; use it as the next --since after processing
+    the result. A note at the boundary can appear again. Deleted notes are
+    absent; changes that preserve the file's modification time may be missed.
+
+    Exit 0 means the list is complete, possibly empty. Exit 1 means a file or
+    folder could not be checked; retry after checking access. Exit 2 means an
+    argument or scope is invalid. Errors go to stderr without partial JSON.
+    """
+    from .commands.obsidian_commands import handle_obsidian_changes
+    handle_obsidian_changes(since, vault=vault, folders=folders, json_output=json_output)
+
+
+@obsidian_app.command("show", epilog="Example:  co obsidian show Course/Note.md --folder Course\n\n"
+                                   "Example:  co obsidian show Course/Note.md --folder Course --json")
+def _obsidian_show(
+    identifier: str = typer.Argument(..., help="Path listed by changes, such as Course/Note.md, or a note ID."),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path; required when several vaults are available."),
+    folders: List[str] = typer.Option(..., "--folder", help="Allowed vault-relative folder path; repeat for several folders. The ID does not grant access."),
+    json_output: bool = typer.Option(False, "--json", help="Print id, title, text, author, time, link, path, folder, properties, tags and links."),
+):
+    """Read one current Obsidian note. Read-only.
+
+    After co obsidian changes, copy the listed path, such as Course/Note.md.
+    Use the same vault and folders. Paths start at the vault root. You can
+    also paste the note ID from changes. For a citation, omit its obsidian:
+    prefix. Start a path with ./ if it starts with a dash or looks like an ID
+    or citation.
+
+    Reads only the selected Markdown file and saves nothing. Plain output is
+    the original Markdown. Use --json for its text, tags, properties and links.
+    It does not open linked notes or attachments. Hints and errors go to stderr.
+
+    Exit 0 means success. Exit 1 means the note could not be read or parsed.
+    Exit 2 means the path, ID or scope was invalid.
+    """
+    from .commands.obsidian_commands import handle_obsidian_show
+    handle_obsidian_show(identifier, vault=vault, folders=folders, json_output=json_output)
 
 
 @obsidian_app.callback(invoke_without_command=True)
@@ -3182,11 +3352,14 @@ def _obsidian_vaults(
         False, "--json", help="Print all registered vaults as JSON and send the suggested next command to stderr."
     ),
 ):
-    """List numbered vaults with their paths, availability and open status. Read-only.
+    """List registered vaults with their paths, availability and open status without changing notes.
 
-    The list checks which vault folders exist without opening notes. A closed
-    vault can still be read. If a vault is available, the output suggests a
-    command to list its folders.
+    Reads the vault registry and checks which vault folders exist without
+    opening notes. Writes temporary row numbers and vault paths outside the
+    vault when showing a numbered list. The numbers expire after 15 minutes.
+    --json does not save row numbers.
+    A closed vault can still be read. If a vault is available, the output
+    suggests a command to list its folders.
     Use a number from the latest list, for example co obsidian ls --vault 1.
     The number works for 15 minutes. A unique vault name or path also works.
 
@@ -3244,8 +3417,8 @@ def _obsidian_read(
 ):
     """Read a note by row number, path or exact filename title. Read-only.
 
-    Use a note number from ls with --folder, or from search.
-    Numbers from a folder list do not select notes. Note rows last 15 minutes.
+    Use a row number from a note list (ls --folder or search), not a folder list.
+    Note rows last 15 minutes.
     If the list suggests a read command with --listing, copy it to use those
     same note numbers even after you list or search again.
     You can read a row without giving its vault or folders again. If you
@@ -3255,7 +3428,8 @@ def _obsidian_read(
 
     The terminal shows formatted Markdown. Use --raw for the original text
     or --json for the full note record. Piped output is raw by default.
-    The suggested search command goes to stderr, so it stays out of the note text.
+    Follow-up command hints are sent to standard error so they stay separate
+    from the note text.
 
     Exit 0 means the note was read.
     Exit 1 means the note could not be found or read. Use its path if several
@@ -3295,6 +3469,86 @@ def _obsidian_search(
     """
     from .commands.obsidian_commands import handle_obsidian_search
     handle_obsidian_search(query, vault=vault, folders=folders, last=last, ids=ids, json_output=json_output)
+
+
+@obsidian_app.command("create", epilog="Example:\n\n"
+                                      "co obsidian create Lab/plan.md --folder Lab --content Draft")
+def _obsidian_create(
+    note_path: str = typer.Argument(..., help="Vault-relative .md path; parent folder must already exist"),
+    content: str = typer.Option(..., "--content", help="Exact UTF-8 text; '-' reads standard input"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Registered vault name or path; omit only when one vault is available"),
+    folders: List[str] = typer.Option(..., "--folder", help="Vault-relative folder, repeat to select several; '.' selects the whole vault"),
+    yes: bool = typer.Option(False, "--yes", help="Create with --expect from a preview; otherwise preview without writing"),
+    expect: Optional[str] = typer.Option(None, "--expect", help="Required with --yes: unchanged confirmation hash from the preview"),
+    json_output: bool = typer.Option(False, "--json", help="Print the preview or operation result as JSON; Next goes to stderr"),
+):
+    """Create a Markdown note in an existing folder. It previews until --yes --expect. Writes one note.
+
+    The path is relative to the vault and must be inside the selected folders.
+    An existing note stays as it is. Choose a folder that already exists.
+    Saving notes is only supported on macOS and Linux.
+    The command rejects paths in .obsidian, .trash and .git and paths through
+    symbolic links.
+    You can create an empty note. The command works offline.
+
+    --yes requires --expect from a preview; neither flag alone writes.
+    The preview shows a command under Next to save the note. Its --expect
+    value checks that the path, folders and text match the preview. If you
+    used --content -, pipe the same text into the command again.
+    --content - requires a pipe; it never waits for interactive typing.
+
+    Exit 0 means the preview or write succeeded. Use the suggested read
+    command to check a saved note.
+    Exit 1 means the file already exists, a file or folder could not be
+    opened or written, or the preview no longer matches. See the error
+    message. If anything changed since the preview, run it again.
+    Exit 2 means an argument or path is invalid. Check this help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_write
+    handle_obsidian_write("create", note_path, content, vault=vault, folders=folders,
+                          yes=yes, expect=expect, json_output=json_output)
+
+
+@obsidian_app.command("append", epilog='Example:\n\nco obsidian ls --vault Personal --folder Course\n\n'
+                                      'Example:  co obsidian append 1 --content "Review complete"')
+def _obsidian_append(
+    note_path: str = typer.Argument(..., help="Note row number for a preview, or a vault-relative path"),
+    content: str = typer.Option(..., "--content", help="Exact UTF-8 text to append; '-' reads standard input"),
+    vault: Optional[str] = typer.Option(None, "--vault", help="Vault name or path; omit for a numbered row or when one vault is available"),
+    folders: List[str] = typer.Option(None, "--folder", help="Vault-relative folder, required for a note path; repeat to select several; '.' selects the whole vault"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Use the rows from a specific ls or search list (lasts 15 minutes)"),
+    yes: bool = typer.Option(False, "--yes", help="Write to a note path. For a row, preview and run the command shown after Next"),
+    expect: Optional[str] = typer.Option(None, "--expect", help="Required with --yes: unchanged confirmation hash from the preview"),
+    json_output: bool = typer.Option(False, "--json", help="Print the preview or operation result as JSON; Next goes to stderr"),
+):
+    """Append to an existing Markdown note. It previews until --yes --expect. Writes one note.
+
+    Pick a note number such as 1 from ls with --folder, or from
+    search. The list supplies the vault and folders for the preview.
+    Note rows last 15 minutes. Use --listing to choose a specific list.
+
+    Saving changes is only supported on macOS and Linux.
+    Keeps the original text and frontmatter. Adds a line break if needed,
+    using CRLF if present, otherwise LF. Empty input changes nothing.
+    Append replaces the file, keeping permission bits but not ownership,
+    extended attributes or ACLs. Pause other editors or sync tools while
+    confirming, because they can still write to the file and cause lost changes.
+
+    --yes requires --expect from a preview; neither flag alone writes.
+    The preview shows a command under Next to save the change. Its --expect
+    value checks that the note, folders and text match the preview. If you
+    used --content -, pipe the same text into the command again.
+    --content - requires a pipe; it never waits for interactive typing.
+
+    Exit 0 means the preview or write succeeded. Read the note to verify a
+    write or check an interrupted append.
+    Exit 1 means the note is missing, the write failed, or the preview no
+    longer matches. See the error message and preview again if needed.
+    Exit 2 means an argument or path is invalid. Check this help.
+    """
+    from .commands.obsidian_commands import handle_obsidian_write
+    handle_obsidian_write("append", note_path, content, vault=vault, folders=folders or (),
+                          yes=yes, expect=expect, json_output=json_output, listing=listing)
 
 
 # OneNote (#1887): the notebooks `co auth microsoft` grants since 1.8.9.

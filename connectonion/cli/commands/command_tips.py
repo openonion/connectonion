@@ -216,6 +216,7 @@ NEXT = {
     "co discord chats": HANDLER,
     "co discord log": "co discord ls",
     "co discord consume": "co discord ls",
+    "co discord link": HANDLER,  # names listen, or listen --restart when one runs
     "co slack listen": "co slack receive --timeout 0",
     "co slack receive": "co slack reply <message-id>",
     "co slack send": "co slack receive --timeout 0",
@@ -244,6 +245,10 @@ NEXT = {
     "co email forward": "See the forwarded message:  co email sent",
     "co email tier": "See owned addresses:  co email addresses",
     "co email status": "Inspect sent mail:  co email sent",
+    "co email attachments": "Download a file:  co email download <email-id> <attachment-id> --to ./attachments",
+    "co email download": "Read the source message:  co email read <email-id>",
+    "co email attachment-text": "Inspect source files:  co email attachments <email-id>",
+    "co email raw": "Inspect attached files:  co email attachments <email-id>",
     "co email send": HANDLER,
     "co email inbox": HANDLER,
     "co email read": 'Reply from this address:  co email send <sender> "<subject>" "<body>"',
@@ -285,6 +290,10 @@ NEXT = {
     "co obsidian ls": HANDLER,
     "co obsidian read": HANDLER,
     "co obsidian search": HANDLER,
+    "co obsidian changes": HANDLER,
+    "co obsidian show": HANDLER,
+    "co obsidian create": HANDLER,
+    "co obsidian append": HANDLER,
     "co onenote ls": HANDLER,        # each handler names the next onenote command (#1887)
     "co onenote pages": HANDLER,
     "co onenote read": HANDLER,
@@ -314,6 +323,8 @@ NEXT = {
     "co asana tasks": HANDLER,
     "co asana task": HANDLER,         # the task's stories
     "co asana stories": HANDLER,
+    "co asana changes": HANDLER,      # the first changed task, or where to look when none changed
+    "co asana show": HANDLER,         # the task's stories
     "co asana update": HANDLER,       # preview → the same change with --yes; done → co asana task
     "co asana comment": HANDLER,
     # Every co rem command already ends by naming one next command, chosen from what
@@ -389,6 +400,14 @@ NEXT = {
     "co canny status": HANDLER,
     "co canny comment": HANDLER,
     "co canny changelog create": HANDLER,
+    # co notion: each handler names its next command from what Notion returned
+    # (the first row's id, the --cursor command for the next page).
+    "co notion check": HANDLER,
+    "co notion pages": HANDLER,
+    "co notion search": HANDLER,
+    "co notion page": HANDLER,
+    "co notion db": HANDLER,
+    "co notion columns": HANDLER,
     "co youtube *": HANDLER,
     "co tiktok *": HANDLER,
 }

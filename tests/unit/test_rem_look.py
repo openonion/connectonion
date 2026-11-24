@@ -42,7 +42,7 @@ def test_a_command_is_styled_as_far_as_it_goes_and_no_further():
 
 def test_a_help_page_marks_its_sections_and_its_command_column():
     markup = rem_look.page(pages()["co rem"])
-    for heading in ("Build (once)", "Read", "Keep it current", "Settings", "Options (before the command):"):
+    for heading in ("Build", "Read", "Keep it current", "Settings", "Options (before the command):"):
         assert f"[co.heading]{heading}[/co.heading]" in markup
     assert "  [co.command]init[/co.command]" in markup and "[co.command]co rem init[/co.command]" in markup
 

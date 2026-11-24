@@ -16,6 +16,7 @@ the system prompt (see ClaudeRestriction).
 every conversation, so neither the frontend nor an agent.py changes when it does.
 """
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -145,6 +146,9 @@ class NativeClaudeHostAgent(_NativeHostAgent):
                  restriction: ClaudeRestriction | None = None):
         plugin = ClaudeCodePlugin(workspace=workspace, use_host_permissions=True, restriction=restriction)
         super().__init__('Claude Code', plugin, co_dir=co_dir, model=model, label=_label('claude-code', model))
+        # What the Control Center lists under Capabilities: these skills are the
+        # agent's real capability, and none of them is a published one.
+        self.restriction = restriction
 
     def _answer_text(self, answer: dict) -> str | None:
         if answer.get('error') or answer.get('status') != 'completed' or not isinstance(answer.get('result'), str):
@@ -182,7 +186,7 @@ def native_provider(model: str) -> tuple[str, str] | None:
     return provider, native_model.strip()
 
 
-RESTRICTED_KEYS = ('allowed_tools', 'skills', 'system_prompt')
+RESTRICTED_KEYS = ('allowed_tools', 'skills', 'system_prompt', 'env')
 
 
 def configured_restriction(co_dir: Path) -> ClaudeRestriction | None:
@@ -193,7 +197,19 @@ def configured_restriction(co_dir: Path) -> ClaudeRestriction | None:
     if not isinstance(block, dict) or set(block) - set(RESTRICTED_KEYS):
         raise ValueError(f"restricted: in {Path(co_dir) / 'host.yaml'} takes only {', '.join(RESTRICTED_KEYS)}")
     return ClaudeRestriction(allowed_tools=_names(block, 'allowed_tools'), skills=_names(block, 'skills'),
-                             system_prompt=_text(block, 'system_prompt'))
+                             system_prompt=_text(block, 'system_prompt'), env=_env_names(block))
+
+
+def _env_names(block: dict) -> tuple[str, ...]:
+    """Names of the Host's variables its tools need; values stay in the Host's environment, never in host.yaml."""
+    names = _names(block, 'env') if isinstance(block.get('env'), list) else None
+    if names is None and block.get('env'):
+        raise ValueError('restricted: env must be a list of variable names, e.g. env: [FRESHDESK_API_KEY]')
+    for name in names or ():
+        if not re.fullmatch(r'[A-Z_][A-Z0-9_]*', name) or name.startswith('CO_CALLER_'):
+            raise ValueError(f'restricted: env takes UPPER_CASE variable names; {name!r} is not one '
+                             '(CO_CALLER_ADDRESS and CO_CALLER_TRUST are set by the Host)')
+    return names or ()
 
 
 def _names(block: dict, key: str) -> tuple[str, ...]:

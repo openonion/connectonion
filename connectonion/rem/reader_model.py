@@ -21,6 +21,7 @@ CITATION = re.compile(r"\[(W?\d{1,3})\]")
 SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?)(?=[ \t]+[—–][ \t]+|[ \t]*$)", re.I | re.M)
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
+SENSITIVE = re.compile(r"[\[［]sensitive[\]］]", re.I)
 WIKILINK = re.compile(r"\[\[((?:orgs|people|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 
 
@@ -71,17 +72,77 @@ def _org_roster(org: dict) -> set[str]:
     return set(notebook_links(org['path'], '\n'.join(lines)))
 
 
+def _parent_chain(org: dict, orgs: dict) -> set[str]:
+    """The org and its cited Parent chain: a course's roster may place a person whose Company is its university."""
+    chain, path = set(), org['path']
+    while path in orgs and path not in chain:
+        chain.add(path)
+        parents = [link for value in orgs[path]['facts'].get('Parent', []) if value['citations']
+                   for link in notebook_links(path, value['value']) if link.startswith('orgs/')]
+        path = parents[0] if len(parents) == 1 else ''
+    return chain
+
+
+# Public mail hosts say nothing about where someone works.
+FREE_MAIL = frozenset({"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com",
+                       "icloud.com", "me.com", "mac.com", "yahoo.com", "qq.com", "163.com", "126.com",
+                       "foxmail.com", "proton.me", "protonmail.com", "aol.com"})
+
+
+def _mail_domains(row: dict) -> set[str]:
+    """Work domains from the page's own Email fact, never from addresses quoted in its body."""
+    values = ' '.join(fact['value'] for fact in row.get('facts', {}).get('Email', []))
+    return {domain.lower() for domain in re.findall(r'@([A-Za-z0-9.-]+\.[A-Za-z]{2,})', values)} - FREE_MAIL
+
+
+def _fold(text: str) -> str:
+    return re.sub(r'[\W_]+', '', text).casefold()
+
+
+def _owner_orgs(owner_row: dict, orgs: dict) -> set[str]:
+    """The owner's own organisations. On real notebooks the owner page's Company is usually plain text
+    ("Quillmoor Labs (co-founder)"), not a link, and no org says Kind: own_company (#3397 reopened), so an
+    org whose title appears in that text counts as well as a linked one."""
+    found = set(owner_row.get('organisations', [])) | {path for path, org in orgs.items() if org.get('kind') == 'own_company'}
+    company = ' '.join(fact['value'] for fact in owner_row.get('facts', {}).get('Company', [])
+                       if not PRIVATE.search(fact['value']))
+    plain = _fold(company)
+    return found | {path for path, org in orgs.items() if len(_fold(org['title'])) >= 3 and _fold(org['title']) in plain}
+
+
 def organisation_members(records: list[dict], owner: str) -> None:
-    """Only listed people and explicit affiliations populate the org roster."""
+    """Only listed people and explicit affiliations populate the org roster.
+
+    A roster is the org page's claim (someone on its threads). A person whose OWN page names a
+    different company is not drawn into this org by it (#3397: the owner's co-founder sat inside a
+    client's tree because she was on the thread). The owner's own people named there are the org's
+    `your_side`: the contacts on the owner's side of the relationship.
+
+    A person whose page names no company but whose own Email is at the owner's work domain is the
+    owner's teammate: real teammates' pages rarely carry a Company line (#3397 reopened).
+    """
     people = [row for row in records if row['category'] == 'people' and row['path'] != owner
               and not (row.get('service') or row.get('needs_review'))]
-    for org in records:
-        if org['category'] != 'orgs':
-            continue
-        roster = _org_roster(org)
+    orgs = {row['path']: row for row in records if row['category'] == 'orgs'}
+    owner_row = next((row for row in records if row['path'] == owner), {})
+    owner_orgs = _owner_orgs(owner_row, orgs) if owner_row else set()
+    owner_domains = _mail_domains(owner_row) if owner_row else set()
+    for person in people:
+        if owner_orgs and owner_domains and not person['organisations'] and _mail_domains(person) & owner_domains:
+            person['organisations'] = sorted(owner_orgs)
+    own = {person['path']: set(person['organisations']) for person in people}
+    for org in orgs.values():
+        roster, chain = _org_roster(org), _parent_chain(org, orgs)
+        org['your_side'] = []
         for person in people:
-            if person['path'] in roster and org['path'] not in person['organisations']:
+            if person['path'] not in roster or org['path'] in person['organisations']:
+                continue
+            elsewhere = own[person['path']] and not own[person['path']] & chain
+            if elsewhere and own[person['path']] & owner_orgs and not chain & owner_orgs:
+                org['your_side'].append(person['path'])
+            elif not elsewhere:
                 person['organisations'].append(org['path'])
+    for org in orgs.values():
         linked = [row for row in records if org['path'] in row.get('organisations', [])
                   and not (row.get('service') or row.get('needs_review')) and row['path'] != owner]
         for category in ('people', 'projects'):
@@ -151,8 +212,14 @@ def _relation(origin: str, target: str, line: str, kind: str) -> dict:
     basis = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
     # The citation goes with the space before it: "at Fernhill [1]." reads "at Fernhill.", never "at Fernhill ." (rc36).
     basis = _clip(re.sub(r"[ \t]*" + CITATION.pattern, "", basis).lstrip("- ").strip())
-    return {"path": target, "kind": kind, "basis": basis,
-            "private": bool(PRIVATE.search(line)), "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
+    return {"path": target, "kind": kind, "basis": basis, "private": bool(PRIVATE.search(line)), "level": _level(line),
+            "sources": list(dict.fromkeys(CITATION.findall(line)))[:4], "via": origin}
+
+
+def _level(text: str) -> str:
+    """The strongest privacy mark on a line: the reader curtains a relation reason by it (#3425). The basis can be
+    clipped before its mark, so the level is read from the whole line, not from what the card shows."""
+    return "sensitive" if SENSITIVE.search(text) else "personal" if PRIVATE.search(text) else ""
 
 
 def _forward_relations(origin: str, text: str, paths: dict, names: list[tuple[re.Pattern[str], str, str]]) -> dict:
@@ -226,11 +293,14 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
     # Keep their explicit links, but avoid scanning every name in every stub.
     forward = {path: _forward_relations(path, row["text"], paths, unique if row.get("written", True) else [])
                for path, row in paths.items()}
-    private_topics = {path for path, row in paths.items() if row['category'] == 'knowledge'
-                      and PRIVATE.search(row['text'].split('\n', 1)[0])}
+    private_topics = {path: _level(row['text'].split('\n', 1)[0]) for path, row in paths.items()
+                      if row['category'] == 'knowledge' and PRIVATE.search(row['text'].split('\n', 1)[0])}
     for origin, rows in forward.items():
         for target, relation in rows.items():
             relation['private'] |= origin in private_topics or target in private_topics
+            topic = private_topics.get(origin) or private_topics.get(target) or ""
+            if topic == "sensitive" or (topic and not relation.get('level')):
+                relation['level'] = topic
     found = {path: dict(rows) for path, rows in forward.items()}
     # Finish every page's own links before adding incoming navigation. Otherwise
     # a reverse hint can replace a later page's explicit link and its provenance.

@@ -93,6 +93,11 @@ def _session_ended(headers: dict) -> str:
             f'<button type="button" onclick="location.reload()">{again}</button></main></body></html>')
 
 
+def _graph_3d_url() -> str:
+    from ...rem.reader import GRAPH_3D_URL
+    return GRAPH_3D_URL
+
+
 def _same(given: str, token: str) -> bool:
     return bool(given) and hmac.compare_digest(given.encode(), token.encode())
 
@@ -125,6 +130,11 @@ async def handle_rem_http(scope, receive, send, routes):
         name = "live.html" if scope["path"] == "/rem" else "data.json"
         page, _ = await asyncio.to_thread(cached_page, root, name)
         await _reply(send, 200, page, "text/html" if name == "live.html" else "application/json")
+    elif scope["method"] == "GET" and scope["path"] == _graph_3d_url():
+        # The 3D graph's engine (#3309), pinned and vendored: only the live reader asks for it, the first time
+        # the knowledge graph opens in 3D. Signed in like every other reader path.
+        from ...rem.reader import GRAPH_3D
+        await _reply(send, 200, await asyncio.to_thread(GRAPH_3D.read_text, encoding="utf-8"), "text/javascript")
     elif scope["method"] == "GET" and scope["path"] == "/rem/version":
         from ...rem.reader import latest
         await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
@@ -137,8 +147,10 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/thread":
         from ...rem.threads import listing
         await _reply(send, 200, json.dumps(await asyncio.to_thread(listing, root)), "application/json")
-    elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import"):
+    elif scope["method"] == "POST" and scope["path"] in ("/rem/keys/add", "/rem/keys/reveal", "/rem/keys/import", "/rem/keys/env"):
         await _keys(scope, receive, send, root, headers)
+    elif scope["method"] == "POST" and scope["path"] == "/rem/source-fix":
+        await _source_fix(receive, send, headers)
     elif scope["method"] == "POST" and scope["path"] in ("/rem/draft", "/rem/thread", "/rem/translation-request", "/rem/translate-all", "/rem/language", "/rem/approve", "/rem/task", "/rem/talk", "/rem/review", "/rem/sender", "/rem/person", "/rem/investigate", "/rem/direct-send"):
         await _action(scope, receive, send, root, headers)
     else:
@@ -291,10 +303,12 @@ async def _action(scope, receive, send, root, headers):
         operation = lambda: {"ignored": threads.ignore_sender(root, body["address"], ignored=body["ignored"])}
     elif scope["path"] == "/rem/person":
         from ...rem.files import EMAIL
-        # 不是人 / 是人 for one address, or null to let the rules decide again; never a domain.
+        # 不是人 / 是人 for one address or chat handle (a WeChat id, #3339), or null to let the rules decide again;
+        # never a domain or a pattern.
+        from ...rem.files import person_handle
         if (not isinstance(body.get("address"), str) or len(body["address"]) > 254
-                or not EMAIL.fullmatch(body["address"]) or body.get("person") not in (True, False, None)):
-            await _reply(send, 400, json.dumps({"error": "Expected one mail address and person true, false or null"}), "application/json")
+                or not person_handle(body["address"]) or body.get("person") not in (True, False, None)):
+            await _reply(send, 400, json.dumps({"error": "Expected one mail address or chat handle and person true, false or null"}), "application/json")
             return
         operation = lambda: {"marks": threads.mark_person(root, body["address"], person=body["person"])}
     elif scope["path"] == "/rem/direct-send":
@@ -350,6 +364,30 @@ async def _action(scope, receive, send, root, headers):
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 
+async def _source_fix(receive, send, headers):
+    """Today's 补全微信 button (#3353): start a fix that needs the owner in his own Terminal, or hand back the command.
+
+    Like every /rem route only this computer reaches it, with the page's cookie. The body names a fix kind from a
+    fixed list (rem.coverage.FIX_COMMANDS), never a command, so nothing the page sends is ever run."""
+    from ...rem.coverage import open_fix
+    from ...rem.files import RemError
+    if headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        await _reply(send, 415, "application/json required")
+        return
+    try:
+        body = json.loads(await read_body(receive, 1024) or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        await _reply(send, 400, json.dumps({"error": "Invalid JSON"}), "application/json")
+        return
+    kind = body.get("fix") if isinstance(body, dict) and isinstance(body.get("fix"), str) else ""
+    try:
+        result = await asyncio.to_thread(open_fix, kind)
+    except RemError as error:
+        await _reply(send, 400, json.dumps({"error": str(error)}), "application/json")
+        return
+    await _reply(send, 200, json.dumps(result), "application/json")
+
+
 async def _keys(scope, receive, send, root, headers):
     """Keys (#3137). Like every /rem route, only this computer reaches it (``_local``) with the page's cookie, so a
     relayed or remote reader never can. A secret travels only in the reveal's reply and the add's body; neither is
@@ -369,16 +407,30 @@ async def _keys(scope, receive, send, root, headers):
     operations = {"add": lambda: {"page": keys.add(root, text("service"), text("account"), text("secret"),
                                                    purpose=text("purpose"), link=text("link"))},
                   "reveal": lambda: {"secret": keys.reveal(root, text("page"))},
-                  "import": lambda: keys.import_csv(root, text("csv"))}
+                  "import": _key_import(keys, root, text("source"), text("csv")),
+                  # co's own credentials: names and where the file is, never a value (#3305).
+                  "env": lambda: keys.env_names()}
     try:
         result = await asyncio.to_thread(operations[action])
     except RemError as error:
-        await _reply(send, 409, json.dumps({"error": str(error)}), "application/json")
+        # The reason (no_gui, denied, timeout, ...) is what the reader turns into what to do (#3305). Not "code":
+        # the reader's hostPost already uses that name for the HTTP status.
+        reason = {"reason": error.code} if getattr(error, "code", "") else {}
+        await _reply(send, 409, json.dumps({"error": str(error), **reason}), "application/json")
         return
-    if action != "reveal":
+    if action not in ("reveal", "env"):
         from ...rem.reader import owner_changed
         await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result), "application/json")  # SECURITY_HEADERS carry no-store
+
+
+def _key_import(keys, root, source: str, csv_text: str):
+    """The import one /rem/keys/import body asks for: a browser, the macOS login keychain, or a CSV export."""
+    if source == "keychain":
+        return lambda: keys.import_keychain(root)
+    if source:
+        return lambda: keys.import_browser(root, source)
+    return lambda: keys.import_csv(root, csv_text)
 
 
 def _talk(root, body):

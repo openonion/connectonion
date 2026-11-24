@@ -239,6 +239,7 @@ restricted:
     - "Bash(python tool.py:*)"   # this command, with any arguments
   skills: [quote]                # .claude/skills/<name>/SKILL.md in the project; default: none
   system_prompt: You price cleaning jobs for our customers.   # added to Claude Code's own
+  env: [FRESHDESK_API_KEY, FRESHDESK_DOMAIN]   # Host variables the tools need; default: none
 ```
 
 Each turn then runs the claude CLI with:
@@ -254,7 +255,13 @@ Each turn then runs the claude CLI with:
 - the project's settings only (`--setting-sources project`: its `CLAUDE.md`,
   `.claude/settings.json` and skills; not yours from `~/.claude`), and no MCP
   server (`--strict-mcp-config`);
-- the caller's verified address and trust level in the system prompt.
+- the caller's verified address and trust level in the system prompt, and as
+  `CO_CALLER_ADDRESS` and `CO_CALLER_TRUST` in the environment, so a script can
+  check the caller's role itself;
+- of your own environment, only the variables `env:` names. Write names, not
+  values: the values come from the Host's environment (its shell or `.env`), so
+  a secret never sits in host.yaml. Everything else the claude CLI needs (PATH,
+  its login) is passed as before.
 
 Rules take a tool name (`Read`) or a command rule (`Bash(<command>:*)`,
 `Bash(<command> *)`, `Bash(<exact command>)`; `PowerShell(...)` the same).

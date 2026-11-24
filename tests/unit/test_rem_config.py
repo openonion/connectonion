@@ -58,7 +58,7 @@ def test_a_new_notebook_runs_on_codex():
     Claude Code and announced ~460M input tokens on the user's Claude plan."""
     from connectonion.rem.config import default_config
     config = default_config()
-    assert (config["runner"], config["model"]) == ("codex", "gpt-6.1-sol")
+    assert (config["runner"], config["model"]) == ("codex", "gpt-6-luna")
 
 
 def test_a_new_notebook_uses_claude_code_when_codex_cannot_run(tmp_path, monkeypatch):
@@ -186,7 +186,7 @@ def test_old_luna_default_migrates_without_writing_and_explicit_choice_stays(tmp
     old["model"] = "gpt-6-luna"
     saved = yaml.safe_dump(old)
     (tmp_path / "config.yaml").write_text(saved)
-    assert read_config(tmp_path)["model"] == "gpt-6.1-sol"
+    assert read_config(tmp_path)["model"] == "gpt-6-luna"
     assert read_config(tmp_path)["models"]["level1"] == "gpt-6-luna"
     assert (tmp_path / "config.yaml").read_text() == saved
     set_config(tmp_path, ["model", "gpt-6-luna"])

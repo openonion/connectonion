@@ -214,3 +214,32 @@ def test_single_file_round_trip(tmp_path):
 
     assert memory.read_memory("a") == "Memory: a\n\nupdated a"
     assert memory.read_memory("b") == "Memory: b\n\ncontent b"
+
+
+def test_search_memory_invalid_regex(test_memory):
+    """An invalid pattern returns an error message instead of raising."""
+    test_memory.write_memory("alice-notes", "Alice prefers email")
+
+    result = test_memory.search_memory("(unclosed")
+
+    assert "Invalid regex pattern" in result
+    assert "(unclosed" in result
+
+
+def test_search_memory_invalid_regex_single_file(tmp_path):
+    """The single-file path rejects an invalid pattern the same way."""
+    memory = Memory(memory_file=str(tmp_path / "memory.md"))
+    memory.write_memory("alice-notes", "Alice prefers email")
+
+    result = memory.search_memory("[unclosed")
+
+    assert "Invalid regex pattern" in result
+    assert "[unclosed" in result
+
+
+def test_search_memory_recovers_after_invalid_regex(test_memory):
+    """A rejected pattern does not disturb the next search."""
+    test_memory.write_memory("alice-notes", "Alice prefers email")
+
+    assert "Invalid regex pattern" in test_memory.search_memory("*bad")
+    assert "alice-notes" in test_memory.search_memory("email")

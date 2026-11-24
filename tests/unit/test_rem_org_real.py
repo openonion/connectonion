@@ -14,6 +14,8 @@ const el = (tag, attrs = {}, children = []) => ({tag, ...attrs,
 let uiLanguage = 'en';
 const orgT = (text, values={}) => text.replace(/\{(\w+)\}/g, (_,key)=>values[key]);
 const t = orgT;
+const pageName = page => page.title;  // course/team codes: tested in the browser
+const singular = category => ({orgs: 'Organisation', projects: 'Project', knowledge: 'Topic'})[category] || category;
 const orgProse = text => text || null;
 '''
 
@@ -29,7 +31,7 @@ def org_js(names, script):
 
 @pytest.mark.parametrize('summary', PLACEHOLDERS)
 def test_mapped_org_opening_starts_with_known_contacts(summary):
-    result = org_js(['orgOpening', 'orgRelation'], DOM + r'''
+    result = org_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName', 'orgRelation'], DOM + r'''
       const known = () => ({summary: SUMMARY, intro: SUMMARY, kept: [], last: '2026-03-04'});
       const facts = () => ({first: '2025-02-03'}), orgLast = () => '2026-03-04';
       const orgFact = () => '', parseFacts = () => new Map();
@@ -45,7 +47,7 @@ def test_mapped_org_opening_starts_with_known_contacts(summary):
 
 @pytest.mark.parametrize('source', ['org', 'person', 'mail', 'index', 'none'])
 def test_mapped_org_opening_uses_recorded_first_contact_without_history(source):
-    result = org_js(['orgOpening', 'orgFact', 'facts', 'parseFacts', 'topLevelParts', 'rawSection'], DOM + r'''
+    result = org_js(['orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName', 'orgFact', 'facts', 'parseFacts', 'topLevelParts', 'rawSection'], DOM + r'''
       const SOURCE = __SOURCE__, COMMENT = /<!--[\s\S]*?-->/g;
       const FACTS = new Map(), PARSED_FACTS = new Map();
       const org = {path:'orgs/cedar.md', text:'# Cedar Works\n\n## Facts\n- Website: Unknown'};
@@ -75,8 +77,11 @@ def test_mapped_connection_is_just_its_linked_name(summary):
       const byPath = () => unit, orgHidden = () => false;
       console.log(JSON.stringify(orgConnections({r:{path:'orgs/root.md',organisations:[unit.path]}})));
     '''.replace('SUMMARY', json.dumps(summary)))
-    assert result['children'][1]['children'] == [
-        {'tag': 'a', 'href': '#orgs/field.md', 'text': 'Field studio', 'children': []}]
+    # #3397: a connection with no written reason says only how the pages meet, never a placeholder or another page's summary.
+    row = result['children'][1]['children']
+    assert row[0] == {'tag': 'a', 'href': '#orgs/field.md', 'text': 'Field studio', 'children': []}
+    assert row[2]['class'] == 'ov-conn-kind' and row[2]['text'] == 'Organisation · Mentioned on this page'
+    assert summary not in str(row)
 
 
 @pytest.mark.parametrize('summary', PLACEHOLDERS)
@@ -100,9 +105,9 @@ def record_js(script, functions=()):
     page = TEMPLATE.read_text()
     constants = '\n'.join(re.search(r'^const ' + name + r' = .*?;$', page, re.M)[0]
                           for name in ['UNKNOWN_LINE', 'MECHANICAL', 'PLACEHOLDER', 'STAMP', 'COMMENT'])
-    return org_js(['known', 'facts', 'section', 'plainLine', 'rawSection', 'parseFacts', 'topLevelParts',
+    return org_js(['known', 'facts', 'section', 'plainLine', 'pageWords', 'rawSection', 'parseFacts', 'topLevelParts',
                    'swapLanguage', 'orgFact', 'orgRelation', 'firstSentence', 'orgTableRow',
-                   'orgOpening', 'orgConnections', 'orgCoda', 'textCell', 'orgWebsite',
+                   'orgOpening', 'orgPersonLabel', 'addressTitle', 'addressName', 'orgConnections', 'orgCoda', 'textCell', 'orgWebsite',
                    'privatePassages', 'unlabelled', 'mendCuts', 'hasPrivacy', *functions],
                   constants + DOM + r'''
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
@@ -177,7 +182,8 @@ def test_org_summary_paths_reject_placeholders_before_rendering(summary, source,
     assert result['cell']['text'] == '—'
     assert ''.join(result['opening']['children']) == 'You know 0 people here. '
     assert result['coda']['children'][0]['children'] == []
-    assert len(result['connections']['children'][1]['children']) == 1
+    row = result['connections']['children'][1]['children']
+    assert row[0]['tag'] == 'a' and row[2]['class'] == 'ov-conn-kind' and summary not in str(row)
 
 
 @pytest.mark.parametrize('summary', ['Unknown — not verified. The team supports field research.',

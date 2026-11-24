@@ -3,7 +3,7 @@
 from pathlib import Path
 
 EXPECTED_DEFAULTS = {
-    "dashboard",
+    "control-center",
     "topup",
     "install-connectonion",
     "co-browser",
@@ -44,7 +44,7 @@ def test_both_skill_readers_expose_the_same_defaults(tmp_path, monkeypatch):
 def test_default_library_skills_have_one_canonical_body():
     from connectonion.skills_catalog import default_skill_path
 
-    for name in EXPECTED_DEFAULTS - {"dashboard", "topup"}:
+    for name in EXPECTED_DEFAULTS - {"control-center", "topup"}:
         path = default_skill_path(name)
         assert path is not None
         assert "useful_skills" in path.parts

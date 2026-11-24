@@ -36,7 +36,8 @@ LIMIT = 2000
 NO_TOKEN = (
     "DISCORD_BOT_TOKEN is not set. Create an application and a bot at "
     "https://discord.com/developers/applications, turn on the Message Content "
-    "intent under Bot, then put the bot token in ~/.co/keys.env as DISCORD_BOT_TOKEN."
+    "intent under Bot, then put the bot token in ~/.co/keys.env as DISCORD_BOT_TOKEN. "
+    "(To act as your own account instead, experimental: co discord link)"
 )
 
 # Close codes that no reconnect recovers from, with what a person has to do.
@@ -78,6 +79,7 @@ class Discord:
     """One bot, the user's own, from the Discord Developer Portal."""
 
     name = "discord"
+    fatal_closes = FATAL_CLOSES
     unwired = {
         "edit": "Discord has the endpoint for it (PATCH /channels/<chat>/messages/<id>)",
         "delete": "Discord has the endpoint for it (DELETE /channels/<chat>/messages/<id>)",
@@ -129,8 +131,7 @@ class Discord:
         delay = 1.0
         while True:
             try:
-                async with websockets.connect(self._gateway_url(), open_timeout=15,
-                                              close_timeout=5, max_size=1_048_576) as socket:
+                async with self._connect(websockets) as socket:
                     await self._session(socket, inbox, raw=raw)
                 delay = 1.0
             except Reconnect:
@@ -138,7 +139,7 @@ class Discord:
                 delay = 1.0
                 continue
             except GatewayClosed as exc:
-                if exc.code in FATAL_CLOSES:
+                if exc.code in self.fatal_closes:
                     self._stop(inbox, exc.code)
                 if exc.code in _SESSION_GONE:
                     self._forget_session()
@@ -263,7 +264,7 @@ class Discord:
             inbox.log(f"duplicate {message.id} dropped")
 
     def _stop(self, inbox: Inbox, code: int) -> None:
-        reason = FATAL_CLOSES[code]
+        reason = self.fatal_closes[code]
         inbox.record_connection("stopped", reason=f"close {code}")
         inbox.log(f"stopped: gateway close {code}")
         raise ListenerStopped(f"Discord closed the Gateway with {code}. {reason}")
@@ -339,36 +340,50 @@ class Discord:
             raise RuntimeError(f"Discord messages are limited to {LIMIT} characters; got {len(text)}. "
                                f"Nothing was sent. Next: split it and send each part with "
                                f"co discord send {chat} \"<part>\"")
+        return self._post_message(chat, self._message_body(chat, text, reply_to, fresh))
+
+    def _message_body(self, chat: str, text: str, reply_to: Optional[str], fresh: bool) -> dict:
         # No `parse`: nothing in the text pings anyone — not @everyone, not a
         # role — and the person being replied to is not pinged either.
         body = {"content": text, "allowed_mentions": {"parse": [], "replied_user": False}}
         if reply_to:
             body["message_reference"] = {"message_id": reply_to, "channel_id": chat,
                                          "fail_if_not_exists": False}
-            if fresh:
-                body["nonce"] = uuid.uuid4().hex[:25]
-            else:
-                digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-                body["nonce"] = uuid.uuid5(_NONCE_NAMESPACE, f"{reply_to}:{digest}").hex[:25]
+            body["nonce"] = self._nonce(reply_to, text, fresh)
             body["enforce_nonce"] = True
+        return body
+
+    def _nonce(self, reply_to: str, text: str, fresh: bool) -> str:
+        if fresh:
+            return uuid.uuid4().hex[:25]
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+        return uuid.uuid5(_NONCE_NAMESPACE, f"{reply_to}:{digest}").hex[:25]
+
+    def _post_message(self, chat: str, body: dict) -> str:
         retried = False
         while True:
-            try:
-                response = requests.post(f"{API}/channels/{chat}/messages", headers=self._headers(),
-                                         json=body, timeout=15)
-            except requests.RequestException as exc:
-                raise RuntimeError(f"Discord request failed ({type(exc).__name__})") from None
+            response = self._post(f"/channels/{chat}/messages", body)
             if response.status_code == 429 and not retried:
                 retried = True  # honour Discord's own wait once, then report
-                try:
-                    retry_after = min(float(response.json()["retry_after"]), 30.0)
-                except (KeyError, TypeError, ValueError):
-                    retry_after = 1.0
-                time.sleep(retry_after)
+                time.sleep(_retry_after(response))
                 continue
             return str(self._result(response).get("id", ""))
 
+    def _post(self, path: str, body: Optional[dict]):
+        try:
+            return requests.post(f"{API}{path}", headers=self._headers(), json=body, timeout=15)
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Discord request failed ({type(exc).__name__})") from None
+
     # ---- REST -------------------------------------------------------------
+
+    def _connect(self, websockets):
+        return websockets.connect(self._gateway_url(), open_timeout=15,
+                                  close_timeout=5, max_size=1_048_576)
+
+    def acting_as(self) -> str:
+        """Whose name a send goes out under, for `check` and `listen` to say."""
+        return f"the bot {self._me_name}" if self._me_name else "your bot (DISCORD_BOT_TOKEN)"
 
     def _gateway_url(self) -> str:
         base = self._resume_url or GATEWAY
@@ -396,6 +411,13 @@ class Discord:
                 message = message.replace(self.token, "[redacted]")
             raise RuntimeError(f"Discord refused: {message}")
         return result
+
+
+def _retry_after(response) -> float:
+    try:
+        return min(float(response.json()["retry_after"]), 30.0)
+    except (KeyError, TypeError, ValueError):
+        return 1.0
 
 
 def _kind_of(attachment: dict) -> str:

@@ -56,6 +56,7 @@ def deck(groups):
       const groups = ''' + json.dumps(groups) + r''';
       const groupStep = entries => entries[0];
       const threadDraft = entry => entry.draft;
+      const handed = () => false, rowTask = () => null, overdueDays = () => 0;
       console.log(JSON.stringify(deckOrder(groups).map(group => group.r.path)));
     '''
     return _run_reader_js(script)
