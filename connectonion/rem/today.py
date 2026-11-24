@@ -296,8 +296,9 @@ def _queue(root, *, records=None, contexts=None, states=None, as_of=None):
         records = [{'path': path, 'text': book.read(path)} for path in book.list()]
     contexts = contexts or {}
     states = threads.listing(root) if states is None else states
+    from .store_messages import has_message_index
     database = state_path(root, 'rem.db')
-    with (closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) if database.is_file() else nullcontext(None)) as db:
+    with (closing(sqlite3.connect(database.absolute().as_uri() + '?mode=ro', uri=True)) if has_message_index(database) else nullcontext(None)) as db:
         if db is not None:
             db.row_factory = sqlite3.Row
         rows = _entries(root, records, today, contexts, states, db)

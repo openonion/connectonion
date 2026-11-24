@@ -1748,10 +1748,14 @@ pinned to that edge: it comes into view with the draft.
   A prepared reply is shown as the mail it becomes: recipient, subject, the body in
   the thread's language, a gist in your language, and **Why this reply** (who they
   are, what was agreed, what you owe and since when). **Send** replies in the thread
-  from your mailbox; **Write full screen** opens the letter to edit by hand, with
-  that background and the thread beside it, and sends your edited text; **Edit in
-  Gmail/Outlook drafts** creates an unsent provider draft; **Not now** keeps it
-  out of Today until new mail arrives, when it returns with the new message date.
+  from your mailbox. **Write full screen** puts the source message above your
+  editable reply and the choices beside it. When the notebook has a recent,
+  complete calendar read, scheduling questions can offer future time blocks
+  with their time zone. You can also enter a time. Check the wording in the
+  letter before pressing **Send**. **Edit in Gmail/Outlook drafts** creates an
+  unsent provider draft. The card keeps **Mark done**, **Not now**, **Ignore**
+  and both agent hand-offs in view. **Not now** lets you choose when the item
+  returns. New mail can bring it back sooner.
   Done and Not now offer **Undo** for five seconds; the record page keeps Undo
   available later, including a collapsed history if the original thread text
   has changed. Skipping preserves the draft body. The live reader shares these

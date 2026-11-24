@@ -504,6 +504,7 @@ def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool
     book = Notebook(notebook)
     book.write('people/fern.md', book.read('people/fern.md').replace('## Sources\n', '## Sources\n- [2] lark:oc_pilot:1\n'))
     saved = drafts.redraft(notebook, row['id'], 'lark')
+    assert saved['writer_mail']['original']['excerpt'] == 'Please review the pilot.'
     assert saved['channel'] == 'lark' and saved['body'] == '看过了，周二前给你反馈。' and saved['status'] == 'prepared'
     with pytest.raises(Exception, match='Unknown channel'):
         drafts.redraft(notebook, row['id'], 'pigeon')
@@ -534,6 +535,8 @@ def test_rem_prepare_now_drafts_one_waiting_thread_on_the_owners_click(notebook,
         return {'outcome': 'natural'}
     monkeypatch.setattr(runner, 'run_task', fake_turn)
     saved = drafts.prepare_now(notebook, row['provider'], row['thread'])
+    assert saved['writer_mail']['original']['level'] == 'personal'
+    assert 'writer_mail' not in read_json(drafts.path(notebook, row['id']), {})
     assert saved['status'] == 'prepared' and saved['body'] == 'Hi Mia, Tuesday works.' and saved['id'] == row['id']
     assert drafts.queue(notebook) == []
     with pytest.raises(Exception, match='cannot be drafted yet'):
@@ -1508,3 +1511,66 @@ def test_a_reply_carrying_a_private_fact_is_held_whoever_it_goes_to(notebook, mo
     monkeypatch.setattr(drafts, 'mail_client', lambda kind: Mock())
     assert approvals.send_direct(notebook, row['id']) is None
     assert read_json(state_path(notebook, 'approvals.json'), {}) == {}
+
+
+def test_writer_mail_from_today_archive_and_shared_boundary(notebook, monkeypatch):
+    import hashlib
+    from connectonion.rem import drafts, reader
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.store import refresh
+    mail_thread(notebook)
+    retain_message(notebook, 'gmail', {'id': 'two', 'subject': 'Follow-up', 'thread': 'pilot',
+                   'date': '2026-11-07T02:00:00Z', 'from': 'fern@example.test', 'to': ['owner@example.test']},
+                   '--- Email Body ---\nExact inbound. ' + 'z' * 17000, fetched_at='2026-11-07T03:00:00Z')
+    book = Notebook(notebook)
+    for number in range(8):
+        retain_message(notebook, 'outlook', {'id': f'sample{number}', 'subject': 'Earlier',
+                       'date': f'2026-11-05T0{number}:00:00Z', 'from': 'owner@example.test',
+                       'to': ['fern@example.test' if number != 7 else 'else@example.test'],
+                       'cc': ['fern@example.test'], 'thread': 'earlier'},
+                       f'Example {number}. ' + 'x' * 1500 + (' [personal]' if number == 6 else ''),
+                       fetched_at='2026-11-06T00:00:00Z')
+    # Sample 4 has public and private references, including a shortened id on
+    # a page Today omits. Sample 5 has no evidence of its privacy at all.
+    numbers = [0, 1, 2, 3, 4, 6, 7]
+    book.write('people/examples.md', '# Earlier letters\n\n' + '\n'.join(f'Letter [{n+1}]' for n in numbers)
+               + '\n\n## Sources\n' + '\n'.join(f'- [{n+1}] outlook:sample{n}' for n in numbers))
+    short = hashlib.sha256(b'sample4').hexdigest()[:12]
+    book.write('notes/marked.md', f'# Private note\n\nLabelled [1] [sensitive]\n\n## Sources\n- [1] outlook:{short}')
+    refresh(notebook)
+    row = drafts.queue(notebook)[0]
+    candidate = {k: v for k, v in row.items() if k not in ('material', 'obligations')}
+    drafts.promote(notebook, {**candidate, 'body': 'Ready.', 'sources': ['gmail:one']})
+    monkeypatch.chdir(notebook.parent)
+    relative = Path(notebook.name)
+    for today in (True, False):
+        view = reader.snapshot(relative, local=True, today=today)
+        draft = view['drafts'][0]
+        assert draft['version'] == 'gmail:two'
+        assert 'gmail:two' not in view['source_context']
+        original = draft['writer_mail']['original']
+        assert original['time'] == row['time'] and original['excerpt'].startswith('Exact inbound.')
+        assert len(original['excerpt']) == 16384 and original['truncated']
+        assert original['level'] == 'sensitive'
+        examples = draft['writer_mail']['examples']
+        assert [e['excerpt'][:10] for e in examples] == [f'Example {n}.' for n in (3, 2, 1)]
+        assert all(e['truncated'] and len(e['excerpt']) == 1200 and e['level'] == 'personal' for e in examples)
+        shared = reader.snapshot(relative, today=today)
+        assert shared['drafts'] == []
+        assert '"writer_mail":' not in json.dumps(shared)
+        assert original['excerpt'] not in reader._script_json(shared)
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_writer_without_mail_index_renders_relative_notebook(notebook, monkeypatch, legacy):
+    from connectonion.rem import reader
+    book = Notebook(notebook)
+    book.write('people/fern.md', '# Fern\n\n## Open threads\n- You owe Fern a call. [1]\n\n## Sources\n- [1] gmail:old')
+    write_json(state_path(notebook, 'map.json'), {'owner': {'addresses': ['owner@example.test']}})
+    if legacy:
+        with sqlite3.connect(state_path(notebook, 'rem.db')) as db:
+            db.execute('create table old_metadata (value text)')
+    monkeypatch.chdir(notebook.parent)
+    for today in (True, False):
+        view = reader.snapshot(Path(notebook.name), local=True, today=today)
+        assert not view['drafts']

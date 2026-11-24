@@ -545,7 +545,7 @@ def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkey
         assert display_date in task.locator('.draft-reason').inner_text()
         assert task.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
         assert letter.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
-        assert answered.locator('.kind-badge').inner_text() == ('Outlook 回信' if language == 'zh' else 'Outlook reply')
+        assert answered.locator('.outlook-mark').get_attribute('aria-label') == ('Outlook 回信' if language == 'zh' else 'Outlook reply')
         # The row REM thinks is answered leads with Mark done, its strip's own button. This page is a file:// snapshot,
         # which keeps no mark (#2990 review), so it is shown disabled and the card says why in words.
         lead = answered.locator('.strip-done.strip-lead')

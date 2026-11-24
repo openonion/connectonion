@@ -55,10 +55,10 @@ def candidates(root, *, refresh_index=True, records=None):
     """Resolve cited mail to its latest archived thread; a newer owner reply closes it."""
     from .store import refresh
     from .reader_model import _cited_row
-    from .store_messages import archived_message, owner_addresses
+    from .store_messages import archived_message, has_message_index, owner_addresses
     if refresh_index:
         refresh(root)
-    if not state_path(root, 'rem.db').is_file():
+    if not has_message_index(state_path(root, 'rem.db')):
         return []
     owner, ignored = owner_addresses(root), threads.ignored_senders(root)
     found = {}
@@ -385,7 +385,11 @@ def _write_now(root, row, channel):
         runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
         plan = check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
     promote(root, {**plan, 'channel': channel, 'phone': _phone(_identities(root, row)['person'])})
-    return read_json(path(root, row['id']), {})
+    # The live prepare/redraft response opens the same writer before the next snapshot.
+    from .writer_mail import attach_writer_mail
+    result = read_json(path(root, row['id']), {})
+    attach_writer_mail(root, [result])
+    return result
 
 
 # The owner's clicks below run while a scheduled REM round may hold the

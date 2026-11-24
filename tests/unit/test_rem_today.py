@@ -399,7 +399,7 @@ def test_a_snapshot_today_row_closes_with_the_strips_words_like_the_live_one():
 def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prepared):
     if prepared and not provider:
         provider, label = 'gmail', 'Gmail reply'
-    result = _run_reader_js(reader_functions('threadKind', 'kindBadge') + r'''
+    result = _run_reader_js(reader_functions('threadKind', 'kindBadge', 'outlookMark') + r'''
       const provider = PROVIDER, prepared = PREPARED;
       const entry = {r:{path:'people/fern.md', title:'Fern', category:'people'}, t:{text:provider ? 'You owe Fern feedback [1].' : 'You owe Fern feedback.'}};
       const draft = prepared ? {status:'prepared', provider, thread:'meeting'} : null;
@@ -413,7 +413,10 @@ def test_task_state_never_overrides_channel_or_draft_badge(provider, label, prep
       const el = (tag, attrs={}, children=[]) => ({tag, ...attrs, children});
       console.log(JSON.stringify(kindBadge(entry)));
     '''.replace('PROVIDER', json.dumps(provider)).replace('PREPARED', json.dumps(prepared)))
-    assert result['text'] == label
+    if provider == 'outlook':
+        assert result['role'] == 'img' and result['aria-label'] == label
+    else:
+        assert result['text'] == label
 
 
 @pytest.mark.parametrize('state', ['replied', 'task'])
