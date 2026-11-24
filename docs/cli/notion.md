@@ -48,11 +48,18 @@ your shell first, then the selected env file, then the encrypted store.
 | `co notion check [--target LINK]` | which key acts, its workspace, whether it can read a target | Read-only |
 | `co notion pages [--type page\|database] [--cursor C]` | everything this key can read, newest edit first, numbered, paged | Read-only |
 | `co notion search "<words>" [--type page\|database] [--cursor C]` | titles this key can read that contain the words, numbered, paged | Read-only |
-| `co notion page ROW\|LINK [--max-blocks N] [--depth N]` | properties, nested content, files, coverage | Read-only |
+| `co notion page ROW\|LINK [--max-blocks N] [--depth N] [--md]` | properties, nested content, files, coverage; `--md` as a Markdown document | Read-only |
 | `co notion db ROW\|LINK [--where …] [--sort …] [--cursor C] [--source S]` | rows with every property, numbered, filtered and sorted | Read-only |
 | `co notion columns ROW\|LINK [--source S]` | column names, ids, types and options | Read-only |
 
 Every list takes `--json`, `--ids` and `-n`. Every command ends with one `Next:` line.
+
+`pages` and `search` show up to 100 rows by default, one request to Notion, so
+most lists are whole. When there are more, the first line says
+`(more available)` and the `Next:` line is the `--cursor` command for the next
+rows. A cursor carries a check of the list it came from: used with other words,
+`--type`, columns or `-n`, it is refused (exit 2) instead of continuing a
+different list.
 
 ```text
 $ co notion pages
@@ -89,6 +96,18 @@ the way Notion builds it: `Title-<id>` in the path (a title made of hex letters
 is never read as part of the id), `?v=<view>` keeps the database as the object,
 `?p=<page>` (a record opened in peek view) names that record, and `#<block>` is
 an anchor on the page (the whole page is shown).
+
+## A page as Markdown
+
+`co notion page 1 --md > roadmap.md` prints the page as a Markdown document:
+YAML front matter (title, id, link, last edit, the properties that have a
+value), `# Title`, then the content. Notion's headings move down one level
+under the title; bold, italic, strikethrough, inline code and links are kept;
+tables get their header rule; nested list items stay nested; child pages are
+links. A partial read says **Incomplete** at the top, and a block with no
+Markdown form is kept as `*[unsupported block: …]*`. Files Notion hosts are
+links that expire about an hour after the read. The `Next:` line goes to
+stderr, so the redirected file is only the document.
 
 ## Reading completely, and saying when it is not
 
