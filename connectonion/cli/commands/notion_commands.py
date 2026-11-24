@@ -183,7 +183,7 @@ def _numbered(lines: list[tuple[str, str, str]], ids: list[str], show_ids: bool)
 
 
 def _print_rows(rows: list, show_ids: bool = False) -> None:
-    _numbered([(r["title"] or "(untitled)", f"{r['type']:<8}  {r['edited'][:10]}",
+    _numbered([(api.one_line(r["title"]) or "(untitled)", f"{r['type']:<8}  {r['edited'][:10]}",
                 "(in trash)" if r.get("in_trash") else "") for r in rows],
               [r["id"] for r in rows], show_ids)
 
@@ -241,9 +241,9 @@ def _linked(detail: dict) -> dict:
 
 def _page_rows(linked: dict, coverage: dict) -> list:
     """The numbered rows a page view shows: linked pages by column, then child pages and databases."""
-    rows = [(f"{name}", item["title"], item["id"], "page") for name, entry in linked.items() for item in entry["items"]]
-    rows += [("Child page", child["title"], child["id"], "page") for child in coverage["child_pages"]]
-    rows += [("Child database", child["title"], child["id"], "db") for child in coverage["child_databases"]]
+    rows = [(f"{name}", api.one_line(item["title"]), item["id"], "page") for name, entry in linked.items() for item in entry["items"]]
+    rows += [("Child page", api.one_line(child["title"]), child["id"], "page") for child in coverage["child_pages"]]
+    rows += [("Child database", api.one_line(child["title"]), child["id"], "db") for child in coverage["child_databases"]]
     return rows
 
 
@@ -281,7 +281,7 @@ def check(target: str = typer.Option("", "--target", help="Also check that this 
             raise
         found = api.data_source(target)
         kind = "data source"
-    out.print(f"{style.ok('✓')} Target shared: {kind} {escape(api.title_of(found))} ({found['id']})")
+    out.print(f"{style.ok('✓')} Target shared: {kind} {escape(api.one_line(api.title_of(found)))} ({found['id']})")
     _tip(f"co notion {'page' if kind == 'page' else 'columns'} {found['id']}")
 
 
@@ -433,7 +433,7 @@ def _print_page(out, detail: dict, rows: list, linked: dict) -> None:
     from rich.markdown import CodeBlock, Markdown
     from rich.text import Text
 
-    out.print(f"{style.heading(detail['title'] or '(untitled)')}  {style.muted(detail['id'])}")
+    out.print(f"{style.heading(api.one_line(detail['title']) or '(untitled)')}  {style.muted(detail['id'])}")
     out.print(escape(f"Edited: {_when(detail['edited'])}   Created: {_when(detail.get('created', ''))}"))
     out.print(style.path(detail["url"]))
     if detail["in_trash"]:
@@ -552,12 +552,12 @@ def db(target: str = typer.Argument(..., help=DB_HELP),
                "complete": not after and not capped, "capped": capped})
     else:
         out = style.console()
-        out.print(f"{style.count(len(rows))} {'row' if len(rows) == 1 else 'rows'} in {escape(info['title'])}"
+        out.print(f"{style.count(len(rows))} {'row' if len(rows) == 1 else 'rows'} in {escape(api.one_line(info['title']))}"
                   + (" (more available)" if after else "")
                   + (f" (Notion stopped this query at {api.QUERY_RESULT_LIMIT:,} results: more rows match than any "
                      "cursor reaches)" if capped else ""))
         token = _store_rows(account, [r["id"] for r in rows])
-        _numbered([(r["title"] or "(untitled)", r["edited"][:10],
+        _numbered([(api.one_line(r["title"]) or "(untitled)", r["edited"][:10],
                     "  ".join(f"{k}: {_value_text(v)}" for k, v in r["properties"].items()
                               if v["type"] != "title" and _value_text(v))) for r in rows],
                   [r["id"] for r in rows], ids)
@@ -592,7 +592,7 @@ def columns(target: str = typer.Argument(..., help=DB_HELP),
         _dump({"data_source": info, "columns": rows})
     else:
         out = style.console()
-        out.print(f"{style.count(len(rows))} columns in {escape(info['title'])}  {style.muted('data source ' + ds['id'])}")
+        out.print(f"{style.count(len(rows))} columns in {escape(api.one_line(info['title']))}  {style.muted('data source ' + ds['id'])}")
         for c in rows:
             kind = c["type"]
             options = f"  {', '.join(c['options'])}" if c["options"] else ""

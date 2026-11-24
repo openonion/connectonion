@@ -733,3 +733,18 @@ def test_a_page_shows_its_properties_under_a_heading_and_its_times_labelled(noti
     out = run("page", ROW).stdout
     assert out.splitlines()[1].startswith("Edited: ") and "Created: " in out.splitlines()[1]
     assert "\nProperties\n  Status: In progress\n" in out and "No content." in out
+
+
+def test_a_title_with_line_breaks_is_shown_on_one_line_and_kept_whole_in_json(notion):
+    two_lines = "Why Do Humans Need Sleep?\nSleep is one of the most important processes."
+    notion.add_page(uid(80), two_lines, parent={"type": "page_id", "page_id": ROADMAP},
+                    edited="2026-11-24T00:00:00.000Z")
+    one_line = "Why Do Humans Need Sleep? Sleep is one of the most important processes."
+    listed = run("pages", "--type", "page").stdout
+    assert re.search(r"\n\s*1\.\s+page\s+2026-11-24\s+" + re.escape(one_line) + "\n", listed)
+    assert "\nSleep is one" not in listed
+    shown = run("page", uid(80)).stdout
+    assert shown.splitlines()[0] == f"{one_line}  {uid(80)}"
+    doc = run("page", uid(80), "--md").stdout
+    assert f"\n# {one_line}\n" in doc and 'title: "Why Do Humans Need Sleep?\\nSleep' in doc
+    assert json.loads(run("page", uid(80), "--json").stdout)["title"] == two_lines
