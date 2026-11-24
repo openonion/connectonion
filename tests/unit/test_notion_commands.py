@@ -583,7 +583,7 @@ def test_columns_come_from_the_data_source(notion):
     assert found["data_source"]["id"] == TASKS and found["data_source"]["database_id"] == TASKS_DB
     by_name = {c["name"]: c for c in found["columns"]}
     assert by_name["Status"]["options"] == ["Not started", "In progress", "Done"] and by_name["Status"]["id"] == "st"
-    assert "settable" not in by_name["Owner"]          # nothing is written, so nothing is marked writable
+    assert by_name["Owner"]["settable"] is False and by_name["Status"]["settable"] is True
 
 
 def test_columns_points_at_a_filter_the_database_takes(notion):
@@ -705,13 +705,14 @@ def test_db_keeps_the_cursor_when_notion_marks_the_first_page_incomplete(notion)
     assert "--cursor" in last_line(run("db", TASKS_DB, "-n", "2").stdout)
 
 
-# -- read-only, by construction ----------------------------------------------
+# -- reads stay reads ---------------------------------------------------------
 
-def test_co_notion_has_only_read_commands():
-    assert set(get_command(app).commands["notion"].commands) == {"check", "pages", "search", "page", "db", "columns"}
+def test_co_notion_has_these_commands():
+    assert set(get_command(app).commands["notion"].commands) == {"check", "pages", "search", "page", "db", "columns",
+                                                                 "create", "append", "add", "update"}
 
 
-def test_every_request_a_command_makes_is_a_read(notion):
+def test_every_request_a_read_command_makes_is_a_read(notion):
     """GET, or the two POSTs Notion uses for reading: search and a data source query."""
     for args in (["check", "--target", ROADMAP], ["pages"], ["search", "road"], ["page", ROADMAP],
                  ["db", TASKS_DB, "--where", "Status=Done"], ["columns", TASKS_DB]):
@@ -759,3 +760,218 @@ def test_md_keeps_backticks_inside_code(notion):
                                                          "rich_text": [{"plain_text": "before\n```\nafter"}]}})
     tokens = [t for t in MarkdownIt().parse(block) if t.type == "fence"]
     assert len(tokens) == 1 and tokens[0].content == "before\n```\nafter\n"
+
+# -- writes: preview first, --yes to change, read back --------------------------
+
+def test_create_previews_the_exact_blocks_and_writes_nothing(notion):
+    result = run("create", ROADMAP, "Meeting notes", "--text", "# Agenda\n\n- one\n- [ ] two\n\nplain words")
+    assert result.exit_code == 0, result.output
+    assert "Nothing changed in Notion" in result.stdout and not writes(notion)
+    for line in ("# Agenda", "- one", "- [ ] two", "plain words"):
+        assert "    " + line in result.stdout
+    assert "heading_1 ×1" in result.stdout and "to_do ×1" in result.stdout
+
+
+def test_create_then_read_back_shows_what_was_written(notion):
+    created = run("create", ROADMAP, "Meeting notes", "--text", "-", "--yes", input="# Agenda\n\nfirst\n\nsecond\n")
+    assert created.exit_code == 0, created.output
+    new_id = re.search(r"Created Meeting notes (\S+)", created.stdout)[1]
+    back = run("page", new_id, "--md")             # the exact blocks, in Markdown
+    assert "## Agenda\n\nfirst\n\nsecond" in back.stdout
+    shown = run("page", ROADMAP)
+    assert re.search(r"\d+\.\s+Meeting notes", shown.stdout)
+    assert new_id in [c["id"] for c in json.loads(run("page", ROADMAP, "--json").stdout)["coverage"]["child_pages"]]
+
+
+def test_long_content_is_split_by_count_and_bytes_and_nothing_is_lost(notion):
+    text = "\n\n".join("段落" * 600 + str(i) for i in range(260))   # 260 paragraphs of 3-byte characters
+    blocks = api.text_blocks(text)
+    parts = api.batches(blocks)
+    assert sum(len(p) for p in parts) == len(blocks) == 260
+    # Under the cap in both encodings httpx may use for the body.
+    assert all(len(p) <= 100 and len(json.dumps(p).encode()) <= api.MAX_PAYLOAD_BYTES for p in parts)
+    result = run("create", ROADMAP, "Long", "--text", "-", "--yes", input=text)
+    assert result.exit_code == 0, result.output
+    new_id = re.search(r"Created Long (\S+)", result.stdout)[1]
+    assert len(notion.blocks[new_id]) == 260
+
+
+def test_text_is_split_by_notions_utf16_measure():
+    pieces = api.split_text("😀" * 1500)          # 3000 UTF-16 units
+    assert [len(p.encode("utf-16-le")) // 2 for p in pieces] == [2000, 1000]
+    with pytest.raises(api.NotionError):
+        api.rich("x" * (api.MAX_TEXT * api.MAX_RICH_ITEMS + 1))
+
+
+def test_a_write_that_stops_part_way_says_what_is_confirmed_and_resumes_without_duplicates(notion):
+    text = "\n\n".join(f"p{i}" for i in range(150))
+    notion.fail("PATCH", f"blocks/{ROADMAP}/children", httpx.Response(400, json={
+        "object": "error", "status": 400, "code": "validation_error", "message": "temporary refusal"}), times=0)
+    before = len(notion.blocks[ROADMAP])
+    # Let the first batch land, refuse the second.
+    calls = {"n": 0}
+    original = notion.handle
+
+    def second_refused(request):
+        if request.method == "PATCH":
+            calls["n"] += 1
+            if calls["n"] == 2:
+                return httpx.Response(400, json={"object": "error", "status": 400, "code": "validation_error",
+                                                 "message": "temporary refusal"})
+        return original(request)
+    notion.handle = second_refused
+    failed = run("append", ROADMAP, text, "--yes")
+    assert failed.exit_code == 1
+    assert "100 of 150 blocks are confirmed" in failed.stderr
+    assert f"co notion append {ROADMAP} - --start-at 100 --yes" in failed.stderr
+    notion.handle = original
+    resumed = run("append", ROADMAP, "-", "--start-at", "100", "--yes", input=text)
+    assert resumed.exit_code == 0, resumed.output
+    added = [api.plain(b["paragraph"]["rich_text"]) for b in notion.blocks[ROADMAP][before:]]
+    assert added == [f"p{i}" for i in range(150)]
+
+
+def test_a_write_that_times_out_is_not_replayed(notion):
+    notion.fail("PATCH", f"blocks/{ROADMAP}/children", httpx.ReadTimeout("slow"))
+    result = run("append", ROADMAP, "one line", "--yes")
+    assert result.exit_code == 1
+    assert "0 of 1 blocks are confirmed" in result.stderr and "may or may not have been written" in result.stderr
+    assert "may already be on the page: read it first" in result.stderr
+    assert len([s for s in notion.sent if s[0] == "PATCH"]) == 1
+
+
+def test_a_create_that_gets_a_5xx_is_unknown_not_failed(notion):
+    notion.fail("POST", "pages", httpx.Response(502, json={"object": "error", "status": 502, "code": "bad_gateway",
+                                                           "message": "Bad gateway"}))
+    result = run("create", ROADMAP, "Twice?", "--yes")
+    assert result.exit_code == 1 and "may or may not have been made" in result.stderr
+    assert "Do not rerun blindly" in result.stderr
+    assert len([s for s in notion.sent if s[:2] == ("POST", "pages")]) == 1
+
+
+def test_append_to_an_anchored_link_appends_to_the_page(notion):
+    link = "https://www.notion.so/Roadmap-" + ROADMAP.replace("-", "") + "#" + CHILD.replace("-", "")
+    assert run("append", link, "x", "--yes").exit_code == 0
+    assert writes(notion)[-1][1] == f"blocks/{ROADMAP}/children"
+
+
+def test_add_previews_then_creates_a_row_in_the_data_source_and_reads_back(notion):
+    preview = run("add", TASKS_DB, "Write docs 2", "--set", "status=in progress", "--set", "Tags=docs, Q4")
+    assert preview.exit_code == 0 and "would add this row to Tasks" in preview.stdout and not writes(notion)
+    done = run("add", TASKS_DB, "Write docs 2", "--set", "status=in progress", "--set", "Tags=docs, Q4",
+               "--set", "Done=yes", "--set", "Due=2026-10-31..2026-11-02", "--set", "Points=3", "--yes")
+    assert done.exit_code == 0, done.output
+    (method, path, body), = writes(notion)
+    assert body["parent"] == {"type": "data_source_id", "data_source_id": TASKS}
+    assert body["properties"]["Status"] == {"status": {"name": "In progress"}}
+    assert body["properties"]["Due"] == {"date": {"start": "2026-10-31", "end": "2026-11-02"}}
+    new_id = re.search(r"Added Write docs 2 (\S+)", done.stdout)[1]
+    props = json.loads(run("page", new_id, "--json").stdout)["properties"]
+    assert props["Status"]["value"] == "In progress" and props["Tags"]["value"] == ["docs", "q4"]
+    assert props["Points"]["value"] == 3
+
+
+@pytest.mark.parametrize("assignment, says", [
+    ("Priority=high", "No column 'Priority'"),
+    ("Status=Blocked", "No Status option 'Blocked'. Valid: Not started, In progress, Done"),
+    ("Tags=docs,nope", "No Tags option 'nope'"),
+    ("Points=three", "Points takes a number"),
+    ("Due=next week", "Due takes a date"),
+    ("Done=maybe", "Done takes yes or no"),
+    ("Owner=ann", "Owner is a people column; co notion cannot set it"),
+    ("Status", "--set takes Name=value"),
+    ("Name=Other", "give it as the second argument"),
+])
+def test_add_checks_every_value_before_anything_is_written(notion, assignment, says):
+    result = run("add", TASKS_DB, "Write docs", "--set", assignment, "--yes")
+    assert result.exit_code == 1 and says in result.stderr and not writes(notion)
+
+
+def test_update_changes_only_the_named_fields_and_previews_old_to_new(notion):
+    preview = run("update", ROW, "--set", "Status=Done", "--add", "Tags=urgent", "--remove", "Tags=q4", "--clear", "Points")
+    assert preview.exit_code == 0, preview.output
+    assert "In progress → Done" in preview.stdout and "docs, q4 → docs, urgent" in preview.stdout
+    assert "0 → (empty)" in preview.stdout and not writes(notion)
+    done = run("update", ROW, "--set", "Status=Done", "--add", "Tags=urgent", "--remove", "Tags=q4", "--clear", "Points",
+               "--yes")
+    assert done.exit_code == 0, done.output
+    (method, path, body), = writes(notion)
+    assert (method, path) == ("PATCH", f"pages/{ROW}")
+    assert set(body["properties"]) == {"Status", "Tags", "Points"}
+    props = json.loads(run("page", ROW, "--json").stdout)["properties"]
+    assert props["Status"]["value"] == "Done" and props["Tags"]["value"] == ["docs", "urgent"]
+    assert props["Points"]["value"] is None and len(props["Related"]["value"]) == 30
+
+
+def test_update_refuses_a_column_named_twice_and_an_empty_request(notion):
+    twice = run("update", ROW, "--set", "Tags=docs", "--add", "Tags=q4", "--yes")
+    assert twice.exit_code == 1 and "named twice" in twice.stderr and not writes(notion)
+    assert run("update", ROW).exit_code == 2
+
+
+def test_a_plain_page_has_only_its_title_to_update(notion):
+    assert run("update", ROADMAP, "--set", "title=Roadmap 2027", "--yes").exit_code == 0
+    assert run("update", ROADMAP, "--set", "Status=Done").exit_code == 1
+
+
+def test_f06_one_huge_block_is_split_before_preview_and_never_sent_over_the_cap(notion):
+    text = "```\n" + "汉" * 180_000 + "\n```"
+    blocks = api.text_blocks(text)
+    assert len(blocks) > 1 and all(b["type"] == "code" for b in blocks)
+    assert "".join(api.plain(b["code"]["rich_text"]) for b in blocks) == "汉" * 180_000
+    assert all(api.weight({"children": p}) <= api.MAX_PAYLOAD_BYTES for p in api.batches(blocks))
+    preview = run("append", ROADMAP, "-", input=text)
+    assert f"code ×{len(blocks)}" in preview.stdout
+    assert run("append", ROADMAP, "-", "--yes", input=text).exit_code == 0
+    patches = [s for s in writes(notion) if s[0] == "PATCH"]
+    assert all(len(r.content) <= api.REQUEST_LIMIT_BYTES for r in notion.requests if r.method == "PATCH")
+    assert sum(len(b["children"]) for _, _, b in patches) == len(blocks)
+
+
+def test_f06_a_title_too_large_for_one_request_is_refused_before_sending(notion):
+    result = run("create", ROADMAP, "题" * 95_000, "--yes")
+    assert result.exit_code == 1 and "Nothing was sent" in result.stderr
+    assert not writes(notion)
+
+
+def test_f06_a_new_pages_first_batch_leaves_room_for_its_properties(notion):
+    blocks = api.text_blocks("\n\n".join("段" * 1900 for _ in range(60)))
+    created = api.create_page(ROADMAP, "长" * 30_000, blocks)
+    first = next(r for r in notion.requests if r.method == "POST" and r.url.path.endswith("/pages"))
+    assert len(first.content) <= api.REQUEST_LIMIT_BYTES
+    assert len(notion.blocks[created["id"]]) == len(blocks)
+
+
+def test_a_first_block_that_does_not_fit_beside_the_title_is_appended_after_create(notion):
+    blocks = api.text_blocks("文" * 60_000)          # fits a request alone, not beside the title below
+    title = "题" * 25_000
+    assert len(blocks) == 1 and api.weight(blocks[0]) <= api.BLOCK_LIMIT_BYTES
+    created = api.create_page(ROADMAP, title, blocks)
+    posts = [r for r in notion.requests if r.method in ("POST", "PATCH")]
+    assert all(len(r.content) <= api.REQUEST_LIMIT_BYTES for r in posts)
+    create = json.loads(posts[0].content)
+    assert create["children"] == [] and posts[1].method == "PATCH"
+    assert api.plain(notion.blocks[created["id"]][0]["paragraph"]["rich_text"]) == "文" * 60_000
+
+
+def test_a_write_previews_from_a_row_number_and_its_next_line_uses_the_id(notion):
+    run("db", TASKS_DB)
+    preview = run("update", "1", "--set", "Status=Done")
+    assert preview.exit_code == 0, preview.output
+    assert last_line(preview.stdout) == f"Next: co notion update {ROW} --set Status=Done --yes"
+    assert not writes(notion)
+
+
+def test_yes_with_a_bare_row_number_is_refused(notion):
+    run("db", TASKS_DB)
+    result = run("update", "1", "--set", "Status=Done", "--yes")
+    assert result.exit_code == 2 and "give the id the preview printed" in result.output
+    assert not writes(notion)
+
+
+def test_yes_with_a_row_and_its_listing_writes(notion):
+    listed = run("db", TASKS_DB)
+    token = re.search(r"Listing: ([0-9a-f]{32})", listed.stdout)[1]
+    result = run("update", "1", "--set", "Status=Done", "--listing", token, "--yes")
+    assert result.exit_code == 0, result.output
+    assert "Status: Done" in run("page", ROW).stdout

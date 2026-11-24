@@ -1,9 +1,9 @@
 """
-Purpose: `co notion` — list, search and read Notion pages and databases (read-only)
+Purpose: `co notion` — list, search and read Notion pages and databases; create, append, add and update after a preview
 LLM-Note:
   Dependencies: imports from [typer, cli/style.py, cli/typer_groups.py, command_tips.py, notion_api.py] | imported by [cli/main.py] | tested by [tests/unit/test_notion_commands.py]
-  Data flow: argv → typer leaf → notion_api reads → numbered rows (or --json) → one Next line | pages, search and db save the shown ids as one short-lived listing; page, db and columns take a row number from the last list (or --listing), a link or an id
-  State/Effects: reads only; nothing in Notion changes | writes the shown rows' ids (no titles or content) under ~/.co/notion-listings for 15 minutes; --json saves none
+  Data flow: argv → typer leaf → notion_api reads → numbered rows (or --json) → one Next line | a write reads its target first, prints a preview, and changes Notion only with --yes (the preview's Next line is that command, by id) | pages, search and db save the shown ids as one short-lived listing; page, db and columns take a row number from the last list (or --listing), a link or an id
+  State/Effects: reads change nothing in Notion; create, append, add and update change it only with --yes | writes the shown rows' ids (no titles or content) under ~/.co/notion-listings for 15 minutes; --json saves none
   Integration: notion_app is added to the root app in main.py; each "co notion <verb>" is HANDLER in command_tips.NEXT because every handler names its own next command | databases are read through their data source (Notion 2025-09-03) | row numbers use gmail_listings, the same store the Asana and OneNote commands use
   Errors: NotionError → `✗ <cause>` and `Next: <command>` on stderr, exit 1; a wrong argument or a stale row number → exit 2 naming the command to run
 """
@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shlex
+import sys
 import tempfile
 from datetime import datetime
 from functools import wraps
@@ -34,11 +35,12 @@ notion_app = typer.Typer(
     cls=_OneSuggestion,
     invoke_without_command=True,
     help="Notion pages and databases from the terminal: list what is shared, search titles, read a page, query a "
-         "database. Read-only: nothing in Notion changes. It reads what NOTION_API_KEY can read: an internal "
+         "database; create a page, append to one, add or update a database row. Reads change nothing; a write "
+         "only previews until --yes. It works with what NOTION_API_KEY can reach: an internal "
          "connection only the pages given to it, a personal access token everything your account can. Lists are "
          "numbered: page, db and columns take a row number from the last list, a link or an id.",
     epilog="Example:  co notion check  →  co notion pages  →  co notion page 1  |  "
-           "co notion pages --type database  →  co notion db 1  →  co notion page 1",
+           "co notion pages --type database  →  co notion db 1  →  co notion append 1 \"Checked today\"",
 )
 
 ROW = re.compile(r"#?[0-9]{1,4}")          # a row number, as co asana reads one; a Notion id is 32 hex
@@ -48,6 +50,9 @@ SOURCE_HELP = "Which data source, by id or name, when the database has more than
 LISTING_HELP = "Listing ID printed under a list; keeps row numbers pointing at that list after you list another"
 IDS_HELP = "Also show each row's Notion id"
 JSON_HELP = "Print the same fields as JSON (ids included); no row numbers are saved"
+YES_HELP = "Do it; without --yes this prints a preview and changes nothing"
+TEXT_HELP = ("Text; # headings, - bullets, 1. numbers, - [ ] to-dos, > quotes, ``` code and --- become those blocks; "
+             "- reads standard input")
 LIST_LIMIT = 100                          # one Notion request: most lists are whole without a cursor
 CURSOR_HELP = "Continue a list from the --cursor its last line printed; only for that same command"
 
@@ -59,7 +64,7 @@ def _notion(ctx: typer.Context):
 
 
 def _reported(handler):
-    """A NotionError becomes its cause and the one command to run next, on stderr; exit 1."""
+    """A NotionError becomes its cause, what is confirmed, and the one command to run next, on stderr; exit 1."""
     @wraps(handler)
     def run(*args, **kwargs):
         try:
@@ -67,6 +72,19 @@ def _reported(handler):
         except api.NotionError as error:
             out = style.console(stderr=True)
             out.print(f"{style.error('✗')} {escape(str(error))}")
+            detail = error.detail
+            if detail.get("created"):
+                out.print(f"  Created: {escape(detail['created'])} {style.path(detail.get('url', ''))}")
+            if error.kind == "partial":
+                resume = detail.get("created") or detail.get("page")
+                out.print(f"  Confirmed: {detail['confirmed_blocks']} of {detail['total_blocks']} blocks. "
+                          f"Check the page, then resume with the same text: "
+                          f"co notion append {resume} - --start-at {detail['next_start']} --yes")
+                if detail.get("batch_outcome") == "unknown":
+                    out.print("  The last batch timed out and may already be on the page: read it first, and if "
+                              "those blocks are there, raise --start-at past them.")
+            if error.kind == "unknown_outcome":
+                out.print("  Do not rerun blindly: read the target first and confirm whether the change is there.")
             out.print(style.next_line(selected_tip(error.next_step)))
             mark_next_step_named()
             raise typer.Exit(1) from None
@@ -600,3 +618,183 @@ def columns(target: str = typer.Argument(..., help=DB_HELP),
     choice = next((c for c in rows if c["options"]), None)
     where = f' --where "{choice["name"]}={choice["options"][0]}"' if choice else ""
     _tip(f'co notion db {ds["id"]}{where}', as_json)
+
+
+# -- writes ----------------------------------------------------------------
+# Each write reads its target first, previews, and changes Notion only with --yes. The
+# preview's Next line is the same command by id, so what --yes changes is what was shown,
+# even if another list has replaced the row numbers since.
+
+def _text(value: str) -> str:
+    """`-` means standard input, for text too long or too awkward to quote."""
+    return sys.stdin.read() if value == "-" else value
+
+
+def _rerun(*words: str) -> str:
+    return "co notion " + " ".join(shlex.quote(w) for w in words) + " --yes"
+
+
+def _write_ref(value: str, listing: Optional[str], yes: bool, command: str) -> str:
+    """A row number previews; with --yes it needs its --listing, as co asana update takes a row (#3034 review)."""
+    if yes and listing is None and ROW.fullmatch(value.strip()):
+        _usage(f"With --yes, give the id the preview printed, or row {value} with its --listing",
+               f"co notion {command} {value}")
+    return _ref(value, listing)
+
+
+def _preview(what: str, lines: dict, rerun: str, body: str = "") -> None:
+    out = style.console()
+    out.print(f"{style.warn('Preview')} — {escape(what)}. Nothing changed in Notion.")
+    for label, value in lines.items():
+        out.print(f"  {label + ':':<12}{escape(str(value))}")
+    if body:
+        out.print("  Content, as it will be sent:")
+        for line in body.splitlines():
+            out.print("    " + escape(line))
+    _tip(rerun)
+
+
+def _body_summary(blocks: list) -> str:
+    kinds = {}
+    for block in blocks:
+        kinds[block["type"]] = kinds.get(block["type"], 0) + 1
+    return f"{len(blocks)} block(s) in {len(api.batches(blocks)) or 0} request(s): " + \
+        (", ".join(f"{k} ×{v}" for k, v in kinds.items()) or "none")
+
+
+@notion_app.command("create", epilog='Example:  co notion create 1 "Meeting notes"  |  '
+                                      'co notion create 1 "Meeting notes" --text "# Agenda"')
+@_reported
+def create(parent: str = typer.Argument(..., help="Row number, link or id of the page the new page goes under"),
+           title: str = typer.Argument(..., help="Title of the new page"),
+           text: str = typer.Option("", "--text", help=TEXT_HELP),
+           listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+           yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Create a page under a page, with optional content. Creates it only with --yes; otherwise previews.
+
+    The parent is read first, so an unshared or unknown parent exits 1 before
+    anything is created. The preview shows the content exactly as it will be
+    sent. Long content goes in several requests; if one fails, the new page's
+    id and the confirmed part are printed with the command that resumes it.
+    """
+    found = api.page(_write_ref(parent, listing, yes, "create"))
+    body = _text(text)
+    blocks = api.text_blocks(body)
+    if not yes:
+        shown = {"parent": f"{api.title_of(found)} ({found['id']})", "title": title, "content": _body_summary(blocks)}
+        words = [found["id"], title] + (["--text", text] if text else [])
+        return _preview("would create this page", shown, _rerun("create", *words), api.preview_text(blocks))
+    created = api.create_page(found["id"], title, blocks)
+    style.console().print(f"{style.ok('✓')} Created {escape(title)} {created['id']}  {style.path(created.get('url', ''))}")
+    _tip(f"co notion page {created['id']}")
+
+
+@notion_app.command("append", epilog='Example:  co notion append 1 "Shipped in 1.9"  |  '
+                                      "co notion append 1 - < notes.md")
+@_reported
+def append(target: str = typer.Argument(..., help=PAGE_HELP),
+           text: str = typer.Argument(..., help=TEXT_HELP),
+           start_at: int = typer.Option(0, "--start-at", min=0, help="Skip this many blocks of the text: resume a "
+                                                                    "write that stopped part way"),
+           listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+           yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Add content to the end of a page; nothing already there changes. Writes it only with --yes; otherwise previews.
+
+    A link with a #block anchor still appends to the end of the page. If a
+    long write stops part way, the error says how many blocks are confirmed;
+    rerun with the same text and --start-at that number.
+    """
+    found = api.page(_write_ref(target, listing, yes, "append"))
+    blocks = api.text_blocks(_text(text))
+    if not blocks:
+        print_tip("Nothing to add: the text is empty. Next: co notion append --help")
+        raise typer.Exit(2)
+    if start_at >= len(blocks):
+        print_tip(f"--start-at {start_at} skips all {len(blocks)} blocks of this text. Next: co notion page {found['id']}")
+        raise typer.Exit(2)
+    sending = blocks[start_at:]
+    if not yes:
+        shown = {"page": f"{api.title_of(found)} ({found['id']})", "adds": _body_summary(sending)}
+        if start_at:
+            shown["skips"] = f"the first {start_at} block(s), already written"
+        words = [found["id"], text] + (["--start-at", str(start_at)] if start_at else [])
+        return _preview(f"would append to {api.title_of(found)}", shown, _rerun("append", *words),
+                        api.preview_text(sending))
+    count = api.append(found["id"], blocks, start_at=start_at) - start_at
+    style.console().print(f"{style.ok('✓')} Added {count} block(s) to {escape(api.title_of(found))}  "
+                          f"{style.path(found.get('url', ''))}")
+    _tip(f"co notion page {found['id']}")
+
+
+@notion_app.command("add", epilog='Example:  co notion add 2 "Write docs" --set "Status=In progress"  |  '
+                                   'co notion add 2 "Write docs" --set Tags=docs,q4 --set Due=2026-10-31')
+@_reported
+def add(target: str = typer.Argument(..., help=DB_HELP),
+        title: str = typer.Argument(..., help="The new row's title, its title column"),
+        source: str = typer.Option("", "--source", help=SOURCE_HELP),
+        assignments: List[str] = typer.Option([], "--set", help="Column=value, from co notion columns; repeat for more; "
+                                                                "multi_select takes a,b; checkbox yes or no; "
+                                                                "date 2026-10-31 or 2026-10-31..2026-11-02"),
+        text: str = typer.Option("", "--text", help=TEXT_HELP + "; becomes the row's page body"),
+        listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+        yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Add a row to a database, with its title and column values. Creates it only with --yes; otherwise previews.
+
+    Every column name and option is checked against the data source first, so
+    an unknown column or a status that does not exist exits 1 listing the valid
+    ones and nothing is written. Prints the new row's id: read it back with
+    co notion page <id>.
+    """
+    ds = api.data_source(_write_ref(target, listing, yes, "add"), source)
+    properties, shown = api.row_properties(ds, title, assignments)
+    blocks = api.text_blocks(_text(text))
+    if blocks:
+        shown["content"] = _body_summary(blocks)
+    if not yes:
+        words = [ds["id"], title] + [w for a in assignments for w in ("--set", a)] + (["--text", text] if text else [])
+        return _preview(f"would add this row to {api.title_of(ds)}", shown, _rerun("add", *words),
+                        api.preview_text(blocks))
+    created = api.create_page("", title, blocks, data_source_id=ds["id"], properties=properties)
+    style.console().print(f"{style.ok('✓')} Added {escape(title)} {created['id']} to {escape(api.title_of(ds))}  "
+                          f"{style.path(created.get('url', ''))}")
+    _tip(f"co notion page {created['id']}")
+
+
+@notion_app.command("update", epilog='Example:  co notion update 3 --set Status=Done  |  '
+                                      "co notion update 3 --clear Due --add Tags=docs --remove Tags=q4")
+@_reported
+def update(target: str = typer.Argument(..., help="Row number, link or id of the database row (or page) to change"),
+           assignments: List[str] = typer.Option([], "--set", help="Column=value: replace this column's value"),
+           clear: List[str] = typer.Option([], "--clear", help="Column: empty this column"),
+           add_options: List[str] = typer.Option([], "--add", help="Column=a,b: add options to a multi_select, keep the rest"),
+           remove_options: List[str] = typer.Option([], "--remove", help="Column=a,b: remove options from a multi_select"),
+           listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+           yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Change a row's columns; only the columns you name change. Changes it only with --yes; otherwise previews.
+
+    The preview shows each named column as it is now and as it would be. A
+    page outside a database has only its title to change, with --set title=...
+    Values are absolute, so after a timeout, read the row before deciding to
+    rerun.
+    """
+    if not (assignments or clear or add_options or remove_options):
+        print_tip("Nothing to change: give --set, --clear, --add or --remove. Next: co notion update --help")
+        raise typer.Exit(2)
+    found = api.page(_write_ref(target, listing, yes, "update"))
+    parent = api.parent_of(found)
+    if parent["type"] == "data_source":
+        ds = api.call("GET", f"data_sources/{parent['id']}")
+    else:
+        ds = {"id": found["id"], "properties": {name: {"id": p.get("id", ""), "type": "title", "title": {}}
+                                                for name, p in (found.get("properties") or {}).items()
+                                                if p.get("type") == "title"}}
+    properties, shown = api.property_changes(ds, found.get("properties") or {}, set_=assignments, clear=clear,
+                                             add=add_options, remove=remove_options)
+    if not yes:
+        words = [found["id"], *[w for a in assignments for w in ("--set", a)], *[w for c in clear for w in ("--clear", c)],
+                 *[w for a in add_options for w in ("--add", a)], *[w for r in remove_options for w in ("--remove", r)]]
+        return _preview(f"would change {api.title_of(found)}", shown, _rerun("update", *words))
+    api.update_page(found["id"], properties)
+    style.console().print(f"{style.ok('✓')} Updated {escape(api.title_of(found))} {found['id']}: "
+                          + escape("; ".join(f"{k} {v}" for k, v in shown.items())))
+    _tip(f"co notion page {found['id']}")

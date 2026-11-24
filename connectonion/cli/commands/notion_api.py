@@ -5,9 +5,10 @@ LLM-Note:
   Data flow: credential() = a NOTION_API_KEY exported in the shell, else NOTION_API_KEY from the selected env file or the --secret store → call(method, path, body) sends https://api.notion.com/v1/<path> with `Authorization: Bearer <key>` and `Notion-Version: 2025-09-03` → JSON dict | parse_target() turns a link or id into {id, block, view} | data_source() resolves a database link to the one data source it means | read_page() returns properties (typed, paginated), the block tree (nested, bounded) and an explicit coverage record
   State/Effects: reads NOTION_API_KEY (and optional NOTION_VERSION); network: Notion only. Every request is a read: GET, or the read-only POSTs search and data_sources/<id>/query
   Integration: row() is the one shape search/db lists print and --json returns | the 2025-09-03 model: a database is a container of data sources; schema, query and rows belong to a data source
-  Errors: NotionError(message, next_step, kind, detail). A 429, 5xx or transport failure is retried a bounded number of times (attempts and seconds), then reported
+  Errors: NotionError(message, next_step, kind, detail). A read's 429, 5xx or transport failure is retried a bounded number of times (attempts and seconds), then reported; a write is retried only on 429, and after a timeout or 5xx it is reported as unknown_outcome, never re-sent
 """
 
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -40,6 +41,19 @@ DEFAULT_DEPTH = 8
 READ_ATTEMPTS = 3
 MAX_WAIT_SECONDS = 20
 _sleep = time.sleep           # tests replace this
+
+
+# Notion's write limits: blocks per request, characters per text item, items per rich text, bytes per request.
+MAX_BLOCKS = 100
+MAX_TEXT = 2000
+MAX_RICH_ITEMS = 100
+MAX_PAYLOAD_BYTES = 400_000   # children per request: under the 500 KB cap with room for the envelope
+REQUEST_LIMIT_BYTES = 500_000  # Notion's own cap on a whole request body
+
+
+def weight(obj) -> int:
+    """Bytes as \\u-escaped JSON: the larger of the two encodings httpx versions use for a body."""
+    return len(json.dumps(obj).encode("utf-8"))
 
 
 class NotionError(Exception):
@@ -108,14 +122,22 @@ def _wait(response: httpx.Response | None, attempt: int) -> float:
 
 
 def call(method: str, path: str, body: dict | None = None, params: dict | None = None) -> dict:
-    """One read; return Notion's JSON, or raise NotionError.
+    """One request; return Notion's JSON, or raise NotionError.
 
-    Every request co notion makes is a read (GET, search, a data source query),
-    so a 429, a 5xx or a transport failure is retried, within READ_ATTEMPTS and
-    MAX_WAIT_SECONDS, and then reported rather than looped on.
+    GET and the read-only POSTs (search, query) are retried on 429, 5xx and
+    transport failures, within READ_ATTEMPTS and MAX_WAIT_SECONDS. A write is
+    retried only on 429, which Notion returns before doing anything; after a
+    timeout or 5xx its outcome is unknown and replaying it could create or
+    append twice, so it is reported as unknown_outcome instead.
     """
+    read = method == "GET" or (method == "POST" and (path == "search" or path.endswith("/query")))
+    if not read and body is not None and weight(body) > REQUEST_LIMIT_BYTES:
+        # Never send what Notion must refuse: measured in the larger JSON encoding.
+        raise NotionError(f"This write is {weight(body):,} bytes as JSON; Notion takes at most "
+                          f"{REQUEST_LIMIT_BYTES:,} in one request. Nothing was sent. Shorten the title or a "
+                          "property value", "co notion --help", "invalid")
     using = credential()
-    response = _send(method, path, body, params, using.token)
+    response = _send(method, path, body, params, using.token, read)
     if response is None:
         raise NotionError("Notion could not be reached", "co notion check", "network")
     try:
@@ -123,38 +145,48 @@ def call(method: str, path: str, body: dict | None = None, params: dict | None =
     except ValueError:
         data = None
     if not isinstance(data, dict):
+        if not read and response.status_code >= 500:
+            raise NotionError(f"Notion answered {response.status_code}; the change may or may not have been made",
+                              "co notion check", "unknown_outcome", {"request": f"{method} {path}"})
         raise NotionError(f"Notion returned an unreadable response (HTTP {response.status_code})",
                           "co notion check", "invalid_response")
     if response.status_code >= 400 or data.get("object") == "error":
-        raise _error(data, response.status_code, using=using)
+        raise _error(data, response.status_code, write=not read, request=f"{method} {path}", using=using)
     return data
 
 
-def _send(method: str, path: str, body: dict | None, params: dict | None, token: str):
+def _send(method: str, path: str, body: dict | None, params: dict | None, token: str, read: bool = True):
     """One request with its retries (see call()); the last response, or None if Notion never answered."""
     headers = {"Authorization": f"Bearer {token}", "Notion-Version": version(), "Content-Type": "application/json"}
     waited = 0.0
-    for attempt in range(READ_ATTEMPTS):
+    attempts = READ_ATTEMPTS if read else 2
+    for attempt in range(attempts):
         response = None
         try:
             with _http() as client:
                 response = client.request(method, f"{URL}/{path}", json=body, params=params, headers=headers)
         except httpx.TransportError as error:
+            if not read:
+                raise NotionError(f"No answer from Notion ({type(error).__name__}); the change may or may not "
+                                  "have been made", "co notion check", "unknown_outcome",
+                                  {"request": f"{method} {path}"}) from None
             if attempt + 1 >= READ_ATTEMPTS:
                 raise NotionError(f"Notion could not be reached ({type(error).__name__})", "co notion check",
                                   "network") from None
         else:
-            if response.status_code not in (429, 500, 502, 503, 504):
+            status = response.status_code
+            if not (status == 429 or (read and status in (500, 502, 503, 504))):
                 break
         pause = _wait(response, attempt)
-        if waited + pause > MAX_WAIT_SECONDS or attempt + 1 >= READ_ATTEMPTS:
+        if waited + pause > MAX_WAIT_SECONDS or attempt + 1 >= attempts:
             break
         waited += pause
         _sleep(pause)
     return response
 
 
-def _error(data: dict, status: int, *, using: Credential | None = None) -> NotionError:
+def _error(data: dict, status: int, *, write: bool = False, request: str = "",
+           using: Credential | None = None) -> NotionError:
     code = data.get("code", "")
     message = (data.get("message") or "unknown error").rstrip(".")
     if status == 401 or code == "unauthorized":
@@ -167,7 +199,7 @@ def _error(data: dict, status: int, *, using: Credential | None = None) -> Notio
                            f"{SET_KEY}", SET_KEY, "unauthorized")
     if status == 403 or code == "restricted_resource":
         return NotionError(f"Notion refused this for the key: {message}. The page may be readable, but the "
-                           f"key lacks the capability this needs (read content); for an internal connection, "
+                           f"key lacks the capability this needs (read, insert or update content); for an internal connection, "
                            f"turn it on under "
                            f"Capabilities in {KEY_PAGE.split(' → ')[0]}", "co notion check --target <link>", "forbidden")
     if status == 404 or code == "object_not_found":
@@ -176,6 +208,9 @@ def _error(data: dict, status: int, *, using: Credential | None = None) -> Notio
     if status == 429 or code == "rate_limited":
         return NotionError("Notion is still rate limiting this key after waiting; run it again in a minute",
                            "co notion check", "rate_limited")
+    if write and status >= 500:
+        return NotionError(f"Notion answered {status} ({message}); the change may or may not have been made",
+                           "co notion check", "unknown_outcome", {"request": request})
     if code == "validation_error":
         return NotionError(f"Notion refused the request: {message}", "co notion --help", "invalid")
     return NotionError(f"Notion: {message}", "co notion check", code)
@@ -418,14 +453,22 @@ def query(ds_id: str, *, filter: dict | None = None, sorts: list | None = None, 
     return data.get("results", [])[:first], after, capped
 
 
+WRITABLE = ("title", "rich_text", "number", "select", "status", "multi_select", "date", "checkbox",
+            "url", "email", "phone_number")
+# Read but never written by `add`/`update`: they need ids, are computed, or are owned by Notion.
+READ_ONLY = ("people", "relation", "files", "formula", "rollup", "created_time", "created_by",
+             "last_edited_time", "last_edited_by", "unique_id", "verification", "button", "place")
+
+
 def columns(ds: dict) -> list:
-    """A data source's properties: {name, id, type, options}, title first, then by name."""
+    """A data source's properties: {name, id, type, options, settable}, title first, then by name."""
     found = []
     for name, prop in (ds.get("properties") or {}).items():
         kind = prop.get("type", "")
         options = [o.get("name", "") for o in (prop.get(kind) or {}).get("options", [])] \
             if kind in ("select", "status", "multi_select") else []
-        found.append({"name": name, "id": prop.get("id", ""), "type": kind, "options": options})
+        found.append({"name": name, "id": prop.get("id", ""), "type": kind, "options": options,
+                      "settable": kind in WRITABLE})
     return sorted(found, key=lambda c: (c["type"] != "title", c["name"].lower()))
 
 
@@ -819,3 +862,331 @@ def build_sorts(ds: dict, keys: list) -> list:
         else:
             sorts.append({"property": _column(ds, name)["name"], "direction": direction})
     return sorts
+
+
+
+# -- writes: text to blocks -----------------------------------------------
+
+def _units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def split_text(text: str, limit: int = MAX_TEXT) -> list:
+    """Text in pieces of at most `limit` UTF-16 code units — Notion's measure — never splitting a character."""
+    pieces, current, size = [], [], 0
+    for char in text:
+        width = 2 if ord(char) > 0xFFFF else 1
+        if size + width > limit:
+            pieces.append("".join(current))
+            current, size = [], 0
+        current.append(char)
+        size += width
+    if current or not pieces:
+        pieces.append("".join(current))
+    return pieces
+
+
+def rich(text: str) -> list:
+    """Rich-text items for `text`, each within 2000 units; more than Notion's 100 items is refused, never cut."""
+    pieces = split_text(text)
+    if len(pieces) > MAX_RICH_ITEMS:
+        raise NotionError(f"One value or line is {_units(text):,} characters; Notion takes at most "
+                          f"{MAX_TEXT * MAX_RICH_ITEMS:,} in one block or property. Split it", "co notion --help",
+                          "invalid")
+    return [{"type": "text", "text": {"content": piece}} for piece in pieces]
+
+
+def _block(kind: str, text: str, **extra) -> dict:
+    return {"object": "block", "type": kind, kind: {"rich_text": rich(text), **extra}}
+
+
+LINE = [(re.compile(r"^(#{1,3})\s+(.*)$"), lambda m: _block(f"heading_{len(m[1])}", m[2])),
+        (re.compile(r"^[-*]\s+\[([ xX])\]\s+(.*)$"), lambda m: _block("to_do", m[2], checked=m[1] != " ")),
+        (re.compile(r"^[-*]\s+(.*)$"), lambda m: _block("bulleted_list_item", m[1])),
+        (re.compile(r"^\d+[.)]\s+(.*)$"), lambda m: _block("numbered_list_item", m[1])),
+        (re.compile(r"^>\s?(.*)$"), lambda m: _block("quote", m[1])),
+        (re.compile(r"^(?:---+|\*\*\*+)$"), lambda m: {"object": "block", "type": "divider", "divider": {}})]
+
+
+def text_blocks(text: str) -> list:
+    """Markdown-ish text as Notion blocks.
+
+    `#`/`##`/`###` headings, `- ` bullets, `1. ` numbers, `- [ ]` to-dos, `> `
+    quotes, `---` dividers and ``` fences become those blocks; other lines join
+    into paragraphs, split at blank lines. Inline marks (**, `, links) stay as
+    typed. Nothing is dropped: an over-long paragraph is split into several.
+    """
+    blocks, paragraph, fence, code = [], [], None, []
+
+    def flush():
+        if paragraph:
+            joined = "\n".join(paragraph)
+            for start in range(0, len(joined), MAX_TEXT * MAX_RICH_ITEMS // 2):
+                blocks.append(_block("paragraph", joined[start:start + MAX_TEXT * MAX_RICH_ITEMS // 2]))
+            paragraph.clear()
+
+    for line in text.replace("\r\n", "\n").split("\n"):
+        if fence is not None:
+            if line.strip().startswith("```"):
+                blocks.append(_block("code", "\n".join(code), language=fence or "plain text"))
+                fence, code = None, []
+            else:
+                code.append(line)
+            continue
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            flush()
+            fence = stripped[3:].strip()
+            continue
+        if not stripped:
+            flush()
+            continue
+        for pattern, make in LINE:
+            match = pattern.match(stripped)
+            if match:
+                flush()
+                blocks.append(make(match))
+                break
+        else:
+            paragraph.append(line.rstrip())
+    flush()
+    if fence is not None:   # an unclosed fence keeps its text, as code
+        blocks.append(_block("code", "\n".join(code), language=fence or "plain text"))
+    return [part for block in blocks for part in _fit(block)]
+
+
+def preview_text(blocks: list) -> str:
+    """The blocks that will be sent, rendered the way `co notion page` will show them afterwards."""
+    return render([(0, block) for block in blocks])
+
+
+# One block's share of a request, leaving room for the envelope around the children.
+BLOCK_LIMIT_BYTES = MAX_PAYLOAD_BYTES - 2_000
+
+
+def _fit(block: dict) -> list:
+    """A block small enough to send alone, or the same block split into consecutive ones of its type.
+
+    Splitting happens when the text is made into blocks, so the preview shows
+    exactly the blocks that will be sent. A block with no text to divide and
+    still too large is refused rather than sent to be rejected.
+    """
+    if weight(block) <= BLOCK_LIMIT_BYTES:
+        return [block]
+    kind = block["type"]
+    body = block.get(kind) or {}
+    items = body.get("rich_text") or []
+    if len(items) < 2:
+        raise NotionError(f"One {kind} block is {weight(block):,} bytes as JSON, over Notion's request size. "
+                          "Nothing was sent. Split the text", "co notion --help", "invalid")
+    parts, current = [], []
+    for item in items:
+        trial = {**block, kind: {**body, "rich_text": current + [item]}}
+        if current and weight(trial) > BLOCK_LIMIT_BYTES:
+            parts.append(current)
+            current = []
+        current.append(item)
+    parts.append(current)
+    return [{**block, kind: {**body, "rich_text": part}} for part in parts]
+
+
+def batches(blocks: list, *, first_budget: int = MAX_PAYLOAD_BYTES) -> list:
+    """Blocks in requests Notion accepts: at most 100 each and under the byte cap.
+
+    Sizes are measured as \\u-escaped JSON, the larger of the two encodings httpx
+    versions use, so CJK text stays under the cap whichever one sends it.
+    `first_budget` is the room the first request has after what else it carries
+    (a new page's properties). A block too large to send alone is refused.
+    """
+    out, current, size, budget = [], [], 0, first_budget
+    for block in blocks:
+        block_weight = weight(block)
+        if block_weight > BLOCK_LIMIT_BYTES:
+            raise NotionError(f"One {block.get('type')} block is {block_weight:,} bytes as JSON, over Notion's "
+                              "request size. Nothing was sent", "co notion --help", "invalid")
+        if not out and not current and block_weight > budget:
+            # The first request has no room for even this block beside what it carries (a large
+            # title): it goes empty, and the block opens the next request with a full budget.
+            out.append([])
+            budget = MAX_PAYLOAD_BYTES
+        if current and (len(current) >= MAX_BLOCKS or size + block_weight > budget):
+            out.append(current)
+            current, size, budget = [], 0, MAX_PAYLOAD_BYTES
+        current.append(block)
+        size += block_weight
+    if current:
+        out.append(current)
+    return out
+
+
+def append(target_id: str, blocks: list, *, start_at: int = 0) -> int:
+    """Append blocks[start_at:] to a page in batches; return how many were added in total (start_at included).
+
+    Each batch is confirmed before the next is sent. If one fails, NotionError
+    says how many blocks are confirmed and how to resume from the first one not.
+    """
+    written = start_at
+    for part in batches(blocks[start_at:]):
+        try:
+            call("PATCH", f"blocks/{target_id}/children", {"children": part})
+        except NotionError as error:
+            unknown = error.kind == "unknown_outcome"
+            raise NotionError(
+                f"{written} of {len(blocks)} blocks are confirmed on the page; the next batch "
+                + ("may or may not have been written" if unknown else f"failed: {error}"),
+                f"co notion page {target_id}", "partial",
+                {"page": target_id, "confirmed_blocks": written, "total_blocks": len(blocks),
+                 "next_start": written, "batch_outcome": "unknown" if unknown else "failed"}) from None
+        written += len(part)
+    return written
+
+
+def create_page(parent_id: str, title: str, blocks: list, *, data_source_id: str = "",
+                properties: dict | None = None) -> dict:
+    """A new page under a page (or a row in a data source), its first batch in the create call, the rest appended."""
+    parent = ({"type": "data_source_id", "data_source_id": data_source_id} if data_source_id
+              else {"type": "page_id", "page_id": parent_id})
+    envelope = {"parent": parent, "properties": properties or {"title": {"title": rich(title)}}}
+    room = REQUEST_LIMIT_BYTES - 2_000 - weight(envelope)
+    if room <= 0:
+        raise NotionError(f"The title and properties alone are {weight(envelope):,} bytes as JSON, over Notion's "
+                          "request size. Nothing was sent. Shorten them", "co notion --help", "invalid")
+    parts = batches(blocks, first_budget=min(MAX_PAYLOAD_BYTES, room))
+    body = {**envelope, "children": parts[0] if parts else []}
+    created = call("POST", "pages", body)
+    first = len(parts[0]) if parts else 0
+    if len(parts) > 1:
+        try:
+            append(created["id"], blocks, start_at=first)
+        except NotionError as error:
+            error.detail.update(created=created["id"], url=created.get("url", ""))
+            error.args = (f"The page was created ({created.get('url') or created['id']}), but " + str(error),)
+            raise
+    return created
+
+
+# -- writes: properties ----------------------------------------------------
+
+def write_value(column: dict, raw: str, ds_id: str) -> dict:
+    """One `Name=value` as the property object Notion takes, checked against the column's type and options."""
+    kind, name = column["type"], column["name"]
+    if kind not in WRITABLE:
+        raise NotionError(f"{name} is a {kind} column; co notion cannot set it", f"co notion columns {ds_id}",
+                          "invalid")
+    if kind in ("title", "rich_text"):
+        return {kind: rich(raw)}
+    if kind == "number":
+        try:
+            number = float(raw)
+        except ValueError:
+            raise NotionError(f"{name} takes a number, not {raw!r}", f"co notion columns {ds_id}", "invalid") from None
+        return {"number": int(number) if number.is_integer() else number}
+    if kind in ("select", "status"):
+        return {kind: {"name": _option(column, raw, ds_id)}}
+    if kind == "multi_select":
+        picked = [_option(column, part, ds_id) for part in raw.split(",") if part.strip()]
+        return {"multi_select": [{"name": p} for p in dict.fromkeys(picked)]}
+    if kind == "date":
+        start, _, end = raw.strip().partition("..")
+        for value in filter(None, (start, end)):
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(T[\d:.+\-Z]+)?", value):
+                raise NotionError(f"{name} takes a date like 2026-10-14 (or 2026-10-14..2026-10-20), not {raw!r}",
+                                  f"co notion columns {ds_id}", "invalid")
+        return {"date": {"start": start, **({"end": end} if end else {})}}
+    if kind == "checkbox":
+        if raw.strip().casefold() not in _TRUE | _FALSE:
+            raise NotionError(f"{name} takes yes or no, not {raw!r}", f"co notion columns {ds_id}", "invalid")
+        return {"checkbox": raw.strip().casefold() in _TRUE}
+    return {kind: raw.strip()}   # url, email, phone_number
+
+
+EMPTY = {"title": {"title": []}, "rich_text": {"rich_text": []}, "number": {"number": None},
+         "select": {"select": None}, "status": None, "multi_select": {"multi_select": []},
+         "date": {"date": None}, "checkbox": {"checkbox": False}, "url": {"url": None},
+         "email": {"email": None}, "phone_number": {"phone_number": None}}
+
+
+def _split_assignment(assignment: str, flag: str, ds: dict) -> tuple[str, str]:
+    name, sep, raw = assignment.partition("=")
+    if not sep:
+        raise NotionError(f"{flag} takes Name=value, not {assignment!r}", f"co notion columns {ds['id']}", "invalid")
+    return name, raw
+
+
+def row_properties(ds: dict, title: str, assignments: list) -> tuple[dict, dict]:
+    """A new row's properties from its title and `Name=value` strings; (properties, shown)."""
+    title_column = next((c for c in columns(ds) if c["type"] == "title"), None)
+    if title_column is None:
+        raise NotionError("This data source has no title column", f"co notion columns {ds['id']}", "invalid")
+    properties = {title_column["name"]: write_value(title_column, title, ds["id"])}
+    shown = {title_column["name"]: title}
+    for assignment in assignments:
+        name, raw = _split_assignment(assignment, "--set", ds)
+        column = _column(ds, name)
+        if column["type"] == "title":
+            raise NotionError(f"{column['name']} is the title; give it as the second argument, not --set",
+                              "co notion add --help", "invalid")
+        properties[column["name"]] = write_value(column, raw, ds["id"])
+        shown[column["name"]] = raw
+    return properties, shown
+
+
+def property_changes(ds: dict, current: dict, *, set_: list = (), clear: list = (), add: list = (),
+                     remove: list = ()) -> tuple[dict, dict]:
+    """The PATCH for exactly the named fields, and {column: "old → new"} for the preview.
+
+    --set replaces, --clear empties, --add/--remove change a multi_select's
+    options and leave the others. Every value is checked first; a field named
+    twice is refused rather than resolved by order.
+    """
+    properties, shown, touched = {}, {}, set()
+
+    def claim(column: dict) -> None:
+        if column["name"] in touched:
+            raise NotionError(f"{column['name']} is named twice; give each column once", "co notion update --help",
+                              "invalid")
+        touched.add(column["name"])
+
+    def old(column: dict) -> str:
+        prop = current.get(column["name"])
+        return property_text(prop) if prop else ""
+
+    for assignment in set_:
+        name, raw = _split_assignment(assignment, "--set", ds)
+        column = _column(ds, name)
+        claim(column)
+        properties[column["name"]] = write_value(column, raw, ds["id"])
+        shown[column["name"]] = f"{old(column) or '(empty)'} → {raw}"
+    for name in clear:
+        column = _column(ds, name)
+        claim(column)
+        if column["type"] not in WRITABLE or column["type"] in ("title", "status"):
+            raise NotionError(f"{column['name']} ({column['type']}) cannot be cleared by co notion",
+                              f"co notion columns {ds['id']}", "invalid")
+        properties[column["name"]] = EMPTY[column["type"]]
+        shown[column["name"]] = f"{old(column) or '(empty)'} → (empty)"
+    changes: dict = {}
+    for flag, entries in (("--add", add), ("--remove", remove)):
+        for assignment in entries:
+            name, raw = _split_assignment(assignment, flag, ds)
+            column = _column(ds, name)
+            if column["type"] != "multi_select":
+                raise NotionError(f"{flag} changes a multi_select column; {column['name']} is {column['type']}. "
+                                  "Use --set", "co notion update --help", "invalid")
+            if column["name"] in touched:
+                claim(column)   # already set or cleared: refused
+            entry = changes.setdefault(column["name"], (column, [], []))
+            entry[1 if flag == "--add" else 2].extend(
+                _option(column, part, ds["id"]) for part in raw.split(",") if part.strip())
+    for name, (column, added, removed) in changes.items():
+        touched.add(name)
+        before = property_value(current[name]) if name in current else []
+        after = [v for v in before if v not in removed] + [v for v in dict.fromkeys(added) if v not in before]
+        properties[name] = {"multi_select": [{"name": v} for v in after]}
+        shown[name] = f"{', '.join(before) or '(empty)'} → {', '.join(after) or '(empty)'}"
+    return properties, shown
+
+
+def update_page(page_id_: str, properties: dict) -> dict:
+    """PATCH exactly these properties. Values are absolute, so rerunning the same command sets the same values."""
+    return call("PATCH", f"pages/{page_id_}", {"properties": properties})
