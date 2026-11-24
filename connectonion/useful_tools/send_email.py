@@ -42,10 +42,12 @@ def send_email(
     idempotency_key: Optional[str] = None,
     from_address: Optional[str] = None,
     max_cost_usd: float = 0,
+    attachments: Optional[list[str]] = None,
 ) -> Dict:
     """Send an email using the agent's email address.
 
     Args:
+        attachments: Local paths (at most 100 files and 20 MiB total).
         to: Recipient email address
         subject: Email subject line
         message: Email body (plain text or HTML)
@@ -125,8 +127,16 @@ def send_email(
     if budget:
         payload['max_cost_usd']=format(budget,'.8f')
 
+    if attachments:
+        from .email_attachments import encode_attachments
+        try:
+            payload["attachments"] = encode_attachments(attachments)
+        except (OSError, ValueError) as exc:
+            return {"success": False, "error": str(exc), "retryable": False,
+                    "request_id": send_key, "idempotency_key": send_key}
+
     # Send email via backend API
-    endpoint = f"{backend_url()}/api/v1/email/send"
+    endpoint = f"{backend_url()}/api/v1/email/{'send-with-attachments' if attachments else 'send'}"
 
     headers = {
         "Authorization": f"Bearer {token}",
