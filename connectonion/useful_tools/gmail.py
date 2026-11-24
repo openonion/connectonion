@@ -657,15 +657,21 @@ class Gmail(GmailMailbox):
                 message['In-Reply-To'] = headers['message-id']
                 message['References'] = (headers.get('references', '') + ' ' + headers['message-id']).strip()
             thread_id = original.get('threadId')
+        return self._save_new_draft(message, thread_id)
+
+    def _save_new_draft(self, message, thread_id: str | None) -> dict:
         from .gmail_draft_mime import validate_message
+
         validate_message(self, message)
+        result = self._draft_dict("", message)
         payload = {"raw": self._encode_message(message)}
         if thread_id:
             payload['threadId'] = thread_id
         created = self._get_service().users().drafts().create(
             userId="me", body={"message": payload}
         ).execute()
-        return self._draft_dict(created["id"], message)
+        result["id"] = created["id"]
+        return result
 
     def get_draft(self, draft_id: str) -> dict:
         """Return a draft's exact headers/body and attachment manifest."""
@@ -708,11 +714,16 @@ class Gmail(GmailMailbox):
         )
         if existing + len(data) > GMAIL_ATTACHMENT_LIMIT:
             raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+        self._attach_draft_bytes(message, name, mime_type, data, source)
+        return self._update_draft(draft_id, message)
+
+    @staticmethod
+    def _attach_draft_bytes(message, name: str, mime_type: str | None, data: bytes, source: dict | None) -> None:
+        from .gmail_draft_sources import tag_file
+
         main, _, sub = (mime_type or "application/octet-stream").partition("/")
         message.add_attachment(data, maintype=main, subtype=sub or "octet-stream", filename=name)
-        from .gmail_draft_sources import tag_file
         tag_file(list(message.iter_parts())[-1], data, source)
-        return self._update_draft(draft_id, message)
 
     def add_draft_attachment(self, draft_id: str, path: str) -> dict:
         """Stage a local file into a Gmail draft; the draft remains unsent."""
@@ -984,12 +995,9 @@ class Gmail(GmailMailbox):
 
         recipient, subject, cc, threading, thread_id = self._reply_envelope(email_id, cc, reply_all)
         if draft:
-            created = self.create_draft(recipient, subject, body, cc=cc, bcc=bcc, in_reply_to=email_id)
-            for path in attachments or []:
-                created = self.add_draft_attachment(created["id"], path)
-            return created
-
-        if attachments:
+            self._require_draft_write_scope()
+            message = self._reply_draft_message(body, attachments or [])
+        elif attachments:
             with ExitStack() as stack:
                 message = self._multipart_with(body, self._open_attachments(attachments, stack))
         else:
@@ -1002,6 +1010,8 @@ class Gmail(GmailMailbox):
             message['Bcc'] = bcc
         for name, value in threading.items():
             message[name] = value
+        if draft:
+            return self._save_new_draft(message, thread_id)
 
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
         sent_message = self._get_service().users().messages().send(
@@ -1010,6 +1020,24 @@ class Gmail(GmailMailbox):
         ).execute()
 
         return f"Reply sent successfully. Message ID: {sent_message['id']}"
+
+    def _reply_draft_message(self, body: str, attachments: list[str]):
+        """Build the entire unsent message before creating a draft in Gmail."""
+        import mimetypes
+        from contextlib import ExitStack
+        from email.message import EmailMessage
+
+        message = EmailMessage()
+        message.set_content(body)
+        remaining = GMAIL_ATTACHMENT_LIMIT
+        with ExitStack() as stack:
+            for name, handle in self._open_attachments(attachments, stack):
+                contents = handle.read(remaining + 1)
+                if len(contents) > remaining:
+                    raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+                remaining -= len(contents)
+                self._attach_draft_bytes(message, name, mimetypes.guess_type(name)[0], contents, {"source": "local"})
+        return message
 
     def _reply_envelope(self, email_id: str, cc: str | None, reply_all: bool):
         """Who a reply goes to, its subject, its Cc, its threading headers and its thread."""

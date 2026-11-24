@@ -9,6 +9,8 @@ import base64
 import email
 from unittest.mock import MagicMock
 
+import pytest
+
 from connectonion.useful_tools.gmail import Gmail
 
 ORIGINAL = [
@@ -40,6 +42,7 @@ def _gmail(tmp_path, headers=ORIGINAL):
     gmail.my_addresses = lambda: {"me@mybiz.com"}
     gmail._require_draft_write_scope = lambda: None
     service.users().messages().send.reset_mock()  # the setup above called it once
+    service.users().drafts().create.reset_mock()
     return gmail, service
 
 
@@ -95,24 +98,54 @@ def test_reply_all_to_my_own_mail_follows_up_with_its_recipients(tmp_path):
     assert message["Cc"] == "sam@mybiz.com"
 
 
-def test_a_draft_reply_waits_unsent_in_the_thread_and_keeps_it_when_a_file_is_staged(tmp_path):
-    (tmp_path / "letter-signed.pdf").write_bytes(b"%PDF-1.7 corrected")
+def test_reply_draft_creates_one_complete_message_and_keeps_its_thread_when_edited(tmp_path):
+    letter = tmp_path / "letter-signed.pdf"
+    letter.write_bytes(b"%PDF-1.7 corrected")
+    note = tmp_path / "note.txt"
+    note.write_bytes(b"Second attachment")
     gmail, service = _gmail(tmp_path)
 
-    saved = gmail.reply("M1", "Corrected copy attached.", cc="sam@mybiz.com", draft=True,
-                        attachments=[str(tmp_path / "letter-signed.pdf")])
+    saved = gmail.reply("M1", "Corrected copy attached.", cc="sam@mybiz.com",
+                        bcc="audit@mybiz.com", draft=True, attachments=[str(letter), str(note)])
 
     service.users().messages().send.assert_not_called()
+    service.users().drafts().create.assert_called_once()
+    service.users().drafts().update.assert_not_called()
     created = service.users().drafts().create.call_args.kwargs["body"]["message"]
     assert created["threadId"] == "T1"
-    assert _decoded(created)["In-Reply-To"] == "<letter@uni.example.edu>"
+    message = _decoded(created)
+    assert message["In-Reply-To"] == "<letter@uni.example.edu>"
+    assert message["References"] == "<letter@uni.example.edu>"
+    assert (message["To"], message["Cc"], message["Bcc"], message["Subject"]) == (
+        "Dana Partner <dana@uni.example.edu>", "sam@mybiz.com", "audit@mybiz.com", "Re: Signed letter")
+    assert _files(message) == {"letter-signed.pdf": b"%PDF-1.7 corrected", "note.txt": b"Second attachment"}
+    assert saved["id"] == "D1"
+    assert [(item["name"], item["source"]) for item in saved["items"]] == [
+        ("letter-signed.pdf", "local"), ("note.txt", "local")]
+
+    extra = tmp_path / "extra.txt"
+    extra.write_bytes(b"Added after creating the draft")
+    gmail.add_draft_attachment("D1", str(extra))
     updated = service.users().drafts().update.call_args.kwargs["body"]["message"]
     assert updated["threadId"] == "T1"
-    message = _decoded(updated)
-    assert (message["To"], message["Cc"], message["Subject"]) == (
-        "Dana Partner <dana@uni.example.edu>", "sam@mybiz.com", "Re: Signed letter")
-    assert _files(message) == {"letter-signed.pdf": b"%PDF-1.7 corrected"}
-    assert saved["id"] == "D1" and [item["name"] for item in saved["attachments"]] == ["letter-signed.pdf"]
+    assert _files(_decoded(updated)) == {**_files(message), "extra.txt": extra.read_bytes()}
+
+
+def test_a_refused_second_attachment_leaves_no_draft(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    good_file = project / "good.pdf"
+    good_file.write_bytes(b"%PDF")
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF")
+    gmail, service = _gmail(project)
+
+    with pytest.raises(PermissionError, match="outside the project"):
+        gmail.reply("M1", "x", draft=True, attachments=[str(good_file), str(outside)])
+
+    service.users().drafts().create.assert_not_called()
+    service.users().drafts().update.assert_not_called()
+    service.users().messages().send.assert_not_called()
 
 
 def test_a_file_outside_the_project_is_refused_before_anything_is_sent(tmp_path):
