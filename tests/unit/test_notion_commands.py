@@ -975,3 +975,9 @@ def test_yes_with_a_row_and_its_listing_writes(notion):
     result = run("update", "1", "--set", "Status=Done", "--listing", token, "--yes")
     assert result.exit_code == 0, result.output
     assert "Status: Done" in run("page", ROW).stdout
+
+
+def test_a_write_preview_shows_a_title_with_line_breaks_on_one_line(notion):
+    notion.add_page(uid(81), "Sleep notes\nWeek 1", parent={"type": "page_id", "page_id": ROADMAP})
+    preview = run("append", uid(81), "more").stdout
+    assert "would append to Sleep notes Week 1" in preview and "\nWeek 1" not in preview

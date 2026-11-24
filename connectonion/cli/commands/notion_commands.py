@@ -681,11 +681,11 @@ def create(parent: str = typer.Argument(..., help="Row number, link or id of the
     body = _text(text)
     blocks = api.text_blocks(body)
     if not yes:
-        shown = {"parent": f"{api.title_of(found)} ({found['id']})", "title": title, "content": _body_summary(blocks)}
+        shown = {"parent": f"{api.one_line(api.title_of(found))} ({found['id']})", "title": title, "content": _body_summary(blocks)}
         words = [found["id"], title] + (["--text", text] if text else [])
         return _preview("would create this page", shown, _rerun("create", *words), api.preview_text(blocks))
     created = api.create_page(found["id"], title, blocks)
-    style.console().print(f"{style.ok('✓')} Created {escape(title)} {created['id']}  {style.path(created.get('url', ''))}")
+    style.console().print(f"{style.ok('✓')} Created {escape(api.one_line(title))} {created['id']}  {style.path(created.get('url', ''))}")
     _tip(f"co notion page {created['id']}")
 
 
@@ -714,14 +714,14 @@ def append(target: str = typer.Argument(..., help=PAGE_HELP),
         raise typer.Exit(2)
     sending = blocks[start_at:]
     if not yes:
-        shown = {"page": f"{api.title_of(found)} ({found['id']})", "adds": _body_summary(sending)}
+        shown = {"page": f"{api.one_line(api.title_of(found))} ({found['id']})", "adds": _body_summary(sending)}
         if start_at:
             shown["skips"] = f"the first {start_at} block(s), already written"
         words = [found["id"], text] + (["--start-at", str(start_at)] if start_at else [])
-        return _preview(f"would append to {api.title_of(found)}", shown, _rerun("append", *words),
+        return _preview(f"would append to {api.one_line(api.title_of(found))}", shown, _rerun("append", *words),
                         api.preview_text(sending))
     count = api.append(found["id"], blocks, start_at=start_at) - start_at
-    style.console().print(f"{style.ok('✓')} Added {count} block(s) to {escape(api.title_of(found))}  "
+    style.console().print(f"{style.ok('✓')} Added {count} block(s) to {escape(api.one_line(api.title_of(found)))}  "
                           f"{style.path(found.get('url', ''))}")
     _tip(f"co notion page {found['id']}")
 
@@ -752,10 +752,10 @@ def add(target: str = typer.Argument(..., help=DB_HELP),
         shown["content"] = _body_summary(blocks)
     if not yes:
         words = [ds["id"], title] + [w for a in assignments for w in ("--set", a)] + (["--text", text] if text else [])
-        return _preview(f"would add this row to {api.title_of(ds)}", shown, _rerun("add", *words),
+        return _preview(f"would add this row to {api.one_line(api.title_of(ds))}", shown, _rerun("add", *words),
                         api.preview_text(blocks))
     created = api.create_page("", title, blocks, data_source_id=ds["id"], properties=properties)
-    style.console().print(f"{style.ok('✓')} Added {escape(title)} {created['id']} to {escape(api.title_of(ds))}  "
+    style.console().print(f"{style.ok('✓')} Added {escape(api.one_line(title))} {created['id']} to {escape(api.one_line(api.title_of(ds)))}  "
                           f"{style.path(created.get('url', ''))}")
     _tip(f"co notion page {created['id']}")
 
@@ -793,8 +793,8 @@ def update(target: str = typer.Argument(..., help="Row number, link or id of the
     if not yes:
         words = [found["id"], *[w for a in assignments for w in ("--set", a)], *[w for c in clear for w in ("--clear", c)],
                  *[w for a in add_options for w in ("--add", a)], *[w for r in remove_options for w in ("--remove", r)]]
-        return _preview(f"would change {api.title_of(found)}", shown, _rerun("update", *words))
+        return _preview(f"would change {api.one_line(api.title_of(found))}", shown, _rerun("update", *words))
     api.update_page(found["id"], properties)
-    style.console().print(f"{style.ok('✓')} Updated {escape(api.title_of(found))} {found['id']}: "
+    style.console().print(f"{style.ok('✓')} Updated {escape(api.one_line(api.title_of(found)))} {found['id']}: "
                           + escape("; ".join(f"{k} {v}" for k, v in shown.items())))
     _tip(f"co notion page {found['id']}")
