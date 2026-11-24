@@ -6,6 +6,7 @@ network or real note is used.
 
 import copy
 import json
+import re
 from unittest.mock import Mock
 
 import pytest
@@ -327,7 +328,8 @@ def test_help_lists_both_commands_without_reading_credentials(monkeypatch):
     for command in ("changes", "show"):
         result = runner.invoke(app, ["granola", command, "--help"])
         assert result.exit_code == 0
-        assert "Example:" in result.output and "Next:" in result.output and "--json" in result.output
+        shown = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+        assert "Example:" in shown and "Next:" in shown and "--json" in shown
 
 
 def test_cli_changes_json_success(api, root):
