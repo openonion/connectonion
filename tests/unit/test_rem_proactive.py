@@ -496,6 +496,13 @@ def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool
         (workspace / 'candidate.json').write_text(json.dumps({'body': '看过了，周二前给你反馈。', 'gist': '简短确认', 'why': '她是试点负责人', 'sources': ['gmail:one']}))
         return {'outcome': 'natural'}
     monkeypatch.setattr(runner, 'run_task', fake_turn)
+    # Lark is offered only where the person is on it (#3302): with no Lark chat on her page the rewrite is refused,
+    # and once her page cites a Lark chat it goes ahead.
+    with pytest.raises(Exception, match='cannot be reached on Lark'):
+        drafts.redraft(notebook, row['id'], 'lark')
+    from connectonion.rem.files import Notebook
+    book = Notebook(notebook)
+    book.write('people/fern.md', book.read('people/fern.md').replace('## Sources\n', '## Sources\n- [2] lark:oc_pilot:1\n'))
     saved = drafts.redraft(notebook, row['id'], 'lark')
     assert saved['channel'] == 'lark' and saved['body'] == '看过了，周二前给你反馈。' and saved['status'] == 'prepared'
     with pytest.raises(Exception, match='Unknown channel'):

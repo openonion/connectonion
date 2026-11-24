@@ -28,6 +28,7 @@ from .file_tools import (
 from .gdrive import GDrive
 from .generate_image import generate_image
 from .youtube import YouTube
+from .email_attachments import read_email_attachment, get_email_attachments, download_email_attachment, download_raw_email
 from .get_emails import get_email, get_sent, get_sent_email, get_emails, mark_read, mark_unread
 from .gmail import Gmail
 from .google_calendar import GoogleCalendar
@@ -66,6 +67,10 @@ __all__ = [
     "get_sent",
     "get_sent_email",
     "get_emails",
+    "read_email_attachment",
+    "get_email_attachments",
+    "download_email_attachment",
+    "download_raw_email",
     "mark_read",
     "mark_unread",
     "create_sms_pairing",

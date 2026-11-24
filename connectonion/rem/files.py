@@ -20,6 +20,16 @@ from .facts import FIELDS
 # Person-page labels the roster reads back. Contact lines are skipped when
 # looking for the opening line: "Phone: Unknown" is not who somebody is.
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+# A chat handle: a WeChat id (wxid_… or a custom id) or another chat's bare id. One plain token, never a pattern;
+# a WhatsApp jid (…@s.whatsapp.net) already reads as EMAIL. Lets 不是人 mark a chat-only contact (#3339).
+CHAT_HANDLE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{4,63}")
+
+
+def person_handle(text: str) -> bool:
+    """One address or chat handle the owner can mark 是人 / 不是人."""
+    return bool(EMAIL.fullmatch(text) or CHAT_HANDLE.fullmatch(text))
+
+
 DOMAIN_HANDLE = re.compile(r"^@?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})$")
 ALIAS_LABELS = ("also known as:", "aka:", "别名:", "别名：")
 CITATION = re.compile(r"\s*\[W?\d+\]")
@@ -488,8 +498,10 @@ class Notebook:
         # stage had, and sends the paid stage looking for it.
         # Addresses are not names: seeded into Also known as too, 64 of 295 pages
         # in the 1.9.2b3 run said nothing there but the Email line again.
+        # An address is a real mail address only: a WeCom contact's WeChat id ends "@openim" and is a handle, not
+        # mail; written to Handles alone it never reached the roster and the night stubbed that friend again (#3347).
         seeded = {"Handles": ", ".join(handles),
-                  "Also known as": ", ".join(handle for handle in handles if "@" not in handle)}
+                  "Also known as": ", ".join(handle for handle in handles if not EMAIL.fullmatch(handle))}
         seeded.update({k.replace("_", " ").capitalize(): v for k, v in known.items() if v})
         lines = [f"# {name}", "", self.PERSON_LEAD, "", "## Facts"]
         lines += [f"- {label}: {seeded.get(label) or 'Unknown'}" for label in self.PERSON_CONTACT]
@@ -707,7 +719,11 @@ class Notebook:
             raise RemError("Markdown exceeds the one-megabyte writing limit")
         if KEY_SHAPES.search(content):
             raise RemError("Refusing to write secret-shaped content (a key or token) into a notebook page")
-        if path.exists() and self.read(record) == content:
+        previous = self.read(record) if path.exists() else None
+        # A masked knowledge page keeps its number, or is given the next one, here where pages are written (#3385).
+        from .masked import numbered
+        content = numbered(self.root, record, content, previous)
+        if previous == content:
             return False
         atomic_write(path, content)
         return True

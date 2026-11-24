@@ -46,6 +46,7 @@ drawn at 20/24 of the box so they match the outline icons optically.
    doc -> file-text
    undo -> undo-2
    x -> x
+   expand -> maximize-2
    ext -> external-link
    globe -> globe
 

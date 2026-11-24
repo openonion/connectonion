@@ -1503,6 +1503,9 @@ def test_sync_ends_on_a_short_summary_not_the_run_record(lifecycle, monkeypatch)
     """#2044: sync ended in a ~200-line dump with capitalised paths and cut-off reports."""
     root, _, _ = lifecycle
     monkeypatch.setattr("connectonion.rem.daily.run_daily", lambda root, **kw: SYNC_RESULT)
+    # The round kept its run, so the summary may name it (a round that kept none names no record).
+    from connectonion.rem.files import state_path, write_json
+    write_json(state_path(root, "runs/run_d.json"), SYNC_RESULT["run"])
     result = invoke(root, "sync")
     assert result.exit_code == 0, result.output
     out = result.stdout

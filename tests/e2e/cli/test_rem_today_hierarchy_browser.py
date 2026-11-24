@@ -61,6 +61,24 @@ def test_the_rails_numbers_are_worded_controls(today, size):
     assert "approve" not in others.inner_text().lower()
 
 
+def _raise(page, path):
+    """Deal a card onto the desk: by its face on a wide screen, by the card's own Next card on a phone, which
+    has no faces since sprint T3 (art director, #3371: the card's ‹ 1/4 › already counts)."""
+    face = page.locator(f'.deal[data-path="{path}"]')
+    if face.count() and face.first.is_visible():
+        face.first.click()
+        return
+    for _ in range(page.locator(".today-brief .qcard").count()):
+        if page.locator(".today-brief .qcard.focal").get_attribute("data-path") == path:
+            return
+        page.locator(".today-brief .qcard.focal").get_by_role("button", name="Next card").first.click()
+    assert page.locator(".today-brief .qcard.focal").get_attribute("data-path") == path
+
+
+def _paths(page):
+    return [card.get_attribute("data-path") for card in page.locator(".today-brief .qcard").all()]
+
+
 @pytest.mark.parametrize("size", SIZES)
 def test_the_header_and_the_badge_say_the_same_number_and_the_people_are_a_subset_in_words(today, size):
     page, _, _ = today
@@ -69,8 +87,8 @@ def test_the_header_and_the_badge_say_the_same_number_and_the_people_are_a_subse
     people = page.locator(".deal").count()
     assert mine and people
     badge = page.locator("#nav .n.waiting" if size[0] > 640 else "#tabbar .tab .n")
-    assert int(page.locator(".night-card .count").inner_text()) == int(badge.inner_text()) == mine
-    line = page.locator(".night-card .count-line")
+    assert int(page.locator("#main .count-line .count").inner_text()) == int(badge.inner_text()) == mine
+    line = page.locator("#main .count-line")
     assert line.locator(".count-words").inner_text() == "things waiting on you"
     assert line.locator(".count-words").is_visible()       # a phone says what the number counts, too
     assert "Start with" not in line.inner_text()  # the faces say where to start (#2994)
@@ -91,8 +109,8 @@ def test_every_card_has_one_primary_and_the_three_closes_are_words_without_a_hov
     page.mouse.move(1, size[1] - 1)
     cards = page.locator(".today-brief .qcard")
     assert cards.count() >= 3
-    for i in range(cards.count()):
-        page.locator(".deal").nth(i).click()
+    for path in _paths(page):
+        _raise(page, path)
         page.mouse.move(1, size[1] - 1)
         card = page.locator(".today-brief .qcard.focal")
         assert len(_primaries(card)) == 1, (i, _primaries(card))
@@ -183,7 +201,7 @@ def test_a_held_reply_leaves_the_count_the_badge_and_the_waiting_rows_together(t
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("() => { REM.drafts[0].status = 'held'; threadEntries.cached = null; render(); }", isolated_context=False)
     badge = int(page.locator("#nav .n.waiting").inner_text())
-    assert int(page.locator(".night-card .count").inner_text()) == badge
+    assert int(page.locator("#main .count-line .count").inner_text()) == badge
     page.evaluate("location.hash = '#view=open'", isolated_context=False)
     band = page.locator(".task-band").filter(has=page.get_by_role("heading", name="Waiting on you")).first
     band.wait_for()
@@ -227,6 +245,6 @@ def test_with_nothing_waiting_on_you_the_header_never_names_people(today):
     # Faces still dealt, but nothing of theirs is waiting on you: the zero branch must not name people.
     page.evaluate("() => { threadCounts = () => ({mine: 0, theirs: 0, other: 0, quiet: 0, open: 0}); render(); }", isolated_context=False)
     assert page.locator(".deal").count() > 0
-    line = page.locator(".night-card .count-line")
+    line = page.locator("#main .count-line")
     assert line.inner_text().split("\n") == ["0", "Nobody is waiting on you today."]
     assert "Start with" not in line.inner_text()

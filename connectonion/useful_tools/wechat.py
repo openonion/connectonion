@@ -159,6 +159,111 @@ def names(contact_conn: sqlite3.Connection) -> dict[str, str]:
             for row in contact_conn.execute("SELECT username, remark, nick_name FROM contact")}
 
 
+def verified_accounts(contact_conn: sqlite3.Connection) -> set[str]:
+    """Usernames WeChat marks as verified (verify_flag set): official accounts, brands, companies and services.
+
+    On the owner's 4.1 contact table people carry verify_flag 0; a verified account carries a non-zero flag. A
+    table without the column (another WeChat version) has no verified accounts to leave out, rather than no people.
+    """
+    columns = {row[1] for row in contact_conn.execute("PRAGMA table_info(contact)")}
+    if "verify_flag" not in columns:
+        return set()
+    return {row["username"] for row in contact_conn.execute("SELECT username FROM contact WHERE verify_flag != 0")}
+
+
+FTS_DB = "message_fts.db"
+FTS_TABLES = 4   # message_fts_v4_0 .. _3
+
+
+def _fts(db_storage: Path):
+    """The full-text index, open in memory, or None without a key."""
+    path = Path(db_storage) / "message" / FTS_DB
+    key = key_for(path) if path.is_file() else None
+    if not key:
+        return None
+    try:
+        return open_readonly(decrypt_db(path, key))
+    except (WrongKeyError, sqlite3.DatabaseError):
+        return None
+
+
+def fts_chat_ids(db_storage: Path) -> set[str]:
+    """The chats the full-text index holds messages for: the cheap read text_coverage counts (#3353)."""
+    conn = _fts(db_storage)
+    if conn is None:
+        return set()
+    name = {r[0]: r[1] for r in conn.execute("SELECT rowid, username FROM name2id")}
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    sessions = set()
+    for i in range(FTS_TABLES):
+        if f"message_fts_v4_{i}_content" in tables:
+            sessions |= {r[0] for r in conn.execute(f'SELECT DISTINCT c4 FROM "message_fts_v4_{i}_content"')}
+    return {name[s] for s in sessions if s in name}
+
+
+def fts_messages(db_storage: Path, known: dict | None = None) -> list[dict]:
+    """Every message in WeChat's full-text index, as all_messages' rows. Read-only, in memory.
+
+    `message/message_fts.db` opens with the keys already captured and holds the text of chats whose own
+    message_N.db has no key, such as history migrated from the phone (#3347: on the owner's machine 597,618
+    messages, 1,428 of 1,659 friends, against 24 from the one keyed message_0.db). Its rows are read from the
+    FTS5 content tables (c0..c6 = acontent, message_local_id, sort_seq, local_type, session_id, sender_id,
+    create_time), which need no tokenizer; ids resolve through this database's own name2id. [] without a key.
+    """
+    from datetime import datetime, timezone
+    known = known or {}
+    conn = _fts(db_storage)
+    if conn is None:
+        return []
+    name = {r[0]: r[1] for r in conn.execute("SELECT rowid, username FROM name2id")}
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    rows = []
+    for i in range(FTS_TABLES):
+        table = f"message_fts_v4_{i}_content"
+        if table not in tables:
+            continue
+        for content, local_id, _seq, local_type, session, sender_id, created in conn.execute(
+                f'SELECT c0, c1, c2, c3, c4, c5, c6 FROM "{table}"'):
+            chat = name.get(session)
+            if not chat:
+                continue
+            kind = int(local_type or 0) & 0xFFFF
+            text = str(content or "") if kind in (1, 10000) else KINDS.get(kind, "[其他]")
+            sender = name.get(sender_id, "")
+            if chat.endswith("@chatroom") and ":\n" in text[:80]:
+                sender, text = text.split(":\n", 1)
+            rows.append({"id": str(local_id), "chat": chat, "chat_name": known.get(chat, chat),
+                         "at": datetime.fromtimestamp(int(created or 0), timezone.utc).isoformat(),
+                         "text": text.strip(), "sender": sender, "sender_name": known.get(sender, sender),
+                         "kind": "text" if kind == 1 else "system" if kind == 10000 else "media"})
+    return rows
+
+
+def every_message(db_storage: Path, known: dict) -> list[dict]:
+    """The keyed message_N.db rows (full rows, media types), then the full-text index for the rest.
+
+    One message is one row: an FTS row is dropped when a message database already gave that chat's local id.
+    """
+    rows = all_messages(db_storage, known)
+    seen = {(row["chat"], row.get("id")) for row in rows}
+    rows += [row for row in fts_messages(db_storage, known) if (row["chat"], row.get("id")) not in seen]
+    return rows
+
+
+def friends(contact_conn: sqlite3.Connection) -> list[dict]:
+    """The owner's address book: contacts with local_type 1, as {username, remark, nick_name}.
+
+    WeChat 4.1 for Mac keeps everyone it has ever seen in `contact`; local_type 1 is a friend the owner added,
+    3 is someone only met in a group (#3347). Groups and official accounts are the caller's to leave out. A table
+    without the column (another WeChat version) has no address book to offer, rather than everyone as a friend.
+    """
+    columns = {row[1] for row in contact_conn.execute("PRAGMA table_info(contact)")}
+    if "local_type" not in columns:
+        return []
+    return [{"username": row["username"], "remark": row["remark"] or "", "nick_name": row["nick_name"] or ""}
+            for row in contact_conn.execute("SELECT username, remark, nick_name FROM contact WHERE local_type = 1")]
+
+
 def sessions(session_conn: sqlite3.Connection, known: dict[str, str], limit: int = 30) -> list[dict]:
     """Recent conversations, newest first: who, the last message's summary, its time and the unread count."""
     rows = session_conn.execute(
@@ -227,22 +332,128 @@ def key_for(path: Path) -> str | None:
     return keys.get(db_salt(path))
 
 
-def all_messages(db_storage: Path, known: dict) -> list[dict]:
+# Why a database was not read, and what fixes it (#3351, #3353): a skip is always recorded, never silent.
+NO_KEY = "no key (a new database, e.g. after migrating chat history)"
+WRONG_KEY = "the saved key no longer opens it"
+KEY_FIX = "co wechat key capture"
+
+
+def key_opens(path: Path, key_hex: str) -> bool:
+    """Whether a key opens a database: page 1's HMAC only, so a 100 MB file is checked in microseconds."""
+    with open(path, "rb") as handle:
+        page = handle.read(PAGE)
+    if len(page) < PAGE:
+        return False
+    key = key_bytes(key_hex)
+    hmac_key = hashlib.pbkdf2_hmac("sha512", key, bytes(b ^ HMAC_SALT_MASK for b in page[:16]), 2, dklen=32)
+    try:
+        _decrypt_page(page, 1, key, hmac_key)
+    except WrongKeyError:
+        return False
+    return True
+
+
+def chat_databases(db_storage: Path) -> list[Path]:
+    """The message databases that hold chats (message_0.db, message_1.db, …), sorted."""
+    return sorted((Path(db_storage) / "message").glob("*message_[0-9]*.db"))
+
+
+def message_coverage(db_storage: Path) -> dict:
+    """How much of WeChat's chat history is readable: {source, found, read, skipped, missing_keys}.
+
+    WeChat 4.1 has one key per database; a database made after the last key capture (migrating history from
+    the phone writes several) has none, and used to be skipped without a word (#3351).
+    """
+    skipped, read = [], 0
+    found = chat_databases(db_storage)
+    for path in found:
+        key = key_for(path)
+        reason = NO_KEY if not key else None if key_opens(path, key) else WRONG_KEY
+        if reason:
+            skipped.append({"item": path.name, "reason": reason, "fix": KEY_FIX})
+        else:
+            read += 1
+    # The address book too: without it no WeChat contact can become a person (wechat_people returns nothing).
+    contact = Path(db_storage) / "contact" / "contact.db"
+    contact_key = key_for(contact) if contact.is_file() else None
+    if contact.is_file() and not (contact_key and key_opens(contact, contact_key)):
+        skipped = skipped + [{"item": "contact.db", "reason": NO_KEY if not contact_key else WRONG_KEY, "fix": KEY_FIX}]
+    coverage = {"source": "wechat", "found": len(found), "read": read, "skipped": skipped,
+                "missing_keys": sum(1 for s in skipped if s["reason"] == NO_KEY)}
+    text = text_coverage(db_storage)
+    return {**coverage, "text": text} if text else coverage
+
+
+def friend_count(db_storage: Path) -> int | None:
+    """How many friends the address book holds (contact local_type 1, not groups or official accounts); None if unreadable."""
+    path = Path(db_storage) / "contact" / "contact.db"
+    key = key_for(path) if path.is_file() else None
+    if not key:
+        return None
+    conn = open_readonly(decrypt_db(path, key))
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(contact)")}
+    if "local_type" not in columns:
+        return None
+    return conn.execute("SELECT COUNT(*) FROM contact WHERE local_type = 1 AND username NOT LIKE '%@chatroom' "
+                        "AND username NOT LIKE 'gh\\_%' ESCAPE '\\'").fetchone()[0]
+
+
+def text_coverage(db_storage: Path) -> dict | None:
+    """Friends whose chat text REM can read, against the friend total: {friends, with_chats, missing}.
+
+    The migrated text lives in the keyed message_fts.db; its reader is `fts_messages` (#3347). Until that reader
+    exists this returns None, and the coverage line shows full-row coverage only.
+    """
+    # Prefer a reader of chat ids only (cheap); fall back to the full text reader. Both come from #3347.
+    ids, rows = globals().get("fts_chat_ids"), globals().get("fts_messages")
+    friends = friend_count(db_storage)
+    if friends is None or not (ids or rows):
+        return None
+    chats = ids(db_storage) if ids else {row["chat"] for row in rows(db_storage)}
+    with_chats = len({chat for chat in chats if not str(chat).endswith("@chatroom")})
+    return {"friends": friends, "with_chats": with_chats, "missing": max(friends - with_chats, 0)}
+
+
+def coverage_line(coverage: dict, language: str = "zh") -> str:
+    """What exists, what was read, what is missing and its fix, in one line a person or an agent reads.
+
+    Two parts (#3353): the friends whose chat text is readable (when the text reader is there), and the message
+    databases a key opens: a missing key hides media and full rows, and is fixed by a new key capture.
+    """
+    found, keyed, missing = coverage["found"], coverage["read"], coverage["missing_keys"]
+    other = len(coverage["skipped"]) - missing
+    text = coverage.get("text")
+    fix = f" → {KEY_FIX}" if coverage["skipped"] else ""
+    if language == "zh":
+        head = (f"微信：好友 {text['friends']:,} · 找到聊天 {text['with_chats']:,} · 还缺 {text['missing']:,}；"
+                if text else "微信：")
+        gap = "".join([f" · 缺 {missing}" if missing else "", f" · {other} 个打不开" if other else ""])
+        return f"{head}消息库 {found} · 有密钥 {keyed}{gap}{fix}"
+    head = (f"WeChat: friends {text['friends']:,} · with chats {text['with_chats']:,} · missing {text['missing']:,}; "
+            if text else "WeChat: ")
+    gap = "".join([f" · {missing} missing a key" if missing else "", f" · {other} unreadable" if other else ""])
+    return f"{head}message databases {found} · keyed {keyed}{gap}{fix}"
+
+
+def all_messages(db_storage: Path, known: dict, skipped: list | None = None) -> list[dict]:
     """Every message in every readable chat database, as plain rows. Read-only, in memory.
 
     A row: {id, chat, chat_name, at (ISO), text, sender, sender_name, kind}. The caller decides which
-    chats to keep and which side is the owner's.
+    chats to keep and which side is the owner's. A database that can't be read is appended to `skipped`
+    with its reason and fix (pass a list to see them); it is never dropped without a record.
     """
     import sqlite3
     from datetime import datetime, timezone
-    rows = []
-    for path in sorted((db_storage / "message").glob("*message_[0-9]*.db")):
+    rows, skipped = [], skipped if skipped is not None else []
+    for path in chat_databases(db_storage):
         key = key_for(path)
         if not key:
+            skipped.append({"item": path.name, "reason": NO_KEY, "fix": KEY_FIX})
             continue
         try:
             conn = open_readonly(decrypt_db(path, key))
-        except (WrongKeyError, sqlite3.DatabaseError):
+        except (WrongKeyError, sqlite3.DatabaseError) as error:
+            skipped.append({"item": path.name, "reason": f"{WRONG_KEY} ({type(error).__name__})", "fix": KEY_FIX})
             continue
         sender_of = {r[0]: r[1] for r in conn.execute("SELECT rowid, user_name FROM Name2Id")}
         by_table = {message_table(u): u for u in sender_of.values()}
@@ -261,4 +472,32 @@ def all_messages(db_storage: Path, known: dict) -> list[dict]:
                              "at": datetime.fromtimestamp(r[2], timezone.utc).isoformat(),
                              "text": text.strip(), "sender": sender, "sender_name": known.get(sender, sender),
                              "kind": "text" if kind == 1 else "system" if kind == 10000 else "media"})
+    return rows
+
+
+# WeChat's contact table mixes three things the owner thinks of differently (#3355): friends he added
+# (local_type 1), people he only shares a group with (local_type 3), and groups / official accounts.
+def contact_kind(username: str, local_type) -> str:
+    """friend, group, account (an official or service account), or other (seen in a group, not a friend)."""
+    if username.endswith("@chatroom"):
+        return "group"
+    if username.startswith("gh_"):
+        return "account"
+    return "friend" if local_type == 1 else "other"
+
+
+def contacts(contact_conn: sqlite3.Connection, owner: str = "") -> list[dict]:
+    """Every row of the contact table as {username, name, remark, nick_name, alias, kind}, the owner left out.
+
+    name is what the owner sees: his remark, else their nickname, else the username."""
+    columns = {row[1] for row in contact_conn.execute("PRAGMA table_info(contact)")}
+    alias = "alias" if "alias" in columns else "''"
+    local_type = "local_type" if "local_type" in columns else "0"
+    rows = []
+    for r in contact_conn.execute(f"SELECT username, remark, nick_name, {alias}, {local_type} FROM contact"):
+        username = r[0] or ""
+        if not username or username == owner:
+            continue
+        rows.append({"username": username, "name": r[1] or r[2] or username, "remark": r[1] or "",
+                     "nick_name": r[2] or "", "alias": r[3] or "", "kind": contact_kind(username, r[4])})
     return rows

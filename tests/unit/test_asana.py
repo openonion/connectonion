@@ -17,7 +17,7 @@ from connectonion.useful_tools import asana
 pytestmark = pytest.mark.unit
 
 TOKEN = 'test-token-check'
-SET_TOKEN = 'co env set ASANA_ACCESS_TOKEN <pat> --secret'
+SET_TOKEN = 'co auth asana'   # the Next line; the manual co env set command stays in the message
 USER_GID = '120012345678901234567890'
 WORKSPACE_GID = '000120012345678901234567891'
 FIELDS = {'gid', 'name', 'email', 'workspaces.gid', 'workspaces.name'}
@@ -1679,3 +1679,41 @@ def test_has_token_checks_names_only_and_never_decrypts(monkeypatch, tmp_path):
     env_file.write_text('', encoding='utf-8')
     monkeypatch.setattr(secret_store, 'stored_names', lambda directory: ['asana_access_token'])
     assert asana.has_token() is True                                    # the encrypted store, by name
+
+
+# -- list_my_tasks: what co asana changes reads by default ---------------------
+
+def test_my_tasks_ask_asana_for_the_owners_tasks_in_one_workspace(mock_http):
+    since = datetime(2026, 11, 1, 9, 0, tzinfo=timezone(timedelta(hours=11)))
+    mock_http.responses.append(_page([_task(completed=True)]))
+
+    assert asana.Asana().list_my_tasks(WORKSPACE_GID, since) == [_task(completed=True)]
+    params = mock_http.requests[0].url.params
+    assert mock_http.requests[0].url.path == '/api/1.0/tasks'
+    assert (params['assignee'], params['workspace']) == ('me', WORKSPACE_GID)
+    assert datetime.fromisoformat(params['modified_since']) == since
+    assert 'completed_since' not in params                      # completed tasks are changes too
+    assert TASK_FIELDS <= set(params['opt_fields'].split(','))
+
+
+def test_my_tasks_read_every_page(mock_http):
+    since = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    first, second = _task('1200000000000301'), _task('1200000000000302')
+    mock_http.responses.extend([_page([first], 'next'), _page([second])])
+
+    assert asana.Asana().list_my_tasks(WORKSPACE_GID, since) == [first, second]
+    assert mock_http.requests[1].url.params['offset'] == 'next'
+
+
+@pytest.mark.parametrize('since', [datetime(2026, 11, 1), date(2026, 11, 1), '2026-11-01T00:00:00Z'])
+def test_my_tasks_refuse_a_time_without_a_zone_before_sending(since, mock_http):
+    with pytest.raises(ValueError):
+        asana.Asana().list_my_tasks(WORKSPACE_GID, since)
+    assert mock_http.requests == []
+
+
+def test_task_detail_asks_who_created_the_task(mock_http):
+    mock_http.responses.append(httpx.Response(200, json={'data': _task_detail()}))
+
+    asana.Asana().get_task(TASK_GID)
+    assert {'created_by.gid', 'created_by.name'} <= set(mock_http.requests[0].url.params['opt_fields'].split(','))

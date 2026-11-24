@@ -675,7 +675,7 @@ never were. Those are bounded by the daily call cap
 `co rem status` and that budget hold use one number: the points counted from
 the run logs when status is asked, not the sentence a past round saved.
 
-`co rem status` keeps its existing dashboard and adds five stage lines in the
+`co rem status` keeps its existing status card and adds five stage lines in the
 order above. Each says what is waiting (a count) and when that stage last ran
 in the notebook's timezone (a date or `never`). Counts come from saved source
 metadata and the existing investigation, deepen, captured-decision and
@@ -718,6 +718,9 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem stop` | Remove that notebook's background job; preserve pages and progress. |
 | `co rem sync` | The whole update: one batch of new material; then the day's first run investigates unfinished pages, most recent first, and every later run updates only the people and projects with something new. What the schedule runs (`sync --scheduled`). |
 | `co rem collect [--source NAME] [--with ADDRESS] [--dry-run]` | Read one batch of approved new material only, using the existing extraction/page updates. No investigation, deepen, abstract or translation. Dry run reads metadata only. |
+| `co rem map [people\|orgs\|projects\|knowledge] --source NAME [--dry-run]` | Make pages for what one source holds, without a model (#3331). Each source yields its own kinds of page: gmail/outlook people and orgs, wechat people, codex/claude-code projects; `co rem sources` lists them. A person already on a page from another source gets the new handle on that page; nothing is removed or rewritten. A kind the source doesn't yield is refused (exit 2, nothing written). `co rem map people` maps people from every enabled source. Next: `co rem investigate people --source NAME --new`. |
+| `co rem investigate people --source NAME [--new\|--existing\|--all] [--limit N] [--list]` | Investigate the people pages one source reaches by handle, never-investigated pages first; an investigated page is appended to (#3105). |
+| Adding a source onboards it (#3331) | `co rem sources add NAME` maps an approved source at once. Each night maps the local sources that grow on their own (WeChat contacts). A widened source (`--since`, `--chat`, `--project`) is mapped again. The people pages it made, or gave a new handle, go first in the investigation queue until investigated; a page investigated before is appended to. `co rem sources` and `co rem status` show per source when it was mapped, what it made and what still waits. Mail and coding sources are also mapped by `co rem init` and `co rem map`, not at night: a mail map is a 180-day metadata scan over the network. |
 | `co rem sources add codex --project /path/to/repo --since 30d` | Save a scoped source choice. |
 | `co rem sources add whatsapp --chat <id>` | Read one WhatsApp chat (group or person) from the files `co whatsapp listen` keeps; ids from `co whatsapp chats`. Repeat per chat; the next `co rem start` prints the diff and proceeds in a terminal. `co rem sources remove whatsapp --chat <id>` stops one chat. |
 | `co rem sources remove codex` | Disable that source. |
@@ -1225,7 +1228,7 @@ organisations first, saying which pages were new.
 
 `Who they are` is a skeleton with detail: a framing sentence, then the career timeline newest first
 (employer, role, years, what they did there), education, public work and the people they overlap with,
-each cited, with an unknown said once. Enrich runs on investigation's level (Sol at medium effort), and
+each cited, with an unknown said once. Enrich runs on the independent investigation level (Sol at low effort), and
 neither its prompt nor the size note asks for brevity any more: a page past the length limit moves its
 oldest History to the archive instead.
 
@@ -2625,7 +2628,7 @@ rule to discard companies or event opportunities.
 ## Choose a harness
 
 ```bash
-co rem config set runner codex model gpt-5.6-luna
+co rem config set runner codex models.level3 gpt-6-luna
 co rem config set runner claude-code model default
 co rem config set runner coai model co/gemini-3.8-flash
 co rem config set runner coai model ollama/qwen3
@@ -2636,6 +2639,34 @@ omits the model flag. Changing runner without a model chooses that harness's
 default. Old coai configs which retained the unused Codex default migrate to
 their previous effective behavior (COAI's default). No credential belongs in
 co rem configuration.
+
+### Models and reasoning effort by stage
+
+Codex routes each stage through its model level. Defaults are:
+
+| Level | Stages | Model | Effort |
+| --- | --- | --- | --- |
+| Level 1 | `tag`, `tag-node`, `translate`, `extract`, `sessions-summary` | `gpt-6-luna` (Luna) | `medium` |
+| Level 2 | `topic`, `same-person`, `plan` | `gpt-6-luna` (Luna) | `medium` |
+| Level 3 | `maintain`, `init`, `projects`, `reply-draft`, `native` | `gpt-6-luna` (Luna) | `medium` |
+| Level 4 | `abstract`, `muse`, `claim-audit`, `insight-critic`, `synthesize`, `task` | `gpt-6.1-sol` (Sol) | `low` |
+| Independent investigation | `enrich`, `investigate`, `render` | `gpt-6.1-sol` (Sol) | `low` |
+
+Set `models.level1` through `models.level4` and the matching `efforts.level1`
+through `efforts.level4` separately. `models.investigate` and
+`efforts.investigate` control the independent investigation group. `route.<stage>`
+overrides a stage's model; `default` clears that override. `co rem status`
+lists the model, effort and stages for each level.
+
+```bash
+co rem config set models.level1 gpt-6-luna efforts.level1 medium
+co rem config set models.level4 gpt-6.1-sol efforts.level4 low
+co rem config set models.investigate gpt-6.1-sol efforts.investigate low
+```
+
+The legacy `model` key sets both level 3 and independent investigation;
+`models.summary` aliases level 1. Setting `effort` sets every level at once.
+Other runners keep one model across levels and take no reasoning effort from REM.
 
 ### The job's shape: agent or summary tier
 
@@ -2836,10 +2867,12 @@ Codex notebooks on macOS use `schedule.runner: codex-exec` by default when the
 Codex CLI is installed and signed in. launchd runs `codex exec` directly through
 REM's turn worker, using the same work-loop prompt as the desktop automation.
 Exec sessions can continue across tasks; desktop automation sessions can end early.
-The model remains `model` (default `gpt-6-luna`); `effort` defaults to `medium`.
+The scheduled session uses `models.level3` and `efforts.level3` (Luna at
+medium by default); each worker uses its stage's model and effort from the table above.
 
-`effort` is the reasoning effort of every Codex worker REM starts, not only of
-the scheduled turn. The turns that `co rem exec`, `co rem catchup`, sync,
+Every Codex worker REM starts receives its stage's reasoning effort, including
+the scheduled turn. The legacy `effort` setting overrides every level at once.
+The turns that `co rem exec`, `co rem catchup`, sync,
 investigate and deepen start are `co ai --harness codex --effort <effort>`;
 the scheduled `codex exec` turn and the cited-claim audit get
 `-c model_reasoning_effort=<effort>`; owed tasks and conversations pass it to
@@ -2847,8 +2880,8 @@ the same adapter. Until 2026-11-17 the `co ai` turns and the audit passed
 none, so they ran at the owner's own `~/.codex/config.toml` setting: 81 worker
 turns of one night at `max` while `config.yaml` said `medium`. Claude Code and
 COAI runners take no effort from REM, and their records say none.
-`speed: fast` (the default) asks Codex for its priority service tier on every
-turn; `standard` leaves the tier Codex is configured with.
+`speed: fast` asks Codex for its priority service tier on every turn;
+`standard` (the default) leaves the tier Codex is configured with.
 
 Every run record keeps what its worker was started at (`harness`, `model`,
 `speed`, `effort`); a task `co rem exec` or catchup drives records its stage's
@@ -3093,7 +3126,7 @@ as before.
 - `co rem status` reads the meter now and says it in two lines, for example
   `Codex week: 5% used on pro; resets Sun 04 Oct 09:49` and
   `Investigation this week: 0 of 35 points; nothing starts once the week is at 90%`.
-  The dashboard says what a point is under the line.
+  The status card says what a point is under the line.
   `--json` gives the same numbers under `quota` and `investigation_quota`.
 - **Past the floor, translation and tagging go on to a ceiling.** A translate or
   tag turn is a minute of a small model; the floor held them with investigation, so
@@ -3658,6 +3691,27 @@ that shows the full record (`co rem logs RUN`). Off a terminal the words are
 the same, without colour. A long investigation off a terminal prints a stage
 once when it starts (`Investigation: gathering codex sessions`), not once per
 40 files scanned.
+
+**When there is nothing new.** A sync or collect that read no new material runs
+no model and keeps no run record. Its summary then has no `Full record` line,
+and `--json` carries `"record_kept": false`. The next step stays one that
+works: `co rem sync --source …` or `--with …` (a single batch) names
+`co rem status`, not `co rem logs RUN`, which would only say the run does not
+exist; `co rem collect` keeps its own (collect again); plain `co rem sync`, the
+daily round, keeps `co rem logs`, the list of runs.
+
+**A project's agenda comes with it.** A batch is given the pages its material
+names: people, and projects by title or by the folder a session ran in. When a
+project page is one of them, its agenda pages come too: the agenda page with
+the project page's file name (`agenda/atlas.md` for `projects/atlas.md`), and
+any agenda page that links to the project page, by a relative Markdown link or
+a `[[projects/atlas]]` wikilink. An agenda page keeps one dated line per item
+and names the project, never the item, so a batch about one item never names
+it: a moved due date reached the project page and left its agenda on the old
+date. Agenda pages come after every page the material named, so they never
+take a named page's place in a batch (a batch updates at most five pages); each
+is added once, however many projects bring it. With no project page among
+them, no agenda page is added.
 
 `co rem logs --usage` puts every model run under a stage, so the stage totals
 add up to the total: `extract` and `maintain` for sync batches,

@@ -17,6 +17,7 @@ import typer
 from rich.console import Console
 
 from ..typer_groups import _OneSuggestion
+from .wechat_help import verbatim
 
 console = Console()
 
@@ -33,9 +34,11 @@ RAW_KEY_RE = re.compile(r"^x'[0-9a-fA-F]{64}'$")
 DOCS = "docs/wechat-read.md"
 
 wechat_app = typer.Typer(
-    cls=_OneSuggestion,
+    cls=verbatim("co wechat", _OneSuggestion),
     help="Read your own WeChat for Mac chats on this Mac (read-only). Run co wechat on its own: the first time it "
-         "sets up what is missing, then it lists your recent chats. macOS only. Nothing is sent.",
+         "sets up what is missing, then it lists your recent chats. It ends with a coverage line: how many chat "
+         "databases it found, how many a key opens, and any it cannot read with the fix (co wechat key capture). "
+         "macOS only. Nothing is sent.",
     no_args_is_help=False,
     invoke_without_command=True,
     epilog="Example:  co wechat  |  co wechat read 1  |  co wechat search 合同",
@@ -117,7 +120,7 @@ def _container_status(timeout: float = 3.0) -> tuple[str, Path | None]:
     return result[0] if result else ("blocked", None)
 
 
-@wechat_app.command("doctor", epilog="Example:  co wechat doctor")
+@wechat_app.command("doctor", cls=verbatim("co wechat doctor"))
 def doctor():
     """Check whether WeChat chats can be read: macOS, access to the WeChat data folder, and saved keys. Read-only; exits 2 if something is missing."""
     _require_macos()
@@ -150,7 +153,7 @@ def doctor():
 
 
 key_app = typer.Typer(
-    cls=_OneSuggestion,
+    cls=verbatim("co wechat key", _OneSuggestion),
     help="WeChat database keys. Read-only unless you run capture or set: capture gets them after one question; set saves one you already have.",
     no_args_is_help=False,
     invoke_without_command=True,
@@ -173,13 +176,15 @@ def key_help(ctx: typer.Context):
             "co wechat key capture gets them for you, after one question: it quits WeChat, opens a re-signed copy",
             "under Apple's debugger (lldb) while the copy opens your chats, saves each key by its database's salt,",
             "and reopens the real WeChat, which is never changed. Only macOS tools are used; nothing is installed.",
+            "Run it again whenever WeChat has new databases (after migrating chat history from your phone, or when",
+            "co wechat tables lists one as skipped): the new keys are added and the saved ones kept.",
             "",
             "Next: co wechat key capture   (or just: co wechat, which asks the first time)",
         ])
     )
 
 
-@key_app.command("capture", epilog="Example:  co wechat key capture  |  co wechat key capture --yes")
+@key_app.command("capture", cls=verbatim("co wechat key capture"))
 def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question; for a script you started yourself"),
                 keep_copy: bool = typer.Option(False, "--keep-copy", help="Keep the 1.4 GB re-signed copy for the next capture")):
     """Writes the key of every WeChat database on this Mac to ~/.co/wechat/keys.json (0600), after one question. Quits and reopens WeChat."""
@@ -203,7 +208,7 @@ def key_capture(yes: bool = typer.Option(False, "--yes", help="Skip the question
     raise typer.Exit(0 if done else 1)
 
 
-@key_app.command("set", epilog="Example:  co wechat key set \"x'0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0'\"")
+@key_app.command("set", cls=verbatim("co wechat key set"))
 def key_set(
     key: str = typer.Argument(..., help="The SQLCipher raw key as x'<64 hex chars>', obtained per co wechat key --help"),
 ):
@@ -360,6 +365,22 @@ def _quit_wechat() -> None:
     time.sleep(1)
 
 
+def merge_captured(keys: dict, lines: list, salts: set) -> set:
+    """Add captured "<hmac salt> <key>" lines to `keys` (by database salt) and return the salts newly seen.
+
+    Keys already saved are kept: a later capture, e.g. after migrating chat history, only adds (#3351).
+    """
+    import re
+    found = set()
+    # Only "<32 hex> <64 hex>" lines are captures; the hook writes nothing else, but a torn write is possible.
+    for salt, key in (line.split() for line in lines if re.fullmatch(r"[0-9a-f]{32} [0-9a-f]{64}", line.strip())):
+        db = bytes(b ^ 0x3A for b in bytes.fromhex(salt)).hex()
+        if db in salts:
+            keys[db] = "x'" + key + "'"
+            found.add(db)
+    return found
+
+
 def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = False) -> int:
     """Quit WeChat, open the re-signed copy under lldb, record each database's key by salt, restore WeChat.
 
@@ -393,12 +414,7 @@ def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = Fa
         found = set()
         for _ in range(wait_seconds // 3):
             time.sleep(3)
-            for line in capture.read_text().splitlines() if capture.is_file() else []:
-                salt, _, key = line.partition(" ")
-                db = bytes(b ^ 0x3A for b in bytes.fromhex(salt)).hex()
-                if db in salts:
-                    keys[db] = "x'" + key + "'"
-                    found.add(db)
+            found |= merge_captured(keys, capture.read_text().splitlines() if capture.is_file() else [], salts)
             console.print(f"\r  {len(found)} of {len(salts)} databases", end="")
             if found >= salts:
                 break
@@ -417,7 +433,10 @@ def capture_keys(db_storage: Path, wait_seconds: int = 600, keep_copy: bool = Fa
         if not keep_copy and DEBUG_COPY.is_dir():
             import shutil
             shutil.rmtree(DEBUG_COPY, ignore_errors=True)
-    _save_key_map(keys)
+    before = len(salts & set(_key_map()))
+    _save_key_map(keys)  # merged into the saved map: earlier keys are kept (#3351)
+    total = len(salts & set(keys))
+    console.print(f"新抓到 {max(total - before, 0)} 个，共 {total} 个 / {len(salts)} 个数据库有密钥")
     if not found:
         console.print("[yellow]No keys appeared.[/yellow] The copy has to log in for WeChat to open its databases. "
                       "Run co wechat key capture again and log in on the window it opens.")
@@ -488,7 +507,11 @@ def recent(ctx: typer.Context, limit: int = typer.Option(20, "--limit", help="Ho
     KEY_DIR.mkdir(parents=True, exist_ok=True)
     LISTING.write_text(json.dumps({"at": time.time(), "chats": [r["username"] for r in rows]}))
     os.chmod(LISTING, 0o600)
-    console.print("\nNext: co wechat read 1  (a number above, or a name)")
+    # What this list could not see: databases with no key (e.g. history migrated after the last capture, #3351).
+    coverage = engine.message_coverage(db_storage)
+    console.print("\n" + engine.coverage_line(coverage))
+    console.print("Next: " + (engine.KEY_FIX + "  (unlock the databases above)" if coverage["skipped"]
+                              else "co wechat read 1  (a number above, or a name)"))
 
 
 def _who(db_storage: Path, who: str, known: dict) -> str | None:
@@ -509,7 +532,7 @@ def _message_dbs(db_storage: Path) -> list:
     return [c for c in (_open(p) for p in sorted((db_storage / "message").glob("*message_[0-9]*.db"))) if c]
 
 
-@wechat_app.command("read", epilog="Example:  co wechat read 1  |  co wechat read 妈妈 --limit 50")
+@wechat_app.command("read", cls=verbatim("co wechat read"))
 def read(who: str = typer.Argument(..., help="A number from co wechat, or a name"),
          limit: int = typer.Option(30, "--limit", help="How many recent messages")):
     """Show one chat's recent messages, oldest first. Read-only."""
@@ -532,7 +555,7 @@ def read(who: str = typer.Argument(..., help="A number from co wechat, or a name
     raise typer.Exit(1)
 
 
-@wechat_app.command("search", epilog="Example:  co wechat search 合同  |  co wechat search invoice --limit 50")
+@wechat_app.command("search", cls=verbatim("co wechat search"))
 def search(words: str = typer.Argument(..., help="Text to look for in messages"),
            limit: int = typer.Option(20, "--limit", help="How many results")):
     """Find text messages that contain the words, across your chats, newest first. Read-only."""
@@ -557,11 +580,55 @@ def search(words: str = typer.Argument(..., help="Text to look for in messages")
         console.print(f"No messages contain {words}.")
 
 
-@wechat_app.command("tables", epilog="Example:  co wechat tables")
-def tables():
-    """List each WeChat database with its tables and row counts, for raw access. Read-only."""
+@wechat_app.command("contacts", cls=verbatim("co wechat contacts"))
+def contacts(friends: bool = typer.Option(False, "--friends", help="List friends only"),
+             search: str = typer.Option("", "--search", help="Names, remarks, aliases or ids that contain this"),
+             limit: int = typer.Option(50, "--limit", help="How many to list"),
+             as_json: bool = typer.Option(False, "--json", help="One JSON object")):
+    """Count your WeChat contacts (friends, groups, accounts) and find one. Read-only."""
+    import json
     from ...useful_tools import wechat as engine
     db_storage = _ready()
+    conn = _open(db_storage / "contact" / "contact.db")
+    if conn is None:
+        console.print("[yellow]contact.db has no saved key.[/yellow] Run:  co wechat key capture")
+        raise typer.Exit(2)
+    rows = engine.contacts(conn, engine.owner_username(db_storage))
+    counts = {kind: sum(1 for row in rows if row["kind"] == kind) for kind in ("friend", "group", "account", "other")}
+    needle = search.casefold()
+    listed = [row for row in rows if (not friends or row["kind"] == "friend") and (not needle or any(
+        needle in row[field].casefold() for field in ("name", "remark", "nick_name", "alias", "username")))]
+    # Friends first, then the ones he named himself, then by name.
+    listed.sort(key=lambda row: (row["kind"] != "friend", not row["remark"], row["name"].casefold()))
+    shown = listed[:limit] if (friends or search) else []
+    if as_json:
+        typer.echo(json.dumps({"counts": counts, "matched": len(listed), "contacts": shown}, ensure_ascii=False))
+        return
+    say = lambda text: console.print(text, markup=False, highlight=False)  # noqa: E731
+    say(f"Friends {counts['friend']} · groups {counts['group']} · official accounts {counts['account']}"
+        f" · seen only in groups {counts['other']}")
+    for row in shown:
+        nick = f" ({row['nick_name']})" if row["remark"] and row["nick_name"] not in ("", row["remark"]) else ""
+        say(f"  {row['name']}{nick}  {row['kind']}  {row['username']}")
+    if len(listed) > len(shown) and shown:
+        say(f"  … {len(listed) - len(shown)} more: narrow with --search or raise --limit")
+    if not (friends or search):
+        say("Next: co wechat contacts --friends --search NAME")
+    elif shown:
+        say("Next: co wechat read NAME")
+    else:
+        say("No contact matches. Next: co wechat contacts --friends")
+
+
+@wechat_app.command("tables", cls=verbatim("co wechat tables"))
+def tables(as_json: bool = typer.Option(False, "--json", help="Print chat-database coverage as JSON: found, read, skipped, missing_keys")):
+    """List each WeChat database with its tables and row counts, then how many chat databases can be read. Read-only."""
+    import json
+    from ...useful_tools import wechat as engine
+    db_storage = _ready()
+    if as_json:
+        print(json.dumps(engine.message_coverage(db_storage), ensure_ascii=False))
+        return
     opened = 0
     for path in engine.message_dbs(db_storage):
         conn = _open(path)
@@ -571,12 +638,16 @@ def tables():
         opened += 1
         listing = ", ".join(f"{name}({rows})" for name, rows in engine.tables(conn)) or "(no tables)"
         console.print(f"[bold]{path.name}[/bold]: {listing}")
+    coverage = engine.message_coverage(db_storage)
+    console.print("\n" + engine.coverage_line(coverage))
     if not opened:
         console.print("[yellow]No key opens any WeChat database yet.[/yellow] Run:  co wechat key capture")
         raise typer.Exit(2)
+    if coverage["skipped"]:
+        console.print("Next: " + engine.KEY_FIX)
 
 
-@wechat_app.command("decrypt", epilog="Example:  co wechat decrypt --out ~/wechat-plain")
+@wechat_app.command("decrypt", cls=verbatim("co wechat decrypt"))
 def decrypt(
     out: Path = typer.Option(Path("wechat-plain"), "--out", help="Directory to write plaintext SQLite copies into"),
 ):
@@ -603,7 +674,7 @@ def decrypt(
     raise typer.Exit(0 if written else 2)
 
 
-@wechat_app.command("export", epilog='Example:  co wechat export --db contact.db --table contact --format json --out contacts.json')
+@wechat_app.command("export", cls=verbatim("co wechat export"))
 def export(
     db: str = typer.Option(..., "--db", help="A database file name, as shown by: co wechat tables"),
     table: str = typer.Option(..., "--table", help="A table in that database, as shown by: co wechat tables"),

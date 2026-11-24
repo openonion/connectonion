@@ -49,7 +49,7 @@ def test_today_is_one_card_per_person_with_one_green_action(reader):
     lead = page.locator('#main .qcard.focal .strip-lead').evaluate_all('nodes => nodes.filter(node => node.getClientRects().length).length')
     # A snapshot can close nothing from the strip and opens no page as a "step": its one line says where to act.
     assert visible_green + lead == 1 or (visible_green + lead == 0 and page.locator('.snapshot-line').count() == 1)
-    assert page.locator('.night-card .count-words').inner_text().endswith('waiting on you')
+    assert page.locator('#main .count-words').inner_text().endswith('waiting on you')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth', isolated_context=False)
 
 

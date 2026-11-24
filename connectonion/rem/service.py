@@ -775,7 +775,51 @@ def schedule_failure(root: Path) -> dict | None:
             # `empty`: how many of them exited 0 with no task served and nothing submitted.
             **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
                 'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
-                'code_error': _code_error_streak(failures)} if failures else {})}
+                'code_error': _code_error_streak(failures),
+                'same_error': _same_error_streak(failures),
+                **({'stuck': _stuck_on(root, failures[0].get('reason') or '', failures)} if _same_error_streak(failures) else {})}
+               if failures else {})}
+
+
+STUCK_KINDS = {'skills/catalog/': 'skill', 'people/': 'person', 'orgs/': 'org', 'projects/': 'project'}
+
+
+def _stuck_on(root: Path, reason: str, failures: list[dict] = ()) -> dict:
+    """What the repeated error stopped on, and whether REM really set it aside (#3402).
+
+    `skipped` is read from the refusals ledger (parked) or the round's skipped list, never assumed:
+    Today says 已经跳过 only when one of them shows it.
+    `handled`: the installed build already sets this failure aside (#3413). Since #3403 a page whose
+    preparation raises REM's own error is parked and the round goes on, and a skill whose file is gone is
+    never listed. That holds only for turns an older build ran: a turn on this very version that still
+    failed the same way proves it is not handled. Receipts before #3413 carry no version (older builds)."""
+    match = re.search(r"\b((?:skills/catalog|people|orgs|projects)/[\w.-]+\.md)\b", reason)
+    record = match[1] if match else ''
+    kind = next((kind for prefix, kind in STUCK_KINDS.items() if record.startswith(prefix)), 'page')
+    from .refusals import refused_pages
+    parked = bool(record) and str(refused_pages(root).get(record, {}).get('parked', '')).startswith('preparation refused')
+    skipped = bool(record) and any(row.get('record') == record
+                                   for row in read_json(state_path(root, 'round.json'), {}).get('skipped', []))
+    from .._version import __version__
+    on_this_build = any(turn.get('version') == __version__ for turn in failures)
+    return {'kind': kind, 'skipped': parked or skipped,
+            'not_installed': kind == 'skill' and ('no installed source file' in reason or 'no longer installed' in reason),
+            'handled': bool(record) and not on_this_build}
+
+
+# Not stuck: these turns end on the weather, and the next fire does continue.
+WEATHER = re.compile(r"^(Turn exceeded \d+ hours|The turn produced nothing|MAINTENANCE_BUSY|co rem is busy)")
+
+
+def _same_error_streak(failures: list[dict]) -> int:
+    """How many of the newest failures stopped on one and the same error (counts aside), 3 or more; else 0.
+
+    2026-11-23 (#3402): five turns on one skill page's prepare error under "REM 会自动重试，不需要你做什么"."""
+    plain = lambda turn: re.sub(r"\d+", "#", turn.get('reason') or '')  # noqa: E731
+    if not failures or not failures[0].get('reason') or WEATHER.match(failures[0]['reason']):
+        return 0
+    streak = next((index for index, turn in enumerate(failures) if plain(turn) != plain(failures[0])), len(failures))
+    return streak if streak >= 3 else 0
 
 
 # A bug in REM's own code, not the weather: retrying the same turn meets the same line again (rc35–rc36: six turns
@@ -806,6 +850,13 @@ def _unmatched_marks(root: Path) -> int:
 
 
 def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
+    """The notebook's status; its whole-notebook scans (census, tags) run once in it (tags.held)."""
+    from .tags import held
+    with held(root):
+        return _status(root, include_quota=include_quota, include_coverage=include_coverage)
+
+
+def _status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
     """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
     from .translate import coverage as translation_coverage

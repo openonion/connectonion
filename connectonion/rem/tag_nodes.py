@@ -42,6 +42,8 @@ TAG_LINES = 6            # plus up to this many of its lines naming the tag
 LEDGER = "tag-nodes.json"
 TURN_BASE = 70_000
 SOURCE_DEF = re.compile(r"(?m)^- \[(W?\d+)\][ \t]+(.+)$")
+# A privacy mark as the reader reads one (reader_model.PRIVATE): a tag page's title never carries it (#3385).
+PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
 
 
 def _title(text: str, record: str) -> str:
@@ -62,6 +64,10 @@ def _names_of(text: str, record: str) -> set[str]:
 
 def pages_for_tags(root: Path) -> dict[str, str]:
     """{tag: the person, organisation or project page named for it}, by title, alias or file name."""
+    return tags.once(root, "pages_for_tags", lambda: _pages_for_tags(root))
+
+
+def _pages_for_tags(root: Path) -> dict[str, str]:
     book, index = Notebook(root), {}
     for category in PAGE_KINDS:
         for record in book.list(category):
@@ -114,6 +120,10 @@ def node_record(root: Path, slug: str) -> str:
 
 def members(root: Path) -> dict[str, list[str]]:
     """{tag: [records carrying it]}, a tag's own node excluded, in path order."""
+    return tags.once(root, "members", lambda: _members(root))
+
+
+def _members(root: Path) -> dict[str, list[str]]:
     book, found = Notebook(root), {}
     for record in book.list():
         for slug in tags.page_tags(book.read(record)):
@@ -262,6 +272,9 @@ def check(root: Path, task: dict, output: dict) -> str:
     prose = _prose(raw.strip() + "\n")
     if not re.match(r"# \S", prose) or len(re.findall(r"(?m)^# ", prose)) != 1:
         raise RemError("The tag page needs exactly one title line, first")
+    if PRIVATE.search(prose.partition("\n")[0]):
+        raise RemError("A tag page's title never carries [personal] or [sensitive]: the reader would show it as "
+                       "\"Personal\", like every other marked page. Put the mark on the passage that is private")
     cited = re.findall(r"\[(W?\d+)\](?!\()", prose)
     if not cited:
         raise RemError("The tag page has no cited line; every line cites a source number from sources.md")
@@ -391,3 +404,56 @@ def states(root: Path, records: list[str]) -> dict[str, dict]:
                           "label": "investigate" if not last else "update" if slug in waiting else "current",
                           "cost": {"quick": None, "full": None}}
     return result
+
+
+# ---------- tag titles carry no privacy mark (#3385) ----------
+# Before #3385 a model could put `[personal]` in a tag page's title. At the default "cover" level the reader shows
+# such a title as the generic "Personal", so five marked tag pages (a language, a CLI, email, documents, sleep)
+# became one repeated label and a link to one opened another. The page build repairs them, local only, with no model;
+# the title's mark moves onto each prose passage, so nothing private turns public. It keeps no marker: it changes
+# only a marked tag title, and review refuses new ones, so it is idempotent by construction, and a notebook with
+# nothing to repair is never written (opening before start creates nothing).
+STAMP = re.compile(r"(?m)^Investigation:[^\n]*\(tag page\b")
+CODE_OWNED = re.compile(r"^(?:#|- Tags:|Investigation:|- \[[^\]]*\]\(\.\./|- \[W?\d+\] )")
+
+
+def _marked_tag_pages(root: Path) -> list[str]:
+    """Tag pages whose title carries a privacy mark: a knowledge page this stage wrote, or a tag's named node.
+    Only each page's first line is read until one is marked, and a missing folder is never created."""
+    folder = root / "knowledge"
+    if not folder.is_dir():
+        return []
+    marked = []
+    for path in sorted(folder.glob("*.md")):
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            if PRIVATE.search(handle.readline()):
+                marked.append(f"knowledge/{path.name}")
+    if not marked:
+        return []
+    book, named = Notebook(root), {node_record(root, slug) for slug in tags.vocabulary(root)}
+    return [r for r in marked if r in named or STAMP.search(book.read(r))]
+
+
+def _unmarked(text: str) -> str:
+    """The page with its title's mark moved onto each prose passage that carries none."""
+    title, _, rest = text.partition("\n")
+    mark = PRIVATE.search(title).group(0).replace("［", "[").replace("］", "]").lower()
+    # An unmasked page needs no mask number (masked.py): its own name is its label again.
+    rest = re.sub(r"(?m)^Masked:[ \t]*\d+[ \t]*\n", "", rest)
+    prose, *owned = re.split(r"(?m)^(?=## (?:Pages|Sources)[ \t]*$)", rest, maxsplit=1)
+    lines = [line if not line.strip() or CODE_OWNED.match(line) or PRIVATE.search(line) else line.rstrip() + " " + mark
+             for line in prose.split("\n")]
+    return " ".join(PRIVATE.sub("", title).split()) + "\n" + "\n".join(lines) + "".join(owned)
+
+
+def repair_titles(root: Path) -> list[str]:
+    """Take the privacy mark off every tag page's title (#3385). The pages it changed; nothing is written otherwise."""
+    from . import page_versions
+    book, changed = Notebook(root), []
+    for record in _marked_tag_pages(root):
+        before = book.read(record)
+        after = _unmarked(before)
+        if book.write(record, after) is not False:
+            page_versions.keep_previous(root, record, before, after)
+            changed.append(record)
+    return changed

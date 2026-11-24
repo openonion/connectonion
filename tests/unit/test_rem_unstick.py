@@ -812,7 +812,7 @@ def test_a_task_exec_drives_records_the_model_and_effort_its_worker_ran_at(noteb
     rows = [row for row in service.run_logs(notebook) if row.get("record") in (fern, heron)]
     assert rows and {model for model, stage in seen} == {"gpt-routed-fixture"}
     assert {(row["harness"], row["model"], row["effort"], row["speed"]) for row in rows} == {
-        ("codex", "gpt-routed-fixture", "medium", "standard")}
+        ("codex", "gpt-routed-fixture", "low", "standard")}
 
 
 def test_the_restore_last_resort_also_runs_when_the_other_errors_are_misquotes_it_drops(tmp_path, monkeypatch):
@@ -835,3 +835,20 @@ def test_the_restore_last_resort_also_runs_when_the_other_errors_are_misquotes_i
     assert native._check_or_restore(tmp_path, task, {})["outcome"] == "accepted" and seen == [False, True]
     assert runner.restorable(errors) and not runner.restorable(errors[1:])
     assert not runner.restorable([*errors, "Finding has unresolved citations"])
+
+
+def test_a_pending_task_whose_input_changed_is_parked_by_the_next_scheduled_turn(notebook, monkeypatch):
+    """2026-11-23: a tag task's inputs changed after it was prepared. Every 15-minute turn from
+    01:00 submitted it ("Task input changed ... Run co rem next --discard"), and the next
+    `co rem next --scheduled` handed back the same task, so the night did no work. A scheduled
+    next now parks a pending task that can no longer be submitted and serves the next job."""
+    fern, heron = two_projects(notebook, monkeypatch)
+    task = native.next_task(notebook)
+    assert task["record"] == fern
+    (Path(task["material"]) / "material.md").write_text("changed after it was prepared\n", encoding="utf-8")
+    with pytest.raises(native.TaskFault, match="Task input changed"):
+        native.submit(notebook, task["id"])
+    following = native.next_task(notebook, scheduled=True)
+    assert following.get("record") == heron, following
+    assert refusals.refused_for(notebook, fern)["parked"].startswith("parked: its input changed after it was prepared")
+    assert read_json(state_path(notebook, f"tasks/{task['id']}/task.json"), {})["status"] == "discarded"

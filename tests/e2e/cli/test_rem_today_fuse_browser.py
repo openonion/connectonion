@@ -95,7 +95,7 @@ def today(tmp_path, monkeypatch):
         page.on("pageerror", lambda error: errors.append(str(error)))
         context.route("http*://**/*", serve)
         page.goto(BASE)
-        page.locator(".night-card .count").wait_for()
+        page.locator("#main .count-line .count").wait_for()
         yield page, calls, answers
         browser.close()
     assert not errors, errors
@@ -127,13 +127,14 @@ def test_send_is_the_only_green_and_sits_well_inside_the_first_screen(today, siz
     send = page.locator(".qcard.open .mail-actions").get_by_role("button", name="Send", exact=True)
     assert send.is_visible()
     assert _box_inside(page, send, 16), (send.bounding_box(), size)
-    # The fill-in box is a row of choices above Send, outside the letter's scroll window, built from the slot's
-    # own words; until it is answered Send waits, with a plain hint (build 3b re-review).
+    # The fill-in box is a row of choices above Send, built from the slot's own words, with a plain hint until it is
+    # answered. Send never looks disabled (#3312 E replaces the grey "waiting" Send the owner read as dead): it is the
+    # card's one filled button from the start, and a click with the choice open goes to it.
     choose = page.locator(".qcard.open .mail-choices .owner-slot")
     assert choose.get_attribute("role") == "group" and _box_inside(page, choose, 0)
     assert choose.get_by_role("button").all_inner_texts() == ["邮件附件", "共享文件夹"]
-    assert send.is_disabled() and page.locator(".qcard.open .choose-hint").is_visible()
-    assert _greens(page) == []
+    assert not send.is_disabled() and page.locator(".qcard.open .choose-hint").is_visible()
+    assert _greens(page) == ["Send"]
     choose.get_by_role("button", name="邮件附件").click()
     assert send.is_enabled() and not page.locator(".qcard.open .choose-hint").is_visible()
     assert "邮件附件" in page.locator(".qcard.open .mail-text .slot-ref").inner_text()
@@ -163,7 +164,7 @@ def test_faces_are_the_waiting_people_and_the_ring_burns_with_the_days_overdue(t
     page, _, _ = today
     page.evaluate(OVERDUE, isolated_context=False)
     faces = page.locator(".deal")
-    headline = page.locator(".night-card .count").inner_text()
+    headline = page.locator("#main .count-line .count").inner_text()
     people = page.locator(".today-brief .qcard").evaluate_all("cards => cards.map(card => card.dataset.path)")
     assert faces.evaluate_all(FACES) == people  # no draft: one order
     # The large number is the badge's (sprint 14 #4); the faces beside it are where to start, and no sentence
@@ -410,7 +411,7 @@ def test_the_owner_is_never_a_person_waiting(today):
     paths = page.locator(".deal").evaluate_all(FACES)
     assert owner not in paths and "people/tomas-reyes.md" in paths
     assert page.locator(f'.qcard[data-path="{owner}"]').count() == 0
-    assert int(page.locator(".night-card .count").inner_text()) == len(paths)
+    assert int(page.locator("#main .count-line .count").inner_text()) == len(paths)
     assert "Your page" not in page.locator(".night-card").inner_text()
     page.locator(".closed .link-btn").click()  # 看: what REM did overnight, every name
     assert page.locator('#night-sheet .night-done li[data-kind="could_not_prepare"] b').inner_text() == "Could not draft for 1 person"
@@ -497,7 +498,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 844})
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
-    before = int(page.locator(".night-card .count").inner_text())
+    before = int(page.locator("#main .count-line .count").inner_text())
     # The Host holds a Send for ten minutes. A decades-long fake hold overflows
     # the browser timer and keeps replacing Undo before a real click can land.
     release = page.evaluate("new Date(Date.now() + 10 * 60 * 1000).toISOString()")
@@ -510,7 +511,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     path, body = calls[-1]
     assert path == "/rem/approve" and body["ids"] == ["reply:ines"]
     assert "共享文件夹" in body["bodies"]["reply:ines"] and "【" not in body["bodies"]["reply:ines"]
-    assert int(page.locator(".night-card .count").inner_text()) == before - 1
+    assert int(page.locator("#main .count-line .count").inner_text()) == before - 1
     assert page.locator('.deal[data-path="people/ines-halvorsen.md"]').count() == 0
     assert page.locator('.qcard[data-path="people/ines-halvorsen.md"]').count() == 0
     note = page.locator(".qsent")
@@ -519,7 +520,7 @@ def test_send_holds_the_reply_collapses_the_row_ticks_the_count_and_offers_undo(
     note.get_by_role("button", name="Undo", exact=True).click()
     page.locator('.qcard[data-path="people/ines-halvorsen.md"]').wait_for()
     assert calls[-1][1] == {"action": "undo", "ids": ["reply:ines"]}
-    assert int(page.locator(".night-card .count").inner_text()) == before
+    assert int(page.locator("#main .count-line .count").inner_text()) == before
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
 
 
@@ -602,7 +603,7 @@ def test_the_phone_tab_bar_opens_more_above_today_and_send_stays_in_reach(today)
     assert page.evaluate("location.hash", isolated_context=False) == "#c=people"
     assert toggle.get_attribute("aria-expanded") == "false" and not links.first.is_visible()
     page.goto(BASE)
-    page.locator(".night-card .count").wait_for()
+    page.locator("#main .count-line .count").wait_for()
     page.evaluate(OVERDUE, isolated_context=False)
     page.evaluate(DRAFT, True, isolated_context=False)
     page.evaluate("scrollTo(0, 0)", isolated_context=False)
@@ -623,9 +624,9 @@ def test_updates_waiting_never_loses_a_typed_slot_or_the_talk_box(today):
     card = page.locator(".today-brief .qcard.open")
     slot = card.locator(".owner-slot input")
     slot.fill("Thursday afternoon")
-    row = card.locator(".qitem").first
-    row.hover()
-    row.locator(".strip-more").click()  # the talk's choices are in the item's second level (#3072)
+    # The talk's choices are in the item's second level (#3072), reached from the letter's ⋯ (#3312 B).
+    card.locator(".qdraft .more-menu > summary").click()
+    card.locator(".qdraft .more-menu .strip-more").click()
     page.locator('#item-context [data-talk="codex"]').click()
     talk = page.get_by_role("textbox", name="Your message")
     talk.fill("Draft it short")
@@ -684,7 +685,7 @@ def _cut(page, text, clip):
 
 @pytest.mark.parametrize("size", [(1440, 1000), (390, 844)])
 @pytest.mark.parametrize("lang", ["zh", "en"])
-def test_the_letter_scrolls_in_its_own_window_and_the_slot_row_never_covers_it(today, size, lang):
+def test_the_letter_is_read_whole_and_the_slot_row_never_covers_it(today, size, lang):
     page, _, _ = today
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.evaluate(OVERDUE, isolated_context=False)
@@ -697,9 +698,13 @@ def test_the_letter_scrolls_in_its_own_window_and_the_slot_row_never_covers_it(t
     assert _apart(body.bounding_box(), slot.bounding_box()), (body.bounding_box(), slot.bounding_box())
     columns = [letter] + ([card.locator(".mail-gist")] if card.locator(".mail-gist").is_visible() else [])
     assert [cut for column in columns for cut in _cut(page, column, body)] == []
-    # The letter is read by scrolling inside its window, to its last line.
-    assert body.evaluate("node => node.scrollHeight > node.clientHeight")
-    body.evaluate("node => { node.scrollTop = node.scrollHeight; }")
+    # The letter is read whole, with no inner scroll window (#3312 B4 replaces the three-line window that cut the
+    # owner's letter mid-sentence): a short letter shows to its last line; a long one fades and opens whole.
+    unfold = card.get_by_role("button", name="展开全文" if lang == "zh" else "Show the whole letter")
+    if body.evaluate("node => node.scrollHeight > node.clientHeight + 4"):
+        unfold.wait_for()  # a letter longer than its first screen always offers the rest
+        unfold.click()
+    assert body.evaluate("node => node.scrollHeight <= node.clientHeight + 4")
     last = page.evaluate("""node => { const r = document.createRange(); r.selectNodeContents(node);
       const lines = [...r.getClientRects()].filter(l => l.height > 0); return lines.at(-1).bottom; }""",
                          letter.element_handle(), isolated_context=False)

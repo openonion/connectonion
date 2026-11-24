@@ -22,6 +22,7 @@ conversation rather than from a week of several interleaved ones.
 import hashlib
 import json
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import RemError
@@ -154,75 +155,119 @@ def _wechat_streams():
     known = engine.names(engine.open_readonly(engine.decrypt_db(db_storage / "contact" / "contact.db",
                                                                 engine.key_for(db_storage / "contact" / "contact.db"))))
     other, mine = [], []
-    for row in engine.all_messages(db_storage, known):
+    for row in engine.every_message(db_storage, known):
         (mine if row["sender"] == owner else other).append(row)
     return (("other", other), ("user", mine))
 
 
+# Characters that render as nothing or as a blank: Hangul fillers and zero-width marks people put in WeChat names.
+_FILLERS = frozenset("\u3164\u115f\u1160\uffa0\u200b\u200c\u200d\u2060\ufeff")
+
+
+def usable_name(text: str) -> bool:
+    """A name worth titling a page: at least one letter, digit or CJK character, not only punctuation, blanks or
+    emoticons. WeChat nicknames such as ".", "...", "^ ^", "。" or a filler blank are not (#3368)."""
+    import unicodedata
+    return any(unicodedata.category(ch)[0] in "LN" and ch not in _FILLERS for ch in text or "")
+
+
+def preview_line(text: str, limit: int = 80) -> str:
+    """One line of a message for a page header: whitespace collapsed, markdown brackets dropped (so a pasted "[1]" or
+    "[personal]" is never read as a citation or a privacy mark), cut at `limit` characters."""
+    line = " ".join(str(text).replace("[", "").replace("]", "").split())
+    return line if len(line) <= limit else line[:limit - 1].rstrip() + "…"
+
+
+def wechat_title(username: str, *names: str) -> str:
+    """The first usable of the owner's remark and the contact's nickname; else a plain placeholder with a short
+    hint, never the raw id. "" when the contact has no name at all (left out, as before)."""
+    # A "name" that is only the raw id is no name: such a contact is left out, as before.
+    tried = [name for name in (" ".join((n or "").split()) for n in names) if name != username]
+    for name in tried:
+        if usable_name(name):
+            return name
+    if not any(tried):
+        return ""
+    return f"微信好友（无名字 · …{username[-4:]}）"
+
+
 def wechat_people(min_messages: int = 1) -> list[dict]:
-    """Candidate people from WeChat for Mac: one row per one-to-one chat with a real name and messages.
+    """Candidate people from WeChat for Mac: every friend in the address book, plus anyone with a one-to-one chat.
 
     Shape matches the map's mail rows ({address, name, mails, sent, received}), with the bare WeChat id as
     the address so investigation's handle match finds the chat (its correspondent is that id). Read-only.
-    Groups, official accounts and service chats are left out. Returns [] when WeChat isn't readable.
+    `friend` marks an address-book friend (worth a page with no messages: the owner added them, #3347) and
+    `remark` one the owner named. Counts come from the chats this Mac holds, else 0: WeChat for Mac keeps only
+    what was synced to it, so most friends have none here. Groups, official and verified accounts (brands,
+    companies, services), service chats and people only met in groups are left out. [] when WeChat isn't readable.
     """
     from ..useful_tools import wechat as engine
     db_storage = engine.db_storage_in_use()
     if db_storage is None or not engine.KEY_MAP.is_file():
         return []
     try:
-        known = engine.names(engine.open_readonly(engine.decrypt_db(
-            db_storage / "contact" / "contact.db", engine.key_for(db_storage / "contact" / "contact.db"))))
+        contacts = engine.open_readonly(engine.decrypt_db(
+            db_storage / "contact" / "contact.db", engine.key_for(db_storage / "contact" / "contact.db")))
+        known = engine.names(contacts)
+        verified = engine.verified_accounts(contacts)
+        book = engine.friends(contacts)
     except Exception:
         return []
     owner = engine.owner_username(db_storage)
+    # When the owner last talked with each friend, and how much lately: People's columns read these (#3346).
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
     counts = {}
-    for row in engine.all_messages(db_storage, known):
+    for row in engine.every_message(db_storage, known):
         chat = row["chat"]
-        if not _one_to_one(chat) or chat == owner:
+        # A verified account (verify_flag set: a brand, a company or a service) is not a person (#3339).
+        if not _one_to_one(chat) or chat == owner or chat in verified:
             continue
-        c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0})
+        c = counts.setdefault(chat, {"name": row["chat_name"], "mails": 0, "sent": 0, "received": 0,
+                                     "last": "", "last_mine": None, "n90": 0, "first": "", "preview": ""})
         c["mails"] += 1
         c["sent" if row["sender"] == owner else "received"] += 1
+        at = row.get("at") or ""
+        if at >= c["last"]:
+            c["last"], c["last_mine"] = at, row["sender"] == owner
+            # What was last said, for the page header before any investigation (#3372); the reader curtains it.
+            c["preview"] = preview_line(row.get("text") or "")
+        if at and (not c["first"] or at < c["first"]):
+            c["first"] = at
+        c["n90"] += at >= cutoff
+    friend_ids = {f["username"] for f in book}
+    remarked = {f["username"] for f in book if f["remark"].strip()}
+    by_user = {f["username"]: f for f in book}
     people = []
     for chat, c in counts.items():
-        name = (c["name"] or "").strip()
+        entry = by_user.get(chat)
+        name = wechat_title(chat, entry["remark"], entry["nick_name"]) if entry else wechat_title(chat, c["name"] or "")
         # A real name, not the raw id and not a group/service; the id is the handle, the name titles the page.
         if c["mails"] < min_messages or not name or name == chat:
             continue
-        people.append({"address": chat, "name": name, "mails": c["mails"],
-                       "sent": c["sent"], "received": c["received"], "kind": "wechat"})
+        people.append({"address": chat, "name": name, "mails": c["mails"], "sent": c["sent"],
+                       "received": c["received"], "kind": "wechat", "friend": chat in friend_ids,
+                       "remark": chat in remarked, "last": c["last"], "last_mine": c["last_mine"], "n90": c["n90"],
+                       "first": c["first"], "preview": c["preview"]})
+    # The rest of the address book: a friend with no chat on this Mac is still someone the owner knows (#3347).
+    for f in book:
+        chat, name = f["username"], wechat_title(f["username"], f["remark"], f["nick_name"])
+        if chat in counts or not _one_to_one(chat) or chat == owner or chat in verified or not name or name == chat:
+            continue
+        people.append({"address": chat, "name": name, "mails": 0, "sent": 0, "received": 0, "kind": "wechat",
+                       "friend": True, "remark": chat in remarked})
     return people
 
 
 def seed_chat_people(root, subscriptions: dict) -> list[str]:
-    """Nightly: create a people page for each new two-way chat contact (WeChat) not already on the notebook.
+    """The WeChat people pages a map of that source creates; the generic onboarding step does the work (#3331).
 
-    Additive and local, no model and no network. The id is the handle, so the night's investigation then
-    reads the chat into the page. Merging a chat contact into an existing same-named mail page is left to
-    the full `co rem map`; here a contact whose id is already a handle, anywhere, is skipped.
+    Kept for its callers: additive and local, no model and no network. A contact already on a page by handle
+    is left alone, a full-name match gains the WeChat id, the rest get mapped pages.
     """
-    from .files import Notebook
-    from . import map as rem_map
-    rows = []
-    for sub in (subscriptions or {}).values():
-        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
-            rows += wechat_people()
-    if not rows:
-        return []
-    notebook = Notebook(root)
-    known_handles = {alias.casefold() for person in notebook.people() for alias in person.get("aliases", [])}
+    from . import onboard
     created = []
-    for group in rem_map._people_groups(rows):
-        first = group[0]
-        sent = sum(r.get("sent", 0) for r in group)
-        received = sum(r.get("received", 0) for r in group)
-        handle = first["address"]
-        name = " ".join(str(first.get("name") or "").split())
-        if not name or handle.casefold() in known_handles or not rem_map.worth_a_page(sent, received):
-            continue
-        record = rem_map._record("people", name, handle)
-        if notebook.stub_person(record, name, [handle]):
-            known_handles.add(handle.casefold())
-            created.append(record)
+    for name, sub in (subscriptions or {}).items():
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
+            people = onboard.plan(root, onboard.rows(root, name, sub, 0), ("people",), write=True)["people"]
+            created += [row["record"] for row in people["create"]]
     return created
