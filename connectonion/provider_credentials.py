@@ -1,4 +1,4 @@
-"""Whole-account Google/Microsoft credentials and stateless broker refresh."""
+"""Whole-account Google/Microsoft/Notion credentials and stateless broker refresh."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import re
 
 import httpx
 
-from .environment import (explicit_env_file, process_environment, provider_keys,
+from .environment import (PROVIDER_EXTRA_FIELDS, explicit_env_file, process_environment, provider_keys,
                           publish_values, publish_authorization, read_env_file, selected_env_file)
 from .env_file import env_lock, write_env_unlocked
 
@@ -156,8 +156,14 @@ def _latest(record: ProviderCredentials) -> ProviderCredentials:
         return current
     old_email, new_email = record.get("EMAIL"), current.get("EMAIL")
     same_account = (old_email and new_email and old_email.casefold() == new_email.casefold())
+    # A Notion grant is its bot: the same bot id is the same installation, rotated
+    # by another process, even when the owner's email was withheld.
+    old_bot, new_bot = record.get("BOT_ID"), current.get("BOT_ID")
+    if old_bot and new_bot:
+        same_account = old_bot == new_bot and (not (old_email and new_email) or same_account)
     same_grant = _rotated_here(record.get("REFRESH_TOKEN"), current.get("REFRESH_TOKEN"), record.path)
-    if (old_email and new_email and not same_account) or not (same_account or same_grant):
+    if ((old_email and new_email) or (old_bot and new_bot)) and not same_account \
+            or not (same_account or same_grant):
         raise ProviderCredentialError("record_changed", "The selected credential record changed during this operation.", "co status")
     return current
 
@@ -171,15 +177,19 @@ def _validated_values(record: ProviderCredentials, data: dict) -> dict[str, str]
         values = dict(record.values)
         mapping = {"access_token": "ACCESS_TOKEN", "refresh_token": "REFRESH_TOKEN",
                    "expires_at": "TOKEN_EXPIRES_AT", "scopes": "SCOPES",
-                   f"{record.provider}_email": "EMAIL"}
+                   f"{record.provider}_email": "EMAIL",
+                   **{extra.lower(): extra for extra in PROVIDER_EXTRA_FIELDS.get(record.provider.upper(), ())}}
         for field_name, suffix in mapping.items():
             value = data.get(field_name)
             if value is None:
                 continue
-            if not isinstance(value, str) or (suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "EMAIL") and not value):
+            if not isinstance(value, str) or (suffix in ("ACCESS_TOKEN", "REFRESH_TOKEN", "EMAIL", "BOT_ID")
+                                              and not value):
                 raise ValueError
             if suffix == "EMAIL" and record.get("EMAIL") and value.casefold() != record.get("EMAIL").casefold():
                 raise ValueError
+            if suffix == "BOT_ID" and record.get("BOT_ID") and value != record.get("BOT_ID"):
+                raise ValueError     # a refresh answered for another installation
             values[f"{record.provider.upper()}_{suffix}"] = value
         return values
     except (KeyError, TypeError, ValueError, AttributeError):
@@ -250,5 +260,9 @@ def save_authorization(provider: str, path: Path, credentials: dict) -> None:
     record = ProviderCredentials(provider, {}, Path(path).resolve())
     values = _validated_values(record, credentials)
     with env_lock(record.path):
-        write_env_unlocked(record.path, values, strip_prefix=f"{provider.upper()}_")
+        if provider.upper() in PROVIDER_EXTRA_FIELDS:
+            # NOTION_API_KEY (the manual way) and NOTION_VERSION share the prefix but are not the record's.
+            write_env_unlocked(record.path, values, remove=set(provider_keys(provider)))
+        else:
+            write_env_unlocked(record.path, values, strip_prefix=f"{provider.upper()}_")
     publish_authorization(provider, values)

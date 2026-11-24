@@ -16,10 +16,10 @@ with one `Next:` line; run that line, it is the fix.
 
 ## Before anything
 
-Run `co notion check`. If Notion is not connected, ask the user to create an
-internal connection and save its token themselves, in their own terminal,
-with the `co env set NOTION_API_KEY ... --secret` command `check` prints.
-Never ask them to paste a token or secret into the chat.
+Run `co notion check`. If Notion is not connected, ask the user to run
+`co auth notion` themselves, in their own terminal: it opens Notion to pick
+the pages co may use, or asks for a pasted token when that sign-in is not
+available. Never ask them to paste a token or secret into the chat.
 `check` names the workspace and which key acts: if it is not the workspace the
 user means, stop and say so.
 

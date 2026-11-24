@@ -2,15 +2,17 @@
 Purpose: Notion's REST API for `co notion` — one read-only client, one set of limits
 LLM-Note:
   Dependencies: imports from [json, re, time, urllib.parse, httpx, environment.py (setting: process, env file, then the --secret store)] | imported by [cli/commands/notion_commands.py] | tested by [tests/unit/test_notion_commands.py]
-  Data flow: credential() = a NOTION_API_KEY exported in the shell, else NOTION_API_KEY from the selected env file or the --secret store → call(method, path, body) sends https://api.notion.com/v1/<path> with `Authorization: Bearer <key>` and `Notion-Version: 2025-09-03` → JSON dict | parse_target() turns a link or id into {id, block, view} | data_source() resolves a database link to the one data source it means | read_page() returns properties (typed, paginated), the block tree (nested, bounded) and an explicit coverage record
+  Data flow: credential() = a NOTION_API_KEY exported in the shell, else the `co auth notion` sign-in record (renewed through the OpenOnion broker when expired), else NOTION_API_KEY from the selected env file or the --secret store → call(method, path, body) sends https://api.notion.com/v1/<path> with `Authorization: Bearer <key>` and `Notion-Version: 2025-09-03` → JSON dict | parse_target() turns a link or id into {id, block, view} | data_source() resolves a database link to the one data source it means | read_page() returns properties (typed, paginated), the block tree (nested, bounded) and an explicit coverage record
   State/Effects: reads NOTION_API_KEY (and optional NOTION_VERSION); network: Notion only. Every request is a read: GET, or the read-only POSTs search and data_sources/<id>/query
   Integration: row() is the one shape search/db lists print and --json returns | the 2025-09-03 model: a database is a container of data sources; schema, query and rows belong to a data source
   Errors: NotionError(message, next_step, kind, detail). A 429, 5xx or transport failure is retried a bounded number of times (attempts and seconds), then reported
 """
 
 import re
+import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -29,6 +31,7 @@ CONTENT_ACCESS = "Content access → Edit access in the Developer portal, or ope
 KEY_SCOPE = ("an internal connection reads only the pages given to it; a personal access token reads what your "
              "own Notion account can read")
 SET_KEY = f"co env set {KEY} ntn_... --secret"
+SIGN_IN = "co auth notion"
 SHARE_HINT = f"With an internal connection, give it the page: {CONTENT_ACCESS}"
 SEARCH_NOTE = ("This lists what this key can read (" + KEY_SCOPE + "); "
                "it is not a list of the whole workspace")
@@ -57,30 +60,62 @@ class NotionError(Exception):
 
 
 class Credential:
-    """The key a request carries, and where it came from: "shell" (exported) or "key" (saved)."""
+    """The token a request carries, and where it came from: "shell", "signin" or "key"."""
 
-    def __init__(self, token: str, source: str):
-        self.token, self.source = token, source
+    def __init__(self, token: str, source: str, record=None):
+        self.token, self.source, self.record = token, source, record
 
     @property
     def label(self) -> str:
-        return f"the {KEY} exported in your shell" if self.source == "shell" else KEY
+        return {"shell": f"the {KEY} exported in your shell", "signin": "the co auth notion sign-in",
+                "key": KEY}[self.source]
+
+
+_refreshing = threading.Lock()    # one refresh at a time in this process; the env file's lock covers others
+
+
+def _expired(record) -> bool:
+    from ...provider_credentials import token_expiry
+    expiry = token_expiry(record.get("TOKEN_EXPIRES_AT"))
+    return not record.get("ACCESS_TOKEN") or not expiry or expiry <= datetime.now(timezone.utc) + timedelta(minutes=1)
+
+
+def _renew(record) -> str:
+    """A fresh access token for the sign-in, from the broker (refresh tokens rotate, so one at a time)."""
+    from ...backend import backend_url
+    from ...credentials import AmbientAPIKeyAccountMismatch, MissingAmbientAPIKey, require_ambient_api_key
+    from ...provider_credentials import ProviderCredentialError, refresh_credentials
+    with _refreshing:
+        try:
+            return refresh_credentials(record, backend=backend_url(), api_key=require_ambient_api_key())
+        except (MissingAmbientAPIKey, AmbientAPIKeyAccountMismatch):
+            raise NotionError("The Notion sign-in needs renewing, which goes through your OpenOnion account, and that "
+                              "is not signed in here", "co auth", "unauthorized") from None
+        except ProviderCredentialError as error:
+            what = str(error).split("\n")[0].rstrip(".")
+            raise NotionError(f"Notion sign-in could not be renewed: {what}", error.next_command,
+                              "unauthorized") from None
 
 
 def credential() -> Credential:
-    """NOTION_API_KEY: exported in the shell, else the selected env file, else `co env set --secret`'s store."""
+    """Which Notion credential acts, in order: a key exported in the shell (an explicit choice for
+    this shell), the `co auth notion` sign-in, then NOTION_API_KEY saved in the env file or store."""
     from ...environment import display_path, load_environment, process_environment, selected_env_file, setting
+    from ...provider_credentials import resolve_provider_credentials
     load_environment()
     exported = process_environment().get(KEY)
     if exported:
         return Credential(exported, "shell")
+    record = resolve_provider_credentials("notion")
+    if record.get("ACCESS_TOKEN") or record.get("REFRESH_TOKEN"):
+        return Credential(_renew(record) if _expired(record) else record.get("ACCESS_TOKEN"), "signin", record)
     key = setting(KEY)
     if key:
         return Credential(key, "key")
-    raise NotionError(f"Notion is not connected in {display_path(selected_env_file())}. Create an internal "
-                      f"connection in {KEY_PAGE}, give it pages ({CONTENT_ACCESS}), then save its token with "
-                      f"{SET_KEY}. A personal access token works too, and reads everything your account can",
-                      SET_KEY, "unauthorized")
+    raise NotionError(f"Notion is not connected in {display_path(selected_env_file())}. Run {SIGN_IN}; or "
+                      f"create an internal connection in {KEY_PAGE}, give it pages ({CONTENT_ACCESS}), then save "
+                      f"its token with {SET_KEY}. A personal access token works too, and reads everything your "
+                      "account can", SIGN_IN, "unauthorized")
 
 
 def api_key() -> str:
@@ -116,6 +151,11 @@ def call(method: str, path: str, body: dict | None = None, params: dict | None =
     """
     using = credential()
     response = _send(method, path, body, params, using.token)
+    if response is not None and response.status_code == 401 and using.source == "signin":
+        # Notion gives no lifetime for its tokens: a rejected one is renewed once and the request
+        # sent again. Safe for a write too: a 401 is refused before anything is done.
+        using = Credential(_renew(using.record), "signin", using.record)
+        response = _send(method, path, body, params, using.token)
     if response is None:
         raise NotionError("Notion could not be reached", "co notion check", "network")
     try:
@@ -157,14 +197,20 @@ def _send(method: str, path: str, body: dict | None, params: dict | None, token:
 def _error(data: dict, status: int, *, using: Credential | None = None) -> NotionError:
     code = data.get("code", "")
     message = (data.get("message") or "unknown error").rstrip(".")
+    signed_in = using is not None and using.source == "signin"
     if status == 401 or code == "unauthorized":
+        if signed_in:
+            return NotionError(f"Notion rejected the co auth notion sign-in even after renewing it: {message}. "
+                               "It was removed in Notion (Settings → Connections) or its workspace is gone; sign in "
+                               "again", SIGN_IN, "unauthorized")
         if using is not None and using.source == "shell":
             # The exported key is used before a saved one, so saving a new key changes nothing until it is unset.
             return NotionError(f"Notion rejected {using.label}: {message}. Export a new secret from {KEY_PAGE}, or "
                                f"run unset {KEY} to use the saved one", f"unset {KEY} && co notion check",
                                "unauthorized")
-        return NotionError(f"Notion rejected {KEY}: {message}. Make a new secret in {KEY_PAGE} and save it with "
-                           f"{SET_KEY}", SET_KEY, "unauthorized")
+        return NotionError(f"Notion rejected {KEY}: {message}. Run {SIGN_IN} (a sign-in is used before a saved "
+                           f"key), or make a new secret in {KEY_PAGE} and save it with {SET_KEY}", SIGN_IN,
+                           "unauthorized")
     if status == 403 or code == "restricted_resource":
         return NotionError(f"Notion refused this for the key: {message}. The page may be readable, but the "
                            f"key lacks the capability this needs (read content); for an internal connection, "

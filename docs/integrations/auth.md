@@ -114,9 +114,10 @@ co keys --reveal  # only when you intentionally need full values
 ```bash
 co auth google
 co auth microsoft
+co auth notion
 ```
 
-These commands connect Gmail/Calendar or Microsoft integrations. They require OpenOnion auth first to authenticate the provider flow. Microsoft credentials are returned directly to the CLI and saved only in local env files; oo-api does not persist them.
+These commands connect Gmail/Calendar, Microsoft or Notion. They require OpenOnion auth first to authenticate the provider flow. Credentials are returned directly to the CLI, sealed to a one-time key, and saved only in local env files; oo-api does not persist them. `co auth notion` also lets you pick, in Notion, the pages co may use; until the sign-in service offers Notion (see [notion-oauth-broker.md](notion-oauth-broker.md)), it asks for a pasted token instead, as `co auth notion --paste` does (see [co notion](../cli/notion.md#setup)).
 
 ## Supported Models
 

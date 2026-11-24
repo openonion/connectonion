@@ -50,6 +50,7 @@ CREDENTIAL_ENV_VARS = (
 OAUTH_CONNECTIONS = (
     ("Google OAuth", "GOOGLE", "co auth google"),
     ("Microsoft OAuth", "MICROSOFT", "co auth microsoft"),
+    ("Notion OAuth", "NOTION", "co auth notion"),
 )
 
 _OAUTH_ENV_VARS = {
@@ -145,7 +146,7 @@ def _selected_credential_values(
     )
     from ...environment import provider_keys
     selected = {}
-    for prefix in ("GOOGLE", "MICROSOFT"):
+    for prefix in ("GOOGLE", "MICROSOFT", "NOTION"):
         record_keys = provider_keys(prefix)
         record = next((values for _source, values in sources if any(key in values for key in record_keys)), {})
         selected.update({name: record.get(name) for name in names if name in record_keys})

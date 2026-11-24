@@ -39,9 +39,9 @@ console = Console()
 # line the next read refuses, and `co env` is the command that fixes those.
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-_PROVIDER_AUTH = {"GOOGLE": "co auth google", "MICROSOFT": "co auth microsoft",
+_PROVIDER_AUTH = {"GOOGLE": "co auth google", "MICROSOFT": "co auth microsoft", "NOTION": "co auth notion",
                   "FEISHU": "co auth feishu", "LARK": "co auth lark"}
-_PROVIDER_LABEL = {"GOOGLE": "Google", "MICROSOFT": "Microsoft",
+_PROVIDER_LABEL = {"GOOGLE": "Google", "MICROSOFT": "Microsoft", "NOTION": "Notion",
                    "FEISHU": "Feishu", "LARK": "Lark"}
 
 # An application's credentials are not an OAuth record — two names, not five —

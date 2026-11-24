@@ -14,3 +14,4 @@ Connect ConnectOnion to external services.
 
 - [google.md](google.md) - Google OAuth (Gmail, Calendar)
 - [microsoft.md](microsoft.md) - Microsoft OAuth (Outlook email, contacts, Calendar)
+- [notion-oauth-broker.md](notion-oauth-broker.md) - Notion sign-in (`co auth notion`): what oo-api must provide

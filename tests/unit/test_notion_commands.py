@@ -151,7 +151,8 @@ def test_not_connected_names_how_to_make_and_save_a_key(notion, monkeypatch):
     assert result.exit_code == 1 and "Notion is not connected" in result.stderr
     assert "Content access" in result.stderr and "app.notion.com/developers/connections" in result.stderr
     assert "personal access token" in result.stderr
-    assert last_line(result.stderr) == f"Next: {api.SET_KEY}" and not notion.sent
+    assert api.SET_KEY in result.stderr
+    assert last_line(result.stderr) == f"Next: {api.SIGN_IN}" and not notion.sent
 
 
 def test_a_rejected_key_says_so(notion):
@@ -169,7 +170,7 @@ def test_a_rejected_saved_key_names_how_to_replace_it(notion, monkeypatch):
                                                              "message": "API token is invalid."}))
     result = run("check")
     assert result.exit_code == 1 and "Notion rejected NOTION_API_KEY" in result.stderr
-    assert last_line(result.stderr) == f"Next: {api.SET_KEY}"
+    assert last_line(result.stderr) == f"Next: {api.SIGN_IN}"
 
 
 # -- search ----------------------------------------------------------------
