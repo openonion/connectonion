@@ -472,7 +472,7 @@ def test_page_reads_nested_blocks_tables_files_and_children(notion):
     assert "| Owner | Ann |" in out and "- [x] Write tests" in out
     assert "[image: Architecture] (hosted by Notion, link expires 2026-10-24T01:00:00.000Z)" in out
     assert "[unsupported block: ai_block]" in out and "Not rendered" in out and "ai_block ×1" in out
-    assert f"Child page: Notes — co notion page {CHILD}" in out
+    assert re.search(r"Child page:\n\s+1\.\s+Notes", out)
     assert "; complete" in out
 
 
@@ -521,7 +521,53 @@ def test_a_row_page_points_at_the_rest_of_its_database(notion):
 
 
 def test_a_page_with_child_pages_points_at_the_first_one(notion):
-    assert last_line(run("page", ROADMAP).stdout) == f"Next: co notion page {CHILD}"
+    assert last_line(run("page", ROADMAP).stdout) == "Next: co notion page 1"
+    assert "child text" in run("page", "1").stdout
+
+
+# -- what a page links to: relations by title, numbered with its child pages -----------------
+
+def _linked_row(notion):
+    notion.add_page(uid(60), "Quiz 1", parent={"type": "page_id", "page_id": ROADMAP})
+    notion.add_page(uid(61), "Final Exam", parent={"type": "page_id", "page_id": ROADMAP})
+    notion.add_row(TASKS, uid(62), task("Calculus 1", related=[uid(60), uid(61), uid(999)]))
+    return uid(62)
+
+
+def test_a_relation_shows_the_linked_pages_by_title_numbered_to_open(notion):
+    row = _linked_row(notion)
+    out = run("page", row).stdout
+    assert re.search(r"Related \(3 linked\):\n\s+1\.\s+Quiz 1\n\s+2\.\s+Final Exam", out)
+    assert "1 more not shown" in out and uid(60) not in out
+    assert last_line(out) == "Next: co notion page 1"
+    assert "Final Exam" in run("page", "2").stdout.splitlines()[0]
+
+
+def test_page_json_names_the_linked_pages_and_keeps_every_id(notion):
+    row = _linked_row(notion)
+    detail = json.loads(run("page", row, "--json").stdout)
+    assert detail["linked"]["Related"] == [{"id": uid(60), "title": "Quiz 1"}, {"id": uid(61), "title": "Final Exam"}]
+    assert detail["properties"]["Related"]["value"] == [uid(60), uid(61), uid(999)]
+
+
+def test_a_relation_no_page_of_which_is_readable_is_counted_not_guessed(notion):
+    out = run("page", ROW).stdout
+    assert "Related (30 linked): none this key can read" in out
+
+
+def test_db_rows_show_a_relation_as_its_count(notion):
+    row = _linked_row(notion)
+    out = run("db", TASKS_DB).stdout
+    assert "Related: 3 linked" in out and uid(60) not in out
+
+
+def test_titles_are_read_for_at_most_25_linked_pages(notion, monkeypatch):
+    from connectonion.cli.commands import notion_commands
+    monkeypatch.setattr(notion_commands, "LINKED_TITLES", 1)
+    row = _linked_row(notion)
+    run("page", row)
+    reads = [path for method, path, _ in notion.sent if method == "GET" and path in (f"pages/{uid(60)}", f"pages/{uid(61)}")]
+    assert reads == [f"pages/{uid(60)}"]
 
 
 # -- data sources ----------------------------------------------------------

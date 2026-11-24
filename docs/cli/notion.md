@@ -118,14 +118,19 @@ stderr, so the redirected file is only the document.
 - **page** reads nested blocks depth first (to `--depth`, default 8) up to
   `--max-blocks` (default 2000), following Notion's pagination. The last lines
   say `complete` or `INCOMPLETE: <what stopped it>`, which block types were not
-  rendered, every file (hosted by Notion with its link expiry, or external), and
-  every child page and database with the command that opens it. Tables are
+  rendered and every file (hosted by Notion with its link expiry, or external).
+  The pages a relation links to are listed by title under the properties, as
+  Notion shows them, and the child pages and databases after the content; all
+  of them are numbered, so `co notion page 2` opens the second. Each title is
+  one read, at most 25 per page; a linked page this key cannot read is counted,
+  never named. In `db` lists a relation shows only its count. Tables are
   rendered as `| a | b |` rows. Links in the text keep their target as
   `[text](https://…)`; a link that is not http(s) is shown as its text only.
 - **Properties** under `--json` keep their type: `0`, `false` and `null`
   survive, dates keep start/end/time zone, people keep ids, relations keep the
-  linked page ids. A relation or people list past Notion's 25-reference cap is
-  fetched in full from the property endpoint.
+  linked page ids, and `linked` names the ones whose titles were read. A
+  relation or people list past Notion's 25-reference cap is fetched in full
+  from the property endpoint.
 
 ## Databases and data sources
 
