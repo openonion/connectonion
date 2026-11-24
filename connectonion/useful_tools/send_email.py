@@ -136,8 +136,11 @@ def send_email(
                     "request_id": send_key, "idempotency_key": send_key}
 
     # Send email via backend API
-    endpoint = (f"{backend_url()}/api/v1/email/send-with-attachments" if attachments
-                else f"{backend_url()}/api/v1/email/send")
+    endpoint = (
+        f"{backend_url()}/api/v1/email/send-with-attachments"
+        if attachments
+        else f"{backend_url()}/api/v1/email/send"
+    )
 
     headers = {
         "Authorization": f"Bearer {token}",
