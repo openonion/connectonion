@@ -3849,36 +3849,36 @@ def cli():
 
 
 
-@email_app.command("attachments")
+@email_app.command("attachments", epilog="Example:  co email attachments 123")
 def email_attachments(
     email_id: str = typer.Argument(..., help="Email ID from inbox or sent"),
     sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
 ):
-    """List attachment IDs, names, types and sizes without changing read state."""
+    """Read-only. List attachment IDs, names, types and sizes."""
     from .commands.email_commands import handle_email_attachments
     handle_email_attachments(email_id, sent)
 
 
-@email_app.command("download")
+@email_app.command("download", epilog="Example:  co email download 123 456 --to ./orders")
 def email_download(
     email_id: str = typer.Argument(..., help="Email ID"),
     attachment_id: str = typer.Argument(..., help="ID from co email attachments"),
     to: str = typer.Option(".", "--to", help="Output directory; existing files are never overwritten"),
     sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
 ):
-    """Download an attachment and verify its SHA256 checksum."""
+    """Writes one attachment to a new file after checking its SHA256 checksum."""
     from .commands.email_commands import handle_email_download
     handle_email_download(email_id, attachment_id, to, sent)
 
 
-@email_app.command("attachment-text")
+@email_app.command("attachment-text", epilog="Example:  co email attachment-text 123 456 --to ./orders")
 def email_attachment_text(
     email_id: str = typer.Argument(..., help="Email ID"),
     attachment_id: str = typer.Argument(..., help="Attachment ID"),
     to: str = typer.Option(".", "--to", help="Directory to keep the original file"),
     sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
 ):
-    """Download a file and read its text; report when OCR or manual review is needed."""
+    """Writes the original file, then prints extractable text or reports that manual review is needed."""
     from .commands.email_commands import _require_auth
     from ..useful_tools.email_attachments import read_email_attachment
     _require_auth()
@@ -3888,12 +3888,12 @@ def email_attachment_text(
         raise typer.Exit(1)
 
 
-@email_app.command("raw")
+@email_app.command("raw", epilog="Example:  co email raw 123 --output ./original.eml")
 def email_raw(
     email_id: str = typer.Argument(..., help="Received email ID"),
     output: str = typer.Option(..., "--output", help="New .eml file to write"),
 ):
-    """Save the retained original email, including its attachments."""
+    """Writes the retained original email, including its attachments, to a new .eml file."""
     from .commands.email_commands import _require_auth
     from ..useful_tools.email_attachments import download_raw_email
     _require_auth()

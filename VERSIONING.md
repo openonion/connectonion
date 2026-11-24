@@ -400,9 +400,10 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc25
-Release candidate 1.9.7rc25 for 1.9.7: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation (#3426). Explicit model and effort choices survive upgrades; related-page privacy marks are curtained (#3427, #3425). Also included: standalone Obsidian live reads (#3064), sync/agenda lead fixes (#3055) and memory regex errors (#3255). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc25.md).
+## Current Version: 1.9.7rc26
+Release candidate 1.9.7rc26 for 1.9.7 adds agent mail attachments (#3440). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc26.md).
 
+- 1.9.7rc26 (send, list, and download agent mail attachments #3440).
 - 1.9.7rc25 (REM model groups and safe default migration #3426).
 
 ### Previous candidate: 1.9.7rc24
