@@ -26,7 +26,7 @@ drawn at 20/24 of the box so they match the outline icons optically.
    more -> ellipsis
    search -> search
    check -> check
-   skip -> chevrons-right
+   skip -> chevrons-down
    agent -> sparkles
    terminal -> terminal
    chat -> message-circle

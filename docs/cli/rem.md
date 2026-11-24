@@ -1641,6 +1641,15 @@ pinned to that edge: it comes into view with the draft.
   count, a line under it says so (*These cards are the most pressing 5 of the
   59 waiting on you. See all 59 →*).
 
+  **The edges under the card deal the next** (#3062). With two cards or more,
+  the two card edges under the one in front are a button: a click or a tap
+  deals the next card, as **J** and the head's **Next card** do, and the next
+  card rises from them. Under a pointer they drop a little, and their label
+  names who comes next (*Next: Nadia Petrov*, 下一张：…). They are no tab stop,
+  since the keyboard has **J** and **K**; with one card there are no edges. They
+  sit right under the card, above the line that counts the cards, and the
+  **Next card** glyph points down at them.
+
   **Done, and undoing it.** After a close the notice says what happened, in
   words, with **Undo** and then the list that now holds the item: *Marked done ·
   Undo · Saved in notebook · Finished today: 3*. The notice leaves after five

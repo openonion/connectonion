@@ -3779,9 +3779,13 @@
   .tnext-ev { width: 100%; overflow: hidden; }
   .tnext .wt { min-width: 0; }
   .deck { position: relative; padding-bottom: 26px; min-width: 0; }
-  .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
-    background: var(--raised); box-shadow: var(--e1); }
-  .deck:has(.qcard ~ .qcard)::after { left: 44px; right: 44px; bottom: 0; opacity: .7; }
+  /* In the flow, right under the cards: the line under the deck (deck-rest) comes after the edges, not under them. */
+  .deck:has(.deck-next) { padding-bottom: 0; }
+  .deck-next { position: relative; display: block; width: calc(100% - 44px); margin: 0 22px; height: 26px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .deck-next::before, .deck-next::after { content: ""; position: absolute; left: 0; right: 0; bottom: 13px; height: 60px; border-radius: var(--r-card);
+    background: var(--raised); box-shadow: var(--e1); transition: transform var(--t-draw) var(--spring); }
+  .deck-next::after { left: 22px; right: 22px; bottom: 0; opacity: .7; }
+  .deck-next:hover::before, .deck-next:hover::after { transform: translateY(3px); }
   .today-brief { position: relative; z-index: 1; }
   .today-brief .today-threads { display: block; border: 0; }
   .today-brief .qcard { display: none; cursor: auto; }
@@ -4859,6 +4863,7 @@ const UI = {
     "All {n} changes →": "查看全部 {n} 项变化 →",
     "Mark done": "标为完成",
     "Needs you": "等你处理",
+    "Next: {name}": "下一张：{name}",
     "Reply in {channel}": "在 {channel} 里回复",
     "Follow up in {channel}": "在 {channel} 里跟进",
     "{channel} reply": "{channel} 回信",
@@ -8870,7 +8875,7 @@ function nightlyUpdatesOff() {
 }
 // Every picture is copied from a published set, never drawn by hand (owner, 2026-11-17: the phone, mail and GitHub
 // pictures "are not very accurate"). Interface icons are Lucide 0.468.0 (ISC), the set the rail already used (D-132);
-// keys the reader had before keep their names: project is Lucide's folder, more ellipsis, skip chevrons-right,
+// keys the reader had before keep their names: project is Lucide's folder, more ellipsis, skip chevrons-down,
 // agent sparkles, chat message-circle, pin map-pin, right/down chevron-right/-down, doc file-text, undo undo-2,
 // ext external-link; at (new) is at-sign. phone is the handset, because the fact it marks is a number, not a device.
 // Strokes come from .ic, never from here, and a Lucide rect is the same shape as a path, because the sheet owns
@@ -8892,7 +8897,7 @@ const ICONS = {
   more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
-  skip: '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
+  skip: '<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>',  // down, at the pile Next card deals from
   agent: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
   chat: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
@@ -11052,6 +11057,7 @@ function dealCard(path) {
   const chart = document.querySelector("#main .night-card .hyp-wrap"), redrawn = chart && nightChart(path);
   if (redrawn) chart.replaceWith(redrawn.svg);
   next.focus({ preventScroll: true });
+  labelDeckNext();
 }
 // The raised card is open and carries the page's one green action; a card behind its face carries none.
 function raiseCard(card, raised) {
@@ -11063,6 +11069,22 @@ function raiseCard(card, raised) {
   }
 }
 // The next card is the next one in the page: the notebook may already hold someone the page has not drawn yet.
+// The edges under the raised card are the next cards: a click or a tap deals the next, as J and the head's Next card
+// do, and the next card rises from them. No tab stop: the keyboard has J and K. With one card there are no edges.
+function deckNext(groups) {
+  if (groups.length < 2) return null;
+  const edges = el("button", { type: "button", class: "deck-next", tabindex: "-1" });
+  edges.onclick = () => dealNext(1);
+  labelDeckNext(edges, groups[1].r.path);
+  return edges;
+}
+function labelDeckNext(edges = document.querySelector("#main .deck-next"), path) {
+  if (!edges) return;
+  const cards = [...document.querySelectorAll("#main .today-brief .qcard")], at = cards.findIndex(card => card.classList.contains("focal"));
+  const name = threadWho(byPath(path || cards[(at + 1) % cards.length].dataset.path));
+  edges.setAttribute("aria-label", t("Next: {name}", { name }));
+  edges.title = t("Next: {name}", { name });
+}
 function dealNext(step) {
   const cards = [...document.querySelectorAll("#main .today-brief .qcard")];
   if (cards.length < 2) return;
@@ -11218,7 +11240,7 @@ function overview() {
   shownCount = groups.length;
   main.append(...whyNotes(), ...[snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
     todayNextLine(),
-    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [deskHead(groups, cards[0]?.r.path, ticked), todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [deskHead(groups, cards[0]?.r.path, ticked), todayCards(cards), deckNext(cards), deckRest(groups, counts)]), todaySide(counts)]),
     // The calendar is part of Today, under the cards (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个
     // component，而不是单独的一个 category»); the day plan's proposals are its suggested blocks, not a list on top.
     todayCalendar(), staleWidget(todayEntries(entries).filter(staleEntry)), closedToday(), todoSection(), todayFolds(entries, counts)].filter(Boolean));
