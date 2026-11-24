@@ -504,6 +504,7 @@ def test_rem_redraft_rewrites_for_a_chat_channel_and_send_goes_through_that_tool
     book = Notebook(notebook)
     book.write('people/fern.md', book.read('people/fern.md').replace('## Sources\n', '## Sources\n- [2] lark:oc_pilot:1\n'))
     saved = drafts.redraft(notebook, row['id'], 'lark')
+    assert saved['writer_mail']['original']['excerpt'] == 'Please review the pilot.'
     assert saved['channel'] == 'lark' and saved['body'] == '看过了，周二前给你反馈。' and saved['status'] == 'prepared'
     with pytest.raises(Exception, match='Unknown channel'):
         drafts.redraft(notebook, row['id'], 'pigeon')
@@ -534,6 +535,8 @@ def test_rem_prepare_now_drafts_one_waiting_thread_on_the_owners_click(notebook,
         return {'outcome': 'natural'}
     monkeypatch.setattr(runner, 'run_task', fake_turn)
     saved = drafts.prepare_now(notebook, row['provider'], row['thread'])
+    assert saved['writer_mail']['original']['level'] == 'personal'
+    assert 'writer_mail' not in read_json(drafts.path(notebook, row['id']), {})
     assert saved['status'] == 'prepared' and saved['body'] == 'Hi Mia, Tuesday works.' and saved['id'] == row['id']
     assert drafts.queue(notebook) == []
     with pytest.raises(Exception, match='cannot be drafted yet'):

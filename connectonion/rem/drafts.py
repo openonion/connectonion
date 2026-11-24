@@ -385,7 +385,11 @@ def _write_now(root, row, channel):
         runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
         plan = check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
     promote(root, {**plan, 'channel': channel, 'phone': _phone(_identities(root, row)['person'])})
-    return read_json(path(root, row['id']), {})
+    # The live prepare/redraft response opens the same writer before the next snapshot.
+    from .writer_mail import attach_writer_mail
+    result = read_json(path(root, row['id']), {})
+    attach_writer_mail(root, [result])
+    return result
 
 
 # The owner's clicks below run while a scheduled REM round may hold the

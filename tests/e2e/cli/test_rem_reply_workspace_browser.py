@@ -248,3 +248,14 @@ def test_card_answers_remain_editable_and_send_as_literal_text(today, location_o
     send.click()
     dialog.wait_for(state="detached")
     assert [body["bodies"] for path, body in calls if path == "/rem/approve"] == [{"reply:ines": expected}]
+
+
+def test_public_display_removes_archive_headers_and_bodies(today):
+    page, _, _ = today
+    dialog = _open(page)
+    assert dialog.locator('.writer-msg').count() == 2
+    page.evaluate('setPrivacy("public", {save: false})', isolated_context=False)
+    assert dialog.locator('.writer-msg').count() == 0
+    dialog.get_by_role('button', name='Close', exact=True).click()
+    page.locator('.qcard.open .mail-write').click()
+    assert page.locator('dialog.writer .writer-msg').count() == 0
