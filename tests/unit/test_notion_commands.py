@@ -188,8 +188,9 @@ def test_search_pages_through_with_a_cursor(notion):
     first = run("pages", "--type", "page", "-n", "1")
     assert first.exit_code == 0 and "(more available)" in first.stdout
     cursor = re.search(r"--cursor (\S+)", last_line(first.stdout))[1]
+    first_id = json.loads(run("pages", "--type", "page", "-n", "1", "--json").stdout)["results"][0]["id"]
     second = run("pages", "--type", "page", "-n", "1", "--cursor", cursor, "--json")
-    assert json.loads(second.stdout)["results"][0]["id"] != re.search(r"^(\S+)", first.stdout.splitlines()[1])[1]
+    assert json.loads(second.stdout)["results"][0]["id"] != first_id
 
 
 def test_an_empty_search_does_not_claim_the_page_is_absent(notion):
@@ -245,6 +246,84 @@ def test_nothing_shared_points_at_sharing_not_absence(notion, monkeypatch):
 
 def test_check_points_at_pages(notion):
     assert last_line(run("check").stdout) == "Next: co notion pages"
+
+
+# -- row numbers: a list is numbered, and page, db and columns take the number ------------
+
+def test_pages_numbers_its_rows_and_hides_long_ids(notion):
+    result = run("pages")
+    assert result.exit_code == 0, result.output
+    rows = [line for line in result.stdout.splitlines() if re.match(r"\s*\d+\. ", line)]
+    assert rows and rows[0].lstrip().startswith("1. ")
+    assert ROADMAP not in result.stdout and "Listing: " in result.stdout
+    assert re.fullmatch(r"Next: co notion (page|columns) 1", last_line(result.stdout))
+
+
+def test_ids_flag_shows_each_rows_id(notion):
+    assert ROADMAP in run("pages", "--ids").stdout
+
+
+def test_page_takes_a_row_number_from_the_last_list(notion):
+    shown = json.loads(run("pages", "--type", "page", "--json").stdout)["results"]
+    run("pages", "--type", "page")
+    result = run("page", "1")
+    assert result.exit_code == 0, result.output
+    assert shown[0]["title"] in result.stdout
+    assert ("GET", f"pages/{shown[0]['id']}") in [s[:2] for s in notion.sent]
+
+
+def test_db_and_columns_take_a_database_row_number(notion):
+    run("pages", "--type", "database")
+    names = [line.split(None, 3)[-1] for line in run("pages", "--type", "database").stdout.splitlines()
+             if re.match(r"\s*\d+\. ", line)]
+    number = str(names.index("Tasks") + 1)
+    assert "columns in Tasks" in run("columns", number).stdout
+    listed = run("db", number)
+    assert listed.exit_code == 0, listed.output
+    assert "Write docs" in listed.stdout and ROW not in listed.stdout
+    assert last_line(listed.stdout) == "Next: co notion page 1"
+    # The rows just listed are now the last list: page 1 is the first row of Tasks.
+    assert "Write docs" in run("page", "1").stdout
+
+
+def test_a_listing_id_pins_rows_after_another_list(notion):
+    first = run("pages", "--type", "page")
+    token = re.search(r"Listing: ([0-9a-f]{32})", first.stdout)[1]
+    title = json.loads(run("pages", "--type", "page", "--json").stdout)["results"][0]["title"]
+    run("db", TASKS_DB)
+    assert title in run("page", "1", "--listing", token).stdout
+
+
+def test_a_row_number_without_a_list_is_a_usage_error(notion):
+    result = run("page", "1")
+    assert result.exit_code == 2 and "No recent Notion list" in result.output
+    assert "Next: co notion pages" in result.output
+
+
+def test_a_row_number_past_the_list_is_refused(notion):
+    run("pages", "--type", "page")
+    result = run("page", "99")
+    assert result.exit_code == 2 and "Relist" in result.output
+
+
+def test_row_numbers_belong_to_the_key_that_listed_them(notion):
+    run("pages")
+    notion.workspace = {**notion.workspace, "id": "another-bot"}
+    result = run("page", "1")
+    assert result.exit_code == 2 and "another account" in result.output
+
+
+def test_json_saves_no_row_numbers(notion):
+    found = json.loads(run("pages", "--json").stdout)
+    assert "Listing" not in json.dumps(found)
+    assert run("page", "1").exit_code == 2
+
+
+def test_an_empty_list_forgets_the_old_numbers(notion, monkeypatch):
+    run("pages")
+    monkeypatch.setattr(api, "search", lambda *a, **k: ([], ""))
+    run("pages")
+    assert run("page", "1").exit_code == 2
 
 
 # -- page ------------------------------------------------------------------

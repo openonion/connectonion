@@ -46,17 +46,45 @@ your shell first, then the selected env file, then the encrypted store.
 | command | does | changes |
 |---|---|---|
 | `co notion check [--target LINK]` | which key acts, its workspace, whether it can read a target | Read-only |
-| `co notion pages [--type page\|database] [--cursor C]` | everything this key can read, newest edit first, paged | Read-only |
-| `co notion search "<words>" [--type page\|database] [--cursor C]` | titles this key can read that contain the words, newest first, paged | Read-only |
-| `co notion page LINK [--max-blocks N] [--depth N]` | properties, nested content, files, coverage | Read-only |
-| `co notion db LINK [--where …] [--sort …] [--cursor C] [--source S]` | rows with every property, filtered and sorted | Read-only |
-| `co notion columns LINK [--source S]` | column names, ids, types and options | Read-only |
+| `co notion pages [--type page\|database] [--cursor C]` | everything this key can read, newest edit first, numbered, paged | Read-only |
+| `co notion search "<words>" [--type page\|database] [--cursor C]` | titles this key can read that contain the words, numbered, paged | Read-only |
+| `co notion page ROW\|LINK [--max-blocks N] [--depth N]` | properties, nested content, files, coverage | Read-only |
+| `co notion db ROW\|LINK [--where …] [--sort …] [--cursor C] [--source S]` | rows with every property, numbered, filtered and sorted | Read-only |
+| `co notion columns ROW\|LINK [--source S]` | column names, ids, types and options | Read-only |
 
-Every list takes `--json` and `-n`. Every command ends with one `Next:` line.
+Every list takes `--json`, `--ids` and `-n`. Every command ends with one `Next:` line.
 
-## Links
+```text
+$ co notion pages
+3 shared items
+1.  page      2026-11-15  Roadmap
+2.  database  2026-11-14  Tasks
+3.  page      2026-11-12  Meeting notes
+Listing: 6f1c… (15 min; optional --listing ID pins these rows)
+This lists what this key can read (…); it is not a list of the whole workspace.
+Next: co notion page 1
 
-A page or database is named by its link or id. The id is read from the link
+$ co notion db 2 --where "Status=In progress"
+1 row in Tasks
+1.  2026-11-14  Write docs  Status: In progress  Tags: docs, q4
+Listing: 9a0d… (15 min; optional --listing ID pins these rows)
+Next: co notion page 1
+```
+
+## Rows, links and ids
+
+| you give | where it comes from |
+|---|---|
+| a row number to `page`, `db`, `columns` | the latest list: `pages`, `search` or `db` |
+| a link | copied from Notion (Share → Copy link) |
+| an id | `--ids`, `--json`, or the child page lines of `co notion page` |
+
+Rows last 15 minutes and belong to the key that listed them. The numbers
+always refer to the last list shown, so after `co notion db 2` the rows of
+that database are 1, 2, 3…; `--listing <id>` pins an older list. With
+`--json` no rows are saved: scripts use ids.
+
+A page or database link or id works wherever a row number does. The id is read from the link
 the way Notion builds it: `Title-<id>` in the path (a title made of hex letters
 is never read as part of the id), `?v=<view>` keeps the database as the object,
 `?p=<page>` (a record opened in peek view) names that record, and `#<block>` is
