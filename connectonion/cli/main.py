@@ -1960,6 +1960,57 @@ def email_read(
     handle_email_read(email_id, mark_read=mark_read)
 
 
+@email_app.command("attachments", epilog="Example:  co email attachments 123")
+def email_attachments(
+    email_id: str = typer.Argument(..., help="Email ID from inbox or sent"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Read-only. List attachment IDs, names, types and sizes."""
+    from .commands.email_commands import handle_email_attachments
+    handle_email_attachments(email_id, sent)
+
+
+@email_app.command("download", epilog="Example:  co email download 123 456 --to ./orders")
+def email_download(
+    email_id: str = typer.Argument(..., help="Email ID"),
+    attachment_id: str = typer.Argument(..., help="ID from co email attachments"),
+    to: str = typer.Option(".", "--to", help="Output directory; existing files are never overwritten"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Writes one attachment to a new file after checking its SHA256 checksum."""
+    from .commands.email_commands import handle_email_download
+    handle_email_download(email_id, attachment_id, to, sent)
+
+
+@email_app.command("attachment-text", epilog="Example:  co email attachment-text 123 456 --to ./orders")
+def email_attachment_text(
+    email_id: str = typer.Argument(..., help="Email ID"),
+    attachment_id: str = typer.Argument(..., help="Attachment ID"),
+    to: str = typer.Option(".", "--to", help="Directory to keep the original file"),
+    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
+):
+    """Writes the original file, then prints extractable text or reports that manual review is needed."""
+    from .commands.email_commands import _require_auth
+    from ..useful_tools.email_attachments import read_email_attachment
+    _require_auth()
+    result = read_email_attachment(email_id, attachment_id, to, sent)
+    print(result.get("text") or result.get("error"))
+    if not result["readable"]:
+        raise typer.Exit(1)
+
+
+@email_app.command("raw", epilog="Example:  co email raw 123 --output ./original.eml")
+def email_raw(
+    email_id: str = typer.Argument(..., help="Received email ID"),
+    output: str = typer.Option(..., "--output", help="New .eml file to write"),
+):
+    """Writes the retained original email, including its attachments, to a new .eml file."""
+    from .commands.email_commands import _require_auth
+    from ..useful_tools.email_attachments import download_raw_email
+    _require_auth()
+    print(download_raw_email(email_id, output))
+
+
 sent_app = _typer_app(
     help="List and read emails the agent has sent. Read-only.",
     epilog="Example:  co email sent --to you@example.com",
@@ -3846,58 +3897,6 @@ def cli():
     except (EnvironmentError, AmbientCredentialError, ProviderCredentialError) as error:
         console.print(str(error), markup=False)
         raise SystemExit(1) from None
-
-
-
-@email_app.command("attachments", epilog="Example:  co email attachments 123")
-def email_attachments(
-    email_id: str = typer.Argument(..., help="Email ID from inbox or sent"),
-    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
-):
-    """Read-only. List attachment IDs, names, types and sizes."""
-    from .commands.email_commands import handle_email_attachments
-    handle_email_attachments(email_id, sent)
-
-
-@email_app.command("download", epilog="Example:  co email download 123 456 --to ./orders")
-def email_download(
-    email_id: str = typer.Argument(..., help="Email ID"),
-    attachment_id: str = typer.Argument(..., help="ID from co email attachments"),
-    to: str = typer.Option(".", "--to", help="Output directory; existing files are never overwritten"),
-    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
-):
-    """Writes one attachment to a new file after checking its SHA256 checksum."""
-    from .commands.email_commands import handle_email_download
-    handle_email_download(email_id, attachment_id, to, sent)
-
-
-@email_app.command("attachment-text", epilog="Example:  co email attachment-text 123 456 --to ./orders")
-def email_attachment_text(
-    email_id: str = typer.Argument(..., help="Email ID"),
-    attachment_id: str = typer.Argument(..., help="Attachment ID"),
-    to: str = typer.Option(".", "--to", help="Directory to keep the original file"),
-    sent: bool = typer.Option(False, "--sent", help="Use the sent mailbox"),
-):
-    """Writes the original file, then prints extractable text or reports that manual review is needed."""
-    from .commands.email_commands import _require_auth
-    from ..useful_tools.email_attachments import read_email_attachment
-    _require_auth()
-    result = read_email_attachment(email_id, attachment_id, to, sent)
-    print(result.get("text") or result.get("error"))
-    if not result["readable"]:
-        raise typer.Exit(1)
-
-
-@email_app.command("raw", epilog="Example:  co email raw 123 --output ./original.eml")
-def email_raw(
-    email_id: str = typer.Argument(..., help="Received email ID"),
-    output: str = typer.Option(..., "--output", help="New .eml file to write"),
-):
-    """Writes the retained original email, including its attachments, to a new .eml file."""
-    from .commands.email_commands import _require_auth
-    from ..useful_tools.email_attachments import download_raw_email
-    _require_auth()
-    print(download_raw_email(email_id, output))
 
 
 if __name__ == "__main__":
