@@ -177,6 +177,8 @@ class FakeNotion:
                 return self._page_list(self.blocks[parts[1]], params, body)
         if parts[0] == "databases" and method == "GET":
             found = self.databases.get(parts[1])
+            if found is None and parts[1] in self.pages:
+                raise ValueError(f"Provided database_id {parts[1]} is a page, not a database.")
             if found is None:
                 raise LookupError
             return found
