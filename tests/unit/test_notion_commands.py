@@ -515,3 +515,10 @@ def test_show_says_when_the_page_was_not_read_whole(notion):
 
 def test_a_deleted_or_unshared_page_exits_1(notion):
     assert run("show", uid(999)).exit_code == 1
+
+
+def test_changes_and_show_print_a_title_with_line_breaks_on_one_line(notion):
+    notion.add_page(uid(82), "Sleep\nWeek 1", edited="2026-11-24T00:00:00.000Z")
+    assert "Sleep Week 1" in run("changes", "--since", "2026-11-20T00:00Z").stdout
+    assert run("show", uid(82)).stdout.splitlines()[0] == f"Sleep Week 1  {uid(82)}"
+    assert json.loads(run("show", uid(82), "--json").stdout)["title"] == "Sleep\nWeek 1"

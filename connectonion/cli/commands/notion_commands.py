@@ -452,7 +452,7 @@ def changes(since: str = typer.Option(..., "--since", help="Only pages edited af
               f"{escape(start.isoformat())}")
     for item in items:
         out.print(f"  {style.muted((item['time'] or '-')[:16].replace('T', ' '))}  {style.muted(item['id'])}  "
-                  f"{escape(item['title'])}")
+                  f"{escape(api.one_line(item['title']))}")
     _tip(f"co notion show {items[0]['id']}" if items else "co notion pages", False)
 
 
@@ -501,7 +501,7 @@ def show(target: str = typer.Argument(..., help=PAGE_HELP),
         return _tip(f"co notion page {detail['id']}", True)
     item = _show_item(detail)
     out = style.console()
-    out.print(f"{style.heading(item['title'])}  {style.muted(item['id'])}")
+    out.print(f"{style.heading(api.one_line(item['title']) or '(untitled)')}  {style.muted(item['id'])}")
     out.print(escape(f"Edited: {(item['time'] or '-')[:16].replace('T', ' ')}   Created by: {item['author'] or item['author_id'] or '-'}"))
     if item["link"]:
         out.print(style.path(item["link"]))

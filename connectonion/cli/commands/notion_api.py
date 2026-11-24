@@ -266,6 +266,12 @@ def markdown(rich_text: list | None) -> str:
     return "".join(out)
 
 
+def one_line(text: str) -> str:
+    """A title as one line, for display: Notion lets a title hold line breaks, and printed as they
+    are they split a numbered row in two. --json keeps the title as Notion has it."""
+    return " ".join((text or "").split())
+
+
 def title_of(obj: dict) -> str:
     """The title of a page (its title-typed property), a database or a data source."""
     if obj.get("object") in ("database", "data_source"):
