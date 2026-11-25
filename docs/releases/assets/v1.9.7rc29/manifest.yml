@@ -1,0 +1,30 @@
+version: v1.9.7rc29
+images:
+  - file: waiting-list-desktop.webp
+    alt: "The REM Waiting on You list view grouped by tag with circular in-place completion buttons and inline quote previews."
+    caption: "Waiting on You opens as a compact tag-grouped list with circular in-place completion and inline quote previews."
+    scenario: "Open #view=open in the synthetic REM fixture notebook on desktop"
+    viewport: "1440x900, light"
+    commit: e3afaed7e53966e775fbf11235abe0022e29ad75
+    source_run: "Local headless Chromium capture from synthetic fixture notebook; https://github.com/openonion/connectonion/pull/3464"
+  - file: waiting-detail-desktop.webp
+    alt: "The REM Waiting on You detail console showing 01 / 05 navigation, Original message, Status actions, Delegate to agent, and Related pages."
+    caption: "Clicking Details opens the focused item console with the quoted message, status shortcuts, agent delegation, and related pages."
+    scenario: "Open #view=open&item=... for Mara Ostrowski's fourth-seat thread on desktop"
+    viewport: "1440x900, light"
+    commit: e3afaed7e53966e775fbf11235abe0022e29ad75
+    source_run: "Local headless Chromium capture from synthetic fixture notebook; https://github.com/openonion/connectonion/pull/3464"
+  - file: today-flipper-desktop.webp
+    alt: "The REM Today Focus Deck showing Mara Ostrowski selected in the synchronized four-cell horizontal flipper strip below the active card."
+    caption: "Today replaces stacked card shadows with a synchronized horizontal flipper strip across the active obligations."
+    scenario: "Open Today (#) and select item 02 in the horizontal flipper strip on desktop"
+    viewport: "1440x900, light"
+    commit: e3afaed7e53966e775fbf11235abe0022e29ad75
+    source_run: "Local headless Chromium capture from synthetic fixture notebook; https://github.com/openonion/connectonion/pull/3464"
+  - file: waiting-list-phone.webp
+    alt: "The REM Waiting on You list on a 390x844 phone viewport with stacked direction tabs, tag chips, circular completion controls, and bottom navigation."
+    caption: "On a 390x844 phone viewport, Waiting on You stacks its direction tabs, tag filter chips, and grouped rows cleanly with zero horizontal overflow."
+    scenario: "Open #view=open in the synthetic REM fixture notebook on a 390x844 phone viewport"
+    viewport: "390x844, light"
+    commit: e3afaed7e53966e775fbf11235abe0022e29ad75
+    source_run: "Local headless Chromium capture from synthetic fixture notebook; https://github.com/openonion/connectonion/pull/3464"
