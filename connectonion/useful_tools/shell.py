@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: Shell() creates instance → .run(command, timeout) or .run_in_dir(command, directory, timeout) → subprocess.run(shell=True) in cwd → captures stdout+stderr → _format_output() truncates if >10000 chars → returns formatted output: str
   State/Effects: executes system commands via subprocess.run(shell=True) | stores default cwd in self.cwd | no file persistence | side effects depend on executed commands (file I/O, network calls, etc.)
   Integration: exposes Shell class with .run(command, timeout), .run_in_dir(command, directory, timeout) | used as agent tool | class methods extracted to tools via extract_methods_from_instance() | instance accessible via agent.tools.shell
-  Performance: timeout default 120s; explicit caller values are honored | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes) | uses system default shell (bash/sh on Unix, cmd.exe on Windows)
+  Performance: timeout default 120s; explicit caller values are honored | truncates output >10000 chars to prevent token overflow, keeping stderr and the exit code | synchronous execution (blocks until command completes) | uses system default shell (bash/sh on Unix, cmd.exe on Windows)
   Errors: propagates subprocess.TimeoutExpired so callers can distinguish timeout from success | includes stderr in output | includes exit code for non-zero returns | handles empty output gracefully
 
 Shell tool for executing terminal commands (cross-platform).
@@ -26,6 +26,11 @@ For Unix-specific bash, use the `bash` function from bash.py instead.
 
 import os
 import subprocess
+
+# Output cap for one command. The tool's own lines (stderr and the exit code)
+# are never cut: dropping the exit code makes a failed command read as a
+# truncated success, and dropping stderr hides the error that explains it.
+MAX_OUTPUT_CHARS = 10_000
 
 
 def _utf8_env() -> dict:
@@ -107,19 +112,28 @@ class Shell:
 
     def _format_output(self, result: subprocess.CompletedProcess) -> str:
         """Format subprocess result into readable output."""
-        parts = []
-        if result.stdout:
-            parts.append(result.stdout.rstrip())
-        if result.stderr:
-            parts.append(f"STDERR:\n{result.stderr.rstrip()}")
-        if result.returncode != 0:
-            parts.append(f"\nExit code: {result.returncode}")
+        status = f"Exit code: {result.returncode}" if result.returncode != 0 else ""
+        stderr = f"STDERR:\n{result.stderr.rstrip()}" if result.stderr else ""
+        stdout = result.stdout.rstrip() if result.stdout else ""
 
-        output = "\n".join(parts) if parts else "(no output)"
+        # Truncate the command's streams, never the lines this tool adds.
+        # Stderr gets the space first because it is the part a caller acts on.
+        remaining = MAX_OUTPUT_CHARS - (len(status) + 1 if status else 0)
+        if stderr:
+            stderr = _fit(stderr, remaining - 1, "stderr")
+            remaining -= len(stderr) + 1
+        if stdout:
+            stdout = _fit(stdout, remaining, "stdout")
 
-        # Truncate large outputs
-        max_chars = 10000
-        if len(output) > max_chars:
-            output = output[:max_chars] + f"\n... (truncated, {len(output):,} total chars)"
+        output = "\n".join(part for part in (stdout, stderr, status) if part)
+        return output or "(no output)"
 
-        return output
+
+def _fit(text: str, budget: int, label: str) -> str:
+    """Cut ``text`` to ``budget`` characters, keeping a note of what was dropped."""
+    if len(text) <= budget:
+        return text
+    note = f"\n... ({label} truncated, {len(text):,} total chars)"
+    if len(note) >= budget:
+        return text[:max(0, budget)]
+    return text[: budget - len(note)] + note
