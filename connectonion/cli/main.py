@@ -3592,6 +3592,105 @@ def _onenote_create(section: str = typer.Argument(..., help="Section number from
     handle_onenote_create(section, title, text, listing=listing)
 
 
+# Microsoft Teams (#1907): chats, joined teams and channels on work/school sign-ins.
+teams_app = _typer_app(
+    help="Your Microsoft Teams chats and joined teams (work or school accounts). Bare 'co teams' lists recent chats (Read-only); send previews by default and Sends only with --yes.",
+    epilog="Example:  co teams chats  |  co teams read 1",
+    invoke_without_command=True,
+)
+app.add_typer(teams_app, name="teams")
+
+
+@teams_app.callback(invoke_without_command=True)
+def _teams_default(ctx: typer.Context):
+    """List recent Teams chats when no subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        from .commands.teams_commands import handle_teams_chats
+        handle_teams_chats()
+
+
+@teams_app.command("check", epilog="Example:  co teams check  |  co teams check --json")
+def _teams_check(
+    json_output: bool = typer.Option(False, "--json", help="Print structured token, tenant and scope status as JSON"),
+):
+    """Check the Microsoft sign-in, tenant kind and granted Teams scopes. Read-only."""
+    from .commands.teams_commands import handle_teams_check
+    handle_teams_check(json_output=json_output)
+
+
+@teams_app.command("chats", epilog="Example:  co teams chats  |  co teams chats --since 7d --unread  |  co teams chats --ids  |  co teams chats --json")
+def _teams_chats(
+    limit: int = typer.Option(20, "--limit", "-n", min=1, max=100, help="At most this many chats, newest message first"),
+    since: Optional[str] = typer.Option(None, "--since", help="Only chats with activity since 24h, 7d, 2w, 1m or an ISO date"),
+    unread: bool = typer.Option(False, "--unread", "-u", help="Only chats with unread messages"),
+    show_ids: bool = typer.Option(False, "--ids", help="Also show full chat IDs for scripts"),
+    json_output: bool = typer.Option(False, "--json", help="Print chats as JSON (IDs included); no row numbers are saved"),
+):
+    """List recent 1:1, group and meeting chats with numbers and unread status. Read-only."""
+    from .commands.teams_commands import handle_teams_chats
+    handle_teams_chats(limit=limit, since=since, unread_only=unread, show_ids=show_ids, json_output=json_output)
+
+
+@teams_app.command("ls", epilog="Example:  co teams ls  |  co teams ls --ids")
+def _teams_ls(
+    limit: int = typer.Option(20, "--limit", "-n", min=1, max=100, help="At most this many chats, newest message first"),
+    since: Optional[str] = typer.Option(None, "--since", help="Only chats with activity since 24h, 7d, 2w, 1m or an ISO date"),
+    unread: bool = typer.Option(False, "--unread", "-u", help="Only chats with unread messages"),
+    show_ids: bool = typer.Option(False, "--ids", help="Also show full chat IDs for scripts"),
+    json_output: bool = typer.Option(False, "--json", help="Print chats as JSON (IDs included); no row numbers are saved"),
+):
+    """List recent 1:1, group and meeting chats with numbers (alias for chats). Read-only."""
+    from .commands.teams_commands import handle_teams_chats
+    handle_teams_chats(limit=limit, since=since, unread_only=unread, show_ids=show_ids, json_output=json_output)
+
+
+@teams_app.command("read", epilog="Example:  co teams read 1  |  co teams read 1 --limit 50 --listing 0123456789abcdef0123456789abcdef  |  co teams read 19:abc@thread.v2 --json")
+def _teams_read(
+    chat: Optional[str] = typer.Argument(None, help="Chat row number from co teams chats, or full chat ID; omit to list chats"),
+    limit: int = typer.Option(20, "--limit", "-n", min=1, max=50, help="At most this many recent messages, shown oldest first"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID from co teams chats to pin a row number"),
+    json_output: bool = typer.Option(False, "--json", help="Print messages as JSON in chronological order"),
+):
+    """Read messages from a numbered chat as plain text, in chronological order. Read-only."""
+    from .commands.teams_commands import handle_teams_read
+    handle_teams_read(chat, limit=limit, listing=listing, json_output=json_output)
+
+
+@teams_app.command("send", epilog='Example:  co teams send 1 "On my way"  |  co teams send 19:abc@thread.v2 "On my way" --yes')
+def _teams_send(
+    chat: str = typer.Argument(..., help="Chat row number from co teams chats, or full chat ID"),
+    text: Optional[str] = typer.Argument(None, help="Message text, or '-' / omit to read from standard input"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID from co teams chats to pin a row number"),
+    yes: bool = typer.Option(False, "--yes", help="Actually send the message; without --yes this prints a preview and sends nothing"),
+    json_output: bool = typer.Option(False, "--json", help="Print the preview, or the sent message, as JSON"),
+):
+    """Send a plain-text message to a Teams chat as you. Previews target chat and text by default; Sends only with --yes."""
+    from .commands.teams_commands import handle_teams_send
+    handle_teams_send(chat, text, listing=listing, yes=yes, json_output=json_output)
+
+
+@teams_app.command("teams", epilog="Example:  co teams teams  |  co teams teams --ids  |  co teams teams --json")
+def _teams_joined(
+    show_ids: bool = typer.Option(False, "--ids", help="Also show full team IDs for scripts"),
+    json_output: bool = typer.Option(False, "--json", help="Print joined teams as JSON (IDs included); no row numbers are saved"),
+):
+    """List the Microsoft Teams you have joined, numbered for channels. Read-only."""
+    from .commands.teams_commands import handle_teams_teams
+    handle_teams_teams(show_ids=show_ids, json_output=json_output)
+
+
+@teams_app.command("channels", epilog="Example:  co teams channels 1  |  co teams channels 1 --ids  |  co teams channels 02bd9fd6-8f93-4758-87c3-1fb73740a315 --json")
+def _teams_channels(
+    team: str = typer.Argument(..., help="Team row number from co teams teams, or full team ID"),
+    listing: Optional[str] = typer.Option(None, "--listing", help="Optional listing ID from co teams teams to pin a row number"),
+    show_ids: bool = typer.Option(False, "--ids", help="Also show full channel IDs for scripts"),
+    json_output: bool = typer.Option(False, "--json", help="Print channels as JSON"),
+):
+    """List channels in a joined team (list-only; reading channel messages needs tenant admin consent for ChannelMessage.Read.All). Read-only."""
+    from .commands.teams_commands import handle_teams_channels
+    handle_teams_channels(team, listing=listing, show_ids=show_ids, json_output=json_output)
+
+
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
 outlook_app = _typer_app(

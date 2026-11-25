@@ -298,6 +298,13 @@ NEXT = {
     "co onenote pages": HANDLER,
     "co onenote read": HANDLER,
     "co onenote create": HANDLER,
+    "co teams check": HANDLER,       # each handler names the next teams command (#1907)
+    "co teams chats": HANDLER,
+    "co teams ls": HANDLER,
+    "co teams read": HANDLER,
+    "co teams send": HANDLER,
+    "co teams teams": HANDLER,
+    "co teams channels": HANDLER,
     "co outlook calendar *": HANDLER,
     "co gcalendar *": HANDLER,
     "co gdrive *": HANDLER,
