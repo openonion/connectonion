@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc28
+## Current Version: 1.9.7rc29
+Release candidate 1.9.7rc29 splits REM Waiting on You into a tag-grouped list with in-place completion and a focused item console, adds a synchronized Today flipper strip, and self-heals `owner_record()` on notebooks without `.state/map.json` (#3464). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc29.md).
+
+- 1.9.7rc29 (REM two-screen Waiting on You, Today flipper strip, cross-page obligation deduplication, and `owner_record()` fallback #3464).
+
+### Previous candidate: 1.9.7rc28
 Release candidate 1.9.7rc28 adds REM SQLite store v2 queries, Agent Host security gates, first-class `devices` pages, reader performance fixes (#3458, #3453), and the `co teams` Microsoft Teams CLI and `Teams` tool (#3459, #1907). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc28.md).
 
 - 1.9.7rc28 (REM SQLite store v2, Agent Host security gates, devices category, and reader de-bottlenecking #3458/#3453; Microsoft Teams `co teams` CLI and `Teams` tool #3459/#1907).
