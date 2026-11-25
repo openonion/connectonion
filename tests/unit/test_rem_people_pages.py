@@ -20,6 +20,15 @@ NOW = datetime.now(timezone.utc)
 OWNER = "owner@example.org"
 
 
+@pytest.fixture(autouse=True)
+def _fresh_now():
+    """NOW is read again for each test. Read once at import, a run that started
+    before midnight UTC and reached these tests after it counted one day too many
+    (the 1.9.0a2 release run, 2026-09-29 23:53)."""
+    global NOW
+    NOW = datetime.now(timezone.utc)
+
+
 def ago(days: float) -> str:
     return (NOW - timedelta(days=days)).isoformat()
 
