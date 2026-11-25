@@ -630,8 +630,29 @@ def _text(value: str) -> str:
     return sys.stdin.read() if value == "-" else value
 
 
-def _rerun(*words: str) -> str:
-    return "co notion " + " ".join(shlex.quote(w) for w in words) + " --yes"
+def _rerun(*words: str, after: str = "") -> str:
+    """The same write with --yes; `after` is the text, given after `--` when it starts with a dash."""
+    tail = f" -- {shlex.quote(after)}" if after else ""
+    return "co notion " + " ".join(shlex.quote(w) for w in words) + " --yes" + tail
+
+
+PIPE_AGAIN = "The text came from standard input: pipe the same text into the command below, e.g. < notes.md"
+
+
+def _replay(given: str, body: str) -> tuple[str, str]:
+    """What the preview's Next line passes for the text, and a note to print above it.
+
+    Standard input is used up by the preview, so a `-` in Next would read nothing.
+    As co asana comment does: one line of text goes into Next itself (a trailing
+    newline from the file dropped); text with line breaks, or exactly "-", is piped
+    again, and the note says so.
+    """
+    if given != "-":
+        return given, ""
+    one = body.rstrip("\r\n")
+    if "\n" in one or "\r" in one or one in ("", "-"):
+        return "-", PIPE_AGAIN
+    return one, ""
 
 
 def _write_ref(value: str, listing: Optional[str], yes: bool, command: str) -> str:
@@ -642,7 +663,7 @@ def _write_ref(value: str, listing: Optional[str], yes: bool, command: str) -> s
     return _ref(value, listing)
 
 
-def _preview(what: str, lines: dict, rerun: str, body: str = "") -> None:
+def _preview(what: str, lines: dict, rerun: str, body: str = "", note: str = "") -> None:
     out = style.console()
     out.print(f"{style.warn('Preview')} — {escape(what)}. Nothing changed in Notion.")
     for label, value in lines.items():
@@ -651,6 +672,8 @@ def _preview(what: str, lines: dict, rerun: str, body: str = "") -> None:
         out.print("  Content, as it will be sent:")
         for line in body.splitlines():
             out.print("    " + escape(line))
+    if note:
+        out.print(style.muted(note))
     _tip(rerun)
 
 
@@ -682,8 +705,9 @@ def create(parent: str = typer.Argument(..., help="Row number, link or id of the
     blocks = api.text_blocks(body)
     if not yes:
         shown = {"parent": f"{api.one_line(api.title_of(found))} ({found['id']})", "title": title, "content": _body_summary(blocks)}
-        words = [found["id"], title] + (["--text", text] if text else [])
-        return _preview("would create this page", shown, _rerun("create", *words), api.preview_text(blocks))
+        again, note = _replay(text, body)
+        words = [found["id"], title] + ([f"--text={again}"] if again else [])
+        return _preview("would create this page", shown, _rerun("create", *words), api.preview_text(blocks), note)
     created = api.create_page(found["id"], title, blocks)
     style.console().print(f"{style.ok('✓')} Created {escape(api.one_line(title))} {created['id']}  {style.path(created.get('url', ''))}")
     _tip(f"co notion page {created['id']}")
@@ -705,7 +729,8 @@ def append(target: str = typer.Argument(..., help=PAGE_HELP),
     rerun with the same text and --start-at that number.
     """
     found = api.page(_write_ref(target, listing, yes, "append"))
-    blocks = api.text_blocks(_text(text))
+    body = _text(text)
+    blocks = api.text_blocks(body)
     if not blocks:
         print_tip("Nothing to add: the text is empty. Next: co notion append --help")
         raise typer.Exit(2)
@@ -717,9 +742,14 @@ def append(target: str = typer.Argument(..., help=PAGE_HELP),
         shown = {"page": f"{api.one_line(api.title_of(found))} ({found['id']})", "adds": _body_summary(sending)}
         if start_at:
             shown["skips"] = f"the first {start_at} block(s), already written"
-        words = [found["id"], text] + (["--start-at", str(start_at)] if start_at else [])
-        return _preview(f"would append to {api.one_line(api.title_of(found))}", shown, _rerun("append", *words),
-                        api.preview_text(sending))
+        again, note = _replay(text, body)
+        options = ["--start-at", str(start_at)] if start_at else []
+        if again.startswith("-") and again != "-":      # text that looks like an option goes after --
+            rerun = _rerun("append", found["id"], *options, after=again)
+        else:
+            rerun = _rerun("append", found["id"], again, *options)
+        return _preview(f"would append to {api.one_line(api.title_of(found))}", shown, rerun,
+                        api.preview_text(sending), note)
     count = api.append(found["id"], blocks, start_at=start_at) - start_at
     style.console().print(f"{style.ok('✓')} Added {count} block(s) to {escape(api.one_line(api.title_of(found)))}  "
                           f"{style.path(found.get('url', ''))}")
@@ -747,13 +777,15 @@ def add(target: str = typer.Argument(..., help=DB_HELP),
     """
     ds = api.data_source(_write_ref(target, listing, yes, "add"), source)
     properties, shown = api.row_properties(ds, title, assignments)
-    blocks = api.text_blocks(_text(text))
+    body = _text(text)
+    blocks = api.text_blocks(body)
     if blocks:
         shown["content"] = _body_summary(blocks)
     if not yes:
-        words = [ds["id"], title] + [w for a in assignments for w in ("--set", a)] + (["--text", text] if text else [])
+        again, note = _replay(text, body)
+        words = [ds["id"], title] + [w for a in assignments for w in ("--set", a)] + ([f"--text={again}"] if again else [])
         return _preview(f"would add this row to {api.one_line(api.title_of(ds))}", shown, _rerun("add", *words),
-                        api.preview_text(blocks))
+                        api.preview_text(blocks), note)
     created = api.create_page("", title, blocks, data_source_id=ds["id"], properties=properties)
     style.console().print(f"{style.ok('✓')} Added {escape(api.one_line(title))} {created['id']} to {escape(api.one_line(api.title_of(ds)))}  "
                           f"{style.path(created.get('url', ''))}")

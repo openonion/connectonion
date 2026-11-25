@@ -8,6 +8,7 @@ per request to test recovery.
 
 import json
 import re
+import shlex
 from pathlib import Path
 
 import httpx
@@ -981,3 +982,51 @@ def test_a_write_preview_shows_a_title_with_line_breaks_on_one_line(notion):
     notion.add_page(uid(81), "Sleep notes\nWeek 1", parent={"type": "page_id", "page_id": ROADMAP})
     preview = run("append", uid(81), "more").stdout
     assert "would append to Sleep notes Week 1" in preview and "\nWeek 1" not in preview
+
+
+# -- text from standard input: the preview's Next line works when copied (as co asana comment) --
+
+def _next_args(output):
+    """The preview's Next command as arguments for run(): what a person or agent would copy."""
+    words = shlex.split(last_line(output).removeprefix("Next: "))
+    assert words[:2] == ["co", "notion"]
+    return words[2:]
+
+
+def test_one_line_from_stdin_goes_into_next_and_the_copied_command_writes_it(notion):
+    preview = run("append", CHILD, "-", input="hello from stdin\n")
+    assert preview.exit_code == 0, preview.output
+    args = _next_args(preview.stdout)
+    assert "hello from stdin" in args and "-" not in args and "pipe the same text" not in preview.stdout
+    done = run(*args)                                   # no standard input this time
+    assert done.exit_code == 0, done.output
+    assert "hello from stdin" in run("page", CHILD, "--md").stdout
+
+
+def test_lines_from_stdin_are_piped_again_and_next_says_so(notion):
+    text = "# Notes\n- first\n- second\n"
+    preview = run("append", CHILD, "-", input=text)
+    assert "pipe the same text into the command below" in preview.stdout
+    args = _next_args(preview.stdout)
+    assert args[-2:] == ["-", "--yes"]
+    assert run(*args).exit_code == 2                    # nothing piped: refused, nothing written
+    assert run(*args, input=text).exit_code == 0
+    assert "- first" in run("page", CHILD, "--md").stdout
+
+
+def test_text_that_starts_with_a_dash_goes_after_double_dash(notion):
+    preview = run("append", CHILD, "-", input="-1 point for style\n")
+    assert " --yes -- " in last_line(preview.stdout)
+    assert run(*_next_args(preview.stdout)).exit_code == 0
+    assert "-1 point for style" in run("page", CHILD, "--md").stdout
+
+
+def test_create_and_add_carry_one_line_of_stdin_text_too(notion):
+    created = run("create", ROADMAP, "Stdin page", "--text", "-", input="body from stdin\n")
+    args = _next_args(created.stdout)
+    assert "--text=body from stdin" in args
+    made = run(*args)
+    new_id = re.search(r"([0-9a-f-]{36})", made.stdout)[1]
+    assert "body from stdin" in run("page", new_id, "--md").stdout
+    added = run("add", TASKS_DB, "Stdin row", "--text", "-", input="row body\n")
+    assert "--text=row body" in _next_args(added.stdout) and run(*_next_args(added.stdout)).exit_code == 0

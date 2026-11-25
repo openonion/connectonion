@@ -66,6 +66,11 @@ id with `--yes`. A write takes a row number for its preview; with `--yes` it
 takes the id the preview printed, or the row with its `--listing`, so a newer
 list cannot change what is written.
 
+Text read from standard input (`-`) is used up by the preview. One line of it
+goes into the `Next:` line itself, so that line works when copied; text with
+line breaks keeps `-`, and a note above `Next:` says to pipe the same text
+again (`co notion append <id> - --yes < notes.md`).
+
 `pages` and `search` show up to 100 rows by default, one request to Notion, so
 most lists are whole. When there are more, the first line says
 `(more available)` and the `Next:` line is the `--cursor` command for the next
