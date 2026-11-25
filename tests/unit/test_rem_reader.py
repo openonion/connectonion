@@ -470,6 +470,57 @@ def test_one_hop_label_gets_the_room_past_its_offset_and_is_dropped_under_three_
     assert out == ["Dina Morrow", "Applied…", "", ""]
 
 
+def test_a_persons_relationship_names_stay_inside_and_never_overlap():
+    """Names are placed from the widget's width alone: no browser measures them (review on #3033)."""
+    src = TEMPLATE.read_text()
+    fns = "\n".join(re.search(r"function " + name + r"\(.*?\n\}", src, re.S).group(0) for name in ["localWidth", "nameLeft", "localPlace"])
+    names = [
+        # a first-ring name centred on a mark near the right edge: moves left, still under its mark's row
+        {"id": "edge", "text": "Brindlewood Mobile Holdings", "px": 13, "mx": 360, "my": 90, "half": 8, "far": False, "quiet": False,
+         "rank": 5, "anchor": "middle", "x": 360, "y": 113},
+        # an outer-ring name leaning left off the widget: moves under its mark
+        {"id": "side", "text": "Rufus Albright", "px": 11, "mx": 12, "my": 40, "half": 5, "far": True, "quiet": False,
+         "rank": 1, "anchor": "end", "x": 1, "y": 44},
+        # two first-ring names on one spot: the better linked keeps its place, the other waits to be lit
+        {"id": "big", "text": "Larkspur Networks", "px": 13, "mx": 186, "my": 160, "half": 8, "far": False, "quiet": False,
+         "rank": 9, "anchor": "middle", "x": 186, "y": 183},
+        {"id": "small", "text": "Larkspur Billing", "px": 13, "mx": 190, "my": 162, "half": 8, "far": False, "quiet": False,
+         "rank": 2, "anchor": "middle", "x": 190, "y": 185},
+        {"id": "wide", "text": "接收港湾租约邮件订单", "px": 13, "mx": 40, "my": 20, "half": 8, "far": False, "quiet": False,
+         "rank": 3, "anchor": "middle", "x": 40, "y": 43},
+        # a name that would cover another record's mark waits to be lit too
+        {"id": "covers", "text": "Ruth Calloway", "px": 13, "mx": 300, "my": 200, "half": 8, "far": False, "quiet": False,
+         "rank": 4, "anchor": "middle", "x": 300, "y": 223},
+    ]
+    marks = [{"x": 300, "y": 218, "r": 8}]
+    out = _run_reader_js(fns + "\nconsole.log(JSON.stringify(localPlace(" + json.dumps(names) + ", 372, " + json.dumps(marks) + ").map(n => "
+                         "[n.id, n.anchor, Math.round(n.x - (n.anchor === 'middle' ? n.w / 2 : 0)) >= 0 && "
+                         "Math.round(n.x + (n.anchor === 'middle' ? n.w / 2 : n.w)) <= 372, n.quiet])));")
+    assert out == [["edge", "middle", True, False], ["side", "middle", True, False],
+                   ["big", "middle", True, False], ["small", "middle", True, True], ["wide", "middle", True, False],
+                   ["covers", "middle", True, True]]
+
+
+def test_the_card_explains_a_line_by_a_written_link_then_sessions_then_a_mention():
+    """localReason picks what the card says, with no browser: the session rule was the one first got wrong."""
+    fn = re.search(r"function localReason\(.*?\n\}", TEMPLATE.read_text(), re.S).group(0)
+    pages = {"sessions/a.md": {"category": "sessions", "relations": [{"path": "projects/depot.md"}]},
+             "sessions/b.md": {"category": "sessions", "relations": [{"path": "projects/depot.md"}]}}
+    relations = [{"path": "orgs/tern.md", "kind": "linked from this page"},
+                 {"path": "projects/depot.md", "kind": "mentioned on this page"},
+                 {"path": "sessions/a.md", "kind": "linked here"}, {"path": "sessions/b.md", "kind": "linked here"},
+                 {"path": "orgs/wick.md", "kind": "mentioned on this page"}]
+    cases = [["orgs/tern.md", None], ["projects/depot.md", None], ["orgs/wick.md", None], ["people/sol.md", {"via": ["orgs/tern.md"]}],
+             ["people/nobody.md", None]]
+    out = _run_reader_js(fn + "\nconst pages = " + json.dumps(pages) + ", relations = " + json.dumps(relations) + ";\n"
+                         "console.log(JSON.stringify(" + json.dumps(cases) + ".map(([id, reached]) => {"
+                         " const why = localReason(relations, id, reached, path => pages[path]);"
+                         " return why && (why.via ? 'via ' + why.via : why.link.path + (why.sessions ? ' x' + why.sessions : '')); })));")
+    # A written link wins; a project only mentioned on the page but named by two sessions is explained by them;
+    # a bare mention is the last resort; the outer ring is reached through; no link at all says nothing.
+    assert out == ["orgs/tern.md", "sessions/a.md x2", "orgs/wick.md", "via orgs/tern.md", None]
+
+
 def test_org_company_name_uses_the_most_common_linked_company_fact():
     from connectonion.rem.reader import _org_company_name
 
