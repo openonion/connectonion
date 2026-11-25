@@ -585,10 +585,35 @@ def _failure_reasons(error: str) -> list[str]:
 
 
 def owner_record(root: Path) -> str:
-    """The owner's own page, pinned as "You" at the top of the reader's navigation."""
-    from .files import read_json, state_path
+    """The owner's own page, pinned as "You" at the top of the reader's navigation.
+
+    Reads `.state/map.json` first; when a synced notebook has no map.json yet, falls
+    back to the person page explicitly marked as the owner's page or carrying an
+    owner address so the owner never appears as a counterparty on Today/Waiting.
+    """
+    from .files import Notebook, read_json, state_path
     owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
-    return owner.get("record", "") if isinstance(owner, dict) else ""
+    record = owner.get("record", "") if isinstance(owner, dict) else ""
+    if record:
+        return record
+    book = Notebook(root)
+    people = book.list("people")
+    if not people:
+        return ""
+    for path in people:
+        text = book.read(path)
+        if re.search(r"(?mi)^-\s*How we know them\s*[:：]\s*This is the owner's page\b", text) or re.search(
+            r"(?i)\bThe user is the account owner\b", text[:400]
+        ):
+            return path
+    from .store_messages import owner_addresses
+    addresses = {addr.casefold() for addr in owner_addresses(root) if addr}
+    if addresses:
+        for path in people:
+            text = book.read(path)
+            if any(addr in text.casefold() for addr in addresses):
+                return path
+    return ""
 
 
 def _detail_data(full: dict, shell: dict) -> dict:
