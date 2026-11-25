@@ -748,3 +748,14 @@ def test_a_title_with_line_breaks_is_shown_on_one_line_and_kept_whole_in_json(no
     doc = run("page", uid(80), "--md").stdout
     assert f"\n# {one_line}\n" in doc and 'title: "Why Do Humans Need Sleep?\\nSleep' in doc
     assert json.loads(run("page", uid(80), "--json").stdout)["title"] == two_lines
+
+
+def test_md_keeps_backticks_inside_code(notion):
+    from markdown_it import MarkdownIt
+    from connectonion.cli.commands import notion_markdown as md
+    span = md.inline([_styled("a`b", code=True)])
+    assert MarkdownIt().parseInline(span)[0].children[0].content == "a`b"
+    block = md.block_markdown({"type": "code", "code": {"language": "md",
+                                                         "rich_text": [{"plain_text": "before\n```\nafter"}]}})
+    tokens = [t for t in MarkdownIt().parse(block) if t.type == "fence"]
+    assert len(tokens) == 1 and tokens[0].content == "before\n```\nafter\n"

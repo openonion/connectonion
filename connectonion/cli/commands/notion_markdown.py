@@ -27,6 +27,20 @@ def _edges(text: str) -> tuple[str, str, str]:
     return text[:start], core, text[start + len(core):]
 
 
+def _longest_run(text: str, line_start: bool = False) -> int:
+    """The longest run of backticks in text (only those opening a line, for a fence)."""
+    pattern = r"^[ ]{0,3}(`+)" if line_start else r"(`+)"
+    return max((len(m) for m in re.findall(pattern, text, flags=re.M)), default=0)
+
+
+def code_span(text: str) -> str:
+    """Inline code that holds backticks: a longer run of backticks around it, and a space
+    where the text starts or ends with one, as CommonMark requires."""
+    ticks = "`" * (_longest_run(text) + 1)
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{ticks}{pad}{text}{pad}{ticks}"
+
+
 def inline(rich_text: list | None) -> str:
     """Rich text with bold, italic, strikethrough, inline code and http(s) links kept."""
     out = []
@@ -38,7 +52,7 @@ def inline(rich_text: list | None) -> str:
         lead, core, trail = _edges(text)
         if core:
             if notes.get("code"):
-                core = f"`{core}`"
+                core = code_span(core)
             if notes.get("bold"):
                 core = f"**{core}**"
             if notes.get("italic"):
@@ -93,7 +107,9 @@ def block_markdown(block: dict, terminal: bool = False) -> str:
     if kind == "paragraph" or kind == "template":
         return inline(data.get("rich_text"))
     if kind == "code":
-        return f"```{data.get('language', '')}\n{api.plain(data.get('rich_text'))}\n```"
+        text = api.plain(data.get("rich_text"))
+        fence = "`" * max(3, _longest_run(text, line_start=True) + 1)   # a ``` line inside cannot close it
+        return f"{fence}{data.get('language', '')}\n{text}\n{fence}"
     if kind == "divider":
         return "---"
     if kind == "equation":
