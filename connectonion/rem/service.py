@@ -282,6 +282,14 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
 
 
 def run_logs(root: Path, run_id: str = "") -> list[dict]:
+    if not run_id:
+        from .tags import once
+        cached = once(root.resolve(), "_run_logs", lambda: _read_run_logs(root, ""))
+        return [dict(item) for item in cached]
+    return _read_run_logs(root, run_id)
+
+
+def _read_run_logs(root: Path, run_id: str) -> list[dict]:
     if run_id:
         if not re.fullmatch(r"run_[0-9a-f]{32}", run_id):
             raise RemError("Unknown run ID; use an ID from the logs listing")

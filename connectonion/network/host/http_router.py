@@ -362,6 +362,13 @@ async def _route_http(
     # verifies here as well as there.
     own_address = (route_handlers.get("agent_metadata") or {}).get("address")
 
+    # /rem runs exclusively on loopback with its own cookie and never grants a
+    # cross-origin preflight (rem_http.py:450); dispatch before generic OPTIONS.
+    if path == "/rem" or path.startswith("/rem/"):
+        from .rem_http import handle_rem_http
+        await handle_rem_http(scope, receive, send, route_handlers)
+        return
+
     if method == "OPTIONS":
         headers = CORS_HEADERS + [[b"content-length", b"0"]]
         await send({"type": "http.response.start", "status": 204, "headers": headers})
@@ -383,11 +390,6 @@ async def _route_http(
                 replay_check=route_handlers.get("replay"),
             )
             return
-
-    if path == "/rem" or path.startswith("/rem/"):
-        from .rem_http import handle_rem_http
-        await handle_rem_http(scope, receive, send, route_handlers)
-        return
 
     if path.startswith("/admin") or path.startswith("/superadmin"):
         await handle_admin_routes(

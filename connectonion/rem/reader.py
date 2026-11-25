@@ -204,20 +204,20 @@ def contact_candidates(root: Path) -> tuple[list[dict], dict]:
                    "mailbox_errors": len(errors), "automated": len(mapped.get("automated_correspondents", []))}
 
 
-def snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
+def snapshot(root: Path, local: bool = False, *, today: bool = False, public_only: bool = False) -> dict:
     """The page build's data; the whole-notebook tag scans run once in it (tags.held)."""
     from .tags import held
-    root = root.absolute()
-    if local:
-        # Tag pages an older writer titled "X [personal]" showed as one repeated "Personal" label; their titles are
-        # unmarked once, here on this machine, before the pages are read (#3385).
-        from .tag_nodes import repair_titles
-        repair_titles(root)
+    root = root.resolve()
     with held(root):
-        return _snapshot(root, local=local, today=today)
+        if local:
+            # Tag pages an older writer titled "X [personal]" showed as one repeated "Personal" label; their titles are
+            # unmarked once, here on this machine, before the pages are read (#3385).
+            from .tag_nodes import repair_titles
+            repair_titles(root)
+        return _snapshot(root, local=local, today=today, public_only=public_only)
 
 
-def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
+def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_only: bool = False) -> dict:
     """Everything the page shows, read once; no model, no writes into the notebook.
 
     `local`: this machine's own reader (the file snapshot, the loopback live
@@ -241,6 +241,11 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
         private_topic = record.startswith('knowledge/') and bool(PRIVATE.search(text.split('\n', 1)[0]))
         if private_topic and not local:
             continue
+        if public_only:
+            from .store_build import _privacy_kind, redact_text
+            if _privacy_kind(record, text) == "private_page":
+                continue
+            text = redact_text(text, "public")
         updated = datetime.fromtimestamp(notebook.path(record).stat().st_mtime, timezone.utc)
         records.append({"path": record, "category": record.split("/")[0],
                         "title": _title(record, text) + (" (automated candidate)" if "- Correspondent classification: automated candidate;" in text else ""), "text": text,
@@ -257,7 +262,7 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     from .census import counts, pages, written
     found = pages(root, records=records)
     indexed = has_message_index(state_path(root, "rem.db"))
-    mail, index = mail_facts(root), {} if today or not indexed else index_rows(root)
+    mail, index = mail_facts(root), {} if today or public_only or not indexed else index_rows(root)
     record_paths = {record['path'] for record in records}
     person_names = frozenset(r["title"].casefold() for r in records if r["category"] == "people")
     for record in records:
@@ -377,6 +382,9 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False) -> dict:
     mine = owner_language(root)
     for record in records:
         record["translations"] = cached_languages(root, record["path"])
+        if public_only and record["translations"]:
+            from .store_build import redact_text
+            record["translations"] = {lang: redact_text(body, "public") for lang, body in record["translations"].items()}
         # For the "Read in" menu: what the page is written in, and what this person speaks.
         record["written_in"] = language_of(record["text"])
         # Mostly the owner's language but with prose in another: "mixed", so the reader offers and awaits

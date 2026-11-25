@@ -22,7 +22,7 @@ SOURCE = re.compile(r"^[ \t]*[-*][ \t]*\[(W?\d{1,3})\][ \t]+([a-z][\w-]*:[^\n]+?
 ARCHIVED = re.compile(r"^## Sources\b", re.I | re.M)
 PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
 SENSITIVE = re.compile(r"[\[［]sensitive[\]］]", re.I)
-WIKILINK = re.compile(r"\[\[((?:orgs|people|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
+WIKILINK = re.compile(r"\[\[((?:orgs|people|devices|projects)/[^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 
 
 def notebook_links(origin: str, text: str) -> list[str]:
@@ -313,7 +313,7 @@ def relationships(records: list[dict]) -> dict[str, list[dict]]:
             for path, rows in found.items()}
 
 
-TOPIC_LINKED = ('people/', 'orgs/', 'projects/', 'decisions/', 'principles/', 'agenda/')
+TOPIC_LINKED = ('people/', 'orgs/', 'devices/', 'projects/', 'decisions/', 'principles/', 'agenda/')
 
 
 def topic_mentions(row: dict, paths: set[str], owner: str) -> list[dict]:

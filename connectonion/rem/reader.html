@@ -4578,6 +4578,7 @@ const UI = {
     "Exchanges": "往来",
     "Newest first": "最新在前",
     "Contact": "联系",
+    "Devices": "设备", "Device": "设备",
     "Handle": "账号",
     "REM is not sure": "REM 还不确定",
     "{n} source": "{n} 个来源",
@@ -5975,8 +5976,10 @@ function applyPrivacyClasses() {
 let privacyRemoved = false;  // whether Public only has taken passages out of the page since it was drawn
 function setPrivacy(level, { save = true, redraw: again = true } = {}) {
   // Shared and remote readers only *start* at Public only; whoever is looking may still choose.
+  const wasPublic = typeof document !== "undefined" && !!document.documentElement?.classList?.contains("hide-private");
   privacyLevel = PRIVACY_LEVELS.includes(level) ? level : privacyDefault();
   applyPrivacyClasses();
+  const isPublic = privacyLevel === "public";
   if (save) readerStorage("co-rem-privacy", privacyLevel);
   renderPrivacyControl();
   renderDisplayMenu();
@@ -5994,7 +5997,7 @@ function setPrivacy(level, { save = true, redraw: again = true } = {}) {
   const query = new URLSearchParams(location.hash.slice(1)).get("q");
   if (query) search(query);
   refreshFocusExpansion();
-  if (REM.records.some(r => r.private && r.category === "knowledge")) render();
+  if (wasPublic !== isPublic && REM.records.some(r => r.private && ["knowledge", ...STATEMENT_CATEGORIES].includes(r.category))) render();
 }
 function uncurtain(root) {
   for (const node of root.querySelectorAll(".curtain")) {
@@ -6045,20 +6048,25 @@ function passageLevel(node) {
 // curtain (遮敏感) or remove (只看公开). A title or aria-label that held one is dropped below 全部显示.
 const RAW_MARK = /[ \t]*[\[［](personal|sensitive)[\]］]/gi;
 function sweepRawMarks(root) {
-  const marked = [];
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    // A session quote is the owner's own typing, kept literally, a typed "[personal]" included (test_rem_sessions).
-    if (!/[\[［](?:personal|sensitive)[\]］]/i.test(node.nodeValue) || node.parentElement?.closest("textarea, input, code, pre, script, style, .session-quote")) continue;
-    marked.push(node);
+  const txt = root.textContent || "";
+  const hasBracketText = txt.includes("[") || txt.includes("［");
+  if (hasBracketText) {
+    const marked = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      // A session quote is the owner's own typing, kept literally, a typed "[personal]" included (test_rem_sessions).
+      if (!/[\[［](?:personal|sensitive)[\]］]/i.test(node.nodeValue) || node.parentElement?.closest("textarea, input, code, pre, script, style, .session-quote")) continue;
+      marked.push(node);
+    }
+    for (const node of marked) {
+      const level = /[\[［]sensitive[\]］]/i.test(node.nodeValue) ? "sensitive" : "personal";
+      node.nodeValue = node.nodeValue.replace(RAW_MARK, "");
+      const host = node.parentElement;
+      if (host && !host.closest("[data-level]")) { host.classList.add("private"); host.dataset.level = level; }
+    }
   }
-  for (const node of marked) {
-    const level = /[\[［]sensitive[\]］]/i.test(node.nodeValue) ? "sensitive" : "personal";
-    node.nodeValue = node.nodeValue.replace(RAW_MARK, "");
-    const host = node.parentElement;
-    if (host && !host.closest("[data-level]")) { host.classList.add("private"); host.dataset.level = level; }
-  }
-  for (const el of [...(root.matches("[title], [aria-label]") ? [root] : []), ...root.querySelectorAll("[title], [aria-label]")]) {
+  const attrSel = '[title*="["], [title*="［"], [aria-label*="["], [aria-label*="［"]';
+  for (const el of [...(root.matches?.(attrSel) ? [root] : []), ...(root.querySelectorAll ? root.querySelectorAll(attrSel) : [])]) {
     for (const name of ["title", "aria-label"]) {
       const value = el.getAttribute(name);
       if (!value || !/[\[［](?:personal|sensitive)[\]］]/i.test(value)) continue;
@@ -6145,7 +6153,7 @@ function el(tag, attrs, children) {
   return node;
 }
 const CATEGORY_LABEL = {
-  people: "People", orgs: "Organisations", projects: "Projects", skills: "Skills", knowledge: "Knowledge", keys: "Keys",
+  people: "People", orgs: "Organisations", devices: "Devices", projects: "Projects", skills: "Skills", knowledge: "Knowledge", keys: "Keys",
   opportunities: "Opportunities", decisions: "Decisions", principles: "Principles", works: "Works",
   agenda: "Agenda", sessions: "Agent sessions", notes: "AI notes", logs: "Maps"
 };
@@ -6157,12 +6165,13 @@ function skillReport(r) { return r.path.startsWith("logs/skill-runs-"); }
 function categoryHref(c) { return ACTIVITY.has(c) ? "#view=activity" : "#c=" + c; }
 function categoryName(c) { return ACTIVITY.has(c) ? t("Activity") : label(c); }
 function label(c) { return t(CATEGORY_LABEL[c] || c); }
-function singular(c) { return t(({ people: "Person", orgs: "Organisation", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
-function byPath(path) { return REM.records.find(r => r.path === path); }
+function singular(c) { return t(({ people: "Person", orgs: "Organisation", devices: "Device", skills: "Skill", projects: "Project", decisions: "Decision", principles: "Principle" })[c] || CATEGORY_LABEL[c]?.replace(/s$/, "") || c); }
+const BY_PATH = true;
+function byPath(path) { const recs = REM?.records || [], c = byPath._c; if (!c || c[0] !== recs || c[1] !== recs.length) byPath._c = [recs, recs.length, new Map(recs.map(r => [r.path, r]))]; return byPath._c[2].get(path); }
 // Services still on a people page (census.py) are left off like held pages (#2008).
 function privateTopicHidden(r) { return r.private && ["knowledge", ...STATEMENT_CATEGORIES].includes(r.category) && document.documentElement.classList.contains("hide-private"); }
-function listedRecords() { return REM.records.filter(r => !privateTopicHidden(r) && !r.catalog_parent && !r.needs_review && !r.unnamed && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"); }
-function inCategory(category) { return listedRecords().filter(r => r.category === category && (category !== "people" || r.path !== REM.owner)); }
+function listedRecords() { const recs = REM.records || [], hide = typeof document !== "undefined" && !!document.documentElement?.classList?.contains("hide-private"), c = listedRecords._c; if (c && c[0] === recs && c[1] === recs.length && c[2] === hide) return c[3]; const all = recs.filter(r => !privateTopicHidden(r) && !r.catalog_parent && !r.needs_review && !r.unnamed && !r.service && !ACTIVITY.has(r.category) && r.path !== "skills/catalog/index.md"), byCat = new Map(); for (const r of all) if (r.category !== "people" || r.path !== REM.owner) (byCat.get(r.category) || byCat.set(r.category, []).get(r.category)).push(r); listedRecords._c = [recs, recs.length, hide, all, byCat]; return all; }
+function inCategory(category) { listedRecords(); return listedRecords._c[4].get(category) || []; }
 // A list shows what the address's tag filter keeps (#3093): the list views read their rows through this.
 function listRows(category) {
   const { tag, category: shown, record, query, src } = route();
@@ -6267,7 +6276,7 @@ function tagPage(slug) {
     el("a", { class: "tag-written-open", href: href(written), text: t("Open the tag page →") })]));
   main.appendChild(el("p", { class: "lede", text: pages.length ? t(pages.length === 1 ? "1 page carries this tag" : "{n} pages carry this tag", { n: pages.length })
     : t("No page carries this tag yet") }));
-  const order = ["people", "orgs", "projects", "sessions", "skills", "decisions", "knowledge", "principles"];
+  const order = ["people", "orgs", "devices", "projects", "sessions", "skills", "decisions", "knowledge", "principles"];
   for (const kind of order) {
     const group = pages.filter(r => r.category === kind);
     if (!group.length) continue;
@@ -6348,7 +6357,7 @@ function tagBar(c, records) {
     el("a", { class: "chip" + (active ? "" : " on"), href: base, "aria-current": active ? null : "true", text: t("All") }),
     ...readable.map(link), more]);
 }
-const TAG_LISTS = ["people", "orgs", "projects", "skills", "decisions", "principles"];
+const TAG_LISTS = ["people", "orgs", "devices", "projects", "skills", "decisions", "principles"];
 function calendarDay(iso) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return String(iso);
   const d = new Date(iso);
@@ -6970,7 +6979,10 @@ const COMMENT = /<!--[\s\S]*?-->/g;
 const UNFILLED_LEAD = /^(?:Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact[:：]\s*Unknown\.?)?|未知\s*[—–-]+\s*尚未调查[。.]?)$/i;
 const KNOWN = new Map();
 function known(r) {
-  if (KNOWN.has(r.path)) return KNOWN.get(r.path);
+  const effLang = r.readLanguage ?? (uiLanguage === "en" ? (r.shown || "") : uiLanguage);
+  const cacheKey = r.path + "\0" + (r.shown || "") + "\0" + effLang;
+  const cached = KNOWN.get(cacheKey);
+  if (cached?.text === r.text) return cached.value;
   const stamp = (STAMP.exec(r.text) || [""])[0];
   const body = (r.category === "sessions" ? r.text : splitTrailers(r.text).body.replace(COMMENT, ""))
     .replace(/^#[^\n]*\n?/, "").replace(STAMP, "");
@@ -7009,7 +7021,7 @@ function known(r) {
     plainLine(parseFacts(r).get("Project")?.[0]?.value || "")].filter(Boolean).join(" · ")
     : plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
-  KNOWN.set(r.path, k);
+  KNOWN.set(cacheKey, { text: r.text, value: k });
   return k;
 }
 function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !parseFacts(r).get("Last contact")?.length && !!(r.last_activity || r.mail?.last); }
@@ -7028,7 +7040,7 @@ function pageWords(text, link) {
   const out = (path, label) => link ? link(record(path), name(path, label)) : name(path, label);
   return String(text ?? "")
     .replace(/\[\[\s*([^\]|#]+?)\s*(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (m, path, label) => out(path, label))
-    .replace(/(?<![\w/.(\[-])((?:\.\.?\/)*(?:people|orgs|projects|knowledge|skills|decisions|topics|tags)\/[\w.\/-]+?\.md)(?![\w/])/g,
+    .replace(/(?<![\w/.(\[-])((?:\.\.?\/)*(?:people|orgs|devices|projects|knowledge|skills|decisions|topics|tags)\/[\w.\/-]+?\.md)(?![\w/])/g,
       (m, path) => out(path));
 }
 function plainLine(text, keepPrivate = false) {
@@ -7140,8 +7152,16 @@ function writtenDates(text) {
 }
 function threads(r) {
   const sourceText = r.shown ? r.original ?? r.text : r.text;
+  const cache = r?.path ? (threads._cache ??= new Map()) : null;
+  const retCount = typeof REM !== "undefined" && REM.threads ? Object.keys(REM.threads).length : 0;
+  const cacheKey = cache ? [r.path, r.shown || "", uiLanguage, REM.as_of || "", retCount, sourceText.length].join("\0") : "";
+  if (cache?.has(cacheKey)) return cache.get(cacheKey);
   const original = rawSection({ ...r, text: sourceText }, "Open threads");
-  if (!original) return { items: [], calm: "" };
+  if (!original) {
+    const empty = { items: [], calm: "" };
+    if (cache) cache.set(cacheKey, empty);
+    return empty;
+  }
   const all = listItems(original);
   // The lines as the reader's language has them (#3072): a cached translation keeps the page's headings and its
   // list, so line n of its Open threads is line n of the original. Today never switches a page's shown version, so
@@ -7172,11 +7192,15 @@ function threads(r) {
     const quiet = !returnedAt && !!since && !due && daysSince(since) > 60;
     return { text: displayed, originalText: text, returnedAt, dir: r.category === "projects" ? projectDirection(text) : direction(text), since, due, quiet };
   });
-  return { items, calm };
+  const built = { items, calm };
+  if (cache) cache.set(cacheKey, built);
+  return built;
 }
 // One merged row set for home, Open threads and the rail.
 function threadEntries() {
-  if (threadEntries.cached) return threadEntries.cached;
+  const hide = typeof document !== "undefined" && !!document.documentElement?.classList?.contains("hide-private");
+  const cacheKey = [REM.records?.length || 0, typeof detailReady !== "undefined" ? detailReady : false, uiLanguage, hide, Object.keys(REM.ignored_senders || {}).join(",")].join("|");
+  if (threadEntries.cached && threadEntries.cachedKey === cacheKey) return threadEntries.cached;
   if (REM.today_queue) {
     const records = new Map(listedRecords().map(r => [r.path, r]));
     const entries = new Map([...records.values()].flatMap(r => threads(r).items.map(t => [doneKey({r, t}), {r, t}])));
@@ -7188,7 +7212,7 @@ function threadEntries() {
       const also = [...new Map(members.filter(entry => entry.r.path !== chosen.r.path).map(entry => [entry.r.path, entry.r])).values()];
       return {...chosen, t: {...chosen.t, since: row.since, due: row.due, quiet: row.quiet, dir: row.dir}, also, members};
     }).filter(Boolean);
-    if (threadEntries.cacheEnabled) threadEntries.cached = rows;
+    if (threadEntries.cacheEnabled) { threadEntries.cached = rows; threadEntries.cachedKey = cacheKey; }
     return rows;
   }
   // Older snapshots lack the Python projection; only their page ledger uses this parser.
@@ -7203,7 +7227,7 @@ function threadEntries() {
     const also = [...new Map(group.filter(entry => entry.r.path !== chosen.r.path && obligationWords(entry.r.title) !== obligationWords(chosen.r.title)).map(entry => [entry.r.path, entry.r])).values()];
     return { ...chosen, also, members: group };
   }).sort(order);
-  if (threadEntries.cacheEnabled) threadEntries.cached = rows;
+  if (threadEntries.cacheEnabled) { threadEntries.cached = rows; threadEntries.cachedKey = cacheKey; }
   return rows;
 }
 // Source numbers belong to their page; copied promises share the resolved id.
@@ -7221,10 +7245,14 @@ function obligationEvidence({ r, t }) {
   const quotes = [...text.matchAll(/“([^”\n]{6,})”|"([^"\n]{6,})"|「([^」\n]{6,})」/g)];
   const content = obligationWords(text.replace(/\d{4}-\d{2}-\d{2}|\[W?\d+\]/g, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")).replace(/\bmeet\b/g, "meeting");
-  const stop = new Set("a an the and or to of in on for with from by as at is are was were be been you your user owes owe asks asked request requests requested sent send confirm confirmed since due has have had still please this that it said before after whether required supplied through team should would could about their there which stated unknown outcome evidence established also then they them will january february march april june july august september october november december sept".split(" "));
-  const names = new Set([r, ...(REM.records || []).filter(page => ["people", "orgs"].includes(page.category))]
-    .flatMap(page => obligationWords(page.title || "").split(/\s+/)));
-  const words = new Set(content.split(/\s+/).filter(word => word.length > 3 && !/^\d+$/.test(word) && !stop.has(word) && !names.has(word)));
+  const stop = (obligationEvidence._stop ??= new Set("a an the and or to of in on for with from by as at is are was were be been you your user owes owe asks asked request requests requested sent send confirm confirmed since due has have had still please this that it said before after whether required supplied through team should would could about their there which stated unknown outcome evidence established also then they them will january february march april june july august september october november december sept".split(" ")));
+  const recs = REM?.records || [];
+  if (obligationEvidence._names?.recs !== recs || obligationEvidence._names.len !== recs.length) {
+    obligationEvidence._names = { recs, len: recs.length, words: new Set(recs.filter(page => ["people", "orgs"].includes(page.category)).flatMap(page => obligationWords(page.title || "").split(/\s+/))) };
+  }
+  const entityNames = obligationEvidence._names.words;
+  const rNames = new Set(obligationWords(r.title || "").split(/\s+/));
+  const words = new Set(content.split(/\s+/).filter(word => word.length > 3 && !/^\d+$/.test(word) && !stop.has(word) && !entityNames.has(word) && !rNames.has(word)));
   return { ids, quotes: quotes.map(m => obligationWords(m[1] || m[2] || m[3])), words,
     text: content, dir: t.dir, day: t.since || t.due || "", due: t.due || "" };
 }
@@ -7770,9 +7798,12 @@ function openWriter(draft, who, onSend, onFix, answers = {}) {
 function threadDraft(entry) {
   // No drafts, no answer: skip working out the evidence (People asks this for every person's items).
   if (!REM.drafts?.length) return undefined;
+  if (entry.t && entry.t._draftRef === REM.drafts && "_draft" in entry.t) return entry.t._draft;
   const ids = obligationEvidence(entry).ids;
   const drafts = (REM.drafts || []).filter(d => ids.has("thread:" + d.provider + ":" + d.thread));
-  return drafts.find(d => d.status === "prepared" || d.status === "no_reply") || drafts[0];
+  const chosen = drafts.find(d => d.status === "prepared" || d.status === "no_reply") || drafts[0];
+  if (entry.t) { entry.t._draftRef = REM.drafts; entry.t._draft = chosen; }
+  return chosen;
 }
 function draftNote(draft, entry) {
   const reply = entry && (REM.today_queue || []).find(row => (row.keys || [row.key]).includes(doneKey(entry)))?.reply;
@@ -8214,8 +8245,15 @@ function rawSection(r, name) {
   return m ? m[1].trim() : "";
 }
 function sourceList(r) {
+  const cache = r?.path ? (sourceList._cache ??= new Map()) : null;
+  const cacheKey = cache ? r.path + "\0" + (r.shown || "") + "\0" + (r.text?.length || 0) : "";
+  if (cache?.has(cacheKey)) return cache.get(cacheKey);
   // An entry's Sources blocks are gathered into one list, numbered as its page shows them (#3097).
-  if (["knowledge", "decisions", "principles"].includes(r.category)) return entryOf(r).sources;
+  if (["knowledge", "decisions", "principles"].includes(r.category)) {
+    const res = entryOf(r).sources;
+    if (cache) cache.set(cacheKey, res);
+    return res;
+  }
   const out = [];
   const sections = rawSection(r, "Sources");
   const sources = sections.replace(/^([ \t]*)(\d{1,3})\.[ \t]+/gm, "$1- $2. ");
@@ -8225,6 +8263,7 @@ function sourceList(r) {
       text: m[2] ? m[3] : m[3].replace(/[*`]/g, ""), ...(m[2] ? { plain: true } : {}) });
     else if (r.category === "sessions" && /^(?:codex:[^\s:]+:\d+(?:-[0-9a-f]{8})?|claude-code:[^\s:]+:\d+)$/.test(item)) out.push({ n: String(out.length + 1), text: item });
   }
+  if (cache) cache.set(cacheKey, out);
   return out;
 }
 function sourceId(text, plain = false) {
@@ -8460,8 +8499,11 @@ function company(r) {
 // (#2067) only this function changes.
 const FACTS = new Map();
 function facts(r) {
-  const parsed = parseFacts(r), cached = FACTS.get(r.path);
-  if (cached?.parsed === parsed && cached.text === r.text) return cached.value;
+  const effLang = r.readLanguage ?? (uiLanguage === "en" ? (r.shown || "") : uiLanguage);
+  const cacheKey = r.path + "\0" + (r.shown || "") + "\0" + effLang;
+  const cached = FACTS.get(cacheKey);
+  if (cached?.text === r.text) return cached.value;
+  const parsed = parseFacts(r);
   const k = known(r), contact = {};
   // Preserve qualifications, especially historical roles and affiliations.
   for (const [label, items] of parsed) contact[label.toLowerCase()] = items.map(i => i.value + (i.qualifier ? " (" + i.qualifier + ")" : "")).join("; ");
@@ -8509,7 +8551,7 @@ function facts(r) {
     if (x.relationship?.last_mail) f.last = x.relationship.last_mail.slice(0, 10);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
   }
-  FACTS.set(r.path, { parsed, text: r.text, value: f });
+  FACTS.set(cacheKey, { parsed, text: r.text, value: f });
   return f;
 }
 function plainValue(v) { return plainLine(v || ""); }
@@ -9112,7 +9154,7 @@ function icon(name, cls = "") {
     + '" viewBox="' + (brand ? "-2 -2 28 28" : "0 0 24 24") + '">' + (ICONS[name] || "") + "</svg>" });
 }
 // The pictures of the places that are also record categories.
-const CATEGORY_ICON = { knowledge: "book", decisions: "scale", principles: "quote", agenda: "calendar", sessions: "terminal",
+const CATEGORY_ICON = { devices: "terminal", knowledge: "book", decisions: "scale", principles: "quote", agenda: "calendar", sessions: "terminal",
   opportunities: "activity", works: "doc" };
 // The rail (D-132, #2953, #3091): ONE ordered list of places, each a picture with its word under it, settings and
 // you at the foot. The order reads top to bottom as act, who and what, what the notebook concluded, then the raw
@@ -9125,7 +9167,7 @@ function railPlaces(active) {
   const category = (c, picture, group, word) => [c, picture, label(c), "#c=" + c, word, group];
   return [["today", "sun", t("Today"), "#", undefined, 0],
     ["open", "message-square-reply", t("Waiting on you"), "#view=open", t("Waiting on you, in the rail"), 0],
-    category("people", "users", 1), category("orgs", "building-2", 1, t("Organisations, in the rail")), category("projects", "folder", 1),
+    category("people", "users", 1), category("orgs", "building-2", 1, t("Organisations, in the rail")), category("devices", CATEGORY_ICON.devices, 1), category("projects", "folder", 1),
     category("keys", "key", 1),
     // One Knowledge place, not Knowledge plus All records (#2996): the owner could not tell them apart. It holds
     // the wiki's entries and the graph All records drew; every record that list held is in its own category.
@@ -9139,7 +9181,7 @@ function railPlaces(active) {
 // One rule, the one 更多 always had: the eight places every notebook has, and Memory changes, always show; a
 // record category that came later (Decisions, Principles, Agent sessions, Opportunities, Works) shows once it
 // holds a page, or while you are on it. Sessions' pages arrive with the details, so it shows until they are in.
-const RAIL_FILLED = ["decisions", "principles", "sessions", "opportunities", "works"];
+const RAIL_FILLED = ["devices", "decisions", "principles", "sessions", "opportunities", "works"];
 function railHas(key, active) {
   if (!RAIL_FILLED.includes(key)) return true;
   return memoryCategories().includes(key) && ((!detailReady && key === "sessions") || inCategory(key).length > 0 || active === key);
@@ -9716,14 +9758,21 @@ function todayGroups(entries) {
 // A row on your own page is waiting on whoever it names: the person who asked or is owed. When it
 // names nobody it is your own note, and it is not a person waiting on you (build 3b review).
 function ownerCounterpart(entry) {
-  const people = (REM.records || []).filter(r => r.category === "people" && r.path !== REM.owner && !r.private);
-  const named = people.find(person => threadCounterpart(entry, person));
-  if (named) return named;
+  if (entry._counterpart !== undefined) return entry._counterpart;
+  const recs = REM?.records || [];
+  if (ownerCounterpart._c?.recs !== recs || ownerCounterpart._c.len !== recs.length) {
+    const list = recs.filter(r => r.category === "people" && r.path !== REM.owner && !r.private)
+      .map(person => ({ person, hasSpace: person.title.includes(" "), full: " " + obligationWords(person.title) + " ", first: " " + obligationWords(person.title.split(/\s+/)[0]) + " " }));
+    ownerCounterpart._c = { recs, len: recs.length, list };
+  }
+  const list = ownerCounterpart._c.list;
+  const named = list.find(item => threadCounterpart(entry, item.person));
+  if (named) return (entry._counterpart = named.person);
   const text = " " + obligationWords(entry.t.originalText || entry.t.text) + " ";
-  const full = people.filter(person => person.title.includes(" ") && text.includes(" " + obligationWords(person.title) + " "));
-  if (full.length === 1) return full[0];
-  const first = people.filter(person => text.includes(" " + obligationWords(person.title.split(/\s+/)[0]) + " "));
-  return first.length === 1 ? first[0] : null;
+  const full = list.filter(item => item.hasSpace && text.includes(item.full));
+  if (full.length === 1) return (entry._counterpart = full[0].person);
+  const first = list.filter(item => text.includes(item.first));
+  return (entry._counterpart = first.length === 1 ? first[0].person : null);
 }
 function entryKeys(entry) { return (entry.members || [entry]).map(doneKey); }
 // A yes/no the night prepared: an agent task waiting for the owner's approval.
@@ -12262,6 +12311,10 @@ function replyDuration(seconds) {
     : seconds < 48 * 3600 ? t("{n} hours", { n: Math.round(seconds / 3600) }) : t("{n} days", { n: Math.round(seconds / 86400) });
 }
 function personOrg(r) {
+  const cache = r?.path ? (personOrg._cache ??= new Map()) : null;
+  const effLang = r?.readLanguage ?? (uiLanguage === "en" ? (r?.shown || "") : uiLanguage);
+  const cacheKey = cache ? r.path + "\0" + (r.shown || "") + "\0" + effLang + "\0" + (r.text?.length || 0) : "";
+  if (cache?.has(cacheKey)) return cache.get(cacheKey);
   const company = String(facts(r).company || "");
   // The page's own words name the organisation (they follow the reading language); the link finds its page.
   const link = /\[([^\]]+)\]\((\.\.\/orgs\/[^)]+\.md)\)/.exec(company);
@@ -12271,7 +12324,9 @@ function personOrg(r) {
   const full = link ? plainLine(link[1]) : wiki ? plainLine(wiki[2] || org?.title || wiki[1])
     : plainLine(company).replace(/\s*\(from email domain\)$/i, "") || org?.title || "";
   const acronym = /^(.+?)\s*\(([\p{Lu}&]{2,8})\)$/u.exec(full);
-  return knownValue(full) ? orgNamed(r, org, acronym ? acronym[2] : full, acronym ? acronym[1] : "") : null;
+  const resolved = knownValue(full) ? orgNamed(r, org, acronym ? acronym[2] : full, acronym ? acronym[1] : "") : null;
+  if (cache) cache.set(cacheKey, resolved);
+  return resolved;
 }
 // What People's organisation column and the open list's place chips call a person's organisation (rc35 hunt,
 // #3157: a course-group code, two university domains, and one company as both a short and a full name).
@@ -15844,13 +15899,14 @@ const SESSION_TEXT = new Map();
 const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "person", "tag", "outcome"];
 const SESSION_OUTCOMES = { done: "Done", partial: "Partial", abandoned: "Abandoned", unknown: "Unknown" };
 function sessionText(r) {
-  if (SESSION_TEXT.has(r.path)) return SESSION_TEXT.get(r.path);
+  const cacheKey = r.path + "\0" + (r.shown || "");
+  if (SESSION_TEXT.has(cacheKey)) return SESSION_TEXT.get(cacheKey);
   const clean = text => unlabelled(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
   const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
   const fields = { title: clean(r.session_title || r.title), summary: ownerAsYou(clean(r.session_summary)),
     tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
   fields.lower = Object.values(fields).join("\n").toLowerCase();
-  SESSION_TEXT.set(r.path, fields);
+  SESSION_TEXT.set(cacheKey, fields);
   return fields;
 }
 function sessionTerms(query) { return [...new Set((query || "").toLowerCase().split(/\s+/).filter(Boolean))]; }
@@ -17973,6 +18029,12 @@ function loadDetails() {
     const source_context = { ...data.source_context, ...REM.source_context };
     Object.assign(REM, data, { records: [...records.values()], drafts, source_context });
     KNOWN.clear(); FACTS.clear(); PARSED_FACTS.clear(); SESSION_TEXT.clear();
+    if (typeof personOrg === "function" && personOrg._cache) personOrg._cache.clear();
+    if (typeof sourceList === "function" && sourceList._cache) sourceList._cache.clear();
+    if (typeof threads === "function" && threads._cache) threads._cache.clear();
+    if (typeof listedRecords === "function") listedRecords._c = null;
+    if (typeof byPath === "function") byPath._c = null;
+    if (typeof threadEntries === "function") { threadEntries.cached = null; threadEntries.cachedKey = ""; }
     PEOPLE_BY_ADDRESS = null;
     detailReady = true;
   });
@@ -19557,8 +19619,8 @@ function localiseTitles() {
 function render() {
   if (!REM) return;
   localiseTitles();
+  listedRecords._c = null;
   renderLangProgress();
-  threadEntries.cached = null;
   threadEntries.cacheEnabled = true;
   const state = route();
   // An opened page with no Chinese version is asked for at once (live reader); its state is the top bar's (#3143).
@@ -20122,7 +20184,7 @@ function paletteItems() {
   const pages = [["Today", "#"], ["Waiting on you", "#view=open"], ["Memory changes", "#view=changes"]]
     .map(([title, link]) => [t(title), link]).concat(memoryCategories().map(c => [label(c), "#c=" + c]), [[graphT("Knowledge graph"), "#view=graph"]])
     .map(([title, link]) => ({ id: "page:" + link, label: t("Open {page}", { page: title }), hint: t("Page"), run: go(link) }));
-  const records = listedRecords().filter(r => ["people", "orgs", "projects", "skills", "decisions", "principles"].includes(r.category))
+  const records = listedRecords().filter(r => ["people", "orgs", "devices", "projects", "skills", "decisions", "principles"].includes(r.category))
     .map(r => ({ id: "r:" + r.path, label: r.title, hint: singular(r.category), run: go(href(r)) }));
   return [...todayActions(), ...pages, ...records];
 }
@@ -20291,9 +20353,6 @@ function swapLanguage(r, tag) {
   r.original ??= r.text;
   r.text = shown ? r.translations[shown] : r.original;
   r.shown = shown;
-  KNOWN.delete(r.path);
-  FACTS.delete(r.path);
-  SESSION_TEXT.delete(r.path);
 }
 function showLanguage(r, tag) {
   r.readLanguage = tag;

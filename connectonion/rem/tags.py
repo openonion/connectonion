@@ -8,8 +8,10 @@ disagree with them. docs/cli/rem-tags.md is the contract.
 """
 
 import re
+import threading
 from collections import Counter
 from contextlib import contextmanager
+from pathlib import Path
 
 from .files import read_json, state_path, write_json
 
@@ -152,24 +154,36 @@ def counts(texts) -> Counter:
 # One page build reads the notebook and writes none of it. Tag nodes asked for the whole-notebook tag scans once
 # per tag page, each reading every page: with every WeChat friend on a page (~1.8k people, #3347) that doubled the
 # build. `held` keeps each scan's answer for one build only, so the long-running Host never serves a stale one.
-_HELD: dict = {}
+_LOCAL = threading.local()
+
+
+def _held_map() -> dict:
+    found = getattr(_LOCAL, "held", None)
+    if found is None:
+        found = _LOCAL.held = {}
+    return found
+
+
+def held_store(root) -> dict | None:
+    return _held_map().get(str(Path(root).resolve()))
 
 
 @contextmanager
 def held(root):
-    key = str(root)
-    outer = key in _HELD
-    _HELD.setdefault(key, {})
+    mapping = _held_map()
+    key = str(Path(root).resolve())
+    outer = key in mapping
+    mapping.setdefault(key, {})
     try:
         yield
     finally:
         if not outer:
-            _HELD.pop(key, None)
+            mapping.pop(key, None)
 
 
 def once(root, name: str, compute):
     """`compute()`, or inside `held(root)` the answer this build already has."""
-    store = _HELD.get(str(root))
+    store = held_store(root)
     if store is None:
         return compute()
     if name not in store:
