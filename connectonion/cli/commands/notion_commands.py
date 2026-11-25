@@ -1,43 +1,60 @@
 """
-Purpose: `co notion` — list, search and read Notion pages and databases (read-only)
+Purpose: `co notion` — list, search and read Notion pages and databases; create, append, add and update after a preview
 LLM-Note:
   Dependencies: imports from [typer, cli/style.py, cli/typer_groups.py, command_tips.py, notion_api.py] | imported by [cli/main.py] | tested by [tests/unit/test_notion_commands.py]
-  Data flow: argv → typer leaf → notion_api reads → print rows (or --json) → one Next line
-  State/Effects: reads only; nothing in Notion or on disk changes
-  Integration: notion_app is added to the root app in main.py; each "co notion <verb>" is HANDLER in command_tips.NEXT because every handler names its own next command | databases are read through their data source (Notion 2025-09-03)
-  Errors: NotionError → `✗ <cause>` and `Next: <command>` on stderr, exit 1; a wrong argument → exit 2 naming the help page
+  Data flow: argv → typer leaf → notion_api reads → numbered rows (or --json) → one Next line | a write reads its target first, prints a preview, and changes Notion only with --yes (the preview's Next line is that command, by id) | pages, search and db save the shown ids as one short-lived listing; page, db and columns take a row number from the last list (or --listing), a link or an id
+  State/Effects: reads change nothing in Notion; create, append, add and update change it only with --yes | writes the shown rows' ids (no titles or content) under ~/.co/notion-listings for 15 minutes; --json saves none
+  Integration: notion_app is added to the root app in main.py; each "co notion <verb>" is HANDLER in command_tips.NEXT because every handler names its own next command | databases are read through their data source (Notion 2025-09-03) | row numbers use gmail_listings, the same store the Asana and OneNote commands use
+  Errors: NotionError → `✗ <cause>` and `Next: <command>` on stderr, exit 1; a wrong argument or a stale row number → exit 2 naming the command to run
 """
 
+import hashlib
 import json
+import os
+import re
 import shlex
+import sys
+import tempfile
+from datetime import datetime
 from functools import wraps
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 import typer
 from rich.markup import escape
 
+from ...environment import global_config_dir
 from .. import style
 from ..typer_groups import _OneSuggestion
 from . import notion_api as api
+from . import notion_markdown
 from .command_tips import mark_next_step_named, print_tip, selected_tip
+from .gmail_listings import ListingError, resolve_reference, save_listing
 
 notion_app = typer.Typer(
     cls=_OneSuggestion,
     invoke_without_command=True,
     help="Notion pages and databases from the terminal: list what is shared, search titles, read a page, query a "
-         "database. Read-only: nothing in Notion changes. It reads what NOTION_API_KEY can read: an internal "
-         "connection only the pages given to it, a personal access token everything your account can. A page is "
-         "named by its link or id.",
-    epilog="Example:  co notion pages  |  "
-           "Setup:  co env set NOTION_API_KEY ntn_... --secret  →  co notion check  →  co notion pages  |  "
-           "Workflow:  co notion search \"tasks\" --type database  →  co notion columns <id>  →  "
-           "co notion db <id> --where \"Status=In progress\"  →  co notion page <row id>",
+         "database; create a page, append to one, add or update a database row. Reads change nothing; a write "
+         "only previews until --yes. It works with what NOTION_API_KEY can reach: an internal "
+         "connection only the pages given to it, a personal access token everything your account can. Lists are "
+         "numbered: page, db and columns take a row number from the last list, a link or an id.",
+    epilog="Example:  co notion check  →  co notion pages  →  co notion page 1  |  "
+           "co notion pages --type database  →  co notion db 1  →  co notion append 1 \"Checked today\"",
 )
 
-PAGE_HELP = "Page link or id, as co notion search lists it"
-DB_HELP = "Database link or id, as co notion search --type database lists it"
+ROW = re.compile(r"#?[0-9]{1,4}")          # a row number, as co asana reads one; a Notion id is 32 hex
+PAGE_HELP = "Row number from the last list, a page link or an id"
+DB_HELP = "Row number from the last list, a database link or an id"
 SOURCE_HELP = "Which data source, by id or name, when the database has more than one"
-JSON_HELP = "Print the same fields as JSON"
+LISTING_HELP = "Listing ID printed under a list; keeps row numbers pointing at that list after you list another"
+IDS_HELP = "Also show each row's Notion id"
+JSON_HELP = "Print the same fields as JSON (ids included); no row numbers are saved"
+YES_HELP = "Do it; without --yes this prints a preview and changes nothing"
+TEXT_HELP = ("Text; # headings, - bullets, 1. numbers, - [ ] to-dos, > quotes, ``` code and --- become those blocks; "
+             "- reads standard input")
+LIST_LIMIT = 100                          # one Notion request: most lists are whole without a cursor
+CURSOR_HELP = "Continue a list from the --cursor its last line printed; only for that same command"
 
 
 @notion_app.callback()
@@ -47,7 +64,7 @@ def _notion(ctx: typer.Context):
 
 
 def _reported(handler):
-    """A NotionError becomes its cause and the one command to run next, on stderr; exit 1."""
+    """A NotionError becomes its cause, what is confirmed, and the one command to run next, on stderr; exit 1."""
     @wraps(handler)
     def run(*args, **kwargs):
         try:
@@ -55,6 +72,19 @@ def _reported(handler):
         except api.NotionError as error:
             out = style.console(stderr=True)
             out.print(f"{style.error('✗')} {escape(str(error))}")
+            detail = error.detail
+            if detail.get("created"):
+                out.print(f"  Created: {escape(detail['created'])} {style.path(detail.get('url', ''))}")
+            if error.kind == "partial":
+                resume = detail.get("created") or detail.get("page")
+                out.print(f"  Confirmed: {detail['confirmed_blocks']} of {detail['total_blocks']} blocks. "
+                          f"Check the page, then resume with the same text: "
+                          f"co notion append {resume} - --start-at {detail['next_start']} --yes")
+                if detail.get("batch_outcome") == "unknown":
+                    out.print("  The last batch timed out and may already be on the page: read it first, and if "
+                              "those blocks are there, raise --start-at past them.")
+            if error.kind == "unknown_outcome":
+                out.print("  Do not rerun blindly: read the target first and confirm whether the change is there.")
             out.print(style.next_line(selected_tip(error.next_step)))
             mark_next_step_named()
             raise typer.Exit(1) from None
@@ -74,12 +104,106 @@ def _dump(data) -> None:
     print(json.dumps(data, indent=2, ensure_ascii=False))
 
 
-def _print_rows(rows: list) -> None:
+# -- row numbers -----------------------------------------------------------
+# One family, "items": the last list shown, whether pages, search or a database's rows,
+# so `co notion page 3` opens the third row of whichever list is on screen.
+
+def _listings() -> Path:
+    return global_config_dir() / "notion-listings"
+
+
+def _account() -> str:
+    """Row numbers belong to the identity behind the key (its bot or user id), as Asana's belong to an account."""
+    return f"notion:{api.whoami().get('id', '')}"
+
+
+def _usage(message: str, next_step: str) -> None:
+    out = style.console(stderr=True)
+    out.print(f"{style.error('✗')} {escape(message)}")
+    out.print(style.next_line(selected_tip(next_step)))
+    mark_next_step_named()
+    raise typer.Exit(2)
+
+
+def _store_rows(account: str, ids: list[str]) -> Optional[str]:
+    """Save the shown rows' ids and point last-items at them; returns the listing token.
+
+    An empty list saves nothing and removes last-items, so an old row number is
+    refused as "no recent list" instead of reaching rows that are no longer shown.
+    """
+    try:
+        if not ids:
+            (_listings() / "last-items").unlink(missing_ok=True)
+            return None
+        token = save_listing(_listings(), account, "items", ids, provider="notion")
+        with tempfile.NamedTemporaryFile(mode="w", encoding="ascii", dir=_listings(),
+                                         prefix=".last-items-", delete=False) as stream:
+            stream.write(token)
+        os.replace(stream.name, _listings() / "last-items")
+    except OSError:
+        raise api.NotionError("Could not save the row numbers under ~/.co/notion-listings. Check write access "
+                              "there, or use the ids from --ids or --json", "co notion pages --ids") from None
+    return token
+
+
+def _ref(value: str, listing: Optional[str]) -> str:
+    """The id behind a row number (from --listing, else the last list); a link or an id is returned as given."""
+    if not ROW.fullmatch(value.strip()):
+        return value
+    if listing is None:
+        try:
+            listing = (_listings() / "last-items").read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError):
+            _usage(f"No recent Notion list to take row {value} from", "co notion pages")
+    try:
+        return resolve_reference(_listings(), value.strip(), _account(), "items", listing, provider="notion")
+    except ListingError as error:
+        _usage(str(error), "co notion pages")
+
+
+# -- cursors ---------------------------------------------------------------
+# Notion's cursor plus a check of the query it came from, as co gmail binds its mailbox
+# cursors to their query: reused with other words, --type, columns or -n, it is refused
+# instead of continuing a different list.
+
+def _query_check(*query) -> str:
+    return hashlib.sha256(json.dumps(query, ensure_ascii=False).encode()).hexdigest()[:8]
+
+
+def _bind(after: str, *query) -> str:
+    return f"{after}.{_query_check(*query)}" if after else ""
+
+
+def _unbind(cursor: str, again: str, *query) -> str:
+    if not cursor:
+        return ""
+    after, _, check = cursor.strip().rpartition(".")
+    if not after or check != _query_check(*query):
+        _usage("This --cursor belongs to another list (other words, --type, columns or -n); "
+               "run the original command again", again)
+    return after
+
+
+def _listing_note(token: Optional[str]) -> list[str]:
+    return [f"Listing: {token} (15 min; optional --listing ID pins these rows)"] if token else []
+
+
+def _numbered(lines: list[tuple[str, str, str]], ids: list[str], show_ids: bool) -> None:
+    """Print '<n>. <kind/date>  <title>' rows with the columns lined up; ids only under --ids."""
     out = style.console()
-    for r in rows:
-        trash = "  (in trash)" if r.get("in_trash") else ""
-        out.print(f"{style.command(r['id'])}  {style.muted(r['type'] + '  ' + r['edited'][:10])}  "
-                  f"{escape(r['title'])}{trash}")
+    width = len(f"{len(lines)}.")
+    meta_width = max((len(meta) for _, meta, _ in lines), default=0)
+    for i, (label, meta, extra) in enumerate(lines, 1):
+        number = f"{i}.".rjust(width)
+        ident = f"  {style.muted(ids[i - 1])}" if show_ids else ""
+        out.print(f"{style.count(number)}  {style.muted(meta.ljust(meta_width))}  {escape(label)}{ident}"
+                  + (f"  {style.muted(extra)}" if extra else ""))
+
+
+def _print_rows(rows: list, show_ids: bool = False) -> None:
+    _numbered([(api.one_line(r["title"]) or "(untitled)", f"{r['type']:<8}  {r['edited'][:10]}",
+                "(in trash)" if r.get("in_trash") else "") for r in rows],
+              [r["id"] for r in rows], show_ids)
 
 
 def _source_row(ds: dict) -> dict:
@@ -98,16 +222,53 @@ def _coverage_lines(coverage: dict) -> list:
         where = ("hosted by Notion" + (f", link expires {item['expires']}" if item["expires"] else "")
                  if item["hosted"] else f"external {item['url']}")
         lines.append(f"File: {item['name']} ({item['kind']}; {where})")
-    for child in coverage["child_pages"]:
-        lines.append(f"Child page: {child['title']} — co notion page {child['id']}")
-    for child in coverage["child_databases"]:
-        lines.append(f"Child database: {child['title']} — co notion db {child['id']}")
     return lines
+
+
+# -- what a page links to: its relations by title, and its child pages ------------
+
+LINKED_TITLES = 25          # titles read for one page view; past that, the count and --json's ids
+
+
+def _linked(detail: dict) -> dict:
+    """{relation column: {"items": [{"id", "title"}], "unread": n}} for every relation with a value.
+
+    Notion gives a relation only the linked pages' ids, so each title is one
+    read, at most LINKED_TITLES per page; past that, or for a page this key
+    cannot read, the page is counted, never named by guess.
+    """
+    found, budget = {}, LINKED_TITLES
+    for name, prop in detail["properties"].items():
+        if prop["type"] != "relation" or not prop["value"]:
+            continue
+        items, unread = [], 0
+        for linked_id in prop["value"]:
+            if budget <= 0:
+                unread += 1
+                continue
+            budget -= 1
+            try:
+                items.append({"id": linked_id, "title": api.title_of(api.call("GET", f"pages/{linked_id}"))})
+            except api.NotionError as error:
+                if error.kind not in ("not_found", "forbidden"):
+                    raise
+                unread += 1
+        found[name] = {"items": items, "unread": unread}
+    return found
+
+
+def _page_rows(linked: dict, coverage: dict) -> list:
+    """The numbered rows a page view shows: linked pages by column, then child pages and databases."""
+    rows = [(f"{name}", api.one_line(item["title"]), item["id"], "page") for name, entry in linked.items() for item in entry["items"]]
+    rows += [("Child page", api.one_line(child["title"]), child["id"], "page") for child in coverage["child_pages"]]
+    rows += [("Child database", api.one_line(child["title"]), child["id"], "db") for child in coverage["child_databases"]]
+    return rows
 
 
 # -- reads -----------------------------------------------------------------
 
-@notion_app.command("check", epilog="Example:  co notion check  |  co notion check --target <page or database link>")
+@notion_app.command("check", epilog="Example:  co notion check  |  "
+                                     "co notion check --target https://www.notion.so/Roadmap-1f2e3d4c5b6a79881726354433221100")
 @_reported
 def check(target: str = typer.Option("", "--target", help="Also check that this key can read this page or "
                                                           "database")):
@@ -138,40 +299,44 @@ def check(target: str = typer.Option("", "--target", help="Also check that this 
             raise
         found = api.data_source(target)
         kind = "data source"
-    out.print(f"{style.ok('✓')} Target shared: {kind} {escape(api.title_of(found))} ({found['id']})")
+    out.print(f"{style.ok('✓')} Target shared: {kind} {escape(api.one_line(api.title_of(found)))} ({found['id']})")
     _tip(f"co notion {'page' if kind == 'page' else 'columns'} {found['id']}")
 
 
-@notion_app.command("pages", epilog="Example:  co notion pages  |  co notion pages --type database -n 50 --json")
+@notion_app.command("pages", epilog="Example:  co notion pages  |  co notion pages --type database -n 50")
 @_reported
 def pages(kind: str = typer.Option("", "--type", help="page or database; without it, both"),
-          last: int = typer.Option(20, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
-          cursor: str = typer.Option("", "--cursor", help="Continue a previous listing from its next_cursor"),
+          last: int = typer.Option(LIST_LIMIT, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
+          cursor: str = typer.Option("", "--cursor", help=CURSOR_HELP),
+          ids: bool = typer.Option(False, "--ids", help=IDS_HELP),
           as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """List every page and database this key can read, newest edit first. Read-only.
 
     With an internal connection that is the pages given to it (and the pages
     under them); with a personal access token, what your account can read.
-    It is not a list of the whole workspace. When there are more, the last
-    line names the --cursor command for the next page. To find one by its
-    title, use co notion search.
+    It is not a list of the whole workspace. Rows are numbered for co notion
+    page, db and columns; the numbers stay valid for 15 minutes. When there
+    are more than -n (100 by default, one request to Notion), the first line
+    says so and the last line names the --cursor command for the next page.
+    To find one by its title, use co notion search.
     """
-    _listing("", kind, last, cursor, as_json)
+    _listing("", kind, last, cursor, ids, as_json)
 
 
-@notion_app.command("search", epilog='Example:  co notion search "roadmap"  |  '
-                                      'co notion search "meeting" --type page -n 50 --json')
+@notion_app.command("search", epilog='Example:  co notion search "roadmap"  |  co notion search "meeting" --type page')
 @_reported
 def search(text: str = typer.Argument(..., help='Words in page or database titles (required; co notion pages lists everything)'),
            kind: str = typer.Option("", "--type", help="page or database; without it, both"),
-           last: int = typer.Option(20, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
-           cursor: str = typer.Option("", "--cursor", help="Continue a previous search from its next_cursor"),
+           last: int = typer.Option(LIST_LIMIT, "--last", "-n", min=1, max=100, help="At most this many, most recently edited first"),
+           cursor: str = typer.Option("", "--cursor", help=CURSOR_HELP),
+           ids: bool = typer.Option(False, "--ids", help=IDS_HELP),
            as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """Search titles of pages and databases this key can read, newest edit first. Read-only.
 
     It is not a search of the whole workspace: an empty result means nothing
-    this key can read matched, not that the page does not exist. When there are more
-    results the last line names the --cursor command for the next page.
+    this key can read matched, not that the page does not exist. Results are
+    numbered like co notion pages. When there are more results the last line
+    names the --cursor command for the next page.
     Words are required: co notion pages lists everything this key can read.
     """
     if not text.strip():
@@ -179,86 +344,173 @@ def search(text: str = typer.Argument(..., help='Words in page or database title
         print_tip("search needs words from a title; to list everything shared use co notion pages. "
                   "Next: co notion pages")
         raise typer.Exit(2)
-    _listing(text, kind, last, cursor, as_json)
+    _listing(text, kind, last, cursor, ids, as_json)
 
 
-def _listing(text: str, kind: str, last: int, cursor: str, as_json: bool) -> None:
+def _listing(text: str, kind: str, last: int, cursor: str, ids: bool, as_json: bool) -> None:
     """pages (text "") and search share one request: Notion's search, newest edit first."""
     if kind not in ("", "page", "database"):
         command = "search" if text else "pages"
         print_tip(f"--type takes page or database. Next: co notion {command} --help")
         raise typer.Exit(2)
-    found, after = api.search(text, kind or None, last, cursor)
+    again = f"co notion search {shlex.quote(text)}" if text else "co notion pages"
+    query = ("search" if text else "pages", text, kind, last)
+    after_given = _unbind(cursor, again, *query)
+    account = None if as_json else _account()
+    found, after = api.search(text, kind or None, last, after_given)
+    bound = _bind(after, *query)
     rows = [api.row(obj) for obj in found]
     for r in rows:
         if r["type"] == "data_source":
             r["type"] = "database"
     if as_json:
-        _dump({"results": rows, "next_cursor": after or None, "complete": not after, "note": api.SEARCH_NOTE})
+        _dump({"results": rows, "next_cursor": bound or None, "complete": not after, "note": api.SEARCH_NOTE})
     else:
+        token = _store_rows(account, [r["id"] for r in rows])
         noun = "result" if len(rows) == 1 else "results"
         if not text:
             noun = "shared " + ("database" if kind == "database" else "page" if kind == "page" else "item") \
                 + ("" if len(rows) == 1 else "s")
         style.console().print(f"{style.count(len(rows))} {noun}" + (f" matching {escape(repr(text))}" if text else "")
                               + (" (more available)" if after else ""))
-        _print_rows(rows)
+        _print_rows(rows, ids)
+        for line in _listing_note(token):
+            style.console().print(style.muted(line))
         style.console().print(style.muted(api.SEARCH_NOTE + "."))
-    again = f"co notion search {shlex.quote(text)}" if text else "co notion pages"
     if after:
-        return _tip(again + (f" --type {kind}" if kind else "") + f" -n {last} --cursor {after}", as_json)
+        return _tip(again + (f" --type {kind}" if kind else "") + (f" -n {last}" if last != LIST_LIMIT else "")
+                    + f" --cursor {bound}", as_json)
     if not rows:
         # Nothing listed at all means nothing is shared; nothing matching a title may just be unshared.
         return _tip("co notion check --target <the page's link>", as_json)
     first = rows[0]
-    _tip(f"co notion {'columns' if first['type'] == 'database' else 'page'} {first['id']}", as_json)
+    _tip(f"co notion {'columns' if first['type'] == 'database' else 'page'} {first['id'] if as_json else 1}", as_json)
 
 
-@notion_app.command("page", epilog="Example:  co notion page 1f2e3d4c5b6a79881726354433221100  |  "
-                                    "co notion page https://www.notion.so/Roadmap-1f2e3d4c5b6a79881726354433221100 --json")
+@notion_app.command("page", epilog="Example:  co notion page 1  |  co notion page 1 --md > roadmap.md")
 @_reported
 def page(target: str = typer.Argument(..., help=PAGE_HELP),
          max_blocks: int = typer.Option(api.DEFAULT_BLOCK_LIMIT, "--max-blocks", min=1, max=20000,
                                         help="Stop after reading this many blocks"),
          depth: int = typer.Option(api.DEFAULT_DEPTH, "--depth", min=1, max=30, help="How deep nested blocks are read"),
+         listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+         as_md: bool = typer.Option(False, "--md", help="Print the page as a Markdown document (front matter, "
+                                                          "title, content) to save as a .md file"),
          as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """Show one page: title, link, every property, and its content with nesting, files and coverage. Read-only.
 
     The last lines say whether the whole page was read. If a limit stopped it,
-    the content is partial and says so; child pages and databases are listed
-    with the command that opens each. Under --json every property keeps its
-    type, ids and empty values (0, false, null).
+    the content is partial and says so. The pages a relation links to (by
+    title, up to 25) and the child pages and databases are numbered at the
+    end, for co notion page and db. Under --json every property keeps its
+    type, ids and empty values (0, false, null). --md prints the page as a
+    Markdown document (properties in front matter) to redirect to a .md file;
+    a partial read says so at its top.
     """
-    detail = api.read_page(target, max_blocks=max_blocks, max_depth=depth)
+    if as_md and as_json:
+        print_tip("--md and --json are two outputs; pick one. Next: co notion page --help")
+        raise typer.Exit(2)
+    detail = api.read_page(_ref(target, listing), max_blocks=max_blocks, max_depth=depth)
+    if as_md:
+        # Raw text, never through Rich: the document is the output, and the Next line goes to stderr.
+        print(notion_markdown.document(detail, _value_text), end="")
+        return _tip("co notion pages", True)
+    linked = _linked(detail)
     out_detail = {key: value for key, value in detail.items() if key not in ("raw", "blocks")}
+    out_detail["linked"] = {name: entry["items"] for name, entry in linked.items()}
+    rows = _page_rows(linked, detail["coverage"])
     if as_json:
         _dump(out_detail)
     else:
         out = style.console()
-        out.print(f"{style.heading(detail['title'])}  {style.muted(detail['edited'][:16].replace('T', ' '))}")
-        out.print(style.path(detail["url"]))
-        if detail["in_trash"]:
-            out.print(style.warn("This page is in Notion's trash."))
-        if detail["anchor"]:
-            out.print(style.muted(f"The link points at block {detail['anchor']} on this page; the whole page is shown."))
-        for name, prop in detail["properties"].items():
-            if prop["type"] == "title":
-                continue
-            text = _value_text(prop)
-            if text:
-                out.print(escape(f"{name}: {text}"))
-        out.print()
-        out.print(escape(detail["content"] or "(no content)"))
-        out.print()
-        for line in _coverage_lines(detail["coverage"]):
-            out.print(style.muted(escape(line)))
-    children = detail["coverage"]["child_pages"]
-    if detail["parent"] == "data_source":
+        _print_page(out, detail, rows, linked)
+        token = _store_rows(_account(), [row[2] for row in rows]) if rows else None
+        for line in _listing_note(token):
+            out.print(style.muted(line))
+    if rows:
+        first = rows[0]
+        _tip(f"co notion {first[3]} {first[2] if as_json else 1}", as_json)
+    elif detail["parent"] == "data_source":
         _tip(f'co notion db {detail["parent_id"]}', as_json)       # the other rows of its database
-    elif children:
-        _tip(f'co notion page {children[0]["id"]}', as_json)
     else:
         _tip("co notion pages", as_json)
+
+
+def _when(stamp: str) -> str:
+    """A Notion time in this computer's zone, to the minute, as co asana shows times; '-' when there is none."""
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M")
+    except (ValueError, AttributeError):
+        return "-"
+
+
+def _print_page(out, detail: dict, rows: list, linked: dict) -> None:
+    """One page as co asana task and co obsidian show one item: title and id, times, link,
+    Properties (relations numbered under them), the content rendered as Markdown, then what
+    was read, the files, and the child pages numbered on."""
+    from rich.markdown import CodeBlock, Markdown
+    from rich.text import Text
+
+    out.print(f"{style.heading(api.one_line(detail['title']) or '(untitled)')}  {style.muted(detail['id'])}")
+    out.print(escape(f"Edited: {_when(detail['edited'])}   Created: {_when(detail.get('created', ''))}"))
+    out.print(style.path(detail["url"]))
+    if detail["in_trash"]:
+        out.print(style.warn("This page is in Notion's trash."))
+    if detail["anchor"]:
+        out.print(style.muted(f"The link points at block {detail['anchor']} on this page; the whole page is shown."))
+    shown = [(name, _value_text(prop)) for name, prop in detail["properties"].items()
+             if prop["type"] not in ("title", "relation")]
+    shown = [(name, text) for name, text in shown if text]
+    width = len(f"{len(rows)}.")
+    related = [row for row in rows if row[0] in linked]
+    if shown or linked:
+        out.print()
+        out.print(style.label("Properties"))
+        for name, text in shown:
+            out.print("  " + escape(f"{name}: {text}"))
+        _print_page_rows(related, linked, 1, width, indent="  ")
+    out.print()
+    content = notion_markdown.body(detail["blocks"], terminal=True)
+    if not content.strip():
+        out.print(style.muted("No content."))
+    else:
+        try:
+            markdown = Markdown(content, hyperlinks=False)
+            markdown.elements = {**markdown.elements, "html_block": CodeBlock}
+            # Rich pads each rendered line to the console width; drop the padding so a copied or
+            # piped page has no trailing spaces, and keep the colours a terminal gets.
+            with out.capture() as rendered:
+                out.print(markdown, soft_wrap=False)
+            for line in rendered.get().rstrip("\n").split("\n"):
+                out.print(Text.from_ansi(line.rstrip()), soft_wrap=False)
+        except IndexError:                      # Rich can fail on an unmatched inline tag, as in co obsidian
+            out.print(Text(content), soft_wrap=False)
+    out.print()
+    for line in _coverage_lines(detail["coverage"]):
+        out.print(style.muted(line))
+    _print_page_rows(rows[len(related):], {}, len(related) + 1, width)
+
+
+def _print_page_rows(rows: list, linked: dict, first: int, width: int, indent: str = "") -> None:
+    """Under each heading (a relation column, Child page, Child database) its rows, numbered on from `first`."""
+    out = style.console()
+    heading, number = None, first - 1
+    for group, title, _id, _kind in rows:
+        if group != heading:
+            heading = group
+            entry = linked.get(group)
+            count = f" ({len(entry['items']) + entry['unread']} linked)" if entry else ""
+            out.print(f"{indent}{style.label(group)}{count}:")
+        number += 1
+        out.print(f"{indent}  {style.count(f'{number}.'.rjust(width))}  {escape(title)}")
+        entry = linked.get(group)
+        if entry and entry["unread"] and _id == entry["items"][-1]["id"]:
+            out.print(indent + style.muted(f"  … and {entry['unread']} more not shown (this key cannot read them, or past "
+                                  f"{LINKED_TITLES}); --json has every id"))
+    for name, entry in linked.items():
+        if entry["unread"] and not entry["items"]:
+            out.print(f"{indent}{style.label(name)} ({entry['unread']} linked): "
+                      + style.muted("none this key can read; --json has their ids"))
 
 
 def _value_text(prop: dict) -> str:
@@ -275,7 +527,7 @@ def _value_text(prop: dict) -> str:
     if kind in ("created_by", "last_edited_by"):
         return value.get("name") or value.get("id", "")
     if kind == "relation":
-        return f"{len(value)} linked: " + ", ".join(value[:5]) + (" …" if len(value) > 5 else "")
+        return f"{len(value)} linked"      # titles cost one read each: co notion page names them
     if kind == "files":
         return ", ".join(f.get("name") or "file" for f in value)
     if isinstance(value, list):
@@ -283,8 +535,7 @@ def _value_text(prop: dict) -> str:
     return str(value)
 
 
-@notion_app.command("db", epilog='Example:  co notion db <db-id> --where "Status=In progress" --sort -Due  |  '
-                                  "co notion db <db-id> -n 100 --json")
+@notion_app.command("db", epilog='Example:  co notion db 2  |  co notion db 2 --where "Status=In progress" --sort -Due')
 @_reported
 def db(target: str = typer.Argument(..., help=DB_HELP),
        source: str = typer.Option("", "--source", help=SOURCE_HELP),
@@ -292,49 +543,59 @@ def db(target: str = typer.Argument(..., help=DB_HELP),
                                                            "edited>2026-10-01 filters by last edit"),
        sort: List[str] = typer.Option([], "--sort", help="Column to sort by, -Column for descending; edited, created"),
        last: int = typer.Option(20, "--last", "-n", min=1, max=100, help="At most this many rows"),
-       cursor: str = typer.Option("", "--cursor", help="Continue from a previous listing's next_cursor"),
+       cursor: str = typer.Option("", "--cursor", help=CURSOR_HELP),
+       listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+       ids: bool = typer.Option(False, "--ids", help=IDS_HELP),
        as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
-    """List a database's rows: id, title and every property, filtered and sorted by its real columns. Read-only.
+    """List a database's rows, numbered: title and every property, filtered and sorted by its real columns. Read-only.
 
     Column names and options are checked against the data source's schema
-    before the query runs. When there are more rows the last line names the
-    --cursor command for the next page; under --json, next_cursor and complete.
+    before the query runs. Rows are numbered for co notion page. When there
+    are more rows the last line names the --cursor command for the next page;
+    under --json, next_cursor and complete.
     Notion stops any one query at 10,000 results; past that it says so and no
     cursor continues, so narrow the query with --where (edited>… works).
     """
-    ds = api.data_source(target, source)
+    ds = api.data_source(_ref(target, listing), source)
+    query = ("db", ds["id"], list(where), list(sort), last)
+    after_given = _unbind(cursor, f"co notion db {ds['id']}", *query)
+    account = None if as_json else _account()
     found, after, capped = api.query(ds["id"], filter=api.build_filter(ds, where), sorts=api.build_sorts(ds, sort),
-                                     first=last, cursor=cursor)
+                                     first=last, cursor=after_given)
+    bound = _bind(after, *query)
     rows = [{**api.row(obj), "properties": api.full_properties(obj)} for obj in found]
     info = _source_row(ds)
     if as_json:
-        _dump({"data_source": info, "rows": rows, "next_cursor": after or None,
+        _dump({"data_source": info, "rows": rows, "next_cursor": bound or None,
                "complete": not after and not capped, "capped": capped})
     else:
         out = style.console()
-        out.print(f"{style.count(len(rows))} {'row' if len(rows) == 1 else 'rows'} in {escape(info['title'])}"
+        out.print(f"{style.count(len(rows))} {'row' if len(rows) == 1 else 'rows'} in {escape(api.one_line(info['title']))}"
                   + (" (more available)" if after else "")
                   + (f" (Notion stopped this query at {api.QUERY_RESULT_LIMIT:,} results: more rows match than any "
                      "cursor reaches)" if capped else ""))
-        for r in rows:
-            shown = "  ".join(f"{k}: {_value_text(v)}" for k, v in r["properties"].items()
-                              if v["type"] != "title" and _value_text(v))
-            out.print(f"{style.command(r['id'])}  {escape(r['title'])}  {style.muted(escape(shown))}")
+        token = _store_rows(account, [r["id"] for r in rows])
+        _numbered([(api.one_line(r["title"]) or "(untitled)", r["edited"][:10],
+                    "  ".join(f"{k}: {_value_text(v)}" for k, v in r["properties"].items()
+                              if v["type"] != "title" and _value_text(v))) for r in rows],
+                  [r["id"] for r in rows], ids)
+        for line in _listing_note(token):
+            out.print(style.muted(line))
     if after:
         words = ["db", ds["id"], *[w for c in where for w in ("--where", c)], *[w for s in sort for w in ("--sort", s)],
-                 "-n", str(last), "--cursor", after]
+                 "-n", str(last), "--cursor", bound]
         return _tip("co notion " + " ".join(shlex.quote(w) for w in words), as_json)
     if capped:
         return _tip(f'co notion db {ds["id"]} --where "edited>{(rows[-1]["edited"] if rows else "2026-01-01")[:10]}"'
                     " --sort edited", as_json)
-    _tip(f"co notion page {rows[0]['id']}" if rows else f"co notion columns {ds['id']}", as_json)
+    _tip(f"co notion page {rows[0]['id'] if as_json else 1}" if rows else f"co notion columns {ds['id']}", as_json)
 
 
-@notion_app.command("columns", epilog="Example:  co notion columns 1f2e3d4c5b6a79881726354433221100  |  "
-                                       "co notion columns <id> --source Archive --json")
+@notion_app.command("columns", epilog="Example:  co notion columns 2  |  co notion columns 2 --source Archive")
 @_reported
 def columns(target: str = typer.Argument(..., help=DB_HELP),
             source: str = typer.Option("", "--source", help=SOURCE_HELP),
+            listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
             as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """List a database's columns: name, id, type, and the options a select, status or multi_select takes. Read-only.
 
@@ -342,14 +603,14 @@ def columns(target: str = typer.Argument(..., help=DB_HELP),
     database with several data sources exits 1 listing them; pick one with
     --source.
     """
-    ds = api.data_source(target, source)
+    ds = api.data_source(_ref(target, listing), source)
     rows = api.columns(ds)
     info = _source_row(ds)
     if as_json:
         _dump({"data_source": info, "columns": rows})
     else:
         out = style.console()
-        out.print(f"{style.count(len(rows))} columns in {escape(info['title'])}  {style.muted('data source ' + ds['id'])}")
+        out.print(f"{style.count(len(rows))} columns in {escape(api.one_line(info['title']))}  {style.muted('data source ' + ds['id'])}")
         for c in rows:
             kind = c["type"]
             options = f"  {', '.join(c['options'])}" if c["options"] else ""
@@ -357,3 +618,215 @@ def columns(target: str = typer.Argument(..., help=DB_HELP),
     choice = next((c for c in rows if c["options"]), None)
     where = f' --where "{choice["name"]}={choice["options"][0]}"' if choice else ""
     _tip(f'co notion db {ds["id"]}{where}', as_json)
+
+
+# -- writes ----------------------------------------------------------------
+# Each write reads its target first, previews, and changes Notion only with --yes. The
+# preview's Next line is the same command by id, so what --yes changes is what was shown,
+# even if another list has replaced the row numbers since.
+
+def _text(value: str) -> str:
+    """`-` means standard input, for text too long or too awkward to quote."""
+    return sys.stdin.read() if value == "-" else value
+
+
+def _rerun(*words: str, after: str = "") -> str:
+    """The same write with --yes; `after` is the text, given after `--` when it starts with a dash."""
+    tail = f" -- {shlex.quote(after)}" if after else ""
+    return "co notion " + " ".join(shlex.quote(w) for w in words) + " --yes" + tail
+
+
+PIPE_AGAIN = "The text came from standard input: pipe the same text into the command below, e.g. < notes.md"
+
+
+def _replay(given: str, body: str) -> tuple[str, str]:
+    """What the preview's Next line passes for the text, and a note to print above it.
+
+    Standard input is used up by the preview, so a `-` in Next would read nothing.
+    As co asana comment does: one line of text goes into Next itself (a trailing
+    newline from the file dropped); text with line breaks, or exactly "-", is piped
+    again, and the note says so.
+    """
+    if given != "-":
+        return given, ""
+    one = body.rstrip("\r\n")
+    if "\n" in one or "\r" in one or one in ("", "-"):
+        return "-", PIPE_AGAIN
+    return one, ""
+
+
+def _write_ref(value: str, listing: Optional[str], yes: bool, command: str) -> str:
+    """A row number previews; with --yes it needs its --listing, as co asana update takes a row (#3034 review)."""
+    if yes and listing is None and ROW.fullmatch(value.strip()):
+        _usage(f"With --yes, give the id the preview printed, or row {value} with its --listing",
+               f"co notion {command} {value}")
+    return _ref(value, listing)
+
+
+def _preview(what: str, lines: dict, rerun: str, body: str = "", note: str = "") -> None:
+    out = style.console()
+    out.print(f"{style.warn('Preview')} — {escape(what)}. Nothing changed in Notion.")
+    for label, value in lines.items():
+        out.print(f"  {label + ':':<12}{escape(str(value))}")
+    if body:
+        out.print("  Content, as it will be sent:")
+        for line in body.splitlines():
+            out.print("    " + escape(line))
+    if note:
+        out.print(style.muted(note))
+    _tip(rerun)
+
+
+def _body_summary(blocks: list) -> str:
+    kinds = {}
+    for block in blocks:
+        kinds[block["type"]] = kinds.get(block["type"], 0) + 1
+    return f"{len(blocks)} block(s) in {len(api.batches(blocks)) or 0} request(s): " + \
+        (", ".join(f"{k} ×{v}" for k, v in kinds.items()) or "none")
+
+
+@notion_app.command("create", epilog='Example:  co notion create 1 "Meeting notes"  |  '
+                                      'co notion create 1 "Meeting notes" --text "# Agenda"')
+@_reported
+def create(parent: str = typer.Argument(..., help="Row number, link or id of the page the new page goes under"),
+           title: str = typer.Argument(..., help="Title of the new page"),
+           text: str = typer.Option("", "--text", help=TEXT_HELP),
+           listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+           yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Create a page under a page, with optional content. Creates it only with --yes; otherwise previews.
+
+    The parent is read first, so an unshared or unknown parent exits 1 before
+    anything is created. The preview shows the content exactly as it will be
+    sent. Long content goes in several requests; if one fails, the new page's
+    id and the confirmed part are printed with the command that resumes it.
+    """
+    found = api.page(_write_ref(parent, listing, yes, "create"))
+    body = _text(text)
+    blocks = api.text_blocks(body)
+    if not yes:
+        shown = {"parent": f"{api.one_line(api.title_of(found))} ({found['id']})", "title": title, "content": _body_summary(blocks)}
+        again, note = _replay(text, body)
+        words = [found["id"], title] + ([f"--text={again}"] if again else [])
+        return _preview("would create this page", shown, _rerun("create", *words), api.preview_text(blocks), note)
+    created = api.create_page(found["id"], title, blocks)
+    style.console().print(f"{style.ok('✓')} Created {escape(api.one_line(title))} {created['id']}  {style.path(created.get('url', ''))}")
+    _tip(f"co notion page {created['id']}")
+
+
+@notion_app.command("append", epilog='Example:  co notion append 1 "Shipped in 1.9"  |  '
+                                      "co notion append 1 - < notes.md")
+@_reported
+def append(target: str = typer.Argument(..., help=PAGE_HELP),
+           text: str = typer.Argument(..., help=TEXT_HELP),
+           start_at: int = typer.Option(0, "--start-at", min=0, help="Skip this many blocks of the text: resume a "
+                                                                    "write that stopped part way"),
+           listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+           yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Add content to the end of a page; nothing already there changes. Writes it only with --yes; otherwise previews.
+
+    A link with a #block anchor still appends to the end of the page. If a
+    long write stops part way, the error says how many blocks are confirmed;
+    rerun with the same text and --start-at that number.
+    """
+    found = api.page(_write_ref(target, listing, yes, "append"))
+    body = _text(text)
+    blocks = api.text_blocks(body)
+    if not blocks:
+        print_tip("Nothing to add: the text is empty. Next: co notion append --help")
+        raise typer.Exit(2)
+    if start_at >= len(blocks):
+        print_tip(f"--start-at {start_at} skips all {len(blocks)} blocks of this text. Next: co notion page {found['id']}")
+        raise typer.Exit(2)
+    sending = blocks[start_at:]
+    if not yes:
+        shown = {"page": f"{api.one_line(api.title_of(found))} ({found['id']})", "adds": _body_summary(sending)}
+        if start_at:
+            shown["skips"] = f"the first {start_at} block(s), already written"
+        again, note = _replay(text, body)
+        options = ["--start-at", str(start_at)] if start_at else []
+        if again.startswith("-") and again != "-":      # text that looks like an option goes after --
+            rerun = _rerun("append", found["id"], *options, after=again)
+        else:
+            rerun = _rerun("append", found["id"], again, *options)
+        return _preview(f"would append to {api.one_line(api.title_of(found))}", shown, rerun,
+                        api.preview_text(sending), note)
+    count = api.append(found["id"], blocks, start_at=start_at) - start_at
+    style.console().print(f"{style.ok('✓')} Added {count} block(s) to {escape(api.one_line(api.title_of(found)))}  "
+                          f"{style.path(found.get('url', ''))}")
+    _tip(f"co notion page {found['id']}")
+
+
+@notion_app.command("add", epilog='Example:  co notion add 2 "Write docs" --set "Status=In progress"  |  '
+                                   'co notion add 2 "Write docs" --set Tags=docs,q4 --set Due=2026-10-31')
+@_reported
+def add(target: str = typer.Argument(..., help=DB_HELP),
+        title: str = typer.Argument(..., help="The new row's title, its title column"),
+        source: str = typer.Option("", "--source", help=SOURCE_HELP),
+        assignments: List[str] = typer.Option([], "--set", help="Column=value, from co notion columns; repeat for more; "
+                                                                "multi_select takes a,b; checkbox yes or no; "
+                                                                "date 2026-10-31 or 2026-10-31..2026-11-02"),
+        text: str = typer.Option("", "--text", help=TEXT_HELP + "; becomes the row's page body"),
+        listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+        yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Add a row to a database, with its title and column values. Creates it only with --yes; otherwise previews.
+
+    Every column name and option is checked against the data source first, so
+    an unknown column or a status that does not exist exits 1 listing the valid
+    ones and nothing is written. Prints the new row's id: read it back with
+    co notion page <id>.
+    """
+    ds = api.data_source(_write_ref(target, listing, yes, "add"), source)
+    properties, shown = api.row_properties(ds, title, assignments)
+    body = _text(text)
+    blocks = api.text_blocks(body)
+    if blocks:
+        shown["content"] = _body_summary(blocks)
+    if not yes:
+        again, note = _replay(text, body)
+        words = [ds["id"], title] + [w for a in assignments for w in ("--set", a)] + ([f"--text={again}"] if again else [])
+        return _preview(f"would add this row to {api.one_line(api.title_of(ds))}", shown, _rerun("add", *words),
+                        api.preview_text(blocks), note)
+    created = api.create_page("", title, blocks, data_source_id=ds["id"], properties=properties)
+    style.console().print(f"{style.ok('✓')} Added {escape(api.one_line(title))} {created['id']} to {escape(api.one_line(api.title_of(ds)))}  "
+                          f"{style.path(created.get('url', ''))}")
+    _tip(f"co notion page {created['id']}")
+
+
+@notion_app.command("update", epilog='Example:  co notion update 3 --set Status=Done  |  '
+                                      "co notion update 3 --clear Due --add Tags=docs --remove Tags=q4")
+@_reported
+def update(target: str = typer.Argument(..., help="Row number, link or id of the database row (or page) to change"),
+           assignments: List[str] = typer.Option([], "--set", help="Column=value: replace this column's value"),
+           clear: List[str] = typer.Option([], "--clear", help="Column: empty this column"),
+           add_options: List[str] = typer.Option([], "--add", help="Column=a,b: add options to a multi_select, keep the rest"),
+           remove_options: List[str] = typer.Option([], "--remove", help="Column=a,b: remove options from a multi_select"),
+           listing: Optional[str] = typer.Option(None, "--listing", help=LISTING_HELP),
+           yes: bool = typer.Option(False, "--yes", help=YES_HELP)):
+    """Change a row's columns; only the columns you name change. Changes it only with --yes; otherwise previews.
+
+    The preview shows each named column as it is now and as it would be. A
+    page outside a database has only its title to change, with --set title=...
+    Values are absolute, so after a timeout, read the row before deciding to
+    rerun.
+    """
+    if not (assignments or clear or add_options or remove_options):
+        print_tip("Nothing to change: give --set, --clear, --add or --remove. Next: co notion update --help")
+        raise typer.Exit(2)
+    found = api.page(_write_ref(target, listing, yes, "update"))
+    parent = api.parent_of(found)
+    if parent["type"] == "data_source":
+        ds = api.call("GET", f"data_sources/{parent['id']}")
+    else:
+        ds = {"id": found["id"], "properties": {name: {"id": p.get("id", ""), "type": "title", "title": {}}
+                                                for name, p in (found.get("properties") or {}).items()
+                                                if p.get("type") == "title"}}
+    properties, shown = api.property_changes(ds, found.get("properties") or {}, set_=assignments, clear=clear,
+                                             add=add_options, remove=remove_options)
+    if not yes:
+        words = [found["id"], *[w for a in assignments for w in ("--set", a)], *[w for c in clear for w in ("--clear", c)],
+                 *[w for a in add_options for w in ("--add", a)], *[w for r in remove_options for w in ("--remove", r)]]
+        return _preview(f"would change {api.one_line(api.title_of(found))}", shown, _rerun("update", *words))
+    api.update_page(found["id"], properties)
+    style.console().print(f"{style.ok('✓')} Updated {escape(api.one_line(api.title_of(found)))} {found['id']}: "
+                          + escape("; ".join(f"{k} {v}" for k, v in shown.items())))
+    _tip(f"co notion page {found['id']}")
