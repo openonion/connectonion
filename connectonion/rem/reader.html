@@ -3806,19 +3806,164 @@
   .tnext li { min-width: 0; }
   .tnext-ev { width: 100%; overflow: hidden; }
   .tnext .wt { min-width: 0; }
-  .deck { position: relative; padding-bottom: 26px; min-width: 0; }
-  .deck:has(.qcard ~ .qcard)::before, .deck:has(.qcard ~ .qcard)::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 13px; height: 60px; border-radius: var(--r-card);
-    background: var(--raised); box-shadow: var(--e1); }
-  .deck:has(.qcard ~ .qcard)::after { left: 44px; right: 44px; bottom: 0; opacity: .7; }
+  .deck { position: relative; padding-bottom: 12px; min-width: 0; }
   .today-brief { position: relative; z-index: 1; }
   .today-brief .today-threads { display: block; border: 0; }
   .today-brief .qcard { display: none; cursor: auto; }
-  .today-brief .qcard.focal { display: block; padding: 24px 28px 22px; border: 0; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e2); cursor: auto;
+  .today-brief .qcard.focal { display: block; padding: 24px 28px 22px; border: 2px solid var(--ink); border-radius: 0; background: var(--raised); box-shadow: none; cursor: auto;
     animation: n3-rise var(--t-draw) var(--spring-soft) backwards; }  /* no fill once risen: a filled transform would hold the pinned Send bar */
   .today-brief .qcard.focal:focus-visible { outline: 0; background: var(--well); }
-  .today-brief .qsent { padding: 14px 20px; margin-bottom: 14px; border-radius: var(--r-inner); background: var(--well); }
+  .today-brief .qsent { padding: 14px 20px; margin-bottom: 14px; border: 1.5px solid var(--ink); border-radius: 0; background: var(--well); }
   .today-brief .qsent .lede { margin: 0; color: var(--ink); font: var(--w-bold) var(--s-ui)/1.5 var(--font); }
-  .today-brief > .quiet-line { padding: 36px 20px; border-radius: var(--r-card); background: var(--raised); box-shadow: var(--e1); text-align: center; }
+  .today-brief > .quiet-line { padding: 36px 20px; border: 1.5px solid var(--rule); border-radius: 0; background: var(--raised); text-align: center; }
+  /* Bauhaus Today horizontal flipper strip (replaces overlapping ::before/::after fake cards) */
+  .bau-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); border: var(--hair) solid var(--ink); border-top: 0; background: var(--raised); }
+  .bau-strip-btn { appearance: none; border: 0; border-right: var(--hair) solid var(--rule); border-top: 3px solid transparent; background: transparent; padding: 10px 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; font-family: var(--font); color: var(--ink); }
+  .bau-strip-btn:last-child { border-right: 0; }
+  .bau-strip-btn:hover { background: var(--fill-hover); }
+  .bau-strip-btn.on { background: var(--well); border-top-color: var(--green); }
+  .bau-strip-k { font-family: var(--mono); font-size: var(--s-ui); color: var(--grey); display: flex; justify-content: space-between; gap: 6px; }
+  .bau-strip-btn.on .bau-strip-k { color: var(--ink); font-weight: var(--w-bold); }
+  .bau-strip-t { font-size: var(--s-ui); font-weight: var(--w-bold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bau-strip-w { font-size: var(--s-ui); color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- Bauhaus Two-Screen Waiting on You (#view=open) ---------- */
+  .bau-open { width: 100%; max-width: 1160px; }
+  .bau-dirbar { display: flex; align-items: stretch; justify-content: space-between; gap: 16px; border-bottom: var(--rule-heavy) solid var(--ink); margin: 8px 0 0; min-height: 48px; flex-wrap: wrap; }
+  .bau-dirs { display: flex; align-items: stretch; gap: 22px; }
+  .bau-dir { appearance: none; border: 0; border-bottom: 3px solid transparent; background: transparent; padding: 10px 2px; font-size: var(--s-body); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); color: var(--grey); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; margin-bottom: -2px; }
+  .bau-dir:hover { color: var(--ink); }
+  .bau-dir.on { color: var(--ink); border-bottom-color: var(--green); }
+  .bau-dir-n { font-family: var(--mono); font-size: var(--s-ui); color: var(--grey); }
+  .bau-dir.on .bau-dir-n { color: var(--ink); }
+  .bau-dir-r { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  .bau-mode-btn { appearance: none; border: var(--hair) solid var(--ink); border-radius: 0; background: var(--raised); color: var(--ink); padding: 6px 12px; font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .bau-mode-btn:hover { background: var(--fill-hover); }
+  .bau-mode-btn[aria-pressed="true"] { background: var(--ink); color: var(--raised); }
+
+  /* Top Batch Action Bar: ONLY visible during multi-select! */
+  .bau-batchbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--ink); color: var(--raised); padding: 10px 16px; margin-top: 8px; }
+  .bau-bb-l { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: var(--s-ui); font-weight: var(--w-bold); }
+  .bau-bb-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+  .bau-bb-btn { appearance: none; height: 34px; padding: 0 12px; border: var(--hair) solid var(--grey); border-radius: 0; background: transparent; color: var(--raised); font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .bau-bb-btn:hover { border-color: var(--raised); }
+  .bau-bb-btn.primary { background: var(--raised); border-color: var(--raised); color: var(--ink); }
+  .bau-bb-btn.accent { border-color: var(--raised); color: var(--raised); }
+  .bau-bb-btn.exit { border-color: transparent; color: var(--raised); opacity: 0.78; }
+  .bau-bb-btn.exit:hover { opacity: 1; }
+
+  /* Tag structural bar */
+  .bau-tagbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: var(--well); border-bottom: var(--rule-heavy) solid var(--ink); flex-wrap: wrap; }
+  .bau-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .bau-tag-k { font-family: var(--mono); font-size: var(--s-ui); color: var(--grey); font-weight: var(--w-bold); margin-right: 4px; }
+  .bau-tagbar .bau-tag.chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: var(--hair) solid var(--rule); border-radius: 0; background: var(--raised); color: var(--grey); font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); text-decoration: none; cursor: pointer; }
+  .bau-tagbar .bau-tag.chip:hover { border-color: var(--ink); color: var(--ink); }
+  .bau-tagbar .bau-tag.chip.on { background: var(--ink); border-color: var(--ink); color: var(--raised); }
+  .bau-tagbar .bau-tag.chip .chip-n { font-family: var(--mono); font-size: var(--s-ui); opacity: .75; }
+
+  /* Tag-grouped Bauhaus section & rows */
+  .bau-group.task-band { margin: 0; border-bottom: var(--hair) solid var(--ink); }
+  .bau-ghead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 14px; background: var(--well); border-bottom: var(--hair) solid var(--rule); }
+  .bau-ghead.sel { background: var(--fill-press); }
+  .bau-gh-l { display: flex; align-items: center; gap: 10px; }
+  .bau-gh-tag { font-family: var(--mono); font-size: var(--s-ui); font-weight: var(--w-bold); letter-spacing: 0.04em; color: var(--ink); text-transform: uppercase; }
+  .bau-gh-n { font-family: var(--mono); font-size: var(--s-ui); color: var(--grey); font-weight: var(--w-bold); }
+  .bau-gh-sel { appearance: none; border: var(--hair) solid var(--rule); border-radius: 0; background: var(--raised); color: var(--ink); padding: 4px 10px; font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); cursor: pointer; }
+  .bau-gh-sel:hover { border-color: var(--ink); }
+
+  .bau-list.threads { list-style: none; margin: 0; padding: 0; }
+  .bau-row.thread { display: grid; grid-template-columns: 22px 28px minmax(0, 1fr) 164px 156px; align-items: center; gap: 8px; padding: 11px 14px 11px 8px; border-bottom: var(--hair) solid var(--rule); background: var(--raised); transition: background var(--t-press) var(--ease-out); position: relative; }
+  .bau-row.thread:last-child { border-bottom: 0; }
+  .bau-row.thread:hover { background: var(--fill-hover); }
+  .bau-row.thread.sel { background: var(--fill-press); }
+  .bau-row.thread.done-inline { background: var(--well); }
+  .bau-open.multi .bau-row.thread { grid-template-columns: 32px minmax(0, 1fr) 164px 156px; padding-left: 14px; }
+
+  /* Left-edge hover select box (or primary box in multi-select) */
+  .bau-selbox { appearance: none; box-sizing: border-box; width: 18px; height: 18px; min-width: 18px; min-height: 18px; border: var(--rule-heavy) solid var(--ink); border-radius: 0; background: var(--raised); color: var(--on-green); display: grid; place-items: center; font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-tight); cursor: pointer; margin: 0 auto; opacity: 0; padding: 0; transition: opacity var(--t-press) var(--ease-out); }
+  .bau-row.thread:hover .bau-selbox, .bau-row.thread:focus-within .bau-selbox, .bau-row.thread.sel .bau-selbox, .bau-open.multi .bau-selbox { opacity: 1; }
+  .bau-selbox[aria-checked="true"] { background: var(--green); border-color: var(--green); color: var(--on-green); }
+
+  /* Classic Apple Reminders / Things 3 Circle Completion Button */
+  .bau-circle { appearance: none; box-sizing: border-box; width: 20px; height: 20px; min-width: 20px; min-height: 20px; border-radius: var(--round); border: var(--rule-heavy) solid var(--ink); background: var(--raised); color: transparent; display: grid; place-items: center; font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-tight); cursor: pointer; margin: 0 auto; padding: 0; flex-shrink: 0; transition: background var(--t-press) var(--ease-out), border-color var(--t-press) var(--ease-out); }
+  .bau-circle:hover { background: var(--fill-press); }
+  .bau-row.done-inline .bau-circle { background: var(--green); border-color: var(--green); color: var(--on-green); }
+  .bau-open.multi .bau-circle { display: none; }
+
+  /* Row main clickable title + subtle quote preview */
+  .bau-main { min-width: 0; display: flex; align-items: baseline; gap: 8px; cursor: pointer; text-align: left; }
+  .bau-main .what { font-size: var(--s-body); font-weight: var(--w-bold); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+  .bau-row.done-inline .bau-main .what { color: var(--grey); text-decoration: line-through; font-weight: var(--w-regular); }
+  .bau-snip { font-size: var(--s-ui); color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
+  .bau-who { font-size: var(--s-ui); color: var(--grey); font-weight: var(--w-bold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bau-who a { color: inherit; text-decoration: none; }
+  .bau-who a:hover { color: var(--ink); text-decoration: underline; }
+
+  /* Right cell: metadata in rest state, lightweight Snooze + Detail buttons on hover */
+  .bau-right { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; }
+  .bau-rest { display: inline-flex; align-items: center; gap: 6px; }
+  .bau-hover-acts { display: none; align-items: center; gap: 5px; }
+  .bau-row.thread:hover .bau-rest, .bau-row.thread:focus-within .bau-rest { display: none; }
+  .bau-row.thread:hover .bau-hover-acts, .bau-row.thread:focus-within .bau-hover-acts { display: inline-flex; }
+  .bau-row.done-inline .bau-rest { display: inline-flex; }
+  .bau-row.done-inline .bau-hover-acts { display: none; }
+  .bau-open.multi .bau-rest { display: inline-flex; }
+  .bau-open.multi .bau-hover-acts { display: none; }
+  .bau-pill { font-family: var(--mono); font-size: var(--s-ui); font-weight: var(--w-bold); color: var(--ink); border: var(--hair) solid var(--ink); border-radius: 0; padding: 1px 6px; background: var(--raised); white-space: nowrap; }
+  .bau-pill.merge { color: var(--grey); border-color: var(--rule); background: var(--well); }
+  .bau-hbtn { appearance: none; height: 28px; padding: 0 9px; border: var(--hair) solid var(--ink); border-radius: 0; background: var(--raised); color: var(--ink); font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); cursor: pointer; white-space: nowrap; }
+  .bau-hbtn:hover { background: var(--fill-hover); }
+  .bau-hbtn.g { background: var(--green); border-color: var(--green); color: var(--on-green); }
+  .bau-undo-btn { appearance: none; border: 0; background: transparent; color: var(--ink); font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--mono); cursor: pointer; padding: 2px 4px; text-decoration: underline; }
+
+  /* Bottom Session-Completed Toast */
+  .bau-toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 40; background: var(--ink); color: var(--raised); padding: 10px 18px; display: flex; align-items: center; gap: 14px; font-size: var(--s-ui); font-weight: var(--w-bold); border-left: var(--fuse) solid var(--raised); }
+  .bau-toast button { appearance: none; border: var(--hair) solid var(--grey); border-radius: 0; background: transparent; color: var(--raised); font-size: var(--s-ui); font-weight: var(--w-bold); font-family: var(--font); cursor: pointer; padding: 3px 8px; }
+  .bau-toast button:hover { border-color: var(--raised); }
+
+  /* Screen 2: Bauhaus Immersive Detail Console */
+  .bau-detail { width: 100%; max-width: 1140px; }
+  .bau-dtop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 14px; border-bottom: var(--rule-heavy) solid var(--ink); margin-bottom: 22px; flex-wrap: wrap; }
+  .bau-back { appearance: none; border: var(--hair) solid var(--ink); border-radius: 0; background: var(--raised); color: var(--ink); padding: 7px 14px; font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+  .bau-back:hover { background: var(--fill-hover); }
+  .bau-dpos { font-family: var(--mono); font-size: var(--s-ui); color: var(--grey); display: inline-flex; align-items: center; gap: 10px; }
+  .bau-dnav { display: inline-flex; gap: 6px; }
+  .bau-dgrid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 24px; align-items: start; }
+  .bau-paper { background: var(--raised); border: var(--rule-heavy) solid var(--ink); padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; }
+  .bau-phead { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: var(--hair) solid var(--rule); font-size: var(--s-ui); flex-wrap: wrap; }
+  .bau-pwho { font-weight: var(--w-bold); color: var(--ink); text-decoration: none; }
+  .bau-pwho:hover { text-decoration: underline; }
+  .bau-porg { color: var(--grey); margin-left: 6px; }
+  .bau-chain-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .bau-ptitle { font-size: var(--s-head); font-weight: var(--w-bold); line-height: var(--lh-head); letter-spacing: -0.02em; margin: 0; color: var(--ink); }
+  .bau-quote { background: var(--well); border-left: 4px solid var(--ink); padding: 14px 18px; display: flex; flex-direction: column; gap: 6px; }
+  .bau-qk { font-family: var(--mono); font-size: var(--s-ui); color: var(--ink); font-weight: var(--w-bold); letter-spacing: 0.05em; }
+  .bau-qv { font-size: var(--s-body); line-height: var(--lh-read); color: var(--ink); }
+  .bau-chain { border-left: var(--rule-heavy) solid var(--ink); margin-left: 6px; padding-left: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .bau-cn { position: relative; font-size: var(--s-ui); color: var(--grey); line-height: var(--lh-body); }
+  .bau-cn::before { content: ""; position: absolute; left: -21px; top: 6px; width: 8px; height: 8px; background: var(--raised); border: var(--rule-heavy) solid var(--ink); }
+  .bau-cn.now::before { background: var(--green); border-color: var(--green); }
+  .bau-dside { display: flex; flex-direction: column; gap: 14px; }
+  .bau-cta { appearance: none; width: 100%; background: var(--green); color: var(--on-green); border: 0; border-radius: 0; padding: 16px 18px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 6px; font-family: var(--font); text-decoration: none; }
+  .bau-cta:hover { opacity: 0.92; }
+  .bau-cta-t { font-size: var(--s-lead); font-weight: var(--w-bold); }
+  .bau-cta-s { font-size: var(--s-ui); opacity: 0.85; }
+  .bau-dbox { background: var(--raised); border: var(--hair) solid var(--ink); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .bau-dbox-k { font-family: var(--mono); font-size: var(--s-ui); color: var(--grey); font-weight: var(--w-bold); letter-spacing: 0.06em; }
+  .bau-dact { appearance: none; width: 100%; min-height: 36px; padding: 6px 12px; border: var(--hair) solid var(--ink); border-radius: 0; background: var(--raised); color: var(--ink); font-size: var(--s-ui); font-weight: var(--w-bold); line-height: var(--lh-ui); font-family: var(--font); cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-decoration: none; }
+  .bau-dact:hover { background: var(--fill-hover); }
+  .bau-dact.soft { border-color: var(--rule); color: var(--grey); }
+  .bau-dact.soft:hover { border-color: var(--ink); color: var(--ink); }
+  @media (max-width: 880px) {
+    .bau-dgrid { grid-template-columns: 1fr; }
+    .bau-row.thread, .bau-open.multi .bau-row.thread { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 12px 10px; }
+    .bau-edge-col, .bau-who, .bau-snip { display: none; }
+    .bau-right { grid-column: 2; justify-content: flex-start; }
+    .bau-circle, .bau-selbox, .bau-mode-btn, .bau-tagbar .bau-tag.chip, .bau-dir, .bau-gh-sel, .bau-hbtn, .bau-back, .bau-dact, .bau-bb-btn { min-height: 44px; min-width: 44px; }
+    .bau-circle { width: 44px; height: 44px; background: transparent; border: 0; position: relative; }
+    .bau-circle::after { content: ""; width: 20px; height: 20px; border-radius: var(--round); border: var(--rule-heavy) solid var(--ink); }
+    .bau-row.done-inline .bau-circle::after { background: var(--green); border-color: var(--green); }
+  }
   .qhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
   .qhead .qmark { display: none; }
   .qhead .qmark.org { display: inline-block; width: 18px; height: 18px; border-radius: var(--r-org); border: 1.6px solid var(--ink); }
@@ -5144,6 +5289,35 @@ const UI = {
     "Device overview": "设备简介",
     "Kind": "类型",
     "Host": "地址",
+    "Batch select": "批量选择",
+    "Select group": "选择本组",
+    "Clear group": "取消本组",
+    "Exit select": "退出多选",
+    "Selected {n}": "已选 {n} 项",
+    "Group by tag:": "按标签分组：",
+    "Draft": "草稿",
+    "Merged {n}": "合并 {n} 处",
+    "Snooze": "推迟",
+    "Details →": "详情 →",
+    "Process selected →": "逐条进第二屏 →",
+    "Back to list": "返回等你处理清单",
+    "Previous": "上一条",
+    "Next": "下一条",
+    "Original message": "对方原话",
+    "Merged context ({n} pages)": "同源因果链（已合并 {n} 个页面）",
+    "Status actions": "状态处理",
+    "Delegate to agent": "委托给 Agent",
+    "Related pages": "关联记忆页",
+    "Done · Undo": "已完成 · 撤销",
+    "Hide completed": "收起已完成",
+    "{n} checked off in place": "已划掉 {n} 项（原地保留防跳动）",
+    "Other": "其他",
+    "Auto-advances after action": "处理完自动进下一项",
+    "Hand to Codex": "交给 Codex",
+    "Hand to Claude": "交给 Claude",
+    "Put off until tomorrow": "推迟到明天",
+    "Open original mail": "打开原邮件",
+    "Live reader required": "请在实时页面中操作",
     "Time zone": "时区",
     "Links": "链接",
     "How we know them": "如何认识",
@@ -9076,7 +9250,7 @@ function route() {
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), related: params.get("related") || "", heading: params.get("h"),
     view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
-    ...Object.fromEntries(["find", "agent", "when", "from", "to", "person", "tag", "outcome", "src"].map(key => [key, params.get(key) || ""])) };
+    ...Object.fromEntries(["find", "agent", "when", "from", "to", "person", "tag", "outcome", "src", "dir", "item"].map(key => [key, params.get(key) || ""])) };
 }
 function railActive() {
   const { record: r, category: c, query, view, reviews } = route();
@@ -9411,9 +9585,16 @@ function threadWho(r) {
 // #3158: a row is one line to read at a glance: dates in the reader's words, a long quote one level down (原话,
 // one click), the sources on hover. The quote is kept, never cut.
 function rowWords(text) {
-  const quote = /\s*[—–-]?\s*[“"]([^”"]{24,})[”"]/.exec(text);
-  const lead = (quote ? text.replace(quote[0], "") : text).replace(/\b(\d{4}-\d{2}-\d{2})\b/g, day => fmtDate(day));
-  return { lead, quote: quote ? quote[1] : "" };
+  const quote = /\s*[:：—–-]?\s*[“"]([^”"]{24,})[”"]\.?/.exec(text);
+  const rawLead = quote ? text.replace(quote[0], "") : text;
+  const lead = rawLead
+    .replace(/\b(\d{4}-\d{2}-\d{2})\b/g, day => fmtDate(day))
+    .replace(/\s*[:：]+\s*\./g, ".")
+    .replace(/\s*[:：—–-]\s*$/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  const q = quote ? quote[1].trim() : "";
+  return { lead: lead || q, quote: lead ? q : "" };
 }
 function threadRow(r, thread, withPage, also = [], grouped = false, strip = false) {
   const cites = (thread.text.match(/\[W?\d{1,3}\]/g) || []).join(" ");
@@ -10795,6 +10976,173 @@ function lazyFold(details, fill) {
   return details;
 }
 
+let openMultiMode = false;
+const openSelected = new Set();
+const openSessionDone = new Set();
+let openBatchQueue = null;
+
+function openCounterpart(entry) {
+  return entry.r.path === REM.owner ? (ownerCounterpart(entry) || entry.r) : entry.r;
+}
+function openDisplayTitle(entry) {
+  const { lead, quote } = rowWords(youify(withoutDateClutter(entry.t.text, entry.t)));
+  const cleanLead = lead.replace(/\[W?\d{1,3}\]/g, "").replace(/\s{2,}/g, " ").trim();
+  return { title: cleanLead || quote || plainLine(entry.t.text), quote };
+}
+function dedupOpenEntries(items) {
+  const byNorm = new Map(), out = [];
+  for (const entry of items) {
+    const cites = [...entry.t.text.matchAll(/\[(W?\d{1,3})\]/g)].map(m => citationId(entry.r, m[1])).filter(Boolean);
+    const words = obligationWords(entry.t.originalText || entry.t.text).slice(0, 72);
+    const sig = cites[0] ? "src:" + cites[0] + "|" + words.slice(0, 32) : "txt:" + words;
+    const prev = byNorm.get(sig);
+    if (prev && prev.entry !== entry) {
+      prev.merged.push(entry);
+      continue;
+    }
+    const bucket = { entry, merged: [entry] };
+    byNorm.set(sig, bucket);
+    out.push(bucket);
+  }
+  return out.map(({ entry, merged }) => {
+    if (merged.length === 1) return entry;
+    const preferred = merged.find(e => e.r.path !== REM.owner && e.r.category === "people")
+      || merged.find(e => e.r.path !== REM.owner) || merged[0];
+    const others = merged.filter(e => e !== preferred);
+    const also = [...(preferred.also || []), ...others.map(e => e.r)]
+      .filter((r, i, arr) => r && r.path !== preferred.r.path && arr.findIndex(x => x.path === r.path) === i);
+    return { ...preferred, also, members: [...new Set([...(preferred.members || [preferred]), ...merged])], mergedCount: merged.length };
+  });
+}
+function openPrimaryGroup(entry) {
+  const tags = openTags(entry).filter(c => !c.id.startsWith("state:"));
+  return tags[0] ? { id: tags[0].id, label: tags[0].label } : { id: "other", label: t("Other") };
+}
+function openHref(overrides = {}) {
+  const cur = route();
+  const params = new URLSearchParams({ view: "open" });
+  const dir = overrides.dir !== undefined ? overrides.dir : cur.dir;
+  const tag = overrides.tag !== undefined ? overrides.tag : cur.tag;
+  const item = overrides.item !== undefined ? overrides.item : "";
+  if (dir && dir !== "mine") params.set("dir", dir);
+  if (tag) params.set("tag", tag);
+  if (item) params.set("item", item);
+  return "#" + params.toString();
+}
+function bauCloseEntry(entry, done, state = "done", until = null) {
+  const key = doneKey(entry);
+  if (done) {
+    openSessionDone.add(key);
+    openSelected.delete(key);
+  } else {
+    openSessionDone.delete(key);
+  }
+  if (liveHere()) {
+    const members = entry.members || [entry];
+    markThread(entry, done, state, members, until);
+  }
+  redrawKeepingScroll();
+}
+function bauRenderDetail(main, current, visibleList, dir, tag) {
+  const key = doneKey(current), idx = Math.max(0, visibleList.findIndex(e => doneKey(e) === key));
+  const who = openCounterpart(current), { title, quote } = openDisplayTitle(current);
+  const group = openPrimaryGroup(current), draft = threadDraft(current);
+  const done = openSessionDone.has(key) || isDone(current);
+  const late = current.t.due && current.t.due < calendarDay(REM.as_of) && !staleEntry(current);
+  const goItem = target => { location.hash = openHref({ dir, tag, item: target ? doneKey(target) : "" }); };
+  const advanceAfter = () => {
+    const next = visibleList[idx + 1] || visibleList[idx - 1] || null;
+    if (next && doneKey(next) !== key) goItem(next);
+    else { openBatchQueue = null; location.hash = openHref({ dir, tag, item: "" }); }
+  };
+
+  const wrap = el("div", { class: "bau-detail" });
+  const back = el("a", { class: "bau-back", href: openHref({ dir, tag, item: "" }) }, ["← ", t("Back to list")]);
+  back.onclick = () => { openBatchQueue = null; };
+  const prevBtn = el("button", { type: "button", class: "bau-back", text: "↑ " + t("Previous"), disabled: idx <= 0 ? "" : null });
+  const nextBtn = el("button", { type: "button", class: "bau-back", text: "↓ " + t("Next"), disabled: idx >= visibleList.length - 1 ? "" : null });
+  prevBtn.onclick = () => { if (idx > 0) goItem(visibleList[idx - 1]); };
+  nextBtn.onclick = () => { if (idx < visibleList.length - 1) goItem(visibleList[idx + 1]); };
+  wrap.appendChild(el("div", { class: "bau-dtop" }, [
+    back,
+    el("div", { class: "bau-dpos" }, [
+      el("span", { class: "bau-pill", text: "# " + group.label }),
+      el("span", { text: `${String(idx + 1).padStart(2, "0")} / ${String(visibleList.length).padStart(2, "0")} · ${t("Auto-advances after action")}` })
+    ]),
+    el("div", { class: "bau-dnav" }, [prevBtn, nextBtn])
+  ]));
+
+  const paper = el("article", { class: "bau-paper" });
+  const whoOrg = who.category === "people" ? personOrg(who)?.name || "" : "";
+  paper.appendChild(el("div", { class: "bau-phead" }, [
+    el("div", {}, [el("a", { class: "bau-pwho", href: href(who), text: threadWho(who) }),
+      whoOrg ? el("span", { class: "bau-porg", text: "· " + whoOrg }) : null]),
+    el("span", { class: "when" + (late ? " overdue" : ""), text: threadAge(current.t) })
+  ]));
+  paper.appendChild(el("h2", { class: "bau-ptitle", html: inline(title, current.r.path) }));
+
+  if (quote) {
+    paper.appendChild(el("div", { class: "bau-quote" }, [
+      el("span", { class: "bau-qk", text: t("Original message") }),
+      el("div", { class: "bau-qv", text: "“" + quote + "”" })
+    ]));
+  }
+  const mergedPages = [current.r, ...(current.also || [])].filter((r, i, a) => r && r.path !== REM.owner && a.findIndex(x => x.path === r.path) === i);
+  if ((current.mergedCount || 1) > 1 || mergedPages.length > 1) {
+    paper.appendChild(el("div", { class: "bau-chain-wrap" }, [
+      el("div", { class: "bau-dbox-k", text: t("Merged context ({n} pages)", { n: Math.max(current.mergedCount || 1, mergedPages.length) }) }),
+      el("div", { class: "bau-chain" }, mergedPages.map((p, i) =>
+        el("div", { class: "bau-cn" + (i === mergedPages.length - 1 ? " now" : "") }, [
+          el("a", { class: "bau-pwho", href: href(p), text: p.title }),
+          el("span", { class: "bau-porg", text: "· " + singular(p.category) })
+        ])))
+    ]));
+  }
+  if (draft) paper.appendChild(cardDraft(draft, { r: who, entries: [current] }));
+
+  const side = el("aside", { class: "bau-dside" });
+  const mailLink = mailboxLink(current);
+  const cta = draft
+    ? el("button", { type: "button", class: "bau-cta" }, [el("span", { class: "bau-cta-t", text: t("Review & send reply") }), el("span", { class: "bau-cta-s", text: t("Auto-advances after action") })])
+    : mailLink
+      ? el("a", { class: "bau-cta", href: mailLink.href, target: "_blank", rel: "noopener" }, [el("span", { class: "bau-cta-t", text: mailLink.textContent }), el("span", { class: "bau-cta-s", text: threadWho(who) })])
+      : el("button", { type: "button", class: "bau-cta" }, [el("span", { class: "bau-cta-t", text: t(done ? "Undo" : "Mark done") }), el("span", { class: "bau-cta-s", text: t("Auto-advances after action") })]);
+  if (draft) cta.onclick = () => paper.querySelector(".qdraft .btn-act")?.click();
+  else if (!mailLink) cta.onclick = () => { bauCloseEntry(current, !done); if (!done) advanceAfter(); };
+  side.appendChild(cta);
+
+  const statusBox = el("div", { class: "bau-dbox" }, [el("span", { class: "bau-dbox-k", text: t("Status actions") })]);
+  const doneBtn = el("button", { type: "button", class: "bau-dact" }, [el("span", { text: "✓ " + t(done ? "Undo" : "Mark done") }), el("span", { text: "E" })]);
+  doneBtn.onclick = () => { bauCloseEntry(current, !done); if (!done) advanceAfter(); };
+  const laterBtn = el("button", { type: "button", class: "bau-dact" }, [el("span", { text: t("Put off until tomorrow") || t("Not now") }), el("span", { text: "S" })]);
+  laterBtn.onclick = () => laterChooser(statusBox, until => () => { bauCloseEntry(current, true, "skipped", until); advanceAfter(); });
+  const ignoreBtn = el("button", { type: "button", class: "bau-dact soft" }, [el("span", { text: t("Ignore") }), el("span", { text: "I" })]);
+  ignoreBtn.onclick = () => { bauCloseEntry(current, true, "ignored"); advanceAfter(); };
+  statusBox.append(doneBtn, laterBtn, ignoreBtn);
+  side.appendChild(statusBox);
+
+  const agentBox = el("div", { class: "bau-dbox" }, [el("span", { class: "bau-dbox-k", text: t("Delegate to agent") })]);
+  const agentStatus = el("div", { class: "talk-slot" });
+  const codexAct = el("button", { type: "button", class: "bau-dact soft", disabled: !liveHere() ? "" : null }, [el("span", { text: t("Hand to Codex") }), el("span", { text: "→" })]);
+  codexAct.onclick = () => handOver(current, "codex", () => redrawKeepingScroll(), null, agentStatus);
+  const claudeAct = el("button", { type: "button", class: "bau-dact soft", disabled: !liveHere() ? "" : null }, [el("span", { text: t("Hand to Claude") }), el("span", { text: "→" })]);
+  claudeAct.onclick = () => handOver(current, "claude", () => redrawKeepingScroll(), null, agentStatus);
+  agentBox.append(codexAct, claudeAct);
+  if (mailLink) agentBox.appendChild(el("a", { class: "bau-dact soft", href: mailLink.href, target: "_blank", rel: "noopener" }, [el("span", { text: t("Open original mail") }), el("span", { text: "↗" })]));
+  if (!liveHere()) agentBox.appendChild(el("span", { class: "bau-dbox-k", text: t("Live reader required") }));
+  agentBox.appendChild(agentStatus);
+  side.appendChild(agentBox);
+
+  const relBox = el("div", { class: "bau-dbox" }, [
+    el("span", { class: "bau-dbox-k", text: t("Related pages") }),
+    ...mergedPages.map(p => el("a", { class: "bau-dact soft", href: href(p) }, [el("span", { text: p.title + " · " + singular(p.category) }), el("span", { text: "→" })]))
+  ]);
+  side.appendChild(relBox);
+
+  wrap.appendChild(el("div", { class: "bau-dgrid" }, [paper, side]));
+  main.appendChild(wrap);
+}
+
 function taskView(kind) {
   const main = document.getElementById("main");
   main.textContent = "";
@@ -10820,27 +11168,211 @@ function taskView(kind) {
   const snapshot = snapshotLine();
   if (snapshot) main.appendChild(snapshot);
   main.append(...whyNotes());
-  const all = threadEntries(), open = all.filter(entry => !isDone(entry)), tag = route().tag;
+  const all = threadEntries(), open = all.filter(entry => !isDone(entry) || openSessionDone.has(doneKey(entry)));
+  const curRoute = route(), tag = curRoute.tag, activeItem = curRoute.item;
   if (!open.length) {
     main.appendChild(emptyState("Nothing open"));
     const done = markedDone(all);
     if (done) main.appendChild(done);
     return;
   }
-  // The rows are filtered first and every count below is of the rows it stands over, so a filter never leaves a
-  // heading saying one number above a list of another.
-  const entries = tag ? open.filter(entry => openTagged(entry, tag)) : open;
-  const band = dir => entries.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
-  const bands = [["Waiting on you", "mine", "waiting on you"], ["Waiting on others", "theirs", "on someone else"], ["Other open context", "plain", "other open context"]]
-    .map(([title, dir, words]) => ({ title, words, items: band(dir) })).filter(({ items }) => items.length);
-  main.appendChild(openChips(open, tag));
-  const summary = bands.map(({ items, words }) => t("{n} " + words, { n: items.length })).join(uiLanguage === "zh" ? "，" : ", ");
-  if (summary) main.appendChild(el("p", { class: "lede", text: summary + t(". Newest and due first.") }));
-  if (tag) main.appendChild(bulkBar(bands.flatMap(({ items }) => items)));
-  for (const { title, items } of bands)
-    main.appendChild(el("section", { class: "task-band" }, [sectionHead(title, String(items.length)), snapshotCloseLine(),
-      el("ul", { class: "threads" }, items.map(entry => stripRow(entry, true)))]));
-  const quiet = quietThreads(entries);
+  const byDirRaw = dir => open.filter(row => dir === "mine" ? waitingOnYou(row) : row.t.dir === dir && !row.t.quiet && !staleEntry(row));
+  const dirDefs = [
+    { id: "mine", title: "Waiting on you", items: dedupOpenEntries(byDirRaw("mine")) },
+    { id: "theirs", title: "Waiting on others", items: dedupOpenEntries(byDirRaw("theirs")) },
+    { id: "plain", title: "Other open context", items: dedupOpenEntries(byDirRaw("plain")) },
+  ];
+  const activeDir = dirDefs.some(d => d.id === curRoute.dir && d.items.length) ? curRoute.dir
+    : (dirDefs.find(d => d.items.length)?.id || "mine");
+  const dirBucket = dirDefs.find(d => d.id === activeDir) || dirDefs[0];
+  const entries = tag ? dirBucket.items.filter(entry => openTagged(entry, tag)) : dirBucket.items;
+
+  // Group entries by primary tag so tags divide the work structurally and Screen 2 walks the exact same order!
+  const grouped = new Map();
+  for (const entry of entries) {
+    const g = openPrimaryGroup(entry);
+    if (!grouped.has(g.id)) grouped.set(g.id, { ...g, items: [] });
+    grouped.get(g.id).items.push(entry);
+  }
+  const sections = [...grouped.values()].sort((a, b) => (a.id === "other") - (b.id === "other") || b.items.length - a.items.length);
+  const orderedEntries = sections.flatMap(s => s.items);
+
+  // Screen 2: Immersive Bauhaus Detail Console when ?item=<key> is active
+  if (activeItem) {
+    const queue = openBatchQueue?.length ? orderedEntries.filter(e => openBatchQueue.includes(doneKey(e))) : orderedEntries;
+    const target = queue.find(e => doneKey(e) === activeItem) || dirDefs.flatMap(d => d.items).find(e => doneKey(e) === activeItem);
+    if (target) {
+      bauRenderDetail(main, target, queue.length ? queue : [target], activeDir, tag);
+      return;
+    }
+  }
+
+  const isMulti = openMultiMode || openSelected.size > 0;
+  const shell = el("div", { class: "bau-open" + (isMulti ? " multi" : "") });
+
+  // Top bar: EITHER clean direction tabs (Normal Mode) OR high-contrast black/green Batch Bar (Multi-Select Mode)!
+  if (isMulti) {
+    const selectedEntries = entries.filter(e => openSelected.has(doneKey(e)));
+    const selCount = selectedEntries.length;
+    const batch = el("div", { class: "bau-batchbar", role: "toolbar", "aria-label": t("Batch select") });
+    const left = el("div", { class: "bau-bb-l" }, [el("span", { text: t("Selected {n}", { n: selCount }) })]);
+    const acts = el("div", { class: "bau-bb-acts" });
+    const doneBtn = el("button", { type: "button", class: "bau-bb-btn primary", disabled: !selCount ? "" : null, text: "✓ " + t("Mark done") });
+    doneBtn.onclick = () => {
+      for (const e of selectedEntries) openSessionDone.add(doneKey(e));
+      openSelected.clear(); openMultiMode = false;
+      if (liveHere()) closeAll(selectedEntries, "done"); else redrawKeepingScroll();
+    };
+    const laterBtn = el("button", { type: "button", class: "bau-bb-btn", disabled: !selCount ? "" : null, text: t("Snooze") });
+    laterBtn.onclick = () => laterChooser(batch, until => () => {
+      openSelected.clear(); openMultiMode = false;
+      if (liveHere()) closeAll(selectedEntries, "skipped", until); else redrawKeepingScroll();
+    });
+    const codexBtn = el("button", { type: "button", class: "bau-bb-btn", disabled: !selCount || !liveHere() ? "" : null, text: t("Hand to Codex") });
+    codexBtn.onclick = () => {
+      const list = [...selectedEntries];
+      openSelected.clear(); openMultiMode = false;
+      list.forEach(e => handOver(e, "codex", () => {}, null, el("span")));
+      redrawKeepingScroll();
+    };
+    const ignoreBtn = el("button", { type: "button", class: "bau-bb-btn", disabled: !selCount ? "" : null, text: t("Ignore") });
+    ignoreBtn.onclick = () => {
+      openSelected.clear(); openMultiMode = false;
+      if (liveHere()) closeAll(selectedEntries, "ignored"); else redrawKeepingScroll();
+    };
+    const seqBtn = el("button", { type: "button", class: "bau-bb-btn accent", disabled: !selCount ? "" : null, text: t("Process selected →") });
+    seqBtn.onclick = () => {
+      openBatchQueue = selectedEntries.map(doneKey);
+      openSelected.clear(); openMultiMode = false;
+      location.hash = openHref({ dir: activeDir, tag, item: openBatchQueue[0] });
+    };
+    const exitBtn = el("button", { type: "button", class: "bau-bb-btn exit", text: t("Exit select") });
+    exitBtn.onclick = () => { openSelected.clear(); openMultiMode = false; redrawKeepingScroll(); };
+    acts.append(doneBtn, laterBtn, codexBtn, ignoreBtn, seqBtn, exitBtn);
+    batch.append(left, acts);
+    shell.appendChild(batch);
+  } else {
+    const dirbar = el("div", { class: "bau-dirbar" });
+    const dirs = el("nav", { class: "bau-dirs", role: "tablist" }, dirDefs.map(d =>
+      el("a", { class: "bau-dir" + (d.id === activeDir ? " on" : ""), role: "tab", "aria-selected": String(d.id === activeDir),
+        href: openHref({ dir: d.id, tag: "", item: "" }) }, [
+        t(d.title), el("span", { class: "bau-dir-n", text: String(d.items.filter(e => !openSessionDone.has(doneKey(e))).length) })
+      ])));
+    const multiBtn = el("button", { type: "button", class: "bau-mode-btn", "aria-pressed": "false", text: "□ " + t("Batch select") });
+    multiBtn.onclick = () => { openMultiMode = true; redrawKeepingScroll(); };
+    dirbar.append(dirs, el("div", { class: "bau-dir-r" }, [multiBtn]));
+    shell.appendChild(dirbar);
+  }
+
+  // Tag structural strip
+  const tagCounts = new Map();
+  for (const e of dirBucket.items) {
+    for (const c of openTags(e).filter(x => !x.id.startsWith("state:")))
+      tagCounts.set(c.id, { id: c.id, label: c.label, n: (tagCounts.get(c.id)?.n || 0) + 1 });
+  }
+  const topTags = [...tagCounts.values()].sort((a, b) => b.n - a.n).slice(0, 8);
+  const tagbar = el("nav", { class: "bau-tagbar open-chips", "aria-label": t("Filter the open items") }, [
+    el("div", { class: "bau-tags" }, [
+      el("span", { class: "bau-tag-k", text: t("Group by tag:") }),
+      el("a", { class: "bau-tag chip" + (tag ? "" : " on"), href: openHref({ dir: activeDir, tag: "", item: "" }) }, [
+        t("All"), el("span", { class: "chip-n", text: String(dirBucket.items.length) })
+      ]),
+      ...topTags.map(c => el("a", { class: "bau-tag chip" + (c.id === tag ? " on" : ""),
+        href: openHref({ dir: activeDir, tag: c.id === tag ? "" : c.id, item: "" }) }, [
+        c.label, el("span", { class: "chip-n", text: String(c.n) })
+      ]))
+    ])
+  ]);
+  shell.appendChild(tagbar);
+
+  for (const sec of sections) {
+    const secKeys = sec.items.map(doneKey);
+    const allSecSelected = secKeys.length > 0 && secKeys.every(k => openSelected.has(k));
+    const secEl = el("section", { class: "task-band bau-group" });
+    const ghead = el("div", { class: "bau-ghead" + (allSecSelected ? " sel" : "") });
+    const selGroupBtn = el("button", { type: "button", class: "bau-gh-sel", text: (allSecSelected ? "☑ " + t("Clear group") : "□ " + t("Select group")) });
+    selGroupBtn.onclick = () => {
+      if (allSecSelected) secKeys.forEach(k => openSelected.delete(k));
+      else { openMultiMode = true; secKeys.forEach(k => openSelected.add(k)); }
+      redrawKeepingScroll();
+    };
+    ghead.append(
+      el("div", { class: "bau-gh-l" }, [
+        el("span", { class: "bau-gh-tag", text: "# " + sec.label }),
+        el("span", { class: "bau-gh-n", text: String(sec.items.length) })
+      ]),
+      selGroupBtn
+    );
+    secEl.appendChild(ghead);
+
+    const ul = el("ul", { class: "threads bau-list" });
+    for (const entry of sec.items) {
+      const key = doneKey(entry), done = openSessionDone.has(key), checked = openSelected.has(key);
+      const who = openCounterpart(entry), { title, quote } = openDisplayTitle(entry);
+      const draft = threadDraft(entry), late = entry.t.due && entry.t.due < calendarDay(REM.as_of) && !staleEntry(entry);
+
+      const selBox = el("button", { type: "button", class: "bau-selbox bau-edge-col", role: "checkbox", "aria-checked": String(checked),
+        "aria-label": t("Batch select"), text: checked ? "✓" : "" });
+      selBox.onclick = ev => {
+        ev.stopPropagation();
+        if (checked) openSelected.delete(key); else { openMultiMode = true; openSelected.add(key); }
+        redrawKeepingScroll();
+      };
+
+      const circle = el("button", { type: "button", class: "bau-circle", "aria-label": t(done ? "Undo" : "Mark done"),
+        title: t(done ? "Undo" : "Mark done"), text: done ? "✓" : "" });
+      circle.onclick = ev => { ev.stopPropagation(); bauCloseEntry(entry, !done); };
+
+      const mainCell = el("div", { class: "bau-main" }, [
+        el("div", { class: "what", html: inline(title, entry.r.path) }),
+        quote ? el("span", { class: "bau-snip", text: "— " + quote }) : null
+      ]);
+      mainCell.onclick = () => {
+        if (isMulti) { selBox.click(); return; }
+        openBatchQueue = null;
+        location.hash = openHref({ dir: activeDir, tag, item: key });
+      };
+
+      const whoCell = el("div", { class: "bau-who" }, [
+        el("a", { href: href(who), text: threadWho(who) })
+      ]);
+
+      const rest = el("div", { class: "bau-rest" }, [
+        done ? el("button", { type: "button", class: "bau-undo-btn", text: t("Done · Undo") }) : null,
+        !done && draft ? el("span", { class: "bau-pill", text: t("Draft") }) : null,
+        !done && (entry.mergedCount || 1) > 1 ? el("span", { class: "bau-pill merge", text: t("Merged {n}", { n: entry.mergedCount }) }) : null,
+        !done ? el("span", { class: "when" + (late ? " overdue" : ""), text: threadAge(entry.t) }) : null
+      ]);
+      if (done) rest.querySelector(".bau-undo-btn").onclick = ev => { ev.stopPropagation(); bauCloseEntry(entry, false); };
+
+      const snoozeBtn = el("button", { type: "button", class: "bau-hbtn", text: t("Snooze") });
+      snoozeBtn.onclick = ev => { ev.stopPropagation(); laterChooser(snoozeBtn.parentElement, until => () => bauCloseEntry(entry, true, "skipped", until)); };
+      const openBtn = el("button", { type: "button", class: "bau-hbtn g", text: t("Details →") });
+      openBtn.onclick = ev => { ev.stopPropagation(); openBatchQueue = null; location.hash = openHref({ dir: activeDir, tag, item: key }); };
+      const hoverActs = el("div", { class: "bau-hover-acts" }, [snoozeBtn, openBtn]);
+
+      ul.appendChild(el("li", { class: "thread bau-row " + entry.t.dir + (checked ? " sel" : "") + (done ? " done-inline" : "") }, [
+        selBox, circle, mainCell, whoCell, el("div", { class: "bau-right" }, [rest, hoverActs])
+      ]));
+    }
+    secEl.appendChild(ul);
+    shell.appendChild(secEl);
+  }
+
+  main.appendChild(shell);
+
+  // Bottom in-place completion toast (lets you Undo or Hide completed cleanly)
+  document.querySelector(".bau-toast")?.remove();
+  if (openSessionDone.size) {
+    const hideBtn = el("button", { type: "button", text: t("Hide completed") });
+    hideBtn.onclick = () => { openSessionDone.clear(); redrawKeepingScroll(); };
+    document.body.appendChild(el("div", { class: "bau-toast", role: "status" }, [
+      el("span", { text: t("{n} checked off in place", { n: openSessionDone.size }) }),
+      hideBtn
+    ]));
+  }
+
+  const quiet = quietThreads(dirBucket.items);
   if (quiet) main.appendChild(quiet);
   const done = markedDone(all);
   if (done) main.appendChild(done);
@@ -11280,9 +11812,10 @@ function dealCard(path) {
   if (!next) return;
   todayLead = path;
   for (const card of cards) raiseCard(card, card === next);
-  for (const face of document.querySelectorAll("#main .deal")) {
-    face.classList.toggle("on", face.dataset.path === path);
-    face.setAttribute("aria-pressed", String(face.dataset.path === path));
+  for (const face of document.querySelectorAll("#main .deal, #main .bau-strip-btn")) {
+    const on = face.dataset.path === path;
+    face.classList.toggle("on", on);
+    face.setAttribute(face.classList.contains("bau-strip-btn") ? "aria-selected" : "aria-pressed", String(on));
   }
   const chart = document.querySelector("#main .night-card .hyp-wrap"), redrawn = chart && nightChart(path);
   if (redrawn) chart.replaceWith(redrawn.svg);
@@ -11443,7 +11976,21 @@ function deckRest(groups, counts) {
 // Today's order (#3072: the schedule opened the page, «全是信息，没有 call to action»): first what can be acted on,
 // the count and the deck with the work in hand above it; then what was asked about and what was closed; then the
 // lists that are only read, to-dos and the day's calendar; then the folds.
+function bauTodayStrip(cards) {
+  if (cards.length < 2) return null;
+  return el("div", { class: "bau-strip", role: "tablist", "aria-label": t("Today") }, cards.slice(0, 5).map((group, i) => {
+    const first = group.entries[0], { title } = openDisplayTitle(first), late = groupLate(group);
+    const btn = el("button", { type: "button", class: "bau-strip-btn" + (i === 0 ? " on" : ""), "data-path": group.r.path, "aria-selected": String(i === 0) }, [
+      el("div", { class: "bau-strip-k" }, [el("span", { text: String(i + 1).padStart(2, "0") }), el("span", { text: late ? t("{n} d", { n: late }) : threadAge(first.t) })]),
+      el("div", { class: "bau-strip-t", text: title }),
+      el("div", { class: "bau-strip-w", text: threadWho(group.r) })
+    ]);
+    btn.onclick = () => dealCard(group.r.path);
+    return btn;
+  }));
+}
 function overview() {
+  document.querySelector(".bau-toast")?.remove();
   const main = document.getElementById("main"), inDeck = !!document.activeElement?.closest("#main .qcard");
   main.textContent = "";
   const entries = threadEntries().filter(entry => !isDone(entry)), counts = threadCounts(), groups = todayGroups(entries.filter(entry => !agentBusy(entry)));
@@ -11453,7 +12000,7 @@ function overview() {
   shownCount = groups.length;
   main.append(...whyNotes(), ...[snapshotLine(), firstMapBrief(), nightCard(groups, cards[0]?.r.path, ticked), workStrip(),
     todayNextLine(),
-    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [deskHead(groups, cards[0]?.r.path, ticked), todayCards(cards), deckRest(groups, counts)]), todaySide(counts)]),
+    el("div", { class: "tgrid" }, [el("div", { class: "deck" }, [deskHead(groups, cards[0]?.r.path, ticked), todayCards(cards), bauTodayStrip(cards), deckRest(groups, counts)]), todaySide(counts)]),
     // The calendar is part of Today, under the cards (#3152, owner 2026-11-19: «把我的日程放在 today 里面的一个
     // component，而不是单独的一个 category»); the day plan's proposals are its suggested blocks, not a list on top.
     todayCalendar(), staleWidget(todayEntries(entries).filter(staleEntry)), closedToday(), todoSection(), todayFolds(entries, counts)].filter(Boolean));
@@ -19630,6 +20177,8 @@ function localiseTitles() {
 }
 function render() {
   if (!REM) return;
+  const cur = route();
+  if (cur.view !== "open" || cur.item) document.querySelector(".bau-toast")?.remove();
   localiseTitles();
   listedRecords._c = null;
   renderLangProgress();
@@ -20562,6 +21111,23 @@ if (REM?.live) {
 }
 window.addEventListener("focus", () => reconcileThreads().then(redraw));
 window.addEventListener("online", () => reconcileThreads().then(redraw));
+document.addEventListener("keydown", ev => {
+  if (ev.key !== "Escape") return;
+  const tag = ev.target?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || ev.target?.isContentEditable) return;
+  if (document.querySelector("dialog[open]")) return;
+  const cur = route();
+  if (cur.view !== "open") return;
+  if (cur.item) {
+    openBatchQueue = null;
+    location.hash = openHref({ item: "" });
+  } else if (openMultiMode || openSelected.size > 0) {
+    openSelected.clear();
+    openMultiMode = false;
+    redrawKeepingScroll();
+  }
+});
+
 window.addEventListener("hashchange", render);
 // The privacy levels' page-wide wiring (#2840): close the menu, curtain whatever is drawn, lift a curtain.
 document.addEventListener("click", event => { if (!event.target.closest?.(".privacy-level-host")) document.querySelector(".privacy-menu") && togglePrivacyMenu(false); });
