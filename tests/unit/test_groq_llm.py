@@ -174,9 +174,12 @@ class TestGroqLLMComplete:
         mock_request.url = "https://api.groq.com/openai/v1/chat/completions"
         mock_request.headers = {}
 
+        import httpx
+
+        req = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
         api_error = openai.APIStatusError(
             "rate_limit_exceeded",
-            response=Mock(status_code=429, request=mock_request),
+            response=httpx.Response(429, request=req),
             body={"error": {"message": "Rate limit exceeded"}}
         )
 
