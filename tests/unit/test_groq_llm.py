@@ -176,7 +176,7 @@ class TestGroqLLMComplete:
 
         api_error = openai.APIStatusError(
             "rate_limit_exceeded",
-            response=Mock(status_code=429),
+            response=Mock(status_code=429, request=mock_request),
             body={"error": {"message": "Rate limit exceeded"}}
         )
 

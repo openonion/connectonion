@@ -71,12 +71,14 @@ def _raise_403():
 
 
 class _FakeResponse:
-    """openai's error types read .status_code and .headers off the response."""
+    """openai's error types read .status_code, .headers and .request.headers off the response."""
 
     def __init__(self, status_code):
+        import httpx
+
         self.status_code = status_code
         self.headers = {}
-        self.request = None
+        self.request = httpx.Request("POST", "https://oo.openonion.ai/v1/chat/completions")
 
 
 @pytest.fixture
