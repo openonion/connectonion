@@ -305,7 +305,7 @@ def per_host_key_path(host: str) -> Path:
     re-derivation, not access.
     """
     safe = "".join(c if c.isalnum() or c in "-._" else "_" for c in host)
-    return SSH_PRIVATE_KEY.parent / f"id_ed25519_{safe}"
+    return Path.home() / ".co" / "ssh" / f"id_ed25519_{safe}"
 
 
 def write_per_host_ssh_key(seed_phrase: str, host: str, user: str = "root") -> Path:

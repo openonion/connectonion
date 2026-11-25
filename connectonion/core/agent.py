@@ -22,7 +22,7 @@ from ..logger import Logger
 from ..prompts import load_system_prompt
 from .events import EventHandler
 from .exceptions import TruncatedResponseError
-from .interrupt import InterruptibleStepTimeout, run_interruptible
+from .interrupt import InterruptibleStepTimeout, run_interruptible, user_stop_outcome
 from .llm import LLM, TokenUsage, create_llm
 from .mode import FULL_ACCESS, full_access_turns_left, mode_of, set_mode
 from .provider_messages import messages_for_provider
@@ -548,6 +548,16 @@ class Agent:
                 max_iterations or self.max_iterations
             )
 
+            if reason == 'interrupted':
+                outcome = user_stop_outcome(
+                    self.current_session['trace'][turn_trace_start:],
+                    self.current_session['messages'],
+                )
+                step = outcome['stopped_at']['step']
+                total = outcome.get('total_steps')
+                progress = f"step {step} of {total}" if total else f"step {step}"
+                result = f"Stopped by you after {progress}."
+
             self.current_session['result'] = result
 
             self._invoke_events('on_complete')
@@ -609,6 +619,11 @@ class Agent:
                 self.current_session['trace'][trace_start:]
             ),
         }
+        if reason == 'interrupted':
+            entry['interruption'] = user_stop_outcome(
+                self.current_session['trace'][trace_start:],
+                self.current_session['messages'],
+            )
         if error_type is not None:
             entry['error_type'] = error_type
         trace = self.current_session['trace']
@@ -861,7 +876,8 @@ class Agent:
                     if stop_signal in ('user_interrupt', 'Interrupted by user')
                     else 'stopped'
                 )
-                return "What would you like me to do?", reason
+                result = "Stopped by you." if reason == "interrupted" else "What would you like me to do?"
+                return result, reason
 
             if response is None:
                 raise RuntimeError("LLM returned no response without an interrupt")

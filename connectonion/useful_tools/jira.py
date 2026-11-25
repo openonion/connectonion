@@ -505,6 +505,42 @@ class Jira:
             "Aborting to prevent an infinite loop."
         )
 
+    def changed_issues(self, project_key: str, since: str, *, issue_keys=None) -> list[dict]:
+        """Read current changed issues in one explicit project; return raw API data.
+
+        Query by minute-safe JQL then filter by the exact aware instant, so an
+        inclusive overlap does not skip changes. No cursor or content is written.
+        """
+        moment = datetime.datetime.fromisoformat(since.replace("Z", "+00:00"))
+        if moment.utcoffset() is None or moment > datetime.datetime.now(datetime.timezone.utc):
+            raise ValueError("--since must have a timezone and must not be in the future.")
+        rows = self.scoped_issues(project_key, issue_keys=issue_keys, since=moment.isoformat())
+        selected = set(issue_keys or [])
+        result = []
+        for row in rows:
+            key = row.get("key", "")
+            if not _KEY_PATTERN.fullmatch(key) or not key.startswith(project_key + "-") or (selected and key not in selected):
+                raise ValueError("Jira returned an issue outside the selected scope; no results were emitted.")
+            try:
+                updated = datetime.datetime.fromisoformat(row["fields"]["updated"].replace("Z", "+00:00"))
+                if updated.utcoffset() is None:
+                    raise ValueError("missing timezone")
+            except (KeyError, TypeError, AttributeError, ValueError):
+                raise ValueError("Jira returned an invalid update time; no results were emitted.") from None
+            if updated >= moment:
+                result.append(row)
+        return result
+
+    def show_issue(self, issue_key: str, *, project_key: str | None = None) -> dict:
+        """Read one explicit issue key live; no snapshots or source copies."""
+        if not _KEY_PATTERN.fullmatch(issue_key):
+            raise ValueError("Use an issue key such as ALPHA-1, not a URL or a row number.")
+        project = project_key or issue_key.rsplit("-", 1)[0]
+        rows = self.issue_items(project, {issue_key})
+        if len(rows) != 1 or rows[0].get("key") != issue_key:
+            raise ValueError("Jira returned an unexpected issue; no results were emitted.")
+        return rows[0]
+
     # Change history of one work item (F13FCAKE-12): raw histories, oldest first, read-only.
     def issue_changelog(self, issue_key: str) -> list[dict]:
         """GET /rest/api/3/issue/{key}/changelog — every history entry, offset-based pagination.

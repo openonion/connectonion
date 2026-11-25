@@ -24,18 +24,54 @@ def _blocks(css: str) -> dict:
 
 
 def test_both_themes_define_every_colour_token():
-    blocks = _blocks(TEMPLATE.read_text(encoding="utf-8"))
-    faces = {"--display", "--text", "--ui", "--code", "--mono"}
-    colours = blocks["light"] - faces
-    assert len(colours) >= 20
-    assert blocks["dark-auto"] == colours
-    assert blocks["dark-forced"] == colours
+    css = TEMPLATE.read_text(encoding="utf-8")
+    blocks = _blocks(css)
+    light = re.search(r":root \{(.*?)\n  \}", css, re.S).group(1)
+    # Every token whose light value is a colour; sizes, grid and motion do not change with the theme.
+    colours = set(re.findall(r"(--[\w-]+): (?:#[\da-f]{6}|rgba\([^)]*\));", light))
+    # #3309: the 3D knowledge graph's four kinds, the one place hue names a kind (tag pages take the accent).
+    kinds = {f"--kind-{kind}" for kind in ("people", "orgs", "projects", "notes")}
+    # #3362 (art director): the full-screen writer's backdrop is black at an alpha in both themes, never ink, which
+    # turns near-white at night; so it is a colour defined in light and dark like the rest.
+    assert colours == {"--paper", "--raised", "--ink", "--grey", "--rule", "--well", "--green", "--on-green", "--red", "--pencil", "--scrim",
+                       "--overlay"} | kinds
+    # #3144: the accent is ink, so it inverts at night like every other colour (it was one green in both themes, D-123).
+    # The shadows are drawn in colour too (a dark hairline on paper, a light one at night), so they change with it.
+    shadows = {"--e1", "--e2", "--e3", "--e-fuse", "--e-green"}
+    assert blocks["dark-auto"] == colours | shadows
+    assert blocks["dark-forced"] == blocks["dark-auto"]
+
+
+def test_only_the_3d_graph_paints_with_the_kind_colours():
+    """The reader says kinds by shape and amounts by steps of ink; hue for a kind is the 3D graph's alone (#3309):
+    its tone table, its list and legend dots, and nothing else."""
+    css = TEMPLATE.read_text(encoding="utf-8")
+    outside_sheet = css.split("/* /fuse:tokens */", 1)[1]
+    uses = [line.strip() for line in outside_sheet.splitlines() if "--kind-" in line]
+    assert uses and all(line.startswith((".gx-dot", "const GRAPH_3D_TONE")) for line in uses), uses
 
 
 def test_the_template_names_no_remote_host_and_loads_no_font():
     page = TEMPLATE.read_text(encoding="utf-8")
-    assert not re.search(r"https?://(?!www\.)[a-z0-9.-]+\.[a-z]{2,}", page)
-    assert "@font-face" not in page and "@import" not in page and "<link" not in page
+    # Explicit navigation to the original mail is allowed; remote assets are not.
+    assert set(re.findall(r"https?://(?!www\.)[a-z0-9.-]+\.[a-z]{2,}", page)) == {
+        'https://mail.google.com', 'https://outlook.live.com'}
+    assert not re.search(r'(?:src\s*=\s*["\']|fetch\(["\'])https?://', page)
+    assert "@font-face" not in page and "@import" not in page
+    # The one <link> is the tab icon, a data: drawing; a stylesheet or a font would be a fetch.
+    assert page.count("<link") == 1 and re.findall(r'<link\b[^>]*?\bhref="([^",]*)', page) == ["data:image/svg+xml"]
+
+
+def test_rail_folds_before_its_places_push_settings_out_of_a_short_desktop():
+    """The rail once scrolled under 712px. Since #3091 it folds its last places under More instead, so Settings and the
+    owner's face stay in view at any height that holds them; the fold is browser-tested (test_rem_rail_browser.py)."""
+    page = TEMPLATE.read_text(encoding='utf-8')
+    # The places' column may be shorter than its content, or there is nothing to measure the overflow against.
+    assert re.search(r'\.rail-menu \{[^}]*min-height: 0;', page)
+    assert 'window.addEventListener("resize", fitRail);' in page  # and it refits when the window changes
+    scrolling = re.search(r'@media \(max-height: (\d+)px\) and \(min-width: 641px\) \{ \.rail \{ overflow-y: auto;', page)
+    # Scrolling is only the last resort, for a window too low for More, Settings and the face (about 270px).
+    assert scrolling and 260 <= int(scrolling[1]) < 400
 
 
 def test_mail_facts_sum_a_person_seen_under_two_addresses(tmp_path):
@@ -181,14 +217,62 @@ def test_muted_text_and_focus_tokens_meet_contrast_on_reader_surfaces(theme):
         'dark-forced': r':root\[data-theme="dark"\] \{(.*?)\}',
     }
     block = re.search(patterns[theme], css, re.S).group(1)
-    colors = dict(re.findall(r'(--[\w-]+): (#[\da-f]{6})', block))
+    light = dict(re.findall(r'(--[\w-]+): (#[\da-f]{6})', re.search(patterns['light'], css, re.S).group(1)))
+    colors = {**light, **dict(re.findall(r'(--[\w-]+): (#[\da-f]{6})', block))}  # green is the same in both themes
 
     def luminance(hex_color):
         rgb = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
         linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in rgb]
         return sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
 
-    for surface in ['--paper', '--sheet', '--line-2']:
-        for token, minimum in [('--ink-3', 4.5), ('--dawn', 3)]:
+    # N3: the paper, a raised card and a well inside it; the hairline still backs older tabs.
+    for surface in ['--paper', '--raised', '--well', '--rule']:
+        for token, minimum in [('--grey', 4.5), ('--ink', 3)]:
             a, b = sorted([luminance(colors[token]), luminance(colors[surface])])
             assert (b + .05) / (a + .05) >= minimum, (theme, token, surface)
+
+    assert colors['--green'] == ('#121512' if theme == 'light' else '#eef0ed')  # the ink accent (#3144), light ink on dark
+    for surface in ['--raised', '--well']:
+        a, b = sorted([luminance(colors['--red']), luminance(colors[surface])])
+        assert (b + .05) / (a + .05) >= 4.5, (theme, '--red', surface)
+    # Red is text (overdue, danger), so it must read on the paper it sits on in both themes; in N3 a card is
+    # --raised and its hover row --well (checked above), and --rule is only a hairline.
+    for surface, foreground in [('--green', '--on-green'), ('--paper', '--ink'), ('--rule', '--ink'), ('--paper', '--red')]:
+        a, b = sorted([luminance(colors[foreground]), luminance(colors[surface])])
+        assert (b + .05) / (a + .05) >= 4.5, (theme, foreground, surface)
+    # Pencil is REM's inference drawn as a dashed mark; at under 4.5:1 it never colours text.
+    assert not re.search(r'(?<![\w-])color:\s*var\(--pencil\)', css)
+    button = re.search(r'\.btn-act \{([^}]+)\}', css).group(1)
+    assert 'background: var(--green)' in button and 'color: var(--on-green)' in button
+    # Hover must change something: N3's primary lifts (D-123); the older views' keys still turn over.
+    lift = _rule(css, '.btn-act:hover')
+    assert lift and 'translateY' in lift
+    # The graph's Open page is navigation, not the one primary action: it is neutral since #3085.
+    assert 'var(--green)' not in _rule(css, '.gx-open:hover') and 'var(--green)' not in re.search(r'\.gx-open \{([^}]+)\}', css).group(1)
+    for selector in ['.sessions-view.r4 .btn-act:hover']:
+        hover = _rule(css, selector)
+        assert hover and 'background: var(--on-green)' in hover and 'color: var(--green)' in hover, selector
+    a, b = sorted([luminance(colors['--green']), luminance(colors['--on-green'])])
+    assert (b + .05) / (a + .05) >= 4.5, (theme, 'hovered primary label')
+
+
+def _rule(css, selector):
+    """The body of the rule whose selector list is exactly `selector` (first match)."""
+    match = re.search(r'(?:^|[}\n])\s*' + re.escape(selector) + r'\s*\{([^}]*)\}', css)
+    return match.group(1) if match else None
+
+
+def test_overdue_is_red_and_waiting_and_changed_keep_a_mark_of_their_own():
+    """Collapsing amber and indigo onto ink left overdue, waiting and changed looking like nothing."""
+    css = TEMPLATE.read_text(encoding="utf-8")
+    for selector in ['.overdue, .thread .when.overdue', '.next-exchanges .when.overdue', '.r4 .chip.late',
+                     '.ov-chip.late', '.qhead .qage.late']:
+        assert 'color: var(--red)' in (_rule(css, selector) or ''), selector
+    # An overdue chip is red on paper with a red edge, never a grey box.
+    late = _rule(css, '.r4 .chip.late')
+    assert 'var(--rule)' not in late and 'outline: var(--hair) solid var(--red)' in late
+    waiting, open_ = _rule(css, '  .nav .n'), _rule(css, 'nav a .n.open')
+    assert waiting and waiting.strip() != (open_ or '').strip()
+    changed, dt = _rule(css, '.person-insight dt.changed'), _rule(css, '.person-insight dt')
+    assert changed and 'color' not in changed and changed.strip() != dt.strip()
+    assert _rule(css, '.person-insight dt.at-stake') is None

@@ -1,4 +1,4 @@
-"""`co rem status` as a small dashboard (#1996).
+"""`co rem status` as a small status card (#1996).
 
 Status printed every field it had: the schedule times twice, the launchd
 plist, "Known attempts / Total attempts" three times, a whole run record --
@@ -10,6 +10,7 @@ what ran last. Everything else is behind --verbose. `--json` is untouched:
 this module only draws the same result.
 """
 
+from datetime import datetime
 from pathlib import Path
 
 from .. import style
@@ -20,10 +21,12 @@ CATEGORIES = (("people", "People"), ("projects", "Projects"), ("orgs", "Organisa
               ("sessions", "Agent sessions"))
 
 
-def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
+def card(root, value: dict, spell, *, verbose: bool = False, show_private: bool = False) -> str:
     """The status result as markup (the plain text is the same markup read without its styles).
 
     `spell` turns arguments into the command as this user types it (`_next`).
+    The notebook's own words (the calendar, the day plan, a turn's reason) are a glance: sensitive passages
+    hidden and links shortened to their host, unless `show_private` (rem_look.glance).
     A notebook consolidates overnight, so after the title it says what happened
     today before what it holds (1.9.0a9); every value starts at one column.
     """
@@ -31,36 +34,119 @@ def dashboard(root, value: dict, spell, *, verbose: bool = False) -> str:
     from ...rem.migrate import program
     found = pages(Path(root))
     counts = notebook(root, found)
-    lines = [*_header(value, program()), "", *_waiting(root, found), *_today(root, value), "",
+    seen = (lambda text: text) if show_private else rem_look.glance
+    lines = [*_header(value, program()), "", *_paused(root, value, spell), *_waiting(root, found, value), *_today(root, value), "",
+             *(highlight(part) for row in value.get('stages', []) for part in _clause_rows(row['text'])), "",
+             *([highlight(seen(value['calendar']['text'])), ""] if value.get('calendar') else []),
+             *([highlight(seen(value['day_plan']['text'])), ""] if value.get('day_plan') else []),
              *_notebook(root, value, counts, spell), "",
              *_mailboxes(root, spell), *_archive(value, spell), ""]
+    if value.get('models'):
+        lines += [rem_look.section('Models'), *(row for line in value['models'] for row in _level_rows(line))]
     if value.get('schedule_runner'):
         lines += [rem_look.section('Schedule runner', value['schedule_runner'])]
     if value.get('last_turn'):
         turn = value['last_turn']
         exit_code = f" · exit {turn['exit_code']}" if turn.get('exit_code') is not None else ''
-        lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {turn.get('finished_at') or turn['started_at']}")]
+        lines += [rem_look.section('Last turn', f"{turn['result']}{exit_code} · {_local(root, turn.get('finished_at') or turn['started_at'])}")]
         if turn.get('started_codex_after_s') is not None:
             lines += [rem_look.follow(style.muted(f"Codex startup: {turn['started_codex_after_s']:g}s"), glyph='')]
-        if turn.get('reason'):
-            lines += [rem_look.follow(highlight(turn['reason']), glyph='')]
-            if turn['result'] == 'failed':
+        handled = ((value.get('schedule_failure') or {}).get('stuck') or {}).get('handled')
+        if turn.get('reason') and handled:
+            # The installed build already sets this failure aside (#3413): its old advice (map-skills, start)
+            # cannot fix it and nothing needs restarting.
+            lines += [rem_look.follow(style.muted(_handled_said(value)), glyph='')]
+        elif turn.get('reason'):
+            lines += [rem_look.follow(highlight(seen(turn['reason'])), glyph='')]
+            if turn['result'] == 'failed' and not turn.get('produced_nothing'):
                 lines += [rem_look.follow(style.command(spell(['start'])) + style.muted(' after fixing the cause'), glyph='')]
         if turn['result'] in ('failed', 'timed-out') and turn.get('log'):
             lines += [rem_look.follow(highlight(f"Read turn log: {turn['log']}"), glyph='')]
-    lines += [*_budget(root, value, verbose), *_last_runs(root)]
+    lines += [*_round(value), *_tonight(value), *_nights(value), *_budget(root, value, verbose), *_last_runs(root), *_parked(root)]
     if verbose:
         from .rem_output import _lines
-        lines += ["", style.label("Details"), *(highlight(line) for line in _lines(value, indent=2))]
+        lines += ["", style.label("Details"), *(highlight(seen(line)) for line in _lines(value, indent=2))]
     return "\n".join([*lines, ""])
 
 
-def _waiting(root, found: dict) -> list[str]:
+def _paused(root, value, spell):
+    """The Codex week's floor holding REM, said first, with when it began and what to do (#2938).
+
+    Two nights of turns stopped at the floor while status, the night stats and
+    the morning note all read as quiet. Whether to raise the floor or to wait is
+    the owner's: both are named, neither is chosen.
+    """
+    from ...rem.config import read_config
+    from ...rem.service import notebook_zone
+    found = value.get('paused')
+    if not found:
+        return []
+    zone = notebook_zone(read_config(Path(root)))
+    since = datetime.fromisoformat(found['since']).astimezone(zone)
+    resets = (f"until the week resets {datetime.fromtimestamp(found['resets_at'], zone):%a %d %b %H:%M}"
+              if found.get('resets_at') else "until the Codex week resets")
+    # Past the floor translation and tagging go on to the ceiling (#3195): the head says which stopped.
+    from ...rem.quota import cheap_go_on
+    day = f" until {datetime.fromtimestamp(found['resets_at'], zone):%a}" if found.get('resets_at') else " until the week resets"
+    held = ("investigation paused" + day + "; translation and tagging continue" if cheap_go_on(found)
+            else "investigation, translation and tagging paused" + day)
+    return [rem_look.section('Codex week', style.warn(f"Codex week at {found['used_percent']}%: {held}.")),
+            rem_look.follow(highlight(f"Paused since {since:%a %d %b %H:%M}, at the {found['floor']}% floor kept for your "
+                                      "own work" + (f"; translation and tagging stop at {found['ceiling']}%"
+                                                    if "ceiling" in found else "") + "."), glyph=''),
+            rem_look.follow(highlight(f"No investigation runs {resets}; mail is still read."), glyph=''),
+            rem_look.follow(style.muted("To let REM work before then, raise the floor: ")
+                            + style.command(spell(['config', 'set', 'limits.quota_floor_percent', 'PERCENT']))), '']
+
+
+def _round(value):
+    """A round no later slot has moved says so, with why (D-104: status tells the truth)."""
+    found = value.get('round')
+    if not found or found['state'] != 'stuck':
+        return []
+    if value.get('paused') and 'floor kept for your own work' in found['reason']:
+        return []  # the Codex week line above already says it, as a pause and not as stuck
+    return [rem_look.section('Round', style.warn(f"stuck since {found['since'][:16].replace('T', ' ')}")),
+            rem_look.follow(highlight(found['reason']), glyph=''), '']
+
+
+def _nights(value):
+    """Per night, measured: what the schedule bought (D-104); schedules are compared on these."""
+    lines = []
+    for row in value.get('nights') or []:
+        # Three short lines: status stays within 80 columns.
+        lines += [rem_look.section('Night ' + row['night'][5:], (
+                      f"{row['turns']} turns · {row['tasks_accepted']} accepted · {row['tasks_parked']} parked · "
+                      f"{row['tasks_failed']} failed")),
+                  rem_look.follow(highlight(f"{row['drafts']} drafts · {row['mail_read']} mail"), glyph=''),
+                  rem_look.follow(highlight(f"{row['minutes_busy']} min busy · {row['minutes_idle']} min idle 22–07 · "
+                                            f"{row['profile']}"), glyph='')]
+    return [*lines, ''] if lines else []
+
+
+def _tonight(value):
+    night = value.get('tonight')
+    if night is None:
+        return []
+    counts = f"{night['items']} items · {night['drafts']} drafts · {night['already_handled']} already handled · {night['tasks']} tasks"
+    rest = f"{night['could_not_prepare']} could not be prepared"
+    if night['no_reply']:
+        rest += f" · {night['no_reply']} no reply needed"
+    mode = 'automatic after drafts' if value.get('tasks', {}).get('auto') else 'await morning approval (tasks.auto false)'
+    return [rem_look.section('Tonight', counts), rem_look.follow(highlight(rest), glyph=''),
+            rem_look.follow(highlight('tasks ' + mode), glyph=''),
+            *(rem_look.follow(highlight(f"{row['title']}: {row['text']} — {row['reason']}"), glyph='') for row in night['unprepared']), '']
+
+
+def _waiting(root, found: dict, value: dict | None = None) -> list[str]:
     """What needs the owner, first: the open threads waiting on them, counted as the reader's home counts them."""
     from ...rem.census import open_threads
     found = open_threads(Path(root), found)
+    unmatched = (value or {}).get('closed_unmatched', 0)
+    # A mark kept although its line is gone (#3174): said, so nothing the owner closed is lost quietly.
+    gone = [rem_look.follow(f"{_plural(unmatched, 'closed item')} no longer match a line on their page", glyph='')] if unmatched else []
     return [rem_look.section("Waiting on you", f"{_number(found['mine'])} of {_plural(found['open'], 'open thread')}"),
-            ""]
+            *gone, ""]
 
 
 def _budget(root, value: dict, verbose: bool) -> list[str]:
@@ -74,7 +160,7 @@ def _budget(root, value: dict, verbose: bool) -> list[str]:
     budget = value.get("investigation_quota")
     if not budget:
         return []
-    from ...rem.quota import TOKENS_PER_POINT
+    from ...rem.quota import FAST_COST, TOKENS_PER_POINT
     # "0% used on pro; resets Thu 22 Oct 17:24" is one line; a longer note goes under --verbose.
     parts = f"Codex week {value.get('codex_week') or 'unknown'}".split("; ")
     week = [" · ".join(parts)] if len(" · ".join(parts)) <= 80 - rem_look.COLUMN else parts
@@ -84,7 +170,8 @@ def _budget(root, value: dict, verbose: bool) -> list[str]:
              rem_look.follow(highlight(week[0]), glyph="")]
     if verbose:
         from ...rem.config import read_config
-        tokens = TOKENS_PER_POINT[read_config(root)["speed"]]
+        config = read_config(root)
+        tokens = TOKENS_PER_POINT[config["efforts"]["investigate"]] // (FAST_COST if config["speed"] == "fast" else 1)
         lines += [*(rem_look.follow(highlight(part), glyph="") for part in week[1:]),
                   rem_look.follow(style.muted("a point is 1% of your Codex week, spent by investigations only"),
                                   glyph=""),
@@ -107,6 +194,16 @@ def _last_runs(root) -> list[str]:
     if running:
         lines.append(rem_look.follow(style.muted(_running(running[0], zone)), glyph=""))
     return lines
+
+
+def _parked(root) -> list[str]:
+    """Pages a round set aside (refused again and again, or a hung preparation); retried on a later day."""
+    from ...rem.refusals import refused_pages
+    parked = [(record, entry["parked"]) for record, entry in refused_pages(root).items() if entry.get("parked")]
+    if not parked:
+        return []
+    lines = [rem_look.section("Parked", style.muted("retried on a later day"))]
+    return lines + [rem_look.follow(highlight(f"{record} · {why[:200]}"), glyph="") for record, why in parked]
 
 
 def _running(run: dict, zone) -> str:
@@ -151,6 +248,29 @@ def _zone(root):
     return notebook_zone(read_config(root))
 
 
+def _sources_mapped(root) -> list[str]:
+    """One row per source that yields pages: when it was mapped, what it made, what still waits (#3331)."""
+    from ...rem.coverage import source_coverage
+    from ...rem.onboard import summary, yields
+    from ...rem.service import subscriptions
+    rows = []
+    for name, sub in subscriptions(root).items():
+        if not (sub.get("enabled") and sub.get("consented") and yields(sub)):
+            continue
+        done = summary(root, name)
+        made = ", ".join(f"{n} {kind}" for kind, n in done["created"].items() if n) or "no new pages"
+        when = {"never": "never mapped", "earlier": f"mapped earlier · {done.get('pages', 0)} pages"}.get(
+            done["mapped_at"], done["mapped_at"][:10])
+        text = f"{when} · {made} · {done['to_investigate']} to investigate" + (
+            f" · {done['coverage']}" if done.get("coverage") else "")
+        rows.append(rem_look.row(f"Source {name}", text + (f" · {done['error']}" if done.get("error") else "")))
+        # How much of the source REM can read (#3353): a gap and its fix, never a silent shortfall.
+        coverage = source_coverage(name, sub)
+        if coverage and coverage["skipped"]:
+            rows.append(rem_look.follow(coverage["line"], glyph=""))
+    return rows
+
+
 def _private_unwritten(root) -> int:
     """Mapped private projects require a named-page request, not a category write (#2079)."""
     from ...rem.files import Notebook
@@ -177,9 +297,19 @@ def next_to_write(root, counts: dict, *, scheduled: bool = False) -> tuple:
         left = counts[category]["mapped"] > counts[category]["written"] and queued_unwritten(root, category)
         if left:
             if scheduled:
-                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued for tonight", []
+                return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} queued{_pace(root, left)}", []
             return f"{left:,} {label.lower()} page{'s' if left != 1 else ''} not written", ["investigate", category]
     return "", []
+
+
+def _pace(root, left: int) -> str:
+    """" for tonight" only when the night gets through the queue (#3420), else the pace it really keeps."""
+    from ...rem.queue import night_pace
+    from ...rem.service import run_logs
+    pace = night_pace(root, run_logs(root))
+    if pace and left <= pace:
+        return " for tonight"
+    return f" · the night investigates about {pace}" if pace else ""
 
 
 def queued_unwritten(root, category: str) -> int:
@@ -248,6 +378,8 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
     if coverage.get("missing"):
         lines.append(rem_look.follow(style.muted(
             f"{coverage['missing']} people you write to have no page yet"), glyph=""))
+    for line in _sources_mapped(root):
+        lines.append(line)
     if private := _private_unwritten(root):
         lines.append(rem_look.row("Private projects", f"{private:,} unwritten; write only when you name the page"))
     scheduled = bool(value.get("next_run") and value.get("worker", {}).get("enabled"))
@@ -260,9 +392,27 @@ def _notebook(root, value: dict, counts: dict, spell) -> list[str]:
             lines.append(rem_look.follow(style.muted("Work queued for the next scheduled run."), glyph=""))
     for language, coverage in value.get("translation_coverage", {}).items():
         done, total = coverage["translated"], coverage["total"]
-        share = round(100 * done / total) if total else 0
-        lines.append(rem_look.row(language, f"{done} of {total} pages translated ({share}%)"))
+        if not coverage.get("requested"):
+            outcome = "not requested"
+            from ...rem.config import read_config
+            requested = list(dict.fromkeys([*read_config(root)["languages"], language]))
+            command = ["config", "set", "languages", ",".join(requested)]
+        elif scheduled:
+            outcome, command = f"{coverage['queued']} queued for tonight", []
+        else:
+            outcome, command = "schedule off", ["start"]
+        lines.append(rem_look.row(language, f"{done} of {total} pages translated · {outcome}"))
+        if command:
+            lines.append(rem_look.follow(style.command(spell(command))))
     return lines
+
+
+def _turns_said(count: int, empty: int) -> str:
+    """"turns failed", and how many of them ran to the end with nothing to show for it."""
+    if empty == count:
+        return 'turn ran but produced nothing' if count == 1 else 'turns ran but produced nothing'
+    failed = 'turn failed' if count == 1 else 'turns failed'
+    return f"{failed} ({empty} ran but produced nothing)" if empty else failed
 
 
 def _today(root, value: dict) -> list[str]:
@@ -273,17 +423,49 @@ def _today(root, value: dict) -> list[str]:
     changed = len({page for record in recent for page in record.get("changed") or []})
     items = sum(record.get("items") or 0 for record in recent if isinstance(record.get("items"), int))
     runs = value.get("batches_today", 0)
+    warning = value.get('schedule_failure')
+    action = ('Resolve the blocker, then run co rem start.' if warning and warning['code'] == 'blocked'
+              else 'Retried automatically.')
+    failure = [highlight(f"Last scheduled turn did not finish: {warning['evidence']} · {action}")] if warning else []
+    if warning and warning.get('failures'):
+        count = warning['failures']
+        since = _local(root, warning['since'])
+        if (warning.get('stuck') or {}).get('handled'):
+            failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
+                                 f"since {since}, on one page. {_handled_said(value)}")]
+        else:
+            failure = [highlight(f"Background: the last {count} {_turns_said(count, warning.get('empty', 0))}, "
+                                 f"since {since}. Last error: {warning['evidence']}. Next: co rem logs")]
     if not runs:
-        return [rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
+        return [*failure, rem_look.section("Today", style.muted(f"nothing ran yet ({value.get('date', '')})"))]
     usage = value.get("usage_today") or {}
     spent = ("tokens unknown" if usage.get("input_tokens") is None else
              f"{_compact(usage['input_tokens'])} tokens in · {_compact(usage.get('output_tokens') or 0)} out")
     missing = usage.get("runs_without_usage") or 0
     if missing and usage.get("input_tokens") is not None:
         spent += f" ({_plural(missing, 'run')} without usage)"
-    return [rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
+    return [*failure, rem_look.section("Today", f"{_plural(changed, 'page')} changed · {_plural(items, 'item')} read · "
                              f"{_plural(runs, 'run')}"),
             rem_look.follow(spent, glyph="")]
+
+
+def _local(root, stamp: str) -> str:
+    """An ISO instant in the notebook's own zone, with the zone's name (#3413: status said UTC to an owner in Sydney)."""
+    try:
+        moment = datetime.fromisoformat(str(stamp).replace('Z', '+00:00'))
+    except ValueError:
+        return str(stamp)
+    if moment.tzinfo is None:
+        return str(stamp)
+    local = moment.astimezone(_zone(root))
+    return f"{local:%Y-%m-%d %H:%M} {local.tzname() or ''}".rstrip()
+
+
+def _handled_said(value: dict) -> str:
+    """The installed build already sets the repeated failure aside: say so, with the next round (#3413)."""
+    upcoming = value.get('next_run')
+    when = f" ({str(upcoming)[11:16]})" if upcoming and len(str(upcoming)) >= 16 else ''
+    return f"This release already handles it; the next round{when} skips it. Nothing to do."
 
 
 def _mailboxes(root, spell=lambda arguments: "co rem " + " ".join(arguments)) -> list[str]:
@@ -334,8 +516,40 @@ def _last_run(run, zone) -> str:
     tokens = (run.get("usage") or {}).get("input_tokens")
     if tokens is not None:
         detail.append(f"{_compact(tokens)} tokens in")
+    if run.get("model") and run.get("effort"):
+        # What the worker was started at: REM passes both, so an owner's own Codex setting is not it.
+        detail.append(f"{run['model']} at {run['effort']} effort, {run.get('speed') or 'standard'}")
     return highlight(what) + " · " + highlight(outcome) + "\n" + rem_look.follow(" · ".join(detail), glyph="")
 
 
 def _compact(tokens) -> str:
     return style.count(rem_look.compact(tokens))
+
+
+def _clause_rows(text: str) -> list[str]:
+    """A stage's sentence broken after a `;` wherever the next clause would pass
+    80 columns, the rest two spaces in. The Abstract line gained its three page
+    counts and the Investigate line its shares and budget hold, and each ran past
+    the width every other row of status keeps. `--json` keeps the one sentence."""
+    import textwrap
+    rows = []
+    for clause in text.split('; '):
+        first, *rest = textwrap.wrap(clause, 78, break_on_hyphens=False, break_long_words=False)
+        if rows and len(rows[-1]) + 2 + len(first) <= 80:
+            rows[-1] += '; ' + first
+        else:
+            if rows:
+                rows[-1] += ';'
+            rows.append(('  ' if rows else '') + first)
+        rows += ['  ' + part for part in rest]
+    return rows
+
+
+def _level_rows(line: str) -> list[str]:
+    """"level 1 gpt-6-luna at medium · tag": the level in the margin, its stages
+    wrapped under the model so status stays 80 columns wide. "investigate ..." is
+    the level investigation has to itself."""
+    import textwrap
+    label, value = (line[:7], line[8:]) if line.startswith("level ") else line.split(" ", 1)
+    first, *rest = textwrap.wrap(value, 80 - rem_look.COLUMN, break_on_hyphens=False)
+    return [rem_look.row(label, first), *(" " * rem_look.COLUMN + part for part in rest)]

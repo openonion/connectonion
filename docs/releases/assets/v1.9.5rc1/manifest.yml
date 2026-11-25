@@ -1,0 +1,2 @@
+version: v1.9.5rc1
+no_visual_change: "Adds a small Updates waiting mark and Ask Codex to look buttons drawn from the existing Fuse tokens; page layout is unchanged from 1.9.3, whose visuals stand."

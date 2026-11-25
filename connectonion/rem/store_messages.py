@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
+from contextlib import closing
 from functools import lru_cache
 from pathlib import Path
 
@@ -16,6 +18,17 @@ from .files import read_json, state_path
 from .store_build import dumps, insert, map_state, thread_key, utc
 
 PREFIX = re.compile(r"^\s*(?:re|fw|fwd|aw|sv|回复|答复|转发)\s*[:：]\s*", re.I)
+
+
+def has_message_index(file: Path, *, required=frozenset({
+    'id', 'thread', 'source', 'time', 'sender', 'subject', 'body_path', 'body_line', 'recipients',
+})) -> bool:
+    """A legacy notebook can have a database without the archived-message schema."""
+    if not file.is_file():
+        return False
+    with closing(sqlite3.connect(file.absolute().as_uri() + '?mode=ro', uri=True)) as db:
+        columns = {row[1] for row in db.execute('pragma table_info(messages)')}
+    return required <= columns
 
 
 def subject_key(subject: str) -> str:
@@ -49,7 +62,7 @@ def _mail_row(root: Path, row: dict, owner: set) -> dict:
     return {"id": f"{provider}:{message_id}", "source": provider, "thread": thread,
             "sender": sender, "recipients": dumps(to + cc), "time": utc(row.get("date", "")),
             "subject": row.get("subject", ""), "body_line": None,
-            "body_path": str(path.relative_to(root / ".state")) if path.is_file() else None}
+            "body_path": path.relative_to(root / ".state").as_posix() if path.is_file() else None}
 
 
 def build_mail(db, root: Path) -> None:
@@ -72,7 +85,7 @@ def build_sessions(db, root: Path) -> None:
             rows.append({"id": message["source"], "source": message.get("tool", ""),
                          "thread": "session:" + message["source"].rsplit(":", 1)[0], "sender": owner,
                          "recipients": dumps([message.get("tool", "")]), "time": utc(message.get("timestamp", "")),
-                         "subject": record, "body_path": str(path.relative_to(root / ".state")), "body_line": number})
+                         "subject": record, "body_path": path.relative_to(root / ".state").as_posix(), "body_line": number})
     db.execute("delete from messages where thread like 'session:%'")
     insert(db, "messages", rows)
 

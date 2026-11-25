@@ -34,7 +34,7 @@ def _invalid_args(source, kind):
     return [*group, PRIVATE_VALUE if kind == "unknown-command" else "--" + PRIVATE_VALUE]
 
 
-@pytest.mark.parametrize("source", ["jira", "onenote"])
+@pytest.mark.parametrize("source", ["jira"])
 @pytest.mark.parametrize("kind", ["missing", "unknown-option", "bad-value", "unknown-command", "group-option"])
 @pytest.mark.parametrize("as_json", [True, False], ids=["json", "human"])
 def test_usage_error_without_core_click_is_safe(source, kind, as_json, caplog):
@@ -56,7 +56,7 @@ def test_usage_error_without_core_click_is_safe(source, kind, as_json, caplog):
 
 @pytest.mark.parametrize("args", [
     ["jira", "--help"], ["jira", "sync", "--help"],
-    ["onenote", "source", "--help"], ["onenote", "source", "sync", "--help"],
+    ["jira", "changes", "--help"], ["jira", "show", "--help"],
 ])
 def test_help_without_core_click_still_exits_zero(args):
     result = CliRunner().invoke(app, args)

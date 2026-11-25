@@ -31,21 +31,24 @@ def test_numbered_card_source_opens_as_text_without_rewriting_page(tmp_path, mon
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 1280, 'height': 900})
         page.goto(path.as_uri() + '#r=people%2Felara-finch.md')
-        assert page.locator('details.deep-note').get_attribute('open') is None
-        page.locator('details.deep-note > summary').click()
+        assert page.locator('details.deep-note').get_attribute('open') is not None
         cite = page.locator('a.cite[href$="h=src-1"]').first
         assert cite.count() > 0
+        # A profile card's sources are one hover away (#3131): point at the row, then follow its mark.
+        if cite.evaluate("n => !!n.closest('.pc-row')"):
+            page.locator('.pc-row', has=cite).first.hover()
         assert source in cite.get_attribute('title')
         cite.click()
         panel = page.locator('#evidence-panel')
-        assert source in panel.inner_text()
+        # The card shows its description in the reader's own date form (#3201), with the angle brackets kept as text.
+        assert source.replace('2026-11-01', 'Nov 1') in panel.inner_text()
         assert not panel.locator('card').count()
         assert "The original isn't in this snapshot." not in panel.inner_text()
         page.get_by_role('button', name='Close source context').click()
         assert cite.evaluate('e => e === document.activeElement')
         page.set_viewport_size({'width': 375, 'height': 812})
         cite.click()
-        assert source in panel.inner_text()
+        assert source.replace("2026-11-01", "Nov 1") in panel.inner_text()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         browser.close()
     assert notebook.read('people/elara-finch.md') == text
@@ -74,10 +77,11 @@ def test_attachment_source_keeps_filename_spaces_and_shows_extraction_limits(tmp
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page(viewport={'width': 375, 'height': 812})
         page.goto(path.as_uri() + '#r=people%2Fmentor.md')
-        assert page.locator('details.deep-note').get_attribute('open') is None
-        page.locator('details.deep-note > summary').click()
+        assert page.locator('details.deep-note').get_attribute('open') is not None
         assert page.locator('.block-sources .source-open').evaluate('e => e.getBoundingClientRect().height >= 44')
-        assert page.locator('.block-sources .id').inner_text() == source
+        # #3104: the row names the file; the raw id is the row's tooltip.
+        assert page.locator('.deep-sources .src-title').inner_text().startswith('Returned client agreement.pdf')
+        assert page.locator('.deep-sources li#src-15').get_attribute('title') == source
         cite = page.locator('a.cite[href$="h=src-15"]').first
         cite.click()
         dialog = page.locator('#evidence-panel')
@@ -111,7 +115,6 @@ def test_absolute_skill_artifact_links_open_as_local_files(tmp_path, monkeypatch
         browser = api.chromium.launch(channel='chrome', headless=True)
         page = browser.new_page()
         page.goto(page_path.as_uri() + '#r=skills%2Fcatalog%2Fwriter.md')
-        page.locator('details.deep-note > summary').click()
         link = page.get_by_role('link', name='Read the draft')
         assert link.get_attribute('href') == artifact.as_uri()
         assert not page.locator('.dead-link').count()
@@ -145,17 +148,20 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.route("http://**/*", lambda route: route.abort())
             page.route("https://**/*", lambda route: route.abort())
             page.goto(page_path.as_uri())
-            page.locator(".brief-header h1").wait_for()
+            page.locator("#main .count-line .count").wait_for()
             page.screenshot(path=str(shots / "rem-desktop.png"), full_page=True)
             page.locator('#nav a[href="#c=projects"]').click()
             page.locator("#main").get_by_role("link", name="Aurora", exact=True).first.click()
-            assert page.locator(".next-exchanges .thread").count() == 0
-            assert page.locator(".next-exchanges .empty-line").inner_text().startswith("No confirmed pending work")
+            # A project page is a map: no open-work rows and no Mark done; open work lives in Today (#3096).
+            page.locator(".record-focus.projects").first.wait_for()
+            assert page.locator(".next-exchanges .thread, #main .thread-actions").count() == 0
+            assert "Mark done" not in page.locator("#main").inner_text()
             page.goto(page_path.as_uri() + "#view=open")
             assert "nothing open" in page.locator("#main").inner_text().lower()
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
-            page.locator('details.deep-note > summary').click()
-            page.locator("#main").get_by_role("link", name="Storage", exact=True).click()
+            assert page.locator('details.deep-note').get_attribute('open') is not None
+            # Related trailers sit beside .note inside Full memory, folded by default.
+            page.locator("details.deep-note .aside .related").get_by_role("link", name="Storage", exact=True).click()
             page.get_by_role("heading", name="Storage", exact=True).wait_for()
             assert "inspectability" in page.locator("#main").inner_text()
             assert page.evaluate("window.wikiInjected === undefined")
@@ -163,8 +169,8 @@ def test_file_reader_navigation_search_and_mobile(tmp_path, monkeypatch):
             page.locator("#main").get_by_role("link", name="Storage", exact=True).wait_for()
             page.set_viewport_size({"width": 375, "height": 812})
             page.goto(page_path.as_uri() + "#r=projects%2Faurora.md")
-            assert page.locator(".next-exchanges .thread").count() == 0
-            assert page.locator(".next-exchanges .empty-line").is_visible()
+            page.locator(".record-focus.projects").first.wait_for()
+            assert page.locator(".next-exchanges .thread, #main .thread-actions").count() == 0
             page.screenshot(path=str(shots / "rem-mobile.png"), full_page=True)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             assert not errors, errors
@@ -191,7 +197,7 @@ def test_reader_runs_inside_opaque_rem_iframe(tmp_path, monkeypatch):
         page.locator("iframe").evaluate("(frame, content) => frame.srcdoc = content",
                                          html.replace("<head>", "<head>" + csp))
         frame = page.frame_locator("iframe")
-        frame.locator(".brief-header h1").wait_for()
+        frame.locator("#main .count-line .count").wait_for()
         assert frame.locator('.today-brief').is_visible()
         assert frame.locator("body").evaluate("body => getComputedStyle(body).fontFamily")
         browser.close()
@@ -278,24 +284,25 @@ def test_reader_preserves_code_and_nested_lists(reader_page):
 def test_private_sentences_can_be_hidden_and_restored(reader_page):
     page, _, _ = reader_page
     private = page.locator(".note .private")
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    assert private.count() == 1 and not private.is_visible()
-    page.locator('details.deep-note > summary').click()
+    # #3104: the full memory is open on arrival, so the labelled passage shows until hidden.
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     assert private.count() == 1 and private.is_visible()
     assert "family plan" in private.inner_text()
-    page.locator(".reader-settings > summary").click()
-    page.get_by_role("button", name="Hide labelled passages").click()
-    assert not private.is_visible()
-    page.get_by_role("button", name="Show labelled passages").click()
-    assert private.is_visible()
+    # #2840: the top bar's privacy control, not a settings switch. Public only takes the passage out of the page;
+    # Show all brings it back from the notebook.
+    page.locator("#privacy-level").click()
+    page.get_by_role("menuitemradio", name="Public only").click()
+    assert page.locator(".note .private").count() == 0 and "family plan" not in page.locator(".note").inner_html()
+    page.locator("#privacy-level").click()
+    page.get_by_role("menuitemradio", name="Show all").click()
+    assert page.locator(".note .private").count() == 1 and page.locator(".note .private").is_visible()
 
 
 @pytest.mark.parametrize("width,height", [(375, 812), (768, 1024), (1440, 1000)])
 def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_path, width, height):
     page, _, _ = reader_page
     page.set_viewport_size({"width": width, "height": height})
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     assert page.locator('pre').last.is_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
@@ -311,8 +318,8 @@ def test_reader_contains_overflow_and_keeps_content_visible(reader_page, tmp_pat
     shots = Path(os.environ.get("CO_REM_SHOTS", str(tmp_path / "shots")))
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / f"reader-{width}.png"), full_page=True)
-    page.locator(".brand").click()
-    page.locator(".brief-header h1").wait_for()
+    page.evaluate("location.hash = ''")  # Today (the brand on a desk, the Today tab on a phone)
+    page.locator("#main .count-line .count").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.screenshot(path=str(shots / f"contents-{width}.png"), full_page=True)
     page.emulate_media(color_scheme="dark")
@@ -324,16 +331,13 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
 
     page, _, _ = reader_page
     page.set_viewport_size({"width": 375, "height": 812})
-    page.locator('.skip').focus()
-    page.keyboard.press('Tab')
-    expect(page.locator('.brand')).to_be_focused()
-    button = page.get_by_role("button", name="Browse notebook")
+    # N3: on a phone the rail gives way to a tab bar; its 更多 opens every place as a sheet above it.
+    button = page.locator("#tabbar .nav-toggle")
     expect(button).to_have_attribute("aria-expanded", "false")
     expect(page.locator("#nav")).not_to_be_visible()
     button.focus()
     page.keyboard.press("Enter")
     expect(button).to_have_attribute("aria-expanded", "true")
-    page.keyboard.press("Tab")
     expect(page.locator("#nav a").first).to_be_focused()
     page.keyboard.press("Escape")
     expect(button).to_have_attribute("aria-expanded", "false")
@@ -342,13 +346,13 @@ def test_reader_mobile_menu_keyboard_and_resize(reader_page):
     page.locator("#nav").get_by_role("link", name="People").click()
     expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
     expect(button).to_have_attribute("aria-expanded", "false")
-    assert page.locator('#main .empty .lead').inner_text() == 'Not mapped yet'
-    assert page.locator('#main .empty a').inner_text() == 'Copy setup command'
+    assert page.locator('#main .empty .lead').inner_text() == 'No contacts yet'
+    assert page.locator('#main .empty a').inner_text() == 'Explore memory →'
     assert page.locator("#main").evaluate("e => e.getBoundingClientRect().top") < 260
     page.set_viewport_size({"width": 1440, "height": 1000})
     expect(page.locator("#nav")).to_be_visible()
     expect(button).not_to_be_visible()
-    page.set_viewport_size({"width": 768, "height": 1024})
+    page.set_viewport_size({"width": 600, "height": 1024})
     expect(page.locator("#nav")).not_to_be_visible()
 
 
@@ -356,8 +360,7 @@ def test_reader_heading_links_and_search_state(reader_page):
     from patchright.sync_api import expect
 
     page, _, _ = reader_page
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     page.get_by_role("link", name="Jump within").click()
     page.wait_for_function("location.hash.includes('h=next-steps') && scrollY > 0")
     assert page.locator('details.deep-note').get_attribute('open') is not None
@@ -384,8 +387,7 @@ def test_reader_nested_fences_keep_literal_metadata(reader_page):
     page, _, _ = reader_page
     page.goto(page.url.split("#")[0] + "#r=projects%2Fnested.md")
     page.get_by_role("heading", name="Nested example", exact=True).wait_for()
-    assert page.locator('details.deep-note').get_attribute('open') is None
-    page.locator('details.deep-note > summary').click()
+    assert page.locator('details.deep-note').get_attribute('open') is not None
     assert page.locator("pre").text_content() == "Sources: nested literal\n\n\nRelated: nested literal"
     assert "nested literal" not in page.locator(".aside").inner_text()
     assert "codex:actual" in page.locator(".aside").inner_text()
@@ -406,9 +408,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
     with sync_playwright() as api:
         browser=api.chromium.launch(channel='chrome',headless=True)
         page=browser.new_page();page.goto(path.as_uri())
-        assert page.locator('#nav a[href="#c=all"] .n').inner_text() == '1'
-        page.locator('#nav a[href="#c=all"]').click()
-        assert page.locator('.hits > li').count() == 1
+        page.locator('#nav a[href="#c=skills"]').click()
+        page.locator('.skills-view a[href^="#r=skills%2Fcatalog%2F"]').wait_for()
+        assert page.locator('.skills-view a[href^="#r=skills%2Fcatalog%2F"]').count() == 1
         page.locator('#q').fill('Demo');page.wait_for_function("document.querySelectorAll('.hits > li').length === 1")
         assert page.locator('.hits > li').count()==1
         # Since #1976 a skill installed twice is one catalog page; its copies are listed on it.
@@ -417,9 +419,9 @@ def test_catalog_search_and_root_command_regressions(tmp_path):
         page.evaluate('''() => {
           copyToClipboard = command => { window.copiedCommand = command; };
         }''', isolated_context=False)
-        page.locator('#main .empty a').click()
-        command = page.evaluate('window.copiedCommand', isolated_context=False)
-        assert shlex.split(command)==['co','rem','--root',str(root),'init','--mail','outlook']
+        # D-60 (build 3b review): Reader settings no longer carries the People review command.
+        page.locator('.settings-open').click()
+        assert page.locator('.reader-settings .cmd').count() == 0
         browser.close()
 
 
@@ -440,13 +442,302 @@ def test_review_candidates_are_readable_and_inert(reader_page, tmp_path):
     page.goto(path.as_uri() + "#reviews=1")
     page.get_by_role('heading', name='Questions & connections', exact=True).wait_for()
     assert page.locator('#main img').count() == 0
-    command = page.locator('#main code').first.inner_text()
-    import shlex
-    assert shlex.split(command)[3] == "/synthetic/owner's co rem"
-    assert '--verdict yes' in command
+    # D-60: a snapshot decides nothing and copies nothing; one plain line says where deciding happens.
+    assert page.locator('#main code, #main .cmd, .review button').count() == 0
+    assert page.get_by_text('This is a snapshot; decide these on the live page.', exact=True).count() == 1
+    assert 'co rem' not in page.locator('#main').inner_text()
     shots = Path(os.environ.get('CO_REM_SHOTS', '/tmp/rem-review-shots'))
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / 'reviews-desktop.png'), full_page=True)
     page.set_viewport_size({'width': 375, 'height': 812})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path=str(shots / 'reviews-mobile.png'), full_page=True)
+
+
+@pytest.mark.parametrize('width', [390, 1440])
+@pytest.mark.parametrize('language', ['en', 'zh'])
+@pytest.mark.parametrize('live', [False, True])
+def test_today_draft_coverage_slots_and_honest_snapshot_actions(tmp_path, monkeypatch, width, language, live):
+    from datetime import datetime, timezone
+    from patchright.sync_api import sync_playwright
+    from connectonion.rem import drafts, reader as rem_reader, service
+    from connectonion.rem.files import state_path, write_json
+    from connectonion.rem.mail_archive import retain_message
+    from connectonion.rem.store import refresh
+
+    root = tmp_path / 'fictional notebook'
+    prepare(root)
+    moment = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'now', lambda: moment)
+    monkeypatch.setattr(service, 'mail_available', lambda kind: False)
+    write_json(state_path(root, 'map.json'), {'owner': {'record': 'people/owner.md', 'addresses': ['owner@example.test']}})
+    book = Notebook(root)
+    book.write('people/owner.md', '# Ellis\n')
+    for index, (name, provider) in enumerate([('Fern', 'gmail'), ('Mara', 'gmail'), ('Hazel', 'outlook'), ('Nova', 'gmail'), ('Avery', 'outlook')]):
+        book.write(f'people/{index}-{name.lower()}.md', f'# {name}\n\n## Facts\n- Email: {name.lower()}@example.test\n\n'
+                   f'## Open threads\n- You owe {name} a demo review; due 2026-11-08. [1]\n\n'
+                   f'## Sources\n- [1] {provider}:{name.lower()}\n')
+        if name != 'Hazel':
+            retain_message(root, provider, {'id': name.lower(), 'from': name.lower() + '@example.test',
+                           'to': ['owner@example.test'], 'subject': 'Demo review', 'thread': name.lower(),
+                           'date': '2026-11-07T01:00:00+00:00'}, 'Please send your feedback.', fetched_at=moment.isoformat())
+    retain_message(root, 'gmail', {'id': 'promise', 'from': 'owner@example.test', 'to': ['mara@example.test'],
+                   'subject': 'Demo review', 'thread': 'mara', 'date': '2026-11-07T02:00:00+00:00'},
+                   "I'll watch the demo and send feedback.", fetched_at=moment.isoformat())
+    retain_message(root, 'outlook', {'id': 'answered', 'from': 'owner@example.test', 'to': ['avery@example.test'],
+                   'subject': 'Demo review', 'thread': 'avery', 'date': '2026-11-07T02:00:00+00:00'},
+                   '--- Email Body ---\nHi Avery,\nFriday works. I have sent a calendar invite.\n'
+                   'https://example.test/invite\nThanks,\nEllis\n> Please choose a time.', fetched_at=moment.isoformat())
+    refresh(root)
+    row = next(row for row in drafts.queue(root) if row['to'] == 'fern@example.test')
+    drafts.promote(root, {**row, 'body': 'Hello Fern,\n\nThe demo is clear. 【需要你：演示反馈 — date not agreed】',
+                         'sources': ['gmail:fern']})
+    snapshot = rem_reader.snapshot
+
+    def frozen_snapshot(root, local=False, today=False):
+        data = snapshot(root, local, today=today)
+        data['as_of'] = moment.isoformat()
+        data['status']['worker']['enabled'] = True
+        data['status']['mailboxes']['outlook'] = 'last read failed 2026-11-07'
+        return data
+
+    monkeypatch.setattr(rem_reader, 'snapshot', frozen_snapshot)
+    path = tmp_path / 'reader.html'
+    path.write_text(rem_reader.render(root, local=True))
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': width, 'height': 900})
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(path.as_uri())
+        page.evaluate(r'''({language, live}) => {
+          REM.live = live;
+          window.draftRequests = [];
+          const template = REM.drafts.find(d => d.status === 'prepared');
+          window.fetch = async (url, options) => {
+            const request = JSON.parse(options.body); draftRequests.push(request);
+            // /rem/approve answers per approval, as the Host does; the full-screen writer now waits for that answer.
+            const result = request.action === 'prepare'
+              ? {...template, id: 'nova-ready', thread: 'mail:gmail:nova',
+                  to: 'nova@example.test', body: 'The demo is ready.', status: 'prepared'}
+              : request.ids ? {results: request.ids.map(id => ({id, status: 'sent'}))} : {status: 'sent'};
+            return {ok: true, json: async () => result};
+          };
+          setInterfaceLanguage(language);
+        }''', {'language': language, 'live': live}, isolated_context=False)
+        cards = page.locator('.qcard')
+        letter = cards.filter(has=page.locator('.today-who', has_text='Fern'))
+        task = cards.filter(has=page.locator('.today-who', has_text='Mara'))
+        missing = cards.filter(has=page.locator('.today-who', has_text='Hazel'))
+        queued = cards.filter(has=page.locator('.today-who', has_text='Nova'))
+        answered = cards.filter(has=page.locator('.today-who', has_text='Avery'))
+
+        def open_card(card):
+            # N3: a card waiting behind its face is dealt onto the desk; its action and draft are then in reach.
+            if 'focal' not in card.get_attribute('class').split():
+                page.locator('.deal[data-path="%s"]' % card.get_attribute('data-path')).click()
+        assert letter.locator('.owner-slot').count() == 1
+        # Build 3b: the "需要你填" box became a row to answer in, named by what REM needs.
+        assert letter.locator('.owner-slot').get_attribute('role') == 'group'
+        assert '演示反馈' in letter.locator('.owner-slot').inner_text()
+        assert "I'll watch the demo and send feedback." in task.locator('.draft-reason').inner_text()
+        display_date = page.evaluate("fmtDate('2026-11-07')", isolated_context=False)
+        assert display_date in task.locator('.draft-reason').inner_text()
+        assert task.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
+        assert letter.locator('.kind-badge').inner_text() == ('Gmail 回信' if language == 'zh' else 'Gmail reply')
+        assert answered.locator('.outlook-mark').get_attribute('aria-label') == ('Outlook 回信' if language == 'zh' else 'Outlook reply')
+        # The row REM thinks is answered leads with Mark done, its strip's own button. This page is a file:// snapshot,
+        # which keeps no mark (#2990 review), so it is shown disabled and the card says why in words.
+        lead = answered.locator('.strip-done.strip-lead')
+        assert lead.text_content() == ('标为完成' if language == 'zh' else 'Mark done') and lead.is_disabled()
+        assert ('打开 REM 后才能标记' if language == 'zh' else 'open REM to mark it') in answered.inner_text()
+        assert answered.locator('.card-acts button').first.text_content() == ('还没办完' if language == 'zh' else 'Not done yet')
+        assert answered.locator('.card-acts a.btn-quiet').get_attribute('href').endswith('/answered')
+        answer_note = answered.locator('.draft-reason').inner_text()
+        # The cleaned owner quote selects one sentence (or a future commitment)
+        # rather than copying the full message. The source link above keeps it available.
+        assert '“Friday works.”' in answer_note
+        assert ('已回复' if language == 'zh' else 'replied') in answer_note
+        assert all(raw not in answer_note for raw in ('Email Body', 'https://', 'Please choose', 'Ellis'))
+        assert ('上次读取失败' if language == 'zh' else 'last read failed') in missing.locator('.draft-reason').inner_text()
+        # REM cannot draft from an unarchived message: writing, else only the quiet way to the thread (sprint 14
+        # removed "Open {name}": the name above already opens the page).
+        assert missing.locator('.card-acts > :first-child').text_content() in (
+            ['回复 Hazel', '打开 Outlook 原会话'] if language == 'zh' else ['Reply to Hazel', 'Open the Outlook thread'])
+        if live:  # Draft now drafts now: no "queued for tonight" beside it.
+            assert queued.locator('.draft-reason').count() == 0
+        else:
+            note = queued.locator('.draft-reason').inner_text()
+            assert ('今晚' if language == 'zh' else 'tonight') in note and 'co rem' not in note  # D-60: no command
+        open_card(letter)
+        if live:
+            # An unanswered question no longer greys Send (#3312 E replaces the aria-disabled look the owner read as
+            # dead): Send stays the filled button, the hint names what is left, and nothing is sent until it is answered.
+            assert not letter.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).is_disabled()
+            # Sprint 13: the hint names what is left to choose, in the reader's language.
+            assert ('处要选：' if language == 'zh' else ' left: ') in letter.locator('.choose-hint').inner_text()
+            assert page.evaluate('draftRequests.length', isolated_context=False) == 0
+        else:
+            # D-60 (build 3b review): Send disabled, no command anywhere on the page, one plain line says why.
+            assert letter.locator('.mail-actions button:visible').all_inner_texts() == ['发送' if language == 'zh' else 'Send']
+            assert letter.locator('.mail-actions .btn-act').is_disabled()
+            assert page.locator('.cmd, code').count() == 0
+            assert page.locator('.snapshot-line').count() == 1
+            assert letter.locator('.mail-channels button').count() == 0
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        evidence = Path('/tmp/rem-draft-coverage')
+        evidence.mkdir(exist_ok=True)
+        page.screenshot(path=str(evidence / f'today-{language}-{width}-{"live" if live else "snapshot"}.png'), full_page=True)
+        if live:
+            # In sight beside Send, not behind the letter's 更多 (sprint 22).
+            letter.get_by_role('button', name='全屏写' if language == 'zh' else 'Write full screen').click()
+            dialog = page.locator('dialog.writer')
+            dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            assert dialog.is_visible()
+            # Full screen names REM's open question and points to its choices on the right (#3312 E, F).
+            assert ('先在右边回答 REM 的问题' if language == 'zh' else "Answer REM's question on the right first") in dialog.inner_text()
+            dialog.locator('.writer-body').fill('The demo is ready for release.')
+            dialog.get_by_role('button', name='发送' if language == 'zh' else 'Send', exact=True).click()
+            # dialog.close() dispatches its removal through the close event.
+            dialog.wait_for(state='detached')
+            assert not dialog.count()
+            # Send is the approval and holds the reply 10 minutes with Undo (D-101, build 3b): the Host lists an
+            # approval for this draft, so the edited text goes to /rem/approve under that approval's id.
+            request = page.evaluate('draftRequests[0]', isolated_context=False)
+            outcome = page.evaluate("REM.approval_pending.concat(REM.approval_outcomes).find(o => o.draft_id === REM.drafts.find(d => d.to === 'fern@example.test').id).id",
+                                    isolated_context=False)
+            assert request == {'ids': [outcome], 'bodies': {outcome: 'The demo is ready for release.'}}
+            open_card(queued)
+            queued.get_by_role('button', name='现在起草' if language == 'zh' else 'Draft now', exact=True).click()
+            assert queued.locator('.mail-text').inner_text() == 'The demo is ready.'
+        assert not errors, errors
+        browser.close()
+
+
+def test_full_memory_opens_with_a_short_named_source_band(tmp_path, monkeypatch):
+    """#3104: memory open on arrival; sources named, top 10 shown, filterable, linked both ways with their lines."""
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    sources = [f'- [{n}] file:/notes/plan-{n}.md — 2026-10-{n:02d}' for n in range(1, 25)]
+    sources.append('- [25] codex:01a1a594-aaaa-bbbb-cccc-dddddddddddd:200924-7da282f4')
+    text = ('# Wren Hale\n\n## Facts\n- Email: wren.hale.long.address@example-mail.test [1]\n- Phone: Unknown\n- Location: Unknown\n\n'
+            '## Who they are\nWren plans the venue [3]. Wren confirmed it [3]. Wren moved the date [5][6].\n\n'
+            '## Sources\n' + '\n'.join(sources) + '\n')
+    Notebook(root).write('people/wren-hale.md', text)
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 1440, 'height': 900})
+        page.goto(path.as_uri() + '#r=people%2Fwren-hale.md')
+        page.locator('.deep-sources').wait_for()
+        assert page.locator('details.deep-note').get_attribute('open') is not None
+        band = page.locator('.deep-sources')
+        assert band.locator('h2#sources').count() == 1
+        rows = band.locator('li.src-row:visible')
+        assert rows.count() == 10
+        # The most cited row leads, and says how often.
+        assert rows.first.get_attribute('id') == 'src-3'
+        assert rows.first.locator('.src-cited').inner_text() == 'Cited 2×'
+        assert rows.first.locator('.src-title').inner_text() == 'plan-3.md'
+        assert 'file:/notes/plan-3.md' == rows.first.get_attribute('title')
+        assert rows.first.locator('.src-meta').inner_text().startswith('File · ')  # kind, then the date once
+        assert band.locator('.src-filter').count() == 1
+        band.locator('.src-more').click()
+        assert rows.count() == 25
+        band.locator('.src-kinds button[data-kind="session"]').click()
+        assert rows.count() == 1 and rows.first.get_attribute('id') == 'src-25'
+        band.locator('.src-kinds button[data-kind="all"]').click()
+        band.locator('.src-filter').fill('plan-12')
+        assert rows.count() == 1 and rows.first.get_attribute('id') == 'src-12'
+        # From a line's mark to its row, and from the row back to the line.
+        page.locator('.note a.cite[data-sources="5 6"]').first.click()
+        page.get_by_role('button', name='Show in sources').click()
+        assert page.locator('#src-5').is_visible() and page.locator('#src-6').is_visible()
+        assert 'flash' in page.locator('#src-5').get_attribute('class')
+        page.locator('#src-3 .src-cited').click()
+        page.wait_for_function("document.querySelector('.note a.cite[data-sources=\"3\"]').getBoundingClientRect().top < innerHeight")
+        # Facts are the profile card alone (#3131): empty fields are named in its tooltip, never as rows.
+        assert page.locator('.factlist').count() == 0
+        card = page.locator('.person-head .pcard')
+        assert 'Unknown' not in card.inner_text() and 'not found' not in card.inner_text()
+        missing = card.get_attribute('title')
+        assert 'not found: Phone' in missing and 'Location' in missing
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.set_viewport_size({'width': 390, 'height': 844})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_a_source_title_opens_its_original_in_the_side_card(tmp_path, monkeypatch, width):
+    """#3134 (owner, 2026-11-19): clicking a source's title in the Sources band shows the original mail as a card,
+    as every source did before the band. From the list there is no line of the page to quote, so no 'On this page'."""
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    mail = 'gmail:18f0aa11bb22cc33'
+    text = ('# Wren Hale\n\n## Facts\n- Email: wren@example.test [1]\n\n## Who they are\nWren plans the venue [1]. '
+            'Wren sent the plan [2].\n\n## Sources\n- [1] ' + mail + '\n- [2] file:/notes/plan.md — 2026-10-02\n')
+    Notebook(root).write('people/wren-hale.md', text)
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': width, 'height': 900 if width > 400 else 844})
+        page.goto(path.as_uri() + '#r=people%2Fwren-hale.md')
+        page.evaluate("""mail => {
+          REM.source_context = REM.source_context || {};
+          REM.source_context[mail] = { source: 'gmail', subject: 'Venue contract for March', from: 'Wren Hale <wren@example.test>',
+            time: '2026-10-01T09:00:00Z', excerpt: 'Hi, the venue is booked for March. Contract attached.' };
+          KNOWN.clear(); render();
+        }""", mail, isolated_context=False)
+        title = page.locator('.deep-sources li#src-1 .src-title')
+        assert title.inner_text() == 'Venue contract for March'
+        title.click()
+        panel = page.locator('#evidence-panel')
+        panel.wait_for(state='visible')
+        assert 'the venue is booked for March' in panel.inner_text()
+        assert panel.locator('.evidence-claim').count() == 0  # nothing of the page to quote from the list
+        assert 'null' not in panel.inner_text() and 'undefined' not in panel.inner_text()
+        if os.environ.get('REM_PR_SHOTS'):
+            page.screenshot(path=os.path.join(os.environ['REM_PR_SHOTS'], f'source-card-{width}.png'))
+        page.keyboard.press('Escape')
+        assert not panel.is_visible()
+        assert page.evaluate("document.activeElement.closest('li')?.id") == 'src-1'  # focus returns to the title
+        page.locator('.deep-sources li#src-2 .src-title').click()
+        panel.wait_for(state='visible')
+        assert panel.locator('.evidence-claim').count() == 0
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()
+
+
+def test_a_decisions_translated_title_shows_in_its_list_head_and_search(tmp_path, monkeypatch):
+    """#3142 (owner, 2026-11-19): decision titles stayed English in the Chinese reader."""
+    from patchright.sync_api import sync_playwright
+
+    monkeypatch.setattr('connectonion.rem.service.mail_available', lambda kind: False)
+    root = tmp_path / 'rem'
+    prepare(root)
+    Notebook(root).write('decisions/notebook-format.md', '# Keep the notebook in Markdown\n\n## Decision\nKeep Markdown.\n')
+    path = write_reader(root)
+    with sync_playwright() as api:
+        browser = api.chromium.launch(channel='chrome', headless=True)
+        page = browser.new_page(viewport={'width': 1440, 'height': 900})
+        page.goto(path.as_uri() + '#c=decisions')
+        page.evaluate("""() => { const r = byPath('decisions/notebook-format.md');
+          r.translations = { zh: '# 笔记本保持 Markdown 格式\\n\\n## Decision\\n保留 Markdown。\\n' }; setInterfaceLanguage('zh'); }""",
+                      isolated_context=False)
+        assert '笔记本保持 Markdown 格式' in page.locator('#main').inner_text()
+        assert 'Keep the notebook in Markdown' not in page.locator('#main').inner_text()
+        page.goto(path.as_uri() + '#r=decisions%2Fnotebook-format.md')
+        page.evaluate("""() => { const r = byPath('decisions/notebook-format.md');
+          r.translations = { zh: '# 笔记本保持 Markdown 格式\\n\\n## Decision\\n保留 Markdown。\\n' }; setInterfaceLanguage('zh'); }""",
+                      isolated_context=False)
+        assert page.locator('#main h1').first.inner_text() == '笔记本保持 Markdown 格式'
+        page.evaluate("setInterfaceLanguage('en')", isolated_context=False)
+        assert page.locator('#main h1').first.inner_text() == 'Keep the notebook in Markdown'
+        browser.close()

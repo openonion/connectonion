@@ -1,5 +1,43 @@
 # Jira
 
+## Live source reads for REM (#3249 / DD-081)
+
+Configure your site and account using `co jira verify --help`, enter the token
+through hidden terminal input, then verify and list accessible projects:
+
+```sh
+co jira verify
+co jira projects
+co jira changes --project ALPHA --issues ALPHA-1 --since 2026-11-01T00:00:00Z --json
+co jira show ALPHA-1 --project ALPHA --json
+```
+
+Replace ALPHA/ALPHA-1 with your explicitly selected project and issue. Omitting
+`--issues` reads changes throughout the named project; omitting `--project` on
+`changes` is an error. `show` selects one issue by its key; optional `--project`
+rejects a cross-project key before a request. Neither command writes local files
+or changes Jira. Tokens use the existing selected environment/secret store.
+
+`changes` emits `{since, until, scope, items}`. Each item has `id`, `version`,
+`time`, `title`, `link`. `show` emits `id`, `title`, `text` (description rendered
+from ADF), `author`, `author_id`, `time`, `link`, `source` and `version`.
+Comments, attachments and change history are not read by these two commands.
+Version is a content hash of the returned representation, not a saved version.
+Use `until` for the next `--since`; boundaries are inclusive, so deduplicate by
+id/version. No cursor is persisted by the commands.
+
+JSON is stdout only; next-step/error messages go to stderr. Exit 0 includes an
+empty change list; source failures exit 1 without a partial list; parser errors
+exit 2. Inaccessible/deleted issues are reported as unavailable, not proved
+deleted. Cite `jira:ALPHA-1` and re-read through `co jira show ALPHA-1 --json`.
+The current content may have changed; there is no historical snapshot fallback.
+
+Source selection and consent remain REM's responsibility. This PR removes the
+old Python Jira intake branches; it does not claim that the generic nightly
+caller, source audit or Reader live citation routing has been verified for Jira.
+
+## Separate manual exports
+
 `co jira` reads Jira Cloud projects, selected issues and issue history. Imports
 save local source records; they never modify Jira resources.
 

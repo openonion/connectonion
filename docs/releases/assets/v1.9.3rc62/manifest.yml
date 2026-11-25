@@ -1,0 +1,34 @@
+version: v1.9.3rc62
+images:
+- file: rem-today.png
+  alt: 'Today: who is waiting, with what REM did overnight beside it'
+  caption: The first screen leads with how many people wait and who is most overdue;
+    each person's items share one card.
+  scenario: Open Today in the fictional notebook at 1440x1000.
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 82d3b7fdb626ac7c57dad3aa3194fdb15035c624
+  source_run: 'local: python scripts/capture_193rc62_release_reader.py docs/releases/assets/v1.9.3rc62'
+- file: rem-projects-timeline.png
+  alt: Projects as a timeline of real session ticks, grouped by health
+  caption: One REM sentence leads; sessions are ticks; a dashed forecast runs right
+    of today; red is kept for an overdue promise.
+  scenario: Open Projects (timeline view).
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 82d3b7fdb626ac7c57dad3aa3194fdb15035c624
+  source_run: 'local: python scripts/capture_193rc62_release_reader.py docs/releases/assets/v1.9.3rc62'
+- file: rem-graph.png
+  alt: 'The knowledge graph: kind by shape, the rest dimmed around a focus'
+  caption: Records and their links in one settled map; search focuses a record and
+    its neighbours.
+  scenario: Open the graph view.
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 82d3b7fdb626ac7c57dad3aa3194fdb15035c624
+  source_run: 'local: python scripts/capture_193rc62_release_reader.py docs/releases/assets/v1.9.3rc62'
+- file: rem-org-record.png
+  alt: An organisation's page as its record
+  caption: The name and summary lead; people and roles, structure and a contact time
+    line follow; to-dos stay in Today.
+  scenario: Open orgs/fernhill-labs.md.
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 82d3b7fdb626ac7c57dad3aa3194fdb15035c624
+  source_run: 'local: python scripts/capture_193rc62_release_reader.py docs/releases/assets/v1.9.3rc62'

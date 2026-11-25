@@ -1,4 +1,4 @@
-> **Preview 1.9.3rc22.** This reference includes the send-budget and status behavior in this opt-in preview; stable remains 1.9.2. See [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.3rc22).
+> **Preview 1.9.7rc26.** Attachment commands require this candidate and the matching mail backend. See the [release notes](https://github.com/openonion/connectonion/releases/tag/v1.9.7rc26).
 
 # OpenOnion email
 
@@ -43,7 +43,21 @@ co email forward 123 you@example.com "For your review."
 
 Received and Sent reads retrieve one record by ID, including older messages outside the newest page. Reading alone does not change unread state. Received reads require the backend's `/email/received/{id}` endpoint; unread changes use `/email/s/mark-unread`. HTTP 404 and expired authentication have distinct recovery messages.
 
-Search examines a bounded received-mail page: sender, recipient, subject and body. Its output names the number scanned and offset; use the next offset for older messages. It is not a server-wide search index. Replies and forwards call the existing idempotent send path with quoted plain text. They send immediately, include no attachments and add no RFC threading headers.
+Search examines a bounded received-mail page: sender, recipient, subject and body. Its output names the number scanned and offset; use the next offset for older messages. It is not a server-wide search index. Replies and forwards call the existing idempotent send path with quoted plain text. They send immediately and add no RFC threading headers. Replies accept new files. Forwards include original attachments by default.
+
+## Attachments
+
+```sh
+co email send you@example.com "Report" "See attached." --attach report.pdf
+co email attachments 123
+co email download 123 456 --to ./downloads
+co email raw 123 --output original.eml
+```
+
+Send accepts up to 100 files and 20 MiB of total attachment content.
+Use attachment IDs from `co email attachments`. Downloads verify SHA256 and
+save to a new file. See the [attachment reference](mail-attachments.md) for
+Sent, forwarding, Python and plain-text extraction.
 
 ## Browser connection
 
@@ -106,7 +120,7 @@ co email delete-history you@mail.openonion.ai
 
 These examples inspect or preview. Address creation/changes require `--buy` to charge credits. `co email quota --buy --idempotency-key <unique-key>` purchases exactly one plan-defined increment; reuse the key on retry. History deletion requires `--yes`; received history is the default scope and `--include-sent` also deletes sent logs; it does not reset the monthly allowance or remove send receipts. The address is retained.
 
-Existing commands cover custom names, account default, sharing/revocation and tier upgrades. `co email setup` replaces no other address. `change` resolves the owned address record ID and previews the backend's current price; names/domains are normalized before pricing.
+Existing commands cover custom names, account default, sharing/revocation and tier upgrades. `co email setup` replaces no other address, and `--buy` (on `setup` and `name`) keeps the current default sender unless you add `--default`; it prints which address is the default afterwards. `co email addresses` always lists the `0x…` address derived from your key, and `co email default 0x…@mail.openonion.ai` makes it the default again. `co email default N` picks the Nth address `co email addresses` lists at that moment (the `#` column in a terminal; script output prints the same rows in the same order, unnumbered). Rows are oldest first, so a new purchase is appended and does not renumber the others. The derived address is row 1 unless an older plan stored it as a record (`keep_address`); then it sits at that record's place by creation date. `change` resolves the owned address record ID and previews the backend's current price; names/domains are normalized before pricing.
 
 ## Transfer one address
 
@@ -134,7 +148,7 @@ co email transfer complete approval.json --yes
 
 Both keys sign the backend's exact five-minute transfer message, which names the address and its existing received/sent history. The first two commands write new mode-0600 files and refuse overwrites. Completion previews unless `--yes`; only then does it change ownership. The key-derived automatic address cannot be transferred. The backend verifies ownership and applies the address/history move atomically.
 
-Server-synchronized archive, trash, stars, drafts, attachments and threading are not exposed by the existing email API. OO Mail's personal organization remains browser-local; this CLI does not invent server endpoints for those features.
+Server-synchronized archive, trash, stars, drafts and threading are not exposed by the existing email API. OO Mail's personal organization remains browser-local; this CLI does not invent server endpoints for those features.
 
 ## Validation
 

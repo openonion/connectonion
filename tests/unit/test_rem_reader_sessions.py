@@ -98,27 +98,29 @@ def test_reader_session_snapshot_passes_owner_boundary(tmp_path):
     assert len(owner['session_messages']) == 4
 
 
-@pytest.mark.parametrize('kind,name,expected', [
-    ('codex', 'Codex', 'codex resume fictional-session-42'),
-    ('claude-code', 'Claude Code', 'claude --resume fictional-session-42'),
-])
-def test_reader_session_resume_uses_exact_client_command(kind, name, expected):
-    result = _run_reader_js(functions('sessionTool', 'sessionResumeCommand') + '''
-      const sessionAgent = r => r.session_agent.toLowerCase().replaceAll(' ', '-');
-      const r = ''' + json.dumps({'session_kind': kind, 'session_agent': name, 'session_id': 'fictional-session-42'}) + ''';
-      console.log(JSON.stringify(sessionResumeCommand(r)));
+def _composer(live, record, link=''):
+    state = json.dumps({'live': live, 'live_link': link})
+    return _run_reader_js(functions('sessionTool', 'liveHere', 'liveReaderLine', 'sessionComposer') + r'''
+      const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children: children.filter(Boolean),
+        append(...items) { this.children.push(...items); }});
+      const sessionAgent = r => (r.session_agent || '').toLowerCase().replaceAll(' ', '-'), talkPanel = begin => ({begin});
+      const location = {protocol: 'http:'}, REM = ''' + state + ''';
+      const OPEN_TALKS = new Map();   // no conversation open yet, as on first render
+      console.log(JSON.stringify(sessionComposer(''' + json.dumps(record) + ''')));
     ''')
-    assert result == expected
 
 
-def test_reader_session_resume_quotes_shell_metacharacters_and_requires_metadata():
-    result = _run_reader_js(functions('sessionTool', 'sessionResumeCommand', 'sessionSection') + r'''
-      const sessionAgent = r => r.session_agent || '';
-      const r = {session_kind: 'codex', session_id: "a'; touch /tmp/oops", text: ''};
-      console.log(JSON.stringify([sessionResumeCommand(r), sessionResumeCommand({...r, session_id: ''}),
-        sessionResumeCommand({...r, session_kind: 'other'})]));
-    ''')
-    assert result == ["codex resume 'a'\\''; touch /tmp/oops'", '', '']
+@pytest.mark.parametrize('kind,name', [('codex', 'Codex'), ('claude-code', 'Claude Code')])
+def test_a_session_goes_on_with_its_agent_in_the_page_never_by_a_copied_command(kind, name):
+    record = {'path': 'sessions/fernhill.md', 'session_kind': kind, 'session_agent': name, 'session_id': 'fern-42'}
+    live = _composer(True, record)
+    assert live['id'] == 'session-continue' and live['children'][0]['text'] == f'Continue with {name}'
+    snapshot = _composer(False, record, 'http://127.0.0.1:9125/rem?token=fern')
+    line = snapshot['children'][0]
+    assert line['children'][0] == 'Continuing this session with its agent happens in the live reader.'
+    assert line['children'][-1]['href'] == 'http://127.0.0.1:9125/rem?token=fern'
+    assert 'resume' not in json.dumps([live, snapshot])
+    assert _composer(True, {**record, 'session_id': ''})['children'][0]['text'] == 'Session id not archived'
 
 
 @pytest.mark.parametrize('kind,name', [('codex', 'Codex'), ('claude-code', 'Claude Code')])

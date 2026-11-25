@@ -502,7 +502,8 @@ def build(root: Path, now: datetime | None = None, zh: bool = False) -> Path:
         for number, (source, sender, day, body) in enumerate(messages):
             path = evidence / f"message-{number}.json"
             provider, native = source.split(":", 1)
-            path.write_text(json.dumps({"provider": provider, "id": native, "body": body,
+            path.write_text(json.dumps({"provider": provider, "id": native, "body": body, "subject": "Harbour renewal",
+                                       "from": "Mara Ostrowski <mara@fernhill.example>", "to": ["Avery Lin <avery@lin.example>"], "cc": [],
                                        "body_format": "provider-rendered text, not original MIME"}))
             db.execute("insert into messages (id, source, thread, sender, recipients, time, subject, body_path) "
                        "values (?, ?, ?, ?, ?, ?, ?, ?)",

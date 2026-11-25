@@ -585,10 +585,16 @@ class TestServerLsReconcilesWithBilling:
 
 
 class TestServerDestroy:
+    @pytest.fixture(autouse=True)
+    def _no_billing_lookup(self, monkeypatch):
+        """destroy reads the server's billing record first; these tests are about the delete."""
+        monkeypatch.setattr(sc, "_fetch_billed_servers", lambda: None)
+
     def test_a_mistyped_confirmation_destroys_nothing(self, servers_file):
         """It asks for the name back rather than y/N: a reflex 'y' is exactly how
         someone deletes production while meaning to tidy their config."""
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_fetch_billed_servers", return_value=None), \
              patch("questionary.text") as text, \
              patch("requests.delete") as delete:
             text.return_value.ask.return_value = "prd"
@@ -598,6 +604,7 @@ class TestServerDestroy:
 
     def test_the_typed_name_must_match_exactly(self, servers_file):
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_fetch_billed_servers", return_value=None), \
              patch("questionary.text") as text, \
              patch("requests.delete", return_value=_response(200, {"refunded_usd": 0})) as delete:
             text.return_value.ask.return_value = "prod"
@@ -817,9 +824,10 @@ class TestTheKeyPairOnDiskAlwaysMatches:
         """Per-server since #427 step 4; the property is unchanged."""
         from connectonion.cli.commands import keys_commands as kc
 
-        monkeypatch.setattr(kc, "SSH_PRIVATE_KEY", tmp_path / "id_ed25519")
-        priv = tmp_path / "id_ed25519_prod"
-        pub = tmp_path / "id_ed25519_prod.pub"
+        monkeypatch.setattr(kc.Path, "home", staticmethod(lambda: tmp_path))
+        priv = kc.per_host_key_path("prod")
+        pub = priv.with_suffix(".pub")
+        priv.parent.mkdir(parents=True)
         priv.write_text("an older key from another phrase")
         pub.write_text("ssh-ed25519 STALE stale\n")
 

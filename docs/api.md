@@ -13,7 +13,7 @@ Agent(
     tools: Optional[List[Callable]] = None,
     system_prompt: Union[str, Path, None] = None,
     api_key: Optional[str] = None,
-    model: str = "co/gemini-3.8-flash"
+    model: str = "co/gemini-4-hydrogen"
 )
 ```
 
@@ -27,7 +27,7 @@ Agent(
   - `Path`: Path object pointing to a prompt file
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
-- **model** (`str`): Model to use (default: "co/gemini-3.8-flash")
+- **model** (`str`): Model to use (default: "co/gemini-4-hydrogen")
   - Managed keys: `co/gemini-3.8-flash`, `co/o4-mini`, `co/claude-sonnet-4`
   - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-3.8-flash`
 
@@ -254,7 +254,7 @@ Models prefixed with `co/` use ConnectOnion's managed API keys through the OpenO
 from connectonion import Agent
 
 # Uses OpenOnion managed keys - no API key needed
-agent = Agent(name="bot", model="co/gemini-3.8-flash")
+agent = Agent(name="bot", model="co/gemini-4-hydrogen")
 ```
 
 **How it works:**
@@ -309,7 +309,7 @@ from connectonion.core.llm import GeminiLLM
 
 llm = GeminiLLM(
     api_key="your-key",  # or GEMINI_API_KEY env var
-    model="gemini-3.8-flash"
+    model="gemini-4-hydrogen"
 )
 
 agent = Agent("bot", llm=llm)
@@ -324,7 +324,7 @@ from connectonion.core.llm import OpenOnionLLM
 
 llm = OpenOnionLLM(
     api_key="your-token",  # or OPENONION_API_KEY env var
-    model="co/gemini-3.8-flash"
+    model="co/gemini-4-hydrogen"
 )
 
 agent = Agent("bot", llm=llm)

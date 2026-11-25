@@ -46,7 +46,7 @@ def test_gdrive_get_routes_id_and_destination():
         result = runner.invoke(app, ["gdrive", "get", "3", "--to", "/tmp"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", dest="/tmp", listing=None)
+    handler.assert_called_once_with("3", dest="/tmp", listing=None, quiet=False)
 
 
 def test_gdrive_get_defaults_to_cwd():
@@ -54,7 +54,15 @@ def test_gdrive_get_defaults_to_cwd():
         result = runner.invoke(app, ["gdrive", "get", "3"])
 
     assert result.exit_code == 0
-    handler.assert_called_once_with("3", dest=".", listing=None)
+    handler.assert_called_once_with("3", dest=".", listing=None, quiet=False)
+
+
+def test_gdrive_get_quiet_turns_progress_off():
+    with patch("connectonion.cli.commands.gdrive_commands.handle_gdrive_get") as handler:
+        result = runner.invoke(app, ["gdrive", "get", "3", "--quiet"])
+
+    assert result.exit_code == 0
+    handler.assert_called_once_with("3", dest=".", listing=None, quiet=True)
 
 
 def test_gdrive_put_routes_path_and_name():

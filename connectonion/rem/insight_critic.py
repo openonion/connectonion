@@ -88,7 +88,7 @@ def _github_original(source: str) -> dict:
         try:
             result = subprocess.run(['gh', kind, 'view', match[2], '-R', match[1], '--json',
                                      'title,body,author,createdAt,state,url,comments'],
-                                    capture_output=True, text=True, timeout=60)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
         except (OSError, subprocess.TimeoutExpired):
             return {}
         if not result.returncode and result.stdout.strip():
@@ -121,7 +121,7 @@ def _git_original(source: str, known=frozenset()) -> dict:
         return {}
     target = [f'{sha}:{file}'] if file else ['--stat', '--format=%H%n%an%n%ad%n%s%n%n%b', sha]
     result = subprocess.run(['git', '-C', checkout, 'show', *target],
-                            capture_output=True, text=True, timeout=60)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     if not result.returncode and result.stdout.strip():
         return {'excerpt': result.stdout[:40_000], 'truncated': len(result.stdout) > 40_000}
     return {}

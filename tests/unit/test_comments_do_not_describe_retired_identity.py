@@ -7,6 +7,7 @@ identity is `seed[:32]` "(unchanged)", or tells a reader to run
 derivation and a command that no longer exist.
 """
 
+from functools import cache
 from pathlib import Path
 
 import connectonion
@@ -14,10 +15,12 @@ import connectonion
 SOURCE = Path(connectonion.__file__).parent
 
 
+@cache
 def _lines():
-    for path in SOURCE.rglob("*.py"):
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            yield f"{path.relative_to(SOURCE)}:{number}", line
+    """Every source line, read once for both tests: under coverage a scan costs ~16 s."""
+    return [(f"{path.relative_to(SOURCE)}:{number}", line)
+            for path in SOURCE.rglob("*.py")
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)]
 
 
 def test_no_comment_calls_seed_slice_the_current_agent_identity():

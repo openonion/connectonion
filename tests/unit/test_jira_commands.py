@@ -3,6 +3,7 @@
 import json
 import re
 import shlex
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -52,7 +53,8 @@ def test_incremental_success_names_the_same_scope_and_paths(overrides):
     assert result.output.count("Next:") == 1
     tip = result.output.split("Next:", 1)[1]
     for text in ("co jira sync-inc --project ALPHA", "--issues ALPHA-1",
-                 "--output '/tmp/jira [draft]'", "--state '/tmp/my state'", "--no-history"):
+                 "--output " + shlex.quote(str(Path('/tmp/jira [draft]'))),
+                 "--state " + shlex.quote(str(Path('/tmp/my state'))), "--no-history"):
         assert text in tip
 
 

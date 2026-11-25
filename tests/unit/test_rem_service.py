@@ -13,6 +13,73 @@ from tests.unit.test_rem_source import rollout
 pytestmark = pytest.mark.usefixtures("rem_clock")
 
 
+@pytest.mark.parametrize('results,last_message,blocked,visible', [
+    (['failed', 'timed-out'], '', False, True),
+    (['completed', 'completed'], 'The first attempt could not start; I retried and completed the round.', False, False),
+    (['completed', 'completed'], 'Earlier MAINTENANCE_BUSY; retried and completed the round.', False, False),
+    (['failed', 'completed'], '无法启动过，重试后已完成。', False, False),
+    (['completed', 'completed'], 'MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled.', True, True),
+    (['failed', 'completed'], 'Finished the work.', False, False),
+    (['completed', 'failed'], '', False, True),
+    (['failed', 'running'], '', False, False),
+])
+def test_status_today_surfaces_receipt_failures(rem, results, last_message, blocked, visible):
+    from connectonion.cli.commands.rem_status import _today
+    from connectonion.rem.reader import snapshot
+    root, _ = rem
+    for index, result in enumerate(results):
+        last = state_path(root, f'turns/turn-{index}.last.md')
+        last.parent.mkdir(exist_ok=True)
+        last.write_text(last_message if index == 1 else '')
+        turn = {'started_at': f'2026-11-0{index + 1}T03:00:00Z', 'result': result,
+                'last_message': str(last), 'blocked': blocked if index == 1 else False,
+                'reason': last_message if blocked else 'fictional timeout',
+                **({'finished_at': f'2026-11-0{index + 1}T04:00:00Z'} if result != 'running' else {})}
+        write_json(state_path(root, f'turns/turn-{index}.json'), turn)
+    write_json(state_path(root, 'last-turn.json'), turn)
+    value = status(root)
+    line = value.get('schedule_failure', '')
+    assert bool(line) == visible
+    if visible:
+        from rich.text import Text
+        assert line['code'] == ('blocked' if blocked else 'repeated_failure')
+        assert line['evidence'] == (last_message if blocked else 'fictional timeout')
+        output = Text.from_markup(_today(root, value)[0]).plain
+        if line.get('failures'):
+            assert output.startswith(f"Background: the last {line['failures']} ")
+            assert 'co rem logs' in output
+        else:
+            assert output.startswith('Last scheduled turn did not finish:')
+            assert 'run co rem start' in output
+        assert line['evidence'] in output
+        assert snapshot(root)['status']['schedule_failure'] == line
+
+
+@pytest.mark.parametrize('message,blocked', [
+    ('The first attempt could not start; I retried and completed the round.', False),
+    ('Earlier MAINTENANCE_BUSY; the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; the earlier attempt failed, but the retry completed.', False),
+    ('MAINTENANCE_BUSY: waited 10 minutes total; maintenance lock holder pid 49443: co rem next --scheduled. '
+     'Report this message and end the turn without retrying.', True),
+])
+def test_turn_receipt_records_terminal_busy_outcome(rem, monkeypatch, message, blocked):
+    from subprocess import CompletedProcess
+    from connectonion.rem import codex_exec
+    root, _ = rem
+    monkeypatch.setattr(codex_exec, '_start_command', lambda root, last: ['fictional-codex', str(last)])
+    monkeypatch.setattr('connectonion.rem.codex_schedule.CodexNative.recent_desktop_fire', lambda self, root: False)
+
+    def run(command, **kwargs):
+        from pathlib import Path
+        Path(command[1]).write_text(message)
+        return CompletedProcess(command, 0)
+
+    codex_exec.run_turn(root, run=run)
+    receipt = read_json(state_path(root, 'last-turn.json'), {})
+    assert receipt['blocked'] is blocked
+    assert bool(status(root).get('schedule_failure')) is blocked
+
+
 @pytest.fixture
 def rem(tmp_path, monkeypatch):
     root = tmp_path / "rem"
@@ -59,7 +126,7 @@ def test_a_night_with_nothing_new_calls_no_model_and_leaves_no_run(rem):
     calls = []
     runner = lambda notebook, items, config, kind="": calls.append(items) or {"usage": {"input_tokens": 10}}
     worked = run_sync(root, runner=runner)
-    assert worked["speed"] == "fast"
+    assert worked["speed"] == "standard"
     assert worked["harness"] == read_config(root)["runner"]
     quiet = run_sync(root, runner=runner)
     assert quiet["outcome"] == "no_change" and len(calls) == 1
@@ -1777,7 +1844,7 @@ def test_boot_time_reads_the_platform_source(monkeypatch, platform):
             return CompletedProcess(args, 0, f"{{ sec = {seconds}, usec = 123 }} Fri Nov 6 10:00:00 2026\n")
         monkeypatch.setattr(service.subprocess, "run", sysctl)
     else:
-        def proc_stat(path):
+        def proc_stat(path, **kwargs):
             assert str(path) == "/proc/stat"
             return f"cpu 1 2 3 4\nbtime {seconds}\nprocesses 900\n"
         monkeypatch.setattr(service.Path, "is_file", lambda path: str(path) == "/proc/stat")
@@ -1809,5 +1876,23 @@ def test_boot_time_missing_from_platform_output_is_unknown(monkeypatch, platform
     monkeypatch.setattr(service.subprocess, "run", lambda *a, **kw: CompletedProcess(a, 1, ""))
     monkeypatch.setattr(service.shutil, "which", lambda name: "/usr/sbin/sysctl")
     monkeypatch.setattr(service.Path, "is_file", lambda path: True)
-    monkeypatch.setattr(service.Path, "read_text", lambda *a: "cpu 1 2 3 4\n")
+    monkeypatch.setattr(service.Path, "read_text", lambda *a, **k: "cpu 1 2 3 4\n")
     assert service._boot_time() is None
+
+
+@pytest.mark.parametrize("code,message,fix", [
+    ("reauth_required", "Microsoft authorization expired or was revoked.", "co auth microsoft"),
+    ("broker_auth_failed", "OpenOnion authentication failed while refreshing provider access.", "co auth"),
+    ("record_changed", "The selected credential record changed during this operation.", "co status"),
+    ("permission_denied", "Microsoft permission denied for this operation.", "co auth microsoft"),
+    ("invalid_response", "Authorization service returned invalid credentials; saved record kept.", "co status"),
+])
+def test_source_read_preserves_credential_code_and_recovery(rem, monkeypatch, code, message, fix):
+    from connectonion.rem import service
+    from connectonion.provider_credentials import ProviderCredentialError
+    root, _ = rem
+    failure = service._collection_failure("outlook", ProviderCredentialError(code, message, fix))
+    assert code in failure["error"] and message in failure["error"] and fix in failure["error"]
+    service._record_source_read(root, "outlook", failure["error"])
+    reason, _ = service._mailbox_read_failure(root, "outlook")
+    assert code in reason and message in reason and fix in reason

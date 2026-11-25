@@ -89,6 +89,7 @@ class _Host:
                 self.logger = MagicMock()
                 self.llm = MagicMock(model="fake")
                 self.skills = []
+                self.events = {"before_llm": [], "before_each_tool": []}
 
             def input(self, prompt, session=None, images=None, files=None):
                 seen.append({"prompt": prompt, "messages": session.get("messages"),

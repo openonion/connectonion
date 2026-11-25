@@ -1,0 +1,2 @@
+version: v1.9.4
+no_visual_change: "Adds one quiet Updating line to a stale saved page; layout and components are unchanged from 1.9.3, whose visuals stand."

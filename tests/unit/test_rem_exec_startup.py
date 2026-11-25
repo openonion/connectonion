@@ -120,7 +120,7 @@ def test_exec_failure_records_the_reason_and_status_shows_it(tmp_path, monkeypat
     monkeypatch.setattr(rem_status, 'notebook', lambda *args: {})
     for name in ('_header', '_waiting', '_today', '_notebook', '_mailboxes', '_archive', '_budget', '_last_runs'):
         monkeypatch.setattr(rem_status, name, lambda *args: [])
-    rendered = rem_status.dashboard(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')
+    rendered = rem_status.card(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')
     from rich.text import Text
     plain = Text.from_markup(rendered).plain
     assert receipt['reason'] in plain
@@ -150,7 +150,7 @@ def test_exec_status_shows_startup_time(tmp_path, monkeypatch, result, seconds):
     monkeypatch.setattr(rem_status, 'notebook', lambda *args: {})
     for name in ('_header', '_waiting', '_today', '_notebook', '_mailboxes', '_archive', '_budget', '_last_runs'):
         monkeypatch.setattr(rem_status, name, lambda *args: [])
-    rendered = Text.from_markup(rem_status.dashboard(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')).plain
+    rendered = Text.from_markup(rem_status.card(tmp_path, {'last_turn': receipt}, lambda args: 'co rem')).plain
     if seconds is None:
         assert 'Codex startup' not in rendered
     else:
@@ -207,3 +207,27 @@ def test_exec_turn_is_ephemeral_and_falls_back_to_the_app_bundled_cli(tmp_path, 
     argv = codex_exec.exec_command(tmp_path, {'effort': 'medium', 'model': 'default'}, last_message=tmp_path / 'last.md')
     assert argv[0] == str(bundled)
     assert '--ephemeral' in argv
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_scheduled_child_rereads_managed_provider_record(tmp_path, monkeypatch, explicit):
+    from connectonion import environment
+    monkeypatch.setattr(environment, "_loaded", {})
+    monkeypatch.setattr(environment, "_selected", None)
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path / "account"))
+    path = environment.selected_env_file()
+    path.parent.mkdir()
+    path.write_text("MICROSOFT_REFRESH_TOKEN=file-refresh\nMICROSOFT_ACCESS_TOKEN=file-access\n")
+    for key in environment.provider_keys("microsoft"):
+        monkeypatch.delenv(key, raising=False)
+    environment.load_environment()
+    if explicit:
+        monkeypatch.setenv("MICROSOFT_REFRESH_TOKEN", "explicit-refresh")
+    monkeypatch.setattr(codex_exec, "_start_command", lambda *a: ["codex", "exec"])
+    monkeypatch.setattr(codex_schedule.CodexNative, "recent_desktop_fire", lambda *a: False)
+    def run(command, **kwargs):
+        child = kwargs["env"]
+        assert child.get("MICROSOFT_REFRESH_TOKEN") == ("explicit-refresh" if explicit else None)
+        assert "MICROSOFT_ACCESS_TOKEN" not in child
+        return subprocess.CompletedProcess(command, 0)
+    assert codex_exec.run_turn(tmp_path / "notebook", run=run) == "completed"

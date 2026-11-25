@@ -249,7 +249,9 @@ class TestTheCommandRuns:
                    HTTP_PROXY="http://127.0.0.1:9", HTTPS_PROXY="http://127.0.0.1:9",
                    ALL_PROXY="http://127.0.0.1:9", NO_PROXY="")
 
-        result = subprocess.run([str(co), "init", "--yes"], cwd=project, env=env,
+        # --no-host: a Host cannot run offline under a temporary HOME, and a Linux user
+        # manager reads units from the real HOME, so enabling one here always fails.
+        result = subprocess.run([str(co), "init", "--yes", "--no-host"], cwd=project, env=env,
                                 capture_output=True, text=True, timeout=300)
 
         assert result.returncode == 0, result.stderr[-400:]

@@ -1,0 +1,412 @@
+"""Fictional GitHub packets, through a PATH shim; never owner credentials."""
+import json
+import os
+from datetime import datetime, timezone, timedelta
+
+import pytest
+
+from connectonion.rem import project_pages as pages, project_data as data
+
+NOW = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+REPO = 'fernhill/lanterns'
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path, monkeypatch):
+    home = tmp_path / 'home'
+    home.mkdir()
+    monkeypatch.setenv('HOME', str(home))
+
+
+@pytest.fixture
+def gh(tmp_path, monkeypatch):
+    folder = tmp_path / 'bin'
+    folder.mkdir()
+    log = tmp_path / 'gh.jsonl'
+    fixtures = tmp_path / 'responses.json'
+    fixtures.write_text(json.dumps({
+        'issues': [{'number': 7, 'title': 'Cedar light', 'state': 'open', 'labels': [],
+                    'user': {'login': 'mara-quill'}, 'comments': 0, 'updated_at': NOW.isoformat(), 'closed_at': None}],
+        'pulls': [{'number': 8, 'title': 'Fix cedar (#7)', 'state': 'MERGED',
+                   'headRefName': 'cedar', 'mergedAt': '2026-11-08T11:00:00Z',
+                   'authorAssociation': 'CONTRIBUTOR', 'statusCheckRollup': [],
+                   'closingIssuesReferences': {'nodes': [{'number': 7, 'repository': {'nameWithOwner': 'fernhill/lanterns'}}]}}],
+        'runs': [{'id': 4, 'name': 'Deploy', 'event': 'push', 'head_branch': 'main', 'conclusion': 'success',
+                  'created_at': '2026-11-08T10:00:00Z', 'updated_at': '2026-11-08T10:05:00Z', 'head_sha': 'abc'},
+                 {'id': 5, 'name': 'Release', 'event': 'push', 'head_branch': 'v1.2.0', 'conclusion': 'failure',
+                  'created_at': '2026-11-08T11:30:00Z', 'head_sha': 'def'}],
+        'tags': [{'name': 'v1.2.0', 'commit': {'sha': 'def'}}], 'releases': []}))
+    executable = folder / 'gh'
+    executable.write_text('''#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ['GH_LOG'], 'a') as f: f.write(json.dumps(args) + '\\n')
+rows = json.load(open(os.environ['GH_FIXTURES']))
+if args[1] == 'graphql':
+    print(json.dumps({'data': {'repository': {'defaultBranchRef': {'name': 'main'},
+                                              'pullRequests': {'nodes': rows['pulls']}}}}))
+else:
+    endpoint = args[1]
+    key = 'runs' if '/actions/runs' in endpoint else endpoint.split('?')[0].rsplit('/', 1)[-1]
+    # Real gh 2.97 (checked read-only against cli/cli): the status line ends in
+    # LF, headers in CRLF; a 304 prints its headers, then exits 1 with
+    # "gh: HTTP 304" on stderr.
+    if os.environ.get('GH_STATUS') == '404':
+        sys.stdout.write('HTTP/2.0 404 Not Found\\r\\n\\r\\n{"message":"Not Found"}')
+        sys.stderr.write('gh: Not Found (HTTP 404)\\n')
+        sys.exit(1)
+    if 'If-None-Match:' in ' '.join(args):
+        sys.stdout.write('HTTP/2.0 304 Not Modified\\nEtag: "cedar"\\r\\n\\r\\n')
+        sys.stderr.write('gh: HTTP 304\\n')
+        sys.exit(1)
+    page = 2 if '&page=2' in endpoint else 1
+    value = rows[key][(page-1)*100:page*100]
+    if key == 'runs': value = {'workflow_runs': value}
+    sys.stdout.write('HTTP/2.0 200 OK\\nEtag: "cedar"\\r\\n\\r\\n' + json.dumps(value))
+''')
+    executable.chmod(0o755)
+    monkeypatch.setenv('PATH', str(folder) + os.pathsep + os.environ['PATH'])
+    monkeypatch.setenv('GH_LOG', str(log))
+    monkeypatch.setenv('GH_FIXTURES', str(fixtures))
+    return log
+
+
+@pytest.mark.parametrize('args', [
+    ['pr', 'merge', '8'], ['issue', 'comment', '7'], ['run', 'rerun', '5'],
+    ['api', 'repos/fernhill/lanterns/issues', '-X', 'POST'],
+    ['api', 'graphql', '-f', 'query=mutation { dangerous }'],
+    ['api', 'repos/fernhill/lanterns/issues', '--input', 'payload.json'],
+])
+def test_guard_refuses_non_reads(args, gh):
+    with pytest.raises(pages.GitHubReadRefused, match='read-only'):
+        pages.github_read(args)
+    assert not gh.exists()
+
+
+def test_a_guard_refusal_is_a_bug_not_a_cache_error(tmp_path, gh, monkeypatch):
+    # Raising a cap past the guard's two pages is a programming error: it must
+    # fail loudly, not sit in repository.json looking like a network failure.
+    packet = json.loads(open(os.environ['GH_FIXTURES']).read())
+    packet['issues'] *= 250
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        json.dump(packet, out)
+    monkeypatch.setattr(pages, 'BACKFILL_CODE_ISSUES', 300)
+    with pytest.raises(pages.GitHubReadRefused):
+        pages.sync_repository(tmp_path, REPO, now=NOW)
+    assert not pages.code_cache_path(tmp_path, REPO).exists()
+
+
+def test_sync_cache_skip_etag_and_projection(tmp_path, gh, monkeypatch):
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    assert len(cache['issues']) == 1
+    assert cache['issues'][0]['commentCount'] == 0
+    assert cache['issues'][0]['author'] == 'mara-quill'
+    assert (tmp_path / '.state/code/fernhill__lanterns/repository.json').is_file()
+    commands = gh.read_text().splitlines()
+    pages.sync_repository(tmp_path, REPO, now=NOW + timedelta(minutes=1))
+    assert gh.read_text().splitlines() == commands
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW + timedelta(minutes=31))
+    assert 'If-None-Match:' in gh.read_text()
+    assert cache['error'] is None
+    assert cache['synced_at'] == '2026-11-08T12:31:00Z'
+    assert {v.get('status') for v in cache['verification'] if v['resource'] != 'prs'} == {304}
+    assert cache['issues'][0]['number'] == 7
+    monkeypatch.setattr(pages.subprocess, 'run', lambda *a, **k: pytest.fail('projection ran a command'))
+    projection = data.repository_projection(tmp_path, REPO, now=NOW)
+    joins = {j['kind']: j for j in projection['joins']}
+    assert joins['merges_after_green_deploy']['prs'] == [8]
+    assert joins['merged_closes_open_issue']['pairs'] == [{'pr': 8, 'issue': 7}]
+    assert joins['zero_comment_issues']['count'] == 1
+    assert joins['failed_release']['runs'][0]['tag_present'] is True
+    for join in joins.values():
+        assert join['verification']
+        assert all(v['command'] and v['ran_at'].endswith('Z') for v in join['verification'])
+
+
+def test_session_links_need_exact_cwd_and_a_printed_sha(tmp_path):
+    repo = tmp_path / 'lanterns'
+    repo.mkdir()
+    commit = {'sha': 'abcdef1234567890', 'time': '2026-11-08T12:00:00Z'}
+    session = {'id': 'cedar-session', 'cwd': str(repo), 'started': '2026-11-08T09:00:00Z',
+               'ended': '2026-11-08T10:00:00Z', 'printed_commits': [{'sha': 'abcdef1', 'branch': 'cedar'}]}
+    result = pages.session_commit_links([session], [commit], [str(repo)])
+    assert result == [{'session': 'cedar-session', 'sha': commit['sha'], 'branch': 'cedar', 'cwd': str(repo),
+                       'started': '2026-11-08T09:00:00Z', 'ended': '2026-11-08T10:00:00Z'}]
+    # A printed SHA is the evidence, so a commit after the last reply still links;
+    # an unprinted commit inside the session's own window does not.
+    assert pages.session_commit_links([session], [{**commit, 'time': '2026-11-08T23:00:00Z'}], [str(repo)])
+    assert pages.session_commit_links([session], [{**commit, 'sha': 'fedcba9876543210'}], [str(repo)]) == []
+    assert pages.session_commit_links([{**session, 'printed_commits': []}], [commit], [str(repo)]) == []
+    assert pages.session_commit_links([{**session, 'cwd': str(repo / 'src')}], [commit], [str(repo)]) == []
+    assert pages.session_commit_links([{**session, 'started': '2026-11-08T13:00:00Z'}], [commit], [str(repo)]) == []
+    assert pages.session_commit_links([{**session, 'started': ''}], [commit], [str(repo)]) == []
+
+
+def test_only_a_304_exit_is_accepted(tmp_path, gh, monkeypatch):
+    pages.sync_repository(tmp_path, REPO, now=NOW)
+    monkeypatch.setenv('GH_STATUS', '404')
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW + timedelta(minutes=31))
+    assert 'returned non-zero exit status 1' in cache['error']
+    assert cache['synced_at'] == '2026-11-08T12:00:00Z'
+
+
+def test_caps_stop_before_exhausting_repository(tmp_path, gh):
+    path = os.environ['GH_FIXTURES']
+    packet = json.loads(open(path).read())
+    packet['issues'] *= 250
+    packet['pulls'] *= 150
+    packet['runs'] *= 150
+    with open(path, 'w') as out:
+        json.dump(packet, out)
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    assert len(cache['issues']) == 200
+    assert len(cache['prs']) == 100
+    assert len(cache['runs']) == 200
+    calls = [json.loads(line) for line in gh.read_text().splitlines()]
+    assert len(calls) == 7
+    assert all('--paginate' not in call for call in calls)
+
+
+def test_failed_sync_preserves_success_and_reports_error(tmp_path, gh):
+    before = pages.sync_repository(tmp_path, REPO, now=NOW)
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        out.write('{}')
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW + timedelta(minutes=31))
+    assert cache['synced_at'] == before['synced_at']
+    assert cache['issues'] == before['issues']
+    assert cache['error']
+    assert data.repository_projection(tmp_path, REPO)['status'] == 'error'
+
+
+def test_worktree_session_links_only_the_commit_it_printed(tmp_path):
+    import subprocess
+    repo = tmp_path / 'lanterns'
+    def git(*args, cwd=repo, at='2026-11-08T11:00:00Z'):
+        env = {**os.environ, 'GIT_AUTHOR_DATE': at, 'GIT_COMMITTER_DATE': at}
+        return subprocess.run(['git', '-C', str(cwd), *args], env=env, check=True, capture_output=True, text=True).stdout
+    repo.mkdir()
+    git('init', '-b', 'cedar')
+    git('config', 'user.name', 'Mara Quill')
+    git('config', 'user.email', 'mara@example.invalid')
+    (repo / 'src').mkdir()
+    (repo / 'src/light.py').write_text('light = True\n')
+    git('add', '.')
+    git('commit', '-m', 'Add a cedar light.')
+    worktree = tmp_path / 'cedar-worktree'
+    git('worktree', 'add', '-b', 'cedar-review', str(worktree))
+    # The main checkout commits on cedar while the worktree session is open:
+    # same repository, same window, but the session never printed it.
+    (repo / 'src/light.py').write_text('light = False\n')
+    git('commit', '-am', 'Dim the cedar light.', at='2026-11-08T10:30:00Z')
+    (worktree / 'README').write_text('Cedar\n')
+    git('add', '.', cwd=worktree)
+    git('commit', '-m', 'Describe the cedar review.', cwd=worktree, at='2026-11-08T10:40:00Z')
+    printed = git('rev-parse', '--short=7', 'HEAD', cwd=worktree).strip()
+    evidence = []
+    session = {'id': 'cedar', 'cwd': str(worktree), 'started': '2026-11-08T10:00:00Z',
+               'ended': '2026-11-08T11:00:00Z', 'printed_commits': [{'sha': printed, 'branch': 'cedar-review'}]}
+    churn = pages._code_local(repo, NOW, 14, [session], evidence)
+    assert churn['areas']['src'] == {'additions': 2, 'deletions': 1, 'files': 2, 'commits': 2}
+    assert churn['since'] == '2026-10-25T12:00:00Z'
+    assert [(link['sha'][:7], link['branch']) for link in churn['session_links']] == [(printed, 'cedar-review')]
+    assert len(evidence) == 2
+
+
+def test_green_age_external_runs_and_pypi_join(tmp_path, gh):
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    cache['prs'] += [{'number': 9, 'title': 'Cedar review', 'state': 'OPEN', 'headRefOid': 'abc',
+                      'authorAssociation': 'FIRST_TIMER', 'checkRollupState': 'SUCCESS', 'statusCheckRollup': [
+                          {'conclusion': 'SUCCESS', 'completedAt': '2026-11-08T10:00:00Z'}]}]
+    cache['runs'] += [{'id': 6, 'workflowName': 'CI', 'event': 'pull_request', 'branch': 'cedar',
+                       'conclusion': 'action_required', 'createdAt': '2026-11-08T11:30:00Z', 'headSha': 'abc'}]
+    cache['pypi'] = {'package': 'lanterns', 'versions': ['1.2.0']}
+    pages.write_json(pages.code_cache_path(tmp_path, REPO), cache)
+    joins = {j['kind']: j for j in data.repository_projection(tmp_path, REPO, now=NOW)['joins']}
+    assert joins['green_unmerged_age']['prs'][0]['age_hours'] == 2
+    assert joins['external_action_required']['pairs'] == [{'pr': 9, 'run': 6, 'association': 'FIRST_TIMER'}]
+    assert joins['failed_release']['runs'][0]['pypi_present'] is True
+
+
+def test_naive_session_times_are_refused():
+    with pytest.raises(ValueError, match='timezone'):
+        pages.code_utc('2026-11-08T12:00:00')
+
+
+def test_cached_issues_preserve_priority_source_and_milestone(tmp_path, gh):
+    packet = json.loads(open(os.environ['GH_FIXTURES']).read())
+    packet['issues'][0].update(labels=[{'name': 'bug'}], html_url='https://github.com/fernhill/lanterns/issues/7',
+                               milestone={'due_on': '2026-11-10T12:00:00Z'})
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        json.dump(packet, out)
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    assert cache['issues'][0]['url'] == 'https://github.com/fernhill/lanterns/issues/7'
+    assert cache['issues'][0]['milestone']['dueOn'] == '2026-11-10T12:00:00Z'
+    row = {'path': 'projects/lanterns.md', 'category': 'projects', 'title': 'Lanterns',
+           'text': '# Lanterns\n\n## Facts\n- Repository: fernhill/lanterns\n'}
+    data.enrich_records(tmp_path, [row], {}, today=NOW.date(), local=True)
+    assert row['score'] > 0
+    assert row['health'] == 'at_risk'
+
+
+def test_wrong_local_repository_is_not_labeled_as_named_repo(tmp_path, gh):
+    import subprocess
+    other = tmp_path / 'other'
+    other.mkdir()
+    subprocess.run(['git', '-C', str(other), 'init'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(other), 'remote', 'add', 'origin',
+                    'https://github.com/fernhill/other.git'], check=True, capture_output=True)
+    cache = pages.sync_repository(tmp_path, REPO, repo_path=other, now=NOW)
+    assert cache['churn'] is None
+    assert cache['local_status'] == 'repository_mismatch'
+
+
+def test_partial_check_sample_cannot_prove_green(tmp_path, gh):
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    cache['prs'] = [{'number': 9, 'title': 'Cedar review', 'state': 'OPEN',
+                     'checkRollupState': 'PENDING', 'statusCheckRollup': [
+                         {'conclusion': 'SUCCESS', 'completedAt': '2026-11-08T10:00:00Z'}]}]
+    pages.write_json(pages.code_cache_path(tmp_path, REPO), cache)
+    joins = {j['kind']: j for j in data.repository_projection(tmp_path, REPO, now=NOW)['joins']}
+    assert joins['green_unmerged_age']['prs'] == []
+
+
+def test_pypi_is_a_bounded_https_read(tmp_path, monkeypatch):
+    import io
+    import urllib.request
+    calls = []
+    class Response(io.BytesIO):
+        def read(self, size=-1):
+            calls.append(size)
+            return super().read(size)
+    def open_json(request, timeout):
+        assert request.full_url == 'https://pypi.org/pypi/lanterns/json'
+        assert request.get_method() == 'GET' and timeout == 20
+        return Response(b'{"releases":{"1.2.0":[],"1.1.0":[]}}')
+    monkeypatch.setattr(urllib.request, 'urlopen', open_json)
+    evidence = []
+    assert pages._code_pypi('lanterns', evidence)['versions'] == ['1.1.0', '1.2.0']
+    assert calls == [4_000_001]
+    assert evidence[0]['command'] == ['HTTPS', 'GET', 'https://pypi.org/pypi/lanterns/json']
+    assert evidence[0]['ran_at'].endswith('Z')
+    with pytest.raises(ValueError):
+        pages._code_pypi('../lanterns', [])
+
+
+def test_package_selection_prefers_explicit_fact(tmp_path):
+    (tmp_path / 'pyproject.toml').write_text('[project]\nname = "lanterns"\n')
+    assert pages._code_package('', tmp_path) == 'lanterns'
+    assert pages._code_package('- PyPI: https://pypi.org/project/cedar-lights/', tmp_path) == 'cedar-lights'
+
+
+def test_successful_but_truncated_checks_cannot_establish_green_age(tmp_path, gh):
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    cache['prs'] = [{'number': 9, 'title': 'Cedar review', 'state': 'OPEN',
+                     'checkRollupState': 'SUCCESS', 'checksTruncated': True, 'statusCheckRollup': [
+                         {'conclusion': 'SUCCESS', 'completedAt': '2026-11-08T10:00:00Z'}]}]
+    pages.write_json(pages.code_cache_path(tmp_path, REPO), cache)
+    joins = {j['kind']: j for j in data.repository_projection(tmp_path, REPO, now=NOW)['joins']}
+    assert joins['green_unmerged_age']['prs'] == []
+
+
+def test_non_git_project_folder_does_not_discard_remote_evidence(tmp_path, gh):
+    folder = tmp_path / 'lanterns'
+    folder.mkdir()
+    cache = pages.sync_repository(tmp_path, REPO, repo_path=folder, now=NOW)
+    assert cache.get('error') is None
+    assert cache['issues'][0]['number'] == 7
+    assert cache['churn'] is None
+    assert cache['local_status'] == 'repository_mismatch'
+
+
+def test_a_bad_repository_fact_is_skipped_not_fatal(tmp_path, gh):
+    from connectonion.rem.config import prepare
+    root = tmp_path / 'notebook'
+    prepare(root)
+    (root / 'projects').mkdir(exist_ok=True)
+    (root / 'projects/guide.md').write_text('# Guide\n\n## Facts\n- Repository: docs.site/guide\n')
+    (root / 'projects/lanterns.md').write_text('# Lanterns\n\n## Facts\n- Repository: fernhill/lanterns\n')
+    results = pages.sync_project_repositories(root, now=NOW)
+    assert results['docs.site/guide'] == {'repo': 'docs.site/guide', 'status': 'skipped',
+                                          'reason': 'not a canonical GitHub owner/repository'}
+    assert results[REPO]['issues'][0]['number'] == 7
+    assert data.repository_projection(root, 'docs.site/guide') == {
+        'repo': 'docs.site/guide', 'status': 'invalid', 'reason': 'not a canonical GitHub owner/repository', 'joins': []}
+
+
+def test_joins_ignore_previews_side_branches_drafters_and_other_repos(tmp_path, gh):
+    packet = json.loads(open(os.environ['GH_FIXTURES']).read())
+    packet['pulls'].append({'number': 10, 'title': 'Port the birch fix (#7)', 'state': 'MERGED',
+                            'headRefName': 'birch', 'mergedAt': '2026-11-08T11:10:00Z', 'statusCheckRollup': [],
+                            'closingIssuesReferences': {'nodes': [
+                                {'number': 7, 'repository': {'nameWithOwner': 'fernhill/birch'}}]}})
+    def run(id, name, event, branch, conclusion, at):
+        return {'id': id, 'name': name, 'event': event, 'head_branch': branch, 'conclusion': conclusion,
+                'created_at': at, 'updated_at': at, 'head_sha': 'f%d' % id}
+    packet['runs'] += [run(11, 'Deploy', 'workflow_dispatch', 'cedar', 'success', '2026-11-08T11:30:00Z'),
+                       run(12, 'Deploy preview', 'push', 'main', 'success', '2026-11-08T11:40:00Z'),
+                       run(13, 'Release Drafter', 'push', 'main', 'failure', '2026-11-08T11:45:00Z'),
+                       run(14, 'Prerelease checks', 'pull_request', 'cedar', 'failure', '2026-11-08T11:50:00Z'),
+                       run(15, 'Release checks', 'pull_request', 'cedar', 'failure', '2026-11-08T11:55:00Z'),
+                       run(16, 'Release', 'push', 'cedar-lights', 'failure', '2026-11-08T11:58:00Z')]
+    packet['tags'].append({'name': 'cedar-lights', 'commit': {'sha': 'f16'}})
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        json.dump(packet, out)
+    pages.sync_repository(tmp_path, REPO, now=NOW)
+    joins = {j['kind']: j for j in data.repository_projection(tmp_path, REPO, now=NOW)['joins']}
+    deploy = joins['merges_after_green_deploy']
+    assert deploy['deploy']['id'] == 4
+    assert deploy['basis'] == 'Deploy · push · main · completed 2026-11-08T10:05:00Z'
+    assert deploy['prs'] == [8, 10]
+    assert joins['merged_closes_open_issue']['pairs'] == [{'pr': 8, 'issue': 7}]
+    assert [(row['run'], row['tags']) for row in joins['failed_release']['runs']] == [
+        (5, ['v1.2.0']), (16, ['cedar-lights'])]
+
+
+def test_shared_projection_names_no_local_paths(tmp_path, gh):
+    cache = pages.sync_repository(tmp_path, REPO, now=NOW)
+    local = ['git', '-C', '/home/mara-quill/work/lanterns', 'log', '--all']
+    cache['verification'].append({'command': local, 'ran_at': '2026-11-08T12:00:00Z', 'resource': 'churn'})
+    cache['failed_verification'] = [{'command': local, 'ran_at': '2026-11-08T12:00:00Z', 'resource': 'local_identity'}]
+    cache['churn'] = {'areas': {}, 'session_links': [{'cwd': '/home/mara-quill/work/lanterns'}]}
+    pages.write_json(pages.code_cache_path(tmp_path, REPO), cache)
+    def project(local):
+        row = {'path': 'projects/lanterns.md', 'category': 'projects', 'title': 'Lanterns',
+               'text': '# Lanterns\n\n## Facts\n- Repository: fernhill/lanterns\n'}
+        data.enrich_records(tmp_path, [row], {}, today=NOW.date(), local=local)
+        return json.dumps(row['repository'])
+    assert '/home/mara-quill' in project(True)
+    shared = project(False)
+    assert '/home/mara-quill' not in shared
+    assert '["git", "-C", "<local repository>", "log", "--all"]' in shared
+
+
+def test_a_synced_cache_outranks_the_undated_legacy_issue_file(tmp_path, gh):
+    packet = json.loads(open(os.environ['GH_FIXTURES']).read())
+    packet['issues'][0].update(labels=[{'name': 'bug'}], html_url='https://github.com/fernhill/lanterns/issues/7',
+                               milestone={'due_on': '2026-11-10T12:00:00Z'})
+    with open(os.environ['GH_FIXTURES'], 'w') as out:
+        json.dump(packet, out)
+    pages.sync_repository(tmp_path, REPO, now=NOW)
+    pages.write_json(pages.state_path(tmp_path, 'project-issues.json'), {REPO: []})
+    def project(**kwargs):
+        row = {'path': 'projects/lanterns.md', 'category': 'projects', 'title': 'Lanterns',
+               'text': '# Lanterns\n\n## Facts\n- Repository: fernhill/lanterns\n'}
+        data.enrich_records(tmp_path, [row], {}, today=NOW.date(), local=True, **kwargs)
+        return row['health']
+    assert project() == 'at_risk'
+    # An in-memory fetch the caller just made is fresher than any cache.
+    assert project(issues={REPO: []}) != 'at_risk'
+
+
+def test_a_round_stops_starting_repositories_after_its_time_budget(tmp_path, gh):
+    from connectonion.rem.config import prepare
+    root = tmp_path / 'notebook'
+    prepare(root)
+    (root / 'projects').mkdir(exist_ok=True)
+    for name in ('lanterns', 'birch', 'cedar'):
+        (root / f'projects/{name}.md').write_text(f'# {name}\n\n## Facts\n- Repository: fernhill/{name}\n')
+    # Round start, before the first repository, then before the second: the
+    # first repository "took" the whole budget.
+    clock = iter([0, 0, pages.CODE_ROUND_SECONDS, 2 * pages.CODE_ROUND_SECONDS])
+    results = pages.sync_project_repositories(root, now=NOW, clock=lambda: next(clock))
+    assert len([row for row in results.values() if row.get('synced_at')]) == 1

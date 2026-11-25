@@ -123,7 +123,7 @@ def _rows(connection) -> List[ChromeCookie]:
     partition = "top_frame_site_key" if "top_frame_site_key" in columns else "''"
     persistent = "is_persistent" if "is_persistent" in columns else "has_expires"
     query = (f"SELECT host_key, name, path, expires_utc, is_secure, is_httponly, samesite, "
-             f"{persistent}, {partition}, value, encrypted_value FROM cookies")
+             f"{persistent}, {partition}, value, CAST(encrypted_value AS BLOB) FROM cookies")
     return [ChromeCookie(host_key=r[0], name=r[1], path=r[2] or "/", expires_utc=int(r[3] or 0),
                          is_secure=bool(r[4]), is_httponly=bool(r[5]), samesite=int(r[6]),
                          is_persistent=bool(r[7]), top_frame_site_key=r[8] or "",

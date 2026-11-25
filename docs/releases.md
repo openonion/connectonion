@@ -11,33 +11,224 @@ preview. Do not add `--pre`: it applies to
 every dependency too, and under it 1.8.8b7 resolved httpx 1.0.dev6, which has
 no `AsyncClient`, and every remote agent call crashed.
 
-## Current release
+## Unreleased fixes
 
-Stable **1.9.2** is the default production channel. Hand a coding session to someone else's
-agent: you see exactly what leaves, with private sentences taken out by your own agent; they paste
-one line, and the result comes back as a patch. Neither side gets more than the handoff. See
-[1.9.2 notes](releases/1.9.2.md) and the
-[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.2).
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.2'
-```
+- `co browser import` reads Chrome's encrypted cookies as bytes even when SQLite
+  stores them as TEXT. Target-cookie replies are scoped to one imported domain
+  at a time, including subdomains and all paths, so unrelated cookies no longer
+  overflow the OIP frame limit. If a target read fails, the command says
+  "nothing was written" and stops before loading any cookies ([#2887](https://github.com/openonion/connectonion/issues/2887)).
 
 ## Current preview
 
-Release candidate **1.9.3rc55** makes the reader's front page one queue of actions and shows each reply as the mail it becomes, drafted on a fixed skill in your own voice with the background beside it, with Send, a full-screen writer and a channel switch (#2861, #2862); it also carries attachments, browser history, relationship statistics, run memory, tidy, the sessions page and `co init` installing Codex (#2844). Before it, **1.9.3rc54** was a hotfix: on 1.9.3rc53 every scheduled `codex exec` turn stopped at its first mail read because Codex's sandbox blocked the network; turns now run with network access. Before it, **1.9.3rc53** ran scheduled REM on macOS through `codex exec`, so one session keeps working across a round, lets `co init` set REM up without questions, and fills basic contact facts from the mail itself (#2844, #2856). Before it, **1.9.3rc52** kept scheduled REM working after its saved time: 15-minute follow-ups continue the pending task, refusals say exactly what to fix, and schedule changes no longer invalidate a pending task (#2814). Before it, **1.9.3rc51** made REM investigations research beyond the mailbox (web search, `co browser`, `gh`, Feishu) and lead each page with what they found (#2810), keeps the native schedule from losing a slot while `co rem next` prepares (#2812), and limits mailbox consent to `--mail` (#2809). Before it, **1.9.3rc50** replaced real people's names and addresses in tests, docs and examples with fictional ones and adds a test that keeps them out (#2804); there is no behaviour change. Before it, **1.9.3rc49** closed the remaining REM audit items before stable: a run whose PID was reused after a reboot no longer shows as running, dates follow the notebook's zone, page merges keep their sections, and sync, status and the guide say what actually happened (#2802, #2803). Before it, **1.9.3rc48** made `co rem doctor` name an install command that fixes the running co, keeping a uv tool's companion packages (#2798), and steadies the macOS release checks (#2797). Before it, **1.9.3rc47** stopped old translations from holding the native REM schedule: a new scheduled slot logs an old round's untranslated pages as skipped and starts reading new material, where before one translation per slot kept new mail and sessions waiting for days (#2794). Before it, **1.9.3rc46** gave REM a background schedule on Linux: `co rem start` installs a systemd user timer that runs `co rem sync --scheduled` every five minutes, where before it stopped with "macOS-only" after the first batch and no slot ever ran (#2790). Before it, **1.9.3rc45** made the native REM schedule survive a cold start: the wake job opened Codex hidden and a hidden Codex runs no automations, so every slot was missed until the window was shown; it now opens Codex visible but not in front (#2785). A scheduled `co rem next` that stops at the daily cap now leaves a run record, so `co rem logs` shows the slot was visited (#2786), and the `co rem` help pages were rewritten plainly after `co audit --review` (#2782). Users on rc44 or earlier with the native schedule run `co rem start` once after upgrading. Before it, **1.9.3rc44** made the native REM path work on a real notebook: `co rem submit` accepts what `co rem next` prepared, because later-in-thread mail is now ordered deterministically instead of following each process's hash seed (#2778). Before it, **1.9.3rc43** was a hotfix: on 1.9.3rc42, `co rem tidy`, every scheduled sync and `co rem next` stopped at once on a notebook whose pages link to a path outside notebook content; tidy now leaves such links alone (#2773). Before it, **1.9.3rc42** carried the four pre-stable audit fixes (#2754, #2771): scheduled-round writes wait for the lock, the daily cap is "daily cap reached" rather than a failure, the same-person stage charges the week once, archives are never overwritten; and `co rem logs` reads a dead run as interrupted (#2770). Before it, **1.9.3rc41** made the first run honest and short: a one-screen consent summary, an estimate that follows the material and says Nothing to write yet on an empty map, skip reasons for sessions, and `co rem show NAME` across every page kind (#2765, #2766). Before it, **1.9.3rc40** ran one scheduled REM sync at a time (a second tick says busy and keeps its slot) and lets the same-person stage skip a page that vanished (#2763). Before it, **1.9.3rc39** let the native Codex Scheduled session do REM's work itself (`co rem next` / `co rem submit`, #2756) and makes a scheduler error at the end of `co init` a one-line message with a launchd fallback (#2759). Before it, **1.9.3rc38** made `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
+Release candidate **1.9.7rc27** updates the REM Today reply workspace. See [1.9.7rc27 notes](releases/1.9.7rc27.md).
+
+Release candidate **1.9.7rc26** adds attachment sending and downloads for the agent mailbox (#3440). See [1.9.7rc26 notes](releases/1.9.7rc26.md).
+
+Release candidate **1.9.7rc25**: REM uses Luna at medium for routine work and Sol at low for abstraction and independent investigation, with explicit choices preserved (#3426); sensitive relation reasons and stray privacy marks are curtained (#3427, #3425). Also includes standalone Obsidian live reads (#3064), sync/agenda fixes (#3055) and memory regex errors (#3255). See [1.9.7rc25 notes](releases/1.9.7rc25.md).
+
+Release candidate **1.9.7rc24**: a queued page says its place in the night's queue and the pace the night really keeps, and says 今晚 only when it falls inside tonight's run (#3421, #3420); a Today card's time says 已过 once it passes, with a countdown before it and job titles that read as titles, and an organisation's website and connection reasons say only what is true (#3423, #3422). See [1.9.7rc24 notes](releases/1.9.7rc24.md).
+Before it, release candidate **1.9.7rc23**: privacy: a line that opens with a privacy mark is curtained in place at 遮敏感 in every section kind; on rc22 such a line showed in full with its raw mark, and a Chinese reader says its own labels in Chinese and shows a page's English as its original (#3416, #3410); once the fix for a stuck page is installed, Today and status say the next round skips it, in local time, over one night window (#3414, #3413); the owner's side of a client organisation is found from what real pages say, so 你这边对接的人 appears on real client orgs (#3415, #3397). See [1.9.7rc23 notes](releases/1.9.7rc23.md).
+Before it, release candidate **1.9.7rc22**: a tag or search view never scrolls sideways: a privacy curtain's cap is a length, not a width (#3407, #3404); Today says when before how old, says each event once, and fits a phone without a caption running off the card (#3408, #3406, #3379); a facts card keeps a short value whole and its labels speak Chinese (#3409, #3405). See [1.9.7rc22 notes](releases/1.9.7rc22.md).
+Before it, release candidate **1.9.7rc21**: a draft the page check refused says the page is unchanged, in the owner's words, and what happens next from the night's own retry ledger: 今晚会再试一次, or 已暂停 after N tries (#3398, #2235); one night, one count: Today's 昨夜 heading adds up the curve's own stretches, the side line says 待办, and the Codex line no longer sounds like one task both running and stopped (#3399, #3396); an organisation's connections give the line that links the pair, or say plainly which page names which, and the owner's own people are no longer drawn inside a client's org tree (#3400, #3397); a job that can never be prepared is set aside and the round goes on: a skill page whose skill is no longer installed stopped every background round from 06:15, and Today now says when one error keeps stopping the night (#3403, #3402). See [1.9.7rc21 notes](releases/1.9.7rc21.md).
+Before it, release candidate **1.9.7rc20**: the tag-page title never carries a privacy mark: a page check refuses one, the page build moves an old mark onto the page's passages once, and a masked page reads 个人事项 1, 2 …, numbered once in the order it was first masked (#3386, #3385); course and team codes read 课程 3900 / 团队 … wherever an organisation's name shows (#3389, #3388); a mail Outlook or Gmail says is gone is asked for once more a day later, then the night stops waiting and says so instead of promising 会再试 (#3393, #3392); Today's night curve carries the whole night, not the last 21 runs, a stuck stretch keeps its own caption and the axis ends after the last run (#3394, #3391). See [1.9.7rc20 notes](releases/1.9.7rc20.md).
+Before it, release candidate **1.9.7rc19**: the night's sleep curve tells the truth: a parked or stuck stretch draws as 清醒, captioned 卡住 N 分钟 · 已自动跳过, and the phone names the highest level the night reached; the desk title counts what the cards show (#3382, #3379); an uninvestigated WeChat friend's facts card no longer prints the raw WeChat id and says the rest comes with investigation (#3381, #3372); the upgrade backfill is versioned, so the retitle and the first/last-chat fields reach notebooks already backfilled on rc17 (#3380, #3368). See [1.9.7rc19 notes](releases/1.9.7rc19.md).
+Before it, release candidate **1.9.7rc18**: the night can no longer loop on one task: a tag page that cannot be tagged alone waits instead of raising after the others were written, and a scheduled next parks a task whose input changed (#3377, #3376); Today opens with the night as a sleep curve, the night's work under it and one primary action per card (#3371); a WeChat-only person page says when you last talked, the 90-day count and who wrote last, with the raw WeChat id moved into ⋯ (#3374, #3372); the People filters are labelled 来源 and 标签 and course codes read as names (#3373); `co wechat` and `co rem` help speak to the AI that runs them (#3361). See [1.9.7rc18 notes](releases/1.9.7rc18.md).
+Before it, release candidate **1.9.7rc17**: WeChat works on an upgraded notebook without waiting for a night run: the first page build backfills each source's chat activity and onboarding record, `co rem map` records them like the night, status counts the pages a source already holds, punctuation-only WeChat names fall back to the remark or 微信好友（无名字 · …1234）, and the People row marks only the minority source (#3369, #3368). See [1.9.7rc17 notes](releases/1.9.7rc17.md).
+Before it, release candidate **1.9.7rc16**: REM gets faster and WeChat-complete: the same-person check and the whole-notebook scans run once per build (`co rem status` ~20 s → ~11 s on 1,352 people, #3365); every WeChat friend gets a page, chats are read from the full-text index too, and the People table counts WeChat activity, folds friends without recent chats and labels the id 微信 (#3357, #3346); a wrong-channel reply is rewritten on the thread's own channel and full screen holds send until it is (#3358); every source reports its coverage and Today names what REM can't read with one button (#3354, #3356); opening the reader no longer asks for translation status (#3352); one token sheet for states and motion (#3362); 3D graph fit and search refinements (#3342). See [1.9.7rc16 notes](releases/1.9.7rc16.md).
+Before it, release candidate **1.9.7rc15**: the agent's page is the Control Center everywhere: `.co/control_center.html` (an existing `dashboard.html` is still served, with a rename hint), the `CONTROL_CENTER_SNAPSHOT` frame (the old frame name is sent alongside for one preview cycle) and the `control-center` skill ([#3336](https://github.com/openonion/connectonion/issues/3336)). See [1.9.7rc15 notes](releases/1.9.7rc15.md).
+Before it, release candidate **1.9.7rc14**: owner-facing text names pages, not raw `[[…md]]` paths, and the breadcrumb is only as wide as its text ([#3338](https://github.com/openonion/connectonion/pull/3338)); the knowledge graph is alive — 3D in the live reader, a live draggable 2D graph on phone ([#3330](https://github.com/openonion/connectonion/pull/3330)); 不是人 works on WeChat-only people from the ⋯ menu, and the map and the night honour it ([#3341](https://github.com/openonion/connectonion/pull/3341)). See [1.9.7rc14 notes](releases/1.9.7rc14.md).
+Before it, release candidate **1.9.7rc13**: adding a source onboards it — `co rem map [people|orgs|projects] --source NAME [--dry-run]` builds pages from one source with no model, each source declaring the kinds it yields ([#3334](https://github.com/openonion/connectonion/pull/3334)); `co rem sources add` maps it at once, the night re-maps WeChat and new or widened local sources, and per-source status shows in `co rem sources` / `co rem status` ([#3335](https://github.com/openonion/connectonion/pull/3335)). See [1.9.7rc13 notes](releases/1.9.7rc13.md).
+Before it, release candidate **1.9.7rc12**: the Keys page lists the vault grouped by site (above 30 keys every site folds to one row with its count, searchable, a two-line list on phone) and co's own keys grouped by service with settings folded ([#3327](https://github.com/openonion/connectonion/pull/3327)); tags render as quiet chips on every page kind ([#3313](https://github.com/openonion/connectonion/pull/3313)). See [1.9.7rc12 notes](releases/1.9.7rc12.md).
+Before it, release candidate **1.9.7rc11**: the Today reply card and its full-screen compose, rebuilt to one spec: one filled 发送, the letter in full, a line naming the message REM read, ‹ i/n ›, honest channels (a draft on a channel the person is not on is refused and offered 改写成邮件), send states with undo and retry, and a full screen with × top-right and clickable open questions ([#3324](https://github.com/openonion/connectonion/pull/3324)). See [1.9.7rc11 notes](releases/1.9.7rc11.md).
+Before it, release candidate **1.9.7rc10**: the Keys page imports with one 一键导入 (Chrome, Edge, Brave, the macOS Keychain, Apple Passwords via its CSV export, or a CSV), shows a waiting step while the system asks to 允许, and says why when the REM Host cannot show that prompt; co's own keys from `~/.co/keys.env` are listed by name ([#3316](https://github.com/openonion/connectonion/pull/3316)). See [1.9.7rc10 notes](releases/1.9.7rc10.md).
+Before it, release candidate **1.9.7rc9**: `co discord` as your own account (experimental), a system Chrome fallback that keeps other sessions' tabs, a bare `co host` that no longer stops serving silently, and `co call` that names the address it signed with. See [1.9.7rc9 notes](releases/1.9.7rc9.md).
+Before it, release candidate **1.9.7rc8**: rc7's reworded topic link reviews no longer re-ask the stored ones; the stale path questions migrate to page titles ([#3292](https://github.com/openonion/connectonion/pull/3292)). See [1.9.7rc8 notes](releases/1.9.7rc8.md).
+Before it, release candidate **1.9.7rc7**: a reader polish batch (record pages open at one width, a project page's "in Today" opens the filtered Waiting view, calendar titles clamp, the empty Keys page leads with one-click import, a topic link review names the page not its file path) and the WeChat upgrade fix — an existing install's stale wechat source now implies consent once keys are captured, and seeding matches the reader's gate, so the night both seeds and fills WeChat people. See [1.9.7rc7 notes](releases/1.9.7rc7.md).
+Before it, release candidate **1.9.7rc6**: WeChat as a co rem source that seeds people into the map and the night. See [1.9.7rc6 notes](releases/1.9.7rc6.md).
+Before it, release candidate **1.9.7rc5**: the Control Center has an admin section, shown only to admins: who joined, Remove/Block, rotate the invite without a restart, activity, health and the log. See [1.9.7rc5 notes](releases/1.9.7rc5.md).
+Before it, release candidate **1.9.7rc4**: WeChat as a co rem source, and one-click key import from Chrome/Edge/Brave. See [1.9.7rc4 notes](releases/1.9.7rc4.md).
+Before it, release candidate **1.9.7rc3**: `restricted: env` passes named Host variables to the tools, and the caller as `CO_CALLER_ADDRESS` / `CO_CALLER_TRUST`. See [1.9.7rc3 notes](releases/1.9.7rc3.md).
+Before it, release candidate **1.9.7rc2**: `co wechat` reads WeChat 4.1 for Mac with one command to get the keys; bare `co wechat` lists your chats. See [1.9.7rc2 notes](releases/1.9.7rc2.md).
+Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from host.yaml, no silent co/ model, `co obsidian`
+and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.7rc27'
+```
+
+## Current release
+
+Stable **1.9.6** is the default production channel. `co init` starts the Host and leaves it running on
+macOS, Linux and Windows, and the model is one line in host.yaml: `model: claude-code` answers through
+your logged-in Claude Code with no API key. REM gets the new desk, a knowledge graph, three privacy
+levels and hand-offs you can watch; `co send` / `co receive` move files between agents; `co wechat`
+reads your own WeChat for Mac history locally. See [1.9.6 notes](releases/1.9.6.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.6).
+
+```bash
+python -m pip install --upgrade 'connectonion==1.9.6'
+```
+
+## Previous stable
+
+Stable **1.9.5**: A fresh install works again (typer 0.29.0
+broke every `co` command; it is capped below 0.29); REM reads each slot's mail while the Codex weekly
+floor holds investigation work; nothing in the reader asks you to copy a command. See
+[1.9.5 notes](releases/1.9.5.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.5).
+
+Stable **1.9.4** was a hotfix on 1.9.3, in which the first
+`co rem open` after upgrading from 1.9.3rc64 could wait minutes for a rebuild. The reader now never
+waits on a build; a saved page opens at once marked "Updating…". See
+[1.9.4 notes](releases/1.9.4.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.4).
+
+## Previous previews
+
+The candidates for 1.9.6:
+
+Release candidate **1.9.6rc48**: REM related cards drop the writer's prefix; the page foot says Copy the file path. See [1.9.6rc48 notes](releases/1.9.6rc48.md).
+Before it, release candidate **1.9.6rc47**: on a phone, a linked page named by a long question wraps instead of widening the page. See [1.9.6rc47 notes](releases/1.9.6rc47.md).
+Before it, release candidate **1.9.6rc46**: a Windows background Host counts as running only when it answers, and a Host the relay refuses stops with the reason. See [1.9.6rc46 notes](releases/1.9.6rc46.md).
+Before it, release candidate **1.9.6rc45**: on a phone, Today no longer zooms out when a finished hand-off has a long summary; a `claude-code` Host names a missing Claude login. See [1.9.6rc45 notes](releases/1.9.6rc45.md).
+Before it, release candidate **1.9.6rc44**: global `co init` on Windows from an elevated shell starts a working Host, `claude-code` by default when it is logged in. See [1.9.6rc44 notes](releases/1.9.6rc44.md).
+Before it, release candidate **1.9.6rc43**: the Windows logon Host starts when co was set up from an elevated shell. See [1.9.6rc43 notes](releases/1.9.6rc43.md).
+Before it, release candidate **1.9.6rc42**: rc39 to rc41, published. See [1.9.6rc42 notes](releases/1.9.6rc42.md).
+Before it, release candidate **1.9.6rc41** (tagged, not published): See [1.9.6rc41 notes](releases/1.9.6rc41.md).
+Before it, release candidate **1.9.6rc40** (tagged, not published): rc39's changes, published, plus `co init` that skips the background Host on Linux
+without a systemd user session. See [1.9.6rc40 notes](releases/1.9.6rc40.md).
+Before it, release candidate **1.9.6rc39** (tagged, not published): `co init` starts the Host on macOS, Linux and Windows, and `model: claude-code` in
+host.yaml answers through your logged-in Claude Code. See [1.9.6rc39 notes](releases/1.9.6rc39.md).
+Before it, release candidate **1.9.6rc38**: REM's rc36 bug-hunt fixes: one header across person, organisation and project pages that says each fact once, organisation names that are never a code or a bare domain, a 不是人 control that moves an assistant out of People, dates in their own sentence's language, no stray space or lowercase after a hidden passage, words at the 13px floor, hex ids left whole inside links, Today that shows an event under way as now and a repeated code error as a bug an update fixes, writers that never call an organisation 实体, and translate and tag that go on past the Codex floor up to a small ceiling. See [1.9.6rc38 notes](releases/1.9.6rc38.md).
+Before it, release candidate **1.9.6rc37**: a hotfix: scheduled REM turns that reach a tag page are served again, instead of crashing in `_source_view` and leaving the night empty since rc35. See [1.9.6rc37 notes](releases/1.9.6rc37.md).
+Before it, release candidate **1.9.6rc36**: REM's rc35 bug-hunt fixes: web sources open with their page, Today's side column never
+pushes the page sideways, the phone agenda folds deadlines into one line per day, a worded translation count, privacy
+curtains that flow inside a sentence and a terminal that hides private text, and the remaining dates and hex ids said
+once. See [1.9.6rc36 notes](releases/1.9.6rc36.md).
+Before it, release candidate **1.9.6rc35**: REM's rc34 bug-hunt fixes: an open tab survives an upgrade and lands on the new build, Today's first screen
+shows the next events, facts and dates said once, dates in the reader's own form, raw ids as named chips, a compact top
+bar, and night stages that drain. See [1.9.6rc35 notes](releases/1.9.6rc35.md).
+Before it, release candidate **1.9.6rc34**: REM's knowledge graph (a tag links pages and gets its own page), a closed item
+that stays closed, three privacy levels that cover every place a passage shows, and the bug hunt's fixes. See
+[1.9.6rc34 notes](releases/1.9.6rc34.md).
+Before it, release candidate **1.9.6rc33**: `co wechat` reads your own WeChat for Mac history locally (read-only) — a
+SQLCipher-4 decryption engine with `doctor`, `key`, `chats`, `decrypt` and `export`. See
+[1.9.6rc33 notes](releases/1.9.6rc33.md).
+Before it, release candidate **1.9.6rc32**: `co browser` starts headless on a Windows machine with no desktop (SSH,
+services, scheduled tasks). See [1.9.6rc32 notes](releases/1.9.6rc32.md).
+Before it, release candidate **1.9.6rc30**: hand-offs you can watch and pick up, enrich that writes career timelines and
+links organisations, one language control, and a person page that leads with what happened. See
+[1.9.6rc30 notes](releases/1.9.6rc30.md).
+Before it, release candidate **1.9.6rc29**: a source's title opens its original in the side card, a calendar event shows
+its meeting link, organiser and notes, and the Investigate popovers float over the page. See
+[1.9.6rc29 notes](releases/1.9.6rc29.md).
+Before it, release candidate **1.9.6rc28**: REM's night runs again, Investigate appends to long pages by archiving their
+oldest History, the live reader recovers by itself after an upgrade, and a person's reply policy is one click.
+See [1.9.6rc28 notes](releases/1.9.6rc28.md).
+Before it, release candidate **1.9.6rc27**: the person page's header and profile card are redesigned: three lines under
+the name, one action column, and every fact one line with its sources a hover away. See
+[1.9.6rc27 notes](releases/1.9.6rc27.md).
+Before it, release candidate **1.9.6rc26**: REM sprint 22. Send on a Today reply always answers, full-screen writing is
+back in sight, a person's profile card comes first, full memory opens with a short named sources band, and
+`co rem investigate` appends to an existing page with one Investigate button on record pages. See
+[1.9.6rc26 notes](releases/1.9.6rc26.md).
+Before it, release candidate **1.9.6rc25**: a Windows PC can run `co host` and answer `co call`. See [1.9.6rc25 notes](releases/1.9.6rc25.md).
+Before it, release candidate **1.9.6rc24**: `co whatsapp` works on Windows: `check` and `consume` run beside a live listener,
+incoming messages are kept, and `consume` replies in UTF-8. See [1.9.6rc24 notes](releases/1.9.6rc24.md).
+Before it, release candidate **1.9.6rc23**: `co whatsapp listen --phone <number>` links a device with an 8-character code
+typed on the phone, instead of a QR that has to be seen. See [1.9.6rc23 notes](releases/1.9.6rc23.md).
+Before it, release candidate **1.9.6rc22**: when `co browser keyboard_type` cannot paste, as in headless Chrome on Windows over
+SSH, the whole text goes in through CDP in one call, and the result says how it went in. See
+[1.9.6rc22 notes](releases/1.9.6rc22.md).
+Before it, release candidate **1.9.6rc21**: when `co send` cannot reach the receiver directly, a file of up to 10 MB waits on the
+server for 7 days, encrypted to the receiver, and `co receive` there takes it; `co browser keyboard_type` pastes text
+in one event instead of typing it key by key. See [1.9.6rc21 notes](releases/1.9.6rc21.md).
+Before it, release candidate **1.9.6rc20**: REM's night workers run at the configured reasoning effort, `co rem catchup` and the
+scheduled turn can no longer work one notebook at the same time, and a worker turn that times out parks its page
+instead of ending the night. See [1.9.6rc20 notes](releases/1.9.6rc20.md).
+Before it, release candidate **1.9.6rc19**: `co send` sends files to another agent byte for byte, verified by sha256, and
+an interrupted send continues from where it stopped; `co receive` lists what arrived. See [1.9.6rc19 notes](releases/1.9.6rc19.md).
+Before it, release candidate **1.9.6rc18**: a page whose preparation passes the ten-minute deadline is parked and the
+next call serves other work, a turn that only stalled is no longer recorded as completed, and a person's page no
+longer reads every coding-session log again. See [1.9.6rc18 notes](releases/1.9.6rc18.md).
+Before it, release candidate **1.9.6rc17**: a session that names a folder REM may not read no longer stops every
+background round, and a round that could not be prepared is recorded as failed. See [1.9.6rc17 notes](releases/1.9.6rc17.md).
+Before it, release candidate **1.9.6rc16**: the Organisations table never prints the not-investigated placeholder as a
+fact, a company's page renders, and long locations clamp to two lines. See [1.9.6rc16 notes](releases/1.9.6rc16.md).
+Before it, release candidate **1.9.6rc15**: the Organisations table shows its tree expanded, «Talk it over» shows its
+conversation, facts on people and projects are corrected, and the reader's Chrome suite is green. See [1.9.6rc15 notes](releases/1.9.6rc15.md).
+Before it, release candidate **1.9.6rc14**: the REM reader shows organisations as a sortable table and a page that reads
+like a book, keeps one Knowledge place, and opens Projects on a board by state. See [1.9.6rc14 notes](releases/1.9.6rc14.md).
+Before it, release candidate **1.9.6rc13**: a Host records every automatic run in `co approvals`, and a revoked
+requester's turn stops before its next step even after they disconnect. See [1.9.6rc13 notes](releases/1.9.6rc13.md).
+Before it, release candidate **1.9.6rc12**: `co whatsapp` connects again on a fresh install (neonize 0.10.0;
+WhatsApp refused the old client), reads a group's history when the account is added to it, and
+`co whatsapp download <id>` fetches older media. See [1.9.6rc12 notes](releases/1.9.6rc12.md).
+
+Before it, release candidate **1.9.6rc11**: in the REM reader, People opens on a sortable table, Ignore is a word on
+every open row, Agenda is a calendar of your saved events, and one button translates every page. See
+[1.9.6rc11 notes](releases/1.9.6rc11.md).
+
+Before it, release candidate **1.9.6rc10**: the default model is `co/gemini-4-hydrogen`, the cheapest Gemini 4
+model. Name `co/gemini-3.8-flash` to roll back. See [1.9.6rc10 notes](releases/1.9.6rc10.md).
+
+Before it, release candidate **1.9.6rc9**: REM's night goes on when one mailbox fails and says why on Today; Today
+has one count and one primary action per card; record pages lead with open threads; drafts, the reader
+and translation agree on your language. See [1.9.6rc9 notes](releases/1.9.6rc9.md).
+
+Before it, release candidate **1.9.6rc8**: `co server new` charges the first month of a server now and each next
+month as it starts, and `co server destroy` refunds the unused part with a credit note. rc7 described
+the other way round and cannot create a server. See [1.9.6rc8 notes](releases/1.9.6rc8.md).
+
+Before it, release candidate **1.9.6rc7**: every Today row in the REM reader closes with Mark done, Not now and
+Ignore in words, and Ignore can keep an advertiser out of Today for good. Records carry real names,
+record pages show the record, and the Skills page fits on one screen. See
+[1.9.6rc7 notes](releases/1.9.6rc7.md).
+
+Before it, release candidate **1.9.6rc6**: in the REM reader, Mark done sits with the other row actions and one
+button switches the reader between 中文 and English. After an upgrade the reader is served by the
+installed version: the old Host co rem started is replaced on its port when nothing is running. See
+[1.9.6rc6 notes](releases/1.9.6rc6.md).
+
+Before it, release candidate **1.9.6rc5**: the REM reader's rail names every place under its picture (Today,
+Waiting on you, People, Organisations, Projects, Skills, All records), Skills has its own place on it, and
+REM has its own mark and tab icon. See [1.9.6rc5 notes](releases/1.9.6rc5.md).
+
+Before it, release candidate **1.9.6rc4**: in the REM reader, Done, Undo and Skip reach the notebook however
+much mail it holds, and a refused mark says "Not saved". Organisations, Projects, All records and
+Skills load while REM builds a newer reader. See [1.9.6rc4 notes](releases/1.9.6rc4.md).
+
+Before it, release candidate **1.9.6rc3**: on macOS co's own WTF Browser start and a double-click share one
+profile and one Keychain, so a login made in either works in both (sign in once in the app; old
+logins are not moved). On a phone the Send bar sits on the tab bar. See
+[1.9.6rc3 notes](releases/1.9.6rc3.md).
+
+Before it, release candidate **1.9.6rc2**: the REM reader's new desk, phase 1 of 3. An icon rail and one search
+pill on a desktop, a floating tab bar on a phone; Today opens on a night chart, the count of people
+waiting and one raised reply card; a person's record is a card with their face and a grid of what REM
+knows. Lists and the other records keep their old layouts until phases 2 and 3. Before it,
+**1.9.6rc1** made Today's open reply show whole lines on a desktop and start on screen on a phone.
+Stable remains **1.9.5**. See [1.9.6rc2 notes](releases/1.9.6rc2.md) and
+[1.9.6rc1 notes](releases/1.9.6rc1.md).
+
+Release candidate **1.9.5rc1**: nothing in the reader asks you to copy a command any more; a page that
+waited while you typed says "Updates waiting" and keeps your words; a headless `co claude run`
+edits files in its folder by default. See [1.9.5rc1 notes](releases/1.9.5rc1.md).
+
+Stable **1.9.3** is the default production channel. REM does the work: overnight it reads new
+mail, drafts the replies you owe and runs the tasks you approved through `co claude` or Codex; in
+the reader any unfinished item can be handed to Codex or Claude, or talked over with them in a
+conversation that resumes the agent's own session. Replies to people you trust can go through a
+10-minute hold, and `co rem open` serves the last page at once. See
+[1.9.3 notes](releases/1.9.3.md) and the
+[GitHub release](https://github.com/openonion/connectonion/releases/tag/v1.9.3).
+
+Release candidate **1.9.3rc64** is the candidate for stable 1.9.3: owed tasks run through `co claude` or Codex with Hand to Codex / Hand to Claude on every pending item, direct send for people you trust, no count caps, translation into the languages you write, four model levels, a designed morning email, and a reader that opens at once in the Fuse design. Before it, **1.9.3rc63** is 1.9.3rc62 republished: rc62 was tagged but never published, because its release workflow's coverage leg ran past its time limit. Before it, **1.9.3rc62** (tagged, never published) keeps REM reading new mail at every slot and through the night, lets replies to people you trust go through the 10-minute hold, makes Today a front page of who waits and what REM did, gives projects a timeline, list and board, adds a knowledge graph with topic pages and an opt-in morning message; approved owed work is recorded but not run in this version. Before it, **1.9.3rc61** redesigns Today as one card per person with one statement and one green action, a Cmd-K palette and keyboard keys; makes organisation and person pages records of who they are, leaving to-dos to Today; and adds topics, named weekly by the summary model and filed only on evidence. Before it, **1.9.3rc60** makes the night round give every owed item an outcome, adds Approve all with a 10-minute hold, dispatches owed work to Codex with receipts, redesigns People, Organisations, Projects and Sessions, and runs REM on the top model with only summaries on the small one. Before it, **1.9.3rc59** was a hotfix on 1.9.3rc58: the claim audit completes when a cited original is not in the archive, naming the unverified citation instead of retrying forever (#2879). Before it, **1.9.3rc58** was a hotfix on 1.9.3rc57: a page task was refused on every retry because a mail source id had been rewritten to its digest form and the retention check compared spellings (#2877). Before it, **1.9.3rc57** was a hotfix on 1.9.3rc56 (tagged, never published: offline `co init` waited 80 s on npm): installer fallback stops when there is no network. Before it, **1.9.3rc56** makes Done and Skip decisions persist in the notebook, opens the reader before the whole notebook is parsed, gives dates and labels one plain grammar, ends overrunning scheduled turns with their process tree, and lets `co init` proceed without a browser login (#2861, #2864, #2865, #2870). Before it, **1.9.3rc55** (tagged, never published: its release workflow failed on a `co init` that waited for a browser login) made the reader's front page one queue of actions and shows each reply as the mail it becomes, drafted on a fixed skill in your own voice with the background beside it, with Send, a full-screen writer and a channel switch (#2861, #2862); it also carries attachments, browser history, relationship statistics, run memory, tidy, the sessions page and `co init` installing Codex (#2844). Before it, **1.9.3rc54** was a hotfix: on 1.9.3rc53 every scheduled `codex exec` turn stopped at its first mail read because Codex's sandbox blocked the network; turns now run with network access. Before it, **1.9.3rc53** ran scheduled REM on macOS through `codex exec`, so one session keeps working across a round, lets `co init` set REM up without questions, and fills basic contact facts from the mail itself (#2844, #2856). Before it, **1.9.3rc52** kept scheduled REM working after its saved time: 15-minute follow-ups continue the pending task, refusals say exactly what to fix, and schedule changes no longer invalidate a pending task (#2814). Before it, **1.9.3rc51** made REM investigations research beyond the mailbox (web search, `co browser`, `gh`, Feishu) and lead each page with what they found (#2810), keeps the native schedule from losing a slot while `co rem next` prepares (#2812), and limits mailbox consent to `--mail` (#2809). Before it, **1.9.3rc50** replaced real people's names and addresses in tests, docs and examples with fictional ones and adds a test that keeps them out (#2804); there is no behaviour change. Before it, **1.9.3rc49** closed the remaining REM audit items before stable: a run whose PID was reused after a reboot no longer shows as running, dates follow the notebook's zone, page merges keep their sections, and sync, status and the guide say what actually happened (#2802, #2803). Before it, **1.9.3rc48** made `co rem doctor` name an install command that fixes the running co, keeping a uv tool's companion packages (#2798), and steadies the macOS release checks (#2797). Before it, **1.9.3rc47** stopped old translations from holding the native REM schedule: a new scheduled slot logs an old round's untranslated pages as skipped and starts reading new material, where before one translation per slot kept new mail and sessions waiting for days (#2794). Before it, **1.9.3rc46** gave REM a background schedule on Linux: `co rem start` installs a systemd user timer that runs `co rem sync --scheduled` every five minutes, where before it stopped with "macOS-only" after the first batch and no slot ever ran (#2790). Before it, **1.9.3rc45** made the native REM schedule survive a cold start: the wake job opened Codex hidden and a hidden Codex runs no automations, so every slot was missed until the window was shown; it now opens Codex visible but not in front (#2785). A scheduled `co rem next` that stops at the daily cap now leaves a run record, so `co rem logs` shows the slot was visited (#2786), and the `co rem` help pages were rewritten plainly after `co audit --review` (#2782). Users on rc44 or earlier with the native schedule run `co rem start` once after upgrading. Before it, **1.9.3rc44** made the native REM path work on a real notebook: `co rem submit` accepts what `co rem next` prepared, because later-in-thread mail is now ordered deterministically instead of following each process's hash seed (#2778). Before it, **1.9.3rc43** was a hotfix: on 1.9.3rc42, `co rem tidy`, every scheduled sync and `co rem next` stopped at once on a notebook whose pages link to a path outside notebook content; tidy now leaves such links alone (#2773). Before it, **1.9.3rc42** carried the four pre-stable audit fixes (#2754, #2771): scheduled-round writes wait for the lock, the daily cap is "daily cap reached" rather than a failure, the same-person stage charges the week once, archives are never overwritten; and `co rem logs` reads a dead run as interrupted (#2770). Before it, **1.9.3rc41** made the first run honest and short: a one-screen consent summary, an estimate that follows the material and says Nothing to write yet on an empty map, skip reasons for sessions, and `co rem show NAME` across every page kind (#2765, #2766). Before it, **1.9.3rc40** ran one scheduled REM sync at a time (a second tick says busy and keeps its slot) and lets the same-person stage skip a page that vanished (#2763). Before it, **1.9.3rc39** let the native Codex Scheduled session do REM's work itself (`co rem next` / `co rem submit`, #2756) and makes a scheduler error at the end of `co init` a one-line message with a launchd fallback (#2759). Before it, **1.9.3rc38** made `co init` set REM up in one go: mailbox offer, one consent question, upkeep installed and named, then the first notebook after a pause at the estimate; `--yes` and non-tty runs create storage only, `--no-rem` skips it (#2755). Before it, **1.9.3rc37** made stopping `co host` stop the agent: on macOS and
 Linux `co host` becomes `agent.py`, so no orphan is left holding the port. Stable
 remains **1.9.2**.
 
-After publication, install its exact pin:
-
-```bash
-python -m pip install --upgrade 'connectonion==1.9.3rc55'
-```
-
-See [the candidate notes](releases/1.9.3rc55.md), [1.9.3rc54](releases/1.9.3rc54.md) and [1.9.3rc53](releases/1.9.3rc53.md).
-
-## Previous previews
+See [the candidate notes](releases/1.9.3rc64.md), [1.9.3rc63](releases/1.9.3rc63.md), [1.9.3rc62](releases/1.9.3rc62.md), [1.9.3rc61](releases/1.9.3rc61.md) and [1.9.3rc60](releases/1.9.3rc60.md).
 
 Release candidate **1.9.3rc36** lets a scheduled REM run that Codex fires a few
 minutes early serve its slot. Stable remains **1.9.2**.

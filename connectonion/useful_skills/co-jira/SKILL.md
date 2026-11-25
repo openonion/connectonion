@@ -33,6 +33,8 @@ or direct them to the supported project-scoped workflow.
 | Set up or check the selected Jira connection | `co jira verify --help` |
 | Find accessible project keys | `co jira projects --help` |
 | Read known issue keys without saving source files | `co jira issues --help` |
+| List live changes in an explicitly selected project | `co jira changes --help` |
+| Read one live issue for a jira:KEY-1 citation | `co jira show --help` |
 | Save selected issues or a one-off export | `co jira sync --help` |
 | Import a project repeatedly with checkpoint/deduplication | `co jira sync-inc --help` |
 
@@ -40,6 +42,11 @@ For an explicit `co --env-file PATH ...` selection, keep that selector in every
 subsequent command, including help and recovery. Project keys come from the
 project listing; issue keys come from the user's selection or their Jira site.
 Do not substitute invented example keys for real inputs.
+
+For REM use changes/show live reads, never sync/sync-inc source copies. Cite
+the returned jira:KEY-1 source. Re-reading opens live content; compare version
+and time, and report changed/deleted/inaccessible content without claiming a
+saved version is available. Manual exports below are independent opt-in tools.
 
 ## Execute and verify
 

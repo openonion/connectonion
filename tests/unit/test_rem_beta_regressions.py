@@ -149,7 +149,7 @@ def test_show_names_searched_page_kinds_when_nobody_matches(tmp_path):
     root=tmp_path/'rem';prepare(root);_people(root)
     result=CliRunner().invoke(app,['rem','--root',str(root),'show','nobody'])
     assert result.exit_code!=0
-    assert 'No page matches "nobody" in people, projects, orgs or skills' in result.output
+    assert 'No page matches "nobody" in people, projects, orgs, skills or topics' in result.output
 
 
 def test_a_name_in_the_title_brackets_is_a_name_too(tmp_path):

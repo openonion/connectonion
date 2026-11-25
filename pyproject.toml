@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.9.3rc55"
+version = "1.9.7rc27"
 description = "Connect your AI agent to Gmail, a real browser and your files, one command each. The agent CLI harness."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -51,7 +51,7 @@ dependencies = [
     "qrcode>=8.2",
     "mnemonic>=0.20",
     "questionary>=2.0.0",
-    "websockets>=11.0.0",
+    "websockets>=14.0",  # 14 is the asyncio client whose connect() takes additional_headers (co discord as a user)
     "google-auth>=2.0.0",
     "google-api-python-client>=2.0.0",
     # httpx 1.0 (on PyPI as 1.0.dev6 since before 1.8.8) removes HTTPError,
@@ -62,11 +62,17 @@ dependencies = [
     "ifaddr>=0.2.0",
     "beautifulsoup4>=4.12.0",
     "pyyaml>=6.0.0",
-    "typer>=0.20.0",
+    "typer>=0.20.0,<0.29",  # 0.29.0 (2026-11-09) breaks every co command: TyperOption rejects `type=`
     "bashlex>=0.18",
     "uvicorn>=0.20.0",
     "textual>=0.86.0",
     "textual-autocomplete>=3.0.0",
+    # co rem reads Codex sessions Codex has compressed in place (rollout-*.jsonl.zst, #2943).
+    "zstandard>=0.23.0",
+    # Windows has no system timezone database or /etc/localtime: tzdata gives
+    # zoneinfo its zones, tzlocal maps the registry's Windows zone to IANA.
+    "tzdata>=2024.1; sys_platform == 'win32'",
+    "tzlocal>=5.2; sys_platform == 'win32'",
     # Pinned exact: Patchright ships its stealth patches inside a separately-downloaded
     # driver, and that driver has silently regressed to the unpatched vanilla Playwright
     # build across releases (1.57.x, 1.61.1 → navigator.webdriver leaks / automation infobar).
@@ -85,6 +91,11 @@ dependencies = [
     # Current security floor; Intel macOS builds from source because upstream
     # no longer publishes Intel wheels. See the preview installation notes.
     "cryptography>=50.0.2",
+    # co lark / co feishu (listen, co auth) speak through the official SDK's long
+    # connection. Pure Python and light, so it ships with everyone rather than as
+    # an extra: an inbox that needs a second install step failed on a fresh
+    # machine with the next step pointing at a command that needs it too (#2163).
+    "lark-oapi>=1.7.3",
     # uv.lock protects this repository, but it is not installed with the library.
     # Publish the audited transitive floors too, so an existing user environment
     # cannot satisfy ConnectOnion with versions that retain known vulnerabilities.
@@ -94,7 +105,9 @@ dependencies = [
     "protobuf>=6.33.5",
     "pyasn1>=0.6.5",
     "Pygments>=2.20.0",
-    "soupsieve>=2.8.4",
+    # CVE-2026-126192 is fixed in 2.10; CVE-2026-126190 in 4.0, which needs Python 3.11.5,
+    # so uv.lock resolves 4.x there and 2.10 only on 3.11.0-3.11.4.
+    "soupsieve>=2.10",
     "urllib3>=2.8.0",
 ]
 
@@ -105,7 +118,7 @@ dependencies = [
 # demand too, so this is for anyone who would rather pin it in their own
 # requirements than have a command reach for pip.
 wtf = [
-    "onionwright>=0.0.14",
+    "onionwright>=0.0.16",
 ]
 synology = [
     "keyring>=25,<26",
@@ -118,8 +131,12 @@ synology = [
 # uses Feishu should pay for that. Pinned exactly rather than `>=`: the wheel
 # carries a snapshot of whatsmeow's WhatsApp protocol implementation, so a
 # version bump is a protocol change and deserves to be a deliberate one.
+# 0.10.0 (whatsmeow 2026-09-21): WhatsApp refuses 0.4.3's client at connect,
+# "Client outdated (405)", so nothing older can link at all. neonize brings
+# phonenumbers, which `lookup --country` uses (#2964); a second copy such as
+# phonenumberslite would write over the same package.
 whatsapp = [
-    "neonize==0.4.3.post0",
+    "neonize==0.10.0",
 ]
 # Spreadsheet attachments in co rem. An extra because nothing else
 # reads XLSX, and every install was carrying it (with et-xmlfile) for the few

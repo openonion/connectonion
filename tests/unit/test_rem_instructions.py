@@ -7,6 +7,16 @@ from connectonion.rem.runner import instructions, maintenance_instructions
 from connectonion.rem.extract import extraction_instructions
 
 
+def test_reply_draft_allows_undated_requests_within_its_instruction_budget():
+    from connectonion.skills_catalog import useful_skills_dir
+
+    text = (useful_skills_dir() / 'rem-reply-draft/SKILL.md').read_text()
+    assert len(text) < 6_000
+    assert 'date not agreed' in text and 'no earlier agreement' in text
+    assert 'days from Today if dated, else unknown' in text
+    assert 'Dates must be in `material`' in text
+
+
 def test_shared_writing_note_limits_hedges_to_consequential_uncertainty(tmp_path):
     from connectonion.rem.runner import today_note
 
@@ -103,7 +113,7 @@ def test_an_org_page_turn_carries_only_the_org_shape(tmp_path):
     assert len(given) < len(instructions("investigate")) - 10_000
 
 
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_a_one_page_turn_is_not_told_to_read_the_cli_reference_up_front(kind):
     """#1960: "read the CLI reference first" was obeyed on every run, a 12.6k
     `cat` that made a 14.8k turn carry ~27k. Only a turn that runs `co` needs it."""
@@ -130,11 +140,19 @@ def test_an_investigation_carries_only_its_own_kind_s_steps():
 # Additive research/tool and capture rules preserve every existing rule (owner, 2026-11-06).
 # 24k from 1.9.3rc55: attachment reading (#2832) and run memory (#2828) added two
 # rule blocks to rem-investigate; the trialled text is kept rather than condensed.
-INSTRUCTION_BUDGET = 24_000
+# 24.5k from #3083: "run `co commands` and the relevant `--help` first" became the
+# exact research calls (145 help calls in one day, 7–14 per investigation). 360
+# characters carried once cost less than the help pages they replace, re-sent every turn.
+# The same budget holds the 120 characters that make the memory step conditional on
+# the task naming a memory path.
+# 25k from #3141: 'Who they are' as a dated career skeleton with organisations as page links, and the
+# OSINT line (about 500 characters): the owner found an investigated person with one line of who
+# they were and their own company without a page (2026-11-19). Nothing trialled was condensed.
+INSTRUCTION_BUDGET = 25_000
 
 
 @pytest.mark.parametrize("stage", ["investigate", "maintain"])
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_a_one_page_turn_stays_within_15k_characters_of_instructions(stage, kind):
     """#1851: the Skill text is re-sent on every tool round. It was 30.6k for an
     investigation and 22.9k for maintenance; rationale now lives in
@@ -187,13 +205,13 @@ def test_no_turn_is_pointed_at_the_rationale_docs(stage):
 
 
 @pytest.mark.parametrize("source", ["codex", "whatsapp"])
-@pytest.mark.parametrize("kind", ["person", "project", "org", "skill"])
+@pytest.mark.parametrize("kind", ["person", "project", "org", "skill", "topic"])
 def test_maintaining_extract_notes_stays_within_15k_whatever_the_source(tmp_path, source, kind):
     """#2000: a one-page maintain turn was 17.5k with the codex or whatsapp Skill
     appended, though it reads extraction notes, not the source."""
     from connectonion.rem.runner import task_prompt
 
-    items = [{"role": "page", "record": f"{ {'person': 'people', 'project': 'projects', 'org': 'orgs', 'skill': 'skills/catalog'}[kind]}/x.md",
+    items = [{"role": "page", "record": f"{ {'person': 'people', 'project': 'projects', 'org': 'orgs', 'skill': 'skills/catalog', 'topic': 'knowledge'}[kind]}/x.md",
               "text": "# X", "one_page": True},
              {"role": "extract", "source": f"{source}:s +3", "text": "## Projects\n- **X** — note"}]
     task_prompt(tmp_path, items, "maintain", source)
@@ -312,3 +330,13 @@ def test_the_owner_page_keeps_private_life_out_of_insight_and_debts_to_what_was_
     assert "Work only: never a `[personal]`" in owner
     assert "owes only what the user agreed to" in owner
     assert len(owner) <= INSTRUCTION_BUDGET
+
+
+def test_the_decision_example_is_counted_as_the_parts_it_shows():
+    """The Skill said "Four sections" above an example with a lead and three headings (#3083)."""
+    text = ' '.join(instructions('abstract').split())
+    assert ('Four parts (the lead, then `## Why`, `## What it cost` and `## Sources`), and the second one is '
+            'load-bearing: **`## Why` is the raw material of the next lift.**') in text
+    assert 'Four sections' not in text
+    example = instructions('abstract').split('```markdown')[1].split('```')[0]
+    assert [line for line in example.splitlines() if line.startswith('## ')] == ['## Why', '## What it cost', '## Sources']

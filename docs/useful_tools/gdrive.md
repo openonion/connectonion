@@ -52,7 +52,7 @@ widen scopes, so an older token has everything except Drive.
 | `search_files(query, last=20)` | `list[dict]` | Files whose name matches |
 | `list_recent(last=20)` | `str` | Same as `list_files`, formatted for reading |
 | `search(query, last=20)` | `str` | Same as `search_files`, formatted for reading |
-| `download(file_id, dest=".")` | `str` | Save a file locally |
+| `download(file_id, dest=".", progress=None)` | `str` | Save a file locally; binary files stream into `NAME.part`, resume on a rerun, and are size- and md5-checked. `progress` is called with one status line at a time |
 | `upload(path, name=None)` | `dict` | Send a local file to Drive |
 | `delete(file_id)` | `str` | Move to trash (recoverable) |
 

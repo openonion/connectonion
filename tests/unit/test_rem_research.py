@@ -24,12 +24,30 @@ def capture(directory, source='https://example.org/team', body='Mira Vale leads 
 def test_research_policy_reaches_each_investigation_kind(kind):
     text = runner.instructions('investigate', page_kind=kind)
     for rule in ['Research beyond the mailbox', 'co search', '--engine ddg', 'co fetch',
-                 'co browser help', 'co browser --help', 'own tab', 'close', 'linkedin.com',
+                 'co browser tab open', 'co browser tab close', 'own tab', 'linkedin.com',
                  'snippet', 'co gmail', 'co outlook', 'lark-cli', 'gh', '1–3 questions',
                  'web/sources.json', 'Inference:', '[personal]', '[sensitive]']:
         assert rule in text
     assert 'longer is not better' not in text
     assert 'Do not rewrite' in text
+
+
+def test_research_commands_are_given_exactly_and_help_is_only_the_fallback():
+    """"run `co commands` and the relevant `--help` first" was obeyed on every task: 145 help calls
+    in one day, 7–14 per investigation (#3083). The flags below are copied from each command's --help."""
+    text = runner.instructions('investigate', page_kind='person')
+    for call in ['co search "<query>"', 'co search "<query>" --engine ddg', 'co fetch <url>',
+                 'co browser tab open <name> --for "<purpose>"', 'co browser -t <name> go_to <url>',
+                 'co browser -t <name> get_text', 'co browser tab close <name>',
+                 'co gmail search "<gmail query>" -n <count>', 'co gmail read <mail id>',
+                 'co outlook search "<words>" -n <count>', 'co outlook read <mail id>',
+                 'co gmail attachments <mail id>',
+                 'co gmail download <mail id> --attachment <attachment id> --to <directory>',
+                 'co outlook download <mail id> --to <directory>']:
+        assert call in text, call
+    assert 'run a `--help` only for a command not listed here' in ' '.join(text.split())
+    for obeyed in ['run `co commands`', '`--help` first', 'read `co browser help`']:
+        assert obeyed not in text, obeyed
 
 
 @pytest.mark.parametrize('native', [False, True])
@@ -107,6 +125,47 @@ def test_captures_refuse_linkedin_pages(tmp_path, source):
     capture(tmp_path, source)
     with pytest.raises(RemError, match='LinkedIn'):
         evidence.research_items(tmp_path)
+
+
+def test_capture_that_is_not_text_is_refused_by_name(tmp_path):
+    capture(tmp_path)
+    (tmp_path / 'web' / 'team.md').write_bytes(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR')
+    with pytest.raises(RemError, match=r'team\.md is not saved text'):
+        evidence.research_items(tmp_path)
+
+
+@pytest.mark.parametrize('written', ['example.org/team', 'www.example.org/team', '//example.org/team',
+                                     ' https://example.org/team\n', '<https://example.org/team>',
+                                     'example.org:8443/team?tab=1'])
+def test_a_capture_url_written_without_its_scheme_is_read_as_https(tmp_path, written):
+    """"Research captures need an HTTP(S) URL" cost a whole repair turn, 474 s and 2.98M tokens, for an
+    address only one reading fits (#3083)."""
+    capture(tmp_path, written)
+    read = evidence.research_items(tmp_path)[0]['source']
+    assert read.startswith('https://') and read == 'https://' + written.strip(' \n<>/').removeprefix('https://')
+
+
+def test_a_bare_scheme_free_capture_is_still_a_linkedin_page(tmp_path):
+    capture(tmp_path, 'www.linkedin.com/in/mira')
+    with pytest.raises(RemError, match='LinkedIn'):
+        evidence.research_items(tmp_path)
+
+
+@pytest.mark.parametrize('written', ['team.md', 'search: Mira Vale Atlas', 'file:///tmp/team.md', 'ftp://example.org/team',
+                                     'co fetch https://example.org/team', 'Atlas'])
+def test_a_capture_that_is_no_address_is_refused_by_entry_with_the_form_to_write(tmp_path, written):
+    """The refusal named neither the entry nor what to write instead."""
+    capture(tmp_path, written)
+    rows = json.loads((tmp_path / 'web/sources.json').read_text())
+    (tmp_path / 'web/sources.json').write_text(json.dumps(
+        [{'url': 'https://example.org/about', 'file': 'team.md', 'date': '2026-11-06'}, *rows]))
+    with pytest.raises(RemError) as refused:
+        evidence.research_items(tmp_path)
+    reason = str(refused.value)
+    assert reason.startswith('Research captures need an HTTP(S) URL or a native read-only source ID: ')
+    assert f'entry 2 of web/sources.json (file team.md) has {json.dumps(written)}' in reason
+    assert '"url": "https://<host>/<path>"' in reason and '"source": "gmail:<mail id>"' in reason
+    assert 'the search URL' in reason
 
 
 def test_search_capture_can_include_linkedin_snippet(tmp_path):
@@ -592,3 +651,33 @@ def test_selected_attachment_reader_context_has_a_display_type(tmp_path):
     assert context['source'] == 'attachment'
     assert context['filename'] == 'Pilot agreement.pdf'
     assert context['excerpt'] == 'Lantern pilot fee is $200.'
+
+
+def test_a_retained_web_capture_names_its_page_site_and_day(tmp_path):
+    """rc35 hunt: a web source's card opened with its header only, because the capture's context carried no kind,
+    title or date. The context now says it is a web page, which page, and when REM read it."""
+    source = capture(tmp_path, 'https://example.org/team?q=atlas%20lead',
+                     'URL: https://example.org/team?q=atlas%20lead\nTitle: Atlas team — Example\n\nMira Vale leads the Atlas project.')
+    page = f'# Atlas\n\nMira leads it [1]\n\n## Sources\n- [1] {source} — 2026-11-06\n'
+    evidence.retain_research(tmp_path, page, evidence.research_items(tmp_path))
+    context = cited_context(tmp_path, [{'text': page}])[source]
+    assert context['source'] == 'web' and context['url'] == source
+    assert context['title'] == 'Atlas team — Example' and context['captured_at'] == '2026-11-06'
+    assert 'Mira Vale leads the Atlas project.' in context['excerpt']
+
+
+def test_a_web_capture_title_comes_from_its_heading_or_its_sources_entry(tmp_path):
+    web = tmp_path / 'web'
+    web.mkdir()
+    (web / 'a.md').write_text('# Harbour release notes\n\nHarbour 1.0 shipped.')
+    (web / 'b.md').write_text('Plain text with no heading.')
+    (web / 'sources.json').write_text(json.dumps([
+        {'url': 'https://example.org/a', 'file': 'a.md', 'date': '2026-11-06'},
+        {'url': 'https://example.org/b', 'file': 'b.md', 'date': '2026-11-06', 'title': 'Harbour pricing'}]))
+    items = evidence.research_items(tmp_path)
+    assert [item.get('title') for item in items] == [None, 'Harbour pricing']
+    page = '# H\n\nx [1] y [2]\n\n## Sources\n- [1] https://example.org/a — 2026-11-06\n- [2] https://example.org/b — 2026-11-06\n'
+    evidence.retain_research(tmp_path, page, items)
+    contexts = cited_context(tmp_path, [{'text': page}])
+    assert contexts['https://example.org/a']['title'] == 'Harbour release notes'
+    assert contexts['https://example.org/b']['title'] == 'Harbour pricing'

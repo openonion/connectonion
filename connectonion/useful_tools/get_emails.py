@@ -113,6 +113,7 @@ def get_emails(
             "subject": email.get("subject", ""),
             "message": email.get("text") or email.get("html") or email.get("text_body") or email.get("html_body", ""),
             "timestamp": email.get("received_at", ""),
+            "attachments": email.get("attachments") or [],
             "read": email.get("is_read", False)
         })
 
@@ -160,20 +161,21 @@ def get_sent(last: int = 10, to: str = None) -> List[Dict]:
         "status": email.get("status", ""),
         "message_id": email.get("message_id", ""),
         "timestamp": email.get("sent_at", ""),
+        "attachments": email.get("attachments") or [],
     } for email in response.json().get("emails", [])]
 
 
-def mark_read(email_ids: Union[str, List[str]]) -> bool:
+def mark_read(email_ids: Union[int, str, List[Union[int, str]]]) -> bool:
     """Mark email(s) as read.
 
     Args:
-        email_ids: Single email ID or list of IDs to mark as read
+        email_ids: An email id from get_emails(), or a list of them
 
     Returns:
         True if successful, False otherwise
     """
-    # Normalize to list
-    if isinstance(email_ids, str):
+    # Normalize to list; get_emails() returns integer ids
+    if isinstance(email_ids, (int, str)):
         email_ids = [email_ids]
 
     if not email_ids:
@@ -202,17 +204,17 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
     return True
 
 
-def mark_unread(email_ids: Union[str, List[str]]) -> bool:
+def mark_unread(email_ids: Union[int, str, List[Union[int, str]]]) -> bool:
     """Mark email(s) as unread.
 
     Args:
-        email_ids: Single email ID or list of IDs to mark as unread
+        email_ids: An email id from get_emails(), or a list of them
 
     Returns:
         True if successful, False otherwise
     """
-    # Normalize to list
-    if isinstance(email_ids, str):
+    # Normalize to list; get_emails() returns integer ids
+    if isinstance(email_ids, (int, str)):
         email_ids = [email_ids]
 
     if not email_ids:
@@ -265,7 +267,8 @@ def get_email(email_id: Union[str, int]) -> Dict:
     return {'id': email.get('id', ''), 'from': email.get('from', email.get('from_email', '')),
             'to': email.get('to', email.get('to_email', '')), 'subject': email.get('subject', ''),
             'message': email.get('text') or email.get('text_body') or email.get('html') or email.get('html_body', ''),
-            'timestamp': email.get('received_at', ''), 'read': email.get('is_read', False)}
+            'timestamp': email.get('received_at', ''), 'read': email.get('is_read', False),
+            'attachments': email.get('attachments') or []}
 
 
 def get_sent_email(email_id: Union[str, int]) -> Dict:

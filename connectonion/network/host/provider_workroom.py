@@ -196,6 +196,7 @@ def _direct_session(
             else {}
         ),
         "requester": copy.deepcopy(source_session.get("requester")),
+        "_host_auto_notice_sent": bool(source_session.get("_host_auto_notice_sent")),
         "_provider_workroom_id": workroom_id,
         "_provider_continuation_of": continuation_of,
         "_provider_direct_message": text,
@@ -225,7 +226,7 @@ def _persist_direct_provider_trace(
     direct_session: object,
     duration_ms: int,
 ) -> None:
-    """Append only typed provider events; no private direct-run session leaks."""
+    """Append typed provider events and the Host notice; no private session leaks."""
     trace = direct_session.get("trace") if isinstance(direct_session, dict) else None
     provider_events = [
         copy.deepcopy(event) for event in trace or []
@@ -234,6 +235,7 @@ def _persist_direct_provider_trace(
             "provider_activity",
             "provider_artifact",
             "provider_message",
+            "host_notice",
         }
     ]
 
@@ -241,6 +243,8 @@ def _persist_direct_provider_trace(
         if current is None or session_owner(current) != requester_address:
             return current
         session = copy.deepcopy(current.session or {})
+        if isinstance(direct_session, dict) and direct_session.get("_host_auto_notice_sent"):
+            session["_host_auto_notice_sent"] = True
         history = session.setdefault("trace", [])
         if isinstance(history, list):
             history.extend(provider_events)

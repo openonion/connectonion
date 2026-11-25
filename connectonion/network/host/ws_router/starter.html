@@ -176,6 +176,37 @@
   .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
   .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
 
+  /* Admin: rendered only into an admin's page (admin_home.py), folded like
+     Diagnostics so the Home still opens on the card, not on a console. */
+  .admin-body { padding: 0 16px 14px; border-top: 1px solid var(--cc-border); }
+  .admin-block { padding-top: 12px; }
+  .admin-block > h3 { margin: 0 0 4px; color: var(--cc-subtle); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
+  .admin-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
+  .admin-row:first-of-type { border-top: 0; }
+  .admin-row .who { flex: 1 1 220px; min-width: 0; }
+  .admin-row .who strong { display: block; font-weight: 650; overflow-wrap: anywhere; }
+  .admin-row .who strong.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; }
+  .admin-row .who span { display: block; color: var(--cc-subtle); font-size: 11.5px; }
+  .admin-row .who span:empty { display: none; }
+  .admin-actions { display: flex; gap: 6px; }
+  .admin-actions:empty { display: none; }
+  .admin-btn {
+    min-height: 34px; padding: 4px 12px; border: 1px solid var(--cc-border); border-radius: 8px;
+    background: var(--cc-surface-raised); color: var(--cc-text); font-size: 12px; font-weight: 680; cursor: pointer;
+  }
+  .admin-btn:hover { border-color: var(--cc-accent); }
+  .admin-btn.danger { color: var(--cc-danger); }
+  .admin-btn.danger:hover { border-color: var(--cc-danger); }
+  .admin-block .diag:first-of-type { border-top: 0; }
+  .admin-log > summary { padding: 12px 0 4px; cursor: pointer; color: var(--cc-subtle); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
+  .admin-log pre {
+    max-height: 320px; margin: 6px 0 0; padding: 10px; overflow: auto; border-radius: var(--cc-radius-sm);
+    background: var(--cc-surface-raised); font: 10.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .restricted-skill { display: flex; flex-direction: column; min-height: 44px; justify-content: center; padding: 8px 12px; }
+  .restricted-skill .name { font-size: 13.5px; font-weight: 700; }
+  .restricted-skill .desc { color: var(--cc-muted); font-size: 12px; }
+
   @media (min-width: 640px) {
     .masthead { grid-template-columns: 1fr auto; align-items: end; }
     /* Two columns only when there are two cards. An Agent that has published
@@ -221,6 +252,7 @@
     </div>
 
     <div class="grid stack">
+$admin
 $activity
       <details class="card capabilities">
         <summary><span>Capabilities</span><span class="count">$capability_count</span></summary>
@@ -281,3 +313,26 @@ $rows
   </details></template>
 
 <template id="diag"><div class="diag"><dt>$label</dt><dd class="$class">$value</dd></div></template>
+
+<template id="restricted"><div class="restricted-skill"><span class="name">$name</span><span class="desc">Allowed by restricted: in host.yaml</span></div></template>
+
+<template id="admin"><details class="card admin" id="admin">
+        <summary><span>Admin</span><span class="count">$count · only admins see this</span></summary>
+        <div class="admin-body">
+$blocks
+        </div>
+      </details></template>
+
+<template id="admin_block"><section class="admin-block">
+          <h3>$title</h3>
+$rows
+        </section></template>
+
+<template id="admin_row"><div class="admin-row"><div class="who"><strong class="$mono">$what</strong><span>$meta</span></div><div class="admin-actions">$actions</div></div></template>
+
+<template id="admin_button"><button class="admin-btn $tone" type="button" data-ochat-admin="$action" data-ochat-target="$target">$label</button></template>
+
+<template id="admin_log"><details class="admin-log">
+          <summary>Log · $count</summary>
+          <pre>$text</pre>
+        </details></template>

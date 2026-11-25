@@ -5,15 +5,19 @@ description: What an organisation's page in the notebook is made of — the fixe
 
 # An organisation's page
 
-Facts of the entity (programme, agreement, fees, legal entity, who the user
+Facts of the organisation (programme, agreement, fees, registered company, who the user
 deals with) go here, not on the sender's page.
+
+Never call the organisation "the entity" in prose (Chinese: never 实体): use its name, or
+"the company", "the university", "the organisation" (这家公司, 这所大学, 该组织) as fits. The
+`Legal entity` Facts label stays as written; it is a label, not prose.
 
 ## When an organisation earns a page
 
 Create one only when **either** is true:
 
 - **Two or more people write from the same work domain.**
-- **Something is agreed with the entity rather than the person**: a signed
+- **Something is agreed with the organisation rather than the person**: a signed
   contract, recurring money, a programme or account that outlives this contact.
   A one-person client who signed earns a page; a one-person vendor who sent a
   quote does not.
@@ -50,7 +54,11 @@ not support says `Unknown`. **Every factual sentence carries a claim number**
 - example.test [1]
 
 ## Facts
+- Kind: Unknown
+- To you: Unknown
 - What they do: Unknown
+- Parent: Unknown
+- You are: Unknown
 - Website: Unknown
 - Location: Unknown
 - Legal entity: Unknown
@@ -88,26 +96,29 @@ Unknown — historical requests alone do not establish a current obligation. [2]
   (`# rmit.edu.au`) is renamed to the name the material uses
   (`# RMIT University`); the domain stays under `Domains`.
 - **One voice**: the owner is `the user`, never their name, `you` or `we`.
-- **`Facts` is data**: those seven labels, one line each, every one present,
+- **`Facts` is data**: these labels, one line each, every one present,
   a missing value exactly `Unknown`, every value cited, dates `YYYY-MM-DD`.
+- `Kind`: `university`, `investor`, `client_partner`, `supplier`, `community`,
+  `own_company` or `personal` for top-level orgs. Units use `faculty|school|department|course|team|programme|venue|lab` and one cited `Parent` org link; never store depth or totals. Optional cited `You are`: `client|incubatee|partner|alumnus|casual staff`. `To you`: one cited
+  sentence in the page language saying what this organisation is to the user.
 - **`People here` is links, never copies.** A sentence true of the person and
   not the employer belongs on their page. A named person with no page yet is an
   unlinked line.
 - **Once this page exists, the person's `Company:` field links here** and the
   institutional detail moves off their page; it keeps their role, how they
   write, what they owe the user.
-- **`Our relationship` is with the entity**, not the sum of individual ones.
+- **`Our relationship` is with the organisation**, not the sum of individual ones.
 - **`Terms` holds the numbers**: rates, dates, notice periods, what was signed
   and when. A changed term keeps both values and the date it changed.
-- **`Legal entity` holds that entity's ABN, ACN or company number**, with its
+- **`Legal entity` holds that company's ABN, ACN or company number**, with its
   legal name and original citation. In invoices distinguish supplier, buyer and
-  payment recipient: each identifier belongs only on the page of the entity it
+  payment recipient: each identifier belongs only on the page of the company it
   names. Remove the user's own company identifiers from other pages.
 - **Two parts of one organisation that never touch may be two pages.** Say so in
   `Uncertainties`; split only when the mail shows separate relationships.
 - **A company's own marketing is not knowledge about it.** Keep what the user
   learned by dealing with them.
-- **Lead with the entity-level finding** in `Our relationship`: accepted terms,
+- **Lead with the organisation-level finding** in `Our relationship`: accepted terms,
   a capacity constraint or an explicit condition, with sources. Keep programmes,
   offers and teams distinct; one team's reply does not close another's request.
 - **Templates are not executed terms.** Compare the actual mail and documents:
@@ -115,6 +126,9 @@ Unknown — historical requests alone do not establish a current obligation. [2]
   conditions and execution unknown when unsupported; do not invent a conflict.
 - **Record sourced current requests or agreed obligations.** Prerequisites,
   conditional offers and missing historical outcomes alone create no owed debt.
+  Write `- The user owes <name>: <what> — since YYYY-MM-DD [n] — due YYYY-MM-DD`
+  or `<name> owes the user:`; requests use `asked`, not `owes`. Quote the
+  agreement; omit unknown dates. Mark private pages `[sensitive]` or `[personal]`.
   Use `Nothing open as of YYYY-MM-DD [n].` for a supported closure; otherwise
   use `Unknown` with the evidence gap, rather than a task to settle history.
 - **Dates use the notebook calendar.** A bulk notice or calendar acceptance does
@@ -126,3 +140,5 @@ Labelled `Inference: … because … [n][m]` is welcome in `Insight` when cited
 evidence supports the reasoning; it need not be a literal statement in a source.
 Outside research may answer identity or state in the lead/Insight. Keep exact
 quotes exact; never leave an answered research question in `Uncertainties`.
+
+Use deterministic hierarchy proposals: full course-team codes stay distinct; signatures/roles establish chains, domains do not. Shared mailboxes are units. Conflicts become review questions; web structure stays web-sourced. Scope an organisation's obligation with an indented `- Unit: [unit](../orgs/unit.md) [n]`; unknown stays unplaced.

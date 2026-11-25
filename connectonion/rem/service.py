@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -23,9 +24,9 @@ from httpx import RequestError
 
 from ..provider_credentials import ProviderCredentialError
 
-from .config import prepare, read_config, validate
+from .config import describe_levels, prepare, read_config, validate
 from .files import WRITE_WAIT_SECONDS, Notebook, RemError, maintenance_lock, read_json, state_path, write_json
-from .mail import collect_mail, error_status
+from .mail import collect_mail
 from .mail_archive import archive_state, resume_stalled
 from .chat import CHAT_KINDS, chat_home, collect_chat
 from .source import KINDS, collect, pending_metadata, timestamp
@@ -76,9 +77,9 @@ def claude_projects_root() -> Path:
 # coding sessions older than half a year describe work that has moved on, while
 # mail keeps its value for years (people, commitments, what was agreed).
 DEFAULT_LOOKBACK_DAYS = 60
-MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730}
+MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 730, "whatsapp": 730, "wechat": 730}
 # Every kind a subscription can be consented for and read.
-READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS, "jira")
+READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
 
 
 def subscriptions(root: Path) -> dict:
@@ -86,6 +87,7 @@ def subscriptions(root: Path) -> dict:
     if not isinstance(saved, dict):
         raise RemError("Invalid subscriptions file; preserve it for diagnosis")
     since = (now() - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
+    _wechat_ready = (Path.home() / ".co" / "wechat" / "keys.json").is_file()
     defaults = {
         "codex": {"id": "codex", "kind": "codex", "root": str(codex_sessions_root()),
                   "project": None, "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["codex"],
@@ -106,11 +108,24 @@ def subscriptions(root: Path) -> dict:
                      "enabled": False, "consented": False,
                      "adapter": "available" if (chat_home("whatsapp") / "received.jsonl").is_file()
                      else "waiting for co whatsapp listen"},
+        # Off until chosen. Unlike WhatsApp it needs no listener: `co wechat sync` reads WeChat for Mac's own
+        # databases each time, and "*" reads every one-to-one chat (people), never a group unless named.
+        # On by default once WeChat's keys are captured (co wechat key capture): reading your own WeChat
+        # locally is reversible, so context-over-control means do it, not ask (co rem sources remove wechat undoes it).
+        "wechat": {"id": "wechat", "kind": "wechat", "root": str(chat_home("wechat")), "chats": ["*"],
+                   "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["wechat"],
+                   "enabled": _wechat_ready, "consented": _wechat_ready,
+                   "adapter": "available" if _wechat_ready else "waiting for co wechat"},
     }
     defaults.update(saved)
-    defaults.setdefault("jira", {"id": "jira", "kind": "jira", "root": str(root.resolve() / "docs/jira"),
-                                "enabled": False, "consented": False, "adapter": "available",
-                                "since": None})
+    # Capturing WeChat's keys IS the local, reversible consent (#3279): keys present means the source is
+    # enabled and consented, even for a subscription stored before #3281 with consented:False, so it is one
+    # source of truth and a page we seed is a page we fill (#3289). An explicit `co rem sources remove wechat`
+    # (unsubscribed) is respected and stays off.
+    wechat = defaults.get("wechat")
+    if _wechat_ready and wechat and not wechat.get("unsubscribed"):
+        wechat["enabled"] = True
+        wechat["consented"] = True
     return defaults
 
 
@@ -151,6 +166,7 @@ def approve_sources(root: Path, *, mail=()) -> None:
         write_json(state_path(root, "subscriptions.json"), sources)
         write_json(state_path(root, "consent.json"), {**read_json(state_path(root, "consent.json"), {}),
                                                       "authorized_at": now().isoformat(),
+                                                      "summary_value": consent_summary(root, mail=mail),
                                                       "summary": summary_fingerprint(root, mail=mail)})
 
 
@@ -179,11 +195,6 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
-        if name == "jira" and enabled:
-            from .jira_imports import identity
-            declared = identity(root)
-            if declared != sources[name].get("import_identity"):
-                sources[name].update(import_identity=declared, consented=False)
         if project or about:
             if name not in KINDS:
                 raise RemError(f"A scope narrows a coding source ({', '.join(KINDS)}), not {name}")
@@ -202,7 +213,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
                                  "about": about or None, "consented": False,
                                  "since": (now() - timedelta(days=days)).isoformat()}
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         if chats:
             if sources[name].get("kind") not in CHAT_KINDS:
                 raise RemError(f"--chat names a chat in {', '.join(CHAT_KINDS)}, not in {name}")
@@ -215,7 +226,7 @@ def toggle_source(root: Path, name: str, enabled: bool, *, project: str = "", ab
             sources[name]["chats"] = sorted(chosen)
             enabled = bool(chosen)
         elif enabled and sources[name].get("kind") in CHAT_KINDS and not sources[name].get("chats"):
-            raise RemError("Name the chats to read: --chat <id>, from `co whatsapp chats`")
+            raise RemError(f"Name the chats to read: --chat <id>, from `co {sources[name].get('kind')} chats`")
         sources[name]["enabled"] = enabled
         # "Never subscribed" and "the user said stop" both read as enabled=False;
         # only the second forbids an explicit investigation from reading it.
@@ -253,10 +264,8 @@ def set_window(root: Path, name: str, value: str, *, narrow: bool = False, force
     """
     with maintenance_lock(root):
         sources = subscriptions(root)
-        if name == "jira":
-            raise RemError("Jira reads selected local imports, with version deduplication; --since/--only do not apply")
         if name not in sources:
-            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code and whatsapp, and `co rem sources` lists the ones saved here")
+            raise RemError(f"No source called {name!r}; the sources are gmail, outlook, codex, claude-code, whatsapp and wechat, and `co rem sources` lists the ones saved here")
         days = window_days(value, sources[name].get("kind", name))
         since = now() - timedelta(days=days)
         current = sources[name].get("since")
@@ -286,7 +295,8 @@ def run_logs(root: Path, run_id: str = "") -> list[dict]:
     records = [read_json(path, {}) for path in paths]
     if any(not isinstance(record, dict) or "started_at" not in record for record in records):
         raise RemError("Invalid run log; preserve it for diagnosis")
-    return sorted(records, key=lambda record: record["started_at"], reverse=True)
+    return [_safe_failure_record(record) for record in
+            sorted(records, key=lambda record: record["started_at"], reverse=True)]
 
 
 def running_marker() -> dict:
@@ -318,10 +328,10 @@ def seen_outcome(record: dict) -> str:
 def _boot_time() -> datetime | None:
     """The last boot in UTC, when the platform makes it available cheaply; None leaves live PIDs trusted."""
     if sys.platform == "darwin" and shutil.which("sysctl"):
-        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True)
+        result = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         match = re.search(r"\bsec = (\d+)", result.stdout) if result.returncode == 0 else None
     elif sys.platform.startswith("linux") and Path("/proc/stat").is_file():
-        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(), re.M)
+        match = re.search(r"^btime (\d+)$", Path("/proc/stat").read_text(encoding="utf-8"), re.M)
     else:
         return None
     return datetime.fromtimestamp(int(match[1]), timezone.utc) if match else None
@@ -454,7 +464,9 @@ def _finish_scheduled(root, slot, result):
     write_json(state_path(root, "worker.json"), {
         **worker, "last_scheduled_slot": slot.isoformat(),
         "last_scheduled_outcome": "failed" if partial else result["outcome"],
-        "last_scheduled_reason": reason, "last_scheduled_warning": maintenance.get("warning") or ""})
+        "last_scheduled_reason": reason, "last_scheduled_warning": maintenance.get("warning") or "",
+        "last_scheduled_failure": next((row for row in maintenance.get("source_failures", [])
+                                         if row.get("error") == reason), {})})
 
 
 def _wall_slot(day: datetime, value: str) -> datetime:
@@ -637,17 +649,26 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
             failures = run.get("source_failures") or []
             failure = next((row for row in failures if row["source"] == kind), None)
             if failure or run.get("failed_source") == kind:
-                last = {"at": run["started_at"], "error": (failure or run).get("error", "source could not be read")}
+                details = failure or run
+                last = {"at": run["started_at"], "error": details.get("error", "source could not be read"),
+                        **{key: details[key] for key in ("code", "next_command") if key in details}}
                 break
             if kind in run.get("items_by_source", {}):
                 break
     zone = notebook_zone(read_config(root))
     if last and last.get("error"):
         day = timestamp(last["at"]).astimezone(zone).date()
-        reason = _safe_read_error(kind, last["error"]).removeprefix(f"{kind.title()} read failed")
-        return f"last read failed {day}{reason}", ""
+        reason = _safe_read_error(kind, last["error"], code=last.get("code", ""),
+                                  next_command=last.get("next_command", "")).removeprefix(f"{kind.title()} read failed")
+        good = f"; last good read {age(now() - timestamp(last['ok_at']))} ago" if last.get("ok_at") else ""
+        return f"last read failed {day}{reason}{good}", ""
     missing = (f"{last['dropped_missing']} queued messages dropped as missing"
                if last and last.get("dropped_missing") else "")
+    unsaved = _progress_not_saved(logs, kind)
+    if unsaved:
+        day = timestamp(unsaved["started_at"]).astimezone(zone).date()
+        return (f"read {day}, but its progress was not saved ({unsaved['progress_not_saved']}); "
+                "the same mail is read again next round"), ""
     scanned = read_json(state_path(root, "progress.json"), {}).get(kind, {}).get("scanned_until")
     if scanned and now() - timestamp(scanned) > timedelta(days=2):
         if any(run.get("phase", "sync") == "sync" and timestamp(run["started_at"]) > timestamp(scanned)
@@ -657,13 +678,190 @@ def _mailbox_read_failure(root: Path, kind: str) -> tuple[str, str]:
     if missing:
         day = timestamp(last["at"]).astimezone(zone).date()
         return "", f"last read {day}: {missing}"
+    if last and now() - timestamp(last["at"]) > timedelta(days=1):
+        return f"last read {age(now() - timestamp(last['at']))} ago", ""
     return "", ""
 
 
-def status(root: Path, *, include_quota: bool = False) -> dict:
+def _progress_not_saved(logs: list[dict], kind: str) -> dict:
+    """The mailbox's last batch, when its round abandoned it and left the scan point where it was."""
+    batches = (run["batch"] for run in logs if isinstance(run.get("batch"), dict))
+    last = next((batch for batch in batches if kind in batch.get("items_by_source", {})), {})
+    return last if last.get("progress_not_saved") else {}
+
+
+def _nights(root: Path) -> list[dict]:
+    from .night_stats import recent
+    return recent(root)
+
+
+def age(span: timedelta) -> str:
+    """34 hours, 2 days: hours under two days, days after."""
+    hours = int(span.total_seconds() // 3600)
+    if hours < 48:
+        return f"{hours} hour" + ("" if hours == 1 else "s")
+    return f"{hours // 24} days"
+
+
+# A slot's follow-up turns run for three hours (codex_exec.TURN_SECONDS); a round no
+# later slot has moved is stuck, not working.
+ROUND_WINDOW = timedelta(hours=3)
+
+
+def round_state(root: Path, config: dict) -> dict | None:
+    """The open native round: working, or stuck past its slot window with the reason; None when none is open."""
+    cursor = read_json(state_path(root, "round.json"), {})
+    if not cursor or cursor.get("done") or not (cursor.get("slot") or cursor.get("pending")):
+        return None
+    # Held by the floor or the cap: the round reads mail but its pages wait, and the reason says until when.
+    # A spent investigation budget is not a hold on the round: its other stages run (stages.status says it).
+    held = read_json(state_path(root, "round-held.json"), {})
+    if held and not cursor.get("pending"):
+        return {"state": "stuck", "since": held["since"], "reason": held["reason"]}
+    # Progress is the round's own slots and the newest model run since: a round that runs
+    # all day across slots is working while its tasks keep landing.
+    newest = next(iter(run_logs(root)), {}).get("started_at")
+    touched = max(filter(None, (cursor.get("slot"), cursor.get("mail_slot"), cursor.get("portion_slot"),
+                                cursor.get("started_at"), newest)), key=lambda value: timestamp(value))
+    latest = latest_slot(config, now())
+    turn = read_json(state_path(root, "last-turn.json"), {})
+    if (latest is None or turn.get("result") == "running" or timestamp(touched) + ROUND_WINDOW > now()
+            or latest <= timestamp(touched)):
+        return {"state": "working", "since": cursor.get("started_at")}
+    reason = turn.get("reason") or (f"last turn {turn['result']}" if turn.get("result") else "no turn has run since")
+    if cursor.get("pending"):
+        task = read_json(state_path(root, f"tasks/{cursor['pending']}/task.json"), {})
+        refusal = (task.get("last_result") or {}).get("reason")
+        reason = f"task {cursor['pending']} refused: {refusal}" if refusal else reason
+    return {"state": "stuck", "since": touched, "reason": " ".join(str(reason).split())[:240]}
+
+
+def _accepted(turn: dict) -> int:
+    """How many submissions a turn had accepted: its receipt's count, or (older receipts) its log's."""
+    if 'accepted' in turn:
+        return int(turn['accepted'] or 0)
+    log = Path(turn.get('log') or '')
+    if not turn.get('log') or not log.is_file():
+        return 0
+    return sum(1 for line in log.read_text(encoding='utf-8', errors='replace').splitlines()
+               if '"rem.submitted"' in line and '"accepted"' in line)
+
+
+def schedule_failure(root: Path) -> dict | None:
+    """Surface failed turns from their receipts, without inventing scheduler state."""
+    receipts = [read_json(path, {}) for path in state_path(root, 'turns').glob('*.json')]
+    last = read_json(state_path(root, 'last-turn.json'), {})
+    if last:
+        receipts = [turn for turn in receipts if turn.get('started_at') != last.get('started_at')]
+        receipts.append(last)
+    receipts.sort(key=lambda turn: turn.get('started_at', ''))
+    if not receipts or receipts[-1].get('result') in ('running', 'skipped'):
+        return None
+    last = receipts[-1]
+    blocked = last.get('blocked') is True
+    failures = []
+    for turn in reversed(receipts):
+        if turn.get('result') == 'skipped':
+            continue
+        # A turn that hit the 3-hour cap after accepting work is a normal turn: the next fire continues
+        # the round. Only a turn that errored, or ran out of time with nothing accepted, is a failure.
+        if turn.get('result') not in ('failed', 'timed-out') or (turn.get('result') == 'timed-out' and _accepted(turn)):
+            break
+        failures.append(turn)
+    if not blocked and not failures:
+        return None
+    evidence = ' '.join((last.get('reason') or f"{last.get('result')} (exit {last.get('exit_code')})").split())[:240]
+    return {'code': 'blocked' if blocked else 'repeated_failure', 'evidence': evidence,
+            # `empty`: how many of them exited 0 with no task served and nothing submitted.
+            **({'failures': len(failures), 'since': failures[-1].get('started_at', ''),
+                'empty': sum(bool(turn.get('produced_nothing')) for turn in failures),
+                'code_error': _code_error_streak(failures),
+                'same_error': _same_error_streak(failures),
+                **({'stuck': _stuck_on(root, failures[0].get('reason') or '', failures)} if _same_error_streak(failures) else {})}
+               if failures else {})}
+
+
+STUCK_KINDS = {'skills/catalog/': 'skill', 'people/': 'person', 'orgs/': 'org', 'projects/': 'project'}
+
+
+def _stuck_on(root: Path, reason: str, failures: list[dict] = ()) -> dict:
+    """What the repeated error stopped on, and whether REM really set it aside (#3402).
+
+    `skipped` is read from the refusals ledger (parked) or the round's skipped list, never assumed:
+    Today says 已经跳过 only when one of them shows it.
+    `handled`: the installed build already sets this failure aside (#3413). Since #3403 a page whose
+    preparation raises REM's own error is parked and the round goes on, and a skill whose file is gone is
+    never listed. That holds only for turns an older build ran: a turn on this very version that still
+    failed the same way proves it is not handled. Receipts before #3413 carry no version (older builds)."""
+    match = re.search(r"\b((?:skills/catalog|people|orgs|projects)/[\w.-]+\.md)\b", reason)
+    record = match[1] if match else ''
+    kind = next((kind for prefix, kind in STUCK_KINDS.items() if record.startswith(prefix)), 'page')
+    from .refusals import refused_pages
+    parked = bool(record) and str(refused_pages(root).get(record, {}).get('parked', '')).startswith('preparation refused')
+    skipped = bool(record) and any(row.get('record') == record
+                                   for row in read_json(state_path(root, 'round.json'), {}).get('skipped', []))
+    from .._version import __version__
+    on_this_build = any(turn.get('version') == __version__ for turn in failures)
+    return {'kind': kind, 'skipped': parked or skipped,
+            'not_installed': kind == 'skill' and ('no installed source file' in reason or 'no longer installed' in reason),
+            'handled': bool(record) and not on_this_build}
+
+
+# Not stuck: these turns end on the weather, and the next fire does continue.
+WEATHER = re.compile(r"^(Turn exceeded \d+ hours|The turn produced nothing|MAINTENANCE_BUSY|co rem is busy)")
+
+
+def _same_error_streak(failures: list[dict]) -> int:
+    """How many of the newest failures stopped on one and the same error (counts aside), 3 or more; else 0.
+
+    2026-11-23 (#3402): five turns on one skill page's prepare error under "REM 会自动重试，不需要你做什么"."""
+    plain = lambda turn: re.sub(r"\d+", "#", turn.get('reason') or '')  # noqa: E731
+    if not failures or not failures[0].get('reason') or WEATHER.match(failures[0]['reason']):
+        return 0
+    streak = next((index for index, turn in enumerate(failures) if plain(turn) != plain(failures[0])), len(failures))
+    return streak if streak >= 3 else 0
+
+
+# A bug in REM's own code, not the weather: retrying the same turn meets the same line again (rc35–rc36: six turns
+# died on one AttributeError while Today said "REM retries by itself; nothing is needed from you"). Older receipts
+# carry only the message, so the messages Python itself writes for these classes are recognised too.
+CODE_ERRORS = {'AttributeError', 'TypeError', 'NameError', 'KeyError', 'IndexError', 'UnboundLocalError',
+               'AssertionError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'RecursionError'}
+CODE_ERROR_WORDS = re.compile(r"object has no attribute|is not subscriptable|object is not iterable|is not callable"
+                              r"|unexpected keyword argument|required positional argument|unsupported operand"
+                              r"|index out of range|can only concatenate|referenced before assignment|is not defined")
+
+
+def _code_error(turn: dict) -> bool:
+    return turn.get('error_class') in CODE_ERRORS or bool(CODE_ERROR_WORDS.search(turn.get('reason') or ''))
+
+
+def _code_error_streak(failures: list[dict]) -> int:
+    """How many of the newest failures died on one and the same code error (newest first)."""
+    if not failures or not _code_error(failures[0]):
+        return 0
+    same = failures[0].get('reason')
+    return next((index for index, turn in enumerate(failures) if turn.get('reason') != same or not _code_error(turn)), len(failures))
+
+
+def _unmatched_marks(root: Path) -> int:
+    from .threads import unmatched_marks
+    return unmatched_marks(root)
+
+
+def status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
+    """The notebook's status; its whole-notebook scans (census, tags) run once in it (tags.held)."""
+    from .tags import held
+    with held(root):
+        return _status(root, include_quota=include_quota, include_coverage=include_coverage)
+
+
+def _status(root: Path, *, include_quota: bool = False, include_coverage: bool = True) -> dict:
     """Inspect saved state; quota readings come from run logs, never a provider process."""
     from .census import people_coverage
     from .translate import coverage as translation_coverage
+    from .night import summary as night_summary
+    from .quota import paused
     config = read_config(root)
     saved_zone = config.get("schedule", {}).get("timezone", "")
     zone = notebook_zone(config)
@@ -687,14 +885,29 @@ def status(root: Path, *, include_quota: bool = False) -> dict:
         coverage[key] = {"known_runs": len(known), "model_runs": len(model_runs)}
     usage["runs_without_usage"] = sum(type((record.get("usage") or {}).get("input_tokens")) is not int
                                       for record in model_runs)
-    return {"state": state,
+    from .stages import calendar_status, status as stage_status
+    from .day_plan import status as day_plan_status
+    # Counted once: the Budget line and the Investigate line's hold say the same number.
+    budget = _quota_status(config, logs) if include_quota else None
+    return {"state": state, "tonight": night_summary(root),
+            "stages": stage_status(root, config, logs, budget=budget),
+            "calendar": calendar_status(root, config),
+            "day_plan": day_plan_status(root, str(today)),
+            "tasks": {"auto": config["tasks"]["auto"]},
             "root": str(root), "configured": (root / "config.yaml").exists(),
+            "models": describe_levels(config),
             "date": str(today), "timezone": saved_zone or "Unknown (UTC reporting fallback only)",
             "schedule_times": config.get("schedule", {}).get("times", []), "next_run": slot,
             "schedule_runner": worker_state(root).get("runner") or (
                 "codex-app" if worker_state(root).get("scheduler") == "codex-native"
                 else "sync" if worker_state(root).get("scheduler") else config['schedule']['runner']),
             "last_turn": read_json(state_path(root, "last-turn.json"), None),
+            "round": round_state(root, config),
+            "paused": paused(root),
+            "nights": _nights(root),
+            **({"schedule_failure": failure} if (failure := schedule_failure(root)) else {}),
+            # Closed items whose line the page no longer has in any form (#3174): counted, never dropped.
+            **({"closed_unmatched": unmatched} if (unmatched := _unmatched_marks(root)) else {}),
             "worker": _status_worker(worker_state(root)),
             # A run the cap refused is recorded so logs can show it (#1957); it read nothing.
             "batches_today": sum(record.get("outcome") != "refused" for record in recent),
@@ -702,31 +915,50 @@ def status(root: Path, *, include_quota: bool = False) -> dict:
             "usage_today": usage, "usage_coverage": coverage,
             "last_run": _status_run(logs[0]) if logs else None,
             "mailboxes": _mailbox_lines(root),
-            "people_coverage": people_coverage(root),
-            "translation_coverage": translation_coverage(root),
+            **({"people_coverage": people_coverage(root),
+                "translation_coverage": translation_coverage(root, next_run=slot)} if include_coverage else {}),
             # An unfinished init archive (#2035): investigations ask the servers until it is done.
             **({"mail_archive": archive} if (archive := archive_state(root, now=now())) else {}),
-            **(_quota_status(config, logs) if include_quota else {})}
+            **(budget or {})}
 
 
 def _status_worker(worker: dict) -> dict:
     """Older scheduled failures copied the collection error into worker state."""
     reason = worker.get("last_scheduled_reason", "")
+    failure = worker.get("last_scheduled_failure") or {}
+    if failure:
+        failure = _safe_source_failure(failure)
+        worker = {**worker, "last_scheduled_failure": failure}
     for name in READABLE:
         if reason.startswith(f"{name.title()} read failed"):
-            return {**worker, "last_scheduled_reason": _safe_read_error(name, reason)}
+            return {**worker, "last_scheduled_reason": _safe_read_error(name, reason,
+                    code=failure.get("code", ""), next_command=failure.get("next_command", ""))}
     return worker
 
 
 def _status_run(run: dict) -> dict:
     """Old collection errors may contain secrets; status never echoes them."""
-    record = {**run, "outcome": seen_outcome(run)}
+    return {**_safe_failure_record(run), "outcome": seen_outcome(run)}
+
+
+def _safe_failure_record(run: dict) -> dict:
+    """Log readers share status's boundary, including offline reader snapshots."""
+    record = dict(run)
     if run.get("failed_source"):
-        record["error"] = _safe_read_error(run["failed_source"], run.get("error", ""))
+        failure = next((row for row in run.get("source_failures", []) if row["source"] == run["failed_source"]), run)
+        record["error"] = _safe_read_error(run["failed_source"], run.get("error", ""),
+                                           code=failure.get("code", ""), next_command=failure.get("next_command", ""))
     if run.get("source_failures"):
-        record["source_failures"] = [{**row, "error": _safe_read_error(row["source"], row.get("error", ""))}
-                                     for row in run["source_failures"]]
+        record["source_failures"] = [_safe_source_failure(row) for row in run["source_failures"]]
     return record
+
+
+def _safe_source_failure(failure: dict) -> dict:
+    """Rebuild the whole saved diagnostic, including its structured fields."""
+    name, code = failure["source"], failure.get("code", "")
+    if code in CREDENTIAL_FAILURES:
+        return _credential_failure(name, code, next_command=failure.get("next_command", ""))
+    return {"source": name, "error": _safe_read_error(name, failure.get("error", ""))}
 
 
 def notebook_zone(config: dict):
@@ -768,9 +1000,11 @@ def daily_cap(root: Path) -> dict:
     config, state = read_config(root), status(root)
     zone = notebook_zone(config)
     midnight = datetime.fromisoformat(state["date"]).replace(tzinfo=zone) + timedelta(days=1)
-    _, runs = runs_today(run_logs(root), zone)
+    from .catchup import limit_runs
+    runs = limit_runs(root, run_logs(root), zone)
     translation_attempts = sum(row.get("runner_attempts", 0) for row in runs if row.get("phase") in ("daily-translation", "translate"))
-    limit, used = config["limits"]["runner_calls_per_day"], state["runner_attempts_today"] - translation_attempts
+    limit = config["limits"]["runner_calls_per_day"]
+    used = sum(row.get("runner_attempts", 0) for row in runs) - translation_attempts
     resets = midnight.isoformat(timespec="minutes")
     return {"used": used, "limit": limit, "remaining": max(0, limit - used), "resets_at": resets,
             "note": (f"{max(0, limit - used)} of {limit} runner attempts left today; the count resets "
@@ -780,7 +1014,7 @@ def daily_cap(root: Path) -> dict:
 def _quota_status(config: dict, logs: list[dict]) -> dict:
     from . import quota
     meter = next((reading for run in logs for key in ("after", "before")
-                  if "used_percent" in (reading := (run.get("quota") or {}).get(key, {}))
+                  if "used_percent" in (reading := (run.get("quota") or {}).get(key) or {})
                   and reading.get("resets_at", 0) > now().timestamp()),
                  {"unknown": "No saved quota reading for the current window"})
     if config.get("runner") != "codex":
@@ -793,7 +1027,9 @@ def _quota_status(config: dict, logs: list[dict]) -> dict:
     else:
         zone = ZoneInfo(config["schedule"]["timezone"]) if config["schedule"]["timezone"] else timezone.utc
         resets = datetime.fromtimestamp(meter["resets_at"], zone).strftime("%a %d %b %H:%M")
-        week = f"{meter['used_percent']}% used on {meter['plan']} (last recorded); resets {resets}"
+        # A reading need not name its plan (an older recorder, a test meter); status must still print.
+        on_plan = f" on {meter['plan']}" if meter.get("plan") else ""
+        week = f"{meter['used_percent']}% used{on_plan} (last recorded); resets {resets}"
     # Sentences first for people; the same numbers stay structured for --json.
     return {"codex_week": week,
             "investigation_this_week": (f"{spent} of {limits['investigation_quota_points']} points; "
@@ -854,18 +1090,12 @@ def consent_summary(root: Path, *, mail=()) -> dict:
             chats = source.get("chats") or []
             state = (f"will read {len(chats)} chat(s), both sides, the agent's own replies left out"
                      if source.get("adapter") == "available" else source["adapter"])
-        elif source.get("kind") == "jira":
-            state = "will read selected local Jira imports; no remote polling"
         else:
             state = "waiting"
         sources[name] = {"state": state, "root": source.get("root"), "project": source.get("project"),
                          "since": source.get("since")}
         if source.get("kind") in CHAT_KINDS:
             sources[name]["chats"] = source.get("chats") or []
-        if source.get("remote"):
-            sources[name]["remote"] = source["remote"]
-        if source.get("kind") == "jira":
-            sources[name]["import_identity"] = source.get("import_identity")
     return {"root": str(root), "sources": sources, "runner": config["runner"], "model": config["model"],
             "model_receives": "the new session messages plus the notebook pages it reads, "
                               + MODEL_ROUTE[config["runner"]],
@@ -908,7 +1138,7 @@ def grant_init_sources(root: Path, *, lock_held: bool = False) -> None:
         previous = read_json(state_path(root, "consent.json"), {})
         write_json(state_path(root, "consent.json"), {
             **previous, "authorized_at": previous.get("authorized_at") or now().isoformat(),
-            "granted_by": "init", "summary": summary_fingerprint(root)})
+            "granted_by": "init", "summary_value": consent_summary(root), "summary": summary_fingerprint(root)})
 
 
 def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
@@ -923,7 +1153,19 @@ def refresh_init_mailboxes(root: Path, *, lock_held: bool = False) -> None:
         grant_init_sources(root, lock_held=lock_held)
 
 
-def ensure_consent(root: Path, *, confirm, mail=()) -> bool:
+def _consent_changes(previous: dict, current: dict, prefix='') -> list[str]:
+    changes = []
+    for key in sorted(previous.keys() | current.keys()):
+        before, after = previous.get(key), current.get(key)
+        field = prefix + key
+        if isinstance(before, dict) and isinstance(after, dict):
+            changes.extend(_consent_changes(before, after, field + '.'))
+        elif before != after:
+            changes.append(f'{field}: {json.dumps(before, ensure_ascii=False)} → {json.dumps(after, ensure_ascii=False)}')
+    return changes
+
+
+def ensure_consent(root: Path, *, confirm, mail=(), report_unchanged=False) -> bool:
     """Approve init/start sources; --mail limits new approvals, never revokes prior consent."""
     refresh_init_mailboxes(root)
     first = not state_path(root, "consent.json").is_file()
@@ -943,15 +1185,20 @@ def ensure_consent(root: Path, *, confirm, mail=()) -> bool:
     changed = not first and (not isinstance(agreed, dict)
                              or agreed.get("summary") != summary_fingerprint(root, mail=mail))
     if first or waiting or changed:
-        if not confirm(consent_summary(root, mail=mail)):
+        summary = consent_summary(root, mail=mail)
+        if agreed.get('summary_value'):
+            summary = {**summary, 'changes': _consent_changes(agreed['summary_value'], summary)}
+        if not confirm(summary):
             return False
         subscribe_read_mail(root, offered)
         approve_sources(root, mail=mail)
+    elif report_unchanged:
+        return confirm(consent_summary(root, mail=mail))
     return True
 
 
 def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool = True,
-          history_progress=None, mail=()) -> dict:
+          history_progress=None, mail=(), report_unchanged=False) -> dict:
     """Prepare what is missing, confirm access once, install the clock, run the first batch.
 
     `confirm` receives the summary and returns True to proceed. Declining leaves
@@ -963,7 +1210,7 @@ def start(root: Path, *, confirm, scheduler, runner=None, run_first_batch: bool 
         prepare(root)
         validate(read_config(root))
     first = not state_path(root, "consent.json").is_file()
-    if not ensure_consent(root, confirm=confirm, mail=mail):
+    if not ensure_consent(root, confirm=confirm, mail=mail, report_unchanged=report_unchanged):
         return {"started": False, "consented": False, "first_batch": None}
     # The first batch runs before the clock is installed: loading a launchd job
     # fires its run-at-load batch immediately, and two batches would race for the
@@ -1267,9 +1514,59 @@ def _http_reason(status: int, text: str = "") -> str:
                 responses.get(status, "HTTP request failed"))
 
 
-def _safe_read_error(name: str, error: str) -> str:
-    """Reduce pre-upgrade records to a class and optional HTTP diagnosis too."""
+# Provider messages are never diagnostic data: even a typed credential error
+# can contain response bodies or tokens. Only these codes and fixed commands
+# cross the collection boundary. Unknown codes fall back to the class name.
+CREDENTIAL_FAILURES = {
+    "reauth_required": ("{provider} authorization expired or was revoked.", "auth"),
+    "broker_auth_failed": ("OpenOnion authentication failed while refreshing provider access.", "co auth"),
+    "record_changed": ("The selected credential record changed during this operation.", "co status"),
+    "invalid_response": ("Authorization service returned invalid credentials; saved record kept.", "co status"),
+    "permission_denied": ("{provider} permission denied for this operation.", "auth"),
+    "provider_unavailable": ("Authorization service could not refresh credentials.", "co status"),
+    "network_error": ("Cannot reach the authorization service; saved credentials kept.", "co status"),
+    "not_configured": ("{provider} account not connected.", "auth"),
+    "incomplete_record": ("Local {provider} credential record is incomplete.", "auth"),
+}
+
+
+def _saved_recovery(command: str, fallback: str) -> str:
+    """A saved structured command may select a file; it cannot add operations."""
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return fallback
+    if (len(parts) >= 4 and parts[:2] == ["co", "--env-file"] and Path(parts[2]).is_absolute()
+            and not any(char in parts[2] for char in "\r\n\0") and ["co", *parts[3:]] == shlex.split(fallback)):
+        return shlex.join(parts)
+    return fallback
+
+
+def _credential_failure(name: str, code: str, *, scoped: bool = False, next_command: str = "") -> dict:
+    """Build recovery from an allowlisted code, never from exception text."""
+    message, command = CREDENTIAL_FAILURES[code]
+    provider = "Google" if name == "gmail" else "Microsoft"
+    if command == "auth":
+        command = f"co auth {provider.lower()}"
+    if scoped:
+        from ..environment import selected_command
+        command = selected_command(command)
+    elif next_command:
+        command = _saved_recovery(next_command, command)
+    return {"source": name, "code": code, "next_command": command,
+            "error": f"{name.title()} read failed: [{code}] {message.format(provider=provider)} Next: {command}"}
+
+
+def _safe_read_error(name: str, error: str, *, code: str = "", next_command: str = "") -> str:
+    """Rebuild credential sentences; redact arbitrary pre-upgrade text."""
     prefix = f"{name.title()} read failed"
+    if code in CREDENTIAL_FAILURES:
+        return _credential_failure(name, code, next_command=next_command)["error"]
+    credential = re.match(re.escape(prefix) + r": \[([a-z_]+)\]", error)
+    if credential:
+        code = credential[1]
+        return (_credential_failure(name, code)["error"] if code in CREDENTIAL_FAILURES
+                else f"{prefix}: ProviderCredentialError")
     match = re.match(re.escape(prefix) + r": ([A-Za-z_][A-Za-z0-9_]{0,79})(?: (\d{3})\b)?(?= |$)", error)
     if not match:
         return prefix
@@ -1280,18 +1577,24 @@ def _safe_read_error(name: str, error: str) -> str:
 
 
 def _collection_failure(name: str, error: Exception) -> dict:
-    """Never persist free-form exception text, even from credential errors."""
-    status = error_status(error)
-    detail = type(error).__name__
-    if status is not None:
-        reason = str(error.reason) if isinstance(error, HttpError) else ""
-        detail += f" {status} {_http_reason(status, reason)}"
-    return {"source": name, "error": f"{name.title()} read failed: {detail}"}
+    """Only structured recovery or the exception class may reach the notebook."""
+    if isinstance(error, ProviderCredentialError) and error.code in CREDENTIAL_FAILURES:
+        return _credential_failure(name, error.code, scoped=True)
+    return {"source": name, "error": f"{name.title()} read failed: {type(error).__name__}"}
 
 
-def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missing: int = 0) -> None:
+def _record_source_read(root: Path, name: str, error: str = "", *, dropped_missing: int = 0, failure: dict | None = None) -> None:
     reads = read_json(state_path(root, "source_reads.json"), {})
-    reads[name] = {"at": now().isoformat(), "error": error, "dropped_missing": dropped_missing}
+    failure = failure or {}
+    safe = _safe_read_error(name, error, code=failure.get("code", ""), next_command=failure.get("next_command", "")) if error else ""
+    credential = re.match(re.escape(f"{name.title()} read failed: ") + r"\[([a-z_]+)\]", safe)
+    fields = _credential_failure(name, credential[1], next_command=failure.get("next_command", "")) if credential else {}
+    previous = reads.get(name) or {}
+    # The last read that worked, kept through failures so status can say how old it is.
+    good = now().isoformat() if not safe else previous.get("ok_at") or (previous.get("at") if previous and not previous.get("error") else None)
+    reads[name] = {"at": now().isoformat(), "error": safe, "dropped_missing": dropped_missing,
+                   **({"ok_at": good} if good else {}),
+                   **{key: fields[key] for key in ("code", "next_command") if key in fields}}
     write_json(state_path(root, "source_reads.json"), reads)
 
 
@@ -1370,26 +1673,16 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         if len(items) >= max_items or remaining <= 0:
             break
         try:
-            from .remote_sources import refresh
-            refresh(root, subscription)
             if subscription.get("kind") in MAIL_KINDS:
                 try:
                     client = mail_client(subscription["kind"])
                 except ProviderCredentialError:
-                    raise  # Already sanitized, with the provider's recovery command.
+                    raise  # Preserve structured recovery for the collection boundary.
                 except ValueError as error:
                     provider = "google" if subscription["kind"] == "gmail" else "microsoft"
                     raise RemError(f"Mailbox configuration could not be loaded; run `co auth {provider}`") from error
                 batch = collect_mail(subscription, progress.get(name, {}), max_items - len(items),
                                      remaining, client, only=with_person)
-            elif subscription.get("kind") == "jira" and not with_person:
-                from .jira_imports import collect_jira
-                # One issue concerns at most its project, reporter and assignee.
-                # Keep every target inside the existing per-page turn budget.
-                batch = collect_jira(root, subscription, progress.get(name, {}), 1, remaining)
-                if any(not Notebook(root).exists(target) for item in batch.items
-                       for target in item.get("target_records", [])):
-                    raise RemError("New Jira identities need mapping; run `co rem init --no-investigate --no-start` and retry sync; progress preserved")
             elif with_person:
                 continue  # a person is a mail concept; a coding session has no correspondent
             elif subscription.get("kind") in CHAT_KINDS:
@@ -1400,7 +1693,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
                 HttpError, GoogleAuthError, HttpLib2Error) as error:
             failure = _collection_failure(name, error)
             source_failures.append(failure)
-            _record_source_read(root, name, failure["error"])
+            _record_source_read(root, name, failure["error"], failure=failure)
             updated["rem_last_source"] = name
             # Rotation survives even if a later model turn fails; source cursors stay put.
             write_json(state_path(root, "progress.json"), {**progress, "rem_last_source": name})
@@ -1433,9 +1726,10 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         updated["rem_seen_source_ids"] = sorted(set(progress.get("rem_seen_source_ids", [])) | seen)
     if selected_feedback:
         feedback.synchronize(updated, selected_feedback)
+    from .runner import worker_effort
     record = {"id": "run_" + uuid.uuid4().hex, "started_at": started.isoformat(),
               "harness": config["runner"], "model": config["model"], "speed": config["speed"],
-              "phase": "sync", "sources": list(selected), "items": len(items),
+              "effort": worker_effort(config), "phase": "sync", "sources": list(selected), "items": len(items),
               "runner_attempts": 0, "outcome": "no_change", "usage": None, "changed": [], "refused": 0,
               "extracted": not selected_feedback and len(items) > limits["items_per_batch"],
               # Where the tokens went, kept raw so the cost of a stage, a source or a
@@ -1488,17 +1782,9 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
     elif runner is None or runner is run_stage:
         from .leads import cooling, nothing_new, page_leads, project_writer_pages
         found = page_leads(Notebook(root), items)
-        if kind == "jira":
-            current = [lead for lead in found if nothing_new(Notebook(root), lead, items)]
-            waiting = [lead for lead in found if lead not in current]
-            blocked = project_writer_pages(Notebook(root), waiting) + cooling(root, waiting)
-            if blocked:
-                raise RemError("Jira target pages are cooling or owned by the project writer; progress preserved. "
-                               "Wait for cooling to expire or use `co rem investigate PAGE` before retrying sync")
         writer, resting = project_writer_pages(Notebook(root), found), cooling(root, found)
         passed = writer + resting
-        current = [lead for lead in found if (kind == "jira" or lead not in passed)
-                   and nothing_new(Notebook(root), lead, items)]
+        current = [lead for lead in found if lead not in passed and nothing_new(Notebook(root), lead, items)]
         leads = [lead for lead in found if lead not in current + passed][:PAGES_PER_BATCH]
         record.update(**({"for_project_writer": writer} if writer else {}), **({"cooling": resting} if resting else {}))
     if current:
@@ -1511,7 +1797,7 @@ def prepare_sync(root, selected, progress, config, runner=None, *, with_person="
         write_json(path, record)
         return {"done": True, "record": record}
     room = daily_cap(root)["remaining"] - extract_calls
-    if room < (max(1, len(leads)) if kind == "jira" else 1):
+    if room < 1:
         cap = daily_cap(root)
         reason = (f"{CAP_LIMIT} ({cap['used']} of {cap['limit']} used today; this batch needs "
                   f"{extract_calls + 1}); source progress was not advanced. The count resets "

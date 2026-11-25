@@ -54,7 +54,8 @@ def own_words(body: str) -> str:
 
 def sent_mail(root: Path, addresses: list[str]) -> list[str]:
     path = state_path(root, "rem.db")
-    if not addresses or not path.is_file():
+    from .store_messages import has_message_index
+    if not addresses or not has_message_index(path, required={"sender", "body_path"}):
         return []
     mine = {address.casefold() for address in addresses}
     db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
@@ -150,6 +151,24 @@ NATIVE = {"zh": "中文", "en": "English", "ja": "日本語", "ko": "한국어",
 
 def native_name(language: str) -> str:
     return NATIVE.get(language, language)
+
+
+def owner_language(root: Path) -> str | None:
+    """The one language the owner reads REM's own words in. Drafts (gist, why, slots), the
+    reader's interface and the first language translated at night all use this, never a pick
+    of their own: three rules once made the same `en, zh` owner an English draft under a 中文
+    reader.
+
+    A configured list: its first non-English tag. The reader appends what he chooses, so `en`
+    often comes first there by accident; only a list with no other language means English.
+    A detected list is ordered by how much he writes each language, so its first tag is his:
+    someone who writes 88% English and the odd Chinese line reads English. None while nothing
+    is set or detected."""
+    chosen = owner_languages(root)
+    tags = chosen["languages"]
+    if not chosen["from"].startswith("set"):
+        return next(iter(tags), None)
+    return next((tag for tag in tags if tag.split("-")[0].lower() != "en"), next(iter(tags), None))
 
 
 def owner_languages(root: Path) -> dict:

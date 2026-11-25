@@ -21,7 +21,7 @@ PATCHED_FLOORS = {
     "pynacl": "1.6.2",
     "python-dotenv": "1.2.2",
     "requests": "2.33.0",
-    "soupsieve": "2.8.4",
+    "soupsieve": "2.10",
     "urllib3": "2.8.0",  # CVE-2026-97687/97688/97689
 }
 

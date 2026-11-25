@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+import zstandard
+
 from .files import RemError, safe_path
 
 # One real machine had 18 rollouts over 16 MB in a week (the largest 426 MB, almost
@@ -356,6 +358,90 @@ KINDS = {
 }
 
 
+# Codex compresses older sessions in place: rollout-X.jsonl becomes rollout-X.jsonl.zst.
+# 22,000 of 22,800 Codex files on one machine were compressed and none were read (#2943).
+COMPRESSED = ".zst"
+
+
+class _Decompressed(io.RawIOBase):
+    """A .zst session read as the plain bytes it holds, so offsets and digests are the plain file's.
+
+    zstandard reads forward only; a seek back decompresses again from the start of
+    the same open file, which still works if Codex unlinks it meanwhile.
+    """
+
+    def __init__(self, path: Path):
+        super().__init__()
+        self._file = path.open("rb")
+        self._restart()
+
+    def _restart(self):
+        self._file.seek(0)
+        self._stream = zstandard.ZstdDecompressor().stream_reader(self._file, closefd=False)
+        self._position = 0
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return True
+
+    def readinto(self, buffer):
+        count = self._stream.readinto(buffer)
+        self._position += count
+        return count
+
+    def tell(self):
+        return self._position
+
+    def seek(self, offset, whence=io.SEEK_SET):
+        if whence == io.SEEK_CUR:
+            offset += self._position
+        elif whence != io.SEEK_SET:
+            raise io.UnsupportedOperation("a compressed session seeks from its start only")
+        if offset < self._position:
+            self._restart()
+        while self._position < offset:
+            chunk = self._stream.read(min(1 << 20, offset - self._position))
+            if not chunk:
+                break
+            self._position += len(chunk)
+        return self._position
+
+    def close(self):
+        if not self.closed:
+            self._stream.close()
+            self._file.close()
+        super().close()
+
+
+def open_session(path: Path):
+    """A session transcript as binary lines, decompressed when Codex has compressed it."""
+    if path.name.endswith(COMPRESSED):
+        return io.BufferedReader(_Decompressed(path), 1 << 20)
+    return path.open("rb")
+
+
+def read_session(path: Path) -> bytes:
+    """The whole transcript's plain bytes."""
+    with open_session(path) as handle:
+        return handle.read()
+
+
+def progress_name(name: str) -> str:
+    """A compressed session keeps its plain twin's progress, so compressing it reads nothing again."""
+    return name[:-len(COMPRESSED)] if name.endswith(COMPRESSED) else name
+
+
+def session_paths(directory: Path, kind: str) -> list[Path]:
+    """Every session under `directory`, plain or compressed, one per session; links are the caller's to refuse."""
+    pattern = KINDS[kind]["glob"]
+    plain = set(directory.rglob(pattern))
+    packed = {path for path in directory.rglob(pattern + COMPRESSED)
+              if path.with_name(progress_name(path.name)) not in plain}
+    return sorted(plain | packed)
+
+
 def source_files(subscription: dict) -> list[Path]:
     root = Path(subscription["root"])
     if root.is_symlink():
@@ -369,7 +455,9 @@ def source_files(subscription: dict) -> list[Path]:
         folder = Path(current)
         inside = folder.relative_to(root).parts
         for name in files:
-            if fnmatch.fnmatchcase(name, pattern):
+            # A session in both forms (Codex compressing it now) is read once, as the plain file.
+            if fnmatch.fnmatchcase(name, pattern) or (
+                    fnmatch.fnmatchcase(progress_name(name), pattern) and progress_name(name) not in files):
                 path = folder / name
                 if any(part.startswith(".") for part in (*inside, name)) or path.is_symlink():
                     safe_path(root, "/".join((*inside, name)))  # raises the same error it always did
@@ -381,9 +469,9 @@ def pending_metadata(subscription: dict, progress: dict) -> dict:
     root = Path(subscription["root"])
     changed = 0
     for path in source_files(subscription):
-        old = progress.get(path.relative_to(root).as_posix(), {})
+        old = progress.get(progress_name(path.relative_to(root).as_posix()), {})
         stat = path.stat()
-        if (stat.st_size != old.get("offset") or stat.st_mtime_ns != old.get("mtime_ns")):
+        if (stat.st_size != old.get("size", old.get("offset")) or stat.st_mtime_ns != old.get("mtime_ns")):
             changed += 1
     return {"candidate_files": changed, "message_count": None,
             "source_available": root.is_dir(), "body_reads": False}
@@ -411,7 +499,7 @@ def _verify_prefix(source, offset: int, expected) -> "hashlib._Hash":
 @contextmanager
 def _read_rollout(path: Path, old: dict, kind: str):
     try:
-        handle = path.open("rb")
+        handle = open_session(path)
     except FileNotFoundError:
         # Codex may archive/remove a rollout after it was listed or statted.
         yield None, {"missing": True}, 0, None
@@ -433,20 +521,23 @@ def _rollout(source, old: dict, kind: str):
     offset = old.get("offset", 0)
     if type(offset) is not int or offset < 0:
         raise RemError("Invalid source progress; preserve it for diagnosis")
+    # The first line is taken before the prefix is hashed, so the hash ends at the
+    # offset and nothing seeks back: a compressed session seeks back by decompressing
+    # from its start, and was decompressed three times to be read once (11-16).
+    head = source.readline(1_000_000)
+    source.seek(0)
     try:
         digest = _verify_prefix(source, offset, old.get("digest"))
     except ChangedPrefix:
         yield None, {}, offset, None
         return
-    source.seek(0)
     try:
-        first = json.loads(source.readline(1_000_000))
+        first = json.loads(head)
     except (ValueError, UnicodeError) as error:
         raise RemError("Invalid session metadata") from error
     if not isinstance(first, dict):
         raise RemError("Unrecognized session transcript format")
     meta = KINDS[kind]["meta"](first)
-    source.seek(offset)
     yield source, meta, offset, digest
 
 
@@ -463,7 +554,9 @@ def _fit(item: dict, max_chars: int) -> dict:
     raise RemError("Batch input limit is too small to hold one message; raise limits.input_chars_per_batch")
 
 
-def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) -> Batch:
+def collect(subscription: dict, progress: dict, max_items: int, max_chars: int, *, scan_bytes: int = 0) -> Batch:
+    """The next batch of typed messages. `scan_bytes` ends the batch once that much has been walked,
+    so a caller that saves progress between batches is never far from its last save."""
     if not subscription.get("enabled") or not subscription.get("consented"):
         raise RemError("Source is disabled or not yet authorized; run start to confirm access")
     kind = subscription.get("kind", "codex")
@@ -480,7 +573,7 @@ def collect(subscription: dict, progress: dict, max_items: int, max_chars: int) 
             continue
         files.append((path, stat))
     files.sort(key=lambda pair: pair[1].st_mtime_ns)
-    batch = _collect_files(subscription, progress, max_items, max_chars, files, _read_rollout)
+    batch = _collect_files(subscription, progress, max_items, max_chars, files, _read_rollout, scan_bytes=scan_bytes)
     batch.missing_files = missing + batch.missing_files
     return batch
 
@@ -492,12 +585,13 @@ def collect_data(data: bytes, path: Path, stat, subscription: dict, progress: di
                           lambda path, old, kind: _read_rollout_data(data, old, kind), unfamiliar=unfamiliar)
 
 
-def _collect_files(subscription, progress, max_items, max_chars, files, read_rollout, unfamiliar=None):
+def _collect_files(subscription, progress, max_items, max_chars, files, read_rollout, unfamiliar=None,
+                   scan_bytes=0):
     kind = subscription.get("kind", "codex")
     parse = KINDS[kind]["message"]
     root, since = Path(subscription["root"]), timestamp(subscription["since"])
     result, updated, used = [], copy.deepcopy(progress), 0
-    skipped = unrecognised = 0
+    skipped = unrecognised = walked = 0
     changed_files, missing_files = [], []
     # Oldest session first. The notebook should grow the way the user's understanding
     # did -- later sessions revising earlier pages -- and a backfill that starts at the
@@ -508,9 +602,14 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
     # 15,000 rollouts was half of a warm scan (2026-10-20).
     prefix = len(str(root).rstrip("/")) + 1
     for path, stat in files:
-        name = str(path)[prefix:].replace("\\", "/")
+        if scan_bytes and walked >= scan_bytes and updated != progress:
+            # Only once something advanced: a batch that changed nothing reads as "no more".
+            break
+        name = progress_name(str(path)[prefix:].replace("\\", "/"))
         old = progress.get(name, {})
-        if stat.st_size == old.get("offset") and stat.st_mtime_ns == old.get("mtime_ns"):
+        # A compressed file's size is not its plain offset: it keeps its own size to compare.
+        packed = {"size": stat.st_size} if path.name.endswith(COMPRESSED) else {}
+        if stat.st_size == old.get("size", old.get("offset")) and stat.st_mtime_ns == old.get("mtime_ns"):
             continue
         if old.get("skipped"):
             # Whether a session is read is decided by its first line, which an append
@@ -529,7 +628,7 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
                                     and meta.get("cwd") != subscription["project"]):
                 # Recorded, or every scan reopened it: 11,473 of REM's own Codex turns
                 # were reopened on each 80-second scan of one machine (2026-10-20).
-                updated[name] = {"offset": stat.st_size, "mtime_ns": stat.st_mtime_ns, "skipped": True}
+                updated[name] = {"offset": stat.st_size, "mtime_ns": stat.st_mtime_ns, "skipped": True, **packed}
                 continue
             # A subject scope keeps whole sessions, so its items are held until the
             # session says whether it is about that subject. Grouping by directory
@@ -538,6 +637,7 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
             about = (subscription.get("about") or "").strip().lower()
             held, matched = [], not about
             scanned = 0
+            walked += offset  # the prefix was read to be verified
             while scanned < SCAN_BYTES_PER_PASS:
                 line = source.readline()
                 if not line or not line.endswith(b"\n"):
@@ -577,9 +677,13 @@ def _collect_files(subscription, progress, max_items, max_chars, files, read_rol
                         used += size
                 offset += len(line)
                 scanned += len(line)
+                walked += len(line)
                 digest.update(line)
                 updated[name] = {"offset": offset, "digest": digest.hexdigest(),
                                  "mtime_ns": stat.st_mtime_ns}
+            if packed and not line:
+                # A compressed session is complete: read to its end, it is not opened again.
+                updated[name] = {**updated.get(name, old), "mtime_ns": stat.st_mtime_ns, **packed}
             if held and matched:
                 for item, size, at in held:
                     if len(result) >= max_items or used + size > max_chars:

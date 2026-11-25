@@ -1,0 +1,35 @@
+version: v1.9.3
+images:
+- file: rem-today.png
+  alt: 'Today in the Fuse design: the open row carries Hand to Codex, Hand to Claude
+    and Talk it over, and the footer names co 1.9.3'
+  caption: The first screen leads with what waits; red only past a real due date;
+    any unfinished item can be handed to an agent or talked over with one.
+  scenario: Open Today in the fictional notebook at 1440x1000.
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 97772f3b0bb0f5c948d8f78bc3068cd6ed6eed9e
+  source_run: 'local: python scripts/capture_193_release_reader.py docs/releases/assets/v1.9.3'
+- file: rem-person-record.png
+  alt: 'A person''s page in the Fuse design: a record, not a to-do list'
+  caption: The name at display size, a fuse of dated exchanges to today, what they
+    said in their own words; to-dos stay in Today.
+  scenario: Open people/mara-ostrowski.md.
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 97772f3b0bb0f5c948d8f78bc3068cd6ed6eed9e
+  source_run: 'local: python scripts/capture_193_release_reader.py docs/releases/assets/v1.9.3'
+- file: rem-graph.png
+  alt: 'The knowledge graph: kind by shape, the rest dimmed around a focus'
+  caption: Records and their links in one settled map; search focuses a record and
+    its neighbours.
+  scenario: Open the graph view.
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 97772f3b0bb0f5c948d8f78bc3068cd6ed6eed9e
+  source_run: 'local: python scripts/capture_193_release_reader.py docs/releases/assets/v1.9.3'
+- file: rem-org-record.png
+  alt: An organisation's page as its record
+  caption: The name and summary lead; people and roles, structure and a contact time
+    line follow; to-dos stay in Today.
+  scenario: Open orgs/fernhill-labs.md.
+  viewport: 1440x1000, light, en-US, Australia/Sydney
+  commit: 97772f3b0bb0f5c948d8f78bc3068cd6ed6eed9e
+  source_run: 'local: python scripts/capture_193_release_reader.py docs/releases/assets/v1.9.3'

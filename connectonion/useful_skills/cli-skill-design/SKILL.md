@@ -243,7 +243,7 @@ from connectonion import llm_do
 llm_do(
     f"You just ran a shell command. Its full output was:\n\n{out}\n\n"
     "Your goal: read the newest email. Reply with ONE shell command and nothing else.",
-    model="co/gemini-3.8-flash",
+    model="co/gemini-4-hydrogen",
 )
 ```
 

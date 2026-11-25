@@ -1,4 +1,4 @@
-"""Safe parser feedback for the Jira and OneNote source import commands only."""
+"""Safe parser feedback for the Jira import commands only."""
 
 import json
 

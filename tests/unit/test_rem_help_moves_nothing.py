@@ -25,7 +25,9 @@ def test_a_subcommand_help_page_moves_nothing(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     old = _old_notebook(tmp_path)
-    for args in (["rem", "projects", "--help"], ["rem", "init", "--help"], ["rem", "investigate", "--help"]):
+    for args in (["rem", "projects", "--help"], ["rem", "init", "--help"], ["rem", "investigate", "--help"],
+                 ["rem", "decisions", "--help"], ["rem", "collect", "--help"],
+                 ["rem", "abstract", "--help"], ["rem", "catchup", "--help"]):
         result = CliRunner().invoke(app, args)
         assert result.exit_code == 0, (args, result.output)
         assert old.is_dir() and not (tmp_path / ".co" / "rem").exists(), args

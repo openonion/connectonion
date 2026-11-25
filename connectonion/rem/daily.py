@@ -106,6 +106,8 @@ def _clients(sources: dict) -> dict:
 
 def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None) -> tuple[dict, Path]:
     from .service import running_marker
+    from .catchup import identity
+    from .runner import worker_effort
     config = read_config(root)
     # The model and the process, so logs --usage can name one (#1974) and a
     # later run can tell this one died.
@@ -113,7 +115,7 @@ def _reserve(root: Path, phase: str, attempts: int, meter: dict, *, moment=None)
               'outcome': 'running', 'runner_attempts': attempts, 'usage': None,
               'sources': [], 'items': 0, 'changed': [], 'phase': phase,
               'harness': config['runner'], 'model': config['model'], 'speed': config['speed'],
-              'quota': {'before': meter}, **running_marker()}
+              'effort': worker_effort(config), 'quota': {'before': meter}, **running_marker(), **identity(root)}
     path = state_path(root, f"runs/{record['id']}.json")
     write_json(path, record)
     return record, path
@@ -138,7 +140,9 @@ def _record_scheduled_result(root: Path, result: dict, scheduled: bool) -> dict:
             reason = maintenance.get('error') or 'the last scheduled maintenance failed'
         outcome = 'failed' if result['outcome'] == 'partial' else result['outcome']
         write_json(worker_path, {**worker, 'last_scheduled_outcome': outcome,
-                                 'last_scheduled_reason': reason})
+                                 'last_scheduled_reason': reason,
+                                 'last_scheduled_failure': next((row for row in maintenance.get('source_failures', [])
+                                                               if row.get('error') == reason), {})})
     return result
 
 
@@ -158,6 +162,9 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
 
     `say` gets one line per step. Run off a terminal, a sync printed nothing
     for 25 minutes and everything at the end (#2033)."""
+    if scheduled:
+        from .morning import scheduled_check as morning_message
+        morning_message(root)
     if scheduled and maintain is None:
         from .service import run_scheduled
         return run_scheduled(root, lambda: run_daily(
@@ -188,6 +195,10 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
         # The owner's languages follow what they wrote lately (languages.py).
         from .languages import refresh
         refresh(root)
+        from .topic_map import backfill_topics
+        maintenance["topics"] = backfill_topics(Notebook(root), lock_held=True)  # a failed weekly proposal must never fail the round
+    from .schedule import calendar_round
+    maintenance["calendar"] = calendar_round(root)
     _draft_replies(root, config, maintenance)
     if maintenance['outcome'] not in ('completed', 'no_change'):
         _translate_changed(root, config, maintenance, maintenance.get('changed') or [], translate_one, say)
@@ -234,29 +245,56 @@ def run_daily(root: Path, *, days: int = 30, scheduled: bool = False,
     return _record_scheduled_result(root, result, scheduled)
 
 
+def _log_calendar_faults(root, calendar):
+    """A fault in REM while reading a calendar is a failed run with its traceback: a broken refactor is
+    found in `co rem logs`, not as one word on Agenda. The traceback leaves the round's result here."""
+    for kind, error in calendar['errors'].items():
+        if 'traceback' in error:
+            record, path = _reserve(root, 'calendar', 0, {})
+            record.update(outcome='failed', error=f"{kind} calendar: {error.pop('traceback')}", finished_at=now().isoformat())
+            write_json(path, record)
+
+
 def _draft_replies(root, config, maintenance):
-    from tempfile import TemporaryDirectory
-    from . import drafts, runner
-    from .service import daily_cap, notebook_zone, runs_today
+    from . import night, runner
+    from .service import daily_cap
     if runner.ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        _, runs = runs_today(run_logs(root), notebook_zone(config))
-        spent = sum(row.get('runner_attempts', 0) for row in runs if row.get('phase') == 'reply-draft')
-        rows = drafts.queue(root)[:max(0, config['limits']['drafts_per_night'] - spent)]
-        for row in rows:
-            if not daily_cap(root)['remaining'] or quota.floor_block(quota.read(config), config['limits']):
+        fetches, attempted = {}, []
+        for row in night.prepare(root, config, fetches=fetches):
+            stop = ("Daily runner cap reached." if not daily_cap(root)['remaining'] else
+                    quota.floor_block(quota.read(config), config['limits']))
+            if stop:
+                night.prepare(root, config, attempted=attempted, fetches=fetches, stop=stop)
                 break
-            record, log = _reserve(root, 'reply-draft', 1, {})
-            state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
-            with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
-                task = drafts.prepare(root, row, config, directory=Path(directory))
-                result = runner.run_task(Path(directory), task['prompt'], config, 'reply-draft')
-                plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
-                drafts.promote(root, plan)
-            record.update(outcome='completed', usage=result.get('usage'), finished_at=now().isoformat())
-            write_json(log, record)
-            maintenance.setdefault('drafts', []).append(plan['id'])
+            attempted.append([row['id'], row['version']])
+            _prepare_reply(root, row, config, maintenance)
+        from .tasks import auto_dispatch
+        auto_dispatch(root, config)
+
+
+def _prepare_reply(root, row, config, maintenance):
+    from tempfile import TemporaryDirectory
+    from . import drafts, night, runner
+    record, log = _reserve(root, 'reply-draft', 1, {})
+    state_path(root, 'tasks').mkdir(parents=True, exist_ok=True)
+    try:
+        with TemporaryDirectory(dir=state_path(root, 'tasks')) as directory:
+            from .inquiry import stage_config
+            task = drafts.prepare(root, row, config, directory=Path(directory))
+            result = runner.run_task(Path(directory), task['prompt'], stage_config(root, config, 'reply-draft'), 'reply-draft')
+            plan = drafts.check(task, {'result': Path(task['candidate']).read_text(encoding='utf-8')})
+            drafts.promote(root, plan)
+        record.update(outcome='completed', usage=result.get('usage'))
+        maintenance.setdefault('drafts', []).append(plan['id'])
+    except (RemError, ValueError, FileNotFoundError) as error:
+        # A rejected/missing model candidate must not abandon the rest of Today.
+        reason = f'Reply preparation failed: {type(error).__name__}.'
+        record.update(outcome='failed', error=reason, usage=getattr(error, 'usage', None))
+        night.failed(root, row, reason)
+    record['finished_at'] = now().isoformat()
+    write_json(log, record)
 
 
 def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]:
@@ -295,23 +333,27 @@ def _same_person(root, config, left, say, *, uninvestigated=False) -> list[dict]
 
 def _translate_changed(root, config, maintenance, changed, translate_one, say):
     """Work through missing and stale translations under their own daily budget."""
-    from .languages import owner_languages
     from .runner import ready
-    from .translate import attempts_today, backlog, cached, translate
+    from .translate import backlog, cached, claimed, shown_today, translate
     from .translate import languages
-    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed)), None)
+    # The owner's one-click job (co rem translate / 全部翻译成中文) is translating the same pages.
+    if claimed(root):
+        say("Translations skipped: REM is already translating every page.")
+        return
+    # Once per round and before the lock: Today's queue reads the whole notebook.
+    shown = shown_today(root)
+    language = next((tag for tag in languages(root) if tag.split('-')[0].lower() != 'en' and backlog(root, tag, changed=changed, shown=shown)), None)
     if not language or ready(config)[0]:
         return
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
-        remaining = config['limits']['translations_per_day'] - attempts_today(root)
         translation_runs = []
         rows, attempts = [], 0
         record, path = _reserve(root, 'daily-translation', 0, {})
-        for page in backlog(root, language, changed=changed):
+        for page in backlog(root, language, changed=changed, shown=shown):
             if cached(root, page, language) is not None:
                 rows.append({'page': page, 'outcome': 'cached'})
                 continue
-            if attempts >= remaining or attempts_today(root) >= config['limits']['translations_per_day'] or quota.floor_block(quota.read(config), config['limits']):
+            if quota.floor_block(quota.meter(root, config), config['limits']):
                 continue
             attempts += 1
             write_json(path, record)
@@ -343,8 +385,8 @@ def _unfinished(root, config, maintenance, remaining, meter, stop, days, *, inve
     """The first run of the day: unfinished pages, most recent activity first."""
     resting = _found_nothing_lately(root)
     pages = [page for page in unfinished_by_recency(root) if page['path'] not in resting]
-    from .inquiry import routing
-    required = 3 if routing(root) else 1
+    from .inquiry import inquiry_routed
+    required = 3 if inquiry_routed(root) else 1
     # Even a run that starts nothing is the day's first: it is recorded, so the
     # later runs know to follow new material instead.
     why = 'nothing_unfinished' if not pages else 'budget_exhausted' if remaining < required else stop
@@ -587,7 +629,7 @@ def _follow_new(root, config, maintenance, remaining, meter, stop, previous, *, 
     if stop:
         return {'outcome': 'completed', 'maintenance': maintenance, 'investigation': None,
                 'reason': stop, 'quota': meter, 'left': len(rows)}
-    chosen = rows[:max(0, min(config['limits']['jobs_per_round'], remaining))]
+    chosen = rows[:max(0, remaining)]
     if not chosen:
         return {'outcome': 'budget_exhausted', 'maintenance': maintenance, 'investigation': None,
                 'left': len(rows)}
@@ -650,8 +692,9 @@ def _owner_due(root: Path) -> list[dict]:
     status = next((line for line in Notebook(root).read(record).splitlines() if line.startswith("Investigation:")), "")
     read = last_investigated(status)
     today = notebook_today(root)
-    tried = read_json(state_path(root, "owner-refresh.json"), {}).get("date", "")
-    if (read and read >= today) or tried == today.isoformat():
+    from .catchup import key, marker, number
+    tried = read_json(marker(root, "owner-refresh.json"), {}).get("date", "")
+    if (number(root) is None and read and read >= today) or tried == key(root, today):
         return []
     days = min(RETRY_DAYS, (today - read).days + 1) if read else RETRY_DAYS
     return [{'record': record, 'kind': 'owner', 'mode': 'owner', 'days': days,
@@ -661,7 +704,8 @@ def _owner_due(root: Path) -> list[dict]:
 def _owner(root, row, *, clients, subscriptions):
     """`investigate me` over the days since the page was last read. Stamped first,
     so a refused or crashed reading waits until tomorrow, not the next run."""
-    write_json(state_path(root, "owner-refresh.json"), {"date": notebook_today(root).isoformat()})
+    from .catchup import key, marker
+    write_json(marker(root, "owner-refresh.json"), {"date": key(root, notebook_today(root))})
     record = row['record']
     title = next((line[2:].strip() for line in Notebook(root).read(record).splitlines() if line.startswith("# ")),
                  "Account owner")

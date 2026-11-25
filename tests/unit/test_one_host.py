@@ -49,12 +49,13 @@ def test_co_host_runs_agent_py_with_the_python_co_runs_on(tmp_path):
     assert seen.read_text() == f"{sys.executable}|8123"
 
 
-def test_co_host_without_an_agent_py_says_how_to_make_one(tmp_path):
+def test_co_host_without_an_agent_py_reports_the_host_instead(tmp_path):
+    """#3170: a bare `co host` is the status of the Host `co init` started; before init it says so."""
     host = _co_host(tmp_path)
     output, _ = host.communicate(timeout=30)
 
-    assert host.returncode == 2
-    assert "agent.py" in output and "co create" in output
+    assert host.returncode == 0, output
+    assert "co init" in output
 
 
 def test_co_host_passes_on_how_agent_py_ended(tmp_path):

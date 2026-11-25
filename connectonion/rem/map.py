@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .files import MAP_DAYS, Notebook, archive_path, atomic_write, maintenance_lock, read_json, state_path
-from .scan import (scan_people, scan_projects, canonical_origin, main_checkout, not_a_project,
+from .scan import (scan_people, scan_projects, canonical_origin, is_repository, main_checkout, not_a_project,
                    institutional_name, AUTOMATED_HINT, SHORT_SESSION, ONE_OFF_TASK)
 from .skill_map import map_skills
 from .org_map import _domain, map_orgs, organisation
@@ -118,6 +118,16 @@ AGENT_ADDRESS = re.compile(r'^0x[0-9a-f]{6,}@', re.I)
 # Two, since a page is made from two sends (`worth_a_page`, #2057): a nameless
 # address written to twice and never answering is held, not queued.
 WRITE_ONLY_MIN = 2
+
+
+def _chat_people_rows(subscriptions: dict) -> list[dict]:
+    """People the map should also create from the enabled chat sources (WeChat today), in mail-row shape."""
+    from .chat import wechat_people
+    rows = []
+    for sub in (subscriptions or {}).values():
+        if sub.get("kind") == "wechat" and sub.get("enabled") and sub.get("consented"):
+            rows += wechat_people()
+    return rows
 
 
 def _write_only(row: dict) -> bool:
@@ -540,6 +550,11 @@ def _scratch_identity(path: str) -> str:
 
 
 def _mapped_only(page: str) -> bool:
+    from .facts import UNIT_KINDS, parse
+    fields = parse(page, 'orgs/unit.md')
+    if any(v['citations'] for v in fields['Parent']) and any(
+            v['citations'] and v['value'] in UNIT_KINDS for v in fields['Kind']):
+        return False  # Cited inferred structure is knowledge, not a disposable domain stub.
     return 'not investigated yet' in next(
         (line for line in page.splitlines() if line.startswith('Investigation:')), '')
 
@@ -635,7 +650,7 @@ def _repository_folder(path: str) -> str:
     """
     folder = Path(path)
     return main_checkout(path) or next(
-        (str(parent) for parent in (folder, *folder.parents) if (parent / '.git').exists()), '')
+        (str(parent) for parent in (folder, *folder.parents) if is_repository(parent)), '')
 
 
 def _same_named_project(name: str, repository: bool, other: str, other_repository: bool) -> bool:
@@ -907,10 +922,13 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     state.parent.mkdir(parents=True, exist_ok=True)
     # An upgraded notebook is tidied first, from the map before this one (#1999).
     from .tidy import tidy
+    from .org_inference import reconcile
+    report['hierarchy'] = reconcile(notebook, lock_held=True)
+    report['created'] += report['hierarchy']['created']
     report['tidied'] = tidy(root, lock_held=True)
     # The owner's page from an earlier init, so a page made from --name alone
     # is the one a mailbox connected later fills, not a second owner.
-    earlier = json.loads(state.read_text()).get('owner') if state.is_file() else None
+    earlier = json.loads(state.read_text(encoding="utf-8")).get('owner') if state.is_file() else None
     # An address confirmed once (--mine, or folded into the owner's page by
     # tidy) stays the owner's: without this the next map, run without --mine,
     # made it a correspondent page again (#2008).
@@ -941,6 +959,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     else:
         people, own = _mail_rows(clients, days, mine, report['coverage'], report['errors'], progress,
                                  own_names=sent_names, all_history=all_history)
+    # Chat sources seed people too: a WeChat contact who never emailed still becomes a person, and one who
+    # also emails merges by name (#3279). Only when the owner turned the source on; the id is the handle.
+    people += _chat_people_rows(subscriptions)
     roster = notebook.people()
     if own:
         aliases = sorted({address.casefold() for address in own})
@@ -1090,6 +1111,11 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
     if progress:
         progress("mapped people and organisations", len(report['people']) + len(report['orgs']))
     report['created'] += created_orgs
+    from .mail_archive import mail_metadata
+    hierarchy = reconcile(notebook, inventory.records if inventory else mail_metadata(root), lock_held=True)
+    report['created'] += hierarchy['created']
+    report['hierarchy']['created'] += hierarchy['created']
+    report['hierarchy']['reviews'] += hierarchy['reviews']
     report['coverage'].append('Organisations: exact observed mail domains, including single contacts and notices; '
                               'known public mailbox domains excluded; mailbox-provider list is not exhaustive; '
                               'organisation identity unverified; existing organisation pages preserved')
@@ -1118,14 +1144,6 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
         report['coverage'].append(f"{len(material['created'])} project folders found from messages typed in a "
                                   "workspace folder or after a cd; made pages")
     report['projects_dropped'] = dropped
-    jira = subscriptions.get('jira', {})
-    if jira.get('enabled') and jira.get('consented'):
-        from .jira_imports import map_jira
-        from .files import RemError
-        try:
-            map_jira(root, jira, report)
-        except (RemError, OSError, UnicodeError) as error:
-            report['errors'].append({'source': 'jira', 'stage': 'local imports', 'error': str(error)})
     if dropped:
         report['coverage'].append(f"{len(dropped)} folder{'s' if len(dropped) > 1 else ''} with sessions not made "
                                   "projects (home, caches, one-off chats; reasons in .state/map.json)")
@@ -1137,6 +1155,9 @@ def _build_map(root: Path, subscriptions: dict, clients: dict, *, days: int = MA
                            for name, sub in subscriptions.items() if sub.get('kind') in ('codex', 'claude-code')]
     if report.get('owner'):
         _fill_owner(notebook, report, owner_name)
+    from .topic_map import map_topics
+    report['topics'], created_topics = map_topics(notebook)
+    report['created'] += created_topics
     # And tidied again after (#2018): the acceptance run's map made pages that
     # tidy, run only before it, never saw. Tidy reads this map's rows. The
     # owner's own addresses wait for the next run: this map has just asked

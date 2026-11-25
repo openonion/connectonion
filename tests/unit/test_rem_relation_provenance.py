@@ -55,7 +55,7 @@ def test_distinct_context_or_provenance_keeps_its_own_snippet(second):
 def test_compacted_marker_private_excerpt_keeps_its_card_provenance_private(marker, translated):
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['dedupeRelationSnippets', 'relationCard'])
+                          for name in ['dedupeRelationSnippets', 'closeStripped', 'relationCard', 'markedText', 'pageWords'])
     links = [link('people/one.md', marker + (' 共同审阅了计划。' if translated else ' Reviewed the plan.')),
              link('people/two.md', marker + (' 共同审阅了计划。' if translated else ' Reviewed the plan.'))]
     result = _run_reader_js(functions + r'''
@@ -63,6 +63,8 @@ def test_compacted_marker_private_excerpt_keeps_its_card_provenance_private(mark
       const known = () => ({}), facts = () => ({}), plainLine = text => text;
       const youify = text => text, singular = () => '', inline = text => text;
       const originalMark = () => null;
+      const pageName = page => page.title;  // course/team codes: tested in the browser
+      const factWords = text => text;  // fact labels in Chinese (#3410): tested in the browser
       const el = (tag, attrs = {}, children = []) => ({tag, ...attrs, children,
         appendChild(node) { this.children.push(node); }});
       const output = dedupeRelationSnippets(''' + json.dumps(links) + r''');

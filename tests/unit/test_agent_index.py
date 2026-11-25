@@ -76,9 +76,16 @@ class TestGenerated:
         assert "co commands" in rules and "co <cmd> --help" in rules
         assert "credentials" in rules
 
+    def test_memory_is_not_a_reason_to_explore_co(self):
+        """#3099: "... or memory: run `co commands` and read --help" sent REM's night
+        workers, whose task packets already name every command, to 74 `co commands` and
+        124 help calls in one night's investigation turns."""
+        rules = agent_index.generate(app).split("\n\n")[0]
+        assert "memory" not in rules
+
     def test_size_stays_small(self):
         block = agent_index.block(agent_index.generate(app))
-        assert len(block.splitlines()) <= 65
+        assert len(block.splitlines()) <= 70  # one line per top-level command; obsidian and asana made 66
         assert len(block) <= 12_000          # ~3k tokens at 4 chars a token
 
 

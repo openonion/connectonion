@@ -1,4 +1,4 @@
-"""Install OpenAI's Codex CLI and attempt OAuth without holding up global init."""
+"""Install OpenAI's Codex CLI and check auth; the owner runs login separately."""
 import json
 import os
 import shlex
@@ -59,7 +59,10 @@ def install_codex() -> tuple[str, str, str]:
     failures = []
     try:
         return _install_standalone()
-    except (httpx.HTTPError, OSError, subprocess.SubprocessError, RuntimeError) as error:
+    except httpx.HTTPError as error:
+        # No network for the official installer: a package manager would wait on the same network.
+        raise RuntimeError(f"no network for the installer ({error})")
+    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
         failures.append(str(error))
     managers = [("npm", ["install", "-g", "@openai/codex"], "npm uninstall -g @openai/codex")]
     if sys.platform == "darwin":
@@ -77,19 +80,6 @@ def install_codex() -> tuple[str, str, str]:
         except (OSError, subprocess.SubprocessError, RuntimeError) as error:
             failures.append(f"{manager}: {error}")
     raise RuntimeError("; ".join(failures))
-
-
-def _login(command):
-    if codex_cli.signed_in(command):
-        return True
-    print("Opening Codex login in your browser; init continues if sign-in is unfinished.")
-    try:
-        subprocess.run([*command, "login"], stdin=subprocess.DEVNULL, timeout=45)
-    except (OSError, subprocess.TimeoutExpired, KeyboardInterrupt):
-        # A browser may be unavailable, the user may cancel, or OAuth may take
-        # longer. Only this optional login step is interrupted; init goes on.
-        return codex_cli.signed_in(command)
-    return codex_cli.signed_in(command)
 
 
 def claude_ready() -> bool:
@@ -131,5 +121,5 @@ def setup_codex() -> dict:
         command = [path]
         summary = f"Codex CLI: installed {version} at {path}"
     login = shlex.join([*command, "login"])
-    return {"ready": _login(command), "summary": summary, "undo": undo,
+    return {"ready": codex_cli.signed_in(command), "summary": summary, "undo": undo,
             "login_command": login, "next_action": login}

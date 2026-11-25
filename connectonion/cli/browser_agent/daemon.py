@@ -1,7 +1,7 @@
 """
 Purpose: Persistent concurrent browser daemon — owns one AsyncBrowserCore/event loop and dispatches authenticated CLI requests over POSIX Unix sockets or Windows named pipes.
 LLM-Note:
-  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
+  Dependencies: asyncio + bounded Windows transport executor + AsyncBrowserCore + browser_agent.transport; private mode lazily imports EgressGateway and its immutable launch-policy factory; BrowserAutomation remains the public help/schema source; browser_tools.engine supplies the status line about the app in /Applications | imported by browser_agent.client and browser_commands | tested by daemon, engine, transport, and Remote Browser runtime suites
   Data flow: typed OIP 0.2 BrowserCommand argv (bounded wire-v1 migration reader retained) → immutable engine check (exempting the verbs that touch no page — close/closetab/status/engine_status/help/`tab ls`/`tab close` — so a mismatched pin is always escapable) → private gateway-health check → atomic registry/claim admission → awaited async browser verb → text result or committed Artifact Stream; private mode forces engine=onion before any paid session or page effect
   State/Effects: one asyncio-owned AsyncBrowserCore and persistent context | private mode starts its gateway, canonical credential file, and fixed paid launch policy before IPC bind; gateway loss rejects before browser mutation; shutdown closes browser, removes credentials, then stops gateway | independent tab tasks interleave behind per-tab locks | bounded POSIX/Windows transports and lifetime ownership sidecars preserve admission and cleanup
   Integration: launched detached via `python -m connectonion.cli.browser_agent.daemon <address> [--headless] [--engine=MODE] [--profile-dir=PATH] [--authkey-file=PATH] [--remote-egress]`; dispatch() remains the non-loop compatibility seam
@@ -32,6 +32,7 @@ from datetime import datetime
 from pathlib import Path
 
 from connectonion.useful_tools.browser_tools import BrowserAutomation
+from connectonion.useful_tools.browser_tools import engine as browser_engine
 from connectonion.useful_tools.browser_tools._async_browser import AsyncBrowserCore
 from connectonion.useful_tools.browser_tools.browser import (
     driver_stealth_status,
@@ -217,7 +218,10 @@ def _driver_error_text(verb: str, exc: BaseException, tab) -> str | None:
 # from "timed out".
 _KEYCHAIN = ("Chrome's cookie store — on macOS it waits on a Keychain prompt "
              "until someone answers it (look behind other windows)")
-_WAITS_ON = {"cookies": _KEYCHAIN, "save_state": _KEYCHAIN, "go_to": "the page to load"}
+_TYPING = ("text being typed key by key; part of it is already in the field, "
+           "so clear the field before retrying")
+_WAITS_ON = {"cookies": _KEYCHAIN, "save_state": _KEYCHAIN, "go_to": "the page to load",
+             "keyboard_type": _TYPING, "type_text_by_selector": _TYPING}
 
 
 def _is_verb(browser, name: str) -> bool:
@@ -549,6 +553,8 @@ class BrowserDaemon:
         """
         if requested_engine == self.engine_mode:
             return None
+        if requested_engine == "system" and await self._fall_back_to_system():
+            return None
         if requested_engine != "auto":
             return self._engine_pin_refusal(requested_engine)
         if self.engine_mode != "onion":
@@ -556,6 +562,29 @@ class BrowserDaemon:
         if await self._paid_browser_is_live():
             return None
         return self._paid_relaunch_refusal()
+
+    async def _fall_back_to_system(self) -> bool:
+        """Re-pin a paid daemon with no paid browser running to system Chrome.
+
+        A pin protects running pages. When the paid engine is not running —
+        it ended, or it could not start at all (#3294) — there is nothing on
+        it to protect, and the old way out, `co browser close`, ended every
+        other session's tabs (#3299). The tab board is kept, so each session
+        gets its tab back on system Chrome with its next command.
+
+        Never for a Remote Browser daemon (its egress policy needs the paid
+        engine), and never while a launch is under way: that launch already
+        chose the paid engine and would come up under the wrong pin.
+        """
+        if self.engine_mode != "onion" or self._remote_egress:
+            return False
+        if await self._browser_is_alive():
+            return False
+        if self.browser._lifecycle_lock.locked():
+            return False
+        self.engine_mode = "system"
+        self.browser._engine_mode = "system"
+        return True
 
     async def _paid_browser_is_live(self) -> bool:
         """Is the paid session this daemon was pinned for still open?"""
@@ -573,17 +602,20 @@ class BrowserDaemon:
 
     def _paid_relaunch_refusal(self) -> str:
         """A bare command must not restart a paid browser on the caller's behalf."""
-        # Only commands this daemon would actually accept, in this state. The pin
-        # is immutable while the daemon lives, so `--engine system` here would be
-        # refused as a conflict — offering it would be the #1510 circle again.
+        # Only commands this daemon would actually accept, in this state: with
+        # no paid browser running, `--engine system` re-pins the daemon
+        # (_fall_back_to_system), so it is offered before `close`, which ends
+        # every session's tabs.
         return (
             "browser daemon is pinned to engine=wtf and its paid session is no "
             "longer open. Starting it again bills, so a command with no engine "
             "of its own has to say:\n\n"
             "Start a new paid session:\n"
             "  co browser --engine wtf <verb> ...\n\n"
-            "Or close this daemon — the next command then picks its own engine, "
-            "and your logins are still there:\n"
+            "Or switch this daemon to system Chrome — free, and other sessions "
+            "keep their tabs:\n"
+            "  co browser --engine system <verb> ...\n\n"
+            "Or close this daemon, which ends every session's tabs:\n"
             "  co browser close"
         )
 
@@ -602,7 +634,8 @@ class BrowserDaemon:
             f"  co browser --engine {pinned} <verb> ...\n\n"
             f"Stop repeating the flag — make it this machine's default:\n"
             f"  co browser config {pinned}\n\n"
-            f"Or start over on the engine you asked for:\n"
+            f"Or start over on the engine you asked for — this ends every "
+            f"session's tabs:\n"
             f"  co browser close"
         )
 
@@ -1136,6 +1169,13 @@ class BrowserDaemon:
                 binary = None  # status is what you run when things are broken
         lines.append(f"Browser binary: ✓ {binary}" if binary else
                      "Browser binary: ✗ none installed — run: patchright install chromium")
+        # The runtime above is the copy co launches. The one a person double-clicks
+        # is a second copy in /Applications, and until #2932 nothing kept it current.
+        app_line = browser_engine.applications_app_line(
+            engine.get("executable"), browser_engine.APPLICATIONS
+        )
+        if app_line:
+            lines.append(app_line)
         # "Last command" alone cannot say whether that command is still running,
         # which is the question a caller choosing between waiting and restarting has.
         running = [f'"{_short_line(request["line"])}" on tab {_tab_label(key)}, '
@@ -2140,7 +2180,7 @@ class BrowserDaemon:
                     sys.exit(0)  # another daemon already serving
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
-        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")
+        _publish_pid(transport.pid_path(self.sock_path))
         self._srv.listen(MAX_IN_FLIGHT)
 
     def _bind_windows(self):
@@ -2236,6 +2276,21 @@ class BrowserDaemon:
                     os.unlink(self.sock_path)  # POSIX: remove our socket file (mpc did it on Win)
             with contextlib.suppress(FileNotFoundError):
                 pid_file.unlink()
+
+
+def _publish_pid(pid_file: str) -> None:
+    """Write this daemon's pid so that no reader ever sees the file empty.
+
+    The pid file is how every client tells a live daemon from a stale socket
+    (client._owner_pid). write_text creates the file empty and fills it a moment
+    later; a client that read it in between found no owner and unlinked the live
+    daemon's socket, after which the daemon accepted on a name nobody could reach
+    (test_permission_error_never_unlinks_a_live_socket, run 43215710328). A
+    rename is atomic on POSIX: the file is absent, then whole.
+    """
+    partial = f"{pid_file}.{os.getpid()}.tmp"
+    Path(partial).write_text(str(os.getpid()), encoding="utf-8")
+    os.replace(partial, pid_file)
 
 
 def _ago(seconds: float) -> str:

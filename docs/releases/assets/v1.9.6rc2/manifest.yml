@@ -1,0 +1,44 @@
+version: v1.9.6rc2
+images:
+- file: rem-today-desktop.png
+  alt: 'Today on a desktop: an icon rail on the left, a search pill on top, a night chart with three dips and the faces of Mara and Inès on its two rises, the number 4 with four faces of which two carry red rings marked 5 d and 2 d, and one raised card with the reply to Inès Halvorsen whose Send button is green'
+  caption: Today is a desk. The night chart shows what REM did, the faces show who is waiting and for how long, and one reply is raised with Send as the only green on the page.
+  scenario: Open Today in the fictional notebook a week after its last mail, with Inès five days overdue and Mara two, a reply REM prepared for each, and the question on the card to Inès answered.
+  viewport: 1440x1000, light, en-US
+  commit: 1d07bd9daa3ccb05119ec91568fad025a19a5af1
+  source_run: 'local: a throw-away pytest file (not committed) that reuses the today fixture and the OVERDUE scene of tests/e2e/cli/test_rem_today_fuse_browser.py on the notebook built by tests/fixtures/rem_reader_notebook.py, moves the fixture run logs a week forward with the clock, adds one prepared reply each for Inès and Mara, and clicks the first answer; run with CO_REM_BROWSER_TEST=1 CO_REM_SHOTS=<dir> pytest'
+- file: rem-today-phone.png
+  alt: 'Today on a phone: the night chart folded under its title, the number 4 with four faces, the card for Inès Halvorsen with the first two lines of the letter and the answered question, a green Send bar, and a floating tab bar with Today, Waiting, People, Search and More; a strip of the page below shows between the two bars'
+  caption: On a phone the chart folds away, the reply card fills the screen, and Send sits just above the floating tab bar.
+  scenario: The same notebook, day and answered question as the desktop picture, at phone width.
+  viewport: 390x844, light, en-US
+  commit: 1d07bd9daa3ccb05119ec91568fad025a19a5af1
+  source_run: 'local: the same throw-away pytest file as rem-today-desktop.png, at 390x844'
+- file: rem-today-desktop-dark.png
+  alt: 'The same Today page in the dark theme: one dark canvas, cards a shade lighter, the red rings and the green Send unchanged'
+  caption: The dark theme is the same desk on one dark canvas.
+  scenario: The same notebook, day and answered question as the desktop picture, with the system set to dark.
+  viewport: 1440x1000, dark, en-US
+  commit: 1d07bd9daa3ccb05119ec91568fad025a19a5af1
+  source_run: 'local: the same throw-away pytest file as rem-today-desktop.png, with color scheme dark'
+- file: rem-today-desktop-before.png
+  alt: 'Before: Today in 1.9.6rc1 for the same notebook and day, with a wide text sidebar, a headline with the number 4, a timeline of overdue bars, the reply to Inès inside a ruled list, and a right column of overnight notes'
+  caption: Before. The same day in 1.9.6rc1, laid out as a document with a sidebar.
+  scenario: The same throw-away scene as rem-today-desktop.png, run against an export of the 1.9.6rc1 release commit.
+  viewport: 1440x1000, light, en-US
+  commit: ae7b1f4c9445d3b974052f311e0daba50c7ed9f8
+  source_run: 'local: git archive of the 1.9.6rc1 commit into a scratch folder, then the same throw-away pytest file as rem-today-desktop.png run there'
+- file: rem-person-desktop.png
+  alt: 'The record of Mara Ostrowski on a desktop: a top card with her initials inside a red ring, her name, chips for Head of Partnerships, Fernhill Labs and Wellington, a mail button and a link reading In Today, 2 days overdue; below it cards for contact rhythm with 59 mails and last contact Sep 30, her latest words, three exchanges, a local graph, 2 things REM is not sure of, 6 sources, and open topics'
+  caption: A person is a record. Who they are sits on one card, and what REM knows about them is a grid below it.
+  scenario: Open Mara Ostrowski in the fictional notebook on the same day as the Today pictures.
+  viewport: 1440x1000, light, en-US
+  commit: 1d07bd9daa3ccb05119ec91568fad025a19a5af1
+  source_run: 'local: the same throw-away pytest file as rem-today-desktop.png, opening people/mara-ostrowski.md'
+- file: rem-person-desktop-before.png
+  alt: 'Before: the record of Mara Ostrowski in 1.9.6rc1, with the wide text sidebar, her name as a large headline, a timeline of dated exchanges, three counts, open topics and her words in ruled lists, and her contact details, organisation and what REM is not sure of in a side column'
+  caption: Before. The same record in 1.9.6rc1.
+  scenario: The same throw-away scene as rem-person-desktop.png, run against an export of the 1.9.6rc1 release commit.
+  viewport: 1440x1000, light, en-US
+  commit: ae7b1f4c9445d3b974052f311e0daba50c7ed9f8
+  source_run: 'local: git archive of the 1.9.6rc1 commit into a scratch folder, then the same throw-away pytest file as rem-today-desktop.png run there'

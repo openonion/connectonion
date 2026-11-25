@@ -1,0 +1,35 @@
+version: v1.9.3rc61
+images:
+- file: rem-today.png
+  alt: 'Today: one statement, the most overdue person, and one card per person on
+    hairlines'
+  caption: The first screen says how many people wait on you and who is most overdue;
+    each person's items share one card and only the first card's action is green.
+  scenario: Open Today in the fictional notebook at 1440x1000.
+  viewport: 1440x1000 (and 390x844 @2x), light, en-US, Australia/Sydney
+  commit: ef171e341f84193e1c1b1d3edec62ef735d54d63
+  source_run: 'local: python scripts/capture_193rc61_release_reader.py docs/releases/assets/v1.9.3rc61'
+- file: rem-person-record.png
+  alt: A person's page as their record, with one quiet link to Today
+  caption: The head shows who Mara is, her organisation and role; what you owe her
+    is done from Today, so the page has no reply button.
+  scenario: Open people/mara-ostrowski.md.
+  viewport: 1440x1000 (and 390x844 @2x), light, en-US, Australia/Sydney
+  commit: ef171e341f84193e1c1b1d3edec62ef735d54d63
+  source_run: 'local: python scripts/capture_193rc61_release_reader.py docs/releases/assets/v1.9.3rc61'
+- file: rem-org-record.png
+  alt: An organisation's page as its record
+  caption: Identity, structure, people and roles, and contact history lead; to-dos
+    stay in Today.
+  scenario: Open orgs/fernhill-labs.md.
+  viewport: 1440x1000 (and 390x844 @2x), light, en-US, Australia/Sydney
+  commit: ef171e341f84193e1c1b1d3edec62ef735d54d63
+  source_run: 'local: python scripts/capture_193rc61_release_reader.py docs/releases/assets/v1.9.3rc61'
+- file: rem-today-phone.png
+  alt: Today on a 390px phone
+  caption: The statement and the first card fit the first screen and nothing scrolls
+    sideways.
+  scenario: Load Today at 390x844 @2x.
+  viewport: 1440x1000 (and 390x844 @2x), light, en-US, Australia/Sydney
+  commit: ef171e341f84193e1c1b1d3edec62ef735d54d63
+  source_run: 'local: python scripts/capture_193rc61_release_reader.py docs/releases/assets/v1.9.3rc61'

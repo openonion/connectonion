@@ -409,7 +409,7 @@ def co_ai(monkeypatch):
     """A `co` that answers at once and remembers how it was called."""
     calls = []
 
-    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None, **kwargs):
         calls.append(argv)
         import re
         from pathlib import Path
@@ -445,8 +445,8 @@ def test_runner_codex_is_co_ai_delegating_with_investigation_tools(tmp_path, co_
                     clients={"outlook": Quiet()}, subscriptions={})
     argv = co_ai[0]
     assert argv[1:3] == ["ai", "--json"]
-    assert argv[3:11] == ["--harness", "codex", "--sandbox", "danger-full-access", "--speed", "fast",
-                         "--model", read_config(root)["model"]]
+    assert argv[3:13] == ["--harness", "codex", "--sandbox", "danger-full-access", "--speed", "standard",
+                         "--effort", "low", "--model", read_config(root)["model"]]
     # The Skill is told the page's real path, extension included: an earlier
     # version cut the record at its first "." and pointed it at people/rowan.
     assert argv[-1].startswith("/rem-investigate ") and "/notebook/people/rowan.md" in argv[-1]
@@ -463,9 +463,11 @@ def test_investigation_reports_privacy_safe_stages(tmp_path):
     inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan"], days=5,
                     clients={"outlook": Quiet()}, subscriptions={}, runner=fake_runner,
                     stage_progress=lambda stage, *counts: stages.append((stage, counts)))
+    # Each wait has its own name: the search, the bodies and the owner's notes were all "gathering sources".
     assert [stage for stage, _ in stages] == [
-        "gathering sources", "gathering outlook mail", "preparing evidence", "writing investigation",
-        "recording result"]
+        "gathering sources", "searching outlook mail", "gathering outlook mail", "gathering outlook mail",
+        "searching project documents", "preparing evidence", "writing investigation", "recording result"]
+    assert stages[2:4] == [("gathering outlook mail", (0, 1)), ("gathering outlook mail", (1, 1))]
 
 
 @pytest.mark.parametrize('parent', ['workspace', 'rem-workspace'])
@@ -612,6 +614,52 @@ def test_project_mentions_reuse_documents_across_people_and_reread_edits(project
     monkeypatch.setattr(inv.time, 'monotonic', lambda: inv.SESSION_MEMO_SECONDS + 10**12)
     items, _ = inv.project_mentions(book, ['Morgan Reed'])
     assert len(items) == 2 and walks == [folder, folder]
+
+
+def test_project_mentions_skip_a_folder_whose_listing_is_held_and_say_which(project_documents, monkeypatch):
+    """2026-11-16: macOS held the listing of two folders under ~/Documents behind a privacy
+    prompt nobody answered, and one person's page spent its ten minutes "searching project
+    documents"; the other 33 folders took 1.6 s together."""
+    import threading
+    import time
+    from pathlib import Path
+
+    book, folder = project_documents
+    (folder / 'notes/a.md').write_text('宋佳颐 delivery')
+    held = folder.parent / 'held'
+    held.mkdir()
+    (held / 'a.md').write_text('宋佳颐 behind the prompt')
+    book.stub_project('projects/held.md', 'Held', [str(held)])
+    answered, walks, walk = threading.Event(), [], inv.os.walk
+
+    def walking(root, **kwargs):
+        walks.append(root)
+        if Path(root) == held:
+            answered.wait(60)
+        return walk(root, **kwargs)
+
+    monkeypatch.setattr(inv.os, 'walk', walking)
+    monkeypatch.setattr(inv, 'DOCUMENT_LIST_SECONDS', 0.3)
+    began = time.monotonic()
+    items, coverage = inv.project_mentions(book, ['宋佳颐'])
+    assert time.monotonic() - began < 10
+    assert [item['file'] for item in items] == [str(folder / 'notes/a.md')]
+    assert coverage == ('project documents: 1 file(s) name the subject in 1 project folder(s) searched; '
+                        f'excerpts read from 1 file(s); skipped 1 project folder(s) not listed within 0.3 seconds: {held}')
+
+    # While that listing is still held, the next page neither waits for it nor asks again.
+    monkeypatch.setattr(inv, 'DOCUMENT_LIST_SECONDS', 30)
+    began = time.monotonic()
+    _, coverage = inv.project_mentions(book, ['Nobody Named'])
+    assert time.monotonic() - began < 10 and walks.count(held) == 1
+    assert coverage == ('project documents: 1 project folder(s) searched; none name the subject; '
+                        f'skipped 1 project folder(s) not listed within 30 seconds: {held}')
+
+    # Once someone answers the prompt the listing arrives, and the folder is read again.
+    answered.set()
+    inv._PROJECT_WALKERS[held.resolve()].join(10)
+    items, coverage = inv.project_mentions(book, ['宋佳颐'])
+    assert len(items) == 2 and 'skipped' not in coverage and walks.count(held) == 1
 
 
 @pytest.mark.parametrize('replacement', ['deleted', 'linked', 'linked-directory'])
@@ -762,7 +810,7 @@ def test_project_mentions_are_not_gathered_for_owner_projects_or_skills(project_
 # attended and scheduled investigation runs.
 PINNED = {
     "codex": ["ai", "--json", "--harness", "codex", "--sandbox", "danger-full-access",
-              "--speed", "fast", "--model", "gpt-5.6-luna", "--timeout", "1200"],
+              "--speed", "standard", "--effort", "low", "--model", "gpt-5.6-luna", "--timeout", "1200"],
     "claude-code": ["ai", "--json", "--harness", "claude-code", "--permission-mode", "bypassPermissions",
                     "--model", "sonnet", "--timeout", "1200"],
 }
@@ -1320,7 +1368,7 @@ def test_a_listed_source_nobody_cites_is_dropped_not_a_reason_to_refuse_the_page
     from pathlib import Path
     from connectonion.rem.files import Notebook
 
-    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None, **kwargs):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         _save_web_capture(path.parent)
@@ -1385,7 +1433,7 @@ def test_the_owners_own_address_never_lands_on_someone_elses_page(tmp_path, monk
     from pathlib import Path
     from connectonion.rem.files import Notebook, state_path, write_json
 
-    def fake_run(argv, cwd, capture_output, text, timeout, env=None):
+    def fake_run(argv, cwd, capture_output, text, timeout, env=None, **kwargs):
         import re
         path = Path(re.search(r'page is the file (.+?candidate.md)', argv[-1])[1])
         _save_web_capture(path.parent)
@@ -3017,7 +3065,7 @@ def test_a_final_round_that_guts_the_page_is_undone(tmp_path):
 def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retried(tmp_path, monkeypatch):
     """connectonion (2026-10-15): round six left zero of round five's fifteen owner quotes."""
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), **kw: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/co.md'
     notebook.stub_project(record, 'co', ['/w/co'])
@@ -3044,7 +3092,7 @@ def test_an_evidence_round_that_paraphrases_carried_quotes_is_restored_and_retri
 
 def test_a_round_repairs_its_carried_quotes_and_keeps_its_other_change(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), **kw: after)
     notebook = inv.Notebook(_notebook(tmp_path, 'codex'))
     record = 'projects/example.md'
     notebook.stub_project(record, 'example', ['/work/example'])
@@ -3129,7 +3177,7 @@ def test_org_gather_queries_each_distinct_server_term_once():
 
 def test_quote_loss_with_no_accepted_round_still_records_material_for_retry(tmp_path, monkeypatch):
     # Mechanical restore placed nothing here, so the repair turn is what is tested.
-    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(): after)
+    monkeypatch.setattr('connectonion.rem.page_review.restore_dropped', lambda before, after, exempt=frozenset(), **kw: after)
     root = _notebook(tmp_path, 'codex')
     notebook, record = inv.Notebook(root), 'people/rowan.md'
     full = notebook.read(record).replace('## History\n',
@@ -3630,3 +3678,60 @@ def test_domain_billing_notice_is_not_marked_as_outside_the_org(tmp_path, archiv
                          subscriptions={}, archive_root=tmp_path, record='orgs/lantern.md')
     assert len(items) == 1
     assert not items[0].get('relationship_scope')
+
+
+# #3105: an investigated page is appended to; an unfilled one is written.
+INVESTIGATED_PERSON = ('# Rowan Ashdown\n\nRowan teaches design at UNSW and asked the user for a guest talk. [1]\n\n'
+                       '## Facts\n- Email: rowan.ashdown@unsw.edu.au [1]\n\n'
+                       '## Who they are\n- Rowan teaches design at UNSW. [1]\n\n'
+                       '## Sources\n- [1] outlook:aaaaaaaaaaaa — 2026-09-01\n\n'
+                       'Investigation: investigated 2026-09-02 (outlook)\n')
+NEW_MAIL = [{"role": "other", "source": "outlook:bbbbbbbbbbbb", "speaker": "rowan.ashdown@unsw.edu.au",
+             "timestamp": "2026-09-05T00:00:00+00:00", "subject": "Talk", "text": "The talk moves to Friday."}]
+
+
+def _appendable(tmp_path, monkeypatch, text=INVESTIGATED_PERSON):
+    root = _notebook(tmp_path, "codex")
+    inv.Notebook(root).write("people/rowan.md", text)
+    monkeypatch.setattr(inv, "gather", lambda *args, **kwargs: ([dict(item) for item in NEW_MAIL], ["outlook: 1 mail"]))
+    monkeypatch.setattr(inv, "project_mentions", lambda *args, **kwargs: ([], "project documents: none"))
+    return root
+
+
+def test_an_investigated_page_is_appended_to_with_its_own_task_and_the_archive(tmp_path, monkeypatch):
+    root = _appendable(tmp_path, monkeypatch)
+    seen = []
+    result = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan.ashdown@unsw.edu.au"], days=7,
+                             clients={}, subscriptions={},
+                             runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+    page = next(item for item in seen if item.get("role") == "page")
+    assert page["append"] is True
+    task = next(item for item in seen if item.get("source") == "investigation:append")
+    assert "Never remove" in task["text"] and "was" in task["text"] and "until" in task["text"]
+    assert str(root / ".state" / "mail") in task["text"]
+    assert result["mode"] == "append"
+
+
+def test_an_unfilled_page_and_a_rewrite_are_written_whole(tmp_path, monkeypatch):
+    root = _appendable(tmp_path, monkeypatch)
+    for mode in ("rewrite",):
+        seen = []
+        result = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan.ashdown@unsw.edu.au"], days=7,
+                                 clients={}, subscriptions={}, mode=mode,
+                                 runner=lambda notebook, items, config, stage: seen.extend(items) or {"changed": []})
+        assert not any(item.get("source") == "investigation:append" for item in seen)
+        assert not next(item for item in seen if item.get("role") == "page").get("append")
+        assert result["mode"] == "write"
+
+
+def test_an_append_runs_no_whole_page_synthesis_editing_or_quote_round(tmp_path, monkeypatch):
+    root = _appendable(tmp_path, monkeypatch)
+    state = inv.investigate(root, "people/rowan.md", "Rowan Ashdown", ["rowan.ashdown@unsw.edu.au"], days=7,
+                            clients={}, subscriptions={}, prepare_only=True)
+    assert state["append"] is True
+    state["multi"] = True
+    book = inv.Notebook(root)
+    state["number"], state["edited"] = len(state["parts"]) + 1, True
+    assert inv.prepare_round(book, state) is None
+    from connectonion.rem import native_round
+    assert native_round._followup_items(book, state) is None

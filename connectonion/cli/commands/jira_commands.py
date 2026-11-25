@@ -64,6 +64,64 @@ def _jira():
     return Jira()
 
 
+def _live_item(issue: dict, site: str) -> dict:
+    """CLI JSON shape for a live issue; never a stored adapter reference."""
+    import hashlib
+    from ...useful_tools.jira_adf import adf_to_text
+    fields = issue.get("fields") or {}
+    if not isinstance(fields, dict) or not isinstance(fields.get("updated"), str):
+        raise ValueError("Jira returned invalid issue fields or update time; no item was emitted.")
+    author = fields.get("creator") or fields.get("reporter") or {}
+    if not isinstance(author, dict):
+        raise ValueError("Jira returned invalid author metadata; no item was emitted.")
+    text = adf_to_text(fields.get("description"))
+    item = {"id": issue["key"], "title": fields.get("summary") or "(untitled)",
+            "text": text, "author": author.get("displayName"),
+            "author_id": author.get("accountId"), "time": fields.get("updated"),
+            "link": f"{site}/browse/{issue['key']}", "source": f"jira:{issue['key']}"}
+    item["version"] = hashlib.sha256(json.dumps(item, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return item
+
+
+def handle_jira_live(*, since=None, project=None, issues=None, issue=None, as_json=False):
+    """Live CLI source boundary; only stdout is data in JSON mode."""
+    from datetime import datetime, timezone
+    import re
+    try:
+        if project is not None and not re.fullmatch(r"[A-Z][A-Z0-9]*", project):
+            raise ValueError("--project requires a Jira project key such as ALPHA.")
+        for key in ([issue] if issue is not None else issues or []):
+            if not re.fullmatch(r"[A-Z][A-Z0-9]*-\d+", key) or (project and not key.startswith(project + "-")):
+                raise ValueError("Issue key must belong to the explicitly selected project.")
+        if since is not None:
+            moment = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            if moment.utcoffset() is None or moment > datetime.now(timezone.utc):
+                raise ValueError("--since must include a timezone and not be in the future.")
+        until = datetime.now(timezone.utc).isoformat()
+        client = _jira()
+        if issue is not None:
+            result = _live_item(client.show_issue(issue, project_key=project), client._base)
+            next_command = "co jira projects"
+        else:
+            rows = client.changed_issues(project, since, issue_keys=issues or None)
+            items = [_live_item(row, client._base) for row in rows]
+            result = {"since": moment.isoformat(), "until": until,
+                      "scope": {"project": project, "issues": issues or []},
+                      "items": [{k: row[k] for k in ("id", "version", "time", "title", "link")} for row in items]}
+            next_command = f"co jira show {items[0]['id']} --json" if items else "co jira projects"
+    except ValueError as exc:
+        mark_next_step_named()
+        _error(str(exc), markup=False)
+        _error(f"Next: {selected_command('co jira --help')}", markup=False)
+        raise SystemExit(1)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    mark_next_step_named()
+    if as_json:
+        _error(f"Next: {selected_command(next_command)}", markup=False)
+    else:
+        _next(next_command)
+
+
 def _failure_details(exc: Exception) -> tuple[str, str]:
     """Classify typed failures and name one executable recovery command."""
     from ...useful_tools.jira import JiraConfigError, JiraAuthError, JiraPermissionError

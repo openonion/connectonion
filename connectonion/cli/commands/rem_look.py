@@ -146,7 +146,7 @@ def _page_rest(text: str) -> str:
 
 # ------------------------------------------------- the shapes results share
 #
-# co rem's results are small dashboards: status, doctor, sync and init end on
+# co rem's results are small status cards: status, doctor, sync and init end on
 # one. They share one layout so the eye learns it once (1.9.0a9): a title line,
 # section labels in the left margin, every value starting at the same column,
 # one item per line, and a fix on the line under the thing it fixes. A few
@@ -235,3 +235,38 @@ def hang(markup: str, width: int) -> str:
         out.append(head.markup + rows[0].markup)
         out += [" " * indent + row.markup for row in list(rows)[1:]]
     return "\n".join(out)
+
+
+# What a glance at the terminal shows of the notebook's words (rc35 hunt, #2840). `co rem status` printed a
+# [sensitive] passage and full calendar links (meeting ids, private-feed tokens) in plain text: a status card is
+# read with someone beside you, pasted into a chat, kept in a log. Like the reader's default level, a glance keeps
+# [personal] words (without the label) and hides each [sensitive] passage -- from the clause boundary before it to
+# its label and citations -- and a link shows only its host. `co rem show` is a deliberate read of one page
+# (agents read pages through it), so it prints the page as written.
+LABEL = re.compile(r"\s*[\[［](personal|sensitive)[\]］]((?:\s*[\[［](?:personal|sensitive|W?\d+)[\]］])*)", re.I)
+BOUNDARY = "\n.!?;:,—·。！？；：，"
+URL = re.compile(r"https?://(?:www\.)?([^/\s;,)\]>\"']+)[^\s;,)\]>\"']*")
+
+
+def _clause_start(text: str, end: int) -> int:
+    """Where the clause ending at `end` starts: after the last boundary that is not a dot inside a word or number."""
+    for index in range(end - 1, -1, -1):
+        char = text[index]
+        inside = char == "." and 0 < index < len(text) - 1 and text[index - 1].isalnum() and text[index + 1].isalnum()
+        if char in BOUNDARY and not inside:
+            return index + 1
+    return 0
+
+
+def glance(text: str) -> str:
+    """The text as a terminal glance shows it: sensitive passages hidden, personal labels dropped, links as hosts."""
+    out, done = [], 0
+    for match in LABEL.finditer(text):
+        if match.group(1).lower() == "personal":
+            out.append(text[done:match.start()])
+        else:
+            start = max(done, _clause_start(text, match.start()))
+            lead = len(text[start:match.start()]) - len(text[start:match.start()].lstrip())
+            out.append(text[done:start + lead] + "[hidden]")
+        done = match.end()
+    return URL.sub(lambda m: m.group(1), "".join(out) + text[done:])

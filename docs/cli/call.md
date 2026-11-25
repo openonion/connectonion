@@ -70,6 +70,8 @@ command, verbatim (so it keeps its own flags — `co call 0x.. ls -la` works).
 - `--out PATH` — save an image result (screenshot) to `PATH` instead of `./screenshot.png`
 - `--timeout SEC` — seconds to wait for the result (default `60`)
 - `--relay URL` — relay server (default `wss://oo.openonion.ai`)
+- `--global`, `-g` — sign as your global identity (`~/.co`), not this project's
+- `--co-dir DIR` — sign with the key in `DIR/keys` (a `.co` folder)
 
 ## Scripting
 
@@ -85,9 +87,25 @@ Exit codes: `0` ok · `1` failure (tool error / not whitelisted / connection) ·
 
 ## Identity
 
-`co call` signs the request with your local identity (`.co` in the project, else
-`~/.co`), which the remote needs if it runs at a strict trust level. For open /
-careful agents no keys are required — it works out of the box.
+`co call` signs the request with the project's key when the folder you are in
+belongs to a project with its own `.co/keys`, and with your global `~/.co` key
+otherwise. The remote decides what that address may do, so the same call can
+work from `~` and be refused inside a project whose key the remote does not
+know:
+
+```bash
+$ cd ~/code/my-agent && co call 0x3d40... co status
+signed as 0x5f2a...9c1e from /Users/me/code/my-agent/.co/keys (this project's key; --global signs as your global identity)
+agent requires onboarding (invite_code)
+$ co call --global 0x3d40... co status     # sign as ~/.co instead
+```
+
+A project key is named once on stderr before the call; with your global key, a
+refusal is followed by `signed as 0x... from ~/.co/keys`. Either way a refusal
+says which address the remote saw and where its key came from. `--global` picks
+`~/.co`, and `--co-dir DIR` any other `.co` folder, the same choices `co trust`
+offers. With no key anywhere the call goes unsigned, which only a `trust: open`
+agent accepts.
 
 ## When to use
 

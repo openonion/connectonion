@@ -307,6 +307,20 @@ def test_all_widens_to_every_site_and_raw_shows_values(core):
     assert "other.test" in listed and "s3cr3t-session-value" in listed
 
 
+def test_domain_listing_keeps_subdomains_and_paths_without_an_open_tab(core):
+    core.browser.jar.extend([
+        dict(JAR[0], name="subdomain", domain=".www.shop.test", path="/account"),
+        dict(JAR[0], name="lookalike", domain="notshop.test"),
+    ])
+    core._bind_session("empty")
+
+    listed = json.loads(run(core.cookies(all=True, domain="shop.test", json=True)))
+
+    assert {c["name"] for c in listed} == {"sid", "theme", "subdomain"}
+    assert next(c for c in listed if c["name"] == "subdomain")["path"] == "/account"
+    assert all(c["value"].startswith("<") for c in listed)
+
+
 def test_set_uses_the_tab_s_site_and_clear_removes_only_that_site(core):
     run(core.cookies("set", "promo", "abc"))
     assert any(c["name"] == "promo" and c["domain"] == "shop.test" for c in core.browser.jar)

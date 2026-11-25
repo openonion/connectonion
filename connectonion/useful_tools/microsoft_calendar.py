@@ -123,7 +123,9 @@ class MicrosoftCalendar:
         token = self._get_access_token()
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            # As Outlook: co rem asks for times in the owner's zone (Prefer: outlook.timezone).
+            **kwargs.pop("headers", {}),
         }
 
         url = f"{self.GRAPH_API_URL}{endpoint}"

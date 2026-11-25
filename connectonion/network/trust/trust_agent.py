@@ -78,6 +78,9 @@ from .tools import (
     get_self_address as _get_self_address,
 )
 from .tools import (
+    record_join as _record_join,
+)
+from .tools import (
     # Admin functions
     is_admin as _is_admin,
 )
@@ -329,6 +332,7 @@ justify admitting them, it is not enough."""
         valid_codes = _resolve_codes(self._config.get('onboard', {}).get('invite_code', []))
         if invite_code in valid_codes:
             self.promote_to_contact(client_id)
+            _record_join(client_id, self._co_dir, "invite code")
             return True
         return False
 
@@ -371,6 +375,7 @@ justify admitting them, it is not enough."""
         # Call oo-api to verify transfer
         if self._verify_transfer_via_api(client_id, self_addr, min_amount):
             self.promote_to_contact(client_id)
+            _record_join(client_id, self._co_dir, "payment")
             return True
         return False
 

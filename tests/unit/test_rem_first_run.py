@@ -202,7 +202,7 @@ def test_model_denial_stops_first_run_before_writing_pages(first_run, monkeypatc
     from connectonion.rem.service import run_logs
     assert run_logs(root)[0]["phase"] == "model access"
     assert run_logs(root)[0]["outcome"] == "failed"
-    assert run_logs(root)[0]["speed"] == "fast"
+    assert run_logs(root)[0]["speed"] == "standard"
     assert run_logs(root)[0]["harness"] == "codex"
 
 
@@ -340,7 +340,7 @@ def test_init_yes_records_existing_consent_before_mapping(first_run, monkeypatch
     assert mapped == [True]
 
 
-def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkeypatch):
+def test_interactive_init_proceeds_with_summary_and_undo_for_selected_mailboxes(first_run, monkeypatch):
     import sys
     from types import SimpleNamespace
     from connectonion.cli.commands import rem_commands
@@ -360,7 +360,8 @@ def test_interactive_init_prompts_once_with_selected_mailboxes(first_run, monkey
         install=lambda root, config: installed.append(root) or {'scheduler': 'fake'}))
     result = init('--no-investigate')
     assert result.exit_code == 0, result.output
-    assert len(prompts) == 1
+    assert prompts == []
+    assert 'Undo REM setup:' in result.output
     assert len(summaries) == 1
     assert summaries[0]['sources']['gmail']['state'].startswith('will be read')
     assert installed == [root]
@@ -1371,7 +1372,7 @@ def test_init_translation_selects_only_listed_written_pages_without_daily_cap(tm
     from connectonion.rem import translate
     from connectonion.rem.service import run_logs
     prepare(tmp_path)
-    set_config(tmp_path, ['limits.translations_per_day', '1', 'limits.workers', '3'])
+    set_config(tmp_path, ['limits.workers', '3'])
     book = Notebook(tmp_path)
     records = ['people/avery-lin.md', 'orgs/northgate-university.md', 'projects/draft.md',
                'skills/catalog/weekly-brief.md', 'decisions/format.md', 'principles/simple.md']
