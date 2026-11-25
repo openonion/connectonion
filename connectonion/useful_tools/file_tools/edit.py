@@ -2,7 +2,7 @@
 Purpose: Edit tool for precise string replacement (Claude Code-style)
 LLM-Note:
   Dependencies: imports from [pathlib] | imported by [useful_tools/__init__]
-  Data flow: Agent calls edit(file_path, old_string, new_string) -> validates -> replaces -> writes
+  Data flow: Agent calls edit(file_path, old_string, new_string) -> validates -> replaces -> writes back byte-for-byte, in the file's own line endings
   State/Effects: reads and writes file on filesystem
   Integration: exposes edit(file_path, old_string, new_string) function | used as agent tool
   Errors: returns error if file not found | returns error if old_string not found | returns error if old_string not unique
@@ -52,10 +52,28 @@ def edit(
     if not path.is_file():
         return ToolFailure(f"Error: '{file_path}' is not a file")
 
-    content = path.read_text(encoding="utf-8")
+    raw = path.read_bytes()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return ToolFailure(f"Error: '{file_path}' is not UTF-8 text: {e}")
+
+    # Line endings belong to the file, not to the platform running the edit.
+    # Text-mode read+write converts a CRLF file to LF on Linux and an LF file to
+    # CRLF on Windows, so changing one line rewrites the whole file in a diff.
+    # Decode the bytes as they are and write back in the file's own style.
+    newline = "\r\n" if "\r\n" in content else "\n"
+
+    def _in_file_style(text: str) -> str:
+        """Express ``text`` with this file's line endings."""
+        normalised = text.replace("\r\n", "\n")
+        return normalised if newline == "\n" else normalised.replace("\n", "\r\n")
+
+    old_in_file = _in_file_style(old_string)
+    new_in_file = _in_file_style(new_string)
 
     # Check if old_string exists
-    count = content.count(old_string)
+    count = content.count(old_in_file)
 
     if count == 0:
         # Try to help debug: show similar strings
@@ -89,14 +107,14 @@ def edit(
 
     # Perform replacement
     if replace_all:
-        new_content = content.replace(old_string, new_string)
+        new_content = content.replace(old_in_file, new_in_file)
         replaced_count = count
     else:
-        new_content = content.replace(old_string, new_string, 1)
+        new_content = content.replace(old_in_file, new_in_file, 1)
         replaced_count = 1
 
     # Write back
-    path.write_text(new_content, encoding="utf-8")
+    path.write_bytes(new_content.encode("utf-8"))
 
     if replace_all and replaced_count > 1:
         return f"Replaced {replaced_count} occurrences in '{file_path}'"
