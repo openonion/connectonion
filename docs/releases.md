@@ -21,6 +21,8 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
+Release candidate **1.9.7rc28** adds REM SQLite store v2 queries, Agent Host security gates, first-class `devices` pages, reader performance fixes ([#3458](https://github.com/openonion/connectonion/pull/3458), [#3453](https://github.com/openonion/connectonion/issues/3453)), and the `co teams` Microsoft Teams CLI and `Teams` tool ([#3459](https://github.com/openonion/connectonion/pull/3459), [#1907](https://github.com/openonion/connectonion/issues/1907)). See [1.9.7rc28 notes](releases/1.9.7rc28.md).
+
 Release candidate **1.9.7rc27** updates the REM Today reply workspace. See [1.9.7rc27 notes](releases/1.9.7rc27.md).
 
 Release candidate **1.9.7rc26** adds attachment sending and downloads for the agent mailbox (#3440). See [1.9.7rc26 notes](releases/1.9.7rc26.md).
@@ -54,7 +56,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc27'
+python -m pip install --upgrade 'connectonion==1.9.7rc28'
 ```
 
 ## Current release

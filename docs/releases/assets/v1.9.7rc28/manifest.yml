@@ -1,0 +1,23 @@
+version: v1.9.7rc28
+images:
+  - file: devices-list-desktop.webp
+    alt: "The REM reader Devices list view showing two invented devices alongside People, Orgs and Projects."
+    caption: "Devices joins the REM reader sidebar between Orgs and Projects, listing each machine with its cited summary."
+    scenario: "Open #c=devices in the synthetic REM fixture notebook on desktop"
+    viewport: "1440x900, light"
+    commit: 35a3974889410b35a7d399bd0c0194b679088a4d
+    source_run: "Local headless Chromium capture from synthetic fixture notebook; https://github.com/openonion/connectonion/pull/3458"
+  - file: devices-detail-desktop.webp
+    alt: "A device page in the REM reader showing tags, summary, linked organisation, owner, project and dated activity."
+    caption: "A device page connects the machine to its organisation, owner and project with cited activity history."
+    scenario: "Open #r=devices%2Fharbour-relay-vm.md in the synthetic REM fixture notebook on desktop"
+    viewport: "1440x900, light"
+    commit: 35a3974889410b35a7d399bd0c0194b679088a4d
+    source_run: "Local headless Chromium capture from synthetic fixture notebook; https://github.com/openonion/connectonion/pull/3458"
+  - file: devices-detail-phone.webp
+    alt: "The same device page on a 390x844 phone viewport with stacked related pages and bottom navigation."
+    caption: "On a phone viewport, the device page stacks its related pages cleanly above the bottom navigation bar."
+    scenario: "Open #r=devices%2Fharbour-relay-vm.md in the synthetic REM fixture notebook on phone"
+    viewport: "390x844, light"
+    commit: 35a3974889410b35a7d399bd0c0194b679088a4d
+    source_run: "Local headless Chromium capture from synthetic fixture notebook; https://github.com/openonion/connectonion/pull/3458"
