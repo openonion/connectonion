@@ -1004,8 +1004,8 @@ The HTML is agent-authored and untrusted: clients render it in a sandboxed ifram
 scripting and network access blocked. Files over 128 MiB are replaced by an
 explanatory page. See [control-center-page.md](control-center-page.md).
 
-Until the next preview after 1.9.7rc15, each snapshot is followed by an identical
-frame typed `DASHBOARD_SNAPSHOT`, the pre-rename name, for older clients.
+Each snapshot is followed by an identical frame typed `DASHBOARD_SNAPSHOT`, the
+pre-rename name. @connectonion/react still reads only that name, so the Host keeps sending it until openonion/connectonion-react#116 ships and O Chat pins that release; dropping it sooner would blank every Control Center.
 
 #### WIKI_READ / WIKI_RESULT
 

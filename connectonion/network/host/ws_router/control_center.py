@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from functools import lru_cache
 from html import escape
 from pathlib import Path
@@ -29,10 +30,14 @@ PAGE_FILE = "control_center.html"
 # The page's name before #3336. Still served when it is the only one, so a
 # project keeps its Control Center across the rename; co host hints to rename it.
 LEGACY_PAGE_FILE = "dashboard.html"
-# The snapshot frame's name before #3336, sent alongside the new one for one
-# preview cycle so O Chat builds from before the rename keep rendering.
+# The snapshot frame's name before #3336, sent after every CONTROL_CENTER_SNAPSHOT.
+# @connectonion/react still reads only this name: keep sending it until
+# openonion/connectonion-react#116 ships and O Chat pins that release, or every
+# Control Center goes blank.
 LEGACY_SNAPSHOT_FRAME = "DASHBOARD_SNAPSHOT"
 CO_DIR = ".co"
+# The agent's own live status, shown first on the starter (#3350). Agent-authored.
+STATUS_FILE = "status.json"
 # An operator's own starting point for every agent they host. Optional; the bundled
 # template is used when it isn't there.
 STARTER_OVERRIDE = Path.home() / CO_DIR / "starter.html"
@@ -170,10 +175,10 @@ async def send_control_center_page(send_msg, session_id, conn, force=False):
         stat = control_center_path().stat()
         stamp = (stat.st_mtime_ns, stat.st_size)
     except OSError:
-        # No file: the starter is rendered from metadata fixed at startup, so it
-        # cannot change within a run. One stamp for the whole run means each
-        # client is sent it once, like any other unchanged page.
-        stamp = ("starter", None)
+        # No file: the starter is rendered from metadata fixed at startup plus
+        # .co/status.json, so the stamp is that file's. A run that rewrote the
+        # status re-sends the page; one that did not costs nothing.
+        stamp = ("starter", _status_stamp())
     if not force and conn.get("control_center_stamp") == stamp:
         return
 
@@ -348,7 +353,9 @@ def _skill_sections(skills):
         return "  " + fragments["list"].substitute(rows=rows(ordered, "    ")).strip()
 
     head, tail = ordered[:PREVIEW_ROWS], ordered[PREVIEW_ROWS:]
-    return ("  " + fragments["list"].substitute(rows=rows(head, "    ")).strip()
+    # Search earns its row only on a list long enough to fold.
+    return ("  " + fragments["filter"].template.strip()
+            + "\n  " + fragments["list"].substitute(rows=rows(head, "    ")).strip()
             + "\n  " + fragments["more"].substitute(
                 count=len(tail),
                 plural="s" if len(tail) != 1 else "",
@@ -367,47 +374,20 @@ def _quick_actions(skills):
     return "    " + fragments["quick"].safe_substitute(rows=rows).strip()
 
 
-def _diagnostics(agent_metadata, skill_count):
-    """Operator facts kept behind one disclosure, escaped and copyable."""
-    _, fragments = _starter_templates()
-    facts = []
-    for label, value, class_name in (
-        ("Model", agent_metadata.get("model"), ""),
-        ("Trust", agent_metadata.get("trust"), ""),
-        ("Tools", len(agent_metadata.get("tools") or []), ""),
-        ("Skills", skill_count, ""),
-    ):
-        if value in (None, "", 0):
-            continue
-        facts.append(fragments["diag"].safe_substitute(
-            label=escape(str(label)), value=escape(str(value)), **{"class": class_name}
-        ).strip())
-    if not facts:
-        return ""
-    rows = "\n".join("      " + item for item in facts)
-    return "    " + fragments["diagnostics"].safe_substitute(rows=rows).strip()
+def _subtitle(agent_metadata, skill_count, people=None):
+    """The header's quiet line: skills · people · model (#3350).
 
-
-def _subtitle(agent_metadata, skill_count):
-    """Model, skills, tools — the three facts that say what this agent can do.
-
-    Each part is dropped when it is unknown rather than printed as "0 tools", which
-    reads as a broken agent instead of an unreported number.
+    Each part is dropped when it is unknown rather than printed as "0 skills",
+    which reads as a broken agent instead of an unreported number. ``people`` is
+    counted for an admin only, the one viewer who is shown who they are.
     """
     parts = []
     if skill_count:
         parts.append(f"{skill_count} skill{'s' if skill_count != 1 else ''}")
-    tools = agent_metadata.get("tools") or []
-    if tools:
-        parts.append(f"{len(tools)} tool{'s' if len(tools) != 1 else ''}")
-    # Last, and only after what the agent can do: which model runs it is the least
-    # interesting true thing on the page, and it used to lead.
+    if people:
+        parts.append(f"{people} {'person' if people == 1 else 'people'}")
     if agent_metadata.get("model"):
         parts.append(escape(str(agent_metadata["model"])))
-    if agent_metadata.get("trust"):
-        # Who this agent will talk to. The operator set it in code and cannot
-        # otherwise see what the running agent actually resolved it to.
-        parts.append(f"trust: {escape(str(agent_metadata['trust']))}")
     return " · ".join(parts)
 
 
@@ -426,40 +406,44 @@ def _address_line(agent_metadata):
 
 
 def render_starter(agent_metadata, viewer=EVERYONE):
-    """Build the day-zero Control Center HTML: who this agent is (name, address, one
-    line), with every skill it publishes folded under Capabilities.
+    """Build the default Control Center: the agent's live status, its skills, the
+    people it serves (admins only), the viewer's own recent runs, and one line of
+    health (#3350).
 
-    Written once, then owned by the agent — so it has to be worth keeping, and it
-    has to hold up at both ends of the range. The pane it renders into is ~440px
-    wide (oo-chat's Home column), full-width on mobile, and occasionally a whole
-    browser window, which is why the layout is a single centred column with a
-    max-width rather than anything that stretches.
+    The pane it renders into is anything from ~440px (O Chat's side column) to a
+    full window, so the layout is one centred column of at most 920px that splits
+    People and Recent side by side from 900px.
 
-    The markup and CSS live in ``starter/*.html`` — this function only decides what
-    goes in them. Design notes are in those files, next to the rules they explain.
+    The markup and CSS live in ``starter.html`` — this function only decides what
+    goes in them. Design notes are in that file, next to the rules they explain.
     """
     skills = published_skills(agent_metadata.get("skills") or [])
     restricted = agent_metadata.get("restricted_skills") or []
     page, _ = _starter_templates()
     name = str(agent_metadata.get("name") or "Agent")
+    is_admin = viewer is not EVERYONE and viewer["is_admin"]
+    # Everyone's runs, for an admin's People rows and health line only: they
+    # carry counts and times out of it, never prompt text.
+    runs = recent_runs(limit=200) if is_admin else []
+    admin, people = _admin(agent_metadata, runs) if is_admin else ("", 0)
+    health = _health(agent_metadata, runs if is_admin else None)
     return page.safe_substitute(
         name=escape(name),
         initial=escape(name.strip()[:1] or "A"),
         tagline=_tagline(agent_metadata),
-        subtitle=_subtitle(agent_metadata, len(skills)),
-        # Compatibility for operator starter overrides written before Control
-        # Center. The bundled template uses diagnostics; old templates may
-        # still contain $address.
+        subtitle=_subtitle(agent_metadata, len(skills), people),
+        status=_status_block(),
+        # $address and $diagnostics are for operator starter overrides written
+        # before #3350; the bundled page carries both inside $health.
         address=_address_line(agent_metadata),
+        diagnostics=health,
+        health=health,
         activity=_activity_sections(viewer),
-        # Owner, 2026-09-29: the page opens on a card (name, address, one
-        # line), not on the agent's skills. Kept for operator overrides that
-        # still name $quick_actions; the bundled page no longer does.
+        # Kept for operator overrides that still name $quick_actions.
         quick_actions=_quick_actions(skills),
         capability_count=_capability_count(skills, restricted),
-        diagnostics=_diagnostics(agent_metadata, len(skills)),
         body=_skill_sections(skills) if skills or not restricted else _restricted_rows(restricted),
-        admin=_admin(agent_metadata, viewer),
+        admin=admin,
     )
 
 
@@ -484,13 +468,119 @@ def _restricted_rows(names):
     return "  " + fragments["list"].substitute(rows=rows).strip()
 
 
-def _admin(agent_metadata, viewer):
-    """The admin card, for a verified admin socket only (admin_home explains why)."""
-    if viewer is EVERYONE or not viewer["is_admin"]:
-        return ""
-    from . import admin_home
+def _admin(agent_metadata, runs):
+    """The People card and how many it lists, for a verified admin socket only
+    (admin_home explains why)."""
     _, fragments = _starter_templates()
-    return admin_home.render(agent_metadata, recent_runs(limit=200), fragments)
+    return admin_home.render(agent_metadata, runs, fragments)
+
+
+def _health(agent_metadata, admin_runs=None):
+    """One line: model · version · relay · trust, then the agent's full address.
+
+    An admin's line adds uptime and the last failure (from everyone's runs, so
+    ``admin_runs`` is passed for an admin only), and the log under it.
+    """
+    from .... import __version__
+    from ...relay import connection
+    _, fragments = _starter_templates()
+    facts = [agent_metadata.get("model"), f"connectonion {__version__}", _relay_text(connection)]
+    if agent_metadata.get("trust"):
+        facts.append(f"trust {agent_metadata['trust']}")
+    log = ""
+    if admin_runs is not None:
+        facts += admin_home.health_facts(admin_runs)
+        log = admin_home.render_log(fragments)
+    return "    " + fragments["health"].safe_substitute(
+        facts=escape(" · ".join(str(f) for f in facts if f)),
+        tone="up" if connection["state"] == "connected" else "",
+        address=_address_line(agent_metadata), log=log).strip()
+
+
+def _relay_text(connection):
+    if connection["state"] == "never":
+        return "relay not connected"
+    ago = _ago(time.time() - connection["since"])
+    return f"relay {connection['state']} " + (ago if ago == "just now" else "for " + ago.removesuffix(" ago"))
+
+
+# ---------------------------------------------------------------- status
+
+TONES = ("good", "warn", "bad")
+
+
+def _status_path():
+    return _co() / STATUS_FILE
+
+
+def _status_stamp():
+    path = _status_path()
+    if not path.is_file():
+        return None
+    stat = path.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def _read_status():
+    """``(status, updated_ts, problem)`` from .co/status.json; all None without one.
+
+    The file is agent-authored and rewritten while the Host runs, so a half
+    written or hand-broken one is expected: it costs the block one quiet line
+    naming the problem, never the page.
+    """
+    from datetime import datetime
+    path = _status_path()
+    if not path.is_file():
+        return None, None, None
+    try:
+        status = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(status, dict):
+            raise ValueError("expected a JSON object")
+        stamp = status.get("updated_at")
+        updated = datetime.fromisoformat(str(stamp)).timestamp() if stamp else None
+    except (OSError, ValueError) as e:
+        return None, None, f"{STATUS_FILE} could not be read: {e}"
+    return status, updated, None
+
+
+def _tone(item):
+    """A known tone as a class name; anything else is no tone at all."""
+    tone = item.get("tone")
+    return f"tone-{tone}" if tone in TONES else ""
+
+
+def _status_block():
+    """The agent's own live status, first on the page (#3350), or nothing.
+
+    Every string is escaped. ``href`` is ignored: the client sandbox cancels
+    links out, so a link would render as dead text that looks clickable.
+    """
+    status, updated, problem = _read_status()
+    _, fragments = _starter_templates()
+    if problem:
+        return "    " + fragments["status_problem"].safe_substitute(problem=escape(problem)).strip()
+    if status is None:
+        return ""
+    metrics = [m for m in status.get("metrics") or [] if isinstance(m, dict)]
+    lists = [lst for lst in status.get("lists") or [] if isinstance(lst, dict)]
+    return "    " + fragments["status"].safe_substitute(
+        title=escape(str(status.get("title") or "Status")),
+        updated=f"updated {_ago(time.time() - updated)}" if updated else "",
+        metrics="\n".join(fragments["metric"].safe_substitute(
+            label=escape(str(m.get("label", ""))), value=escape(str(m.get("value", ""))),
+            tone=_tone(m)).strip() for m in metrics),
+        lists="\n".join(_status_list(lst, fragments) for lst in lists),
+    ).strip()
+
+
+def _status_list(lst, fragments):
+    items = [i for i in lst.get("items") or [] if isinstance(i, dict)]
+    return fragments["status_list"].safe_substitute(
+        title=escape(str(lst.get("title", ""))),
+        items="\n".join(fragments["status_item"].safe_substitute(
+            text=escape(str(i.get("text", ""))), meta=escape(str(i.get("meta", ""))),
+            tone=_tone(i)).strip() for i in items),
+    ).strip()
 
 
 def _tagline(agent_metadata):
@@ -784,7 +874,7 @@ def _activity_sections(viewer=EVERYONE):
                 what=escape(f"{s['name']}  ({s['cadence']})"),
                 meta=escape(meta), tone=tone).strip())
         out.append(section.safe_substitute(
-            title="Scheduled", rows="\n".join("      " + r for r in rows)).strip())
+            title="Scheduled", note="", rows="\n".join("      " + r for r in rows)).strip())
 
     if problems:
         # A dropped entry renders as nothing, and so does a schedule that is
@@ -793,7 +883,7 @@ def _activity_sections(viewer=EVERYONE):
         rows = [row.safe_substitute(what=escape(p), meta="ignored", tone="bad").strip()
                 for p in problems]
         out.append(section.safe_substitute(
-            title="Schedule problems",
+            title="Schedule problems", note="",
             rows="\n".join("      " + r for r in rows)).strip())
 
     runs = recent_runs(owner=EVERYONE if everyone else viewer["address"])
@@ -814,9 +904,13 @@ def _activity_sections(viewer=EVERYONE):
                 # of the Scheduled row, arriving through the other door.
                 meta, tone = "interrupted", "bad"
             else:
+                # done or failed, and how long it took (#3350): "done" alone
+                # said nothing a reader could use.
+                failed = status == "failed"
+                meta, tone = ("failed", "bad") if failed else ("done", "")
                 ms = r.get("duration_ms")
-                meta = _took(ms) if isinstance(ms, (int, float)) else "done"
-                tone = ""
+                if isinstance(ms, (int, float)):
+                    meta += " · " + _took(ms)
             created = r.get("created")
             if created:
                 meta += " · " + _ago(now.timestamp() - float(created))
@@ -826,9 +920,12 @@ def _activity_sections(viewer=EVERYONE):
             rows.append(row.safe_substitute(
                 what=escape(what), meta=escape(meta), tone=tone).strip())
         out.append(section.safe_substitute(
-            title="Recent", rows="\n".join("      " + r for r in rows)).strip())
+            title="Recent", note="Only you see these",
+            rows="\n".join("      " + r for r in rows)).strip())
 
-    return "\n".join(out)
+    if not out:
+        return ""
+    return '    <div class="activity">\n' + "\n".join(out) + "\n    </div>"
 
 
 # --- Signed Control Center commands and authenticated descriptor/status pushes ---

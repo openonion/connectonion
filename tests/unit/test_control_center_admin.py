@@ -30,6 +30,8 @@ def host(tmp_path, monkeypatch):
     co.mkdir()
     (co / "admins.txt").write_text(ADMIN + "\n", encoding="utf-8")
     monkeypatch.setenv("CO_INVITE_CODE", "OLDCODE-11111")
+    # People names come from the operator's co handoff book; never the real one.
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path / "operator"))
     monkeypatch.setattr(dash, "_project_dir", tmp_path)
     monkeypatch.setattr(dash, "_agent_metadata", {"name": "desk", "skills": []})
     monkeypatch.setattr(dash, "STARTER_OVERRIDE", tmp_path / "absent-starter.html")
@@ -52,8 +54,9 @@ def run(project, *, owner, status="done", sid=None, ago_s=60, prompt="secret pro
 
 
 def page(address, is_admin):
+    # People meta wraps only between its parts (non-breaking spaces inside).
     return dash.render_starter({"name": "desk", "skills": []},
-                               viewer=dash.viewer_for(address, is_admin))
+                               viewer=dash.viewer_for(address, is_admin)).replace("\u00a0", " ")
 
 
 class TestOnlyAnAdminIsSentIt:
@@ -62,7 +65,7 @@ class TestOnlyAnAdminIsSentIt:
         admin, guest = page(ADMIN, True), page(GUEST, False)
 
         assert "data-ochat-admin" in admin and "OLDCODE-11111" in admin
-        for leaked in ("data-ochat-admin", "OLDCODE-11111", "Admitted", "Invite code"):
+        for leaked in ("data-ochat-admin", "OLDCODE-11111", ">People<", "Invite code"):
             assert leaked not in guest
 
     def test_an_unconfigured_host_renders_no_admin_section_even_for_an_admin(self, host):
@@ -75,7 +78,8 @@ class TestAdmitted:
         run(dash._project_dir, owner=GUEST, ago_s=7200)
         html = page(ADMIN, True)
 
-        assert GUEST in html
+        assert GUEST in html                       # the buttons' target, in full
+        assert "0xbbbb…bbbb" in html               # the row, short
         assert "invite code" in html
         assert "seen 2h ago" in html
         assert f'data-ochat-admin="remove" data-ochat-target="{GUEST}"' in html
@@ -91,6 +95,38 @@ class TestAdmitted:
         assert "2 turns · 1 failed" in html
         assert "secret prompt text" not in html.split('id="admin"')[1]
 
+    def test_an_admin_is_badged_admin_even_when_also_on_contacts(self, host):
+        """#3350: the owner joined by invite before being made admin, and the row
+        read the first list that held them: `contact`."""
+        assert host.verify_invite(ADMIN, "OLDCODE-11111")
+        html = page(ADMIN, True)
+        row = html.split('<div class="person">')[1].split('<div class="person">')[0]
+
+        assert '<span class="role admin">admin</span>' in row
+        assert "data-ochat-admin" not in row       # an admin is managed in admins.txt
+        assert html.count('<span class="role contact">contact</span>') == 1   # the guest only
+
+    def test_a_name_saved_with_co_handoff_is_shown(self, host, tmp_path, monkeypatch):
+        book = tmp_path / "operator" / "handoff" / "contacts.json"
+        book.parent.mkdir(parents=True)
+        book.write_text(json.dumps({"priya shah": {"mail": "p@example.com", "agent": GUEST},
+                                    "0x1234567890": {"mail": "x@example.com", "agent": OTHER}}))
+        monkeypatch.setenv("AGENT_CONFIG_PATH", str(tmp_path / "operator"))
+        html = page(ADMIN, True)
+
+        assert "<strong class=\"\">Priya Shah</strong>" in html
+        assert "0x1234567890" not in html           # an address is not a name
+
+    def test_recent_stays_own_runs_only_for_an_admin(self, host):
+        """The issue asked for everyone's runs in an admin's Recent; #696 says no:
+        prompts are verbatim. Admins get counts on People rows instead."""
+        run(dash._project_dir, owner=GUEST, prompt="guest private question")
+        run(dash._project_dir, owner=ADMIN, prompt="owner own question")
+        html = page(ADMIN, True)
+
+        assert "owner own question" in html
+        assert "guest private question" not in html
+
     def test_a_waiting_approval_from_any_caller_is_shown(self, host):
         run(dash._project_dir, owner=OTHER, status="waiting_approval")
         assert "Waiting for approval" in page(ADMIN, True)
@@ -103,10 +139,11 @@ class TestHealth:
         html = dash.render_starter({"name": "desk", "skills": [], "model": "claude-code/sonnet"},
                                    viewer=dash.viewer_for(ADMIN, True))
 
-        assert __version__ in html
-        assert "claude-code/sonnet" in html
-        assert "Relay" in html
-        assert "failed · 10m ago" in html
+        health = html.split('class="health"')[1]
+        assert __version__ in health
+        assert "claude-code/sonnet" in health
+        assert "relay " in health
+        assert "last failed 10m ago" in health and "up " in health
 
     def test_the_log_tail_is_shown_to_an_admin(self, host):
         log = host._co_dir / "logs" / "agent.log"
@@ -138,7 +175,7 @@ class TestCommands:
         assert result["ok"] is True
         assert host.get_level(GUEST) == "stranger"
         snapshot = next(f for f in frames if f["type"] == "CONTROL_CENTER_SNAPSHOT")
-        assert GUEST not in snapshot["html"].split("Admitted")[1].split("</details>")[0]
+        assert GUEST not in snapshot["html"].split('id="admin"')[1].split("</section>")[0]
 
     @pytest.mark.asyncio
     async def test_block_blocks(self, host):

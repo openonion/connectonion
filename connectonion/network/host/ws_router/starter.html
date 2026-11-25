@@ -3,230 +3,272 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>$name · Control Center</title>
+<title>$name</title>
 <style>
-  /* Shared Control Center tokens. The page is self-contained: no remote assets,
-     scripts, inline handlers, or navigation. The chat bridge owns declarative
-     data-ochat-* controls; plain HTML remains usable when that bridge is absent. */
+  /* Quiet surfaces after rareui.com (#3350, owner 2026-11-22): an off-white
+     page, white cards lifted by one soft wide shadow instead of hard borders,
+     fully rounded pills, rows with hairline dividers. Black is the primary
+     action; green is only the brand mark and the online/running dot.
+     Self-contained: no remote assets, scripts, inline handlers or navigation.
+     The chat bridge owns the declarative data-ochat-* controls. */
   :root {
     color-scheme: light dark;
-    --cc-bg: #f7f8f6;
+    --cc-bg: #fafafa;
     --cc-surface: #ffffff;
-    --cc-surface-raised: #f0f2ee;
-    --cc-text: #171a17;
-    --cc-muted: #505650;
-    --cc-subtle: #626962;
-    --cc-border: #d9ddd7;
-    --cc-accent: #14733a;
-    --cc-accent-soft: #e2f3e7;
-    --cc-danger: #b42318;
-    --cc-focus: #075985;
-    --cc-radius-sm: 10px;
-    --cc-radius-md: 14px;
-    --cc-shadow: 0 1px 2px rgba(19, 30, 21, .06), 0 8px 28px rgba(19, 30, 21, .05);
+    --cc-raised: #f4f4f5;
+    --cc-text: #18181b;
+    --cc-muted: #52525b;
+    --cc-subtle: #6b6b73;
+    --cc-hair: #ececee;
+    --cc-green: #22d27a;
+    --cc-on-green: #0b2416;
+    --cc-ink: #18181b;
+    --cc-on-ink: #ffffff;
+    --cc-danger: #c0262d;
+    --cc-warn: #a15c00;
+    --cc-focus: #18181b;
+    --cc-radius: 18px;
+    --cc-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 12px 32px -12px rgb(0 0 0 / .12);
+    --cc-shadow-lift: 0 2px 4px rgb(0 0 0 / .05), 0 16px 36px -12px rgb(0 0 0 / .18);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --cc-bg: #111411;
-      --cc-surface: #191d19;
-      --cc-surface-raised: #222722;
-      --cc-text: #f1f5f1;
-      --cc-muted: #bbc4bb;
-      --cc-subtle: #aeb7ae;
-      --cc-border: #343b34;
-      --cc-accent: #62d68a;
-      --cc-accent-soft: #173d25;
+      --cc-bg: #0f0f10;
+      --cc-surface: #19191b;
+      --cc-raised: #232326;
+      --cc-text: #f4f4f5;
+      --cc-muted: #c4c4ca;
+      --cc-subtle: #a1a1aa;
+      --cc-hair: #2a2a2e;
+      --cc-ink: #f4f4f5;
+      --cc-on-ink: #18181b;
       --cc-danger: #ff8a80;
-      --cc-focus: #7dd3fc;
-      --cc-shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 12px 32px rgba(0, 0, 0, .18);
+      --cc-warn: #f5c060;
+      --cc-focus: #f4f4f5;
+      --cc-shadow: 0 1px 2px rgb(0 0 0 / .3), 0 12px 32px -12px rgb(0 0 0 / .5);
+      --cc-shadow-lift: 0 2px 4px rgb(0 0 0 / .3), 0 16px 36px -12px rgb(0 0 0 / .6);
     }
   }
   * { box-sizing: border-box; }
   html { background: var(--cc-bg); }
   body {
     margin: 0;
-    padding: clamp(18px, 4vw, 38px) clamp(12px, 3vw, 24px) 56px;
+    padding: clamp(28px, 6vw, 56px) 16px 64px;
     background: var(--cc-bg);
     color: var(--cc-text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.5;
+    font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   html, body { max-width: 100%; overflow-x: clip; }
-  main, .grid, .card, .quick { width: 100%; min-width: 0; max-width: 100%; }
-  main { width: min(100%, 860px); margin: 0 auto; }
-  button, input, summary { font: inherit; }
-  button, summary { min-height: 44px; }
-  :focus-visible { outline: 3px solid var(--cc-focus); outline-offset: 2px; }
+  main { display: grid; gap: 28px; width: min(100%, 920px); margin: 0 auto; }
+  main > *, .columns > *, .activity > * { width: 100%; min-width: 0; max-width: 100%; }
+  button, summary { font: inherit; min-height: 44px; }
+  :focus-visible { outline: 2px solid var(--cc-focus); outline-offset: 2px; }
+  p { margin: 0; }
+  .mono, .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-  .masthead { display: grid; gap: 18px; margin-bottom: 18px; }
-  .eyebrow {
-    margin: 0 0 5px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .11em; text-transform: uppercase;
-  }
-  .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  /* Header: who this agent is, then one quiet line. No eyebrow: the pane
+     around this page is already titled Control Center. */
+  .head { display: flex; align-items: center; gap: 16px; }
   .mark {
-    flex: none; display: grid; place-items: center; width: 42px; height: 42px;
-    border-radius: 12px; background: var(--cc-accent); color: var(--cc-bg);
-    font-size: 18px; font-weight: 800; text-transform: uppercase; user-select: none;
+    flex: none; display: grid; place-items: center; width: 52px; height: 52px;
+    border-radius: 16px; background: var(--cc-green); color: var(--cc-on-green);
+    font-size: 22px; font-weight: 700; text-transform: uppercase; user-select: none;
+    box-shadow: var(--cc-shadow);
   }
-  h1 { margin: 0; font-size: clamp(23px, 6vw, 31px); line-height: 1.12; letter-spacing: -.03em; }
-  .tagline { margin: 9px 0 0; max-width: 64ch; font-size: 14px; color: var(--cc-muted); }
-  .tagline:empty { display: none; }
-  .sub { margin: 7px 0 0; color: var(--cc-subtle); font-size: 12px; }
+  .head-text { min-width: 0; }
+  h1 { margin: 0; font-size: clamp(24px, 5vw, 30px); font-weight: 650; line-height: 1.15; letter-spacing: -.025em; overflow-wrap: anywhere; }
+  .tagline { margin-top: 4px; max-width: 62ch; color: var(--cc-muted); font-size: 15px; }
+  .tagline:empty, .facts:empty { display: none; }
+  .facts { margin-top: 4px; color: var(--cc-subtle); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 
-  .grid { display: grid; gap: 14px; }
-  .stack { margin-top: 14px; }
-  .card {
-    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-md);
-    background: var(--cc-surface); box-shadow: var(--cc-shadow);
-  }
-  .card-pad { padding: 16px; }
-  .section-title {
-    margin: 0 0 10px; color: var(--cc-subtle); font-size: 11px; font-weight: 760;
-    letter-spacing: .09em; text-transform: uppercase;
-  }
+  .card { padding: 20px 22px; border-radius: var(--cc-radius); background: var(--cc-surface); box-shadow: var(--cc-shadow); }
+  .card-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .section-title { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.005em; }
+  .note { margin-left: auto; color: var(--cc-subtle); font-size: 12px; text-align: right; }
 
-  .now { display: flex; align-items: flex-start; gap: 11px; }
-  .now strong { display: block; font-size: 15px; }
-  .now p { margin: 2px 0 0; color: var(--cc-muted); font-size: 13px; }
+  /* Rows: the one list shape on this page -- skills, status lists, people and
+     runs -- separated by hairlines, never boxed. */
+  .row-hair { border-top: 1px solid var(--cc-hair); }
 
-  /* One action per row. At the pane width this page is written for the three
-     columns already collapsed; at desktop width they did not, and the card there
-     is about 460px — roughly 150px per action, which wrapped the names and cut
-     every description mid-word, an ellipsis landing wherever the pixels ran out.
-     A row fits the name and two readable lines under it at every width this page
-     is served at. */
-  .quick { display: grid; gap: 6px; align-content: start; }
-  .quick .skill {
-    min-height: 62px; padding: 11px 32px 11px 13px;
-    border: 1px solid var(--cc-border); background: var(--cc-surface-raised);
+  /* Status: the agent's own .co/status.json, first because it is what the
+     agent is doing now. Big numbers, then lists. Tone colours the number or a
+     small dot, never a surface. */
+  .status { display: grid; gap: 18px; }
+  .status > *, .status-lists > *, .metrics > * { min-width: 0; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0; }
+  .metric { padding: 4px 18px 4px 0; }
+  .metric + .metric { padding-left: 18px; border-left: 1px solid var(--cc-hair); }
+  .metric .value { display: block; font-size: 34px; font-weight: 650; line-height: 1.1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .metric .label { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--cc-muted); font-size: 12.5px; }
+  .metric.tone-bad .value { color: var(--cc-danger); }
+  .metric.tone-warn .value { color: var(--cc-warn); }
+  .metric[class*="tone-"] .label::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; }
+  .metric.tone-bad .label::before { background: var(--cc-danger); }
+  .metric.tone-warn .label::before { background: var(--cc-warn); }
+  .metric.tone-good .label::before { background: var(--cc-green); }
+  .metrics:not(:has(*)), .status-lists:not(:has(*)) { display: none; }
+  .status-lists { display: grid; gap: 18px; }
+  .status-list h3 { margin: 0 0 2px; color: var(--cc-subtle); font-size: 12.5px; font-weight: 500; }
+  .status-item { display: flex; align-items: baseline; gap: 12px; padding: 9px 0; border-top: 1px solid var(--cc-hair); font-size: 13.5px; }
+  .status-list h3 + .status-item { border-top: 0; }
+  .status-item .text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-item .meta { flex: none; max-width: 50%; color: var(--cc-subtle); font-size: 12.5px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-item .text::before {
+    content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 10px; border-radius: 50%;
+    background: var(--cc-hair); vertical-align: 2px;
   }
-  .quick .skill::after { right: 14px; }
-  .quick .skill .desc {
-    white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  }
+  .status-item.tone-bad .text::before { background: var(--cc-danger); }
+  .status-item.tone-warn .text::before { background: var(--cc-warn); }
+  .status-item.tone-good .text::before { background: var(--cc-green); }
+  .status-problem { padding: 0 4px; color: var(--cc-subtle); font-size: 12.5px; }
 
-  .skill {
-    position: relative; display: flex; flex-direction: column; justify-content: center;
-    width: 100%; min-width: 0; max-width: 100%; min-height: 56px; padding: 10px 34px 10px 12px;
-    border: 0; border-radius: var(--cc-radius-sm); background: transparent;
-    color: var(--cc-text); cursor: pointer; text-align: left; overflow: hidden;
+  /* Skills: one card of rows; one tap starts a chat with that skill. */
+  .skill-rows { display: grid; margin: 0 -10px; }
+  .skill, .restricted-skill {
+    position: relative; display: grid; grid-template-columns: 30px minmax(0, max-content) minmax(0, 1fr); align-items: center; gap: 2px 12px;
+    width: 100%; min-width: 0; max-width: 100%; min-height: 52px; padding: 10px 40px 10px 10px;
+    border: 0; border-radius: 12px; background: transparent; color: var(--cc-text); text-align: left;
   }
+  /* The hairline starts at the text, past the icon, and stops before the
+     chevron; hovering a row paints over it with the row's own white. */
+  .skill + .skill, .restricted-skill + .restricted-skill {
+    background: linear-gradient(var(--cc-hair), var(--cc-hair)) no-repeat 52px 0 / calc(100% - 62px) 1px;
+  }
+  .skill { cursor: pointer; }
+  .skill .icon {
+    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+    background: var(--cc-raised); color: var(--cc-muted);
+  }
+  .skill .icon svg { width: 15px; height: 15px; }
   .skill::after {
-    content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
-    border-right: 2px solid var(--cc-subtle); border-top: 2px solid var(--cc-subtle);
+    content: ""; position: absolute; right: 18px; top: 50%; width: 6px; height: 6px;
+    border-right: 1.5px solid var(--cc-subtle); border-top: 1.5px solid var(--cc-subtle);
     transform: translateY(-50%) rotate(45deg);
   }
-  .skill:hover, .skill:focus-visible { background: var(--cc-surface-raised); }
-  .skill:active { background: var(--cc-accent-soft); }
-  .skill .name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
-  .skill .desc {
-    min-width: 0; max-width: 100%; margin-top: 3px; color: var(--cc-muted); font-size: 12px;
-    line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .skill:hover, .skill:focus-visible { background: var(--cc-surface); box-shadow: var(--cc-shadow-lift); transform: translateY(-1px); z-index: 1; }
+  .skill:hover + .skill { background: transparent; }
+  .skill:active { transform: none; }
+  .skill .name, .restricted-skill .name { font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .skill .name::before { content: "/"; color: var(--cc-subtle); font-weight: 400; margin-right: 1px; }
+  .skill .desc, .restricted-skill .desc {
+    min-width: 0; max-width: 100%; color: var(--cc-subtle); font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .skill .desc:empty { display: none; }
-
-  details.card { overflow: clip; }
-  details.card > summary {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 16px; list-style: none; cursor: pointer; font-size: 13px; font-weight: 750;
-  }
-  details.card > summary::-webkit-details-marker { display: none; }
-  details.card > summary::after {
-    content: ""; flex: none; width: 8px; height: 8px;
-    border-right: 2px solid var(--cc-subtle); border-bottom: 2px solid var(--cc-subtle);
-    transform: rotate(45deg) translate(-2px, 2px);
-  }
-  details[open].card > summary::after { transform: rotate(225deg) translate(-2px, 2px); }
-  .count { margin-left: auto; color: var(--cc-subtle); font-size: 12px; font-weight: 600; }
-  .details-body { padding: 0 12px 13px; border-top: 1px solid var(--cc-border); }
-  co-filter { display: block; min-height: 44px; margin-top: 12px; }
-  .rows { display: grid; gap: 2px; margin-top: 8px; }
-  .more { margin-top: 7px; }
+  .restricted-skill { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); padding-right: 10px; }
+  co-filter { display: block; min-height: 44px; margin-bottom: 8px; }
+  .more { margin-top: 8px; }
   .more > summary {
-    display: flex; align-items: center; justify-content: center; padding: 8px 12px;
-    border: 1px solid var(--cc-border); border-radius: var(--cc-radius-sm);
-    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 12.5px; font-weight: 680;
+    display: flex; align-items: center; justify-content: center; padding: 8px 16px;
+    border-radius: 999px; background: var(--cc-raised);
+    color: var(--cc-muted); cursor: pointer; list-style: none; font-size: 13px; font-weight: 550;
   }
   .more > summary::-webkit-details-marker { display: none; }
-  .more[open] > .rows { margin-top: 7px; }
+  .more[open] > .skill-rows { margin-top: 8px; }
   .lbl-less { display: none; }
   .more[open] .lbl-more { display: none; }
   .more[open] .lbl-less { display: inline; }
-  .empty { margin-top: 10px; padding: 14px; border-radius: var(--cc-radius-sm); background: var(--cc-surface-raised); }
-  .empty p { margin: 0; color: var(--cc-muted); font-size: 13px; }
-  code { padding: 1px 5px; border-radius: 5px; background: var(--cc-accent-soft); font-size: .92em; }
+  .empty { padding: 14px; border-radius: 12px; background: var(--cc-raised); color: var(--cc-muted); font-size: 13px; }
+  code { padding: 1px 6px; border-radius: 6px; background: var(--cc-raised); font-size: .92em; }
 
-  .activity { display: grid; gap: 10px; }
-  .sec { padding: 14px 16px; }
-  .sec > h2 { margin: 0 0 6px; font-size: 12px; }
-  .act { display: flex; align-items: baseline; gap: 8px; min-height: 38px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
-  .act:first-of-type { border-top: 0; }
-  .act .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .act .meta { flex: none; color: var(--cc-subtle); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  /* People and the recent runs sit side by side on a wide pane, People first.
+     A page with only one of them gives it the whole width. */
+  .columns { display: grid; gap: 28px; align-items: start; }
+  .columns:not(:has(*)) { display: none; }
+  .activity { display: grid; gap: 28px; }
+
+  /* A run: a status dot, what was asked, and how it went under it, so the
+     prompt keeps the whole width of a half-width column. */
+  .act { display: grid; grid-template-columns: 6px minmax(0, 1fr); column-gap: 12px; row-gap: 1px; min-height: 44px; padding: 11px 0; border-top: 1px solid var(--cc-hair); }
+  .card-head + .act { border-top: 0; padding-top: 4px; }
+  .act::before { content: ""; grid-row: 1; align-self: start; margin-top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--cc-hair); }
+  .act:has(.live)::before { background: var(--cc-green); box-shadow: 0 0 0 3px rgb(34 210 122 / .18); }
+  .act:has(.bad)::before { background: var(--cc-danger); }
+  .act .what { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+  .act .meta { grid-column: 2; color: var(--cc-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .act .live { color: var(--cc-text); font-weight: 600; }
   .act .bad { color: var(--cc-danger); }
-  .act .live { color: var(--cc-accent); font-weight: 680; }
 
-  .diagnostics { padding: 2px 16px 14px; border-top: 1px solid var(--cc-border); }
-  .diag { display: grid; grid-template-columns: minmax(76px, .35fr) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12px; }
-  .diag:first-child { border-top: 0; }
-  .diag dt { color: var(--cc-subtle); }
-  .diag dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; user-select: all; }
-  .masthead .addr { margin: 6px 0 0; color: var(--cc-muted); overflow-wrap: anywhere; }
-
-  /* Admin: rendered only into an admin's page (admin_home.py), folded like
-     Diagnostics so the Home still opens on the card, not on a console. */
-  .admin-body { padding: 0 16px 14px; border-top: 1px solid var(--cc-border); }
-  .admin-block { padding-top: 12px; }
-  .admin-block > h3 { margin: 0 0 4px; color: var(--cc-subtle); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
-  .admin-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--cc-border); font-size: 12.5px; }
-  .admin-row:first-of-type { border-top: 0; }
-  .admin-row .who { flex: 1 1 220px; min-width: 0; }
-  .admin-row .who strong { display: block; font-weight: 650; overflow-wrap: anywhere; }
-  .admin-row .who strong.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; }
-  .admin-row .who span { display: block; color: var(--cc-subtle); font-size: 11.5px; }
-  .admin-row .who span:empty { display: none; }
+  .person { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--cc-hair); }
+  .card-head + .person { border-top: 0; padding-top: 4px; }
+  .avatar {
+    flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+    background: var(--cc-raised); color: var(--cc-muted); font-size: 13px; font-weight: 600; text-transform: uppercase;
+  }
+  .avatar.mono { font-size: 11px; text-transform: none; }
+  .person .who { flex: 1 1 180px; min-width: 0; }
+  .person .line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .person strong { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .person strong.mono { font-size: 13px; }
+  .person .meta { margin-top: 1px; color: var(--cc-subtle); font-size: 12.5px; }
+  .person .meta:empty { display: none; }
+  .role {
+    flex: none; padding: 0 8px; border: 1px solid var(--cc-hair); border-radius: 999px;
+    color: var(--cc-muted); font-size: 11px; font-weight: 550; line-height: 18px;
+  }
+  .role:empty { display: none; }
+  .role.admin { border-color: var(--cc-ink); background: var(--cc-ink); color: var(--cc-on-ink); }
   .admin-actions { display: flex; gap: 6px; }
   .admin-actions:empty { display: none; }
   .admin-btn {
-    min-height: 34px; padding: 4px 12px; border: 1px solid var(--cc-border); border-radius: 8px;
-    background: var(--cc-surface-raised); color: var(--cc-text); font-size: 12px; font-weight: 680; cursor: pointer;
+    min-height: 32px; padding: 4px 14px; border: 0; border-radius: 999px;
+    background: var(--cc-raised); color: var(--cc-text); font-size: 12.5px; font-weight: 550; cursor: pointer;
   }
-  .admin-btn:hover { border-color: var(--cc-accent); }
+  .admin-btn:hover { background: var(--cc-hair); }
+  .admin-btn.primary { background: var(--cc-ink); color: var(--cc-on-ink); }
+  .admin-btn.primary:hover { opacity: .88; }
   .admin-btn.danger { color: var(--cc-danger); }
-  .admin-btn.danger:hover { border-color: var(--cc-danger); }
-  .admin-block .diag:first-of-type { border-top: 0; }
-  .admin-log > summary { padding: 12px 0 4px; cursor: pointer; color: var(--cc-subtle); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
-  .admin-log pre {
-    max-height: 320px; margin: 6px 0 0; padding: 10px; overflow: auto; border-radius: var(--cc-radius-sm);
-    background: var(--cc-surface-raised); font: 10.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  .sub {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px;
+    padding: 12px 14px; border-radius: 14px; background: var(--cc-raised);
   }
-  .restricted-skill { display: flex; flex-direction: column; min-height: 44px; justify-content: center; padding: 8px 12px; }
-  .restricted-skill .name { font-size: 13.5px; font-weight: 700; }
-  .restricted-skill .desc { color: var(--cc-muted); font-size: 12px; }
+  .sub .who { flex: 1 1 180px; min-width: 0; }
+  .sub .label { display: block; color: var(--cc-subtle); font-size: 12px; }
+  .sub .value { font-weight: 600; overflow-wrap: anywhere; }
+  .sub .value.mono { font-size: 14px; letter-spacing: .02em; }
+  .sub .admin-btn:not(.primary) { background: var(--cc-surface); }
 
-  @media (min-width: 640px) {
-    .masthead { grid-template-columns: 1fr auto; align-items: end; }
-    /* Two columns only when there are two cards. An Agent that has published
-       nothing renders no Quick actions card, and the second column stayed
-       declared: the Workspace note sat at 40% width beside an empty half. Day
-       zero is exactly when an Agent has no published skills, so that was the
-       first thing `co host` showed most people. */
-    .overview { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; }
-    .overview:not(:has(.quick)) { grid-template-columns: 1fr; }
-    .capability-rows { grid-template-columns: 1fr 1fr; gap: 4px; }
+  /* Health: one line, no accordion. */
+  .health { display: grid; gap: 4px; padding: 0 6px; color: var(--cc-subtle); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .health .line::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%;
+    background: var(--cc-hair); vertical-align: 1px;
+  }
+  .health .up::before { background: var(--cc-green); }
+  .addr { font-size: 11.5px; overflow-wrap: anywhere; user-select: all; }
+  .log > summary { min-height: 32px; cursor: pointer; color: var(--cc-subtle); font-size: 12.5px; }
+  .log pre {
+    max-height: 320px; margin: 6px 0 0; padding: 14px; overflow: auto; border-radius: 14px;
+    background: var(--cc-surface); box-shadow: var(--cc-shadow);
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+
+  @media (min-width: 560px) {
+    .status-lists { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 32px; }
+  }
+  @media (min-width: 900px) {
+    .columns:has(> .people):has(> .activity) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   }
   @media (max-width: 520px) {
-    body { padding-inline: 10px; }
-    .quick .skill { min-height: 56px; }
-    .act { align-items: flex-start; flex-direction: column; gap: 1px; }
-    .act .what { white-space: normal; }
-    .diag { grid-template-columns: 1fr; gap: 2px; }
+    main { gap: 22px; }
+    .card { padding: 18px; }
+    .card-head { flex-wrap: wrap; }
+    .note { margin-left: 0; flex-basis: 100%; text-align: left; }
+    .metrics { grid-template-columns: 1fr 1fr; row-gap: 14px; }
+    .metric, .metric + .metric { padding: 0 12px 0 0; border-left: 0; }
+    .metric:nth-child(even) { padding-left: 14px; border-left: 1px solid var(--cc-hair); }
+    .skill { grid-template-columns: 30px minmax(0, 1fr); }
+    .person .admin-actions { margin-left: 46px; }
+    .skill .icon { grid-row: span 2; }
+    .skill .desc { white-space: normal; }
+    .status-item { flex-wrap: wrap; gap: 0 12px; }
+    .status-item .text { flex-basis: 100%; white-space: normal; }
+    .status-item .meta { max-width: 100%; padding-left: 16px; text-align: left; }
+    .act .what { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   }
   @media (prefers-reduced-motion: no-preference) {
-    .skill, summary { transition: background-color .14s ease, border-color .14s ease; }
+    .skill, .admin-btn, summary { transition: background-color .14s ease, box-shadow .14s ease, transform .14s ease; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
@@ -235,36 +277,28 @@
 </head>
 <body>
   <main>
-    <header class="masthead">
-      <div>
-        <p class="eyebrow">Control Center</p>
-        <div class="identity"><span class="mark" aria-hidden="true">$initial</span><h1>$name</h1></div>
-        $address
+    <header class="head">
+      <span class="mark" aria-hidden="true">$initial</span>
+      <div class="head-text">
+        <h1>$name</h1>
         <p class="tagline">$tagline</p>
+        <p class="facts">$subtitle</p>
       </div>
     </header>
+$status
 
-    <div class="grid overview">
-      <section class="card card-pad" aria-labelledby="workspace-title">
-        <h2 class="section-title" id="workspace-title">Workspace</h2>
-        <div class="now"><div><strong>Use Chat for live status</strong><p>Current tasks, approvals, and results stay in the conversation.</p></div></div>
-      </section>
-    </div>
+    <section class="card skills" aria-labelledby="skills-title">
+      <div class="card-head"><h2 class="section-title" id="skills-title">Skills</h2><span class="note">$capability_count</span></div>
+      <div id="capability-list">
+$body
+      </div>
+    </section>
 
-    <div class="grid stack">
+    <div class="columns">
 $admin
 $activity
-      <details class="card capabilities">
-        <summary><span>Capabilities</span><span class="count">$capability_count</span></summary>
-        <div class="details-body">
-          <co-filter target="#capability-list" placeholder="Search capabilities"></co-filter>
-          <div class="capability-rows" id="capability-list">
-$body
-          </div>
-        </div>
-      </details>
-$diagnostics
     </div>
+$health
   </main>
 </body>
 </html>
@@ -274,65 +308,78 @@ Everything below this marker is render scaffolding and never reaches the page.
 Placeholders use string.Template syntax; do not use dollar signs elsewhere.
 -->
 
-<template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
+<template id="skill"><button class="skill" type="button" data-ochat-skill="$name"><span class="icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.75v3M8 11.25v3M1.75 8h3M11.25 8h3M3.6 3.6l2 2M10.4 10.4l2 2M3.6 12.4l2-2M10.4 5.6l2-2"/></svg></span><span class="name">$name</span><span class="desc">$description</span></button></template>
 
-<template id="list"><div class="rows">
+<template id="list"><div class="skill-rows">
 $rows
   </div></template>
 
+<template id="filter"><co-filter target="#capability-list" placeholder="Search skills"></co-filter></template>
+
 <template id="more"><details class="more">
     <summary><span class="lbl-more">$count more skill$plural</span><span class="lbl-less">Show fewer</span></summary>
-    <div class="rows">
+    <div class="skill-rows">
 $rows
     </div>
   </details></template>
 
-<template id="empty"><section class="empty">
-    <p>No published skills yet. Add one to <code>.co/skills/</code> and it appears here.</p>
-  </section></template>
+<template id="empty"><p class="empty">No published skills yet. Add one to <code>.co/skills/</code> and it appears here.</p></template>
 
-<template id="quick"><section class="card card-pad" aria-labelledby="quick-title">
+<template id="quick"><section class="card" aria-labelledby="quick-title">
     <h2 class="section-title" id="quick-title">Quick actions</h2>
-    <div class="quick">
+    <div class="skill-rows">
 $rows
     </div>
   </section></template>
 
-<template id="activity"><section class="card sec">
-    <h2 class="section-title">$title</h2>
+<template id="activity"><section class="card">
+    <div class="card-head"><h2 class="section-title">$title</h2><span class="note">$note</span></div>
 $rows
   </section></template>
 
 <template id="act"><div class="act"><span class="what">$what</span><span class="meta $tone">$meta</span></div></template>
 
-<template id="diagnostics"><details class="card diagnostics-card">
-    <summary><span>Diagnostics</span><span class="count">Host details</span></summary>
-    <dl class="diagnostics">
+<template id="restricted"><div class="restricted-skill"><span class="name">$name</span><span class="desc">Allowed by restricted: in host.yaml. Ask for it in chat.</span></div></template>
+
+<template id="status"><section class="card status" aria-labelledby="status-title">
+      <div class="card-head"><h2 class="section-title" id="status-title">$title</h2><span class="note">$updated</span></div>
+      <div class="metrics">
+$metrics
+      </div>
+      <div class="status-lists">
+$lists
+      </div>
+    </section></template>
+
+<template id="metric"><div class="metric $tone"><span class="value">$value</span><span class="label">$label</span></div></template>
+
+<template id="status_list"><div class="status-list"><h3>$title</h3>
+$items
+        </div></template>
+
+<template id="status_item"><div class="status-item $tone"><span class="text">$text</span><span class="meta">$meta</span></div></template>
+
+<template id="status_problem"><p class="status-problem">$problem</p></template>
+
+<template id="health"><footer class="health">
+      <p class="line $tone">$facts</p>
+      $address
+      $log
+    </footer></template>
+
+<template id="admin"><section class="card people" id="admin">
+        <div class="card-head"><h2 class="section-title">People</h2><span class="note">$count · only admins see this</span></div>
 $rows
-    </dl>
-  </details></template>
+$extras
+      </section></template>
 
-<template id="diag"><div class="diag"><dt>$label</dt><dd class="$class">$value</dd></div></template>
+<template id="person"><div class="person"><span class="avatar $mono" aria-hidden="true">$initial</span><div class="who"><p class="line"><strong class="$mono">$what</strong><span class="role $role">$role</span></p><p class="meta">$meta</p></div><div class="admin-actions">$actions</div></div></template>
 
-<template id="restricted"><div class="restricted-skill"><span class="name">$name</span><span class="desc">Allowed by restricted: in host.yaml</span></div></template>
-
-<template id="admin"><details class="card admin" id="admin">
-        <summary><span>Admin</span><span class="count">$count · only admins see this</span></summary>
-        <div class="admin-body">
-$blocks
-        </div>
-      </details></template>
-
-<template id="admin_block"><section class="admin-block">
-          <h3>$title</h3>
-$rows
-        </section></template>
-
-<template id="admin_row"><div class="admin-row"><div class="who"><strong class="$mono">$what</strong><span>$meta</span></div><div class="admin-actions">$actions</div></div></template>
+<template id="admin_sub"><div class="sub"><div class="who"><span class="label">$label</span><span class="value $mono">$value</span></div><div class="admin-actions">$actions</div></div></template>
 
 <template id="admin_button"><button class="admin-btn $tone" type="button" data-ochat-admin="$action" data-ochat-target="$target">$label</button></template>
 
-<template id="admin_log"><details class="admin-log">
-          <summary>Log · $count</summary>
-          <pre>$text</pre>
-        </details></template>
+<template id="admin_log"><details class="log">
+        <summary>Log · $count</summary>
+        <pre>$text</pre>
+      </details></template>

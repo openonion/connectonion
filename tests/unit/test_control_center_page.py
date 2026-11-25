@@ -1,5 +1,6 @@
 """Unit tests for the Host-side Control Center page delivery (network/host/ws_router/control_center.py)."""
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -113,8 +114,9 @@ def test_every_published_skill_is_reachable():
 def test_a_short_list_is_not_hidden_behind_a_disclosure():
     skills = [{"name": f"skill-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Few", "skills": skills})
-    assert '<details class="card capabilities">' in html
+    assert '<section class="card skills"' in html
     assert '<details class="more">' not in html
+    assert "<co-filter" not in html          # search only for a list long enough to fold
 
 
 def test_a_long_list_shows_the_first_few_and_folds_the_rest():
@@ -127,6 +129,7 @@ def test_a_long_list_shows_the_first_few_and_folds_the_rest():
 
     assert html.count('<details class="more">') == 1
     assert "17 more skills" in html          # 25 total, 8 shown
+    assert '<co-filter target="#capability-list"' in html
     assert "other" not in html.lower()
 
 
@@ -191,18 +194,19 @@ def test_control_center_semantic_golden_layout_is_present():
         ],
     })
 
-    for landmark in (
-        "Control Center", 'id="workspace-title"', "Capabilities",
-        "Recent", "Diagnostics", "Host details",
-    ):
-        # Recent is allowed to be absent without history; all other day-zero
-        # landmarks are stable. Test the explicit activity implementation name
-        # separately rather than rendering a dishonest empty card.
-        if landmark != "Recent":
-            assert landmark in html
-    assert '<co-filter target="#capability-list"' in html
-    assert 'id="capability-list"' in html
-    assert "co/example" in html and "careful" in html and ADDRESS in html
+    page = html.split("<!--FRAGMENTS")[0]
+    assert 'id="skills-title"' in page and 'class="health"' in page
+    assert 'id="capability-list"' in page
+    assert "co/example" in page and "trust careful" in page and ADDRESS in page
+    # #3350: O Chat titles the pane; the page does not say it again.
+    assert "Control Center" not in page.split("<body>")[1]
+
+
+def test_there_is_no_workspace_placeholder_card():
+    """#3350: "Workspace / Use Chat for live status" said nothing on every agent."""
+    html = render_starter({"name": "Operations", "skills": []})
+    assert "Workspace" not in html and "Use Chat for live status" not in html
+    assert "<details" not in html     # nothing that fits on one line is folded
 
 
 def test_control_center_never_claims_a_static_runtime_state():
@@ -212,7 +216,6 @@ def test_control_center_never_claims_a_static_runtime_state():
 
     assert "Available for a new task" not in html
     assert "<strong>Ready</strong>" not in html
-    assert "Use Chat for live status" in html
 
 
 def test_quick_actions_cannot_set_the_iframe_minimum_width():
@@ -220,7 +223,7 @@ def test_quick_actions_cannot_set_the_iframe_minimum_width():
 
     assert "html, body { max-width: 100%; overflow-x: clip; }" in template
     assert "width: 100%; min-width: 0; max-width: 100%;" in template
-    assert "min-width: 0; max-width: 100%; margin-top" in template
+    assert "min-width: 0; max-width: 100%; color" in template
 
 
 def test_control_center_accessibility_contract_is_in_the_shipped_template():
@@ -229,7 +232,7 @@ def test_control_center_accessibility_contract_is_in_the_shipped_template():
     assert "prefers-reduced-motion: reduce" in template
     assert ":focus-visible" in template
     assert "@media (max-width: 520px)" in template
-    assert "@media (min-width: 640px)" in template
+    assert "@media (min-width: 900px)" in template
     assert "https://" not in template and "http://" not in template
 
 
@@ -245,12 +248,19 @@ def _contrast(hex_a, hex_b):
 
 def test_control_center_text_tokens_meet_wcag_aa_in_light_and_dark():
     for foreground, background in (
-        ("#171a17", "#f7f8f6"),
-        ("#505650", "#f7f8f6"),
-        ("#626962", "#ffffff"),
-        ("#f1f5f1", "#111411"),
-        ("#bbc4bb", "#111411"),
-        ("#aeb7ae", "#191d19"),
+        ("#18181b", "#fafafa"),
+        ("#52525b", "#fafafa"),
+        ("#6b6b73", "#ffffff"),
+        ("#6b6b73", "#f4f4f5"),      # meta on a quiet pill / invite strip
+        ("#18181b", "#f4f4f5"),      # quiet pill label
+        ("#ffffff", "#18181b"),      # primary pill, admin badge
+        ("#0b2416", "#22d27a"),      # ink on the green mark
+        ("#c0262d", "#ffffff"),      # bad number, Block label
+        ("#c0262d", "#f4f4f5"),
+        ("#a15c00", "#ffffff"),      # warn number
+        ("#f4f4f5", "#0f0f10"),
+        ("#c4c4ca", "#0f0f10"),
+        ("#a1a1aa", "#19191b"),
     ):
         assert _contrast(foreground, background) >= 4.5
 
@@ -693,13 +703,15 @@ def test_an_agent_with_no_address_gets_no_empty_line():
     assert 'class="addr"' not in html
 
 
-def test_diagnostics_say_who_the_agent_will_talk_to():
+def test_health_says_who_the_agent_will_talk_to():
     """`trust` was also arriving and being dropped. It is the difference between
-    an agent strangers can reach and one they cannot. It lives under Diagnostics
-    now, with the model and the counts, not on the card."""
-    html = render_starter({"name": "A", "trust": "careful", "skills": []})
+    an agent strangers can reach and one they cannot. It is on the Health line,
+    with the model and the version."""
+    from connectonion import __version__
+    html = render_starter({"name": "A", "trust": "careful", "model": "co/x", "skills": []})
+    health = html.split('class="health"')[1].split("</footer>")[0]
 
-    assert "<dt>Trust</dt><dd class=\"\">careful</dd>" in html
+    assert "trust careful" in health and "co/x" in health and __version__ in health
 
 
 def test_a_hostile_address_is_escaped():
@@ -757,17 +769,123 @@ async def test_failed_delivery_can_retry_unchanged_dashboard(in_tmp):
     assert deliver.await_count == 2  # the page, and its pre-#3336 copy
 
 
-def test_the_page_opens_on_a_card_not_on_skills():
-    """Owner, 2026-09-29: "默认显示 skills 信息干嘛". The page opens on the
-    agent's name, address and one line; every skill is folded under
-    Capabilities and nothing about skills or tools sits in the header."""
-    import re
+def test_the_header_is_name_line_and_facts_and_skills_come_next():
+    """#3350 (owner, 2026-11-22: "现在太丑了"): the header is the agent's name,
+    its one line and `N skills · model`; the skills follow as open tiles, not
+    folded under Capabilities. The full address moved to the Health line."""
     skills = [{"name": f"s-{i}", "description": "", "location": "project"} for i in range(5)]
     html = render_starter({"name": "Ops", "address": ADDRESS, "tagline": "Answers guests.",
-                           "skills": skills, "tools": ["read"], "model": "co/gemini-3.8-flash"})
-    header = html.split('<header class="masthead">', 1)[1].split("</header>", 1)[0]
-    assert "Ops" in header and ADDRESS in header and "Answers guests." in header
-    assert "skill" not in header and "tool" not in header and "gemini" not in header
-    folded = html.split('<details class="card capabilities">', 1)[1].split("</details>", 1)[0]
-    assert html.count('data-ochat-skill="') == folded.count('data-ochat-skill="') == 5
-    assert 'id="quick-title"' not in re.sub(r"<!--FRAGMENTS.*", "", html, flags=re.S)
+                           "skills": skills, "model": "co/gemini-3.8-flash"})
+    header = html.split('<header class="head">', 1)[1].split("</header>", 1)[0]
+    assert "Ops" in header and "Answers guests." in header
+    assert "5 skills · co/gemini-3.8-flash" in header and ADDRESS not in header
+    assert html.index("</header>") < html.index('id="skills-title"') < html.index('data-ochat-skill="s-0"')
+    assert ADDRESS in html.split('class="health"')[1]
+
+
+# ---------------------------------------------------------------- #3350 status
+
+STATUS = {
+    "title": "Front desk now",
+    "updated_at": "2026-11-22T19:42:48+11:00",
+    "metrics": [{"label": "Open", "value": 23, "href": "https://example.com/open"},
+                {"label": "Overdue", "value": 6, "tone": "bad"},
+                {"label": "Urgent", "value": 1, "tone": "warn"},
+                {"label": "Arriving", "value": 4, "tone": "good"},
+                {"label": "Odd", "value": 0, "tone": "purple"}],
+    "lists": [{"title": "Most overdue", "items": [
+        {"text": "#2041 Hot water out", "meta": "Harbour Dental · due 18 Nov", "tone": "bad",
+         "href": "https://example.com/t/2041"}]}],
+}
+
+
+def write_status(project, status):
+    text = status if isinstance(status, str) else json.dumps(status)
+    (project / ".co").mkdir(exist_ok=True)
+    (project / ".co" / "status.json").write_text(text, encoding="utf-8")
+
+
+def test_the_status_renders_above_skills(in_tmp):
+    write_status(in_tmp, STATUS)
+    html = render_starter({"name": "Desk", "skills": [
+        {"name": "triage", "description": "", "location": "project"}]})
+    assert html.index("</header>") < html.index("Front desk now") < html.index('id="skills-title"')
+    assert "#2041 Hot water out" in html and "Harbour Dental · due 18 Nov" in html
+    assert ">23<" in html and "updated " in html
+
+
+def test_every_status_string_is_escaped(in_tmp):
+    write_status(in_tmp, {"title": "<b>t</b>", "metrics": [{"label": "<script>x</script>", "value": "<i>1</i>"}],
+                          "lists": [{"title": "<u>l</u>", "items": [{"text": "<img src=x>", "meta": "<s>m</s>"}]}]})
+    html = render_starter({"name": "Desk", "skills": []})
+    for raw in ("<script>x</script>", "<b>t</b>", "<i>1</i>", "<u>l</u>", "<img src=x>", "<s>m</s>"):
+        assert raw not in html
+    assert "&lt;script&gt;x&lt;/script&gt;" in html
+
+
+def test_status_tones_map_to_classes_and_links_are_not_rendered(in_tmp):
+    write_status(in_tmp, STATUS)
+    html = render_starter({"name": "Desk", "skills": []}).split("<!--FRAGMENTS")[0]
+    assert '<div class="metric tone-bad">' in html
+    assert '<div class="metric tone-warn">' in html
+    assert '<div class="metric tone-good">' in html
+    assert '<div class="status-item tone-bad">' in html
+    assert "tone-purple" not in html
+    assert "example.com" not in html and "<a " not in html
+
+
+def test_no_status_file_means_no_status_block(in_tmp):
+    html = render_starter({"name": "Desk", "skills": []}).split("<!--FRAGMENTS")[0]
+    assert 'id="status-title"' not in html and 'class="status-problem"' not in html
+
+
+def test_a_broken_status_file_is_one_quiet_line(in_tmp):
+    write_status(in_tmp, '{"title": "half writ')
+    html = render_starter({"name": "Desk", "skills": []})
+    assert 'class="status-problem"' in html and "status.json could not be read" in html
+    assert 'id="skills-title"' in html       # the page still renders
+
+    write_status(in_tmp, "[1, 2]")
+    assert "expected a JSON object" in render_starter({"name": "Desk", "skills": []})
+
+
+@pytest.mark.asyncio
+async def test_a_status_change_alone_resends_the_starter(in_tmp):
+    ensure_control_center({"name": "Desk", "skills": []}, project_dir=in_tmp)
+    write_status(in_tmp, {"title": "Before", "metrics": []})
+    sent, conn = [], {}
+    send = AsyncMock(side_effect=sent.append)
+
+    await send_control_center_page(send, "s", conn)
+    await send_control_center_page(send, "s", conn)          # unchanged: nothing sent
+    write_status(in_tmp, {"title": "After the run", "metrics": [{"label": "Open", "value": 3}]})
+    await send_control_center_page(send, "s", conn)
+
+    pages = [m["html"] for m in sent if m["type"] == "CONTROL_CENTER_SNAPSHOT"]
+    assert len(pages) == 2
+    assert "Before" in pages[0] and "After the run" in pages[1]
+
+
+# ---------------------------------------------------------------- #3350 recent
+
+def test_recent_rows_carry_the_prompt_status_and_duration(in_tmp):
+    import time
+    me = "0x" + "d" * 64
+    (in_tmp / ".co").mkdir(exist_ok=True)
+    with open(in_tmp / ".co" / "session_results.jsonl", "w", encoding="utf-8") as f:
+        for sid, status, prompt in (("a", "done", "Move the cleaner to Thursday"),
+                                    ("b", "failed", "Reconcile the bond refunds")):
+            f.write(json.dumps({"session_id": sid, "status": status, "prompt": prompt,
+                                "duration_ms": 251000, "created": time.time() - 60,
+                                "session": {"requester": {"address": me}}}) + "\n")
+    html = render_starter({"name": "Desk", "skills": []},
+                          viewer=dashboard_module.viewer_for(me, is_admin=False))
+    recent = html.split("Recent")[1]
+    assert "Move the cleaner to Thursday" in recent and "done · 4m 11s" in recent
+    assert '<span class="meta bad">failed · 4m 11s' in recent
+
+
+def test_a_non_admin_page_has_no_people_section(in_tmp):
+    html = render_starter({"name": "Desk", "skills": []},
+                          viewer=dashboard_module.viewer_for("0x" + "d" * 64, is_admin=False))
+    assert 'class="card people"' not in html and ">People<" not in html
