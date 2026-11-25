@@ -168,6 +168,12 @@ def held_store(root) -> dict | None:
     return _held_map().get(str(Path(root).resolve()))
 
 
+def __getattr__(name: str):
+    if name == "_HELD":
+        return _held_map()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 @contextmanager
 def held(root):
     mapping = _held_map()

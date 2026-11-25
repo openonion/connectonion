@@ -86,7 +86,9 @@ def test_a_stalled_read_becomes_the_typed_connection_error():
     provider = llm_module.OpenAILLM(api_key=DUMMY_KEY)
 
     def stalled_send():
-        raise openai.APITimeoutError(request=None)
+        import httpx
+
+        raise openai.APITimeoutError(request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"))
 
     with pytest.raises(LLMConnectionError):
         provider._call_provider(stalled_send)

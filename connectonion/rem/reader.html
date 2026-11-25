@@ -5141,6 +5141,9 @@ const UI = {
     "Role": "职位",
     "Facts": "资料",
     "What it is": "项目简介",
+    "Device overview": "设备简介",
+    "Kind": "类型",
+    "Host": "地址",
     "Time zone": "时区",
     "Links": "链接",
     "How we know them": "如何认识",
@@ -6979,7 +6982,8 @@ const COMMENT = /<!--[\s\S]*?-->/g;
 const UNFILLED_LEAD = /^(?:Unknown\s*—\s*not investigated yet\.?(?:\s*Last contact[:：]\s*Unknown\.?)?|未知\s*[—–-]+\s*尚未调查[。.]?)$/i;
 const KNOWN = new Map();
 function known(r) {
-  const effLang = r.readLanguage ?? (uiLanguage === "en" ? (r.shown || "") : uiLanguage);
+  const uiLang = typeof uiLanguage !== "undefined" ? uiLanguage : "en";
+  const effLang = r.readLanguage ?? (uiLang === "en" ? (r.shown || "") : uiLang);
   const cacheKey = r.path + "\0" + (r.shown || "") + "\0" + effLang;
   const cached = KNOWN.get(cacheKey);
   if (cached?.text === r.text) return cached.value;
@@ -8499,7 +8503,8 @@ function company(r) {
 // (#2067) only this function changes.
 const FACTS = new Map();
 function facts(r) {
-  const effLang = r.readLanguage ?? (uiLanguage === "en" ? (r.shown || "") : uiLanguage);
+  const uiLang = typeof uiLanguage !== "undefined" ? uiLanguage : "en";
+  const effLang = r.readLanguage ?? (uiLang === "en" ? (r.shown || "") : uiLang);
   const cacheKey = r.path + "\0" + (r.shown || "") + "\0" + effLang;
   const cached = FACTS.get(cacheKey);
   if (cached?.text === r.text) return cached.value;
@@ -9154,7 +9159,7 @@ function icon(name, cls = "") {
     + '" viewBox="' + (brand ? "-2 -2 28 28" : "0 0 24 24") + '">' + (ICONS[name] || "") + "</svg>" });
 }
 // The pictures of the places that are also record categories.
-const CATEGORY_ICON = { devices: "terminal", knowledge: "book", decisions: "scale", principles: "quote", agenda: "calendar", sessions: "terminal",
+const CATEGORY_ICON = { devices: "layers", knowledge: "book", decisions: "scale", principles: "quote", agenda: "calendar", sessions: "terminal",
   opportunities: "activity", works: "doc" };
 // The rail (D-132, #2953, #3091): ONE ordered list of places, each a picture with its word under it, settings and
 // you at the foot. The order reads top to bottom as act, who and what, what the notebook concluded, then the raw
@@ -12312,7 +12317,8 @@ function replyDuration(seconds) {
 }
 function personOrg(r) {
   const cache = r?.path ? (personOrg._cache ??= new Map()) : null;
-  const effLang = r?.readLanguage ?? (uiLanguage === "en" ? (r?.shown || "") : uiLanguage);
+  const uiLang = typeof uiLanguage !== "undefined" ? uiLanguage : "en";
+  const effLang = r?.readLanguage ?? (uiLang === "en" ? (r?.shown || "") : uiLang);
   const cacheKey = cache ? r.path + "\0" + (r.shown || "") + "\0" + effLang + "\0" + (r.text?.length || 0) : "";
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
   const company = String(facts(r).company || "");
@@ -16584,10 +16590,11 @@ function sectionBody(r, s) {
 const FACT_LABELS = {
   people: ["Email", "Phone", "Company", "Role", "Location", "Time zone", "Links", "How we know them", "First contact", "Last contact",
     "Signing entity", "Handles", "Language", "Also known as"],
+  devices: ["Kind", "Host", "Location", "Role", "Status", "Last activity"],
   projects: ["Repository", "Stack", "Status", "People", "Organisation", "Started", "Last activity"],
   orgs: ["What they do", "Website", "Location", "Legal entity", "Your contacts", "First contact", "Last contact"]
 };
-const COPYABLE = new Set(["Email", "Phone", "Links", "Website", "Repository"]);
+const COPYABLE = new Set(["Email", "Phone", "Links", "Website", "Repository", "Host"]);
 // What a page written before `## Facts` still says, for the labels it has no line for.
 function legacyFact(r, label) {
   const f = facts(r), k = known(r);
@@ -17404,7 +17411,8 @@ function record(path, heading) {
       (main.querySelector(".purpose-lead") || projectContext?.querySelector(".project-purpose-preview, .purpose-lead"))) continue;
     // The anchor keeps the written (English) title, so "&h=uncertainties" works in 中文 too (#3104). A project's
     // open threads are not shown here at all: its open work lives in Today (#3096).
-    note.appendChild(el("h2", { html: inline(t(s.title), r.path), "data-anchor": s.title }));
+    const headingText = r.category === "devices" && s.title === "What it is" ? t("Device overview") : t(s.title);
+    note.appendChild(el("h2", { html: inline(headingText, r.path), "data-anchor": s.title }));
     const body = sectionBody(r, s);
     // Plain Markdown joins the note flat, so lists and code stay direct children.
     if (body.className === "block") note.append(...body.childNodes); else note.appendChild(body);
