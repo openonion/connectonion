@@ -586,6 +586,18 @@ scripts through `co onenote ls --ids` and `co onenote pages --ids`. See
 
 ---
 
+#### `co teams` - Microsoft Teams chats and joined teams
+
+With a work or school `co auth microsoft` sign-in, run `co teams` (`co teams chats`)
+to see numbered 1:1, group and meeting chats with `[UNREAD]` markers,
+`co teams read 1` to read chat 1 as plain text in chronological order, and
+`co teams send 1 "On my way"` to preview a reply (`--yes` sends it). `co teams teams`
+and `co teams channels 1` list joined teams and their channels. Personal
+Microsoft accounts are refused up front. See [teams.md](teams.md) for scope
+checks and Microsoft Graph limits.
+
+---
+
 #### `co obsidian` - Browse local Obsidian notes
 
 Run `co obsidian` to list registered vaults and `co obsidian ls --vault 1` to

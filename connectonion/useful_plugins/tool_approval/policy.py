@@ -228,6 +228,7 @@ _CO_PATH_EFFECTS = {
     ("gcalendar", "update"): ("external_effect", "ask", "updating an event notifies everyone invited to it"),
     ("outlook", "calendar", "update"): ("external_effect", "ask", "updating an event notifies everyone invited to it"),
     ("outlook", "calendar", "teams"): ("external_effect", "ask", "a Teams meeting invites other people"),
+    ("teams", "send"): ("external_effect", "ask", "sending a Teams message requires human approval"),
     ("youtube", "put"): ("publication", "ask", "uploading a video publishes it"),
     ("youtube", "update"): ("publication", "ask", "changing a published video requires human approval"),
     ("gmail", "draft", "send"): ("external_effect", "ask", "sending mail requires human approval"),
@@ -1449,6 +1450,7 @@ _SPECIAL_OF_EFFECT = {
 _OWNER_ACCOUNT_SENDS = {
     "Gmail": {"send", "reply"},
     "Outlook": {"send", "reply"},
+    "Teams": {"send_message"},
     "GoogleCalendar": {"create_event", "create_meet", "update_event", "delete_event"},
     "MicrosoftCalendar": {"create_event", "create_teams_meeting", "update_event", "delete_event"},
 }
@@ -1463,6 +1465,7 @@ _CO_SPECIAL_PATHS = {
     ("gmail", "draft", "send"): "as_owner",
     ("outlook", "send"): "as_owner",
     ("outlook", "reply"): "as_owner",
+    ("teams", "send"): "as_owner",
     ("gcalendar", "create"): "as_owner",
     ("gcalendar", "update"): "as_owner",
     ("gcalendar", "delete"): "as_owner",

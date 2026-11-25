@@ -36,6 +36,7 @@ from .memory import Memory
 from .microsoft_calendar import MicrosoftCalendar
 from .outlook import Outlook
 from .onenote import OneNote
+from .teams import Teams
 from .send_email import send_email
 from .sms import (
     acknowledge_sms,
@@ -95,6 +96,7 @@ __all__ = [
     "Outlook",
     "MicrosoftCalendar",
     "OneNote",
+    "Teams",
     "WebFetch",
     "web_search",
     "web_fetch",
