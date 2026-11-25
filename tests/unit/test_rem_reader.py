@@ -451,6 +451,71 @@ def test_a_graph_name_is_cut_only_between_words_and_wraps_onto_the_lines_it_is_g
     assert out[3] == {"lines": ["Wool grading"], "text": "Wool grading"}
 
 
+def test_phone_names_the_three_highest_degree_records_without_overlap():
+    template = TEMPLATE.read_text()
+    script = template[template.index("const GRAPH_LABELS"):template.index("// d3-force")]
+    script += template[template.index("function graphLabelBudget"):template.index("function graphPanelWidth")]
+    script += _reader_function("graphMiddleTruncate") + _graph_cut()
+    script += re.search(r"function graphPhone\(.*", template)[0]
+    out = _run_reader_js(script + """
+      const innerWidth = 390, REM = {}, nodes = [1, 4, 2, 3, 6].map(id => ({id, x: 55, y: id * 45}));
+      const GRAPH = {linked: nodes}, graphState = {T: {k: 1, applyX: x => x, applyY: y => y}, W: 390, H: 240};
+      const graphDegree = n => n.id, graphTitle = n => String(n.id), graphAlpha = () => 1,
+        graphHidden = () => false, graphVisible = () => true, graphReach = () => 5,
+        graphPanelWidth = () => 0, graphCss = () => "";
+      graphLabels({measureText: () => ({width: 20}), fillRect() {}, strokeText() {}, fillText() {}}, nodes, {});
+      const labels = graphState.labels;
+      console.log(JSON.stringify([graphLabelBudget(), labels.map(l => l.id),
+        labels.some((l, i) => labels.slice(i + 1).some(other => graphBoxesMeet(l.box, other.box)))]));
+    """)
+    assert out == [3, [4, 3, 2], False]
+
+
+def test_phone_click_previews_an_unnamed_record_and_opens_a_named_one():
+    out = _run_reader_js(_reader_function("graphBind") + """
+      const graphState = {labels: [{id: "named"}]}, actions = [], listeners = {};
+      const d3 = {zoom: () => d3, scaleExtent: () => d3, filter: () => d3, on: () => d3,
+        select: () => d3, call: () => d3};
+      const graphPhone = () => true, graphHit = event => event.node,
+        graphFocus = id => actions.push(["focus", id]), graphOpen = n => actions.push(["open", n.id]),
+        graphDragBind = () => {}, graphSearchBind = () => {};
+      graphBind({querySelectorAll: () => [], querySelector: () => ({addEventListener: (k, fn) => listeners[k] = fn})});
+      for (const node of [{id: "unnamed"}, {id: "named"}, null]) listeners.click({node});
+      console.log(JSON.stringify(actions));
+    """)
+    assert out == [["focus", "unnamed"], ["open", "named"], ["focus", ""]]
+
+
+def test_local_mark_names_and_enlarges_the_focus_link():
+    out = _run_reader_js(_reader_function("graphLocalMark") + """
+      const graphTitle = n => n.id, graphSvgMark = () => ({}), document = {createTextNode: s => s};
+      const svgEl = (tag, attrs, children) => ({tag, attrs, children});
+      const link = graphLocalMark({id: "Ada"}, 10, 20, 4);
+      console.log(JSON.stringify([link.attrs, link.children[1]]));
+    """)
+    link, hit = out
+    assert link == {"aria-label": "Ada", "href": "#view=graph&focus=Ada"}
+    assert hit["tag"] == "circle" and hit["attrs"]["r"] >= 12
+    assert hit["attrs"]["fill"] == "transparent" and hit["attrs"]["pointer-events"] == "all"
+
+
+def test_canvas_label_keeps_both_ends_within_its_width():
+    cut = _reader_function("graphMiddleTruncate")
+    result = _run_reader_js(_graph_cut() + cut + _reader_function("graphItem") + _reader_function("graphTip") + """
+      const name = "团队 1234-COMP3900-PEAR", title = graphMiddleTruncate(name), node = {id: name};
+      const graphTitle = n => n.id, graphMarkFor = () => null, el = (tag, attrs, children) => ({attrs, children});
+      const tip = {style: {}}, document = {querySelector: () => tip};
+      const graphCanvas = () => ({style: {}, getBoundingClientRect: () => ({left: 0, top: 0})});
+      const graphDegree = () => 1, graphT = () => "1 link";
+      graphTip({clientX: 0, clientY: 0}, node);
+      console.log(JSON.stringify([title, graphWidth(title), graphItem(node).children[1].children[0].attrs.text,
+        tip.textContent, graphMiddleTruncate("𠀀".repeat(11))]));
+    """)
+    assert result[0].startswith("团队 1234…") and result[0].endswith("PEAR")
+    assert result[1] <= 20
+    assert result[2:] == ["团队 1234-COMP3900-PEAR", "团队 1234-COMP3900-PEAR · 1 link", "𠀀" * 5 + "…" + "𠀀" * 4]
+
+
 def test_graph_labels_cut_chinese_titles_by_width_so_they_stay_inside_the_card():
     """A one-hop label of 18 Chinese characters ran across the neighbouring card."""
     short = _graph_cut()

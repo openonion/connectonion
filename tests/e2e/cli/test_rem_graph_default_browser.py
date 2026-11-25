@@ -105,6 +105,10 @@ def test_labels_name_the_entries_and_the_most_linked_whole_words_and_never_on_a_
     assert all(label["degree"] >= cut_off for label in others), "only the most linked are named"
     for label in drawn:
         text = label["text"]
+        if label in others and "…" in text:
+            head, tail = text.split("…")
+            assert head and tail and label["title"].startswith(head) and label["title"].endswith(tail)
+            continue
         if not text.endswith("…"):
             assert text == label["title"], label
             continue
@@ -260,4 +264,31 @@ def test_a_click_opens_the_records_page_and_back_returns_to_the_same_mark_and_vi
     page.mouse.click(box["x"] + 6, box["y"] + 6)
     assert js(page, "() => graphState.focus") == ""
     assert not page.errors, page.errors
+    page.close()
+
+
+def test_phone_without_tag_pages_names_hubs_and_previews_an_unnamed_record(browser, tmp_path, monkeypatch):
+    import rem_graph_notebook
+    from connectonion.rem.reader import render
+
+    monkeypatch.setattr(rem_graph_notebook, "_write_knowledge", lambda *args: None)
+    path = tmp_path / "reader.html"
+    path.write_text(render(rem_graph_notebook.build(tmp_path / "rem"), local=True), encoding="utf-8")
+    page = open_graph(browser, path.as_uri(), 390, "#view=graph")
+    assert js(page, """() => {
+      const labels = graphState.labels, hubs = graphHubs(GRAPH.linked.filter(n => !graphHidden(n)), graphDegree, 3);
+      return labels.length === 3 && labels.every((l, i) => l.id === hubs[i].id &&
+        labels.slice(i + 1).every(other => !graphBoxesMeet(l.box, other.box)));
+    }""")
+    node, x, y = js(page, """() => {
+      const rect = graphCanvas().getBoundingClientRect();
+      for (const n of GRAPH.linked.filter(n => n.r && !graphHidden(n))) {
+        const x = Math.round(rect.left + graphState.T.applyX(n.x)), y = Math.round(rect.top + graphState.T.applyY(n.y));
+        if (!graphState.labels.some(l => l.id === n.id) && graphHit({clientX:x, clientY:y}) === n)
+          return [n.id, x, y];
+      }
+    }""")
+    page.touchscreen.tap(x, y)
+    assert js(page, "() => graphState.focus") == node
+    assert page.locator(".gx-panel h2").inner_text() == js(page, "id => graphTitle(GRAPH.byId.get(id))", node)
     page.close()
