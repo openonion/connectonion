@@ -56,7 +56,7 @@ CONTACT_LABELS = ALIAS_LABELS + EMAIL_LABELS + (
     "location:", "time zone:", "links:", "how we know them:", "first contact:", "last contact:",
     "电话:", "电话：", "公司:", "公司：")
 
-CATEGORIES = ("people", "orgs", "projects", "skills", "knowledge", "keys", "opportunities",
+CATEGORIES = ("people", "orgs", "devices", "projects", "skills", "knowledge", "keys", "opportunities",
               "decisions", "principles", "works", "agenda", "sessions", "notes", "logs")
 MAX_NOTE_BYTES = 1_000_000
 # The map's default window. 90 days left out people the owner works with every
@@ -415,6 +415,19 @@ class Notebook:
     def __init__(self, root: Path):
         self.root = root.resolve()
 
+    def _held_cache(self) -> dict | None:
+        from . import tags
+        return tags.held_store(self.root)
+
+    def _invalidate_held(self, record: str) -> None:
+        cache = self._held_cache()
+        if cache is not None:
+            reads = cache.get("_notebook_reads")
+            cache.clear()
+            if isinstance(reads, dict):
+                reads.pop(record, None)
+                cache["_notebook_reads"] = reads
+
     def path(self, record: str, *, writing: bool = False) -> Path:
         try:
             path = safe_path(self.root, record)
@@ -438,6 +451,10 @@ class Notebook:
         if category and category not in CATEGORIES:
             # Category names are ours, never private, so the offending value can be shown.
             raise RemError(f"Unknown category {category!r}; choose from {', '.join(CATEGORIES)}")
+        cache = self._held_cache()
+        if cache is not None and category in cache.get("_notebook_lists", {}):
+            return list(cache["_notebook_lists"][category])
+        reads = cache.setdefault("_notebook_reads", {}) if cache is not None else None
         result = []
         for name in (category,) if category else CATEGORIES:
             directory = safe_path(self.root, name)
@@ -457,7 +474,12 @@ class Notebook:
                     if path.stat().st_size > MAX_NOTE_BYTES:
                         _warn_skipped(record, "it is larger than 1 MB, the page limit; split or trim it to include it")
                         continue
-                    path.read_bytes().decode("utf-8")
+                    if reads is not None and record in reads:
+                        text = reads[record]
+                    else:
+                        text = path.read_bytes().decode("utf-8")
+                        if reads is not None:
+                            reads[record] = text
                 except UnicodeDecodeError:
                     _warn_skipped(record, "it is not UTF-8 text; re-save it as UTF-8 to include it")
                     continue
@@ -465,6 +487,8 @@ class Notebook:
                     _warn_skipped(record, str(error).removeprefix(f"{record!r}: ").removeprefix(f"{record}: ").removeprefix(f"{record} "))
                     continue
                 result.append(record)
+        if cache is not None:
+            cache.setdefault("_notebook_lists", {})[category] = tuple(result)
         return result
 
     PERSON_SECTIONS = ("Who they are", "Why they are here", "Our relationship",
@@ -703,15 +727,21 @@ class Notebook:
         return self.path(record).is_file()
 
     def read(self, record: str) -> str:
+        cache = self._held_cache()
+        if cache is not None and record in cache.get("_notebook_reads", {}):
+            return cache["_notebook_reads"][record]
         path = self.path(record)
         if not path.is_file():
             raise RemError(f"Record not found: {record}; list the notebook for current record paths")
         if path.stat().st_size > MAX_NOTE_BYTES:
             raise RemError(f"{record} is larger than 1 MB, the page limit; split or trim it to use it")
         try:
-            return path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError as error:
             raise RemError(f"{record} is not UTF-8 text; re-save it as UTF-8 to use it") from error
+        if cache is not None:
+            cache.setdefault("_notebook_reads", {})[record] = text
+        return text
 
     def write(self, record: str, content: str) -> bool:
         path = self.path(record, writing=True)
@@ -726,6 +756,7 @@ class Notebook:
         if previous == content:
             return False
         atomic_write(path, content)
+        self._invalidate_held(record)
         return True
 
     def delete(self, record: str) -> bool:
@@ -734,6 +765,7 @@ class Notebook:
             return False
         path.unlink()
         _changed(path)
+        self._invalidate_held(record)
         return True
 
     def search(self, query: str, category: str = "") -> list[dict]:

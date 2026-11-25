@@ -1,30 +1,45 @@
-"""co rem's index of its map and raw material, in one SQLite file beside the pages (#2067).
+"""co rem's index of its map and raw material, in one SQLite file beside the pages (#2067, #3453).
 
 The pages are the product and the JSON stays authoritative; `.state/rem.db` is
 derived from them (store_build.py, store_messages.py) and can be deleted at any
 time. One writer -- `refresh`, under the maintenance lock map and sync already
 hold -- and any number of read-only readers through the functions below, which
-are what the reader's People table (#2064), the chat view (#2066) and the fact
-cards (#2068) call instead of SQL. docs/cli/rem-store.md has the schema.
+the CLI, loopback HTTP (`/rem/query`) and OIP (`WIKI_READ`) call directly.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from .files import RemError, state_path
-from .store_build import GROUPS, SCHEMA, SCHEMA_VERSION, build_pages, columns, fingerprints, inputs
+from .files import CATEGORIES, Notebook, RemError, state_path
+from .store_build import (
+    GROUPS,
+    PRIVATE,
+    SCHEMA,
+    SCHEMA_VERSION,
+    _privacy_kind,
+    build_pages,
+    columns,
+    facts as parse_facts,
+    fingerprints,
+    inputs,
+    redact_text,
+    sync_pages,
+    title as parse_title,
+)
 from .store_messages import body, build_mail, build_runs, build_sessions
 
 BUILDERS = {"pages": build_pages, "mail": build_mail, "sessions": build_sessions, "runs": build_runs}
-TABLES = ("people", "orgs", "projects", "messages", "edges", "runs")
+TABLES = ("people", "orgs", "projects", "records", "messages", "edges", "runs")
 UNREADABLE = "The co rem index cannot be read; `co rem sync` builds it again"
+PRIVACY_LEVELS = ("all", "cover", "public")
 
 
 def db_path(root: Path) -> Path:
@@ -69,10 +84,13 @@ def _open_for_build(file: Path):
     return db, True
 
 
-def _rebuild(db, root: Path, group: str, found: dict) -> None:
+def _rebuild(db, root: Path, group: str, found: dict, *, known_group: dict | None = None, fresh: bool = False) -> None:
     db.execute("begin immediate")
     try:
-        BUILDERS[group](db, root)
+        if group == "pages" and known_group is not None:
+            sync_pages(db, root, known_group, found, fresh=fresh)
+        else:
+            BUILDERS[group](db, root)
         db.execute("delete from sources where grp = ?", (group,))
         db.executemany("insert into sources values (?, ?, ?, ?)", [(path, *value) for path, value in found.items()])
         db.execute("commit")
@@ -96,8 +114,9 @@ def refresh(root: Path) -> dict:
         rebuilt = []
         for group, paths in inputs(root).items():
             found = fingerprints(root, group, paths)
-            if fresh or found != {path: value for path, value in known.items() if value[2] == group}:
-                _rebuild(db, root, group, found)
+            known_group = {path: value for path, value in known.items() if value[2] == group}
+            if fresh or found != known_group:
+                _rebuild(db, root, group, found, known_group=known_group, fresh=fresh)
                 rebuilt.append(group)
         if rebuilt:
             db.execute("insert or replace into meta values ('built_at', ?)",
@@ -121,7 +140,7 @@ def refresh_safely(root: Path) -> dict:
 
 # ---- readers -------------------------------------------------------------------------------------------
 
-JSON_COLUMNS = ("emails", "facts", "domains", "paths", "recipients")
+JSON_COLUMNS = ("emails", "facts", "public_facts", "tags", "domains", "paths", "recipients")
 FLAGS = ("written", "listed", "held", "service")
 SORTS = ("activity", "name", "company", "role", "first_contact", "last_contact", "mails", "open_threads")
 
@@ -138,7 +157,7 @@ def _rows(root: Path, sql: str, parameters=()) -> list:
             if not version or version[0] != SCHEMA_VERSION:
                 raise RemError(UNREADABLE)
             cursor = db.execute(sql, parameters)
-            names = [column[0] for column in cursor.description]
+            names = [column[0] for column in cursor.description] if cursor.description else []
             found = [dict(zip(names, values)) for values in cursor.fetchall()]
         finally:
             db.close()
@@ -156,6 +175,174 @@ def _rows(root: Path, sql: str, parameters=()) -> list:
             if column in row:
                 row[column] = bool(row[column])
     return found
+
+
+def _validate_privacy(privacy: str) -> str:
+    if privacy not in PRIVACY_LEVELS:
+        raise RemError(f"Privacy must be one of: {', '.join(PRIVACY_LEVELS)}")
+    return privacy
+
+
+def _shape_record_item(row: dict, level: str) -> dict:
+    item = dict(row)
+    pub_title = item.pop("public_title", "")
+    pub_summary = item.pop("public_summary", "")
+    pub_facts = item.pop("public_facts", {})
+    if level == "public":
+        item["title"] = pub_title
+        item["summary"] = pub_summary
+        item["facts"] = pub_facts
+    return item
+
+
+def query_records(
+    root: Path,
+    *,
+    category: str = "",
+    query: str = "",
+    tag: str = "",
+    privacy: str = "cover",
+    include_unlisted: bool = False,
+    limit: int = 200,
+    offset: int = 0,
+) -> dict:
+    """Paginated record metadata across any category from SQLite (`records` table).
+
+    Read-only: never creates or writes `.state/rem.db`.
+    """
+    level = _validate_privacy(privacy)
+    if category and category not in CATEGORIES:
+        raise RemError(f"Unknown category {category!r}; choose from {', '.join(CATEGORIES)}")
+    limit = max(1, min(int(limit), 1000))
+    offset = max(0, int(offset))
+    if not db_path(root).is_file():
+        return {"total": 0, "items": [], "limit": limit, "offset": offset}
+
+    where: list[str] = []
+    params: list = []
+    if not include_unlisted:
+        where.append("listed = 1")
+    if level == "public":
+        where.append("privacy != 'private_page'")
+    if category:
+        where.append("category = ?")
+        params.append(category)
+    if tag:
+        from .tags import normalise
+        slug = normalise(tag)
+        if slug:
+            where.append("exists (select 1 from json_each(records.tags) where value = ?)")
+            params.append(slug)
+    if query:
+        if level == "public":
+            where.append("(public_title like ? or public_summary like ? or record like ? or public_facts like ?)")
+        else:
+            where.append("(title like ? or summary like ? or record like ? or facts like ?)")
+        params.extend([f"%{query}%"] * 4)
+
+    where_sql = f"where {' and '.join(where)}" if where else ""
+    count_rows = _rows(root, f"select count(*) as total from records {where_sql}", params)
+    total = int(count_rows[0]["total"]) if count_rows else 0
+    rows = _rows(
+        root,
+        f"select * from records {where_sql} order by updated_at desc, title, record limit ? offset ?",
+        [*params, limit, offset],
+    )
+    return {"total": total, "items": [_shape_record_item(row, level) for row in rows], "limit": limit, "offset": offset}
+
+
+def get_record(root: Path, record: str, *, privacy: str = "cover") -> dict | None:
+    """Read one Markdown record with server-side privacy redaction and store metadata."""
+    level = _validate_privacy(privacy)
+    book = Notebook(root)
+    try:
+        raw_text = book.read(record)
+    except RemError:
+        return None
+    if level == "public" and _privacy_kind(record, raw_text) == "private_page":
+        return None
+    text = redact_text(raw_text, level)
+    from .translate import cached_languages
+
+    translations = {
+        lang: redact_text(body_text, level)
+        for lang, body_text in cached_languages(root, record).items()
+    }
+    indexed = _rows(root, "select * from records where record = ?", (record,))
+    meta = dict(indexed[0]) if indexed else {}
+    return {
+        "record": record,
+        "category": record.split("/", 1)[0],
+        "title": parse_title(text, record),
+        "text": text,
+        "facts": parse_facts(text),
+        "tags": meta.get("tags", []),
+        "written": meta.get("written", True),
+        "listed": meta.get("listed", True),
+        "updated_at": meta.get("updated_at", ""),
+        "translations": translations,
+        "edges": edges(root, record),
+    }
+
+
+def _fts_phrase(query: str) -> str:
+    tokens = [tok.replace('"', '""') for tok in re.split(r"\s+", query.strip()) if tok]
+    return " AND ".join(f'"{tok}"' for tok in tokens)
+
+
+def search_records(
+    root: Path,
+    query: str,
+    *,
+    category: str = "",
+    privacy: str = "cover",
+    include_unlisted: bool = False,
+    limit: int = 50,
+) -> list[dict]:
+    """Full-text search over `records_fts` with substring fallback for CJK tokens."""
+    level = _validate_privacy(privacy)
+    needle = query.strip()
+    if not needle or not db_path(root).is_file():
+        return []
+    limit = max(1, min(int(limit), 200))
+    fts_expr = _fts_phrase(needle)
+    hits: list[dict] = []
+    seen: set[str] = set()
+    if fts_expr:
+        where = ["records_fts match ?"]
+        params: list = [fts_expr]
+        if not include_unlisted:
+            where.append("r.listed = 1")
+        if category:
+            where.append("r.category = ?")
+            params.append(category)
+        if level == "public":
+            where.append("r.privacy != 'private_page'")
+        rows = _rows(
+            root,
+            "select r.* from records_fts f join records r on r.rowid = f.rowid "
+            f"where {' and '.join(where)} order by bm25(records_fts) limit ?",
+            [*params, limit],
+        )
+        for row in rows:
+            seen.add(row["record"])
+            hits.append(_shape_record_item(row, level))
+    if len(hits) < limit:
+        fallback = query_records(
+            root,
+            category=category,
+            query=needle,
+            privacy=level,
+            include_unlisted=include_unlisted,
+            limit=limit,
+        )["items"]
+        for row in fallback:
+            if row["record"] not in seen:
+                seen.add(row["record"])
+                hits.append(row)
+                if len(hits) >= limit:
+                    break
+    return hits
 
 
 def people_table(root: Path, *, company: str = "", query: str = "", open_only: bool = False,
@@ -231,3 +418,76 @@ def threads(root: Path, record: str) -> list[dict]:
     return _rows(root, "select thread, min(subject) as subject, count(*) as messages, min(time) as first, "
                        f"max(time) as last from messages where {clauses} group by thread order by last desc",
                  parameters)
+
+
+def dispatch_query(root: Path, params: dict, *, max_privacy: str = "all") -> dict:
+    """Unified query dispatcher shared by loopback HTTP (`/rem/query`) and remote OIP (`WIKI_READ`)."""
+    op = str(params.get("op") or "records")
+    requested = str(params.get("privacy") or ("public" if max_privacy == "public" else "cover"))
+    rank = {"public": 0, "cover": 1, "all": 2}
+    if requested not in rank:
+        raise RemError(f"Privacy must be one of: {', '.join(PRIVACY_LEVELS)}")
+    effective = requested if rank[requested] <= rank[max_privacy] else max_privacy
+    include_unlisted = str(params.get("include_unlisted") or "").lower() in ("1", "true", "yes")
+
+    if op == "records":
+        return query_records(
+            root,
+            category=str(params.get("category") or ""),
+            query=str(params.get("query") or ""),
+            tag=str(params.get("tag") or ""),
+            privacy=effective,
+            include_unlisted=include_unlisted,
+            limit=int(params.get("limit") or 200),
+            offset=int(params.get("offset") or 0),
+        )
+    if op == "record":
+        target = str(params.get("record") or "")
+        if not target:
+            raise RemError("`record` parameter is required for op='record'")
+        found = get_record(root, target, privacy=effective)
+        if found is None:
+            raise RemError(f"Record not found: {target}")
+        return found
+    if op == "search":
+        return {"items": search_records(
+            root,
+            str(params.get("query") or ""),
+            category=str(params.get("category") or ""),
+            privacy=effective,
+            include_unlisted=include_unlisted,
+            limit=int(params.get("limit") or 50),
+        )}
+    if op == "people":
+        rows = people_table(
+            root,
+            company=str(params.get("company") or ""),
+            query=str(params.get("query") or ""),
+            open_only=str(params.get("open_only") or "").lower() in ("1", "true", "yes"),
+            recent_days=int(params.get("recent_days") or 0),
+            sort=str(params.get("sort") or "activity"),
+            descending=str(params.get("descending") or "1").lower() not in ("0", "false", "no"),
+            include_unlisted=include_unlisted,
+        )
+        if effective == "public" and rows:
+            pub_meta = {
+                r["record"]: r
+                for r in _rows(root, "select record, privacy, public_title, public_facts from records where category = 'people'")
+            }
+            public_rows = []
+            for row in rows:
+                meta = pub_meta.get(row["record"])
+                if meta and meta["privacy"] == "private_page":
+                    continue
+                pub_facts = meta["public_facts"] if meta else {}
+                derived = columns(pub_facts)
+                cleaned = {
+                    **row,
+                    **derived,
+                    "name": meta["public_title"] if meta else " ".join(PRIVATE.sub("", row["name"]).split()),
+                    "facts": pub_facts,
+                }
+                public_rows.append(cleaned)
+            rows = public_rows
+        return {"items": rows, "total": len(rows)}
+    raise RemError(f"Unknown query op {op!r}; choose from records, record, search, people")

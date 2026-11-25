@@ -22,7 +22,7 @@ from .. import style
 # Words that continue a command after `co rem`: its commands and subcommands
 # (from the help pages) and the arguments pages name. A lowercase word outside
 # them ends the phrase, so "until co rem start is approved" marks only the command.
-ARGUMENTS = {"me", "people", "projects", "orgs", "skills", "all", "gmail", "outlook", "codex",
+ARGUMENTS = {"me", "people", "projects", "orgs", "devices", "skills", "all", "gmail", "outlook", "codex",
              "claude-code", "whatsapp", "google", "microsoft", "login", "decisions", "notes"}
 TOKEN = (r"~?[\w.+-]*[/@][\w./@+,-]*\w|--?[a-z][\w-]*(?:=[^\s,;)]+)?|[A-Z][A-Z_]*(?:\.\.\.)?|\"[^\"\n]*\""
          r"|\[[^\]\n]*\]|<[^>\s]+>|\d+[a-z]*|\.\.\.")

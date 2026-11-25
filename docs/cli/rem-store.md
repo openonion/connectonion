@@ -48,12 +48,14 @@ makes `-wal` and `-shm` with the database's own mode. It is never synced,
 uploaded, or copied into a page or a deployment, like everything in
 `.state`. Python's stdlib `sqlite3`; no new dependency.
 
-## Schema (version 1)
+## Schema (version 2)
 
 | table | one row per | columns |
 |---|---|---|
 | `meta` | key | `key`, `value` — `schema_version`, `built_at` |
 | `sources` | input file | `path`, `mtime_ns`, `size`, `grp` — what the last build read |
+| `records` | every notebook page | `record`, `category`, `title`, `public_title`, `summary`, `public_summary`, `privacy`, `written`, `listed`, `held`, `open_threads`, `updated_at`, `tags` (JSON), `facts` (JSON), `public_facts` (JSON) |
+| `records_fts` | full-text search index | FTS5 (`rowid`-linked to `records`) over `(record, category, title, summary, public_body)` |
 | `people` | person page | `record`, `name`, `emails` (JSON list), `phone`, `company`, `role`, `location`, `timezone`, `linkedin`, `website`, `how_known`, `language`, `first_contact`, `last_contact`, `mails`, `sent`, `received`, `open_threads`, `written`, `listed`, `held`, `service`, `classification`, `facts` (JSON object of every labelled fact) |
 
 `people.first_contact` is populated only from a dated `First contact` fact on
@@ -134,6 +136,12 @@ tries again.
 ## Read API (`connectonion/rem/store.py`)
 
 ```python
+query_records(root, *, category="", query="", tag="", privacy="cover",
+              include_unlisted=False, limit=200, offset=0) -> dict
+get_record(root, record, *, privacy="cover") -> dict | None
+search_records(root, query, *, category="", privacy="cover",
+               include_unlisted=False, limit=50) -> list[dict]
+dispatch_query(root, params, *, max_privacy="all") -> dict
 people_table(root, *, company="", query="", open_only=False, recent_days=0,
              sort="activity", descending=True, include_unlisted=False, today=None) -> list[dict]
 person(root, record) -> dict | None   # the row plus its edges

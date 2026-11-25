@@ -56,6 +56,24 @@ def _local(scope, headers: dict) -> bool:
     return client in LOOPBACK and urlsplit("//" + headers.get("host", "")).hostname in LOOPBACK_NAMES
 
 
+def _allowed_origin(scope, headers: dict) -> bool:
+    """Reject cross-origin or cross-port browser requests against loopback (#3453)."""
+    if scope["method"] == "GET" and scope["path"] == "/rem" and headers.get("sec-fetch-mode", "").lower() == "navigate":
+        return True
+    fetch_site = headers.get("sec-fetch-site", "").strip().lower()
+    if fetch_site and fetch_site not in ("same-origin", "none"):
+        return False
+    origin = headers.get("origin", "").strip()
+    if origin:
+        parsed = urlsplit(origin)
+        host = headers.get("host", "").strip().lower()
+        if origin.lower() == "null" or parsed.hostname not in LOOPBACK_NAMES:
+            return False
+        if host and parsed.netloc.lower() != host:
+            return False
+    return True
+
+
 def _cookie(header: str) -> str:
     """This reader's cookie from the raw Cookie header. SimpleCookie drops every cookie when any other
     cookie on 127.0.0.1 (any port, any app) holds a space or a JSON value, which made every open tab
@@ -108,6 +126,12 @@ async def handle_rem_http(scope, receive, send, routes):
     if not _local(scope, headers) or root is None or directory is None:
         await _reply(send, 404, "not found")
         return
+    if scope["method"] == "OPTIONS":
+        await _reply(send, 405, "method not allowed")
+        return
+    if not _allowed_origin(scope, headers):
+        await _reply(send, 403, "cross-origin request refused")
+        return
     if not root.is_dir():
         await _reply(send, 404, "co rem is not available on this Host: run `co rem init`")
         return
@@ -138,6 +162,8 @@ async def handle_rem_http(scope, receive, send, routes):
     elif scope["method"] == "GET" and scope["path"] == "/rem/version":
         from ...rem.reader import latest
         await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
+    elif scope["method"] == "GET" and scope["path"] == "/rem/query":
+        await _query(scope, send, root)
     elif scope["method"] == "GET" and scope["path"] == "/rem/task-file":
         await _task_file(scope, send, root)
     elif scope["method"] == "GET" and scope["path"] == "/rem/source":
@@ -155,6 +181,21 @@ async def handle_rem_http(scope, receive, send, routes):
         await _action(scope, receive, send, root, headers)
     else:
         await _reply(send, 404, "not found")
+
+
+async def _query(scope, send, root):
+    """Direct SQLite-backed JSON query endpoint on Agent Host (`store.dispatch_query`)."""
+    from ...rem import store
+    from ...rem.files import RemError
+
+    raw = parse_qs(scope.get("query_string", b"").decode("utf-8", errors="replace"))
+    params = {key: values[-1] for key, values in raw.items() if values}
+    try:
+        result = await asyncio.to_thread(store.dispatch_query, root, params, max_privacy="all")
+    except (RemError, ValueError, TypeError) as error:
+        await _reply(send, 400, json.dumps({"error": str(error)}), "application/json")
+        return
+    await _reply(send, 200, json.dumps(result, ensure_ascii=False), "application/json")
 
 
 async def _source(scope, send, root):

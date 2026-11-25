@@ -1,6 +1,7 @@
-"""Owner-only co rem snapshot over the existing authenticated OIP session."""
+"""Owner-only co rem snapshot and store queries over the existing authenticated OIP session."""
 
 import asyncio
+import json
 
 from .connect import replay_check_for
 
@@ -14,6 +15,8 @@ async def handle_rem_read(data, send_msg, conn, routes):
     response = {"type": "WIKI_RESULT", "request_id": request_id, "ok": False}
     if not conn.get("authenticated"):
         response["error"] = "Authentication required"
+    elif conn.get("session_sync_only"):
+        response["error"] = "Session-sync connection cannot read co rem"
     elif not conn.get("signed_commands"):
         from ..auth import authenticated_command_payload
 
@@ -32,6 +35,19 @@ async def handle_rem_read(data, send_msg, conn, routes):
             response["error"] = "co rem is available only to the Host owner"
         elif root is None or not root.is_dir():
             response["error"] = "co rem is not available on this Host"
+        elif data.get("op"):
+            from ....rem import store
+            from ....rem.files import RemError
+
+            try:
+                result = await asyncio.to_thread(store.dispatch_query, root, data, max_privacy="all")
+                encoded = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                if len(encoded) > MAX_WIKI_BYTES:
+                    response["error"] = "co rem query result exceeds the 16 MiB limit"
+                else:
+                    response.update(ok=True, result=result)
+            except (RemError, ValueError, TypeError) as error:
+                response["error"] = str(error)
         else:
             from ....rem.reader import render
 

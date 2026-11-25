@@ -109,12 +109,20 @@ def due(root: Path) -> list[str]:
 def node_record(root: Path, slug: str) -> str:
     """The tag's knowledge page: knowledge/<slug>.md, or a knowledge entry already named for the tag."""
     book, entry = Notebook(root), tags.vocabulary(root).get(slug, {})
-    if f"knowledge/{slug}.md" in book.list("knowledge"):
+    knowledge_pages = set(book.list("knowledge"))
+    if f"knowledge/{slug}.md" in knowledge_pages:
         return f"knowledge/{slug}.md"
-    names = {tags.normalise(name) for name in (slug, entry.get("label", ""), *entry.get("aliases", [])) if name}
-    for record in book.list("knowledge"):
-        if tags.normalise(_title(book.read(record), record)) in names:
-            return record
+    by_title = tags.once(
+        root,
+        "_knowledge_by_title",
+        lambda: {
+            tags.normalise(_title(book.read(record), record)): record
+            for record in reversed(book.list("knowledge"))
+        },
+    )
+    for name in (slug, entry.get("label", ""), *entry.get("aliases", [])):
+        if name and (found := by_title.get(tags.normalise(name))):
+            return found
     return f"knowledge/{slug}.md"
 
 
@@ -430,8 +438,9 @@ def _marked_tag_pages(root: Path) -> list[str]:
                 marked.append(f"knowledge/{path.name}")
     if not marked:
         return []
-    book, named = Notebook(root), {node_record(root, slug) for slug in tags.vocabulary(root)}
-    return [r for r in marked if r in named or STAMP.search(book.read(r))]
+    with tags.held(root):
+        book, named = Notebook(root), {node_record(root, slug) for slug in tags.vocabulary(root)}
+        return [r for r in marked if r in named or STAMP.search(book.read(r))]
 
 
 def _unmarked(text: str) -> str:
