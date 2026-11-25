@@ -122,18 +122,34 @@ def _authorize(api_key: str) -> dict:
 
 # -- the paste way ---------------------------------------------------------------
 
+CAN_SELECT = os.name != "nt"      # select() cannot watch a pipe on Windows
+
+
 def _piped() -> str:
     """One line from a pipe, waited for at most PIPE_WAIT seconds: an open pipe that never sends is a stop."""
-    if os.name != "nt":            # select() cannot watch a pipe on Windows
+    if CAN_SELECT:
         import select
         try:
             ready, _, _ = select.select([sys.stdin], [], [], PIPE_WAIT)
         except (OSError, ValueError):   # stdin with no file descriptor (an in-process runner): read it
             ready = [sys.stdin]
         if not ready:
-            _fail(f"No token arrived on standard input within {PIPE_WAIT} s; nothing was changed.",
-                  "co auth notion --paste < token.txt", 2)
-    return sys.stdin.readline().strip()
+            _no_token()
+        return sys.stdin.readline().strip()
+    # Windows: read on a daemon thread and stop waiting at PIPE_WAIT; the thread ends with the process.
+    import threading
+    line: list[str] = []
+    reader = threading.Thread(target=lambda: line.append(sys.stdin.readline()), daemon=True)
+    reader.start()
+    reader.join(PIPE_WAIT)
+    if reader.is_alive() or not line:
+        _no_token()
+    return line[0].strip()
+
+
+def _no_token() -> None:
+    _fail(f"No token arrived on standard input within {PIPE_WAIT} s; nothing was changed.",
+          "co auth notion --paste < token.txt", 2)
 
 
 def _token_from_paste() -> str:

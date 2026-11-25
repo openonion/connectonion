@@ -13,6 +13,7 @@ from unittest.mock import Mock
 
 import httpx
 import pytest
+import typer
 from nacl.public import PublicKey, SealedBox
 from typer.testing import CliRunner
 
@@ -360,3 +361,32 @@ def test_a_paste_says_when_the_sign_in_will_still_be_used(pasting, keys):
 
 def test_paste_with_nothing_pasted_saves_nothing(pasting, keys):
     assert paste("").exit_code == 2
+
+
+def test_a_pipe_that_never_sends_stops_at_the_wait_on_windows_too(monkeypatch):
+    """Windows has no select() on a pipe: the read runs on a thread, and the wait still ends."""
+    import io, threading, time
+    released = threading.Event()
+    class Silent(io.StringIO):
+        def readline(self, *a):
+            released.wait(5)              # an open pipe that sends nothing, until the test lets go
+            return ""
+    monkeypatch.setattr(notion_auth, "CAN_SELECT", False)
+    monkeypatch.setattr(notion_auth, "PIPE_WAIT", 0.1)
+    monkeypatch.setattr(notion_auth.sys, "stdin", Silent())
+    before = set(threading.enumerate())
+    started = time.monotonic()
+    with pytest.raises(typer.Exit) as stop:
+        notion_auth._piped()
+    waited = time.monotonic() - started
+    released.set()
+    for reader in set(threading.enumerate()) - before:
+        reader.join(2)
+    assert stop.value.exit_code == 2 and waited < 2
+
+
+def test_a_pipe_that_sends_is_read_on_windows_too(monkeypatch):
+    import io
+    monkeypatch.setattr(notion_auth, "CAN_SELECT", False)
+    monkeypatch.setattr(notion_auth.sys, "stdin", io.StringIO("ntn_from_pipe\n"))
+    assert notion_auth._piped() == "ntn_from_pipe"
