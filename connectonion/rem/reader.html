@@ -6983,10 +6983,10 @@ const UNFILLED_LEAD = /^(?:Unknown\s*—\s*not investigated yet\.?(?:\s*Last con
 const KNOWN = new Map();
 function known(r) {
   const uiLang = typeof uiLanguage !== "undefined" ? uiLanguage : "en";
-  const effLang = r.readLanguage ?? (uiLang === "en" ? (r.shown || "") : uiLang);
-  const cacheKey = r.path + "\0" + (r.shown || "") + "\0" + effLang;
-  const cached = KNOWN.get(cacheKey);
-  if (cached?.text === r.text) return cached.value;
+  const variant = (r.shown || "") + "\0" + (r.readLanguage ?? (uiLang === "en" ? (r.shown || "") : uiLang));
+  let bucket = KNOWN.get(r.path);
+  const cached = bucket?.[variant];
+  if (cached && cached.text === r.text && cached.mail === r.mail && cached.last_activity === r.last_activity) return cached.value;
   const stamp = (STAMP.exec(r.text) || [""])[0];
   const body = (r.category === "sessions" ? r.text : splitTrailers(r.text).body.replace(COMMENT, ""))
     .replace(/^#[^\n]*\n?/, "").replace(STAMP, "");
@@ -7025,7 +7025,8 @@ function known(r) {
     plainLine(parseFacts(r).get("Project")?.[0]?.value || "")].filter(Boolean).join(" · ")
     : plainLine((intro ? { text: intro } : kept.find(k => !MECHANICAL.has(k.title.toLowerCase())) || { text: "" }).text);
   const k = { intro, kept, missing, status, last, summary, stamp: stamp.replace(/^Investigation:\s*/, "") };
-  KNOWN.set(cacheKey, { text: r.text, value: k });
+  if (!bucket) KNOWN.set(r.path, bucket = Object.create(null));
+  bucket[variant] = { text: r.text, mail: r.mail, last_activity: r.last_activity, value: k };
   return k;
 }
 function mappedContact(r) { return r.category === "people" && r.path !== REM.owner && known(r).status === "Mapped" && !parseFacts(r).get("Last contact")?.length && !!(r.last_activity || r.mail?.last); }
@@ -8504,10 +8505,10 @@ function company(r) {
 const FACTS = new Map();
 function facts(r) {
   const uiLang = typeof uiLanguage !== "undefined" ? uiLanguage : "en";
-  const effLang = r.readLanguage ?? (uiLang === "en" ? (r.shown || "") : uiLang);
-  const cacheKey = r.path + "\0" + (r.shown || "") + "\0" + effLang;
-  const cached = FACTS.get(cacheKey);
-  if (cached?.text === r.text) return cached.value;
+  const variant = (r.shown || "") + "\0" + (r.readLanguage ?? (uiLang === "en" ? (r.shown || "") : uiLang));
+  let bucket = FACTS.get(r.path);
+  const cached = bucket?.[variant];
+  if (cached && cached.text === r.text && cached.index === r.index && cached.mail === r.mail && cached.last_activity === r.last_activity) return cached.value;
   const parsed = parseFacts(r);
   const k = known(r), contact = {};
   // Preserve qualifications, especially historical roles and affiliations.
@@ -8556,7 +8557,8 @@ function facts(r) {
     if (x.relationship?.last_mail) f.last = x.relationship.last_mail.slice(0, 10);
     take("mails", x.mails); take("sent", x.sent); take("received", x.received);
   }
-  FACTS.set(cacheKey, { parsed, text: r.text, value: f });
+  if (!bucket) FACTS.set(r.path, bucket = Object.create(null));
+  bucket[variant] = { parsed, text: r.text, index: r.index, mail: r.mail, last_activity: r.last_activity, value: f };
   return f;
 }
 function plainValue(v) { return plainLine(v || ""); }
@@ -15905,14 +15907,16 @@ const SESSION_TEXT = new Map();
 const SESSION_KEYS = ["find", "project", "agent", "when", "from", "to", "person", "tag", "outcome"];
 const SESSION_OUTCOMES = { done: "Done", partial: "Partial", abandoned: "Abandoned", unknown: "Unknown" };
 function sessionText(r) {
-  const cacheKey = r.path + "\0" + (r.shown || "");
-  if (SESSION_TEXT.has(cacheKey)) return SESSION_TEXT.get(cacheKey);
+  const variant = r.shown || "";
+  let bucket = SESSION_TEXT.get(r.path);
+  if (bucket?.[variant]?.text === r.text) return bucket[variant].value;
   const clean = text => unlabelled(text || "").replace(/^### (?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}$/gm, "").replace(/^> ?/gm, "").replace(/\s+/g, " ").trim();
   const quoted = name => clean((r.text.split(/^## /m).find(part => part.startsWith(name + "\n")) || "").slice(name.length + 1));
   const fields = { title: clean(r.session_title || r.title), summary: ownerAsYou(clean(r.session_summary)),
     tags: (r.session_tags || []).join(" "), you: quoted("What you typed"), agent: quoted("Final reply"), artifacts: quoted("Artifacts") };
   fields.lower = Object.values(fields).join("\n").toLowerCase();
-  SESSION_TEXT.set(cacheKey, fields);
+  if (!bucket) SESSION_TEXT.set(r.path, bucket = Object.create(null));
+  bucket[variant] = { text: r.text, value: fields };
   return fields;
 }
 function sessionTerms(query) { return [...new Set((query || "").toLowerCase().split(/\s+/).filter(Boolean))]; }
