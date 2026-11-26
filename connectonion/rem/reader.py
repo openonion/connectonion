@@ -976,11 +976,13 @@ def _building(root: Path):
         os.close(fd)
 
 
-def refresh(root: Path, builds=("live", "full")) -> bool:
+def refresh(root: Path, builds=None) -> bool:
     """The background build: bring only the requested saved pages,
     up to date, unless a build runs (False then). It passes again only for an owner
     action made meanwhile, also one made after its last look (bounded); other writes
     wait for the next interval."""
+    if builds is None:
+        builds = ("live", "full", "file") if "file" in _manifest(root)["rows"] else ("live", "full")
     for _ in range(3):
         finished = _refresh_once(root, builds)
         if finished is None:
