@@ -18,8 +18,15 @@ from rich.markup import escape
 
 from .. import style
 from ..typer_groups import _OneSuggestion
-from ...useful_tools import granola as api
 from .command_tips import mark_next_step_named, print_tip, selected_tip
+
+MAX_SELECTED = 1_000
+
+
+def _api():
+    """Import useful_tools.granola lazily so starting `co` never loads useful_tools/__init__.py or httpx."""
+    from ...useful_tools import granola
+    return granola
 
 granola_app = typer.Typer(
     cls=_OneSuggestion,
@@ -60,6 +67,7 @@ def _reported(handler):
     """Turn GranolaError into a clean stderr diagnostic + Next: line; invalid arguments exit 2, runtime errors exit 1."""
     @wraps(handler)
     def run(*args, **kwargs):
+        api = _api()
         try:
             return handler(*args, **kwargs)
         except api.GranolaError as error:
@@ -79,7 +87,7 @@ def check(
     as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ):
     """Check GRANOLA_API_KEY, personal folder count, and optionally one folder's personal scope. Read-only."""
-    client = api.GranolaClient()
+    client = _api().GranolaClient()
     status = client.check()
     checked_folder = None
     if folder is not None:
@@ -116,7 +124,7 @@ def check(
 @_reported
 def folders(as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
     """List personal Granola folders (shared spaces are skipped). Read-only."""
-    client = api.GranolaClient()
+    client = _api().GranolaClient()
     listing = client.list_folders()
     rows = listing["personal"]
     first = rows[0] if rows else None
@@ -146,11 +154,12 @@ def folders(as_json: bool = typer.Option(False, "--json", help=JSON_HELP)):
 def notes(
     folder: str = typer.Argument(..., help=FOLDER_HELP),
     include_children: bool = typer.Option(False, "--include-children", help=CHILDREN_HELP),
-    limit: int = typer.Option(20, "--limit", "-n", min=1, max=api.MAX_SELECTED, help="At most this many notes, newest update first"),
+    limit: int = typer.Option(20, "--limit", "-n", min=1, max=MAX_SELECTED, help="At most this many notes, newest update first"),
     since: Optional[str] = typer.Option(None, "--since", help="Only notes updated after this ISO-8601 timestamp with timezone"),
     as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ):
     """List meeting notes in one personal Granola folder, newest update first. Read-only."""
+    api = _api()
     iso_since = None
     if since is not None:
         iso_since = api.parse_iso_utc(since, flag_name="--since").isoformat().replace("+00:00", "Z")
@@ -200,6 +209,7 @@ def changes(
     the next `--since` without missing concurrent updates. Deleted notes and
     shared-space folders are excluded.
     """
+    api = _api()
     since_dt = api.parse_iso_utc(since, flag_name="--since")
     until_dt = datetime.now(timezone.utc)
 
@@ -239,7 +249,7 @@ def show(
     as_json: bool = typer.Option(False, "--json", help="Print id, version, time, meeting_time, title, text, author and link as JSON"),
 ):
     """Read one personal Granola meeting summary live. Read-only."""
-    client = api.GranolaClient()
+    client = _api().GranolaClient()
     note = client.get_note(note_id, folder_id=folder, include_children=include_children)
 
     next_folder = folder or note.get("folder_id")
