@@ -170,13 +170,13 @@ def test_caches_extract_once_detect_in_place_edits_and_remove_vanished_files(not
     _write(capture, json.dumps({"source": url, "timestamp": "2040-01-01", "title": "Terms", "text": "Initial terms"}))
     private = _write(capture.with_name("2040-01-02-private.json"), json.dumps({
         "source": url, "timestamp": "2040-01-02", "text": "Private terms [sensitive]"}))
-    extracted, extract = [], attachments.extract_text
+    extracted, extract = [], attachments.extract_structured_text
 
     def track(path, limit):
         extracted.append(path)
         return extract(path, limit=limit)
 
-    monkeypatch.setattr(attachments, "extract_text", track)
+    monkeypatch.setattr(attachments, "extract_structured_text", track)
     store.refresh(root)
     assert extracted == [attachment]
     assert store.attachment_row(root, source)["extracted_text"] == "Initial terms"
@@ -231,6 +231,104 @@ def test_unchanged_caches_do_not_relist_directories_read_files_or_write_db(noteb
     monkeypatch.setattr(store, "_connect", track)
     assert store.refresh(root)["rebuilt"] == []
     assert not any(sql.lower().startswith(("insert", "update", "delete", "begin")) for sql in changes)
+
+
+def test_reader_batches_current_translations_without_reading_each_cache_file(notebook, monkeypatch):
+    from connectonion.rem import reader, translate
+
+    root, book = notebook
+    _translate(root, "people/alice.md", "# Alice\n\n虚构的同事。\n")
+    store.refresh(root)
+    # Snapshot stays read-only; once the writer refreshes the store, reader batches all translations in 1 query.
+    _translate(root, "people/alice.md", "# Alice\n\n更新的同事。\n")
+    store.refresh(root)
+    called_per_page = []
+    real_cached_languages = translate.cached_languages
+    monkeypatch.setattr(translate, "cached_languages", lambda *args: called_per_page.append(args) or real_cached_languages(*args))
+    rows, queries = store._rows, []
+
+    def track(root, sql, parameters=()):
+        if "from translations_cache" in sql:
+            queries.append(sql)
+        return rows(root, sql, parameters)
+
+    monkeypatch.setattr(store, "_rows", track)
+    records = reader.snapshot(root, local=True)["records"]
+    alice = next(record for record in records if record["path"] == "people/alice.md")
+    assert alice["translations"] == {"zh": "# Alice\n\n更新的同事。\n"}
+    assert len(queries) == 1 and called_per_page == []
+    book.write("people/alice.md", "# Alice\n\nRevised original.\n")
+    records = reader.snapshot(root, local=True)["records"]
+    assert next(record for record in records if record["path"] == "people/alice.md")["translations"] == {}
+
+
+def test_attachment_previews_reuse_structured_sqlite_text_until_file_changes(notebook, monkeypatch):
+    root, _ = notebook
+    source = "gmail:123456789abc:terms.csv"
+    text = "Fee | Term\n8% | 90 days"
+    path = _write(state_path(root, "attachments/gmail/123456789abc/terms.csv"), text)
+    store.refresh(root)
+    assert store.attachment_row(root, source)["extracted_text"] == text
+    read = attachments._read_text
+    parsed = []
+
+    def track(path, **kwargs):
+        parsed.append(path)
+        return read(path, **kwargs)
+
+    monkeypatch.setattr(attachments, "_read_text", track)
+    attachments._preview.cache_clear()
+    assert attachments.attachment_context(root, source)["excerpt"] == text
+    assert attachments.extract_structured_text(path, limit=10) == text[:10]
+    assert parsed == []
+    _write(path, "Fee | Term\n9% | 90 days")
+    assert attachments.attachment_context(root, source)["excerpt"] == "Fee | Term\n9% | 90 days"
+    assert parsed == [path]
+
+
+def test_research_batches_synced_captures_preserving_dates_and_privacy(notebook, monkeypatch):
+    from connectonion.rem import evidence
+
+    root, _ = notebook
+    sources = ["https://acme.example/terms", "https://acme.example/team"]
+    for source in sources:
+        identity = hashlib.sha256(source.encode()).hexdigest()
+        for date, text in (("2040-01-01", "Original terms"), ("2040-01-02", "Updated terms"),
+                           ("2040-01-03", "Private terms [personal]")):
+            write_json(state_path(root, f"research/{identity}/{date}.json"),
+                       {"source": source, "timestamp": date + "T10:00:00Z", "text": text})
+    store.refresh(root)
+    records = [{"text": "\n## Sources\n" + "\n".join(
+        f"- [{i}] {source} — 2040-01-02" for i, source in enumerate(sources, 1))}]
+    monkeypatch.setattr(evidence, "read_json", lambda *args: pytest.fail("capture file read"))
+    glob = type(root).glob
+
+    def no_capture_globs(path, pattern, **kwargs):
+        assert "research" not in path.parts
+        return glob(path, pattern, **kwargs)
+
+    monkeypatch.setattr(type(root), "glob", no_capture_globs)
+    contexts = evidence.research_contexts(root, records)
+    assert all(contexts[source]["excerpt"] == "Updated terms" for source in sources)
+    records = [{"text": "\n".join(f"- [{i}] {source}" for i, source in enumerate(sources, 1))}]
+    contexts = evidence.research_contexts(root, records)
+    assert all("Private terms" not in contexts[source]["excerpt"] for source in sources)
+    contexts = evidence.research_contexts(root, records, private=True)
+    assert all("Private terms" in contexts[source]["excerpt"] for source in sources)
+
+
+def test_pages_only_refresh_skips_other_input_groups_and_still_syncs_caches(notebook, monkeypatch):
+    root, _ = notebook
+    _translate(root, "people/alice.md", "# Alice\n\n虚构的同事。\n")
+    fingerprints, groups = store.fingerprints, []
+
+    def track(root, group, paths):
+        groups.append(group)
+        return fingerprints(root, group, paths)
+
+    monkeypatch.setattr(store, "fingerprints", track)
+    assert store.refresh(root, ("pages",))["rebuilt"] == ["pages"]
+    assert groups == ["pages"] and store.translations_map(root)
 
 
 def test_translation_cache_invalidates_when_original_changes_or_disappears(notebook):
@@ -309,6 +407,6 @@ def test_caches_never_extract_symlinked_files_or_directories(notebook, monkeypat
     def never_extract(*args, **kwargs):
         pytest.fail("A symlink must never be extracted")
 
-    monkeypatch.setattr(attachments, "extract_text", never_extract)
+    monkeypatch.setattr(attachments, "extract_structured_text", never_extract)
     store.refresh(root)
     assert store.attachments_map(root) == {}

@@ -151,7 +151,7 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
             process = _launch(directory, address, port=_saved_port(saved))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if process is not None and process.poll() is not None:
+        if process is not None and getattr(process, "poll", lambda: None)() is not None:
             return f"co ai exited during startup; see {log}. Retry with `co ai` to see the error"
         port = _port(process.args) if process is not None else saved.get("port")
         if port and answers(port, address):

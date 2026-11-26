@@ -169,7 +169,7 @@ def _cache_inventory(db, root: Path, kind: str) -> tuple[dict, dict]:
 
 def _attachment_row(root: Path, relative: str, stamp: list) -> dict | None:
     import mimetypes
-    from .attachments import extract_text
+    from .attachments import extract_structured_text
 
     parts = Path(relative).parts
     if len(parts) != 3:
@@ -179,7 +179,7 @@ def _attachment_row(root: Path, relative: str, stamp: list) -> dict | None:
     return {"source": f"{provider}:{message}:{filename}", "provider": provider, "message_id": message,
             "filename": filename, "rel_path": path.relative_to(root).as_posix(),
             "mime_type": mimetypes.guess_type(filename)[0] or "application/octet-stream",
-            "size": stamp[1], "mtime_ns": stamp[0], "extracted_text": extract_text(path, limit=20_000)}
+            "size": stamp[1], "mtime_ns": stamp[0], "extracted_text": extract_structured_text(path, limit=20_000)}
 
 
 def _translation_row(root: Path, relative: str, stamp: list) -> dict | None:
@@ -219,20 +219,35 @@ def _delete_cached_file(db, kind: str, relative: str) -> None:
         db.execute("delete from research_cache where capture_file = ?", (f".state/research/{relative}",))
 
 
+def _translation_pages(root: Path, files: dict) -> dict:
+    from .files import CATEGORIES, Notebook
+    book, pages = Notebook(root), {}
+    for record in {path.partition("/")[2] for path in files}:
+        if not record.endswith(".md") or record.split("/", 1)[0] not in CATEGORIES:
+            continue
+        original = book.path(record)
+        info = original.stat() if original.is_file() else None
+        pages[record] = [info.st_mtime_ns, info.st_size] if info else None
+    return pages
+
+
+def cache_current(db, root: Path, kind: str) -> bool:
+    """Read-only check whether `table` already reflects the files on disk."""
+    saved = db.execute("select value from meta where key = ?", (f"cache:{kind}",)).fetchone()
+    if not saved:
+        return False
+    previous, current = _cache_inventory(db, root, kind)
+    if kind == "translations":
+        current["pages"] = _translation_pages(root, current["files"])
+    return current == previous
+
+
 def _sync_cache(db, root: Path, kind: str, table: str, builder) -> bool:
     previous, current = _cache_inventory(db, root, kind)
     before, found = previous["files"], current["files"]
     changed = {path for path, stamp in found.items() if before.get(path) != stamp}
     if kind == "translations":
-        from .files import CATEGORIES, Notebook
-        book, pages = Notebook(root), {}
-        for record in {path.partition("/")[2] for path in found}:
-            if not record.endswith(".md") or record.split("/", 1)[0] not in CATEGORIES:
-                continue
-            original = book.path(record)
-            info = original.stat() if original.is_file() else None
-            pages[record] = [info.st_mtime_ns, info.st_size] if info else None
-        current["pages"] = pages
+        current["pages"] = _translation_pages(root, found)
         changed.update(path for path in found if previous.get("pages", {}).get(path.partition("/")[2])
                        != current["pages"].get(path.partition("/")[2]))
     if current == previous:

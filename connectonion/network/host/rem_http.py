@@ -445,9 +445,11 @@ async def _action(scope, receive, send, root, headers):
             or scope["path"] == "/rem/investigate" and (body.get("action", "status") == "run"
                                                         or body.get("action", "status") == "status"
                                                         and (result or {}).get("result") == "running")
-            or scope["path"] in ("/rem/talk", "/rem/translate-all", "/rem/thread", "/rem/sender",
-                                  "/rem/language", "/rem/translation-request")):
-        await asyncio.to_thread(owner_changed, root)
+            or scope["path"] in ("/rem/talk", "/rem/translate-all")):
+        if scope["path"] in ("/rem/thread", "/rem/sender", "/rem/language", "/rem/translation-request"):
+            await asyncio.to_thread(owner_changed, root, builds=("live",))
+        else:
+            await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 

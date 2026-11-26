@@ -18591,7 +18591,12 @@ function loadDetails() {
     else resolve();
   }).then(() => JSON.parse(document.getElementById("rem-detail").textContent))).then(data => {
     const records = new Map(REM.records.map(r => [r.path, r]));
-    const drafts = REM.drafts;
+    // The Today shell can be newer after an owner action that did not rebuild the full notebook.
+    const state = {};
+    for (const key of ['drafts', 'threads', 'today_queue', 'ignored_senders', 'language', 'owner_language',
+                       'your_languages', 'languages_from', 'as_of', 'day_plan', 'night_outcomes', 'approval_outcomes']) {
+      if (key in REM) state[key] = REM[key];
+    }
     for (const r of data.records) {
       const current = records.get(r.path);
       if (current) {
@@ -18601,7 +18606,7 @@ function loadDetails() {
       else records.set(r.path, r);
     }
     const source_context = { ...data.source_context, ...REM.source_context };
-    Object.assign(REM, data, { records: [...records.values()], drafts, source_context });
+    Object.assign(REM, data, state, { records: [...records.values()], source_context });
     KNOWN.clear(); FACTS.clear(); PARSED_FACTS.clear(); SESSION_TEXT.clear();
     if (typeof personOrg === "function" && personOrg._cache) personOrg._cache.clear();
     if (typeof sourceList === "function" && sourceList._cache) sourceList._cache.clear();

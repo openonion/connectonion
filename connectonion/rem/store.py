@@ -111,7 +111,7 @@ def _vacuum(db) -> None:
             db.execute("pragma incremental_vacuum")
 
 
-def refresh(root: Path) -> dict:
+def refresh(root: Path, groups=GROUPS) -> dict:
     """Bring the index up to date with the files; only groups whose inputs changed are rebuilt.
 
     Call it holding the maintenance lock. Returns what was rebuilt, the rows
@@ -125,6 +125,8 @@ def refresh(root: Path) -> dict:
                                   in db.execute("select path, mtime_ns, size, grp from sources")}
         rebuilt = []
         for group, paths in inputs(root).items():
+            if group not in groups:
+                continue
             found = fingerprints(root, group, paths)
             known_group = {path: value for path, value in known.items() if value[2] == group}
             if fresh or found != known_group:
@@ -386,8 +388,31 @@ def search(root: Path, query: str, *, max_privacy: str = "cover", **kwargs) -> l
     return search_records(root, query, privacy=level, **kwargs)
 
 
+def cache_fresh(root: Path, kind: str) -> bool:
+    """True when `rem.db` exists at SCHEMA_VERSION and its `kind` cache matches disk (strictly read-only)."""
+    from .store_messages import cache_current
+
+    file = db_path(root)
+    if not file.is_file():
+        return False
+    try:
+        db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
+        try:
+            version = db.execute("select value from meta where key = 'schema_version'").fetchone()
+            if not version or version[0] != SCHEMA_VERSION:
+                return False
+            return cache_current(db, root, kind)
+        finally:
+            db.close()
+    except sqlite3.DatabaseError:
+        return False
+
+
 def attachment_row(root: Path, source: str) -> dict | None:
-    rows = _rows(root, "select * from attachments where source = ?", (source,))
+    try:
+        rows = _rows(root, "select * from attachments where source = ?", (source,))
+    except RemError:
+        return None
     return rows[0] if rows else None
 
 

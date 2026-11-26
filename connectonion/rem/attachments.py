@@ -180,7 +180,17 @@ def _read_text(path: Path, *, preview_limit: int | None = None) -> str:
 
 def extract_structured_text(path: Path, limit: int = 8_000) -> str:
     """Preserve paragraph breaks and table rows in the reader's attachment excerpt."""
-    text = _read_text(Path(path), preview_limit=limit)
+    from . import store
+
+    path = Path(path).absolute()
+    if limit <= 20_000 and path.parts[-5:-3] == (".state", "attachments"):
+        root, source = path.parents[4], ":".join(path.parts[-3:])
+        if attachment_path(root, source) == path:
+            row = store.attachment_row(root, source)
+            info = path.stat()
+            if row and (row["size"], row["mtime_ns"]) == (info.st_size, info.st_mtime_ns):
+                return row["extracted_text"][:limit]
+    text = _read_text(path, preview_limit=limit)
     return "\n".join(line.rstrip() for line in text.splitlines()).strip()[:limit]
 
 

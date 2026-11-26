@@ -234,6 +234,10 @@ def research_contexts(root: Path, records: list[dict], *, private: bool = False)
 
     if not state_path(root, "research").is_dir():
         return {}
+    from . import store
+
+    sources = _source_ids(records)
+    cached = store.research_for_sources(root, sources, private=private) if store.cache_fresh(root, "research") else None
     dates = {}
     for record in records:
         tail = record.get("text", "").partition("\n## Sources\n")[2]
@@ -242,9 +246,12 @@ def research_contexts(root: Path, records: list[dict], *, private: bool = False)
             if date := re.search(r"\b\d{4}-\d{2}-\d{2}\b", suffix):
                 dates.setdefault(match[2], set()).add(date[0])
     contexts = {}
-    for source in _source_ids(records):
-        identity = hashlib.sha256(source.encode()).hexdigest()
-        captures = [read_json(path, {}) for path in sorted(state_path(root, f"research/{identity}").glob("*.json"))]
+    for source in sources:
+        if cached is not None:
+            captures = cached.get(source, [])
+        else:
+            identity = hashlib.sha256(source.encode()).hexdigest()
+            captures = [read_json(path, {}) for path in sorted(state_path(root, f"research/{identity}").glob("*.json"))]
         captures = [item for item in captures if item.get("source") == source
                     and (private or not PRIVATE.search(item.get("text", "")))]
         dated = [item for item in captures if any(str(item.get("timestamp", "")).startswith(d)

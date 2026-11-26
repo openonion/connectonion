@@ -21,6 +21,8 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
+Release candidate **1.9.7rc30** migrates REM to SQLite store v3 (persistent WAL, incremental vacuum, per-record upserts, external-content FTS5 with CJK search, and cached attachment/translation/research text) and serves a CLI-hosted loopback live reader with gzip compression, native PDF/image/table attachment previews via `/rem/attachment`, bounded idle refreshes, unclipped schedule hour labels, and mobile Today layout fixes ([#3469](https://github.com/openonion/connectonion/issues/3469), [#3468](https://github.com/openonion/connectonion/issues/3468), [#3467](https://github.com/openonion/connectonion/issues/3467)). See [1.9.7rc30 notes](releases/1.9.7rc30.md).
+
 Release candidate **1.9.7rc29** splits REM Waiting on You into a tag-grouped triage list with in-place completion and a focused item console, adds a synchronized horizontal flipper strip to Today, deduplicates cross-page obligations, and self-heals `owner_record()` when `.state/map.json` is absent ([#3464](https://github.com/openonion/connectonion/pull/3464)). See [1.9.7rc29 notes](releases/1.9.7rc29.md).
 
 Release candidate **1.9.7rc28** adds REM SQLite store v2 queries, Agent Host security gates, first-class `devices` pages, reader performance fixes ([#3458](https://github.com/openonion/connectonion/pull/3458), [#3453](https://github.com/openonion/connectonion/issues/3453)), and the `co teams` Microsoft Teams CLI and `Teams` tool ([#3459](https://github.com/openonion/connectonion/pull/3459), [#1907](https://github.com/openonion/connectonion/issues/1907)). See [1.9.7rc28 notes](releases/1.9.7rc28.md).
@@ -58,7 +60,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc29'
+python -m pip install --upgrade 'connectonion==1.9.7rc30'
 ```
 
 ## Current release

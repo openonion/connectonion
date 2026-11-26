@@ -1,6 +1,6 @@
 # 081: SQLite-first live REM reader
 
-Status: store engine implemented; live reader integration is a separate change.
+Status: SQLite v3 store engine, CLI-served live HTTP reader and native attachment preview integration implemented together.
 Tracks #3468 and #3469.
 
 ## Problem
@@ -20,8 +20,8 @@ rebuilt from those inputs.
 
 This is a clean-cut migration: an older schema or wrong auto-vacuum mode causes
 a fresh database build. There are no old-schema adapters or dual schema writes.
-The implementation changes storage and query APIs; HTTP routes and reader
-rendering are integrated separately and must receive their own UI verification.
+The implementation integrates the storage and query APIs with HTTP routes,
+reader rendering and native attachment previews in the same change.
 
 ### One private SQLite file
 

@@ -19,6 +19,7 @@ from .files import CATEGORIES, CITATION, EMAIL, read_json, state_path
 
 SCHEMA_VERSION = "3"
 SCHEMA = """
+pragma auto_vacuum = incremental;
 create table meta (key text primary key, value text);
 create table sources (path text primary key, mtime_ns integer, size integer, grp text);
 create table people (record text primary key references records(record) on delete cascade, name text, emails text, phone text, company text, role text,

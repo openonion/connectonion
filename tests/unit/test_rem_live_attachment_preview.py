@@ -237,21 +237,42 @@ def test_lightweight_state_actions_never_rebuild_the_notebook(notebook, monkeypa
     monkeypatch.setattr("connectonion.rem.threads.ignore_sender", lambda *args, **kwargs: True)
     monkeypatch.setattr("connectonion.rem.config.request_language", lambda *args: {"language": "zh"})
     monkeypatch.setattr(translate, "request", lambda *args: {"state": "saved"})
-    monkeypatch.setattr(reader, "owner_changed", lambda *args: pytest.fail("state action rebuilt the notebook"))
+    changed = []
+    monkeypatch.setattr(reader, "owner_changed", lambda root, *, builds: changed.append(builds))
     assert request(notebook, path, method="POST", payload=payload)[0] == 200
+    assert changed == [("live",)]
 
 
 def test_owner_changes_and_live_refreshes_never_build_file_html(notebook, monkeypatch):
     requested = []
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: requested.extend(builds) or True)
     reader.owner_changed(notebook)
-    assert requested == ["live"]
-    assert reader.NEEDS["live.html"] == reader.NEEDS["data.json"] == ("live",)
+    assert requested == ["live", "full"]
+    assert reader.NEEDS["live.html"] == ("live", "full")
+    assert reader.NEEDS["data.json"] == ("full",)
+    assert reader.NEEDS["file.html"] == ("file",)
     monkeypatch.setattr(reader, "snapshot", lambda *args, **kwargs: {"as_of": "now"})
     monkeypatch.setattr(reader, "_page", lambda *args, **kwargs: "HTML")
     monkeypatch.setattr(reader, "_today_data", lambda data: data)
-    assert set(reader._render(notebook, "live")[0]) == {"live.html", "data.json"}
-    assert set(reader._render(notebook, "full")[0]) == {"file.html"}
+    assert set(reader._render(notebook, "live")[0]) == {"live.html"}
+    assert set(reader._render(notebook, "full")[0]) == {"data.json"}
+    assert set(reader._render(notebook, "file")[0]) == {"file.html"}
+
+
+def test_shell_action_during_full_render_only_queues_the_shell(notebook, monkeypatch):
+    builds = []
+    monkeypatch.setattr(reader.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("worker already holds the lock"))
+
+    def render(root, build, as_of=None):
+        builds.append(build)
+        if build == "full":
+            (root / "pilot.md").write_text("New state during full render")
+            reader.owner_changed(root, builds=("live",))
+        return {"data.json" if build == "full" else "live.html": "{}"}, as_of, 0
+
+    monkeypatch.setattr(reader, "_render", render)
+    reader.refresh(notebook, ("full",))
+    assert builds == ["full", "live"]
 
 
 def test_a_saved_snapshot_does_not_bypass_waiting_for_http_host(notebook, monkeypatch):
@@ -317,15 +338,15 @@ def test_a_live_refresh_never_refreshes_an_existing_offline_snapshot(notebook, m
     builds = []
     def render(root, build, as_of=None):
         builds.append(build)
-        texts = {"file.html": "offline"} if build == "full" else {"live.html": "live", "data.json": "{}"}
+        texts = {"file.html": "offline"} if build == "file" else {"live.html": "live"} if build == "live" else {"data.json": "{}"}
         return texts, as_of, 0
     monkeypatch.setattr(reader, "_render", render)
-    reader.refresh(notebook, ["full"])
-    offline = reader.saved(notebook, "full")
+    reader.refresh(notebook, ["file"])
+    offline = reader.saved(notebook, "file")
     (notebook / "pilot.md").write_text("New terms")
     reader.refresh(notebook)
-    assert builds == ["full", "live"]
-    assert reader.saved(notebook, "full") == offline
+    assert builds == ["file", "live", "full"]
+    assert reader.saved(notebook, "file") == offline
 
 
 @pytest.mark.parametrize("active,requested", [("live", "full"), ("full", "live")])
@@ -390,9 +411,9 @@ def test_first_live_render_schedules_an_explicit_snapshot_waiting_on_its_lock(no
     monkeypatch.setattr(reader.subprocess, "Popen", lambda command, **kwargs: spawned.append(command))
     def render(root, build, as_of=None):
         assert build == "live"
-        assert reader._spawn_refresh(root, ["full"])
+        assert reader._spawn_refresh(root, ["file"])
         assert spawned == []  # the first render still owns the lock
-        return {"live.html": "live", "data.json": "{}"}, as_of, 0
+        return {"live.html": "live"}, as_of, 0
     monkeypatch.setattr(reader, "_render", render)
     assert reader.cached_page(notebook, "live.html")[0] == "live"
-    assert len(spawned) == 1 and spawned[0][-1] == "full"
+    assert len(spawned) == 1 and spawned[0][-2:] == ["file", "full"]
