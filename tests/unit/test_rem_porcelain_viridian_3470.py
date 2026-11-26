@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import pytest
 
 from connectonion.rem import reader as rem_reader
 from connectonion.rem.files import Notebook
@@ -62,7 +63,11 @@ def _open_rendered(html_path: Path, width: int = 1440, height: int = 900):
     launch_kwargs: dict[str, object] = {"headless": True}
     if Path("/opt/google/chrome/chrome").exists():
         launch_kwargs["channel"] = "chrome"
-    browser = pw.chromium.launch(**launch_kwargs)
+    try:
+        browser = pw.chromium.launch(**launch_kwargs)
+    except Exception as exc:
+        pw.stop()
+        pytest.skip(f"headless browser unavailable: {exc}")
     ctx = browser.new_context(viewport={"width": width, "height": height}, locale="en-US")
     page = ctx.new_page()
     page.route("http*://**/*", lambda route: route.abort())

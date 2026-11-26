@@ -60,7 +60,11 @@ def _launch_browser():
     kwargs = {"headless": True}
     if Path("/opt/google/chrome/chrome").exists():
         kwargs["channel"] = "chrome"
-    return pw, pw.chromium.launch(**kwargs)
+    try:
+        return pw, pw.chromium.launch(**kwargs)
+    except Exception as exc:
+        pw.stop()
+        pytest.skip(f"headless browser unavailable: {exc}")
 
 
 @pytest.fixture(scope="module")
