@@ -494,7 +494,7 @@ async def _keys(scope, receive, send, root, headers):
     text = lambda name: body.get(name) if isinstance(body, dict) and isinstance(body.get(name), str) else ""  # noqa: E731
     action = scope["path"].rsplit("/", 1)[1]
     operations = {"add": lambda: {"page": keys.add(root, text("service"), text("account"), text("secret"),
-                                                   purpose=text("purpose"), link=text("link"))},
+                                                   purpose=text("purpose"), link=text("link"), notes=text("notes"))},
                   "reveal": lambda: {"secret": keys.reveal(root, text("page"))},
                   "import": _key_import(keys, root, text("source"), text("csv")),
                   # co's own credentials: names and where the file is, never a value (#3305).

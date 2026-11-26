@@ -37,18 +37,47 @@ def slug(service: str, account: str = "") -> str:
     return words
 
 
-def page(service: str, account: str, *, purpose: str = "", link: str = "", created: str = "", key: str) -> str:
+def _is_random_secret(token: str) -> bool:
+    classes = sum(bool(re.search(p, token)) for p in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]"))
+    return classes >= 3 and _entropy(token) >= 3.5
+
+
+_PEM_BLOCK = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)")
+_JWT_TOKEN = re.compile(r"\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]*")
+_RANDOM_TOKEN = re.compile(r"(?<![\w/.:@-])[A-Za-z0-9+/=_!$%*#-]{16,}(?![\w/.:@-])")
+
+
+def _safe_notes(notes: str, *, secret: str = "") -> str:
+    """Keep plain context notes while redacting secret-shaped tokens so no secret enters the notebook."""
+    text = (notes or "").strip()
+    if not text:
+        return ""
+    if secret:
+        text = text.replace(secret, "[redacted]")
+    text = _PEM_BLOCK.sub("[redacted]", text)
+    text = _JWT_TOKEN.sub("[redacted]", text)
+    text = KEY_SHAPES.sub("[redacted]", text)
+    text = _RANDOM_TOKEN.sub(lambda m: "[redacted]" if _is_random_secret(m.group(0)) else m.group(0), text)
+    text = re.sub(r"(?m)^(\s*)#+\s*", r"\1- ", text)
+    return text.strip()
+
+
+def page(service: str, account: str, *, purpose: str = "", link: str = "", created: str = "",
+         notes: str = "", key: str) -> str:
     """The page for one key: its facts and a note on where the value is. Never the value."""
     values = {"Service": service, "Account": account or "Unknown", "Purpose": purpose or "Unknown",
               "Who else has it": "Unknown", "Used in": "Unknown", "Created": created or date.today().isoformat(),
               "Rotated": "Unknown", "Expires": "Unknown", "Link": link or "Unknown",
               "Vault": f"macOS Keychain ({vault.service_name(key)})"}
     facts = "\n".join(f"- {field}: {values[field]}" for field in FIELDS)
-    return (f"# {service}\n\n## Facts\n{facts}\n\n## Notes\nThe secret is in this Mac's Keychain, not in this notebook. "
+    cleaned = _safe_notes(notes)
+    extra = f"{cleaned}\n\n" if cleaned else ""
+    return (f"# {service}\n\n## Facts\n{facts}\n\n## Notes\n{extra}"
+            "The secret is in this Mac's Keychain, not in this notebook. "
             "Copy it from the reader on this Mac.\n")
 
 
-def add(root, service: str, account: str, secret: str, *, purpose: str = "", link: str = "") -> str:
+def add(root, service: str, account: str, secret: str, *, purpose: str = "", link: str = "", notes: str = "") -> str:
     """File one key: the value to the vault first, then its page. Returns the page's record path."""
     service, account = service.strip(), account.strip()
     if not service:
@@ -58,7 +87,8 @@ def add(root, service: str, account: str, secret: str, *, purpose: str = "", lin
     vault.put(key, account, secret)
     book = Notebook(Path(root))
     if not book.path(record).exists():
-        book.write(record, page(service, account, purpose=purpose, link=_link(link), key=key))
+        safe_notes = _safe_notes(notes, secret=secret)
+        book.write(record, page(service, account, purpose=purpose, link=_link(link), notes=safe_notes, key=key))
     return record
 
 
@@ -90,6 +120,7 @@ def import_csv(root, text: str) -> dict:
     where = {kind: _column(header, kind) for kind in COLUMNS}
     if where["service"] is None and where["link"] is None or where["secret"] is None:
         raise RemError("This does not look like a password export: it needs a name or URL column and a password column")
+    vault._supported()
     filed = skipped = 0
     for row in body:
         cell = lambda kind: row[where[kind]].strip() if where[kind] is not None and where[kind] < len(row) else ""  # noqa: E731
@@ -97,7 +128,7 @@ def import_csv(root, text: str) -> dict:
         if not service or not cell("secret"):
             skipped += 1
             continue
-        add(root, service, cell("account"), cell("secret"), link=cell("link"))
+        add(root, service, cell("account"), cell("secret"), link=cell("link"), notes=cell("notes"))
         filed += 1
     return {"filed": filed, "skipped": skipped}
 
@@ -150,7 +181,7 @@ def import_browser(root, browser: str = "chrome") -> dict:
     try:
         logins = chrome_passwords.all_logins(browser)
     except chrome_passwords.ChromeError as error:
-        raise KeyImportError(str(error), "no_data")
+        raise KeyImportError(str(error), getattr(error, "code", "no_data"))
     except macos_keychain.KeychainError as error:
         raise KeyImportError(NO_GUI if error.code == "no_gui" else str(error), error.code)
     return _file_logins(root, logins)
@@ -162,6 +193,7 @@ def import_keychain(root) -> dict:
     A declined or unanswered prompt stops the import there; what was filed stays filed and the reply says so.
     """
     from ..useful_tools import macos_keychain
+    vault._supported()
     _need_prompt()
     try:
         items = macos_keychain.internet_passwords()

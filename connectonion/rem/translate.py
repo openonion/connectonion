@@ -567,15 +567,38 @@ def title_left(record, original: str, translation: str, language: str) -> bool:
     return language_of(words) not in (None, base)
 
 
+PROSE_CATEGORIES = ("people", "orgs", "projects", "decisions", "principles", "knowledge", "skills")
+
+
+def _has_prose_body(text: str) -> bool:
+    return any(line.strip() and not line.startswith(("# ", "Investigation:")) for line in text.splitlines())
+
+
 def readable(root: Path) -> list[str]:
-    """The pages translated at all: not logs (the maps' run records), not the skills catalog's index,
-    not pages held for review, services or duplicate installations (census.listed). Sessions, agenda,
-    knowledge and AI-note pages are read, so they are translated (the night always translated notes)."""
-    from .census import listed, pages
+    """The pages translated at all: not logs (the maps' run records), not keys (vault metadata, #3326),
+    not the skills catalog's index, not unwritten mapped stubs, and not pages held for review, services
+    or duplicate installations (census.listed). Sessions, agenda, knowledge and AI-note pages are read,
+    so they are translated (the night always translated notes)."""
+    from .census import listed, pages, written
     found = pages(root)
-    return [record for record in Notebook(root).list()
-            if record.split("/")[0] != "logs" and record != "skills/catalog/index.md"
-            and (record not in found or listed(found[record]))]
+    notebook = Notebook(root)
+    return [record for record in notebook.list()
+            if record.split("/")[0] not in ("logs", "keys") and record != "skills/catalog/index.md"
+            and (listed(found[record]) and found[record]["written"] if record in found
+                 else written(notebook.read(record)))]
+
+
+def _every_page_records(root: Path) -> list[str]:
+    """Written prose pages counted by the reader's #lang-progress control."""
+    notebook = Notebook(root)
+    records = []
+    for record in readable(root):
+        if "/" not in record:
+            records.append(record)
+            continue
+        if record.split("/")[0] in PROSE_CATEGORIES and _has_prose_body(notebook.read(record)):
+            records.append(record)
+    return records
 
 
 def plan(root: Path, language: str, category: str = "") -> tuple[int, list[str]]:
@@ -625,7 +648,7 @@ def every_page(root: Path, action: str, language: str = "") -> dict:
     cache_key = (key, language, stamp)
     cached_counts = IDLE_COUNTS.get(cache_key)
     if cached_counts is None or monotonic() - cached_counts[0] >= IDLE_COUNTS_TTL:
-        records = readable(root)
+        records = _every_page_records(root)
         cached_counts = (monotonic(), sum(current(root, record, language) for record in records), len(records))
         IDLE_COUNTS.clear()
         IDLE_COUNTS[cache_key] = cached_counts
@@ -658,7 +681,10 @@ def _run_job(root, job):
             return
         claim(root)  # refused, in words, while the CLI is already translating every page
         mine = True
-        total, pending = plan(root, job["language"])
+        pages = _every_page_records(root)
+        allowed = set(pages)
+        pending = [record for record in backlog(root, job["language"], shown=shown_today(root)) if record in allowed]
+        total = len(pages)
         job.update(total=total, done=total - len(pending), state="stopping" if job["stop"].is_set() else "running")
         result = translate_pages(root, job["language"], pending, workers=config["limits"]["workers"],
                                  stop=job["stop"], on_row=counted, floor=quota_floor(root, config))
@@ -686,7 +712,7 @@ def written_pages(root: Path) -> list[str]:
     return [record for record in notebook.list()
             if (record in found and found[record]["category"] != "sessions"
                 and listed(found[record]) and found[record]["written"])
-            or (record.split("/")[0] in ("decisions", "knowledge", "principles") and written(notebook.read(record)))]
+            or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
 
 
 def _waiting_pages(root):

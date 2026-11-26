@@ -286,6 +286,11 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"], agent=entry.get("agent", False))
         if record["category"] in ("decisions", "knowledge", "principles"):
             record["written"] = written(record["text"])
+        if record["category"] in ("people", "orgs", "projects", "decisions", "principles", "knowledge", "skills") and record.get("written"):
+            record["written"] = any(
+                line.strip() and not line.startswith(("# ", "Investigation:"))
+                for line in record["text"].splitlines()
+            )
         if record["category"] == "projects" and not today:
             record["private_project"] = private(record["path"], record["text"])
             # 让 Codex 查 (#2909): the run the owner asked for on this page, followed in place.
@@ -312,7 +317,7 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         for record in records:
             if record["path"] in places:
                 record["queue_place"] = places[record["path"]]
-    owner = owner_record(root)
+    owner = owner_record(root, records)
     organisation_members(records, owner)
     from .org_hierarchy import structure, rollups
     structure(records, owner)
@@ -397,10 +402,15 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
     untranslated_cats = ("people", "orgs", "projects", "decisions", "principles", "knowledge", "skills")
-    written_count = sum(1 for r in records if r.get("written"))
+    listed_prose = lambda r: (  # noqa: E731
+        r.get("written")
+        and r["category"] in untranslated_cats
+        and not (r.get("needs_review") or r.get("service") or r.get("catalog_parent"))
+    )
+    written_count = sum(1 for r in records if listed_prose(r))
     untranslated_count = sum(
         1 for r in records
-        if r.get("written") and r["category"] in untranslated_cats
+        if listed_prose(r)
         and not any(re.match(r"^zh(?:-|$)", tag, re.I) for tag in r.get("translations", {}))
         and not re.match(r"^zh(?:-|$)", r.get("written_in") or "", re.I)
     )
@@ -597,36 +607,60 @@ def _failure_reasons(error: str) -> list[str]:
     return [hint for pattern, hint in patterns if re.search(pattern, error, re.I)]
 
 
-def owner_record(root: Path) -> str:
+_OWNER_HOW_LINE = re.compile(
+    r"(?mi)^\s*(?:[-*+]\s+)?\*?\*?How we know them\*?\*?\s*[:：]\s*\*?\*?"
+    r"(?:This is the (?:notebook |account )?owner's (?:own )?page|Owner's page)\b"
+)
+_OWNER_PROSE = re.compile(
+    r"(?i)\b(?:The user is the (?:account |notebook )?owner"
+    r"|This is the (?:notebook |account )?owner's (?:own )?page)\b"
+)
+
+
+def owner_record(root: Path, records: list[dict] | None = None) -> str:
     """The owner's own page, pinned as "You" at the top of the reader's navigation.
 
-    Reads `.state/map.json` first; when a synced notebook has no map.json yet, falls
-    back to the person page explicitly marked as the owner's page or carrying an
-    owner address so the owner never appears as a counterparty on Today/Waiting.
+    Reads `.state/map.json` first; when a synced or migrated notebook lacks `owner.record`
+    (or points to a merged/missing record), falls back to the person page explicitly marked
+    as the owner's page (ignoring trailing `[6]` citations) or carrying an owner address so
+    the owner never appears as a counterparty on Today/Waiting.
     """
-    from .files import Notebook, read_json, state_path
+    from .files import CITATION, EMAIL, EMAIL_LABELS, Notebook, read_json, state_path
     owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
     record = owner.get("record", "") if isinstance(owner, dict) else ""
-    if record:
-        return record
     book = Notebook(root)
-    people = book.list("people")
+    if record:
+        from .merge import resolve
+        resolved = resolve(root, record)
+        if (records is not None and any(r.get("path") == resolved for r in records)) or book.exists(resolved):
+            return resolved
+    if records is not None:
+        people = [(r["path"], r.get("text", "")) for r in records
+                  if r.get("category") == "people" or str(r.get("path", "")).startswith("people/")]
+    else:
+        people = [(path, book.read(path)) for path in book.list("people")]
     if not people:
-        return ""
-    for path in people:
-        text = book.read(path)
-        if re.search(r"(?mi)^-\s*How we know them\s*[:：]\s*This is the owner's page\b", text) or re.search(
-            r"(?i)\bThe user is the account owner\b", text[:400]
-        ):
+        return record
+    for path, text in people:
+        cleaned = CITATION.sub("", text).replace("’", "'").replace("‘", "'")
+        if _OWNER_HOW_LINE.search(cleaned) or _OWNER_PROSE.search(cleaned.partition("\n## Open threads")[0]):
             return path
     from .store_messages import owner_addresses
     addresses = {addr.casefold() for addr in owner_addresses(root) if addr}
     if addresses:
-        for path in people:
-            text = book.read(path)
+        for path, text in people:
+            own_emails = {
+                addr.casefold()
+                for line in text.splitlines()[:40]
+                if line.strip().lstrip("-*").strip().casefold().startswith(EMAIL_LABELS + ("handles:",))
+                for addr in EMAIL.findall(line)
+            }
+            if own_emails & addresses:
+                return path
+        for path, text in people:
             if any(addr in text.casefold() for addr in addresses):
                 return path
-    return ""
+    return record
 
 
 def _detail_data(full: dict, shell: dict) -> dict:
