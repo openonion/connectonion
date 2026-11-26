@@ -2230,6 +2230,9 @@
   .ov-child-units { display: grid; gap: 10px; margin-top: 12px; }
   .ov-child-units .ov-team { min-width: 0; padding: 12px; overflow-wrap: anywhere; }
   .ov-teams:has(.ov-child-units) { grid-template-columns: minmax(0, 1fr); }
+  .evidence-pdf-frame { width: 100%; height: 480px; border: 1px solid var(--rule); border-radius: var(--r-cell); background: var(--paper); margin-bottom: 12px; box-sizing: border-box; }
+  .evidence-image-preview { max-width: 100%; max-height: 480px; object-fit: contain; border: 1px solid var(--rule); border-radius: var(--r-cell); display: block; margin-bottom: 12px; box-sizing: border-box; }
+  .evidence-structured { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; overflow-x: auto; font: var(--s-ui)/var(--lh-body) var(--mono); }
 </style>
 <style id="today-style">
   /* A link you tap is at least 44px tall (WCAG 2.5.5), however quiet it looks. */
@@ -2519,6 +2522,7 @@
   .cal-grid { position: relative; }
   .cal-axis { position: relative; }
   .cal-hour { position: absolute; right: 8px; transform: translateY(-50%); color: var(--grey); font-size: var(--s-meta); line-height: var(--lh-head); white-space: nowrap; }
+  .cal-hour[style="top:0px"] { transform: none; }
   .cal-now-word { color: var(--ink); font-weight: var(--w-bold); right: 4px; }
   .cal-rule { position: absolute; left: 72px; right: 0; border-top: var(--hair) solid var(--rule); pointer-events: none; }
   .cal-rule.half { opacity: .45; }
@@ -4190,7 +4194,13 @@
     .nb { flex-direction: column; align-items: stretch; gap: 6px; }
     .faces { flex-direction: row; align-items: center; gap: 8px; padding: 4px 0 2px; border-left: 0; border-top: var(--hair) solid var(--rule); max-width: none; }
     .count-line .count-words { font-size: var(--s-ui); white-space: nowrap; }
-    .frow { flex: 1; justify-content: flex-start; }
+    .faces { min-width: 0; max-width: 100%; }
+    .frow { flex: 1; min-width: 0; max-width: 100%; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+    .frow::-webkit-scrollbar { display: none; }
+    .frow .deal { flex: 0 0 auto; }
+    #main .stretches.stacked .stretch > summary { display: grid; grid-template-columns: auto minmax(0, 1fr); overflow: visible; }
+    .stretches.stacked .stretch-what { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+    .stretches.stacked .stretch-what .clause { white-space: normal; }
     .tgrid { display: block; margin-top: 10px; }
     .tgrid .tnext { display: none; }
     .tnext-line { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin: 8px 0 0; padding: 0 12px; border: 0; border-radius: var(--radius);
@@ -11761,6 +11771,7 @@ function drawTranslateAll(box) {
 // arrived keeps asking, waiting longer each time, so the line is never left saying it is running.
 async function translateAllSend(action) {
   clearTimeout(translateAllPoll);
+  translateAllPoll = null;
   let response = null;
   try {
     response = await fetch("/rem/translate-all", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -11775,11 +11786,9 @@ async function translateAllSend(action) {
   else if (response) { translateAllJob = await response.json(); translateAllWait = 1500; }
   for (const box of document.querySelectorAll(".translate-all")) drawTranslateAll(box);
   renderLangProgress();
-  if (translateAllJob.offline || translateAllJob.retry) {
-    translateAllWait = Math.min(translateAllWait * 2, 30000);
+  if (["starting", "running", "stopping"].includes(translateAllJob.state)) {
+    translateAllWait = translateAllJob.offline || translateAllJob.retry ? Math.min(translateAllWait * 2, 30000) : 1500;
     translateAllPoll = setTimeout(() => translateAllSend("status"), translateAllWait);
-  } else if (["starting", "running", "stopping"].includes(translateAllJob.state)) {
-    translateAllPoll = setTimeout(() => translateAllSend("status"), 1500);
   }
 }
 
@@ -14567,7 +14576,7 @@ function agSizeWeek() {
   scroll.style.height = height + "px";
   // Whatever sits under the calendar (the page's own foot) comes off the grid, so the page itself has nothing to scroll.
   scroll.style.height = Math.max(240, height - Math.max(0, document.documentElement.scrollHeight - innerHeight)) + "px";
-  scroll.scrollTop = Number(scroll.dataset.first) * AG_HOUR / 60 - 10;
+  scroll.scrollTop = Number(scroll.dataset.first) * AG_HOUR / 60 - 24;
 }
 function agMonthFirst() { return (agendaState.month || agToday().slice(0, 7)) + "-01"; }
 function agMonthStep(first, n) {
@@ -14805,7 +14814,7 @@ function tcalSuggestion(item) {
 }
 // Today's grids scroll inside a fixed height, opened at the first hour that matters (agFirstMinute).
 function tcalScroll() {
-  for (const scroll of document.querySelectorAll(".today-cal .cal-scroll")) scroll.scrollTop = Number(scroll.dataset.first) * AG_HOUR / 60 - 10;
+  for (const scroll of document.querySelectorAll(".today-cal .cal-scroll")) scroll.scrollTop = Number(scroll.dataset.first) * AG_HOUR / 60 - 24;
 }
 // The forecast the night saved for these days (weather.py; the page never asks anyone). A day says its weather
 // in words on hover and in its list; the small picture and "22° / 14°" are the second cue. A day with no
@@ -17724,11 +17733,17 @@ function recordContext(r) {
   }
   // Enrich (#2315): the documents this page cites, each one click from its file.
   const documents = sourceList(r).map(source => [source, (REM.source_context || {})[sourceId(source.text, source.plain)]])
-    .filter(([, c]) => c?.source === "attachment" && c.file);
+    .filter(([, c]) => c?.source === "attachment");
   if (documents.length) out.appendChild(el("div", { class: "focus-section documents private" }, [
     el("h2", { text: t("Documents") }),
     el("ul", { class: "document-list" }, documents.map(([source, c]) => el("li", {}, [
-      el("a", { href: c.file, target: "_blank", rel: "noopener", text: c.filename }),
+      (() => {
+        const url = c.url || c.file;
+        if (url) return el("a", { href: url, target: "_blank", rel: "noopener", text: c.filename });
+        const button = el("button", { type: "button", class: "evidence-open-file", text: c.filename });
+        button.onclick = () => openEvidence(r, source.n, button, { fromList: true });
+        return button;
+      })(),
       el("span", { html: " " + citeChip(source.n, r.path, false, true) })])))]));
   const conversations = [...new Set(sourceList(r).map(source => {
     const id = sourceId(source.text, source.plain);
@@ -20459,19 +20474,34 @@ function evidencePanel() {
   document.body.appendChild(el("div", { id: "evidence-layer", class: "evidence-layer", hidden: "" }, [backdrop, panel]));
   return panel;
 }
+function attachmentPreview(context) {
+  const url = context.url || context.file || "", name = context.filename || t("the file");
+  if (!/^https?:$/.test(location.protocol) || !url.startsWith("/rem/attachment?")) return null;
+  if (context.preview_kind === "pdf" || /\.pdf$/i.test(name)) {
+    return el("iframe", { class: "evidence-pdf-frame", src: url, title: name });
+  }
+  if (context.preview_kind === "image" || /\.(png|jpe?g|gif|webp)$/i.test(name)) {
+    return el("img", { class: "evidence-image-preview", src: url, alt: name });
+  }
+  return null;
+}
 function evidenceOriginal(context, quote) {
-  const mail = /^(gmail|outlook)$/.test(context.source);
+  const mail = /^(gmail|outlook)$/.test(context.source), attachment = context.source === "attachment";
+  const structured = attachment && (/\.(xlsx|csv|docx|pptx)$/i.test(context.filename || "")
+    || /Sheet:| \| /.test(context.excerpt || ""));
+  const original = structured ? el("pre", { class: "evidence-structured", html: quote.innerHTML }) : quote;
   const revision = /:([0-9a-f]{40,64}):(.+)$/.exec(context.origin || "");
   const origin = revision ? revision[2] + " @ " + revision[1].slice(0, 8) : context.origin?.split("/").at(-1) || "";
   return el("div", { class: "evidence-original private" }, [
     ...(!mail ? [el("p", { class: "evidence-meta", text: /^skill-(source|reference)$/.test(context.source) ? t("Instruction excerpt") : [sourceChannel(context.source), sourceSender(context), context.time && fmtTime(context.time)].filter(Boolean).join(" · ") })] : []),
-    ...(context.excerpt?.length > 2000 ? [sourceFind(quote.textContent, quote)] : []),
-    ...(mail ? [mailMessage(context, quote)] : [quote]),
+    ...(context.excerpt?.length > 2000 ? [sourceFind(original.textContent, original)] : []),
+    ...(attachment ? [attachmentPreview(context)] : []),
+    ...(mail ? [mailMessage(context, quote)] : attachment && !context.excerpt ? [] : [original]),
     ...(origin ? [el("p", { class: "evidence-meta", text: origin })] : []),
     ...(revision ? [el("details", { class: "evidence-source-id" }, [el("summary", { text: t("Full source ID") }), el("code", { text: context.origin })])] : []),
     el("p", { class: "evidence-meta", text: [context.captured_at ? t(mail ? "Retrieved" : "Captured") + " " + fmtTime(context.captured_at) : "",
       context.retained_at && !context.captured_at ? t("Archived") + " " + fmtTime(context.retained_at) : "", context.body_format].filter(Boolean).join(" · ") }),
-    ...(context.file ? [el("a", { class: "evidence-open-file", href: context.file, target: "_blank", rel: "noopener", text: t("Open {name} →", { name: context.filename || t("the file") }) })] : []),
+    ...(context.url || context.file ? [el("a", { class: "evidence-open-file", href: context.url || context.file, target: "_blank", rel: "noopener", text: `${t("Open")} ${context.filename || t("the file")} →` })] : []),
     ...(context.mapped_session_folder ? [el("p", { class: "evidence-meta", text: t("Mapped project session folder") + ": " + context.mapped_session_folder + " · " + t("Source routing only; does not verify completion") })] : []),
     ...(context.input_scope ? [el("p", { class: "evidence-input-scope", text: inputScopeText(context.input_scope) })] : []),
     ...(context.truncated ? [el("p", { class: "evidence-meta", text: t("This archived excerpt is truncated; find searches only the text shown.") })] : [])]);
