@@ -210,9 +210,18 @@ reply. Somebody quoting a line and writing "this one is wrong" gives you three
 words and a pronoun; the quote is the noun.
 
 ```json
+"text": "this one is wrong",
+"reply_to": "↩ replying to you: \"deploy 41 is live\" (id om_7a1c)",
 "quoted": {"id":"om_7a1c","sender":"on_9d4e","text":"deploy 41 is live",
            "kind":"text","from_me":true}
 ```
+
+**Check the reply target before you act on a short reply.** "Yes please", "the
+first one" and "no, test it yourself" mean nothing on their own. `reply_to`
+sits right after `text` in `receive`, `log` and `consume` and says which
+message it is (`you` when it is one of yours), so read the two together.
+A WhatsApp reaction or edit gets the same line (`↩ reacting to`, `↩ editing`).
+A message that quotes nothing has no `reply_to` and is unchanged.
 
 `from_me` is the field that changes what you do. **Replying to the bot and
 replying to somebody else in the same group are different events**, and

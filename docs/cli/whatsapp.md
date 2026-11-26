@@ -126,6 +126,20 @@ because they behave the same here.
 peer's JID (`447700900123@s.whatsapp.net`) for a direct one, so `reply` lands
 where the question was asked either way.
 
+
+### Which message a reply answers
+
+A received reply carries `quoted` (id, sender, text, kind, `from_me`) and,
+right after its `text`, a one-line `reply_to`:
+
+```json
+{"text":"Yes please","reply_to":"↩ replying to you: \"Cover for the launch video, v2\" (id 3EB0COVER)", …}
+```
+
+A reaction says `↩ reacting to …` with the text of the message it is on, taken
+from your own log. `co whatsapp log` adds the line to replies stored before it
+existed. Read `text` and `reply_to` together before acting on a short reply.
+
 ## Photos, documents and voice notes
 
 A media message arrives with `kind` set to what it is — `image`, `video`,

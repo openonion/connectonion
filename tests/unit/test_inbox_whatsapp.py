@@ -1560,3 +1560,32 @@ def test_a_millisecond_timestamp_is_the_real_time_not_now():
     assert _iso(1756808267000) == "2025-09-02T10:17:47Z"
     assert _iso(1756808267) == "2025-09-02T10:17:47Z"
     assert _iso(SimpleNamespace(seconds=1756808267)) == "2025-09-02T10:17:47Z"
+
+
+# ---- what a reaction points at (#3226) ---------------------------------------
+
+def test_a_reaction_says_which_message_it_is_on_and_what_that_said(sdk):
+    # A 👍 on one of two videos means nothing without the message it is on;
+    # its key names that message, and the log has what the message said.
+    bot = reacting_bot([])
+    inbox = Inbox("whatsapp")
+    inbox.deliver(Message(id="3EB0COVER", chat=f"1203630000000@{GROUP_SERVER}", sender=f"{PEER}@{USER_SERVER}",
+                          text="Cover for the launch video, v2", at="2026-11-17T08:00:00Z"))
+    thumbs = variant("reactionMessage", text="👍")
+    thumbs.Info.ID = "3EB0THUMB"
+    thumbs.Message.reactionMessage = SimpleNamespace(
+        key=SimpleNamespace(ID="3EB0COVER", fromMe=False, participant=f"{PEER}@{USER_SERVER}"))
+
+    bot.take(inbox, bot.to_message(thumbs))
+
+    record = inbox.lookup("3EB0THUMB").to_dict()
+    assert record["quoted"]["id"] == "3EB0COVER"
+    assert record["reply_to"] == f'↩ reacting to {PEER}: "Cover for the launch video, v2" (id 3EB0COVER)'
+
+
+def test_a_reaction_with_no_key_is_recorded_as_before(sdk):
+    bot = linked(WhatsApp(), ids=(OWN, OWN_LID))
+
+    message = bot.to_message(variant("reactionMessage", text="👍"))
+
+    assert message.quoted is None and "reply_to" not in message.to_dict()
