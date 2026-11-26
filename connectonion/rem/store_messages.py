@@ -136,3 +136,122 @@ def body(root: Path, row: dict):
     """The text of one message, read from its file; None when it was never archived."""
     saved = archived_message(root, row)
     return saved.get("text" if row.get("body_line") else "body") if saved else None
+
+
+# ---- extracted text caches ---------------------------------------------------------------------------
+
+def _cache_inventory(db, root: Path, kind: str) -> tuple[dict, dict]:
+    """Reuse directory listings; stat known files to notice in-place edits as well as renames."""
+    import stat
+
+    saved = db.execute("select value from meta where key = ?", (f"cache:{kind}",)).fetchone()
+    previous = json.loads(saved[0]) if saved else {"directories": {}, "files": {}}
+    directories, files = {}, {}
+    base = state_path(root, kind)
+    pending = [(base, base.lstat())] if base.exists() else []
+    while pending:
+        path, status = pending.pop()
+        if not stat.S_ISDIR(status.st_mode):
+            continue
+        relative = path.relative_to(base).as_posix()
+        old = previous["directories"].get(relative)
+        children = old[1] if old and old[0] == status.st_mtime_ns else sorted(p.name for p in path.iterdir())
+        directories[relative] = [status.st_mtime_ns, children]
+        for name in children:
+            child = path / name
+            info = child.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                pending.append((child, info))
+            elif stat.S_ISREG(info.st_mode) and not name.startswith("."):
+                files[child.relative_to(base).as_posix()] = [info.st_mtime_ns, info.st_size]
+    return previous, {"directories": directories, "files": files}
+
+
+def _attachment_row(root: Path, relative: str, stamp: list) -> dict | None:
+    import mimetypes
+    from .attachments import extract_text
+
+    parts = Path(relative).parts
+    if len(parts) != 3:
+        return None
+    provider, message, filename = parts
+    path = state_path(root, f"attachments/{relative}")
+    return {"source": f"{provider}:{message}:{filename}", "provider": provider, "message_id": message,
+            "filename": filename, "rel_path": path.relative_to(root).as_posix(),
+            "mime_type": mimetypes.guess_type(filename)[0] or "application/octet-stream",
+            "size": stamp[1], "mtime_ns": stamp[0], "extracted_text": extract_text(path, limit=20_000)}
+
+
+def _translation_row(root: Path, relative: str, stamp: list) -> dict | None:
+    from .config import LANGUAGE
+    from .translate import cached
+
+    language, _, record = relative.partition("/")
+    if not LANGUAGE.fullmatch(language) or not record.endswith(".md") or not (root / record).is_file():
+        return None
+    text = cached(root, record, language)
+    if text is None:
+        return None
+    return {"record": record, "lang": language, "mtime_ns": stamp[0], "text": text}
+
+
+def _research_row(root: Path, relative: str, stamp: list) -> dict | None:
+    from .store_build import PRIVATE
+
+    if len(Path(relative).parts) != 2 or not relative.endswith(".json"):
+        return None
+    path = state_path(root, f"research/{relative}")
+    item = read_json(path, {})
+    if not item.get("source") or not isinstance(item.get("text"), str):
+        return None
+    return {"source": item["source"], "capture_file": path.relative_to(root).as_posix(),
+            "timestamp": item.get("timestamp", ""), "title": item.get("title", ""),
+            "mtime_ns": stamp[0], "is_private": int(bool(PRIVATE.search(item["text"]))), "text": item["text"]}
+
+
+def _delete_cached_file(db, kind: str, relative: str) -> None:
+    if kind == "translations":
+        language, _, record = relative.partition("/")
+        db.execute("delete from translations_cache where record = ? and lang = ?", (record, language))
+    elif kind == "attachments":
+        db.execute("delete from attachments where rel_path = ?", (f".state/attachments/{relative}",))
+    else:
+        db.execute("delete from research_cache where capture_file = ?", (f".state/research/{relative}",))
+
+
+def _sync_cache(db, root: Path, kind: str, table: str, builder) -> bool:
+    previous, current = _cache_inventory(db, root, kind)
+    before, found = previous["files"], current["files"]
+    changed = {path for path, stamp in found.items() if before.get(path) != stamp}
+    if kind == "translations":
+        from .files import CATEGORIES, Notebook
+        book, pages = Notebook(root), {}
+        for record in {path.partition("/")[2] for path in found}:
+            if not record.endswith(".md") or record.split("/", 1)[0] not in CATEGORIES:
+                continue
+            original = book.path(record)
+            info = original.stat() if original.is_file() else None
+            pages[record] = [info.st_mtime_ns, info.st_size] if info else None
+        current["pages"] = pages
+        changed.update(path for path in found if previous.get("pages", {}).get(path.partition("/")[2])
+                       != current["pages"].get(path.partition("/")[2]))
+    if current == previous:
+        return False
+    with db:
+        db.execute("begin immediate")
+        for relative in (before.keys() - found.keys()) | changed:
+            _delete_cached_file(db, kind, relative)
+        for relative in sorted(changed):
+            row = builder(root, relative, found[relative])
+            if row is not None:
+                insert(db, table, [row])
+        db.execute("insert or replace into meta values (?, ?)", (f"cache:{kind}", dumps(current)))
+    return True
+
+
+def sync_caches(db, root: Path) -> list[str]:
+    """Extract only new/changed files; vanished or invalidated originals lose their cache row."""
+    caches = (("attachments", "attachments", _attachment_row),
+              ("translations", "translations_cache", _translation_row),
+              ("research", "research_cache", _research_row))
+    return [kind for kind, table, builder in caches if _sync_cache(db, root, kind, table, builder)]

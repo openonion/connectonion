@@ -17,27 +17,59 @@ from pathlib import Path
 
 from .files import CATEGORIES, CITATION, EMAIL, read_json, state_path
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 SCHEMA = """
 create table meta (key text primary key, value text);
 create table sources (path text primary key, mtime_ns integer, size integer, grp text);
-create table people (record text primary key, name text, emails text, phone text, company text, role text,
+create table people (record text primary key references records(record) on delete cascade, name text, emails text, phone text, company text, role text,
   location text, timezone text, linkedin text, website text, how_known text, language text,
   first_contact text, last_contact text, mails integer, sent integer, received integer,
   open_threads integer, written integer, listed integer, held integer, service integer,
   classification text, facts text);
-create table orgs (record text primary key, name text, domain text, domains text, people integer,
+create table orgs (record text primary key references records(record) on delete cascade, name text, domain text, domains text, people integer,
   last_contact text, written integer, listed integer);
-create table projects (record text primary key, name text, paths text, sessions integer, first text,
+create table projects (record text primary key references records(record) on delete cascade, name text, paths text, sessions integer, first text,
   last text, written integer, listed integer);
 create table records (record text primary key, category text, title text, public_title text,
   summary text, public_summary text, privacy text,
   written integer, listed integer, held integer, open_threads integer, updated_at text,
-  tags text, facts text, public_facts text);
-create virtual table records_fts using fts5(record unindexed, category unindexed, title, summary, public_body);
+  tags text, facts text, public_facts text, public_body text);
+create virtual table if not exists records_fts using fts5(
+  record, title, summary, public_body, content='records', content_rowid='rowid', tokenize='unicode61');
+create trigger records_ai after insert on records begin
+  insert into records_fts(rowid, record, title, summary, public_body)
+  values (new.rowid, new.record, new.title, new.summary, new.public_body);
+end;
+create trigger records_ad after delete on records begin
+  insert into records_fts(records_fts, rowid, record, title, summary, public_body)
+  values ('delete', old.rowid, old.record, old.title, old.summary, old.public_body);
+end;
+create trigger records_au after update on records begin
+  insert into records_fts(records_fts, rowid, record, title, summary, public_body)
+  values ('delete', old.rowid, old.record, old.title, old.summary, old.public_body);
+  insert into records_fts(rowid, record, title, summary, public_body)
+  values (new.rowid, new.record, new.title, new.summary, new.public_body);
+end;
+create table attachments (
+  source text primary key, provider text not null, message_id text not null,
+  filename text not null, rel_path text not null, mime_type text not null,
+  size integer not null, mtime_ns integer not null, extracted_text text not null);
+create index attachments_message on attachments(provider, message_id);
+create table translations_cache (
+  record text not null, lang text not null, mtime_ns integer not null, text text not null,
+  primary key (record, lang));
+create table research_cache (
+  source text not null, capture_file text not null, timestamp text not null, title text not null,
+  mtime_ns integer not null, is_private integer not null, text text not null,
+  primary key (source, capture_file));
+create index research_source on research_cache(source);
+create table links (
+  record text references records(record) on delete cascade, target text, count integer,
+  primary key (record, target));
 create table messages (id text primary key, source text, thread text, sender text, recipients text,
   time text, subject text, body_path text, body_line integer);
-create table edges (kind text, person text, other text, count integer, last_contact text, via text,
+create table edges (kind text, person text references people(record) on delete cascade,
+  other text references records(record) on delete cascade, count integer, last_contact text, via text,
   primary key (kind, person, other));
 create table runs (id text primary key, record text, stage text, outcome text, model text, started_at text,
   finished_at text, seconds real, input_tokens integer, cached_input_tokens integer, output_tokens integer);
@@ -289,8 +321,9 @@ def insert(db, table: str, rows: list) -> None:
     if rows:
         names = list(rows[0])
         db.executemany(
-            f"insert or replace into {table} ({', '.join(names)}) "
-            f"values ({', '.join(':' + name for name in names)})",
+            f"insert into {table} ({', '.join(names)}) "
+            f"values ({', '.join(':' + name for name in names)}) "
+            "on conflict do update set " + ", ".join(f"{name}=excluded.{name}" for name in names),
             rows,
         )
 
@@ -346,7 +379,7 @@ def _record_row(root: Path, record: str, text: str, entry: dict | None, held_set
         "category": category,
         "title": raw_title,
         "public_title": pub_title,
-        "summary": _summary(text),
+        "summary": pub_summary,
         "public_summary": pub_summary,
         "privacy": privacy,
         "written": w,
@@ -357,19 +390,9 @@ def _record_row(root: Path, record: str, text: str, entry: dict | None, held_set
         "tags": dumps(page_tags(text)),
         "facts": dumps(facts(text)),
         "public_facts": dumps({} if privacy == "private_page" else facts(public_text)),
+        "public_body": public_text,
     }
     return row, public_text
-
-
-def _links(texts: dict, people: dict, projects: dict) -> dict:
-    """{(person, project): links} from either page to the other."""
-    found = collections.Counter()
-    for record, text in texts.items():
-        for target in LINK.findall(text):
-            pair = (record, target) if record in people else (target, record)
-            if pair[0] in people and pair[1] in projects:
-                found[pair] += 1
-    return found
 
 
 def _org(common: dict, row: dict, people: dict) -> dict:
@@ -414,19 +437,34 @@ def _edges(rows: dict, orgs: dict, people: dict, links: dict) -> list:
     ]
 
 
-def _sync_fts_for_records(db, public_bodies: dict[str, str]) -> None:
-    if not public_bodies:
-        return
-    placeholders = ", ".join("?" for _ in public_bodies)
-    keys = list(public_bodies)
-    rows = db.execute(
-        f"select rowid, record, category, public_title, public_summary from records where record in ({placeholders})",
-        keys,
-    ).fetchall()
-    db.executemany(
-        "insert into records_fts (rowid, record, category, title, summary, public_body) values (?, ?, ?, ?, ?, ?)",
-        [(rowid, rec, cat, pub_title, pub_sum, public_bodies[rec]) for rowid, rec, cat, pub_title, pub_sum in rows],
-    )
+def reconcile(db, table: str, rows: list[dict], keys=("record",)) -> None:
+    """Write only changed rows, preserving rowids and foreign-key dependents."""
+    cursor = db.execute(f"select * from {table}")
+    names = [column[0] for column in cursor.description]
+    existing = {tuple(row[names.index(key)] for key in keys): dict(zip(names, row)) for row in cursor}
+    wanted = {tuple(row[key] for key in keys): row for row in rows}
+    where = " and ".join(f"{key} = ?" for key in keys)
+    db.executemany(f"delete from {table} where {where}", existing.keys() - wanted.keys())
+    insert(db, table, [row for key, row in wanted.items() if existing.get(key) != row])
+
+
+def _page_links(record: str, text: str) -> list[dict]:
+    return [{"record": record, "target": target, "count": count}
+            for target, count in collections.Counter(LINK.findall(text)).items()]
+
+
+def _sync_edges(db, root: Path) -> None:
+    people = {row[0]: dict(zip(("mails", "last_contact"), row[1:]))
+              for row in db.execute("select record, mails, last_contact from people")}
+    projects = {row[0] for row in db.execute("select record from projects")}
+    orgs = {row[0] for row in db.execute("select record from orgs")}
+    links = collections.Counter()
+    for record, target, count in db.execute("select record, target, count from links"):
+        pair = (record, target) if record in people else (target, record)
+        if pair[0] in people and pair[1] in projects:
+            links[pair] += count
+    rows = {row["record"]: row for row in map_state(root).get("orgs", []) if row.get("record")}
+    reconcile(db, "edges", _edges(rows, orgs, people, links), ("kind", "person", "other"))
 
 
 def build_pages(db, root: Path) -> None:
@@ -467,33 +505,23 @@ def build_pages(db, root: Path) -> None:
                 if category == "orgs"
                 else _project(common, row)
             )
-        crm_texts = {r: texts[r] for r in census}
-        links = _links(crm_texts, tables["people"], tables["projects"])
-        edge_rows = _edges(rows["orgs"], tables["orgs"], tables["people"], links)
-        for table, found in tables.items():
-            db.execute(f"delete from {table}")
-            insert(db, table, list(found.values()))
-        db.execute("delete from edges")
-        insert(db, "edges", edge_rows)
-
         record_rows = []
-        public_bodies: dict[str, str] = {}
         for record in all_records:
-            r_row, pub_body = _record_row(root, record, texts[record], census_all.get(record), held_set)
-            record_rows.append(r_row)
-            public_bodies[record] = pub_body
-        db.execute("delete from records")
-        db.execute("delete from records_fts")
-        insert(db, "records", record_rows)
-        _sync_fts_for_records(db, public_bodies)
+            row, _ = _record_row(root, record, texts[record], census_all.get(record), held_set)
+            record_rows.append(row)
+        reconcile(db, "records", record_rows)
+        for table, found in tables.items():
+            reconcile(db, table, list(found.values()))
+        reconcile(db, "links", [row for record, text in texts.items() for row in _page_links(record, text)],
+                  ("record", "target"))
+        _sync_edges(db, root)
 
 
 def sync_pages(db, root: Path, known_group: dict, found_group: dict, *, fresh: bool = False) -> None:
     """Update page tables incrementally when leaf Markdown files were added, edited, or deleted.
 
-    Falls back to `build_pages` when `fresh`, when `.state/map.json` changed, or when `people/`,
-    `orgs/`, or `skills/` pages changed (since org rollups, assistant classification, and catalog
-    parent dedup join across sibling pages).
+    Joined census changes recompute derived rows, then reconcile only differences.
+    Independent leaf edits read only those files; SQLite triggers maintain FTS.
     """
     state_keys = {".state/map.json"}
     removed = [p for p in (set(known_group) - set(found_group)) if p not in state_keys]
@@ -506,49 +534,25 @@ def sync_pages(db, root: Path, known_group: dict, found_group: dict, *, fresh: b
         return
 
     from .census import written as is_written
-    from .files import Notebook, RemError
+    from .files import Notebook
     from .map import needs_review
 
     notebook, state, held_set = Notebook(root), map_state(root), needs_review(root)
     project_rows = {row["record"]: row for row in state.get("projects", []) if row.get("record")}
-    existing_people = {r[0] for r in db.execute("select record from people")}
     for gone in removed:
-        db.execute("delete from records_fts where rowid in (select rowid from records where record = ?)", (gone,))
         db.execute("delete from records where record = ?", (gone,))
-
-    record_rows, proj_upserts = [], []
-    public_bodies: dict[str, str] = {}
     for record in changed:
-        try:
-            text = notebook.read(record)
-        except RemError:
-            continue
+        text = notebook.read(record)
         category = record.split("/", 1)[0]
         entry = None
         if category == "projects":
-            w = is_written(text)
-            h = record in held_set
+            w, h = is_written(text), record in held_set
             entry = {"written": w, "listed": not h, "held": h}
+        row, _ = _record_row(root, record, text, entry, held_set)
+        insert(db, "records", [row])
+        if category == "projects":
             common = {"record": record, "name": title(text, record), "written": w, "listed": not h}
-            proj_upserts.append(_project(common, project_rows.get(record, {})))
-            db.execute("delete from edges where kind = 'project' and other = ?", (record,))
-            edge_counts = collections.Counter(
-                target for target in LINK.findall(text) if target in existing_people
-            )
-            if edge_counts:
-                insert(
-                    db,
-                    "edges",
-                    [
-                        {"kind": "project", "person": p, "other": record, "count": count, "last_contact": "", "via": "page link"}
-                        for p, count in sorted(edge_counts.items())
-                    ],
-                )
-        db.execute("delete from records_fts where rowid in (select rowid from records where record = ?)", (record,))
-        r_row, pub_body = _record_row(root, record, text, entry, held_set)
-        record_rows.append(r_row)
-        public_bodies[record] = pub_body
-
-    insert(db, "projects", proj_upserts)
-    insert(db, "records", record_rows)
-    _sync_fts_for_records(db, public_bodies)
+            insert(db, "projects", [_project(common, project_rows.get(record, {}))])
+        db.execute("delete from links where record = ?", (record,))
+        insert(db, "links", _page_links(record, text))
+    _sync_edges(db, root)

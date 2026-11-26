@@ -1,139 +1,114 @@
-# co rem store: one SQLite index beside the pages (#2067, step 1)
+# co rem store: SQLite v3
 
-Status: step 1, proposed for 1.9.0a9 — the index is built after every map and
-sync, `co rem list people --table` reads it, and the JSON files stay
-authoritative. Nothing else reads the index yet.
+`.state/rem.db` is the derived index behind REM's record queries, people table,
+conversations and reader search. Markdown pages and captured originals remain
+authoritative: deleting the database and running `co rem sync` rebuilds it.
+The store never edits a page or makes a network request.
 
-## Why
+`SCHEMA_VERSION = "3"` is a clean-cut rebuild. Older schemas, corrupt databases
+and databases without incremental auto-vacuum are recreated from their inputs;
+there is no legacy-schema compatibility layer.
 
-The owner asked (2026-10-02): when `init` builds the map we write JSON files;
-should it be SQLite instead? Three views are waiting on structured data:
+## Storage and connections
 
-- **People as a CRM table** (#2064): email, company, role, phone, last
-  contact, mails and what is open, one row per person, sortable and
-  filterable. Today a screen gets those by re-reading every page and every
-  JSON file, and each screen did it its own way (the census exists because
-  People was 76 on one screen and 82 on another).
-- **Conversations as chat history** (#2066): a mail thread or a coding
-  session opened as messages in order. Today the raw material is spread over
-  `source-inventory.jsonl`, one JSON file per mail body and a JSONL per
-  project; nothing addresses a message by id.
-- **The map at a glance** (#2066): who works with whom around each project,
-  which needs edges with counts and dates, not prose.
+The database is created with mode `0600` inside `.state/`. Its WAL and shared
+memory files inherit that mode. Every writer enables:
 
-One file the views can query answers all three, and gives the raw material
-an id a page can cite.
+```sql
+PRAGMA auto_vacuum = INCREMENTAL;
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA foreign_keys = ON;
+```
 
-## What stays files
+Incremental auto-vacuum is configured before creating any tables on a new file.
+A matching schema with the wrong on-disk auto-vacuum setting is also rebuilt.
+WAL and auto-vacuum persist in the file; synchronous and foreign-key settings
+are applied on each writer connection. Plain external SQLite connections must
+enable their own foreign-key enforcement.
 
-- **The markdown pages are the product.** Readable, diffable, what agents and
-  the owner read and edit. The store never writes a page.
-- **Evidence files for the model** (`.state/evidence/`): the investigation
-  hands a model files, and a file is what a model reads well.
-- **Mail bodies** (`.state/mail/messages/<provider>/<sha256>.json`) and
-  **session messages** (`.state/projects/<page>/messages.jsonl`). The store
-  holds where each body is (`body_path`, relative to `.state`, and `body_line` for a JSONL), not the body. The
-  thread view loads bodies on demand, so the index stays small. Investigation
-  also keeps a private parsed session window in `.state/session-windows/` to
-  avoid rereading unchanged transcripts across CLI runs; see [REM](rem.md).
-- **All the JSON** (`map.json`, `source-inventory.jsonl`, `runs/*.json`,
-  `aliases.json`, `tidy.json`, `archive.json`) stays authoritative in this
-  step. The store is a derived index: delete it and the next map or sync
-  builds it again from the same files.
+After a changed build or cache sync, a freelist above 64 pages triggers
+incremental vacuum until the free pages are reclaimed. Pages may remain partly
+occupied, so this bounds the freelist rather than guaranteeing a fixed file size.
+Readers use `mode=ro`, open no maintenance lock, and never create a database.
+WAL lets them keep a consistent snapshot while the writer commits.
 
-## The file
+## Indexed data
 
-`.state/rem.db`, mode `0600` inside the `0700` `.state` directory. SQLite
-makes `-wal` and `-shm` with the database's own mode. It is never synced,
-uploaded, or copied into a page or a deployment, like everything in
-`.state`. Python's stdlib `sqlite3`; no new dependency.
+| Table | Contents |
+|---|---|
+| `meta` | Schema version, build time, cache directory listings and file stamps |
+| `sources` | Input file `(mtime_ns, size)` and build group |
+| `records` | Record path, category, titles, public summary/body, privacy, census flags, dates, tags and facts |
+| `records_fts` | External-content FTS5 index over `records`; no duplicate content table |
+| `people` | CRM facts, addresses, company, role, contact dates and mapped mail counts |
+| `orgs` | Domains, people count and latest member contact |
+| `projects` | Paths, session counts and activity dates |
+| `links` | Per-page link counts used to maintain person–project relationships |
+| `edges` | Person–organisation and person–project relationships |
+| `messages` | Mail/session identifiers, participants, dates and body locations |
+| `runs` | Run outcome, timing, model and token usage |
+| `attachments` | Source ID, provider/message, filename, relative path, MIME type, size, mtime and extracted text |
+| `translations_cache` | Current translation text keyed by `(record, lang)`, with file mtime |
+| `research_cache` | Dated capture text keyed by `(source, capture_file)`, title, mtime and privacy flag |
 
-## Schema (version 2)
+`records` stores public body text once. Public text omits personal/sensitive
+passages and leaves private-page bodies empty. Original Markdown remains the
+source for an authorised full-page read. JSON columns return as decoded values.
+`rel_path` and `capture_file` are relative to the notebook root, including `.state/`.
 
-| table | one row per | columns |
-|---|---|---|
-| `meta` | key | `key`, `value` — `schema_version`, `built_at` |
-| `sources` | input file | `path`, `mtime_ns`, `size`, `grp` — what the last build read |
-| `records` | every notebook page | `record`, `category`, `title`, `public_title`, `summary`, `public_summary`, `privacy`, `written`, `listed`, `held`, `open_threads`, `updated_at`, `tags` (JSON), `facts` (JSON), `public_facts` (JSON) |
-| `records_fts` | full-text search index | FTS5 (`rowid`-linked to `records`) over `(record, category, title, summary, public_body)` |
-| `people` | person page | `record`, `name`, `emails` (JSON list), `phone`, `company`, `role`, `location`, `timezone`, `linkedin`, `website`, `how_known`, `language`, `first_contact`, `last_contact`, `mails`, `sent`, `received`, `open_threads`, `written`, `listed`, `held`, `service`, `classification`, `facts` (JSON object of every labelled fact) |
+## Incremental refresh
 
-`people.first_contact` is populated only from a dated `First contact` fact on
-the page. An unknown page fact stays empty in the table, even when the map has
-an earliest retained message date. Index readers also enforce this distinction
-for indexes built before 1.9.0a33; a later map or sync rebuilds the stored row.
-| `orgs` | org page | `record`, `name`, `domain`, `domains` (JSON), `people` (count), `last_contact`, `written`, `listed` |
-| `projects` | project page | `record`, `name`, `paths` (JSON), `sessions`, `first`, `last`, `written`, `listed` |
-| `messages` | mail or typed session message | `id`, `source`, `thread`, `sender`, `recipients` (JSON), `time`, `subject`, `body_path`, `body_line` |
-| `edges` | person–org, person–project | `kind`, `person`, `other`, `count`, `last_contact`, `via` |
-| `runs` | investigation run | `id`, `record`, `stage`, `outcome`, `model`, `started_at`, `finished_at`, `seconds`, `input_tokens`, `cached_input_tokens`, `output_tokens` |
+`store.refresh(root)` runs under the caller's maintenance lock after map/sync.
 
-Indexes: `messages(thread, time)`, `messages(sender)`, `people(company)`,
-`people(last_contact)`, `edges(person)`, `edges(other)`, `runs(record)`.
+| Group | Inputs |
+|---|---|
+| `pages` | Indexed Markdown categories and `.state/map.json` |
+| `mail` | Source inventory and mail snapshot directories |
+| `sessions` | `.state/projects/*/messages.jsonl` |
+| `runs` | `.state/runs/*.json` |
 
-Where each column comes from:
+Independent leaf edits read only changed Markdown files. Changes to people,
+organisations, skills or the map recompute joined census/rollup values, compare
+them with stored rows, and write only differences. They do not delete entire
+page tables. Unchanged record rowids survive, while deletion of a record
+cascades to its CRM row, link rows and relationship edges. Link counts include
+links from both people and project pages, even when only one side changes.
 
-- **people**: the page's `## Facts` block (#2068), or on an older page its
-  `## Contact` lines, in the same `- Label: value` shape (Facts wins; citations
-  stripped; `Unknown` is empty). `How we know them` is `how_known`; `Links`
-  splits into `linkedin` (a linkedin.com URL) and `website` (the rest). Every
-  labelled line also lands in `facts`, so a field without a column is readable. Counts and dates come
-  from the map row; `last_contact` is the later of the map's and the page's
-  own "Last contact:". `written`, `held`, `service` and `listed` are the
-  census's, so the table's row count is the census's people count.
-- **orgs / projects**: `map.json` rows and the pages.
-- **messages**: mail from `source-inventory.jsonl` (`id` is
-  `<provider>:<message id>`), `body_path` set only when the body snapshot
-  exists; session messages from each project's `messages.jsonl` (`id` is its
-  `source`, `kind:session:at`; the thread is `kind:session`).
-- **edges**: person–org from the map's org rows (count = the person's mails,
-  last contact = theirs); person–project from links between the two pages
-  (count = links; no date yet — #2068's project people will give one).
-- **runs**: `.state/runs/*.json`, tokens from `usage`.
+Cache sync runs independently of the page group:
 
-### Mail threads: the provider's, else approximate
+- `.state/attachments/<provider>/<message>/<filename>` is extracted once with
+  `attachments.extract_text(path, limit=20_000)`, then again only when size or
+  nanosecond mtime changes. Hidden fetch markers are excluded.
+- `.state/translations/<lang>/<record>` follows the translation writer's exact
+  layout. Only translations with a current source hash and matching source
+  citations are cached, without the hash header. Editing or removing the
+  original page also invalidates its translations.
+- `.state/research/*/*.json` caches each dated capture separately. Privacy-marked
+  capture text is omitted by default when reading the cache.
 
-From this step the map's listing keeps the provider's conversation (Gmail
-`threadId`, Graph `conversationId`) and the inventory records it as
-`thread`; such a mail's thread is `mail:<provider>:<thread>`. An inventory
-written before has no thread id, so its mail's `thread` is `mail:` plus a
-hash of its provider, its subject without `Re:`/`Fwd:` prefixes, and the
-counterparts on From and To other than the owner: a reply and its original
-land together, and two unrelated mails titled "Hello" between different
-people do not. The next map replaces it with the provider's.
+Directory mtimes and cached child lists in `meta` avoid relisting unchanged
+cache directories. File stamps still need checking to detect in-place edits:
+unchanged refreshes do no extraction, cache text reads or database writes.
+Vanished files remove their cached rows. Symlinks are never followed.
+The existing `rebuilt` report retains the four group names above; cache row
+counts are included in `rows`, and cache-only changes update `built_at`.
 
-## How it is built
+## Search and privacy
 
-`store.refresh(root)` compares every input file's `(mtime_ns, size)` with
-`sources` and rebuilds only the groups whose inputs changed, each in one
-transaction:
+FTS5 uses `unicode61` and `content='records'`. Insert, update and delete triggers
+maintain the index in the same transaction as record changes. There is no
+`records_fts_content` shadow table.
 
-| group | inputs | tables |
-|---|---|---|
-| `pages` | `people/`, `orgs/`, `projects/` pages, `map.json` | people, orgs, projects, edges |
-| `mail` | `source-inventory.jsonl`, the mail snapshot folders | messages (mail) |
-| `sessions` | `.state/projects/*/messages.jsonl` | messages (session) |
-| `runs` | `.state/runs/*.json` | runs |
+CJK queries use literal, parameterized substring matching across titles,
+summaries, record paths and public bodies. Empty FTS results and SQLite FTS
+operational errors use the same fallback. Snippets come from public text,
+including a short window around a substring match. `cover` and `public` searches
+exclude private pages; marked passages are absent from searchable bodies and
+summaries. The query dispatcher and `search(max_privacy=...)` enforce the caller's
+privacy ceiling on both indexed and fallback paths.
 
-Nothing changed: nothing is written. A schema version the code does not
-know, or a file SQLite cannot open, is deleted and built from scratch — it
-holds nothing that is not in the files. Building twice gives the same rows.
-
-It runs at the end of `map` (after the second tidy) and of `sync` (after the
-archive resume), inside the maintenance lock both already hold. An error is
-not the map's or the sync's: it prints `co rem: store skipped: <reason>` to
-stderr, the report carries `store: {"skipped": reason}`, and the next run
-tries again.
-
-## Concurrency
-
-- Writes happen only under the maintenance lock, so there is one writer.
-- Readers open `mode=ro` and never take the lock. WAL lets a reader keep its
-  snapshot while a build commits; a reader never sees half a group.
-- A reader with no file gets empty rows, and `co rem list people --table`
-  says to run a sync.
-
-## Read API (`connectonion/rem/store.py`)
+## Read API
 
 ```python
 query_records(root, *, category="", query="", tag="", privacy="cover",
@@ -141,59 +116,33 @@ query_records(root, *, category="", query="", tag="", privacy="cover",
 get_record(root, record, *, privacy="cover") -> dict | None
 search_records(root, query, *, category="", privacy="cover",
                include_unlisted=False, limit=50) -> list[dict]
+search(root, query, *, max_privacy="cover", **kwargs) -> list[dict]
 dispatch_query(root, params, *, max_privacy="all") -> dict
 people_table(root, *, company="", query="", open_only=False, recent_days=0,
-             sort="activity", descending=True, include_unlisted=False, today=None) -> list[dict]
-person(root, record) -> dict | None   # the row plus its edges
-thread(root, thread_id, *, bodies=False) -> list[dict]   # in time order
+             sort="activity", descending=True, include_unlisted=False,
+             today=None) -> list[dict]
+person(root, record) -> dict | None
 edges(root, record) -> list[dict]
-threads(root, record) -> list[dict]   # a person's mail threads or a project's sessions, newest first
+thread(root, thread_id, *, bodies=False) -> list[dict]
+threads(root, record) -> list[dict]
+attachment_row(root, source) -> dict | None
+attachments_map(root, sources=None) -> dict[str, dict]
+translations_map(root, records=None) -> dict[str, dict[str, str]]
+research_for_sources(root, sources, private=False) -> dict[str, list[dict]]
 ```
 
-Rows are plain dicts; JSON columns come back decoded. The reader (#2064) and
-the facts work (#2068) read through these, not through SQL.
+Attachment maps use citation source IDs as keys. Translation maps are
+`{record: {language: text}}`. Research maps group raw capture rows by source;
+callers can retain individual dates and select the captures their citations name.
+An explicit empty source/record list returns an empty map.
 
-## Measured
+Full mail and session bodies remain in their original JSON/JSONL files and load
+on demand via `body_path`/`body_line`. All retained evidence and run records stay
+outside disposable task workspaces.
 
-On a copy of a real notebook (2026-10-01; 381 person pages, 142 orgs, 21
-projects, 3,152 mails in the inventory of which 574 have archived bodies, 905
-typed session messages, 60 runs; 220 MB of `.state`), Python 3.14 on an
-M-series Mac:
-
-| | |
-|---|---|
-| full build from nothing | 0.64 s |
-| nothing changed | 0.02 s, nothing written |
-| one page touched (the `pages` group) | 0.34 s |
-| one run touched (the `runs` group) | 0.02 s |
-| `rem.db` | 2.6 MB, mode 0600 |
-| rows | 381 people, 142 orgs, 21 projects, 4,057 messages, 200 edges, 60 runs |
-| `people_table()` | 330 rows in 0.02 s — the census's 330 people |
-
-Most of a `pages` rebuild is the census reading every page; the database
-work is a small part. The `pages` group is all or nothing: one changed page
-rebuilds every person row. At this size that is cheaper than tracking pages
-one by one.
-
-## Not in this step
-
-- Nothing reads the store but `co rem list people --table`. The census, the
-  queue, the reader and status still read the JSON and pages.
-- JSON is not dropped. Step 2 moves one reader at a time onto the store;
-  JSON goes only when the store has been the source for a release.
-- No chat messages (WhatsApp, Feishu) yet: they have no archive to index.
-- No backup: the file is rebuilt, not restored.
-
-## Decisions (owner-delegated defaults, 2026-10-02)
-
-1. **Provider thread ids: yes, done in this step.** The map's mail listing
-   now keeps Gmail's `threadId` and Graph's `conversationId`, the inventory
-   records it as `thread`, and the index uses `mail:<provider>:<thread>` when
-   it is there. Mail listed before this change keeps the subject hash until
-   the next map lists it again.
-2. **An address → page table: yes, next step.** A thread view will name
-   senders by their page, not their address.
-3. **`map.json` when the JSON goes: undecided** until then; it stays as is.
-4. **Person–project edges: from #2068's structured project facts** (the
-   People field) once that lands; page links until then.
-5. **All-or-nothing `pages` rebuild: fine for now** (0.34 s on 381 pages).
+`tidy` removes finished turn logs after a short grace period, and abandoned turn
+scratch after six hours. Running tasks, active turn logs, durable turn receipts,
+run records and cited originals remain. The CLI-served live HTTP reader can
+query the current index without regenerating an embedded notebook snapshot; its
+routing and rendering are maintained separately from the store engine. See
+[the v3 decision](../design-decisions/081-sqlite-first-live-rem-reader.md).

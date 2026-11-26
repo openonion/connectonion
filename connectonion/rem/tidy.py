@@ -158,7 +158,54 @@ def _storage(notebook: Notebook) -> list[dict]:
     pages = [notebook.path(record) for record in notebook.list()]
     pages += [path for path in state_path(notebook.root, "archived").rglob("*.md") if not path.is_symlink()]
     text = "\n".join(path.read_text(encoding="utf-8") for path in pages)
-    return actions + _attachments(notebook.root, text) + _evidence(notebook.root)
+    return actions + _turn_scratch(notebook.root) + _attachments(notebook.root, text) + _evidence(notebook.root)
+
+
+def _turn_scratch(root: Path) -> list[dict]:
+    """Keep durable turn receipts and active work; prune finished logs and abandoned copies."""
+    from .runner import ABANDONED_TASK_SECONDS, FINISHED_TASK_GRACE_SECONDS
+    from .service import now
+
+    directory = state_path(root, "turns")
+    if not directory.is_dir():
+        return []
+    receipts = {path.stem: read_json(path, {}) for path in directory.glob("*.json")
+                if path.is_file() and not path.is_symlink()}
+    owners = [*receipts.values(), read_json(state_path(root, "last-turn.json"), {})]
+    for name in ("task.json", "receipt.json"):
+        owners.extend(read_json(path, {}) for path in state_path(root, "tasks").glob(f"*/{name}")
+                      if not path.is_symlink() and not path.parent.is_symlink())
+    active = [owner for owner in owners if not owner.get("finished_at")
+              and (owner.get("result") in ("running", "pending")
+                   or owner.get("status") in ("running", "pending")
+                   or owner.get("outcome") in ("running", "pending"))]
+    turn_ids = {owner["turn_id"] for owner in active if owner.get("turn_id")}
+    protected = {(root / owner[key]).absolute() for owner in active
+                 for key in ("log", "last_message", "directory") if owner.get(key)}
+    moment, actions = now().timestamp(), []
+    for path in sorted(directory.iterdir()):
+        if path.is_symlink() or any(path.absolute() == target or path.absolute() in target.parents
+                                    for target in protected):
+            continue
+        if any(path.name == turn or path.name.startswith(turn + ".") for turn in turn_ids):
+            continue
+        receipt = receipts.get(path.stem, {}) if path.suffix == ".json" else {}
+        if receipt.get("turn_id") or (receipt.get("started_at") and receipt.get("result")):
+            continue  # Night statistics and orphan recovery read these durable receipts.
+        contents = [path, *(path.rglob("*") if path.is_dir() else [])]
+        if any(item.is_symlink() for item in contents):
+            continue
+        owner = next((value for key, value in receipts.items() if path.name.startswith(key + ".")), {})
+        finished = owner.get("finished_at") and owner.get("result") not in ("running", "pending")
+        grace = FINISHED_TASK_GRACE_SECONDS if finished else ABANDONED_TASK_SECONDS
+        if max(item.stat().st_mtime for item in contents) >= moment - grace:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        actions.append({"action": "pruned turn scratch", "page": path.relative_to(root).as_posix()})
+    return actions
 
 
 def _attachments(root: Path, pages: str) -> list[dict]:
