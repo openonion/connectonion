@@ -51,6 +51,8 @@ your shell first, then the selected env file, then the encrypted store.
 | `co notion page LINK [--max-blocks N] [--depth N]` | properties, nested content, files, coverage | Read-only |
 | `co notion db LINK [--where …] [--sort …] [--cursor C] [--source S]` | rows with every property, filtered and sorted | Read-only |
 | `co notion columns LINK [--source S]` | column names, ids, types and options | Read-only |
+| `co notion changes --since TIME [--json]` | pages edited since a time, oldest edit first | Read-only |
+| `co notion show LINK [--json]` | one page as it is now, in the shape REM reads | Read-only |
 
 Every list takes `--json` and `-n`. Every command ends with one `Next:` line.
 
@@ -102,6 +104,32 @@ Notion stops any one query at 10,000 results and no cursor continues past it;
 checked against the column's real type and options; repeat it to require all.
 `edited>2026-10-01` and `created<…` filter by timestamps. `--sort Due` sorts
 ascending, `--sort -Due` descending.
+
+## For REM: changes and show
+
+A REM source is its command plus two JSON subcommands (#3249); `co notion`
+has both, in the shape `co asana changes` and `co asana show` give:
+
+```bash
+co notion changes --since 2026-11-01T00:00Z --json   # {"since", "until", "items": [{"id", "time", "title", "parent", "link"}]}
+co notion show <id> --json                           # {"id", "title", "text", "author", "author_id", "time", "link", "properties", ...}
+```
+
+`changes` lists the pages this key can read edited since a time (a time with
+its zone, not later than now), oldest first; database rows are pages, so an
+edited row is listed. Notion keeps edit times to the minute, so the minute
+`--since` falls in is included and a page can appear in two consecutive
+lists: keep one per id and time. Pass `until` as the next `--since` and
+nothing in between is missed. Past 5,000 pages it lists nothing and says
+`incomplete`: use a later `--since`.
+
+`show` reads the page now. `text` is its content; a read a limit stopped ends
+with `[INCOMPLETE: …]` and `complete: false`. `author` is the person who
+created the page, or `null` when this key cannot read users (an internal
+connection needs **Read user information** for names); it is never guessed.
+`time` is the last edit, so a reader can tell the page changed since it was
+cited. REM keeps nothing from Notion: a citation `notion:<id>` opens live
+through `co notion show`.
 
 ## Failures and recovery
 

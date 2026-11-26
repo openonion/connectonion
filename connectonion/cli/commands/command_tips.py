@@ -415,6 +415,8 @@ NEXT = {
     "co notion page": HANDLER,
     "co notion db": HANDLER,
     "co notion columns": HANDLER,
+    "co notion changes": HANDLER,
+    "co notion show": HANDLER,
     "co youtube *": HANDLER,
     "co tiktok *": HANDLER,
 }

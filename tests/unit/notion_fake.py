@@ -38,6 +38,8 @@ class FakeNotion:
         self.sent, self.requests, self.faults = [], [], []
         self.ids = itertools.count(1000)
         self.workspace = deepcopy(WORKSPACE)
+        # The people pages name as created_by; Notion answers users/<id> only with the user-information capability.
+        self.users = {"user-ann": {"object": "user", "id": "user-ann", "type": "person", "name": "Ann"}}
         # Notion stops one query at 10,000 results (has_more false, request_status incomplete).
         self.query_cap = 10_000
         # The guide warns the incomplete mark can come before the last page: True puts it on every page
@@ -139,6 +141,8 @@ class FakeNotion:
         parts = path.split("/")
         if (method, path) == ("GET", "users/me"):
             return self.workspace
+        if method == "GET" and parts[0] == "users" and len(parts) == 2:
+            return self.users[parts[1]]          # KeyError is a LookupError: a 404, as Notion answers
         if (method, path) == ("POST", "search"):
             wanted = (body.get("filter") or {}).get("value")
             query = (body.get("query") or "").casefold()
