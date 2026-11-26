@@ -976,13 +976,11 @@ def _building(root: Path):
         os.close(fd)
 
 
-def refresh(root: Path, builds=None) -> bool:
+def refresh(root: Path, builds=("live", "full")) -> bool:
     """The background build: bring only the requested saved pages,
     up to date, unless a build runs (False then). It passes again only for an owner
     action made meanwhile, also one made after its last look (bounded); other writes
     wait for the next interval."""
-    if builds is None:
-        builds = ("live", "full", "file") if "file" in _manifest(root)["rows"] else ("live", "full")
     for _ in range(3):
         finished = _refresh_once(root, builds)
         if finished is None:
@@ -1219,7 +1217,10 @@ def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False)
     upgraded = any(rows[build].get("release") != _release() for build in behind)
     pending = _pending_builds(root)
     if behind and (owner or upgraded):
-        return owner_changed(root) if name != "file.html" else _spawn_refresh(root, ("file",))
+        if name == "file.html":
+            _replace(_cached(root, "pending-file"), "requested")
+            return _spawn_refresh(root, ("file",))
+        return owner_changed(root)
     if missing or behind and _now() - last >= REBUILD_INTERVAL:
         return _spawn_refresh(root, list(dict.fromkeys(pending + missing + behind + unchecked)))
     if pending or unchecked:  # the walk decides, in the background, whether anything changed
