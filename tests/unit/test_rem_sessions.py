@@ -485,7 +485,8 @@ def test_rem_session_reader_fields(notebook):
     assert fields == {"session_project": "", "session_date": "2026-10-16", "session_time": "09:12",
                       "session_agent": "Codex", "session_turns": 2, "session_folder": "/work/demo",
                       "session_first": "Ask Corin about the reader", "session_reply": "Ready. Open the reader.",
-                      "session_title": "Ask Corin", "session_started_with": "Ask Corin", "session_summary": "",
+                      "session_title": "Ask Corin", "session_title_hidden": False, "session_all_hidden": False,
+                      "session_started_with": "Ask Corin", "session_summary": "",
                       "session_tags": [], "session_outcome": "",
                       "session_artifacts": {"prs": 0, "commits": 0, "files": 0}}
     from connectonion.rem.reader import snapshot
@@ -648,7 +649,10 @@ def test_rem_session_reader_keeps_literal_quotes_and_labels():
         "const parseFacts = () => new Map(), skillUsage = () => null;",
         "const el = (tag, attrs, children=[]) => ({tag, ...attrs, children, appendChild(n) { this.children.push(n); }});",
         "const r = " + json.dumps({"category": "sessions", "path": "sessions/a.md", "title": "Title", "text": page}) + ";",
-        re.search(r"function hasPrivacy\(text\) \{.*?\n\}", template, re.S)[0], known, section,
+        re.search(r"function hasPrivacy\(text\) \{.*?\n\}", template, re.S)[0],
+        # sectionBody draws its quote through the real sessionQuote, which reads a heading's level with markedText.
+        re.search(r"function markedText\(text\) \{.*?\n\}", template, re.S)[0],
+        re.search(r"function sessionQuote\(text, level = \"\"\) \{.*?\n\}", template, re.S)[0], known, section,
         "console.log(JSON.stringify(sectionBody(r, known(r).kept[0])));",
     ])
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=15)

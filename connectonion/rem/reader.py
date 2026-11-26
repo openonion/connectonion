@@ -296,6 +296,10 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
             record.update(session_detail(record["text"], private=local))
+            # A title taken from a turn that is now labelled says that turn's words; the reader names it in its own
+            # language (session_title_hidden), and no copy of the words travels in the record (#3425 follow-up).
+            if record["session_title_hidden"]:
+                record["title"] = "This session's content is hidden"
     if not today:
         # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
         from .page_runs import states
