@@ -128,15 +128,20 @@ def serve_project(project: Path, *, port: int | None = None, model: str | None =
     """Serve this directory's Host in the foreground with the built-in agent `model:` picks."""
     from ..environment import global_config_dir
     from ..network.host.server import host
+    from ..network.trust import TrustAgent
     from .co_ai.native_host import host_agent_factory
     co_dir = project/'.co'
-    if not (co_dir/'host.yaml').is_file():
+    host_yaml = co_dir/'host.yaml'
+    if not host_yaml.is_file():
         raise HostServiceError('No .co/host.yaml here. Next: co init')
     options = {}
     if project.resolve() == profile_dir().resolve():
-        # The profile init records the creator as admin. Strict trust retains the
-        # existing authenticated Host boundary; setup does not grant arbitrary callers.
-        options = {'trust': 'strict', 'rem_root': global_config_dir()/'rem'}
+        # The built-in Host speaks as the global identity (~/.co/keys) and serves
+        # ~/.co/rem, so its trust and admin lists live in ~/.co too (#3471).
+        global_dir = global_config_dir()
+        configured = (yaml.safe_load(host_yaml.read_text(encoding='utf-8')) or {}).get('trust')
+        trust_level = configured if isinstance(configured, str) and configured.strip() else 'strict'
+        options = {'trust': TrustAgent(trust_level, co_dir=global_dir), 'rem_root': global_dir/'rem'}
     host(host_agent_factory(project, co_dir, model), port=port, co_dir=co_dir, **options)
 
 

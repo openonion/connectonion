@@ -413,7 +413,7 @@ def load_admins(co_dir: Path = None) -> set:
     # resolver never produces for that identity.
     self_address = get_self_address(co_dir)
     if self_address:
-        admins.add(self_address)
+        admins.add(self_address.strip().lower())
 
     # Additional admins from this agent's own admins.txt
     # Same reasoning as _check_list, and the cost is higher since #579: the
@@ -436,14 +436,14 @@ def load_admins(co_dir: Path = None) -> set:
         for line in content.splitlines():
             line = line.strip()
             if line and not line.startswith('#'):
-                admins.add(line)
+                admins.add(line.lower())
 
     return admins
 
 
 def is_admin(client_id: str, co_dir: Path = None) -> bool:
     """Check if client is an admin."""
-    return client_id in load_admins(co_dir)
+    return (client_id or "").strip().lower() in load_admins(co_dir)
 
 
 def get_self_address(co_dir: Path = None) -> str | None:
@@ -488,7 +488,8 @@ def get_self_address(co_dir: Path = None) -> str | None:
 
 def is_super_admin(client_id: str, co_dir: Path = None) -> bool:
     """Check if client is super admin (self address)."""
-    return client_id == get_self_address(co_dir)
+    self_address = get_self_address(co_dir)
+    return bool(self_address) and (client_id or "").strip().lower() == self_address.strip().lower()
 
 
 def add_admin(admin_id: str, co_dir: Path = None) -> str:
@@ -499,10 +500,10 @@ def add_admin(admin_id: str, co_dir: Path = None) -> str:
     # Check if already admin
     existing = set()
     if admins_file.exists():
-        existing = {line.strip() for line in admins_file.read_text(encoding='utf-8').splitlines()
+        existing = {line.strip().lower() for line in admins_file.read_text(encoding='utf-8').splitlines()
                     if line.strip() and not line.startswith('#')}
 
-    if admin_id in existing:
+    if (admin_id or "").strip().lower() in existing:
         return f"{admin_id} is already an admin."
 
     with open(admins_file, 'a', encoding='utf-8') as f:
@@ -519,8 +520,9 @@ def remove_admin(admin_id: str, co_dir: Path = None) -> str:
     if not admins_file.exists():
         return f"{admin_id} is not an admin."
 
+    target = (admin_id or "").strip().lower()
     lines = admins_file.read_text(encoding='utf-8').splitlines()
-    new_lines = [line for line in lines if line.strip() != admin_id]
+    new_lines = [line for line in lines if line.strip().lower() != target]
 
     if len(new_lines) == len(lines):
         return f"{admin_id} is not an admin."

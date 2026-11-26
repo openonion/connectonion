@@ -97,3 +97,98 @@ def test_windows_profile_is_not_owner_only(tmp_path, monkeypatch):
     mac_bootstrap._prepare_profile(runtime)
     assert (runtime, 0o700) not in modes
     assert yaml.safe_load((runtime/'.co'/'host.yaml').read_text())['model'] == 'claude-code'
+
+
+def _serve_capture(monkeypatch, root):
+    from connectonion import address
+    from connectonion.cli.commands import agent_index
+    from connectonion.network.host import server
+
+    root.mkdir(parents=True, exist_ok=True)
+    address.save(address.generate(), root)
+    monkeypatch.setattr(environment, 'global_config_dir', lambda: root)
+    monkeypatch.setenv('AGENT_CONFIG_PATH', str(root))
+    monkeypatch.setattr(agent_index, 'refresh', lambda: [])
+    monkeypatch.setattr(server, '_port_in_use', lambda _port: False)
+
+    captured = {}
+    real_create_app = server.asgi_create_app
+
+    def spy_create_app(*, route_handlers, trust, trust_config, **kwargs):
+        captured['route_handlers'] = route_handlers
+        captured['trust'] = trust
+        captured['trust_config'] = trust_config
+        return real_create_app(
+            route_handlers=route_handlers, trust=trust, trust_config=trust_config, **kwargs
+        )
+
+    monkeypatch.setattr(server, 'asgi_create_app', spy_create_app)
+    monkeypatch.setattr(server.uvicorn, 'run', lambda app, **kwargs: captured.update(app=app, uvicorn=kwargs))
+    return captured
+
+
+def test_builtin_global_host_honors_global_admins_and_records_audit_in_global_dir(tmp_path, monkeypatch):
+    """#3471: `co trust admin add --global` writes ~/.co/admins.txt, so the built-in
+    background Host in ~/.co/runtime/{mac-host,host} must bind its TrustAgent and
+    audit record to ~/.co rather than runtime/.co."""
+    from connectonion.cli.commands.trust_commands import handle_admin_add, trust_target
+    from connectonion.network.trust.trust_agent import Decision
+
+    root = tmp_path/'co'
+    captured = _serve_capture(monkeypatch, root)
+    runtime = mac_bootstrap.profile_dir()
+    (runtime/'.co').mkdir(parents=True, exist_ok=True)
+    (runtime/'.co'/'host.yaml').write_text(
+        'name: my-host\ntrust: strict\ndirectory: unlisted\nlisten: []\nport: 8123\nmodel: codex\nrelay_url: ""\n',
+        encoding='utf-8',
+    )
+
+    browser_admin = '0x' + 'ab' * 32
+    stranger = '0x' + 'cd' * 32
+    handle_admin_add(browser_admin, co_dir=trust_target(None, global_=True))
+    assert (root/'admins.txt').is_file()
+    assert not (runtime/'.co'/'admins.txt').exists()
+
+    mac_bootstrap.serve_project(runtime)
+
+    trust = captured['trust']
+    routes = captured['route_handlers']
+    assert trust._co_dir == root.resolve()
+    assert trust.is_admin(browser_admin) is True
+    assert trust.should_allow(browser_admin, {}).allow is True
+    assert trust.should_allow(stranger, {}) == Decision(allow=False, reason='Denied by fast rules')
+
+    # Built-in TrustAgent level stays "strict" in metadata and /info, not "custom".
+    assert routes['agent_metadata']['trust'] == 'strict'
+    assert routes['info'](trust, captured['trust_config'])['trust'] == 'strict'
+
+    # Audit entries for WS EXEC land in ~/.co/approvals.jsonl alongside trust edits.
+    routes['ws_exec']('nonexistent_tool', {}, requester_address=browser_admin)
+    assert (root/'approvals.jsonl').is_file()
+    assert 'nonexistent_tool' in (root/'approvals.jsonl').read_text(encoding='utf-8')
+    assert not (runtime/'.co'/'approvals.jsonl').exists()
+
+
+def test_builtin_global_host_honors_configured_trust_in_runtime_host_yaml(tmp_path, monkeypatch, capsys):
+    """#3471: editing trust: in runtime/.co/host.yaml takes effect on the global Host
+    while keeping TrustAgent bound to ~/.co, and banner/info report the real level."""
+    root = tmp_path/'co'
+    captured = _serve_capture(monkeypatch, root)
+    monkeypatch.setenv('CO_INVITE_CODE', 'let-me-in')
+    runtime = mac_bootstrap.profile_dir()
+    (runtime/'.co').mkdir(parents=True, exist_ok=True)
+    (runtime/'.co'/'host.yaml').write_text(
+        'name: my-host\ntrust: careful\ndirectory: unlisted\nlisten: []\nport: 8124\nmodel: codex\nrelay_url: ""\n',
+        encoding='utf-8',
+    )
+
+    mac_bootstrap.serve_project(runtime)
+
+    trust = captured['trust']
+    routes = captured['route_handlers']
+    banner = capsys.readouterr().out
+    assert trust.trust == 'careful'
+    assert trust._co_dir == root.resolve()
+    assert routes['agent_metadata']['trust'] == 'careful'
+    assert 'Invite: set' in banner
+
