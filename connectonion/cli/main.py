@@ -1709,9 +1709,9 @@ def trust_level(
     handle_trust_level(address, co_dir=trust_target(co_dir, global_))
 
 
-@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist  |  co trust add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust add {EXAMPLE_ADDRESS} --global")
+@trust_app.command("add", epilog=f"Example:  co trust add {EXAMPLE_ADDRESS}  |  co trust add {EXAMPLE_ADDRESS} --whitelist  |  co trust add whatsapp:+61400000001  |  co trust add whatsapp:120363000000000000@g.us  |  co trust add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust add {EXAMPLE_ADDRESS} --global")
 def trust_add(
-    address: str = typer.Argument(..., help="Full 0x address of the agent to allow"),
+    address: str = typer.Argument(..., help="Full 0x address of the agent to allow, or whatsapp:+<phone> / whatsapp:<id>@g.us"),
     whitelist: bool = typer.Option(False, "-w", "--whitelist", help="Add to whitelist instead of contacts"),
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
     global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
@@ -1734,7 +1734,7 @@ def trust_remove(
 
 @trust_app.command("block", epilog=f'Example:  co trust block {EXAMPLE_ADDRESS} --reason "spam"  |  co trust block {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust block {EXAMPLE_ADDRESS} --global')
 def trust_block(
-    address: str = typer.Argument(..., help="Address to block"),
+    address: str = typer.Argument(..., help="0x address, or whatsapp:+<phone> / whatsapp:<id>@g.us, to block"),
     reason: str = typer.Option("", "-r", "--reason", help="Reason for blocking"),
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
     global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
@@ -1761,9 +1761,9 @@ admin_app = _typer_app(help="Addresses that may command your agent (super admin 
 trust_app.add_typer(admin_app, name="admin")
 
 
-@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}  |  co trust admin add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin add {EXAMPLE_ADDRESS} --global")
+@admin_app.command("add", epilog=f"Example:  co trust admin add {EXAMPLE_ADDRESS}  |  co trust admin add whatsapp:+61400000000  |  co trust admin add {EXAMPLE_ADDRESS} --co-dir /srv/agent/.co  |  co trust admin add {EXAMPLE_ADDRESS} --global")
 def admin_add(
-    address: str = typer.Argument(..., help="Full 0x address of the new admin"),
+    address: str = typer.Argument(..., help="Full 0x address of the new admin, or whatsapp:+<phone>"),
     co_dir: Optional[Path] = typer.Option(None, "--co-dir", help=TRUST_DIR_HELP),
     global_: bool = typer.Option(False, "--global", "-g", help=TRUST_GLOBAL_HELP),
 ):
@@ -2829,16 +2829,27 @@ def gmail_read(
     handle_gmail_read(email_id, mark_read=mark_read, listing=listing)
 
 
-@gmail_app.command("reply", epilog="Example:  co gmail reply <message-id> \"Sounds good\"  |  "
-                                    "co gmail reply 3 \"Sounds good\" --listing <listing-id>")
+@gmail_app.command("reply", epilog="Examples:  co gmail reply <message-id> \"Sounds good\"  |  "
+                                    "co gmail reply 3 \"Sounds good\" --listing <listing-id>  |  "
+                                    "co gmail reply <message-id> \"Signed copy attached\" --cc sam@example.com --attach signed.pdf  |  "
+                                    "co gmail reply <message-id> \"Thanks both\" --all  |  "
+                                    "co gmail reply <message-id> \"Draft for review\" --draft")
 def gmail_reply(
     email_id: str = typer.Argument(..., help="Full message ID, or row # together with --listing ID"),
     message: str = typer.Argument(..., help="Reply body, or '-' to read stdin"),
     listing: Optional[str] = typer.Option(None, "--listing", help="Listing ID printed by co gmail inbox, sent or search; needed with a row number"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated); the reply stays in its thread"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+    attach: list[str] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for several)"),
+    reply_all: bool = typer.Option(False, "--all", help="Reply to everyone on the email (original To and Cc), not only the sender"),
+    draft: bool = typer.Option(False, "--draft", help="Save the reply as a draft in the same thread instead of sending; "
+                                                       "finish it with co gmail draft attach, review and send. Gmail has no "
+                                                       "scheduled send, so this is the way to hold a reply before it goes"),
 ):
-    """Reply to an email from the last listing. Sends immediately, without a preview."""
+    """Reply to an email in its thread. Sends immediately, without a preview, unless --draft saves it for review first."""
     from .commands.gmail_commands import handle_gmail_reply
-    handle_gmail_reply(email_id, message, listing=listing)
+    handle_gmail_reply(email_id, message, listing=listing, cc=cc, bcc=bcc, attachments=attach,
+                       reply_all=reply_all, draft=draft)
 
 
 @gmail_app.command("send", epilog="Examples:  co gmail send a@b.com \"Hi\" \"Quick note\"  |  "
@@ -3248,6 +3259,9 @@ app.add_typer(asana_app, name="asana")
 # Notion: read-only commands on Notion's REST API, with NOTION_API_KEY.
 from .commands.notion_commands import notion_app
 app.add_typer(notion_app, name="notion")
+# Granola (#3223, #3249): read-only personal meeting summaries on Granola's API v1, with GRANOLA_API_KEY.
+from .commands.granola_commands import granola_app
+app.add_typer(granola_app, name="granola")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")

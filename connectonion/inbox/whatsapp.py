@@ -372,6 +372,23 @@ def _media_suffix(kind: str, file_name: str, mime: str) -> str:
     return own or mimetypes.guess_extension(mime) or ".bin"
 
 
+# Where a reaction or an edit names the message it changes: not contextInfo,
+# which only replies carry, but the variant's own key (#3226).
+TARGET_FIELDS = {"reaction": "reactionMessage", "edit": "protocolMessage"}
+
+
+def _target_reference(message, kind: str, own_ids) -> Optional[dict]:
+    """The message a reaction or an edit points at, from its own key; None when it names none."""
+    field = TARGET_FIELDS.get(kind)
+    key = getattr(getattr(message, field, None), "key", None) if field else None
+    target = str(getattr(key, "ID", "") or "")
+    if not target:
+        return None
+    sender = str(getattr(key, "participant", "") or "")
+    return {"id": target, "sender": sender, "text": "", "kind": "text",
+            "from_me": bool(getattr(key, "fromMe", False)) or (bool(own_ids) and _user_of(sender) in own_ids)}
+
+
 def _quoted_reference(context, own_ids) -> Optional[dict]:
     """The message a reply is answering, from the contextInfo we already read.
 
@@ -918,6 +935,28 @@ class WhatsApp:
             return ""
         return ""
 
+    def caller_identity(self, jid: str) -> str:
+        """`whatsapp:+<phone>` for an authenticated sender, or "" when no phone is known (#3340).
+
+        The sender JID comes from the linked-device session, not the message. A
+        LID shares no digits with the phone the owner listed, so it is resolved
+        through the session's LID map. A LID with no single phone there stays
+        unresolved, and the trust check treats it as a stranger."""
+        user, _, server = str(jid or "").partition("@")
+        user = user.split(":", 1)[0]
+        if server == USER_SERVER and user.isdigit():
+            return f"whatsapp:+{user}"
+        if server == "lid":
+            phones = {other for other in self._aliases(user) if other.isdigit()}
+            if len(phones) == 1:
+                return f"whatsapp:+{phones.pop()}"
+        return ""
+
+    @staticmethod
+    def chat_identity(chat: str) -> str:
+        """`whatsapp:<n>@g.us` for a group chat, "" for a direct one."""
+        return f"whatsapp:{chat}" if str(chat).endswith(f"@{GROUP_SERVER}") else ""
+
     def contact_name(self, jid: str) -> str:
         """The name the owner saved for this id with `contacts add`, or "" (#2964).
 
@@ -1003,7 +1042,7 @@ class WhatsApp:
         # is an edit can go and look at what it replaced.
         if getattr(event, "IsEdit", False):
             kind = "edit"
-        quoted = _quoted_reference(context, self._own_ids)
+        quoted = _quoted_reference(context, self._own_ids) or _target_reference(event.Message, kind, self._own_ids)
         chat = _jid_str(source.Chat)
         sender = _jid_str(source.Sender)
 
@@ -1185,6 +1224,11 @@ class WhatsApp:
         "was this new" answer the queue gave, or a message WhatsApp retried gets
         a second receipt for work nobody is doing twice.
         """
+        if message.quoted and not message.quoted.get("text") and message.kind in TARGET_FIELDS:
+            # A reaction's key names its message, not what it said; the log has that.
+            target = inbox.lookup(message.quoted["id"])
+            if target is not None:
+                message.quoted = {**message.quoted, "text": target.text, "kind": target.kind}
         if not inbox.deliver(message, raw=raw):
             inbox.log(f"duplicate {message.id} dropped")
             return False

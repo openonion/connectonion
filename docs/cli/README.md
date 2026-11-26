@@ -1545,6 +1545,7 @@ See [server.md](server.md).
 | `co linear` | Linear issues: list, read, search, create, update, comment — [linear.md](linear.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co asana` | Asana tasks: projects, tasks, one task's comments and activity; move a due date, mark done, comment — [asana.md](asana.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co notion` | Notion pages and databases: list what is shared, search titles, read a page, query a database, its columns — [notion.md](notion.md) | No | ✅ Yes (read-only) |
+| `co granola` | Personal Granola meeting summaries: check key, list personal folders, browse notes, live `changes`/`show --json` — [granola.md](granola.md) | No | ✅ Yes (read-only) |
 | `co canny` | Canny feedback: boards, posts and votes, search, one post's comments; change a status, comment, changelog — [canny.md](canny.md) | No | ✅ Yes (writes only with `--yes`) |
 | `co asr` | Transcribe an audio file; Codex default or configured ConnectOnion provider — [ASR](../asr.md) | Audio upload | Yes, explicit invocation |
 | `co audit` | Is a CLI (co or any other) fit for an agent harness? Scores its help pages — [audit.md](audit.md) | No | ✅ Yes (read-only) |

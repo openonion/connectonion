@@ -356,6 +356,11 @@ Project X is 80% complete
 Needs final testing
 ```
 
+A section starts at a `## ` heading whose text is a key this tool would write:
+lowercase letters, digits, `-` and `_`. A markdown heading with a space or a
+capital, such as `## Contact Info`, belongs to the memory above it and stays
+with its content instead of starting a new one.
+
 #### Header
 
 Anything above the first `## ` heading is treated as the file header and is kept

@@ -416,6 +416,45 @@ class TestHandleGmailReply:
         assert "requires --listing" in plain(capsys.readouterr().out)
 
 
+    def test_cc_files_and_everyone_reach_the_reply(self, tmp_path, monkeypatch):
+        """#3260: one command answers in the thread with a colleague copied and the signed PDF."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "letter-signed.pdf").write_bytes(b"%PDF")
+        gmail = mail_mock()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            handle_gmail_reply("msg-a", "Corrected copy attached.", cc="sam@example.com",
+                               attachments=["letter-signed.pdf"], reply_all=True)
+
+        gmail.reply.assert_called_once_with("msg-a", "Corrected copy attached.", cc="sam@example.com",
+                                            attachments=["letter-signed.pdf"], reply_all=True)
+
+    def test_a_missing_file_stops_before_anything_is_sent(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        gmail = mail_mock()
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail):
+            with pytest.raises(typer.Exit):
+                handle_gmail_reply("msg-a", "x", attachments=["nope.pdf"])
+
+        gmail.reply.assert_not_called()
+        assert "Attachment not found" in plain(capsys.readouterr().out)
+
+    def test_draft_saves_in_the_thread_and_says_how_to_send(self, capsys):
+        gmail = mail_mock()
+        gmail.reply.return_value = {"id": "r-D1", "to": "Dana <dana@uni.example.edu>", "cc": "sam@example.com",
+                                    "attachments": [{"name": "letter-signed.pdf", "type": "application/pdf", "size": 4}]}
+
+        with patch.object(gmail_commands, "_gmail", return_value=gmail) as opened:
+            handle_gmail_reply("msg-a", "Draft for review", cc="sam@example.com", draft=True)
+
+        opened.assert_called_once_with(require_draft_write=True)
+        gmail.reply.assert_called_once_with("msg-a", "Draft for review", draft=True, cc="sam@example.com")
+        out = " ".join(plain(capsys.readouterr().out).split())
+        assert "saved as a draft" in out and "r-D1" in out and "letter-signed.pdf" in out
+        assert "co gmail draft review r-D1" in out and "co gmail draft send r-D1" in out
+
+
 class TestHandleGmailSendAndSearch:
 
     def test_send_reports_recipient(self, capsys):

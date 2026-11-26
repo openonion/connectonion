@@ -283,7 +283,7 @@ def test_statement_capitalisation_preserves_code_and_paths():
     ])
     for (text, expected), (capitalised, lead) in zip(cases, _run_reader_js(script)):
         assert capitalised == expected, text
-        assert lead == expected.replace("`", "").replace("#", ""), text
+        assert lead == expected.replace("`", ""), text
 
 
 def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
@@ -1453,7 +1453,7 @@ def test_reader_privacy_does_not_split_quotes_decimals_or_addresses(secret):
 def test_reader_session_search_removes_labelled_passages_before_indexing_and_truncating():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['ownerAsYou', 'sessionPreview', 'sessionText', 'sessionExcerpt'])
+                          for name in ['ownerAsYou', 'sessionPreview', 'sessionText', 'sessionExcerpt', 'sessionMessages', 'sessionOpen', 'markedText', 'sessionUnquote', 'sessionSection'])
     result = _run_reader_js(functions + r'''
       const SESSION_TEXT = new Map();
       const r = {path: 'sessions/fixture.md', title: 'Public session',
@@ -2211,7 +2211,7 @@ def test_cached_chinese_facts_reach_every_compact_value_path(tmp_path, monkeypat
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0) for name in [
         'parseFacts', 'topLevelParts', 'rawSection', 'facts', 'contactFields', 'company', 'contactStrip', 'personSub', 'roleLede', 'personOrg', 'orgNamed', 'domainName', 'startsWords', 'personDomain', 'sameCompany', 'personProject',
         'factList', 'roleSummary', 'topLevelParts', 'plainLine', 'threadDate', 'fmtDate', 'calendarDay', 'threadWho', 'threadAge', 'cardHead', 'snapshotWhy', 'translatedRelationBasis',
-        'closeStripped', 'relationCard', 'markedText', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
+        'closeStripped', 'relationCard', 'markedText', 'privacyChip', 'localizedRelation', 'resolve', 'originalMark', 'pageWords'])
     labels = page[page.index('const FACT_LABELS ='):page.index('function legacyFact(')]
     columns = re.search(r'const PEOPLE_COLUMNS = \[.*?\}\];', page, re.S).group(0)
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
@@ -2353,7 +2353,7 @@ def test_project_coverage_limit_has_chinese_copy(days, inputs, expected):
 def test_relation_cards_use_translated_origin_lines_and_mark_original_fallback():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'markedText', 'localizedRelation', 'resolve', 'originalMark', 'pageWords', 'englishProse'])
+                          for name in ['translatedRelationBasis', 'closeStripped', 'relationCard', 'markedText', 'privacyChip', 'localizedRelation', 'resolve', 'originalMark', 'pageWords', 'englishProse'])
     ui = page[page.index('  zh: {') + len('  zh: '):page.index('\n};\nfunction t(')]
     result = _run_reader_js(functions + '\nconst originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + '\nUI.zh = ' + ui + r'''; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', title: 'Fernhill Labs', category: 'orgs', translations: {zh:
@@ -2389,7 +2389,7 @@ def test_chinese_connected_context_collapses_repeated_origin_without_borrowing_c
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
                           for name in ['translatedRelationBasis', 'localizedRelation', 'dedupeRelationSnippets',
-                                       'connectedContext', 'closeStripped', 'relationCard', 'markedText', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden', 'pageWords'])
+                                       'connectedContext', 'closeStripped', 'relationCard', 'markedText', 'privacyChip', 'relationDisclosure', 'resolve', 'plainLine', 'privateTopicHidden', 'pageWords'])
     result = _run_reader_js(functions + '\nconst englishProse = () => false, originalQuote = node => node, kindWord = value => value, factWords = text => text, labelWord = value => value, sectionWords = text => text, ourRole = role => role;\n' + r'''
       UI.zh = {}; uiLanguage = 'zh';
       const origin = {path: 'orgs/fernhill-labs.md', category: 'orgs', title: 'Fernhill Labs',
@@ -2877,7 +2877,7 @@ def test_primary_surfaces_have_no_command_copy_controls():
 def test_session_previews_hide_paths_including_paths_with_spaces():
     page = TEMPLATE.read_text()
     functions = '\n'.join(re.search(r'function ' + name + r'\(.*?\n\}', page, re.S).group(0)
-                          for name in ['ownerAsYou', 'sessionExcerpt', 'sessionText', 'sessionPreview'])
+                          for name in ['ownerAsYou', 'sessionExcerpt', 'sessionText', 'sessionPreview', 'sessionMessages', 'sessionOpen', 'markedText', 'sessionUnquote', 'sessionSection'])
     result = _run_reader_js(functions + r'''
       const SESSION_TEXT = new Map();
       const r = {path: 'sessions/fiction.md', title: 'Plan review', text: '',
@@ -4019,7 +4019,7 @@ def test_a_changed_notebook_opens_the_last_page_at_once_and_rebuilds_it_behind(t
     assert "being built" in stale["note"]
 
     _Clock.at = datetime(2026, 11, 9, 9, 40, tzinfo=timezone.utc)
-    reader.refresh(root)                                             # what the background process runs
+    reader.refresh(root, ["file"])                                     # explicit snapshot refresh
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("a rebuild made itself stale"))
     fresh = open(reader.open_snapshot(root, launch=False)["page"], encoding="utf-8").read()
     assert "Bruno Example" in fresh and '"as_of": "2026-11-09T09:40:00+00:00"' in fresh
@@ -4048,7 +4048,7 @@ def test_the_saved_page_is_private_and_a_planted_link_is_refused(tmp_path, monke
 
 
 def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, monkeypatch):
-    """The mocks above stand in for this: python -m connectonion.rem.reader ROOT full."""
+    """The mocks above stand in for this: python -m connectonion.rem.reader ROOT file."""
     import tempfile
     import time
     from connectonion.rem import reader
@@ -4062,9 +4062,9 @@ def test_the_rebuild_behind_an_open_runs_in_a_real_detached_process(tmp_path, mo
     Notebook(root).write("people/bruno.md", "# Bruno Example\n")
     stale = reader.open_snapshot(root, launch=False)       # rendered just now: the rebuild waits
     assert "Bruno Example" not in open(stale["page"], encoding="utf-8").read()
-    reader.owner_changed(root)                             # unless the owner acted
+    reader.owner_changed(root, builds=("file",))           # explicitly refresh this offline snapshot
     deadline = time.monotonic() + 90
-    while reader.saved(root, "full").get("version") != reader.reader_version(root):
+    while reader.saved(root, "file").get("version") != reader.reader_version(root):
         assert time.monotonic() < deadline, open(reader._cached(root, "build.log")).read()
         time.sleep(0.2)
     assert "Bruno Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
@@ -4087,8 +4087,8 @@ def test_an_owner_action_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(t
             Notebook(root).write("people/bruno.md", "# Bruno Example\n")  # lands mid-build
         return rendered
     monkeypatch.setattr(reader, "_render", build)
-    reader.refresh(root, ["full"])
-    assert passes == ["full"]                                   # a night write: next interval
+    reader.refresh(root, ["file"])
+    assert passes == ["file"]                                   # a night write: next interval
     Notebook(root).write("people/carla.md", "# Carla Example\n")
     passes.clear()
 
@@ -4101,9 +4101,9 @@ def test_an_owner_action_made_while_a_rebuild_runs_is_rendered_by_that_rebuild(t
         return rendered
     monkeypatch.setattr(reader, "_render", owner_build)
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: None)
-    reader.refresh(root, ["full"])
-    assert passes == ["full", "full"]
-    assert reader.saved(root, "full")["version"] == reader.reader_version(root)
+    reader.refresh(root, ["file"])
+    assert passes == ["file", "file"]
+    assert reader.saved(root, "file")["version"] == reader.reader_version(root)
     assert "Dara Example" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
 
 
@@ -4151,10 +4151,10 @@ def test_a_quiet_notebook_still_rebuilds_past_midnight_and_after_the_interval(tm
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: spawned.append(builds) or True)
     reader.cached_page(root, "file.html")
     assert spawned == []                                          # rendered three minutes ago: wait
-    reader.refresh(root, ["full"])
+    reader.refresh(root, ["file"])
     _Clock.seconds += reader.REBUILD_INTERVAL + 1                 # nothing changed, but it is old
     reader.cached_page(root, "file.html")
-    assert spawned == [["full"]]
+    assert spawned == [["file"]]
 
 
 def test_details_and_page_are_published_together(tmp_path, monkeypatch):
@@ -4178,7 +4178,9 @@ def test_details_and_page_are_published_together(tmp_path, monkeypatch):
     Notebook(root).write("people/fern-holt.md", "# Fern Holt\n")
     _Clock.seconds += 1
     reader.refresh(root)
-    assert reader.saved(root, "live")["version"] == reader.saved(root, "full")["version"] == reader.reader_version(root)
+    assert reader.saved(root, "live")["version"] == reader.reader_version(root)
+    assert reader.saved(root, "full")["version"] == reader.saved(root, "live")["version"]
+    assert reader.page_path(root, "file.html") is None
     assert "Fern Holt" in open(reader.page_path(root, "data.json"), encoding="utf-8").read()
 
 
@@ -4199,14 +4201,14 @@ def test_owner_actions_after_the_last_pass_are_not_dropped_and_a_corrupt_mark_is
         return data
     monkeypatch.setattr(reader, "snapshot", snapshot)
     Notebook(root).write("people/start.md", "# Start\n")
-    reader.refresh(root, ["full"])
+    reader.refresh(root, ["file"])
     assert len(passes) == 5
     assert "Action 4" in open(reader.page_path(root, "file.html"), encoding="utf-8").read()
     passes.clear()
     monkeypatch.setattr(reader, "snapshot", lambda root, **options: passes.append(1) or original(root, **options))
     reader._cached(root, "owner").write_text("not a time")
     Notebook(root).write("people/later.md", "# Later\n")
-    reader.refresh(root, ["full"])                                # no error: the mark reads as now
+    reader.refresh(root, ["file"])                                # no error: the mark reads as now
     assert len(passes) == 1 and float(reader._cached(root, "owner").read_text()) == _Clock.seconds
 
 
@@ -4395,7 +4397,7 @@ def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp
     for n in range(1, 4):                                         # three rebuilds behind it
         Notebook(root).write(f"people/person-{n}.md", f"# Person Number {n}\n")
         _Clock.seconds += 1
-        reader.refresh(root, ["full"])
+        reader.refresh(root, ["file"])
     page = __import__("urllib.parse").parse.unquote(link.removeprefix("file://"))
     assert "Person Number 3" in open(page, encoding="utf-8").read()   # reload: the newest, never a missing file
     assert reader.open_snapshot(root, launch=False)["link"] == link
@@ -4403,9 +4405,7 @@ def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp
 
 
 def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, monkeypatch):
-    """The live page is built on the first request; its details later, in the
-    background. Rendered apart they named different seconds, and the page's
-    details disagreed with /rem/version. Every saved build is rendered together."""
+    """The live page and JSON share one render time; offline HTML is explicit."""
     import json as _json
     reader = _cached_reader(tmp_path, monkeypatch)
     root = tmp_path / "rem"
@@ -4413,14 +4413,13 @@ def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, 
     Notebook(root).write("people/alice.md", "# Alice Example\n")
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     monkeypatch.setattr(reader, "datetime", _Ticking)
-    reader.cached_page(root, "live.html")                         # the first request: the page alone
-    reader.refresh(root)                                          # then its details, behind it
+    reader.cached_page(root, "live.html")                         # fast shell first, lazy JSON behind it
+    reader.refresh(root)                                          # live shell and JSON, no offline HTML
     page, _ = reader.cached_page(root, "live.html")
     details, _ = reader.cached_page(root, "data.json")
-    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
     served = re.search(r'"as_of": "([^"]+)"', page).group(1)
     assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
-    assert served == re.search(r'"as_of": "([^"]+)"', offline).group(1)
+    assert reader.page_path(root, "file.html") is None
 
 
 def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp_path, monkeypatch):
@@ -4431,7 +4430,7 @@ def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     monkeypatch.setattr(reader, "datetime", _Ticking)
     reader.cached_page(root, "live.html")
-    reader.refresh(root)
+    reader.refresh(root, ["live", "full", "file"])
     link = reader.page_path(root, "file.html")
     real = reader._replace
 
@@ -4443,7 +4442,7 @@ def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp
     Notebook(root).write("people/bruno.md", "# Bruno Example\n")
     _Clock.seconds += 1
     with pytest.raises(OSError):
-        reader.refresh(root)
+        reader.refresh(root, ["live", "full", "file"])
     monkeypatch.setattr(reader, "_replace", real)
     details, _ = reader.cached_page(root, "data.json")
     offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
@@ -4522,7 +4521,7 @@ def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
     monkeypatch.setattr("connectonion.rem.live_host.version_on_disk", lambda: "1.9.3")
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     reader.cached_page(root, "live.html")
-    reader.refresh(root)
+    reader.refresh(root, ["live", "full", "file"])
     if shape == "rc64-manifest":   # its _publish wrote the file page beside the set, never into it
         manifest = json.loads(reader._cached(root, "current.json").read_text())
         (reader._cache_dir() / manifest["files"].pop("file.html")).unlink()
@@ -4575,6 +4574,7 @@ def test_a_stale_page_says_updating_in_the_readers_language_and_a_current_one_do
     reader.refresh(root)                                           # the rebuild lands
     fresh, building = reader.cached_page(root, "live.html")
     assert not building and "rem-updating" not in fresh
+    reader.refresh(root, ["file"])                                # explicitly refresh the offline snapshot
     opened = reader.open_snapshot(root, launch=False)
     assert "rem-updating" not in open(opened["page"], encoding="utf-8").read()
 
@@ -5011,9 +5011,9 @@ def test_the_day_plans_timed_proposals_are_todays_suggested_blocks():
       console.log(JSON.stringify({shown, dismissed: tcalSuggestions('2026-11-16').map(item => item.key), other: tcalSuggestions('2026-11-17')}));
     ''')
     assert result == {'shown': ['a'], 'dismissed': [], 'other': []}
-    # Today's order (#3072, #3152): the cards first, then the calendar, then what is only read.
+    # De-newspapered Today (#3470): the cards first, calendar gated to #view=agenda, then what is only read.
     overview = page[page.index('function overview()'):page.index('function scheduleFailure()')]
-    assert overview.index('class: "tgrid"') < overview.index('todayCalendar()') < overview.index('todoSection()')
+    assert overview.index('class: "tgrid"') < overview.index('showCalendar ? todayCalendar() : null') < overview.index('todoSection()')
     assert 'yourDay()' not in page
 
 

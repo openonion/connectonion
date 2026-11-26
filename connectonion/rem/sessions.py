@@ -456,29 +456,50 @@ def _excerpt(text: str) -> str:
     return " ".join(re.sub(r"^> ?", "", text, flags=re.M).split())[:300]
 
 
+PRIVATE = re.compile(r"[\[［](?:sensitive|personal)[\]］]", re.I)
+
+
+def _first_line(text: str) -> str:
+    """A turn's first words, the way _title() takes them: the first non-empty line, spaces collapsed, cut at 80."""
+    line = next((row.removeprefix("> ").strip() for row in text.splitlines() if row.removeprefix("> ").strip()), "")
+    line = " ".join(line.split())
+    return line[:79] + "…" if len(line) > 80 else line
+
+
 def reader_fields(text: str) -> dict:
     facts = dict(re.findall(r"^- ([A-Za-z ]+): (.*)$", _section(text, "Facts"), re.M))
     project = re.fullmatch(r"\[[^\n]*\]\(\.\./([^\n]+)\)", facts.get("Project", ""))
     typed = _section(text, "What you typed")
-    clock = re.search(r"^### (\d{2}:\d{2})$", typed, re.M)
-    first = re.sub(r"^### [^\n]*\n", "", typed, count=1, flags=re.M)
-    first = re.split(r"^### ", first, maxsplit=1, flags=re.M)[0]
-    first = _owner_request(re.sub(r"^> ?", "", first, flags=re.M))
+    # A preview, a start time and a "started with" come from the first turn that carries no privacy level: a turn is
+    # labelled by its heading ("### 09:12 [sensitive]") or by a mark in its words, and its words never become the
+    # page's preview, here or in a shared reader (#3425 follow-up). If every turn is labelled, there is no preview.
+    turns = [(stamp, _owner_request(re.sub(r"^> ?", "", body, flags=re.M)))
+             for stamp, body in re.findall(r"^### ([^\n]*)\n(.*?)(?=^### |\Z)", typed, re.M | re.S)]
+    if not turns and typed.strip():  # an older page with no turn headings: its typing is one turn
+        turns = [("", _owner_request(re.sub(r"^> ?", "", typed, flags=re.M)))]
+    open_turn = next(((stamp, body) for stamp, body in turns if not PRIVATE.search(stamp) and not PRIVATE.search(body)), None)
+    first = open_turn[1] if open_turn else ""
+    clock = re.fullmatch(r"\d{2}:\d{2}", open_turn[0].strip()) if open_turn else None
+    hidden_starts = {_first_line(body) for stamp, body in turns if PRIVATE.search(stamp) or PRIVATE.search(body)}
     heading = re.search(r"^# (.+)$", text, re.M)
+    # A title the import took from a turn that is now labelled says that turn's words: it is replaced, not shown.
+    title_hidden = bool(heading and _first_line(heading[1]) in hidden_starts - {""})
     artifacts = _section(text, "Artifacts")
     files = re.search(r"^- Files changed \((\d+)\):", artifacts, re.M)
     commits = re.search(r"^- … and (\d+) more commits$", artifacts, re.M)
-    started = next((line.removeprefix("> ").strip() for line in first.splitlines()
-                    if line.removeprefix("> ").strip()), "")
-    started = " ".join(started.split())
-    started = started[:79] + "…" if len(started) > 80 else started
+    started = _first_line(first)
+    told = facts.get("Started with", "")
+    if told and _first_line(told) in hidden_starts:
+        told = ""
     return {"session_project": project[1] if project else "", "session_date": facts.get("Date", ""),
-            "session_time": clock[1] if clock else "", "session_agent": facts.get("Agent", ""),
+            "session_time": clock[0] if clock else "", "session_agent": facts.get("Agent", ""),
             "session_turns": int(facts.get("Turns", "0")), "session_folder": facts.get("Folder", ""),
             "session_first": _excerpt(first), "session_reply": _excerpt(_section(text, "Final reply")),
-            "session_title": heading[1] if heading else "", "session_summary": _section(text, "Summary").strip(),
+            "session_title": "" if title_hidden else heading[1] if heading else "",
+            "session_title_hidden": title_hidden, "session_all_hidden": bool(turns) and open_turn is None,
+            "session_summary": _section(text, "Summary").strip(),
             "session_tags": [tag.strip() for tag in facts.get("Tags", "").split(",") if tag.strip()],
-            "session_outcome": facts.get("Outcome", ""), "session_started_with": facts.get("Started with", started),
+            "session_outcome": facts.get("Outcome", ""), "session_started_with": told or started,
             "session_artifacts": {"prs": len(set(PR_URL.findall("\n".join(re.findall(r"^- Pull requests: (.*)$", artifacts, re.M))))),
                                   "commits": len(re.findall(r"^- Commits:", artifacts, re.M)) + (int(commits[1]) if commits else 0),
                                   "files": int(files[1]) if files else 0}}

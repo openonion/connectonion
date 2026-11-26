@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
 
@@ -33,12 +34,16 @@ BROWSERS = {
 class ChromeError(Exception):
     """A readable failure: no browser data, or the Keychain key could not be read."""
 
+    def __init__(self, message: str, code: str = "no_data"):
+        super().__init__(message)
+        self.code = code
+
 
 def safe_storage_key(browser: str = "chrome") -> bytes:
     """The AES key for a browser's saved passwords, derived from its Keychain Safe Storage secret (one Touch ID)."""
     service = BROWSERS.get(browser, (None,))[0]
     if not service:
-        raise ChromeError(f"Unknown browser {browser!r}")
+        raise ChromeError(f"Unknown browser {browser!r}", "failed")
     # A KeychainError says which failure it was (declined, no prompt possible here, timed out) instead of the
     # old "not in the Keychain (is it installed?)" for every one of them (#3305).
     secret = macos_keychain.read_secret(["security", "find-generic-password", "-ws", service], service).strip().encode()
@@ -79,7 +84,7 @@ def read_logins(path: Path, key: bytes) -> list[dict]:
         try:
             rows = conn.execute("SELECT origin_url, username_value, password_value FROM logins").fetchall()
         except sqlite3.DatabaseError as error:
-            raise ChromeError(f"Login Data could not be read: {error}")
+            raise ChromeError(f"Login Data could not be read: {error}", "failed")
         finally:
             conn.close()
     out = []
@@ -92,9 +97,16 @@ def read_logins(path: Path, key: bytes) -> list[dict]:
 
 def all_logins(browser: str = "chrome") -> list[dict]:
     """Every saved login across a browser's profiles. Raises ChromeError when the browser has no data here."""
+    if browser not in BROWSERS:
+        raise ChromeError(f"Unknown browser {browser!r}", "failed")
+    if sys.platform != "darwin":
+        raise ChromeError(
+            f"Importing saved {browser} passwords uses the macOS Keychain and is only available on a Mac",
+            "unsupported",
+        )
     paths = login_data_paths(browser)
     if not paths:
-        raise ChromeError(f"No {browser} password data on this Mac")
+        raise ChromeError(f"No {browser} password data on this Mac", "no_data")
     key = safe_storage_key(browser)
     seen, out = set(), []
     for path in paths:

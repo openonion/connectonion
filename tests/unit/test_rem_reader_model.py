@@ -63,7 +63,7 @@ def test_pdf_source_preview_reads_only_the_pages_needed(tmp_path, monkeypatch):
     path = state_path(tmp_path, 'attachments/outlook/123456789abc/terms.pdf')
     path.parent.mkdir(parents=True)
     path.write_bytes(b'%PDF-1.4\n')
-    first = 'First page clause. ' * 50
+    first = 'First page clause. ' * 500
     calls = []
 
     class Page(dict):
@@ -80,10 +80,10 @@ def test_pdf_source_preview_reads_only_the_pages_needed(tmp_path, monkeypatch):
 
     monkeypatch.setattr('pypdf.PdfReader', Reader)
     context = attachment_context(tmp_path, source)
-    assert context['excerpt'] == first.strip()[:640]
+    assert context['excerpt'] == first.strip()[:8000]
     assert context['truncated']
     # Enrich (#2315): a cited document opens from the page.
-    assert context['file'] == path.as_uri() and context['filename'] == path.name
+    assert context['file'] == '/rem/attachment?id=outlook%3A123456789abc%3Aterms.pdf' and context['filename'] == path.name
     assert calls == ['first']
     calls.clear()
     assert extract_text(path, limit=None).endswith('Later clause.')
@@ -103,8 +103,8 @@ def test_an_unchanged_attachment_is_extracted_once_per_process(tmp_path, monkeyp
     path.parent.mkdir(parents=True)
     path.write_text('Net 30 days.')
     calls = []
-    original = attachments.extract_text
-    monkeypatch.setattr(attachments, 'extract_text', lambda *a, **k: calls.append(a[0]) or original(*a, **k))
+    original = attachments.extract_structured_text
+    monkeypatch.setattr(attachments, 'extract_structured_text', lambda *a, **k: calls.append(a[0]) or original(*a, **k))
     assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 30 days.'
     assert attachments.attachment_context(tmp_path, source)['excerpt'] == 'Net 30 days.'
     assert len(calls) == 1
@@ -117,7 +117,7 @@ def test_an_unchanged_attachment_is_extracted_once_per_process(tmp_path, monkeyp
 def test_attachment_citation_rejects_a_linked_attachment(tmp_path):
     from connectonion.rem.attachments import attachment_context
     from connectonion.rem.config import prepare
-    from connectonion.rem.files import RemError, state_path
+    from connectonion.rem.files import state_path
 
     prepare(tmp_path)
     outside = tmp_path / 'outside.txt'
@@ -125,8 +125,7 @@ def test_attachment_citation_rejects_a_linked_attachment(tmp_path):
     path = state_path(tmp_path, 'attachments/outlook/123456789abc/linked.txt')
     path.parent.mkdir(parents=True)
     path.symlink_to(outside)
-    with pytest.raises(RemError, match='Symlinks'):
-        attachment_context(tmp_path, 'outlook:123456789abc:linked.txt')
+    assert attachment_context(tmp_path, 'outlook:123456789abc:linked.txt') is None
     assert attachment_context(tmp_path, 'outlook:123456789abc:../outside.txt') is None
 
 
@@ -392,7 +391,7 @@ def test_mail_source_dialog_keeps_a_reply_request_beyond_the_old_preview_limit(t
         'date': '2026-09-30T10:00:00+00:00', 'subject': 'Next meeting'}) + '\n')
     refresh(tmp_path)
 
-    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}])[source]
+    context = cited_context(tmp_path, [{'text': '## Sources\n- [1] ' + source}], budget=200_000)[source]
     assert context['excerpt'] == body
     assert not context['truncated']
 

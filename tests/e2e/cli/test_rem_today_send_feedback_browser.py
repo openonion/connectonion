@@ -19,7 +19,7 @@ from test_rem_today_fuse_browser import DRAFT, GREEN, OVERDUE, today  # noqa: E4
 pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
-INK = ("rgb(18, 21, 18)", "rgb(236, 238, 235)")
+INK = ("rgb(13, 19, 21)", "rgb(237, 243, 245)")
 
 
 def _open(page, width):

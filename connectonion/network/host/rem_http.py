@@ -26,9 +26,11 @@ page polls the same POST until it is ready or failed.
 """
 
 import asyncio
+import gzip
 import hmac
 import json
-from urllib.parse import parse_qs, urlsplit
+import re
+from urllib.parse import parse_qs, quote, urlsplit
 
 from ..asgi.http import read_body
 
@@ -41,10 +43,25 @@ SECURITY_HEADERS = [[b"cache-control", b"no-store"], [b"x-frame-options", b"DENY
 TASKS: dict[tuple, asyncio.Task] = {}
 
 
-async def _reply(send, status: int, body: str, kind: str = "text/plain", headers=()):
+async def _reply(send, status: int, body: str, kind: str = "text/plain", headers=(), *, accept_encoding=""):
+    content = body.encode("utf-8")
+    extra = list(headers)
+    if len(content) >= 1024 and accept_encoding:
+        extra.append([b"vary", b"Accept-Encoding"])
+        if _accepts_gzip(accept_encoding):
+            content = gzip.compress(content)
+            extra.append([b"content-encoding", b"gzip"])
     await send({"type": "http.response.start", "status": status,
-                "headers": [[b"content-type", f"{kind}; charset=utf-8".encode()], *SECURITY_HEADERS, *headers]})
-    await send({"type": "http.response.body", "body": body.encode("utf-8")})
+                "headers": [[b"content-type", f"{kind}; charset=utf-8".encode()], *SECURITY_HEADERS, *extra]})
+    await send({"type": "http.response.body", "body": content})
+
+
+def _accepts_gzip(value: str) -> bool:
+    for encoding in value.lower().split(","):
+        name, *parameters = encoding.strip().split(";")
+        if name == "gzip" and not any(re.fullmatch(r"q\s*=\s*0(?:\.0*)?", p.strip()) for p in parameters):
+            return True
+    return False
 
 
 def _headers(scope) -> dict:
@@ -153,7 +170,8 @@ async def handle_rem_http(scope, receive, send, routes):
         # and the open page reloads when /rem/version names a newer render.
         name = "live.html" if scope["path"] == "/rem" else "data.json"
         page, _ = await asyncio.to_thread(cached_page, root, name)
-        await _reply(send, 200, page, "text/html" if name == "live.html" else "application/json")
+        await _reply(send, 200, page, "text/html" if name == "live.html" else "application/json",
+                     accept_encoding=headers.get("accept-encoding", ""))
     elif scope["method"] == "GET" and scope["path"] == _graph_3d_url():
         # The 3D graph's engine (#3309), pinned and vendored: only the live reader asks for it, the first time
         # the knowledge graph opens in 3D. Signed in like every other reader path.
@@ -166,6 +184,8 @@ async def handle_rem_http(scope, receive, send, routes):
         await _query(scope, send, root)
     elif scope["method"] == "GET" and scope["path"] == "/rem/task-file":
         await _task_file(scope, send, root)
+    elif scope["method"] == "GET" and scope["path"] == "/rem/attachment":
+        await _attachment(scope, send, root)
     elif scope["method"] == "GET" and scope["path"] == "/rem/source":
         await _source(scope, send, root)
     elif scope["method"] == "POST" and scope["path"] == "/rem/translate":
@@ -195,14 +215,15 @@ async def _query(scope, send, root):
     except (RemError, ValueError, TypeError) as error:
         await _reply(send, 400, json.dumps({"error": str(error)}), "application/json")
         return
-    await _reply(send, 200, json.dumps(result, ensure_ascii=False), "application/json")
+    await _reply(send, 200, json.dumps(result, ensure_ascii=False), "application/json",
+                 accept_encoding=_headers(scope).get("accept-encoding", ""))
 
 
 async def _source(scope, send, root):
     """One cited source's retained excerpt, for a card the snapshot had no room for (#3165).
 
-    The snapshot's excerpts share one budget across the notebook, mail first, so a project's files, sessions and
-    commits rarely fit. Only what REM itself retained is read (the same readers as the snapshot), by a source id
+    The snapshot's excerpts share one budget across the notebook, so long sources may not fit.
+    Only what REM itself retained is read (the same readers as the snapshot), by a source id
     of a known kind; never a path the request names."""
     from ...rem.reader_model import SOURCE, cited_context
     value = parse_qs(scope.get('query_string', b'').decode('utf-8')).get('id', [''])[0]
@@ -215,7 +236,8 @@ async def _source(scope, send, root):
     if not context:
         await _reply(send, 404, 'not found')
         return
-    await _reply(send, 200, json.dumps(context, ensure_ascii=False), 'application/json')
+    await _reply(send, 200, json.dumps(context, ensure_ascii=False), 'application/json',
+                 accept_encoding=_headers(scope).get("accept-encoding", ""))
 
 
 async def _task_file(scope, send, root):
@@ -238,6 +260,29 @@ async def _task_file(scope, send, root):
                             [b'content-security-policy', b"sandbox; default-src 'none'"],
                             *([] if safe else [[b'content-disposition', b'attachment']])]})
     await send({'type': 'http.response.body', 'body': content})
+
+
+async def _attachment(scope, send, root):
+    """Only authenticated loopback readers reach this retained-file endpoint."""
+    from ...rem.attachments import attachment_path, attachment_type
+
+    source = parse_qs(scope.get("query_string", b"").decode("utf-8", errors="replace")).get("id", [""])[0]
+    path = attachment_path(root, source)
+    if path is None:
+        await _reply(send, 404, "not found")
+        return
+    mime, kind = attachment_type(path)
+    inline = kind in ("pdf", "image")
+    disposition = "inline" if inline else "attachment"
+    filename = quote(path.name, safe=" .-_")
+    policy = ("default-src 'self' 'unsafe-inline' data: blob:; script-src 'none'; object-src 'self'"
+              if inline else "sandbox; default-src 'none'")
+    await send({"type": "http.response.start", "status": 200, "headers": [
+        [b"content-type", mime.encode()], [b"x-content-type-options", b"nosniff"],
+        [b"x-frame-options", b"SAMEORIGIN"], [b"referrer-policy", b"no-referrer"],
+        [b"cache-control", b"private, max-age=300"], [b"content-security-policy", policy.encode()],
+        [b"content-disposition", f"{disposition}; filename=\"{filename}\"; filename*=UTF-8''{quote(path.name, safe='')}".encode()]]})
+    await send({"type": "http.response.body", "body": await asyncio.to_thread(path.read_bytes)})
 
 
 def _moment_or_none(value) -> bool:
@@ -401,7 +446,10 @@ async def _action(scope, receive, send, root, headers):
                                                         or body.get("action", "status") == "status"
                                                         and (result or {}).get("result") == "running")
             or scope["path"] in ("/rem/talk", "/rem/translate-all")):
-        await asyncio.to_thread(owner_changed, root)
+        if scope["path"] in ("/rem/thread", "/rem/sender", "/rem/language", "/rem/translation-request"):
+            await asyncio.to_thread(owner_changed, root, builds=("live",))
+        else:
+            await asyncio.to_thread(owner_changed, root)
     await _reply(send, 200, json.dumps(result or {"state": "saved"}), "application/json")
 
 
@@ -446,7 +494,7 @@ async def _keys(scope, receive, send, root, headers):
     text = lambda name: body.get(name) if isinstance(body, dict) and isinstance(body.get(name), str) else ""  # noqa: E731
     action = scope["path"].rsplit("/", 1)[1]
     operations = {"add": lambda: {"page": keys.add(root, text("service"), text("account"), text("secret"),
-                                                   purpose=text("purpose"), link=text("link"))},
+                                                   purpose=text("purpose"), link=text("link"), notes=text("notes"))},
                   "reveal": lambda: {"secret": keys.reveal(root, text("page"))},
                   "import": _key_import(keys, root, text("source"), text("csv")),
                   # co's own credentials: names and where the file is, never a value (#3305).

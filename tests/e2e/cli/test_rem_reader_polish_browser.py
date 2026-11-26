@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(os.environ.get("CO_REM_BROWSER_TEST") != "1",
                                 reason="opt in with CO_REM_BROWSER_TEST=1; requires installed Chrome")
 
 BASE = "http://rem.test/"
-GREEN = ("rgb(18, 21, 18)", "rgb(238, 240, 237)")
+GREEN = ("rgb(13, 19, 21)", "rgb(237, 243, 245)")
 LINK_ID, QUESTION_ID = "a1" * 16, "b2" * 16
 REVIEWS = r'''([live, language]) => {
   REM.live = live;

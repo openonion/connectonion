@@ -106,6 +106,30 @@ def _sync_directory(path: Path) -> None:
             os.close(fd)
 
 
+REPLY_PREVIEW = 120
+
+
+VERBS = {"reaction": "reacting to", "edit": "editing"}
+
+
+def reply_line(quoted, kind: str = "text") -> str:
+    """What a reply answers, in one line next to its text (#3226).
+
+    "Yes please" and "the first one" mean nothing without the message they
+    quote. The reference was always in `quoted`, but an agent reads `text`, so
+    it guessed: on 2026-11-17 a reply about one video was taken for another.
+    Empty for a message that quotes nothing, so its line is unchanged.
+    """
+    if not isinstance(quoted, dict) or not quoted.get("id"):
+        return ""
+    who = "you" if quoted.get("from_me") else (str(quoted.get("sender") or "").split("@")[0] or "someone")
+    text = " ".join(str(quoted.get("text") or "").split())
+    if len(text) > REPLY_PREVIEW:
+        text = text[:REPLY_PREVIEW - 1] + "…"
+    shown = f'"{text}"' if text else f'({quoted.get("kind") or "message"})'
+    return f"↩ {VERBS.get(kind, 'replying to')} {who}: {shown} (id {quoted['id']})"
+
+
 @dataclass
 class Message:
     """One inbound message. Identical fields on every provider.
@@ -165,6 +189,8 @@ class Message:
             "sender": self.sender,
             "sender_name": self.sender_name,
             "text": self.text,
+            # Right after the text it explains; absent when nothing is quoted (#3226).
+            **({"reply_to": line} if (line := reply_line(self.quoted, self.kind)) else {}),
             "kind": self.kind,
             "quoted": self.quoted,
             "mentioned": self.mentioned,

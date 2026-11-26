@@ -255,6 +255,12 @@ def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
     return None
 
 
+def _trust_label(trust) -> str:
+    """Published trust label: preserve TrustAgent's level instead of calling it 'custom'."""
+    value = trust.trust if isinstance(trust, TrustAgent) else trust
+    return value if isinstance(value, str) else "custom"
+
+
 def _model_name(llm) -> str:
     """provider/model, as host.yaml writes it; OpenOnionLLM keeps co/ off the name it sends."""
     from ...core.llm import OpenOnionLLM
@@ -475,7 +481,10 @@ def _create_route_handlers(
                              mode_policy=mode_policy,
                              is_admin=bool(requester and requester["level"] == "admin")), prompt)
 
-    record_dir = Path(project_dir) / ".co" if project_dir else project_co_dir()
+    record_dir = (
+        getattr(trust_agent, "_co_dir", None)
+        or (Path(project_dir) / ".co" if project_dir else project_co_dir())
+    )
     handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent, record_dir)
     handle_remote_browser = _make_remote_browser(remote_browser_service, trust_agent, record_dir)
 
@@ -817,7 +826,8 @@ def _print_host_banner(
     console.print()
 
     # Trust/Invite (belongs to host layer)
-    if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
+    trust_label = _trust_label(trust)
+    if trust_config and trust_label.lower() in TRUST_LEVELS:
         line = _invite_line(trust_config)
         if line:
             console.print(f"{indent}[bold yellow]{line}[/bold yellow]")
@@ -1369,7 +1379,7 @@ def host(
         raise SystemExit(f"[host] {collision}")
 
     agent_metadata["address"] = addr_data['address']
-    agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
+    agent_metadata["trust"] = _trust_label(trust)
     if provider_station is not None:
         agent_metadata["provider_station"] = "claude_code"
 
@@ -1573,7 +1583,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     # Agent's own name stands as before.
     agent_metadata, sample = _extract_agent_metadata(create_agent, name)
     agent_metadata["address"] = get_agent_address(sample)
-    agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
+    agent_metadata["trust"] = _trust_label(trust)
 
     # Give the agent a polished Home on day zero (no-op if control_center.html exists).
     from .ws_router.control_center import ensure_control_center

@@ -44,6 +44,7 @@ work, keep it on your machine, and carry it into the next task.
 <a href="docs/cli/onenote.md"><img src="https://www.connectonion.com/logos/onenote.svg?v=3" width="80" height="80" alt="OneNote" title="OneNote · co onenote"></a>
 <a href="docs/cli/obsidian.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/obsidian.svg" width="80" height="80" alt="Obsidian" title="Obsidian · co obsidian"></a>
 <a href="docs/cli/notion.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/notion.svg" width="80" height="80" alt="Notion" title="Notion · co notion"></a>
+<a href="docs/cli/granola.md"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/granola.svg" width="80" height="80" alt="Granola" title="Granola · co granola"></a>
 <a href="docs/cli/outlook.md"><img src="https://www.connectonion.com/logos/teams.svg?v=3" width="80" height="80" alt="Teams meetings" title="Teams meetings · co outlook calendar"></a></p>
 
 <p><b>Chat apps</b><br>
@@ -101,9 +102,6 @@ work, keep it on your machine, and carry it into the next task.
 
 <p><a href="docs/cli/README.md">Every command</a> · <code>co commands</code> lists them all.</p>
 <!-- /connections -->
-
-<p><b>Integrations in review</b><br>
-<a href="https://github.com/openonion/connectonion/pull/3223"><img src="https://raw.githubusercontent.com/openonion/connectonion/main/assets/logos/granola.svg" width="80" height="80" alt="Granola" title="Granola · integration PR"></a></p>
 
 <a id="co-rem--your-agents-memory"></a>
 

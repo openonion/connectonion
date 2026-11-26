@@ -29,11 +29,17 @@ def stall(**fields):
             **fields}
 
 
+def _open_night_log(page):
+    if page.locator("#main .night-card .nh-log:not([open]) > summary").count():
+        page.locator("#main .night-card .nh-log > summary").first.click()
+
+
 @pytest.mark.parametrize("size", [(1440, 900), (390, 844)])
 def test_a_stalled_night_says_why_in_one_plain_sentence_and_folds_what_waits(today, size):
     page, _, _ = today
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.evaluate(STUCK, stall(), isolated_context=False)
+    _open_night_log(page)
     line = page.locator(".night-card .night-stall > summary")
     assert line.is_visible()
     if size[0] < 640:
@@ -54,6 +60,7 @@ def test_a_stalled_night_says_why_in_one_plain_sentence_and_folds_what_waits(tod
     assert page.evaluate("() => document.documentElement.scrollWidth <= innerWidth")
 
     page.evaluate("() => { setInterfaceLanguage('zh'); scrollTo(0, 0); }", isolated_context=False)
+    _open_night_log(page)
     assert page.locator(".night-card .night-stall > summary").inner_text().startswith(
         "REM 昨夜在 Outlook 上卡住了：超时 3 次，已跳过这一项，其余照常")
 
@@ -62,12 +69,14 @@ def test_once_fixed_the_line_says_how_many_were_skipped_and_that_rem_will_try_ag
     page, _, _ = today
     page.evaluate(STUCK, stall(times=1), isolated_context=False)
     page.evaluate("() => { setInterfaceLanguage('zh'); scrollTo(0, 0); }", isolated_context=False)
+    _open_night_log(page)
     assert page.locator(".night-stall > summary").inner_text().startswith("昨夜 1 项因 Outlook 超时跳过，会再试")
 
 
 def test_a_mailbox_stopped_for_the_turn_is_said_once_without_a_command(today):
     page, _, _ = today
     page.evaluate(STUCK, stall(reason="auth", times=1, stopped=True), isolated_context=False)
+    _open_night_log(page)
     text = page.locator(".night-stall > summary").inner_text()
     assert text.startswith("Last night Outlook failed (authorization expired); REM stopped asking it for that turn")
     assert "co auth" not in text
@@ -82,6 +91,7 @@ def test_mail_confirmed_gone_never_promises_a_retry(today, size):
             "missing_id": "mail-1", "gone": True, "retry_at": "2026-09-25T06:00:00+00:00"}
     page.evaluate(STUCK, stall(reason="not_found", times=0, gone=1, parked=[gone]), isolated_context=False)
     page.evaluate("() => { setInterfaceLanguage('zh'); scrollTo(0, 0); }", isolated_context=False)
+    _open_night_log(page)
     line = page.locator(".night-stall > summary")
     line.click()
     text = page.locator(".night-stall").inner_text()
@@ -99,6 +109,7 @@ def test_a_wait_with_some_gone_counts_only_what_is_retried(today):
              "retry_at": "2026-10-02T06:00:00+00:00"}
     page.evaluate(STUCK, stall(times=0, pages=2, gone=1, parked=[waits, gone]), isolated_context=False)
     page.evaluate("() => { setInterfaceLanguage('zh'); scrollTo(0, 0); }", isolated_context=False)
+    _open_night_log(page)
     assert page.locator(".night-stall > summary").inner_text().startswith("1 项在等 Outlook，会再试")
 
 

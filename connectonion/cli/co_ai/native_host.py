@@ -187,6 +187,8 @@ def native_provider(model: str) -> tuple[str, str] | None:
 
 
 RESTRICTED_KEYS = ('allowed_tools', 'skills', 'system_prompt', 'env')
+# A trust level whose callers get more tools: `admin: {allowed_tools: [...]}` (#3340).
+LEVEL_KEYS = ('admin', 'whitelist', 'contact')
 
 
 def configured_restriction(co_dir: Path) -> ClaudeRestriction | None:
@@ -194,10 +196,22 @@ def configured_restriction(co_dir: Path) -> ClaudeRestriction | None:
     block = _host_config(co_dir).get('restricted')
     if block is None:
         return None
-    if not isinstance(block, dict) or set(block) - set(RESTRICTED_KEYS):
-        raise ValueError(f"restricted: in {Path(co_dir) / 'host.yaml'} takes only {', '.join(RESTRICTED_KEYS)}")
+    if not isinstance(block, dict) or set(block) - set(RESTRICTED_KEYS) - set(LEVEL_KEYS):
+        raise ValueError(f"restricted: in {Path(co_dir) / 'host.yaml'} takes only "
+                         f"{', '.join(RESTRICTED_KEYS + LEVEL_KEYS)}")
     return ClaudeRestriction(allowed_tools=_names(block, 'allowed_tools'), skills=_names(block, 'skills'),
-                             system_prompt=_text(block, 'system_prompt'), env=_env_names(block))
+                             system_prompt=_text(block, 'system_prompt'), env=_env_names(block),
+                             by_level=tuple((level, _level_tools(block, level)) for level in LEVEL_KEYS
+                                            if level in block))
+
+
+def _level_tools(block: dict, level: str) -> tuple[str, ...]:
+    """The extra tools one trust level gets; only allowed_tools, so a level cannot change the prompt or env."""
+    extra = block[level]
+    if not isinstance(extra, dict) or set(extra) != {'allowed_tools'}:
+        raise ValueError(f'restricted: {level} takes only allowed_tools, e.g. '
+                         f'{level}: {{allowed_tools: ["Bash(python write_contact.py:*)"]}}')
+    return _names(extra, 'allowed_tools')
 
 
 def _env_names(block: dict) -> tuple[str, ...]:

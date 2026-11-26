@@ -284,8 +284,13 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         entry = found.get(record["path"])
         if entry:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"], agent=entry.get("agent", False))
-        if record["category"] in ("decisions", "principles"):
+        if record["category"] in ("decisions", "knowledge", "principles"):
             record["written"] = written(record["text"])
+        if record["category"] in ("people", "orgs", "projects", "decisions", "principles", "knowledge", "skills") and record.get("written"):
+            record["written"] = any(
+                line.strip() and not line.startswith(("# ", "Investigation:"))
+                for line in record["text"].splitlines()
+            )
         if record["category"] == "projects" and not today:
             record["private_project"] = private(record["path"], record["text"])
             # 让 Codex 查 (#2909): the run the owner asked for on this page, followed in place.
@@ -296,6 +301,10 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         if record["category"] == "sessions":
             record.update(reader_fields(record["text"]))
             record.update(session_detail(record["text"], private=local))
+            # A title taken from a turn that is now labelled says that turn's words; the reader names it in its own
+            # language (session_title_hidden), and no copy of the words travels in the record (#3425 follow-up).
+            if record["session_title_hidden"]:
+                record["title"] = "This session's content is hidden"
     if not today:
         # The Investigate button's label, level costs, run, Undo and waiting rewrite (#3105).
         from .page_runs import states
@@ -312,7 +321,7 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         for record in records:
             if record["path"] in places:
                 record["queue_place"] = places[record["path"]]
-    owner = owner_record(root)
+    owner = owner_record(root, records)
     organisation_members(records, owner)
     from .org_hierarchy import structure, rollups
     structure(records, owner)
@@ -377,11 +386,14 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
             if context:
                 context.setdefault("mapped_session_folder", message["cwd"])
     from .config import read_config
+    from . import store
     from .translate import cached_languages, foreign_lines
     from .languages import language_of, owner_language, owner_languages, spoken
     mine = owner_language(root)
+    translations = store.translations_map(root) if store.cache_fresh(root, "translations") else None
     for record in records:
-        record["translations"] = cached_languages(root, record["path"])
+        record["translations"] = (translations.get(record["path"], {}) if translations is not None
+                                  else cached_languages(root, record["path"]))
         if public_only and record["translations"]:
             from .store_build import redact_text
             record["translations"] = {lang: redact_text(body, "public") for lang, body in record["translations"].items()}
@@ -393,6 +405,19 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
             record["written_in"] = "mixed"
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
+    untranslated_cats = ("people", "orgs", "projects", "decisions", "principles", "knowledge", "skills")
+    listed_prose = lambda r: (  # noqa: E731
+        r.get("written")
+        and r["category"] in untranslated_cats
+        and not (r.get("needs_review") or r.get("service") or r.get("catalog_parent"))
+    )
+    written_count = sum(1 for r in records if listed_prose(r))
+    untranslated_count = sum(
+        1 for r in records
+        if listed_prose(r)
+        and not any(re.match(r"^zh(?:-|$)", tag, re.I) for tag in r.get("translations", {}))
+        and not re.match(r"^zh(?:-|$)", r.get("written_in") or "", re.I)
+    )
     candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
     current_status = status(root, include_coverage=False) if today else status(root)
     # A status plan contains private meetings too; shared snapshots carry neither projection.
@@ -441,6 +466,8 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
             "night_throughput": _night_throughput(root, logs),
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
             "counts": counts(root, found),
+            "written_count": written_count,
+            "untranslated_count": untranslated_count,
             "owner": owner,
             # The owner's own addresses, so the reader can tell mail said to him from a list or Bcc copy.
             "owner_addresses": sorted(owner_addresses(root)) if local else []}
@@ -584,36 +611,60 @@ def _failure_reasons(error: str) -> list[str]:
     return [hint for pattern, hint in patterns if re.search(pattern, error, re.I)]
 
 
-def owner_record(root: Path) -> str:
+_OWNER_HOW_LINE = re.compile(
+    r"(?mi)^\s*(?:[-*+]\s+)?\*?\*?How we know them\*?\*?\s*[:：]\s*\*?\*?"
+    r"(?:This is the (?:notebook |account )?owner's (?:own )?page|Owner's page)\b"
+)
+_OWNER_PROSE = re.compile(
+    r"(?i)\b(?:The user is the (?:account |notebook )?owner"
+    r"|This is the (?:notebook |account )?owner's (?:own )?page)\b"
+)
+
+
+def owner_record(root: Path, records: list[dict] | None = None) -> str:
     """The owner's own page, pinned as "You" at the top of the reader's navigation.
 
-    Reads `.state/map.json` first; when a synced notebook has no map.json yet, falls
-    back to the person page explicitly marked as the owner's page or carrying an
-    owner address so the owner never appears as a counterparty on Today/Waiting.
+    Reads `.state/map.json` first; when a synced or migrated notebook lacks `owner.record`
+    (or points to a merged/missing record), falls back to the person page explicitly marked
+    as the owner's page (ignoring trailing `[6]` citations) or carrying an owner address so
+    the owner never appears as a counterparty on Today/Waiting.
     """
-    from .files import Notebook, read_json, state_path
+    from .files import CITATION, EMAIL, EMAIL_LABELS, Notebook, read_json, state_path
     owner = read_json(state_path(root, "map.json"), {}).get("owner") or {}
     record = owner.get("record", "") if isinstance(owner, dict) else ""
-    if record:
-        return record
     book = Notebook(root)
-    people = book.list("people")
+    if record:
+        from .merge import resolve
+        resolved = resolve(root, record)
+        if (records is not None and any(r.get("path") == resolved for r in records)) or book.exists(resolved):
+            return resolved
+    if records is not None:
+        people = [(r["path"], r.get("text", "")) for r in records
+                  if r.get("category") == "people" or str(r.get("path", "")).startswith("people/")]
+    else:
+        people = [(path, book.read(path)) for path in book.list("people")]
     if not people:
-        return ""
-    for path in people:
-        text = book.read(path)
-        if re.search(r"(?mi)^-\s*How we know them\s*[:：]\s*This is the owner's page\b", text) or re.search(
-            r"(?i)\bThe user is the account owner\b", text[:400]
-        ):
+        return record
+    for path, text in people:
+        cleaned = CITATION.sub("", text).replace("’", "'").replace("‘", "'")
+        if _OWNER_HOW_LINE.search(cleaned) or _OWNER_PROSE.search(cleaned.partition("\n## Open threads")[0]):
             return path
     from .store_messages import owner_addresses
     addresses = {addr.casefold() for addr in owner_addresses(root) if addr}
     if addresses:
-        for path in people:
-            text = book.read(path)
+        for path, text in people:
+            own_emails = {
+                addr.casefold()
+                for line in text.splitlines()[:40]
+                if line.strip().lstrip("-*").strip().casefold().startswith(EMAIL_LABELS + ("handles:",))
+                for addr in EMAIL.findall(line)
+            }
+            if own_emails & addresses:
+                return path
+        for path, text in people:
             if any(addr in text.casefold() for addr in addresses):
                 return path
-    return ""
+    return record
 
 
 def _detail_data(full: dict, shell: dict) -> dict:
@@ -727,10 +778,10 @@ def write_reader(root: Path) -> Path:
 
 # ---- Saved pages: an open is a file read, the rebuild runs behind it (owner, 2026-11-09) ----
 # Rendering a 31,136-file notebook took 35 s for the live page and 73 s for its
-# details, and every open did it again. Two builds, each keyed by reader_version:
-# "live" is the Host's page; "full" is its details and the offline file page,
-# made from one snapshot. A build runs once at a time, in a detached process.
-BUILDS = {"live.html": "live", "data.json": "full", "file.html": "full"}
+# details, and every open did it again. Three builds, each keyed by reader_version:
+# "live" is the fast Today shell; "full" is its lazy JSON; "file" is the explicit
+# offline snapshot. A build runs once at a time, in a detached process.
+BUILDS = {"live.html": "live", "data.json": "full", "file.html": "file"}
 # A rebuild costs ~100 s of CPU on a real notebook under load, and a night run
 # keeps writing: at most one per interval unless the owner acted. Each interval
 # the background build walks the notebook (~17 s of stat calls, never on the
@@ -739,7 +790,7 @@ REBUILD_INTERVAL = 600
 # "Next pass" and schedule text move with the clock: at most this late.
 STALE_SCHEDULE_SECONDS = 3600
 # The live page asks for its details as soon as it loads, so it keeps both current.
-NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("full",)}
+NEEDS = {"live.html": ("live", "full"), "data.json": ("full",), "file.html": ("file",)}
 LOG_LINES = 200
 # Only with no saved page at all is one rendered while the owner waits, and then
 # a line says so at least this often (1.9.3's first open after the upgrade sat
@@ -862,14 +913,15 @@ def _render(root: Path, build: str, as_of: str | None = None) -> tuple[dict, str
     """({file name: text}, as_of, seconds it took) of one build; nothing is written.
     Builds published together share `as_of`, so the page and its details agree."""
     began = time.monotonic()
-    if build == "live":
-        shell = snapshot(root, local=True, today=True)
-        shell["as_of"] = as_of or shell["as_of"]
-        return {"live.html": _page(shell, live=True)}, shell["as_of"], time.monotonic() - began
-    full = snapshot(root, local=True)
+    full = snapshot(root, local=True, today=True) if build == "live" else snapshot(root, local=True)
     full["as_of"] = as_of or full["as_of"]
-    return ({"data.json": json.dumps(full, ensure_ascii=False, default=str), "file.html": _page(full, live=False)},
-            full["as_of"], time.monotonic() - began)
+    if build == "live":
+        texts = {"live.html": _page(full, live=True)}
+    elif build == "full":
+        texts = {"data.json": json.dumps(full, ensure_ascii=False, default=str)}
+    else:
+        texts = {"file.html": _page(full, live=False)}
+    return texts, full["as_of"], time.monotonic() - began
 
 
 def _publish(root: Path, rendered: dict, version: list, tree=None) -> None:
@@ -911,15 +963,18 @@ def _checked(root: Path, build: str, moment: float) -> None:
     _replace(_cached(root, "current.json"), json.dumps(manifest))
 
 
-def owner_changed(root: Path) -> bool:
+def owner_changed(root: Path, builds=("live", "full")) -> bool:
     """The owner acted (in the reader, or an explicit co rem open): rebuild now, not
     at the next interval. A build already running sees this and passes again.
     True when a build is running or was started."""
     try:
-        _replace(_cached(root, "owner"), str(_now()))
+        # Shell-only actions queue that build without making an in-flight full
+        # snapshot repeat. Page edits still invalidate the worker's current pass.
+        if "full" in builds:
+            _replace(_cached(root, "owner"), str(_now()))
+        return _spawn_refresh(root, builds)
     except CacheRefused:
         return False
-    return _spawn_refresh(root, ("live", "full"))
 
 
 def _owner_since(root: Path, moment: float) -> bool:
@@ -970,7 +1025,7 @@ def _building(root: Path):
 
 
 def refresh(root: Path, builds=("live", "full")) -> bool:
-    """The background build: bring these saved pages, and any others already saved,
+    """The background build: bring only the requested saved pages,
     up to date, unless a build runs (False then). It passes again only for an owner
     action made meanwhile, also one made after its last look (bounded); other writes
     wait for the next interval."""
@@ -978,9 +1033,19 @@ def refresh(root: Path, builds=("live", "full")) -> bool:
         finished = _refresh_once(root, builds)
         if finished is None:
             return False
-        if not _owner_since(root, finished):
+        pending = _pending_builds(root)
+        if not pending and not _owner_since(root, finished):
             return True
+        if pending:
+            builds = pending
+    if pending := _pending_builds(root):
+        _spawn_refresh(root, pending)
     return True
+
+
+def _pending_builds(root: Path) -> list[str]:
+    """Only explicitly requested builds wait behind the current worker."""
+    return [build for build in ("live", "full", "file") if _cached(root, f"pending-{build}").is_file()]
 
 
 def _refresh_once(root: Path, builds):
@@ -988,7 +1053,10 @@ def _refresh_once(root: Path, builds):
     with _building(root) as mine:
         if not mine:
             return None
-        wanted = [build for build in ("live", "full") if build in builds or saved(root, build)]
+        pending = _pending_builds(root)
+        wanted = [build for build in ("live", "full", "file") if build in builds or build in pending]
+        for build in pending:
+            _cached(root, f"pending-{build}").unlink()
         for _ in range(3):
             started, version = _now(), reader_version(root)
             rows = {build: saved(root, build) for build in wanted}
@@ -1005,11 +1073,14 @@ def _refresh_once(root: Path, builds):
                         _checked(root, build, started)
             if not stale:
                 return started
-            stale = wanted  # every saved build together, so they name one render and one time
             # Walked before rendering, so the page carries the tree it was built from
             # and the next check does not rebuild it again (+17 s on a 100 s build).
             tree = tree or tree_version(root)
             as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            if "full" in stale and "live" not in stale:
+                live = saved(root, "live")
+                if not _behind(live, version, started):
+                    as_of = live["as_of"]
             _publish(root, {build: _render(root, build, as_of) for build in stale}, version, tree)
             _cached(root, "failed.json").unlink(missing_ok=True)
             if not _owner_since(root, started):
@@ -1059,6 +1130,8 @@ def main(argv) -> None:
 def _spawn_refresh(root: Path, builds) -> bool:
     """Start the detached build; True when one is running or was started. A build
     that failed is not started again within REBUILD_INTERVAL."""
+    for build in builds:
+        _replace(_cached(root, f"pending-{build}"), "requested")
     with _building(root) as free:
         if not free:
             return True
@@ -1132,7 +1205,7 @@ def _first_page(root: Path, name: str, version: list, say) -> str:
             with _building(root) as mine:
                 if mine:
                     if (text := _read_page(root, name)) is None:
-                        together = [b for b in ("live", "full") if b == build or saved(root, b)]
+                        together = [build]
                         as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")  # one time for the set
                         _publish(root, {b: _render(root, b, as_of) for b in together}, version)
                         text = _read_page(root, name)
@@ -1183,19 +1256,23 @@ def _rebuild_stale(root: Path, name: str, version: list, *, owner: bool = False)
     """Start the background build when this page needs one that is missing, behind the
     key, or older than REBUILD_INTERVAL, and it is due (owner: now). True when a
     build was started or is running."""
-    rows = {build: saved(root, build) for build in ("live", "full")}
+    rows = {build: saved(root, build) for build in NEEDS[name]}
     missing = [build for build in NEEDS[name] if not rows[build]]
     behind = [build for build in NEEDS[name] if rows[build] and _behind(rows[build], version, _now())]
     unchecked = [build for build in NEEDS[name] if rows[build] and _unchecked(rows[build], _now())]
-    last = max((row.get("built_at", 0) for row in rows.values() if row), default=0)
+    last = max((rows[build].get("built_at", 0) for build in NEEDS[name] if rows[build]), default=0)
     # A page an older release rendered is rebuilt now, not at the next interval.
     upgraded = any(rows[build].get("release") != _release() for build in behind)
+    pending = _pending_builds(root)
     if behind and (owner or upgraded):
+        if name == "file.html":
+            _replace(_cached(root, "pending-file"), "requested")
+            return _spawn_refresh(root, ("file",))
         return owner_changed(root)
     if missing or behind and _now() - last >= REBUILD_INTERVAL:
-        return _spawn_refresh(root, list(dict.fromkeys(missing + behind + unchecked)))
-    if unchecked:  # the walk decides, in the background, whether anything changed
-        _spawn_refresh(root, unchecked)
+        return _spawn_refresh(root, list(dict.fromkeys(pending + missing + behind + unchecked)))
+    if pending or unchecked:  # the walk decides, in the background, whether anything changed
+        _spawn_refresh(root, list(dict.fromkeys(pending + unchecked)))
     return False
 
 
@@ -1300,15 +1377,7 @@ def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
     if not address:
         return open_snapshot(root, launch=launch, say=say, live=(
             "only the default notebook (~/.co/rem) with a co ai identity has a live reader"))
-    from .live_host import STARTING, Notice, ensure_local, local_reader, saved_host_dead, start
-    if _has_saved_page(root) and saved_host_dead(address) and not local_reader(address):
-        # No Host answers: the saved page now, co ai starting behind it. Waiting
-        # for it (up to 20 s) before the first paint was most of a cold open.
-        try:
-            failed = start(address)
-        except (OSError, RemError) as error:
-            return open_snapshot(root, launch=launch, say=say, live=f"could not start co ai: {error}; run `co ai` to diagnose")
-        return open_snapshot(root, launch=launch, say=say, live=failed or STARTING)
+    from .live_host import STARTING, Notice, ensure_local
     try:
         url, failure = ensure_local(address)
     except (OSError, RemError) as error:

@@ -567,6 +567,13 @@ def title_left(record, original: str, translation: str, language: str) -> bool:
     return language_of(words) not in (None, base)
 
 
+PROSE_CATEGORIES = ("people", "orgs", "projects", "decisions", "principles", "knowledge", "skills")
+
+
+def _has_prose_body(text: str) -> bool:
+    return any(line.strip() and not line.startswith(("# ", "Investigation:")) for line in text.splitlines())
+
+
 def readable(root: Path) -> list[str]:
     """The pages translated at all: not logs (the maps' run records), not the skills catalog's index,
     not pages held for review, services or duplicate installations (census.listed). Sessions, agenda,
@@ -574,8 +581,28 @@ def readable(root: Path) -> list[str]:
     from .census import listed, pages
     found = pages(root)
     return [record for record in Notebook(root).list()
-            if record.split("/")[0] != "logs" and record != "skills/catalog/index.md"
+            if record.split("/")[0] not in ("logs", "keys") and record != "skills/catalog/index.md"
             and (record not in found or listed(found[record]))]
+
+
+def _every_page_records(root: Path) -> list[str]:
+    """Written prose pages counted by the reader's #lang-progress control."""
+    from .census import listed, pages, written
+    found = pages(root)
+    notebook = Notebook(root)
+    records = []
+    for record in readable(root):
+        if "/" not in record:
+            records.append(record)
+            continue
+        cat = record.split("/")[0]
+        if cat not in PROSE_CATEGORIES:
+            continue
+        text = notebook.read(record)
+        is_written = (listed(found[record]) and found[record]["written"]) if record in found else written(text)
+        if is_written and _has_prose_body(text):
+            records.append(record)
+    return records
 
 
 def plan(root: Path, language: str, category: str = "") -> tuple[int, list[str]]:
@@ -589,6 +616,8 @@ def plan(root: Path, language: str, category: str = "") -> tuple[int, list[str]]
 # One translate-every-page job per notebook in this process (the Host the reader talks to).
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
+IDLE_COUNTS: dict[tuple, tuple] = {}
+IDLE_COUNTS_TTL = 10
 
 
 def every_page(root: Path, action: str, language: str = "") -> dict:
@@ -605,6 +634,7 @@ def every_page(root: Path, action: str, language: str = "") -> dict:
             if job["state"] == "running":
                 job["state"] = "stopping"
         if action == "start" and not busy:
+            IDLE_COUNTS.clear()
             job = JOBS[key] = {"state": "starting", "language": _job_language(root, language),
                                "done": None, "total": None, "translated": 0, "failed": 0,
                                "error": None, "stop": threading.Event()}
@@ -617,9 +647,16 @@ def every_page(root: Path, action: str, language: str = "") -> dict:
             if name in ("state", "translated", "failed", "error", "halted")}
     language = job["language"] if job and not language else _job_language(root, language)
     # Counts only: plan's Today-first order reads the whole queue (~5 s on a real notebook).
-    records = readable(root)
-    return {**last, "language": language, "done": sum(current(root, record, language) for record in records),
-            "total": len(records)}
+    state = state_path(root, "translations").parent
+    stamp = (root.stat().st_mtime_ns, state.stat().st_mtime_ns if state.is_dir() else 0)
+    cache_key = (key, language, stamp)
+    cached_counts = IDLE_COUNTS.get(cache_key)
+    if cached_counts is None or monotonic() - cached_counts[0] >= IDLE_COUNTS_TTL:
+        records = _every_page_records(root)
+        cached_counts = (monotonic(), sum(current(root, record, language) for record in records), len(records))
+        IDLE_COUNTS.clear()
+        IDLE_COUNTS[cache_key] = cached_counts
+    return {**last, "language": language, "done": cached_counts[1], "total": cached_counts[2]}
 
 
 def _job_language(root, language):
@@ -648,7 +685,10 @@ def _run_job(root, job):
             return
         claim(root)  # refused, in words, while the CLI is already translating every page
         mine = True
-        total, pending = plan(root, job["language"])
+        pages = _every_page_records(root)
+        allowed = set(pages)
+        pending = [record for record in backlog(root, job["language"], shown=shown_today(root)) if record in allowed]
+        total = len(pages)
         job.update(total=total, done=total - len(pending), state="stopping" if job["stop"].is_set() else "running")
         result = translate_pages(root, job["language"], pending, workers=config["limits"]["workers"],
                                  stop=job["stop"], on_row=counted, floor=quota_floor(root, config))
@@ -663,6 +703,7 @@ def _run_job(root, job):
         # Anything unexpected still reaches the Host's log; the button must not wait on a dead thread.
         if job["state"] not in ("done", "stopped", "failed"):
             job.update(state="failed", error="The translation stopped unexpectedly")
+        IDLE_COUNTS.clear()
         # The reader rebuilds with the new translations and the open page reloads (/rem/version).
         owner_changed(root)
 

@@ -793,9 +793,21 @@ def _saved_names(name: str):
 
 
 def _named(record: dict, saved) -> dict:
-    """The record with the owner's saved name for its sender, when there is one."""
+    """The record with the owner's saved name for its sender, and what it replies to.
+
+    A message received before #3226 was stored without `reply_to`; the log adds
+    it from `quoted` so an old reply reads like a new one.
+    """
+    from ...inbox.store import reply_line
     chosen = saved(record.get("sender", ""))
-    return {**record, "sender_name": chosen} if chosen else record
+    line = "" if "reply_to" in record else reply_line(record.get("quoted"), record.get("kind") or "text")
+    if not (chosen or line):
+        return record
+    named = {**record, **({"sender_name": chosen} if chosen else {})}
+    if line:
+        named = {key: value for pair in named.items() for key, value in
+                 ([pair, ("reply_to", line)] if pair[0] == "text" else [pair])}
+    return named
 
 
 def handle_ls(name: str) -> None:
@@ -906,6 +918,33 @@ def _named_line(line: str, saved) -> str:
                                                    separators=(",", ":")) + "\n"
 
 
+def _caller_gate(p, name: str):
+    """Who each sender is under this project's host.yaml trust, or None when nothing decides (#3340).
+
+    A provider with channel identities (WhatsApp) is checked against the same
+    lists and policy as a web caller of `co host`. Without a .co/host.yaml there
+    is no policy, every sender reaches the command as before, and consume says so.
+    """
+    if not hasattr(p, "caller_identity"):
+        return None
+    from ...network.trust.channel import admits, channel_level, host_policy
+    from ...project import project_co_dir
+    co_dir = project_co_dir()
+    if not (co_dir / "host.yaml").is_file():
+        errors.print(f"no .co/host.yaml here: every {name} sender reaches the command, unchecked. "
+                     f"Next: co init ./ to give it a trust policy", style="yellow", soft_wrap=True)
+        return None
+    policy = host_policy(co_dir)
+    errors.print(f"trust from {co_dir / 'host.yaml'}: senders it does not admit are not answered. "
+                 f"Admit one: co trust add {name}:+<phone>", style="dim", soft_wrap=True)
+
+    def judge(message):
+        identity = p.caller_identity(message.sender)
+        level = channel_level(identity, p.chat_identity(message.chat), co_dir)
+        return identity, level, admits(level, policy)
+    return judge
+
+
 def handle_consume(name: str, command: List[str], once: bool = False, workers: int = 1,
                    context: int = 0) -> None:
     """For each message: run COMMAND with the message on stdin, send its
@@ -920,6 +959,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         sys.exit(2)
     _listener_or_exit(inbox)
     consumer = f"consume:{os.path.basename(command[0])}"
+    gate = _caller_gate(p, name)
 
     def failed(message, why: str) -> None:
         # On stderr as well as in the log, while the loop carries on: the
@@ -932,8 +972,19 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
         raise RuntimeError(why)
 
     def answer(message) -> None:
+        caller = {}
+        if gate:
+            identity, level, allowed = gate(message)
+            if not allowed:
+                inbox.log(f"consume: {message.id} from {identity or message.sender} is {level} "
+                          f"under host.yaml trust; not answered")
+                return
+            caller = {"CO_CALLER_ADDRESS": identity, "CO_CALLER_TRUST": level}
+        # Only this check says who the caller is: a CO_CALLER_TRUST=admin left in
+        # consume's own environment must not reach a handler for a stranger.
+        inherited = {key: value for key, value in os.environ.items() if not key.startswith("CO_CALLER_")}
         env = dict(
-            os.environ,
+            inherited,
             CO_PROVIDER=name,
             CO_CHAT=message.chat,
             CO_THREAD=message.thread or "",
@@ -941,6 +992,7 @@ def handle_consume(name: str, command: List[str], once: bool = False, workers: i
             CO_MSG_ID=message.id,
             CO_CHAT_DIR=str(inbox.root / "chats" / message.chat),
             PYTHONIOENCODING="utf-8",
+            **caller,
         )
         os.makedirs(env["CO_CHAT_DIR"], exist_ok=True)
         # Before the command, not before the send. Here the command *is* the

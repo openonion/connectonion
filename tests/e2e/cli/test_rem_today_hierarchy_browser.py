@@ -203,9 +203,9 @@ def test_a_held_reply_leaves_the_count_the_badge_and_the_waiting_rows_together(t
     badge = int(page.locator("#nav .n.waiting").inner_text())
     assert int(page.locator("#main .count-line .count").inner_text()) == badge
     page.evaluate("location.hash = '#view=open'", isolated_context=False)
-    band = page.locator(".task-band").filter(has=page.get_by_role("heading", name="Waiting on you")).first
-    band.wait_for()
-    assert band.locator("ul.threads > li").count() == badge
+    open_view = page.locator(".bau-open")
+    open_view.wait_for()
+    assert open_view.locator("ul.threads > li").count() == badge
 
 
 def test_a_refused_mark_in_close_all_keeps_undo_for_the_saved_ones_and_never_says_saved(today):

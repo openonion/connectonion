@@ -221,3 +221,44 @@ class TestAudioVideoDispatch:
         f.write_bytes(b"not actually a video")
         result = read_file(str(f))
         assert result.startswith("Error: failed to extract audio")
+
+
+# ---------- text encodings ----------
+
+def test_utf16_text_with_bom_is_read_not_rejected(tmp_path):
+    """A Windows-exported UTF-16 file is text, not a binary file."""
+    path = tmp_path / "notes.txt"
+    path.write_bytes("hello\nsecond line\n".encode("utf-16"))
+
+    assert read_file(str(path)) == "hello\nsecond line\n"
+
+
+def test_utf16be_text_with_bom_is_read(tmp_path):
+    path = tmp_path / "notes.csv"
+    path.write_bytes(b"\xfe\xff" + "name,count\n".encode("utf-16-be"))
+
+    assert read_file(str(path)) == "name,count\n"
+
+
+def test_utf32_text_with_bom_is_read(tmp_path):
+    path = tmp_path / "notes.log"
+    path.write_bytes("记录\n".encode("utf-32"))
+
+    assert read_file(str(path)) == "记录\n"
+
+
+def test_utf8_bom_is_not_part_of_the_text(tmp_path):
+    path = tmp_path / "notes.txt"
+    path.write_bytes("\ufeffhello\n".encode("utf-8"))
+
+    assert read_file(str(path)) == "hello\n"
+
+
+def test_binary_file_without_bom_is_still_rejected(tmp_path):
+    path = tmp_path / "blob.txt"
+    path.write_bytes(b"\x00\x01\x02binary")
+
+    result = read_file(str(path))
+
+    assert result.startswith("Error:")
+    assert "binary file" in result

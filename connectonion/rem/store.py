@@ -34,10 +34,11 @@ from .store_build import (
     sync_pages,
     title as parse_title,
 )
-from .store_messages import body, build_mail, build_runs, build_sessions
+from .store_messages import body, build_mail, build_runs, build_sessions, sync_caches
 
 BUILDERS = {"pages": build_pages, "mail": build_mail, "sessions": build_sessions, "runs": build_runs}
-TABLES = ("people", "orgs", "projects", "records", "messages", "edges", "runs")
+TABLES = ("people", "orgs", "projects", "records", "messages", "edges", "runs",
+          "attachments", "translations_cache", "research_cache")
 UNREADABLE = "The co rem index cannot be read; `co rem sync` builds it again"
 PRIVACY_LEVELS = ("all", "cover", "public")
 
@@ -54,7 +55,12 @@ def _connect(file: Path) -> sqlite3.Connection:
         os.close(os.open(file, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600))  # no O_NOFOLLOW on Windows
     file.chmod(0o600)
     db = sqlite3.connect(file, isolation_level=None, timeout=10)
+    # Auto-vacuum must precede the first table, before WAL creates the file header.
+    if file.stat().st_size == 0:
+        db.execute("pragma auto_vacuum=incremental")
     db.execute("pragma journal_mode=wal")
+    db.execute("pragma synchronous=normal")
+    db.execute("pragma foreign_keys=on")
     return db
 
 
@@ -69,7 +75,7 @@ def _open_for_build(file: Path):
     try:
         db = _connect(file)
         found = db.execute("select value from meta where key = 'schema_version'").fetchone()
-        if found and found[0] == SCHEMA_VERSION:
+        if found and found[0] == SCHEMA_VERSION and db.execute("pragma auto_vacuum").fetchone()[0] == 2:
             return db, False
     except sqlite3.DatabaseError:
         pass   # not a database, or no meta table: it holds nothing the files do not
@@ -85,21 +91,27 @@ def _open_for_build(file: Path):
 
 
 def _rebuild(db, root: Path, group: str, found: dict, *, known_group: dict | None = None, fresh: bool = False) -> None:
-    db.execute("begin immediate")
-    try:
+    with db:
+        db.execute("begin immediate")
         if group == "pages" and known_group is not None:
             sync_pages(db, root, known_group, found, fresh=fresh)
         else:
             BUILDERS[group](db, root)
         db.execute("delete from sources where grp = ?", (group,))
         db.executemany("insert into sources values (?, ?, ?, ?)", [(path, *value) for path, value in found.items()])
-        db.execute("commit")
-    except BaseException:
-        db.execute("rollback")
-        raise
 
 
-def refresh(root: Path) -> dict:
+def _vacuum(db) -> None:
+    """Return dead pages to disk after a batch, rather than carrying notebook-sized holes."""
+    if db.execute("pragma freelist_count").fetchone()[0] <= 64:
+        return
+    with db:
+        db.execute("begin immediate")
+        while db.execute("pragma freelist_count").fetchone()[0] > 0:
+            db.execute("pragma incremental_vacuum")
+
+
+def refresh(root: Path, groups=GROUPS) -> dict:
     """Bring the index up to date with the files; only groups whose inputs changed are rebuilt.
 
     Call it holding the maintenance lock. Returns what was rebuilt, the rows
@@ -113,12 +125,16 @@ def refresh(root: Path) -> dict:
                                   in db.execute("select path, mtime_ns, size, grp from sources")}
         rebuilt = []
         for group, paths in inputs(root).items():
+            if group not in groups:
+                continue
             found = fingerprints(root, group, paths)
             known_group = {path: value for path, value in known.items() if value[2] == group}
             if fresh or found != known_group:
                 _rebuild(db, root, group, found, known_group=known_group, fresh=fresh)
                 rebuilt.append(group)
-        if rebuilt:
+        cached = sync_caches(db, root)
+        if rebuilt or cached:
+            _vacuum(db)
             db.execute("insert or replace into meta values ('built_at', ?)",
                        (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
         rows = {table: db.execute(f"select count(*) from {table}").fetchone()[0] for table in TABLES}
@@ -185,6 +201,7 @@ def _validate_privacy(privacy: str) -> str:
 
 def _shape_record_item(row: dict, level: str) -> dict:
     item = dict(row)
+    item.pop("public_body", None)
     pub_title = item.pop("public_title", "")
     pub_summary = item.pop("public_summary", "")
     pub_facts = item.pop("public_facts", {})
@@ -290,6 +307,28 @@ def _fts_phrase(query: str) -> str:
     return " AND ".join(f'"{tok}"' for tok in tokens)
 
 
+def _privacy_sql(max_privacy: str) -> str:
+    _validate_privacy(max_privacy)
+    return "r.privacy != 'private_page'" if max_privacy in ("cover", "public") else "1"
+
+
+def _search_rows(root: Path, sql: str, parameters) -> list[dict]:
+    # Only an FTS operational failure gets substring fallback; corrupt databases still fail loudly.
+    try:
+        return _rows(root, sql, parameters)
+    except RemError as error:
+        if isinstance(error.__cause__, sqlite3.OperationalError):
+            return []
+        raise
+
+
+def _search_snippet(text: str, needle: str) -> str:
+    text = re.sub(r"(?m)^#{1,6}\s+", "", text)
+    start = text.casefold().find(needle.casefold())
+    start = max(0, start - 80) if start >= 0 else 0
+    return " ".join(text[start:start + 240].split())
+
+
 def search_records(
     root: Path,
     query: str,
@@ -299,50 +338,118 @@ def search_records(
     include_unlisted: bool = False,
     limit: int = 50,
 ) -> list[dict]:
-    """Full-text search over `records_fts` with substring fallback for CJK tokens."""
-    level = _validate_privacy(privacy)
-    needle = query.strip()
+    """Search public text with an indexed token query or a CJK/substring scan."""
+    level, needle = _validate_privacy(privacy), query.strip()
     if not needle or not db_path(root).is_file():
         return []
     limit = max(1, min(int(limit), 200))
-    fts_expr = _fts_phrase(needle)
-    hits: list[dict] = []
-    seen: set[str] = set()
-    if fts_expr:
-        where = ["records_fts match ?"]
-        params: list = [fts_expr]
-        if not include_unlisted:
-            where.append("r.listed = 1")
-        if category:
-            where.append("r.category = ?")
-            params.append(category)
-        if level == "public":
-            where.append("r.privacy != 'private_page'")
+    where, params = [_privacy_sql(level)], []
+    if not include_unlisted:
+        where.append("r.listed = 1")
+    if category:
+        where.append("r.category = ?")
+        params.append(category)
+    filters = " and ".join(where)
+    rows = []
+    cjk = re.search(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]", needle)
+    if not cjk:
+        rows = _search_rows(
+            root,
+            "select r.*, snippet(records_fts, 3, '', '', ' … ', 40) as snippet "
+            "from records_fts join records r on r.rowid = records_fts.rowid "
+            f"where records_fts match ? and {filters} order by bm25(records_fts) limit ?",
+            [_fts_phrase(needle), *params, limit],
+        )
+    if not rows:
+        # Escape LIKE metacharacters so a query is a literal substring, never SQL or a wildcard oracle.
+        pattern = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         rows = _rows(
             root,
-            "select r.* from records_fts f join records r on r.rowid = f.rowid "
-            f"where {' and '.join(where)} order by bm25(records_fts) limit ?",
-            [*params, limit],
+            f"select r.* from records r where {filters} and "
+            "(r.title like ? escape '\\' or r.summary like ? escape '\\' "
+            "or r.record like ? escape '\\' or coalesce(r.public_body, '') like ? escape '\\') "
+            "order by r.updated_at desc, r.title, r.record limit ?",
+            [*params, *([pattern] * 4), limit],
         )
-        for row in rows:
-            seen.add(row["record"])
-            hits.append(_shape_record_item(row, level))
-    if len(hits) < limit:
-        fallback = query_records(
-            root,
-            category=category,
-            query=needle,
-            privacy=level,
-            include_unlisted=include_unlisted,
-            limit=limit,
-        )["items"]
-        for row in fallback:
-            if row["record"] not in seen:
-                seen.add(row["record"])
-                hits.append(row)
-                if len(hits) >= limit:
-                    break
+    hits = []
+    for row in rows:
+        row["snippet"] = row.get("snippet") or _search_snippet(row.get("public_body") or "", needle)
+        hits.append(_shape_record_item(row, level))
     return hits
+
+
+def search(root: Path, query: str, *, max_privacy: str = "cover", **kwargs) -> list[dict]:
+    """Reader search with the same server-side privacy ceiling as query dispatch."""
+    requested = kwargs.pop("privacy", max_privacy)
+    rank = {"public": 0, "cover": 1, "all": 2}
+    _validate_privacy(requested)
+    _validate_privacy(max_privacy)
+    level = requested if rank[requested] <= rank[max_privacy] else max_privacy
+    return search_records(root, query, privacy=level, **kwargs)
+
+
+def cache_fresh(root: Path, kind: str) -> bool:
+    """True when `rem.db` exists at SCHEMA_VERSION and its `kind` cache matches disk (strictly read-only)."""
+    from .store_messages import cache_current
+
+    file = db_path(root)
+    if not file.is_file():
+        return False
+    try:
+        db = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)
+        try:
+            version = db.execute("select value from meta where key = 'schema_version'").fetchone()
+            if not version or version[0] != SCHEMA_VERSION:
+                return False
+            return cache_current(db, root, kind)
+        finally:
+            db.close()
+    except sqlite3.DatabaseError:
+        return False
+
+
+def attachment_row(root: Path, source: str) -> dict | None:
+    try:
+        rows = _rows(root, "select * from attachments where source = ?", (source,))
+    except RemError:
+        return None
+    return rows[0] if rows else None
+
+
+def _cache_rows(root: Path, table: str, column: str, values) -> list[dict]:
+    if values is None:
+        return _rows(root, f"select * from {table}")
+    # Chunk large source sets to stay within SQLite's bound-parameter limit.
+    values = list(dict.fromkeys(values))
+    rows = []
+    for start in range(0, len(values), 500):
+        batch = values[start:start + 500]
+        slots = ", ".join("?" for _ in batch)
+        rows.extend(_rows(root, f"select * from {table} where {column} in ({slots})", batch))
+    return rows
+
+
+def attachments_map(root: Path, sources=None) -> dict[str, dict]:
+    """Cached attachment rows keyed by their citation source ID."""
+    return {row["source"]: row for row in _cache_rows(root, "attachments", "source", sources)}
+
+
+def translations_map(root: Path, records=None) -> dict[str, dict[str, str]]:
+    """Current translations as {record: {language: text}}, without cache headers."""
+    found = {}
+    for row in _cache_rows(root, "translations_cache", "record", records):
+        found.setdefault(row["record"], {})[row["lang"]] = row["text"]
+    return found
+
+
+def research_for_sources(root: Path, sources, private: bool = False) -> dict[str, list[dict]]:
+    """Dated capture rows grouped by source, omitting private captures by default."""
+    found = {}
+    rows = _cache_rows(root, "research_cache", "source", sources)
+    for row in sorted(rows, key=lambda row: (row["source"], row["capture_file"])):
+        if private or not row["is_private"]:
+            found.setdefault(row["source"], []).append(row)
+    return found
 
 
 def people_table(root: Path, *, company: str = "", query: str = "", open_only: bool = False,

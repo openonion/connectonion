@@ -35,8 +35,8 @@ def test_a_skill_page_opens_at_the_same_frame_width_as_an_org_page(tmp_path):
             main.wait_for()
             box = main.bounding_box()
             frames[kind] = (round(box["x"]), round(box["width"]))
-        # The skill page used to be an 1180px frame offset left; it now shares the 800px frame with
-        # the overview kinds — same left edge and same width, so every record page opens the same way.
+        # Every record page (skill, org, project) now shares the unified 3-column reading frame (#3306, #3231)
+        # — identical left edge and identical 1128px width at 1440px, with >=660px middle prose + sticky page-nav.
         assert frames["skill"] == frames["org"] == frames["project"], frames
-        assert frames["skill"][1] <= 820, frames  # the frame, not the old 1180 default
+        assert 1080 <= frames["skill"][1] <= 1140, frames
         browser.close()

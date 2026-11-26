@@ -35,6 +35,10 @@ Connect and collaborate between agents with automatic reliability and recovery.
 - Session ID automatically managed
 - localStorage (browser) survives page refreshes
 
+## Access
+
+- [who-may-do-what.md](who-may-do-what.md) - One access policy for web callers and WhatsApp senders
+
 ## Protocol Specifications
 
 - [protocol/agent-relay-protocol.md](protocol/agent-relay-protocol.md) - Agent relay protocol spec

@@ -90,6 +90,24 @@ cat reply.txt | co gmail reply 18f2c9d0a1b2c3d4 -
 Threaded — the reply goes back on the original conversation. A message of `-`
 reads the body from stdin.
 
+```bash
+co gmail reply 18f2c9d0a1b2c3d4 "Signed copy attached." --cc sam@example.com --attach signed.pdf
+co gmail reply 18f2c9d0a1b2c3d4 "Thanks both" --all
+co gmail reply 18f2c9d0a1b2c3d4 "Draft for review" --draft --attach signed.pdf
+```
+
+- `--cc`, `--bcc` and `--attach/-a` (repeatable) work as on `co gmail send`, and
+  the reply stays in its thread. A missing file exits `1` before anything is sent.
+- `--all` also keeps the original To and Cc. Your own addresses are dropped, and
+  so is anyone listed twice.
+- `--draft` saves the reply unsent, in the same thread (threadId, `In-Reply-To`,
+  `References`), and prints its draft id. Gmail saves the reply with all its
+  attachments in one draft. If a local attachment fails validation, the command
+  exits before creating the draft. `co gmail draft attach`, `review` and
+  `send` then work on it, and it stays in the thread.
+- There is no `--at`. Gmail's API has no scheduled send, so until the
+  server-side hold (#934) exists, `--draft` is how you hold a reply before it goes.
+
 ### `co gmail draft` — Build and review an unsent message
 
 The draft workflow is the safe path when attachments or Drive files are
