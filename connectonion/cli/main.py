@@ -3259,6 +3259,9 @@ app.add_typer(asana_app, name="asana")
 # Notion: read-only commands on Notion's REST API, with NOTION_API_KEY.
 from .commands.notion_commands import notion_app
 app.add_typer(notion_app, name="notion")
+# Granola (#3223, #3249): read-only personal meeting summaries on Granola's API v1, with GRANOLA_API_KEY.
+from .commands.granola_commands import granola_app
+app.add_typer(granola_app, name="granola")
 # MCP (#2048): the servers and account connectors Codex already has, called without a model turn.
 from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")

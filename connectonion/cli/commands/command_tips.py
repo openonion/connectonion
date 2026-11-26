@@ -415,6 +415,12 @@ NEXT = {
     "co notion page": HANDLER,
     "co notion db": HANDLER,
     "co notion columns": HANDLER,
+    # co granola: each handler names its next command from the inspected folder or note.
+    "co granola check": HANDLER,
+    "co granola folders": HANDLER,
+    "co granola notes": HANDLER,
+    "co granola changes": HANDLER,
+    "co granola show": HANDLER,
     "co youtube *": HANDLER,
     "co tiktok *": HANDLER,
 }
