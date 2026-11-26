@@ -284,7 +284,7 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         entry = found.get(record["path"])
         if entry:
             record.update(written=entry["written"], last_activity=entry["last"], service=entry["service"], agent=entry.get("agent", False))
-        if record["category"] in ("decisions", "principles"):
+        if record["category"] in ("decisions", "knowledge", "principles"):
             record["written"] = written(record["text"])
         if record["category"] == "projects" and not today:
             record["private_project"] = private(record["path"], record["text"])
@@ -393,6 +393,14 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
             record["written_in"] = "mixed"
         if record["category"] == "people":
             record["speaks"] = spoken(record["text"])
+    untranslated_cats = ("people", "orgs", "projects", "decisions", "principles", "knowledge", "skills")
+    written_count = sum(1 for r in records if r.get("written"))
+    untranslated_count = sum(
+        1 for r in records
+        if r.get("written") and r["category"] in untranslated_cats
+        and not any(re.match(r"^zh(?:-|$)", tag, re.I) for tag in r.get("translations", {}))
+        and not re.match(r"^zh(?:-|$)", r.get("written_in") or "", re.I)
+    )
     candidates, contact_coverage = ([], {}) if today else contact_candidates(root)
     current_status = status(root, include_coverage=False) if today else status(root)
     # A status plan contains private meetings too; shared snapshots carry neither projection.
@@ -441,6 +449,8 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
             "night_throughput": _night_throughput(root, logs),
             "reviews": [r for r in listing(root) if local or all(s in {p['path'] for p in records} for s in r['subjects'])],
             "counts": counts(root, found),
+            "written_count": written_count,
+            "untranslated_count": untranslated_count,
             "owner": owner,
             # The owner's own addresses, so the reader can tell mail said to him from a list or Bcc copy.
             "owner_addresses": sorted(owner_addresses(root)) if local else []}

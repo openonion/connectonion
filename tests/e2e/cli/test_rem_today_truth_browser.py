@@ -55,7 +55,7 @@ def test_a_promise_170_days_old_is_not_counted_and_asks_done_or_still_open(today
     _open_stale(page)
     assert asked.locator(".stale-when").inner_text() == "Due Apr 14; no new message for 174 days"
     assert asked.get_by_role("button").all_inner_texts() == ["Still open", "Mark done", "Not now", "Ignore", "Hand to Codex", "Hand to Claude", "Show more"]  # the Today strip (#2990)
-    assert asked.evaluate("li => getComputedStyle(li).color") != "rgb(192, 42, 23)"
+    assert asked.evaluate("li => getComputedStyle(li).color") != "rgb(212, 30, 99)"
     # Still open: the owner says it is live, so it counts and burns again.
     asked.get_by_role("button", name="Still open", exact=True).click()
     assert page.locator("#today-stale").count() == 0

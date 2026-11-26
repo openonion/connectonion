@@ -4946,9 +4946,9 @@ def test_the_day_plans_timed_proposals_are_todays_suggested_blocks():
       console.log(JSON.stringify({shown, dismissed: tcalSuggestions('2026-11-16').map(item => item.key), other: tcalSuggestions('2026-11-17')}));
     ''')
     assert result == {'shown': ['a'], 'dismissed': [], 'other': []}
-    # Today's order (#3072, #3152): the cards first, then the calendar, then what is only read.
+    # De-newspapered Today (#3470): the cards first, calendar gated to #view=agenda, then what is only read.
     overview = page[page.index('function overview()'):page.index('function scheduleFailure()')]
-    assert overview.index('class: "tgrid"') < overview.index('todayCalendar()') < overview.index('todoSection()')
+    assert overview.index('class: "tgrid"') < overview.index('showCalendar ? todayCalendar() : null') < overview.index('todoSection()')
     assert 'yourDay()' not in page
 
 
