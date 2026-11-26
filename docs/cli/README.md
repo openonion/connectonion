@@ -581,8 +581,10 @@ After `co auth microsoft`, run `co onenote ls` to see numbered sections,
 `co onenote pages 2` to see numbered pages in section 2, and
 `co onenote read 1` to read page 1. Bare `co onenote` shows recent pages.
 The row list lasts 15 minutes; page and section IDs remain available for
-scripts through `co onenote ls --ids` and `co onenote pages --ids`. See
-[onenote.md](onenote.md) for creation and listing rules.
+scripts through `co onenote ls --ids` and `co onenote pages --ids`. For REM,
+`co onenote changes --since <ISO> --section <id> --json` and
+`co onenote show <id> --section <id> --json` read one section live. See
+[onenote.md](onenote.md) for creation, listing and source rules.
 
 ---
 
