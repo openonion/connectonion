@@ -918,6 +918,28 @@ class WhatsApp:
             return ""
         return ""
 
+    def caller_identity(self, jid: str) -> str:
+        """`whatsapp:+<phone>` for an authenticated sender, or "" when no phone is known (#3340).
+
+        The sender JID comes from the linked-device session, not the message. A
+        LID shares no digits with the phone the owner listed, so it is resolved
+        through the session's LID map. A LID with no single phone there stays
+        unresolved, and the trust check treats it as a stranger."""
+        user, _, server = str(jid or "").partition("@")
+        user = user.split(":", 1)[0]
+        if server == USER_SERVER and user.isdigit():
+            return f"whatsapp:+{user}"
+        if server == "lid":
+            phones = {other for other in self._aliases(user) if other.isdigit()}
+            if len(phones) == 1:
+                return f"whatsapp:+{phones.pop()}"
+        return ""
+
+    @staticmethod
+    def chat_identity(chat: str) -> str:
+        """`whatsapp:<n>@g.us` for a group chat, "" for a direct one."""
+        return f"whatsapp:{chat}" if str(chat).endswith(f"@{GROUP_SERVER}") else ""
+
     def contact_name(self, jid: str) -> str:
         """The name the owner saved for this id with `contacts add`, or "" (#2964).
 

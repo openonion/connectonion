@@ -20,7 +20,7 @@ import signal
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID
@@ -138,6 +138,17 @@ class ClaudeRestriction:
     skills: tuple[str, ...] = ()
     system_prompt: str = ""
     env: tuple[str, ...] = ()
+    # Tools added for one trust level (`restricted: admin: allowed_tools: [...]`),
+    # as (level, tools) pairs; for_caller() folds in the caller's own (#3340).
+    by_level: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+    def for_caller(self, caller: dict | None) -> "ClaudeRestriction":
+        """This restriction with the verified caller's level's extra tools, and no others.
+
+        The operator's own turn (no caller) gets none: a level is something a
+        remote caller is verified to have, not something a turn claims."""
+        extra = dict(self.by_level).get((caller or {}).get("level"), ())
+        return replace(self, allowed_tools=tuple(dict.fromkeys((*self.allowed_tools, *extra))), by_level=())
 
     @property
     def rules(self) -> list[str]:
@@ -275,6 +286,8 @@ def _run_claude_code(
         return _envelope(session_id, error=error)
 
     caller = (getattr(agent, "current_session", None) or {}).get("requester")
+    if restriction:
+        restriction = restriction.for_caller(caller)
     extra_env = restriction.environment(caller) if restriction else {}
     argv = _stream_command(
         command, prompt, session_id, permission_mode, model, bridge_settings, add_dirs,
@@ -364,6 +377,9 @@ def run_co_claude(
     if agent is not None and workspace is not None and restriction is None:
         def approval(event):
             return _approve_claude_permission(event, agent, Path(workspace).resolve())
+    if restriction:
+        # Resolved once, so the guard and the argv name the same rules.
+        restriction = restriction.for_caller((getattr(agent, "current_session", None) or {}).get("requester"))
     tool_rules = restriction.rules if restriction else None
     with scoped_bridge_settings(permission_handler=approval, tool_rules=tool_rules) as (settings, events):
         result = _run_claude_code(
