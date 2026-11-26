@@ -22,7 +22,8 @@ This revision therefore gives Jira two live reads. `changes` requires a selected
 project and accepts named issue keys to narrow it further. `show` reads one
 explicit issue key. JSON stays on stdout; recovery and next commands go to
 stderr. The old Jira-specific snapshot wiring is removed from generic REM.
-Manual exports remain separate operations, not the notebook's source store.
+Maintainer review also removed the manual export and checkpoint machinery from
+this PR. The surviving source boundary reads live and stores no source copy.
 
 The important test is no longer whether the second import appends zero lines.
 It is whether a changed issue appears within the selected scope, whether a

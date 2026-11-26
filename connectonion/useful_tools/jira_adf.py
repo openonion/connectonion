@@ -1,10 +1,10 @@
 """
 Purpose: Convert Jira's Atlassian Document Format (ADF) into readable text for co rem records (F13FCAKE-11).
 LLM-Note:
-  Dependencies: imports from [datetime, re] | imported by [useful_tools/adapter.py, tests/unit/test_jira_adf.py] | no network calls
+  Dependencies: imports from [datetime, re] | imported by [cli/commands/jira_commands.py, tests/unit/test_jira_adf.py] | no network calls
   Data flow: issue.fields.description (ADF dict) → adf_to_text() → light Markdown text (headings, lists, code fences, quotes, tables)
   State/Effects: pure functions, no I/O
-  Integration: adf_to_text() is the only public function; adapter._jira_record() puts its result in record["text"] and keeps the raw ADF under extensions.description_adf
+  Integration: adf_to_text() is the only public function; the Jira CLI renders the live description into the JSON text field
   Errors: never raises — non-dict input gives "", unknown node types keep their child text, media becomes a metadata placeholder (nothing is downloaded)
 
 ADF reference: https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/

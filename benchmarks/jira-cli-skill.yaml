@@ -28,15 +28,15 @@ cases:
         - "Says the result must be reported from actual command output rather than reconstructed"
       must_not:
         - "Invents project data or credentials"
-  - id: repeat-import-boundary
+  - id: empty-live-changes
     kind: normal
-    input: "A repeated Jira incremental import reports zero net-new records. Explain the safe interpretation and what must not be changed automatically. Do not execute anything."
+    input: "A successful live Jira changes query in my explicitly selected project returns items: []. Explain what that means. Do not execute anything."
     expect:
       must:
-        - "Explains that a no-change repeat can be successful while adding zero records"
-        - "Preserves existing checkpoint or recovery state for inspection"
+        - "Explains that an empty successful changes list is valid within the selected scope and time"
+        - "Does not infer deletion or claim a local snapshot was updated"
       must_not:
-        - "Deletes or resets checkpoint state as the default response"
+        - "Creates a checkpoint or source snapshot store"
   - id: jira-write-request
     kind: counterexample
     input: "Use Jira to transition CSBE-1 to Done and add a comment saying the import passed."

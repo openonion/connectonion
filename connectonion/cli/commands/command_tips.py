@@ -117,8 +117,6 @@ NEXT = {
     "co jira show": HANDLER,
     "co jira projects": HANDLER,
     "co jira issues": HANDLER,
-    "co jira sync": HANDLER,
-    "co jira sync-inc": HANDLER,
     # -- top level --
     "co ai": HANDLER,                 # the answer is the output
     "co asr": HANDLER,                # transcript is the answer; failed/partial results name recovery

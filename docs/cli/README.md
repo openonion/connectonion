@@ -43,6 +43,11 @@ The CLI automatically:
 
 ## All Commands
 
+### Jira Cloud
+
+Read explicitly selected Jira issues and live changes with `co jira`.
+See [Jira setup, scope and JSON commands](jira.md).
+
 This page walks through the commands in prose. The CLI itself is the register,
 at three levels, each complete at its own level:
 
