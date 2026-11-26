@@ -310,3 +310,41 @@ class TestPaymentVerificationFailsClosed:
 
         agent = TrustAgent.__new__(TrustAgent)
         assert agent._verify_transfer_via_api("0xpayer", "0xagent", 5.0) is False
+
+
+class TestCaseInsensitiveAdminAddresses:
+    """#3471: _check_list folds .strip().lower() for contacts/whitelist/blocklist,
+    and `co trust admin add` accepts 0x[0-9a-fA-F]{64}. Admin lookups must fold
+    case the same way so mixed-case hex addresses match across admins and self."""
+
+    def test_mixed_case_admin_matches_is_admin_and_fast_rules(self, tmp_path):
+        from connectonion import address
+        from connectonion.network.trust.fast_rules import evaluate_request
+
+        co_dir = tmp_path / ".co"
+        co_dir.mkdir()
+        keys = address.generate()
+        address.save(keys, co_dir)
+
+        mixed_admin = "0x" + "AbCdEf01" * 8
+        tools.add_admin(mixed_admin, co_dir)
+
+        assert mixed_admin.lower() in tools.load_admins(co_dir)
+        assert tools.is_admin(mixed_admin.lower(), co_dir) is True
+        assert tools.is_admin("  " + mixed_admin.upper().replace("0X", "0x") + "  ", co_dir) is True
+        assert evaluate_request(
+            {"allow": ["admin"], "default": "deny"},
+            mixed_admin.lower(),
+            {},
+            co_dir,
+        ) == "allow"
+
+        # Mixed-case lookup also recognizes the agent's own self address as super admin.
+        upper_self = "0x" + keys["address"][2:].upper()
+        assert tools.is_super_admin(upper_self, co_dir) is True
+        assert tools.is_admin(upper_self, co_dir) is True
+
+        # Removing with lowercase still removes a mixed-case line from admins.txt.
+        tools.remove_admin(mixed_admin.lower(), co_dir)
+        assert tools.is_admin(mixed_admin, co_dir) is False
+
