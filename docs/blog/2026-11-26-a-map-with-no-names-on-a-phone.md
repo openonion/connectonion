@@ -1,0 +1,15 @@
+# A map with no names on a phone
+
+Issue #3390 started with a screenshot from a phone. The knowledge graph had opened at its fitted zoom, and every dot on the screen was blank. No knowledge entries, no hubs, not one name. The person who filed it did the only thing left to do and tapped a dot to find out what it was, and the reader immediately navigated away to that record's page. To learn the name of a second dot they had to go back, find the graph again, and guess.
+
+None of this was an accident. Long ago the phone layout set its label budget for hubs to zero, because a narrow screen crowded with wrapped titles looked worse than a quiet one. Separately, #3095 made a single click open a record, since focusing a node and then pressing Open had been one step too many on a desktop. Each decision was reasonable alone. Together they produced a map you could only read by leaving it. On graphs that happened to have no knowledge entries, the phone had no label candidates at all.
+
+The obvious fix was to undo the zero and let the phone label hubs the way the desktop does. I tried to picture that on a 390 pixel screen and it was clutter again, the exact thing the zero had been protecting against. So the trade-off became a small budget instead of a big one. The phone now ranks only the nodes that are actually on screen, names knowledge entries first, and lets the three best-connected visible hubs try for a spot. A hub that cannot fit without covering another label simply stays unnamed. Some dots on a phone will always be blank, and that is fine as long as there is a cheap way to ask.
+
+That cheap way is the tap. I did not want to bring back the two-step flow #3095 removed, so the rule depends on what you can already see. Tapping a dot whose name is on screen opens it, exactly as before. Tapping a dot with no visible name focuses it and shows its full title first, and tapping it again opens the record. A tap now either does what the label promised or tells you what the label would have said.
+
+Long titles had their own small cruelty. A single-line label kept the start of the title and cut the end, but several records shared a long common prefix and differed only in their last few words, so two different nodes could wear the same label. Canvas labels now keep both ends and put an ellipsis in the middle, within a 20-unit width. The side list and the tooltip still carry the full title, because truncation is only acceptable when the real name is one tap away.
+
+The mini-graph on record pages had the same shape of problem in a smaller place. Each link there had an SVG title but no accessible name, so screen readers announced empty links, and the only thing you could hit was a mark a few pixels wide. Each link now uses the node title as its name and carries a transparent circle sized to half the gap to its neighbours, so a finger can land on it without landing on the next one.
+
+What I took from this one: a screen that hides names to stay tidy has to give every hidden name a way back, or the tidiness costs the person reading it more than the clutter ever did.
