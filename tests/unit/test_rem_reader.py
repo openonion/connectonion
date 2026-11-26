@@ -283,7 +283,7 @@ def test_statement_capitalisation_preserves_code_and_paths():
     ])
     for (text, expected), (capitalised, lead) in zip(cases, _run_reader_js(script)):
         assert capitalised == expected, text
-        assert lead == expected.replace("`", "").replace("#", ""), text
+        assert lead == expected.replace("`", ""), text
 
 
 def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
