@@ -210,7 +210,7 @@ def test_headings_have_more_room_above_than_below_and_the_text_has_room(page):
     body = entry.locator(".entry-text p").first.evaluate(
         "p => { const s = getComputedStyle(p); return [parseFloat(s.lineHeight) / parseFloat(s.fontSize), parseFloat(s.fontSize), p.getBoundingClientRect().width]; }")
     assert body[0] >= 1.7
-    assert 30 * body[1] <= body[2] <= 36 * body[1]  # about 34 Chinese or 70 Latin characters
+    assert 30 * body[1] <= body[2] <= 52 * body[1]  # un-squeezed 3-column reading sheet (~740px on desktop, #3306)
     quote = entry.locator(".entry-text blockquote")
     assert quote.count() == 1 and "The calendar trigger never fired" in quote.inner_text()
 
@@ -245,6 +245,6 @@ def test_on_a_phone_the_side_column_folds_below_the_text(page):
     page.set_viewport_size({"width": 390, "height": 844})
     entry = open_entry(page, uri, OLD)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    tops = page.evaluate("""() => ['.entry-sources', '.gx-rail'].map(s => document.querySelector('.entry ' + s).getBoundingClientRect().top)""")
+    tops = page.evaluate("""() => ['.entry-sources', '.page-nav .gx-rail'].map(s => document.querySelector('#main ' + s).getBoundingClientRect().top)""")
     assert tops[1] > tops[0]
     assert re.fullmatch(r"\d+(\.\d+)?px", entry.locator(".entry-text p").first.evaluate("p => getComputedStyle(p).fontSize"))

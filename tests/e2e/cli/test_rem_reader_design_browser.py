@@ -3415,7 +3415,7 @@ def test_full_memory_counts_content_without_counting_toc_navigation(reader):
     }''', isolated_context=False)
     assert page.locator('.deep-hint').inner_text() == '4 sections'  # four topics; facts are the card's (#3131), zero sources unsaid (#3165)
     memory_open(page)
-    assert page.locator('.deep-note .toc-panel').is_visible()
+    assert page.locator('.page-nav .toc-panel').is_visible()
 
 
 def test_partial_project_status_explains_the_uninvestigated_sections(reader):
@@ -5052,12 +5052,12 @@ def _green_primaries(page):
     """Visible elements filled with the Fresh green: the one primary per page."""
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const box = node.getBoundingClientRect(), fill = getComputedStyle(node).backgroundColor;
-      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(fill);
+      return box.width > 0 && box.height > 0 && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(13, 19, 21)', 'rgb(237, 243, 245)'].includes(fill);
     }).map(node => node.textContent.trim())""", isolated_context=False)
 
 
 # Visible Fresh-green fills; a collapsed "Full memory" note keeps its own controls out of sight.
-GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(getComputedStyle(node).backgroundColor)).length"
+GREEN = "() => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(13, 19, 21)', 'rgb(237, 243, 245)'].includes(getComputedStyle(node).backgroundColor)).length"
 
 
 def _org_view(page, uri, hash_, width, theme):
@@ -5096,7 +5096,7 @@ def test_person_page_leads_with_the_record_one_today_link_timeline_and_rail(read
 
 
 # The sheet's red, light and dark: on a record it may mean only "past due".
-RED = ("rgb(192, 42, 23)", "rgb(255, 90, 60)")
+RED = ("rgb(212, 30, 99)", "rgb(255, 92, 151)")
 RED_MARKS = r"""red => [...document.querySelectorAll('#main *')].filter(node => node.checkVisibility() && (() => {
   const s = getComputedStyle(node);
   return [s.color, s.backgroundColor, s.fill, s.stroke].some(c => red.includes(c));
@@ -5311,7 +5311,7 @@ def _visible_green_buttons(page):
     page.wait_for_timeout(300)  # let the theme's colour transition settle
     return page.evaluate("""() => [...document.querySelectorAll('#main *')].filter(node => {
       const style = getComputedStyle(node), box = node.getBoundingClientRect();
-      return box.width && box.height && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(18, 21, 18)', 'rgb(238, 240, 237)'].includes(style.backgroundColor);
+      return box.width && box.height && node.matches('button, a, [role=button], input[type=submit]') && ['rgb(13, 19, 21)', 'rgb(237, 243, 245)'].includes(style.backgroundColor);
     }).length""")
 
 

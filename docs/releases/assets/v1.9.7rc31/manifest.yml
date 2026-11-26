@@ -1,0 +1,23 @@
+version: v1.9.7rc31
+images:
+  - file: porcelain-viridian-3col-desktop.webp
+    alt: "The REM Reader in Porcelain-Viridian skin at 1440x900 showing Mara Ostrowski's entity profile in a three-column layout with Cold Porcelain canvas, crisp white raised sheet, and right-hand quick-browse rail."
+    caption: "Entity and entry pages render on a Cold Porcelain canvas with a 3-column layout (left navigation rail, central reading sheet, and right-hand quick-browse outline rail)."
+    scenario: "Open #r=people%2Fmara-ostrowski.md at 1440x900 in the default Porcelain skin on the synthetic REM fixture notebook"
+    viewport: "1440x900, light"
+    commit: b9ea9c0a0e445bb0fd8f4cc354da1c5c8cda3854
+    source_run: "Local headless Chromium capture on synthetic REM fixture notebook (issue 3470 and real-data QA audit)"
+  - file: klein-dark-open-desktop.webp
+    alt: "The REM Waiting on you view in Klein dark skin at 1440x900 with multi-select active and enabled batch action buttons."
+    caption: "Pluggable skins (Porcelain, Klein, Onion, Classic) maintain WCAG AAA canvas-to-ink contrast in both light and dark modes, with enabled batch triage actions."
+    scenario: "Open #view=open at 1440x900, switch to Klein skin in dark mode, enter multi-select, and select an obligation"
+    viewport: "1440x900, dark"
+    commit: b9ea9c0a0e445bb0fd8f4cc354da1c5c8cda3854
+    source_run: "Local headless Chromium capture on synthetic REM fixture notebook (issue 3470 and real-data QA audit)"
+  - file: mobile-open-multiselect.webp
+    alt: "The REM Waiting on you view on a 390x844 phone viewport in multi-select mode showing centered viridian checkboxes, two-line obligation titles, and enabled batch buttons."
+    caption: "On 390x844 mobile viewports, multi-select preserves 44px touch targets, centered viridian checkmarks, readable row titles, and enabled batch controls."
+    scenario: "Open #view=open at 390x844, activate multi-select, and select an item"
+    viewport: "390x844, light"
+    commit: b9ea9c0a0e445bb0fd8f4cc354da1c5c8cda3854
+    source_run: "Local headless Chromium capture on synthetic REM fixture notebook (issue 3470 and real-data QA audit)"

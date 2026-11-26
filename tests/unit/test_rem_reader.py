@@ -283,7 +283,7 @@ def test_statement_capitalisation_preserves_code_and_paths():
     ])
     for (text, expected), (capitalised, lead) in zip(cases, _run_reader_js(script)):
         assert capitalised == expected, text
-        assert lead == expected.replace("`", "").replace("#", ""), text
+        assert lead == expected.replace("`", ""), text
 
 
 def test_snapshot_uses_stated_org_names_without_changing_notebook(tmp_path):
@@ -4946,9 +4946,9 @@ def test_the_day_plans_timed_proposals_are_todays_suggested_blocks():
       console.log(JSON.stringify({shown, dismissed: tcalSuggestions('2026-11-16').map(item => item.key), other: tcalSuggestions('2026-11-17')}));
     ''')
     assert result == {'shown': ['a'], 'dismissed': [], 'other': []}
-    # Today's order (#3072, #3152): the cards first, then the calendar, then what is only read.
+    # De-newspapered Today (#3470): the cards first, calendar gated to #view=agenda, then what is only read.
     overview = page[page.index('function overview()'):page.index('function scheduleFailure()')]
-    assert overview.index('class: "tgrid"') < overview.index('todayCalendar()') < overview.index('todoSection()')
+    assert overview.index('class: "tgrid"') < overview.index('showCalendar ? todayCalendar() : null') < overview.index('todoSection()')
     assert 'yourDay()' not in page
 
 

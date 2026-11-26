@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 
 # How long a value read waits for the owner to answer the system prompt.
 PROMPT_WAIT = 120
+UNAVAILABLE = "macOS Keychain is only available on a Mac"
 
 MESSAGES = {
     "no_gui": "macOS cannot show the Keychain prompt to this process (it is outside your login session)",
@@ -34,7 +36,12 @@ class KeychainError(Exception):
 
 def run(args: list[str], timeout: float) -> subprocess.CompletedProcess:
     """The one place this module starts a process, so tests can stand in for `security`."""
-    return subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=timeout)
+    if sys.platform != "darwin":
+        raise KeychainError(UNAVAILABLE)
+    try:
+        return subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=timeout)
+    except (FileNotFoundError, OSError) as error:
+        raise KeychainError(UNAVAILABLE) from error
 
 
 def classify(stderr: str, returncode: int) -> str:
@@ -55,6 +62,8 @@ def read_secret(args: list[str], what: str) -> str:
         done = run(args, PROMPT_WAIT)
     except subprocess.TimeoutExpired:
         raise KeychainError(MESSAGES["timeout"].format(what=what, minutes=PROMPT_WAIT // 60), "timeout")
+    except (FileNotFoundError, OSError) as error:
+        raise KeychainError(UNAVAILABLE) from error
     if done.returncode != 0:
         code = classify(done.stderr, done.returncode)
         raise KeychainError(MESSAGES[code].format(what=what), code)
@@ -80,7 +89,12 @@ def parse_dump(text: str) -> list[dict]:
 
 def internet_passwords() -> list[dict]:
     """Every internet password in the login keychain as {server, account}. Nothing prompts: no value is read."""
-    done = run(["security", "dump-keychain"], 60)
+    try:
+        done = run(["security", "dump-keychain"], 60)
+    except subprocess.TimeoutExpired:
+        raise KeychainError(MESSAGES["timeout"].format(what="the login keychain", minutes=1), "timeout")
+    except (FileNotFoundError, OSError) as error:
+        raise KeychainError(UNAVAILABLE) from error
     if done.returncode != 0:
         raise KeychainError(MESSAGES["failed"].format(what="the login keychain"), "failed")
     return parse_dump(done.stdout)

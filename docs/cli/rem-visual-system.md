@@ -26,7 +26,7 @@ Two families, both local on purpose (the reader makes no network call):
 
 | Token | Stack | For |
 |---|---|---|
-| `--font` | -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", Inter, sans-serif | everything. Latin first, then the Chinese faces, so mixed lines share one baseline |
+| `--font` | -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Liberation Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif | everything. Latin first, then the Chinese faces, so mixed lines share one baseline |
 | `--mono` | ui-monospace, "SF Mono", Menlo, monospace | code and file paths only. A number in a table is `--font` with tabular figures, not mono |
 
 Seven sizes:
@@ -64,14 +64,20 @@ A 4px grid: every gap and padding is a multiple of 4. The named steps are `--u1`
 
 | Token | Light | Meaning |
 |---|---|---|
-| `--paper` | #ffffff | the only canvas |
-| `--ink` | #121512 | text, and the darkest step of any measure |
-| `--grey` | #636863 | second ink: what explains a row (a sentence under a name, a date, a column head) |
-| `--pencil` | #a3a8a3 | REM's inference: dashed lines and outlines. Never a text colour (2.6:1 on paper) |
-| `--rule` | #e8eae7 | hairlines between rows |
-| `--well` | #f5f6f4 | an inset: an empty cell, an input, a hovered row |
-| `--green` | #22d27a | **the one accent.** Reserved for the single primary action of a screen. A page of records has none, so it has no green |
-| `--red` | #c02a17 | overdue, and nothing else |
+| `--canvas` | #f2f5f8 | featherlight Cold Porcelain rail surface (`B >= G >= R`, never warm cream) |
+| `--paper` | #ffffff | crisp Cold Porcelain page canvas |
+| `--ink` | #0d1315 | pure Obsidian ink, and the darkest step of any measure |
+| `--grey` | #4f5e66 | second cool slate ink: what explains a row (a sentence under a name, a date, a column head) |
+| `--pencil` | #8b99a1 | REM's inference: dashed lines and outlines. Never a text colour |
+| `--rule` | #e2e8ee | crisp Cold Porcelain hairlines between rows |
+| `--well` | #f2f5f8 | cool porcelain inset: an empty cell, an input, a hovered row |
+| `--green` | #0d1315 | **the one primary action** of a screen (Obsidian keycap on light, porcelain on dark) |
+| `--red` | #d41e63 | crisp Onion Rose-Pink for overdue items (replaces alarm red) |
+| `--night` / `--night-2` | #0d1315 / #151e22 | pure unmuddied Obsidian instrument surfaces (`.night-card`, execution dock, batch bar — zero purple mud) |
+| `--viridian` / `--viridian-bright` | #007a5a / #00dc96 | Lucid Viridian structural signal, active edge, and REM sleep hypnogram curve |
+| `--rose-bright` | #ff5492 | `<= 1%` Rose-Pink quiet lever & dawn awakening node on Obsidian |
+
+Pluggable skins (`#3470`) override these semantic tokens under `:root[data-skin="klein" | "onion" | "classic"]` inside `/* fuse:tokens */`, switchable in **Settings ▸ Skin** (`co-rem-skin`) or `⌘K`.
 
 The **3D knowledge graph** is the one place hue names a kind (#3309): there every mark is a sphere, so colour does
 the work shape does on the 2D map. Tag pages take the accent (`--green`, ink in light mode); the other kinds are

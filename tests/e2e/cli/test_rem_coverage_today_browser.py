@@ -35,6 +35,9 @@ def _open(tmp_path, gaps, language="zh-CN", shot=None, click=False):
         page.route("http*://**/*", lambda route: route.abort())
         page.goto(page_file.as_uri())
         page.wait_for_timeout(1200)
+        if page.locator(".nh-log > summary").count():
+            page.locator(".nh-log > summary").first.click()
+            page.wait_for_timeout(150)
         lines = page.locator(".coverage-gap")
         found = (lines.count(), lines.first.inner_text() if lines.count() else "")
         if lines.count() and click:

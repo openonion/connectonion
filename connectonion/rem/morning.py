@@ -211,9 +211,9 @@ def compose(root, config, local, saved, link):
 
 
 # ---------- the morning mail: one column, table layout, inline styles ----------
-INK, BODY, MUTED, RULE, PAPER, CANVAS = '#0f1a14', '#2b332e', '#6b736e', '#e6e2da', '#ffffff', '#f3f1ec'
-# The morning mail's one primary action uses the reader's accent (ink, #3144).
-ALARM, GREEN, GREEN_INK = '#e2401c', '#121512', '#ffffff'
+INK, BODY, MUTED, RULE, PAPER, CANVAS = '#0d1315', '#1d272b', '#4f5e66', '#e2e8ee', '#ffffff', '#f2f5f8'
+# The morning mail's one primary action uses the reader's accent (pure Obsidian ink, #3144/#3470).
+ALARM, GREEN, GREEN_INK = '#d41e63', '#0d1315', '#ffffff'
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Helvetica,Arial,sans-serif"
 WORDS = {
     # A draft is prepared, not done: the lead names drafts and sends apart, so 13 drafts
@@ -360,11 +360,11 @@ def _date(local, w, zh):
     return w['date'].format(m=local.month, d=local.day, w=day, mon=local.strftime('%b'))
 
 
-DARK = (f'@media (prefers-color-scheme: dark){{.canvas{{background:#0c110e!important}}.card{{background:#141b17!important}}'
-        f'.ink{{color:#eef2ef!important}}.body{{color:#c9d0cb!important}}.mute{{color:#8f9893!important}}'
-        f'.rule{{border-color:#26302a!important}}.bar{{background:#eef2ef!important}}.alarm{{background:#ff5a36!important}}.alarm-text{{color:#ff6a48!important}}'
-        f'.btn2{{background:#141b17!important;border-color:#eef2ef!important}}.btn2 a{{color:#eef2ef!important}}}}'
-        f'[data-ogsc] .ink{{color:#eef2ef!important}}[data-ogsc] .body{{color:#c9d0cb!important}}[data-ogsc] .mute{{color:#8f9893!important}}'
+DARK = (f'@media (prefers-color-scheme: dark){{.canvas{{background:#0b0f11!important}}.card{{background:#11171a!important}}'
+        f'.ink{{color:#edf3f5!important}}.body{{color:#c8d5db!important}}.mute{{color:#95a5ad!important}}'
+        f'.rule{{border-color:#232e33!important}}.bar{{background:#edf3f5!important}}.alarm{{background:#ff5c97!important}}.alarm-text{{color:#ff5c97!important}}'
+        f'.btn2{{background:#11171a!important;border-color:#edf3f5!important}}.btn2 a{{color:#edf3f5!important}}}}'
+        f'[data-ogsc] .ink{{color:#edf3f5!important}}[data-ogsc] .body{{color:#c8d5db!important}}[data-ogsc] .mute{{color:#95a5ad!important}}'
         f'@media (max-width:620px){{.card{{padding:28px 20px 24px!important}}.lead{{font-size:25px!important;line-height:33px!important}}}}')
 
 

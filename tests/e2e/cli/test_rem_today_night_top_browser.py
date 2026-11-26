@@ -55,24 +55,21 @@ def test_the_curve_and_the_nights_work_open_today_above_the_first_card(page_file
         browser.close(); api.stop()
 
 
-def test_each_stretch_of_work_sits_under_its_own_dip_and_opens_to_its_pages(page_file):
+def test_each_stretch_of_work_sits_in_the_night_log_popover_and_opens_to_its_pages(page_file):
     api, browser, page = _open(page_file, 1440, 900)
     try:
-        rows = page.evaluate("""() => {
-          const hypno = document.querySelector('#main .night-card .hypno').getBoundingClientRect();
-          return [...document.querySelectorAll('#main .night-card .stretch')].map(s => {
-            const box = s.getBoundingClientRect(), from = hypno.left + hypno.width * s.dataset.from / 100, to = hypno.left + hypno.width * s.dataset.to / 100;
-            return {text: s.innerText, left: box.left, right: box.right, from, to, fromRight: s.classList.contains('from-right'), top: box.top, curveBottom: hypno.bottom};
-          });
-        }""", isolated_context=False)
+        log = page.locator("#main .night-card .nh-log")
+        assert log.count() == 1 and not log.evaluate("el => el.open")
+        log.locator("> summary").click()
+        assert log.evaluate("el => el.open") is True
+        rows = page.evaluate("""() => [...document.querySelectorAll('#main .night-card .nh-log .stretch')].map(s => ({
+          text: s.innerText, from: Number(s.dataset.from), to: Number(s.dataset.to)
+        }))""", isolated_context=False)
         assert len(rows) >= 2, rows
         for row in rows:
-            assert row["top"] >= row["curveBottom"] - 2, "the words hang under the curve"
-            # Left-hung words start under the dip's start; right-hung ones end under the dip's end.
-            edge, mark = (row["right"], row["to"]) if row["fromRight"] else (row["left"], row["from"])
-            assert abs(edge - mark) < 48, row
+            assert 0 <= row["from"] <= row["to"] <= 100, row
             assert "–" in row["text"] or ":" in row["text"], "each stretch says when"
-        stretch = page.locator("#main .night-card .stretch").filter(has=page.locator(".stretch-pages")).first
+        stretch = page.locator("#main .night-card .nh-log .stretch").filter(has=page.locator(".stretch-pages")).first
         stretch.locator("summary").click()
         assert stretch.locator(".stretch-pages a").count() >= 1, "a stretch opens to the pages it changed"
         page.keyboard.press("Escape")
@@ -81,31 +78,17 @@ def test_each_stretch_of_work_sits_under_its_own_dip_and_opens_to_its_pages(page
         browser.close(); api.stop()
 
 
-def test_a_phone_lists_at_most_three_stretches_one_whole_line_each(page_file):
-    """Art director on #3371: no truncated captions; up to three lines under the chart, then 全部 →."""
+def test_a_phone_lists_at_most_three_stretches_in_night_log_and_keeps_header_clean(page_file):
+    """Art director on #3371 & #3470: up to three stretches inside Night log on a phone; 昨夜 header stays clean."""
     api, browser, page = _open(page_file, 390, 844, mobile=True)
     try:
-        rows = page.evaluate("""() => [...document.querySelectorAll('#main .night-card .stretches.stacked .stretch > summary')].map(s =>
-          ({h: s.getBoundingClientRect().height, clipped: s.scrollWidth > s.clientWidth + 1, text: s.innerText}))""", isolated_context=False)
-        assert 1 <= len(rows) <= 3, rows
-        for row in rows:
-            assert row["h"] < 36 and not row["clipped"], row
-        # 24px rows are accepted (D-10) only if the whole row is the target and rows stand at least 8px apart.
-        geo = page.evaluate("""() => {
-          const lane = document.querySelector('#main .night-card .stretches.stacked').getBoundingClientRect();
-          const boxes = [...document.querySelectorAll('#main .night-card .stretches.stacked .stretch > summary')].map(s => s.getBoundingClientRect());
-          const hit = boxes.map(b => document.elementFromPoint(b.right - 4, b.top + b.height / 2)?.closest('summary') !== null);
-          return {lane: [lane.left, lane.right], rows: boxes.map(b => [b.left, b.right, b.top, b.bottom]), hit};
-        }""", isolated_context=False)
-        for left, right, _, _ in geo["rows"]:
-            assert abs(left - geo["lane"][0]) <= 1 and abs(right - geo["lane"][1]) <= 1, geo  # full width
-        assert all(geo["hit"]), geo  # a tap at the row's far end, past the words, still lands on it
-        for (_, _, _, bottom), (_, _, top, _) in zip(geo["rows"], geo["rows"][1:]):
-            assert round(top - bottom) >= 8, geo  # subpixel layout reads 8px as 7.99
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
-        # 昨夜's line says only 昨夜 (art director, #3371): who is waiting is the desk's one plain line, no faces.
         assert page.locator("#main .night-card .count-line, #main .night-card .deal").count() == 0
         assert page.locator("#main .night-card .nh").inner_text().strip() == "Last night"
+        page.locator("#main .night-card .nh-log > summary").click()
+        rows = page.evaluate("""() => [...document.querySelectorAll('#main .night-card .stretches.stacked .stretch > summary')].map(s =>
+          ({h: s.getBoundingClientRect().height, text: s.innerText}))""", isolated_context=False)
+        assert 1 <= len(rows) <= 3, rows
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth", isolated_context=False)
         head = page.locator("#main .deck > .desk-head.plain")
         assert head.count() == 1 and head.locator(".deal, .face").count() == 0
         assert head.bounding_box()["height"] < 32, "one line"
@@ -156,7 +139,8 @@ def test_a_codex_debt_row_has_one_primary_the_three_closes_and_no_eight_links(pa
     """The handed row had eight links in one line (Mac rc11 pass); now: status, one step, the closes, 更多操作."""
     api, browser, page = _open(page_file, 1440, 900)
     try:
-        page.evaluate("""() => { const row = REM.today_queue.find(row => row.section === 'today');
+        page.evaluate("""() => { REM.as_of = '2026-11-22T09:00:00Z';
+          const row = REM.today_queue.find(row => row.section === 'today');
           row.task = {id: 'a'.repeat(32), agent: 'codex', result: 'completed', record: 'people/ines-halvorsen.md'};
           REM.live = true; render(); }""", isolated_context=False)
         # People waiting come before an agent's not-overdue work, so the handed card is dealt behind them.
@@ -204,11 +188,12 @@ BUSY_NIGHT = """() => {
 def test_a_busy_night_rises_and_falls_through_the_stages(page_file):
     """Seven stretches: the chart climbs to REM where pages changed, to light sleep where it only read, and sinks to
     deep sleep between them, the rhythm reviewers asked to see (art director, #3371)."""
+    import re
     api, browser, page = _open(page_file, 1440, 900)
     try:
         page.evaluate(BUSY_NIGHT, isolated_context=False)
         d = page.locator("#main .night-card .hypno .trace").get_attribute("d")
-        ys = [float(p.split(",")[1]) for p in d.replace("M", "L").split("L")[1:]]
+        ys = [float(y) for _, y in re.findall(r"([0-9.]+),([0-9.]+)(?=\s*(?:[MLCZ]|$))", d)]
         levels = sorted(set(ys))
         assert len(levels) >= 3, levels  # deep, light and REM at least
         sinks = sum(1 for a, b in zip(ys, ys[1:]) if b > a and b == max(ys))
@@ -239,7 +224,8 @@ def test_a_stuck_loop_reads_as_awake_and_says_so(page_file):
         page.evaluate(STUCK_NIGHT, isolated_context=False)
         state = page.evaluate("""() => {
           const svg = document.querySelector('#main .night-card .hypno svg'), W = 1000;
-          const d = svg.querySelector('.trace').getAttribute('d'), pts = d.replace('M', 'L').split('L').slice(1).map(p => p.split(',').map(Number));
+          const d = svg.querySelector('.trace').getAttribute('d');
+          const pts = [...d.matchAll(/([0-9.]+),([0-9.]+)(?=\\s*(?:[MLCZ]|$))/g)].map(m => [Number(m[1]), Number(m[2])]);
           const levels = [...document.querySelectorAll('#main .night-card .hypno .lvl')].map(s => parseFloat(s.style.top));
           const run = REM.logs.find(r => r.run_id === 'stuck'), s = hypnoScale(new Date(REM.as_of).getTime());
           const mid = s.x((runTime(run) + runEnd(run)) / 2);
