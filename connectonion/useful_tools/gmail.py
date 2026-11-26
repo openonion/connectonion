@@ -657,15 +657,21 @@ class Gmail(GmailMailbox):
                 message['In-Reply-To'] = headers['message-id']
                 message['References'] = (headers.get('references', '') + ' ' + headers['message-id']).strip()
             thread_id = original.get('threadId')
+        return self._save_new_draft(message, thread_id)
+
+    def _save_new_draft(self, message, thread_id: str | None) -> dict:
         from .gmail_draft_mime import validate_message
+
         validate_message(self, message)
+        result = self._draft_dict("", message)
         payload = {"raw": self._encode_message(message)}
         if thread_id:
             payload['threadId'] = thread_id
         created = self._get_service().users().drafts().create(
             userId="me", body={"message": payload}
         ).execute()
-        return self._draft_dict(created["id"], message)
+        result["id"] = created["id"]
+        return result
 
     def get_draft(self, draft_id: str) -> dict:
         """Return a draft's exact headers/body and attachment manifest."""
@@ -677,10 +683,15 @@ class Gmail(GmailMailbox):
         self._require_draft_write_scope()
         result = self._draft_dict(draft_id, message)
         validate_message(self, message)
+        payload = {"raw": self._encode_message(message)}
+        # An update without the draft's threadId can take a reply draft out of
+        # its thread, so a file staged later reached the recipient as new mail (#3260).
+        thread_id = self._get_service().users().drafts().get(
+            userId="me", id=draft_id, format="minimal").execute().get("message", {}).get("threadId")
+        if thread_id:
+            payload["threadId"] = thread_id
         self._get_service().users().drafts().update(
-            userId="me",
-            id=draft_id,
-            body={"message": {"raw": self._encode_message(message)}},
+            userId="me", id=draft_id, body={"message": payload},
         ).execute()
         return result
 
@@ -703,11 +714,16 @@ class Gmail(GmailMailbox):
         )
         if existing + len(data) > GMAIL_ATTACHMENT_LIMIT:
             raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+        self._attach_draft_bytes(message, name, mime_type, data, source)
+        return self._update_draft(draft_id, message)
+
+    @staticmethod
+    def _attach_draft_bytes(message, name: str, mime_type: str | None, data: bytes, source: dict | None) -> None:
+        from .gmail_draft_sources import tag_file
+
         main, _, sub = (mime_type or "application/octet-stream").partition("/")
         message.add_attachment(data, maintype=main, subtype=sub or "octet-stream", filename=name)
-        from .gmail_draft_sources import tag_file
         tag_file(list(message.iter_parts())[-1], data, source)
-        return self._update_draft(draft_id, message)
 
     def add_draft_attachment(self, draft_id: str, path: str) -> dict:
         """Stage a local file into a Gmail draft; the draft remains unsent."""
@@ -958,27 +974,80 @@ class Gmail(GmailMailbox):
 
         return f"Email sent successfully to {to}. Message ID: {sent_message['id']}"
 
-    def reply(self, email_id: str, body: str) -> str:
-        """Reply to an email via Gmail API.
+    def reply(self, email_id: str, body: str, cc: str = None, bcc: str = None,
+              attachments: list = None, reply_all: bool = False, draft: bool = False) -> str | dict:
+        """Reply to an email in its thread, optionally with CC, BCC, files, everyone, or as a draft.
 
         Args:
             email_id: Gmail message ID to reply to
             body: Reply message body (plain text)
+            cc: Optional CC recipients (comma-separated), added to the thread's reply
+            bcc: Optional BCC recipients (comma-separated)
+            attachments: Optional list of file paths to attach
+            reply_all: Also keep the original To and Cc recipients (yourself left out)
+            draft: Save the reply as an unsent draft in the same thread instead of sending
 
         Returns:
-            Confirmation message with sent message ID
+            Confirmation message with the sent message ID, or the draft dict when draft=True
         """
+        from contextlib import ExitStack
         from email.mime.text import MIMEText
+
+        recipient, subject, cc, threading, thread_id = self._reply_envelope(email_id, cc, reply_all)
+        if draft:
+            self._require_draft_write_scope()
+            message = self._reply_draft_message(body, attachments or [])
+        elif attachments:
+            with ExitStack() as stack:
+                message = self._multipart_with(body, self._open_attachments(attachments, stack))
+        else:
+            message = MIMEText(body)
+        message['To'] = recipient
+        message['Subject'] = subject
+        if cc:
+            message['Cc'] = cc
+        if bcc:
+            message['Bcc'] = bcc
+        for name, value in threading.items():
+            message[name] = value
+        if draft:
+            return self._save_new_draft(message, thread_id)
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+        sent_message = self._get_service().users().messages().send(
+            userId='me',
+            body={'raw': raw_message, 'threadId': thread_id}
+        ).execute()
+
+        return f"Reply sent successfully. Message ID: {sent_message['id']}"
+
+    def _reply_draft_message(self, body: str, attachments: list[str]):
+        """Build the entire unsent message before creating a draft in Gmail."""
+        import mimetypes
+        from contextlib import ExitStack
+        from email.message import EmailMessage
+
+        message = EmailMessage()
+        message.set_content(body)
+        remaining = GMAIL_ATTACHMENT_LIMIT
+        with ExitStack() as stack:
+            for name, handle in self._open_attachments(attachments, stack):
+                contents = handle.read(remaining + 1)
+                if len(contents) > remaining:
+                    raise ValueError("Attachments exceed Gmail's 25MB send limit.")
+                remaining -= len(contents)
+                self._attach_draft_bytes(message, name, mimetypes.guess_type(name)[0], contents, {"source": "local"})
+        return message
+
+    def _reply_envelope(self, email_id: str, cc: str | None, reply_all: bool):
+        """Who a reply goes to, its subject, its Cc, its threading headers and its thread."""
         from email.utils import getaddresses
 
-        service = self._get_service()
-
-        # Get original message to extract headers
-        original = service.users().messages().get(
+        original = self._get_service().users().messages().get(
             userId='me',
             id=email_id,
             format='metadata',
-            metadataHeaders=['From', 'Reply-To', 'To', 'Subject', 'Message-ID', 'References']
+            metadataHeaders=['From', 'Reply-To', 'To', 'Cc', 'Subject', 'Message-ID', 'References']
         ).execute()
 
         # Header names are case-insensitive; senders write "Message-Id" as often
@@ -986,37 +1055,52 @@ class Gmail(GmailMailbox):
         headers = {h['name'].lower(): h['value'] for h in original['payload']['headers']}
         original_subject = headers.get('subject', '')
         original_message_id = headers.get('message-id', '')
-        thread_id = original.get('threadId', '')
 
         # Reply-To is where the sender asked replies to go: web forms, booking
         # sites and lists send From a noreply and put the person there (#1755).
         recipient = headers.get('reply-to') or headers.get('from', '')
         # Replying to my own sent mail means following up with its recipients,
         # not writing to myself.
+        mine = self.my_addresses()
         addresses = [address.lower() for _, address in getaddresses([recipient]) if address]
-        if addresses and set(addresses) <= self.my_addresses() and headers.get('to'):
+        own_mail = bool(addresses) and set(addresses) <= mine and bool(headers.get('to'))
+        if own_mail:
             recipient = headers['to']
 
-        # Create reply
-        message = MIMEText(body)
-        message['To'] = recipient
-        message['Subject'] = original_subject if original_subject.startswith('Re: ') else f"Re: {original_subject}"
+        if reply_all:
+            recipient, cc = self._reply_all_recipients(headers, recipient, cc, mine, own_mail)
 
+        subject = original_subject if original_subject.startswith('Re: ') else f"Re: {original_subject}"
+        threading = {}
         if original_message_id:
-            message['In-Reply-To'] = original_message_id
-            references = headers.get('references', '')
-            message['References'] = f"{references} {original_message_id}".strip()
+            threading['In-Reply-To'] = original_message_id
+            threading['References'] = f"{headers.get('references', '')} {original_message_id}".strip()
+        return recipient, subject, cc, threading, original.get('threadId', '')
 
-        # Encode message
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+    @staticmethod
+    def _reply_all_recipients(headers: dict, recipient: str, cc: str | None, mine: set,
+                              own_mail: bool) -> tuple[str, str | None]:
+        """Keep each other address once, with the reply recipient in To."""
+        from email.utils import formataddr, getaddresses
 
-        # Send as reply in same thread
-        sent_message = service.users().messages().send(
-            userId='me',
-            body={'raw': raw_message, 'threadId': thread_id}
-        ).execute()
+        taken = set(mine)
 
-        return f"Reply sent successfully. Message ID: {sent_message['id']}"
+        def collect(fields: list[str]) -> list[str]:
+            kept = []
+            for name, address in getaddresses(fields):
+                if address and address.lower() not in taken:
+                    taken.add(address.lower())
+                    kept.append(formataddr((name, address)))
+            return kept
+
+        direct = collect([recipient])
+        fields = [headers.get('cc', '')] if own_mail else [headers.get('to', ''), headers.get('cc', '')]
+        copied = collect([*fields, cc or ''])
+        if not direct and copied:
+            direct.append(copied.pop(0))
+        if not direct:
+            raise ValueError("Reply all found no recipients other than your own addresses.")
+        return ', '.join(direct), ', '.join(copied) or None
 
     # === Actions ===
 

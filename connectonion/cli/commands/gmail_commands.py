@@ -189,19 +189,35 @@ def handle_gmail_read(email_id: str, mark_read: bool = False, *, listing: str | 
 
 
 @google_errors("co gmail sent")
-def handle_gmail_reply(email_id: str, message: str, *, listing: str | None = None):
-    """Reply to an email from the last listing (threaded). A message of '-' reads stdin."""
+def handle_gmail_reply(email_id: str, message: str, *, listing: str | None = None, cc: str = None,
+                       bcc: str = None, attachments: list = None, reply_all: bool = False, draft: bool = False):
+    """Reply in the email's thread; --draft saves it there unsent. A message of '-' reads stdin."""
     if message == "-":
         message = sys.stdin.read()
+    if attachments:
+        _check_attachments(attachments)
 
-    gmail = _gmail()
+    gmail = _gmail(require_draft_write=draft)
     resolved = _resolve_email_id(gmail, email_id, listing)
     if not resolved:
         console.print(f"\nNo email #{email_id} in your last listing.", markup=False)
         print_tip("Refresh the listing: co gmail inbox")
         raise typer.Exit(1)
 
-    gmail.reply(resolved, message)
+    # Only what was asked for reaches the tool, so a plain reply stays the plain call it was.
+    options = {key: value for key, value in dict(cc=cc, bcc=bcc, attachments=attachments,
+                                                 reply_all=reply_all).items() if value}
+    if draft:
+        saved = _draft_call(lambda: gmail.reply(resolved, message, draft=True, **options),
+                            f"co gmail reply {email_id} <message> --draft")
+        console.print(f"\n[green]✓ Reply saved as a draft[/green] in the thread of email {email_id}: {saved['id']}")
+        console.print(f"  To: {saved['to']}" + (f"  Cc: {saved['cc']}" if saved['cc'] else ""), markup=False)
+        if saved['attachments']:
+            console.print("  Attached: " + ", ".join(item['name'] for item in saved['attachments']), markup=False)
+        print_tip(f"Review it, then send: co gmail draft review {saved['id']}  ·  co gmail draft send {saved['id']}")
+        return
+
+    gmail.reply(resolved, message, **options)
     console.print(f"\n[green]✓ Replied[/green] to email {email_id}\n")
     print_tip("Check sent mail: co gmail sent")
 

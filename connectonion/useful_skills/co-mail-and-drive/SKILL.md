@@ -142,12 +142,16 @@ when output is piped; it is part of the CLI contract.
 ```bash
 co gmail send bob@example.com "Subject" "Body text"
 co gmail reply 18f2c9d0a1b2c3d4 "Sounds good, see you then."
+co gmail reply 18f2c9d0a1b2c3d4 "Signed copy attached." --cc sam@example.com --attach signed.pdf
+co gmail reply 18f2c9d0a1b2c3d4 "Draft for review" --draft   # unsent, in the thread
 co gmail send bob@example.com "Report" - < body.md      # '-' body reads stdin
 co gmail send bob@example.com "Invoice" "Attached." --cc a@x.com --attach invoice.pdf
 ```
 
-`--cc`, `--bcc` and `--attach/-a` (repeatable) work on **both** `co gmail send` and
-`co outlook send`. Attachments are checked before the send: a missing file or a set
+`--cc`, `--bcc` and `--attach/-a` (repeatable) work on `co gmail send`, `co gmail reply`
+and `co outlook send`. `co gmail reply --all` keeps everyone on the original, and
+`--draft` saves the reply unsent in its thread for `draft review` / `send`. Gmail has
+no `--at`: the draft is the hold. Attachments are checked before the send: a missing file or a set
 over the size limit (Gmail 25MB, Outlook 3MB) exits `1` without sending.
 
 `co outlook reply` takes `--cc` / `--bcc` too, and the reply stays in its thread —
