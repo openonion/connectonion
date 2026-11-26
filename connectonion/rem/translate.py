@@ -575,28 +575,32 @@ def _has_prose_body(text: str) -> bool:
 
 
 def readable(root: Path) -> list[str]:
-    """The pages translated at all: not logs (the maps' run records), not keys (vault metadata, #3326),
-    not the skills catalog's index, not unwritten mapped stubs, and not pages held for review, services
-    or duplicate installations (census.listed). Sessions, agenda, knowledge and AI-note pages are read,
-    so they are translated (the night always translated notes)."""
-    from .census import listed, pages, written
+    """The pages translated at all: not logs (the maps' run records), not the skills catalog's index,
+    not pages held for review, services or duplicate installations (census.listed). Sessions, agenda,
+    knowledge and AI-note pages are read, so they are translated (the night always translated notes)."""
+    from .census import listed, pages
     found = pages(root)
-    notebook = Notebook(root)
-    return [record for record in notebook.list()
+    return [record for record in Notebook(root).list()
             if record.split("/")[0] not in ("logs", "keys") and record != "skills/catalog/index.md"
-            and (listed(found[record]) and found[record]["written"] if record in found
-                 else written(notebook.read(record)))]
+            and (record not in found or listed(found[record]))]
 
 
 def _every_page_records(root: Path) -> list[str]:
     """Written prose pages counted by the reader's #lang-progress control."""
+    from .census import listed, pages, written
+    found = pages(root)
     notebook = Notebook(root)
     records = []
     for record in readable(root):
         if "/" not in record:
             records.append(record)
             continue
-        if record.split("/")[0] in PROSE_CATEGORIES and _has_prose_body(notebook.read(record)):
+        cat = record.split("/")[0]
+        if cat not in PROSE_CATEGORIES:
+            continue
+        text = notebook.read(record)
+        is_written = (listed(found[record]) and found[record]["written"]) if record in found else written(text)
+        if is_written and _has_prose_body(text):
             records.append(record)
     return records
 
@@ -712,7 +716,7 @@ def written_pages(root: Path) -> list[str]:
     return [record for record in notebook.list()
             if (record in found and found[record]["category"] != "sessions"
                 and listed(found[record]) and found[record]["written"])
-            or (record.split("/")[0] in ("decisions", "principles") and written(notebook.read(record)))]
+            or (record.split("/")[0] in ("decisions", "knowledge", "principles") and written(notebook.read(record)))]
 
 
 def _waiting_pages(root):

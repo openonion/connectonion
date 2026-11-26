@@ -83,7 +83,8 @@
     --underline: color-mix(in srgb, currentColor 55%, transparent); /* a link's underline, softer than its text */
     /* Behind the full-screen writer: black, never ink, because ink turns near-white in dark mode and the backdrop
        became a pale fog instead of dimming the page. Darker in dark mode, where the page is already dark. */
-    --overlay: rgba(13, 19, 21, .36);
+    --overlay: rgba(0, 0, 0, .36);
+    --mark-bg: color-mix(in srgb, var(--viridian-bright) 24%, var(--paper));
     --veil: color-mix(in srgb, var(--paper) 74%, transparent); /* behind a palette or a side dialog */
 
 
@@ -816,7 +817,7 @@
   .usage { display: flex; align-items: center; gap: 10px; margin-top: 6px; font: var(--s-meta) var(--font); color: var(--grey); }
   .usage .bar { width: 120px; height: 4px; border-radius: var(--radius); background: var(--rule); overflow: hidden; flex-shrink: 0; }
   .usage .bar i { display: block; height: 100%; background: var(--grey); border-radius: var(--radius); }
-  mark { background: color-mix(in srgb, var(--viridian-bright) 24%, var(--paper)); color: var(--ink); padding: 0; border-radius: var(--radius); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  mark { background: var(--mark-bg); color: var(--ink); padding: 0; border-radius: var(--radius); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 
   /* the home's quick entry: one shelf per kind of page */
   .shelves { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 28px 40px; margin-top: 14px; }
@@ -1500,7 +1501,7 @@
   .evidence-find input:focus-visible, .evidence-find button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .evidence-find button:disabled { opacity: .5; cursor: default; }
   .evidence-find-status { min-height: 18px; font: var(--s-meta) var(--font); color: var(--grey); }
-  .evidence-original mark { background: color-mix(in srgb, var(--viridian-bright) 24%, var(--paper)); color: var(--ink); }
+  .evidence-original mark { background: var(--mark-bg); color: var(--ink); }
   .evidence-unavailable { color: var(--grey); }
   .document-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .document-list a { font: var(--w-bold) var(--s-body) var(--font); overflow-wrap: anywhere; }
@@ -1530,7 +1531,7 @@
   .evidence-panel .evidence-close { flex: none; }
   .evidence-claim { padding: 14px; margin: 18px 0; border: 1px solid var(--rule); border-radius: var(--radius); font: var(--s-body)/1.55 var(--font); }
   .evidence-claim small { display: block; margin-bottom: 6px; color: var(--grey); font: var(--s-meta) var(--font); }
-  mark.span { background: color-mix(in srgb, var(--viridian-bright) 24%, var(--paper)); color: var(--ink); border-radius: var(--radius); }
+  mark.span { background: var(--mark-bg); color: var(--ink); border-radius: var(--radius); }
   .evidence-panel .msg { padding: 0; border: 0; border-radius: var(--radius); background: none; }
   .evidence-panel .msg-envelope { position: sticky; top: calc(var(--evidence-top-height, 44px) + var(--evidence-find-height, 0px)); z-index: 1; padding: 6px 0; background: var(--paper); }
   .evidence-panel .evidence-find { top: var(--evidence-top-height, 44px); z-index: 2; }
@@ -1754,7 +1755,7 @@
   .session-messages { min-width: 0; }
   .session-message, .session-final { scroll-margin-top: 20px; padding: 4px 0 16px; border-top: 1px solid var(--rule); }
   .session-page .session-quote { margin: 0; padding: 10px 18px; border-left: 4px solid var(--ink); background: var(--paper); font: var(--s-body)/1.6 var(--font); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .session-page mark { background: color-mix(in srgb, var(--viridian-bright) 24%, var(--paper)); color: var(--ink); }
+  .session-page mark { background: var(--mark-bg); color: var(--ink); }
   .session-page mark.current { outline: 2px solid var(--ink); outline-offset: 2px; }
   .session-show-all { margin-top: 12px; }
   .session-details { margin-bottom: 32px; }
@@ -8247,7 +8248,7 @@ function threadUrl(reply, kind) {
   const raw = reply?.thread || kind?.thread || "", thread = (raw.split(":").slice(2).join(":") || raw).trim();
   const source = (reply?.source?.replace(/^(gmail|outlook):/, "") || "").trim();
   const id = provider === "gmail" ? (thread || source) : (source || thread);
-  if (!id) return null;
+  if (reply && !id) return null;
   return { channel, href: provider === "gmail" ? "https://mail.google.com/mail/u/0/#all/" + encodeURIComponent(id)
     : "https://outlook.live.com/mail/0/id/" + encodeURIComponent(id) };
 }
@@ -9393,7 +9394,9 @@ function sameClaim(before, after) {
 // The page's detailed logs are only the latest 21 runs; night_runs is the whole pass in brief (#3391). Detailed rows win,
 // the brief ones fill in the start of the night, so the curve begins with the night and not 90 minutes before dawn.
 function passRuns() {
-  const detailed = REM.logs || REM.brief_logs || [], key = run => run.started_at + "|" + (run.phase || "");
+  const detailed = REM.logs?.length ? REM.logs : (REM.brief_logs || []);
+  if (!detailed.length) return [];
+  const key = run => run.started_at + "|" + (run.phase || "");
   const seen = new Set(detailed.map(key));
   return [...detailed, ...(REM.night_runs || []).filter(run => !seen.has(key(run)))];
 }
@@ -9711,7 +9714,8 @@ function nightBand(showActivityLink = true) {
 
 // ---------- views ----------
 function route() {
-  const params = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const hash = typeof location !== "undefined" ? location.hash : "";
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
   return { record: params.get("r"), category: params.get("c"), query: params.get("q"), related: params.get("related") || "", heading: params.get("h"),
     view: params.get("view"), project: params.get("project"), reviews: params.has("reviews"),
     ...Object.fromEntries(["find", "agent", "when", "from", "to", "person", "tag", "outcome", "src", "dir", "item"].map(key => [key, params.get(key) || ""])) };
@@ -16733,8 +16737,9 @@ function stripStaleOrgPeopleCount(text) {
     .trim();
 }
 function orgOpening(v) {
-  const summary = stripStaleOrgPeopleCount(orgSummary(known(v.r).summary));
-  const relation = stripStaleOrgPeopleCount(orgRelation(v.r));
+  const cleanCount = txt => txt ? String(txt).split(/(?<=[。.!?！？])\s*/).filter(sent => !/(?:认识[^。.!?！？]{0,24}?\b\d+\s*(?:个人|位|人|名)|(?:没有|不)认识[^。.!?！？]{0,16}?(?:人|联系人)|\bknow(?:s)?\s+(?:no|\d+)\s+(?:people|person|contacts?|members?)\b)/i.test(sent)).join(" ").trim() : "";
+  const summary = cleanCount(orgSummary(known(v.r).summary));
+  const relation = cleanCount(orgRelation(v.r));
   // Mapped organisations often have no History: their contacts still carry mail/index dates.
   const first = [...[v.r, ...v.people].flatMap(p => [facts(p).first, orgFact(p, "First contact")]),
     ...v.events.map(e => e.day)].filter(Boolean).sort()[0];
@@ -19174,7 +19179,7 @@ function search(q, relatedPath = "") {
         }
       }
       lines = lines || [];
-      const shownTitle = pageName(r);
+      const shownTitle = typeof pageName === "function" ? pageName(r) : r.title;
       const li = el("li", {}, [
         el("div", { class: "t" }, [el("span", {}, [el("a", { href: href(r) + (c === "sessions" ? "&find=" + encodeURIComponent(q) : ""), html: highlight(shownTitle, needle) }), statusPill(r)]),
           el("span", { class: "when", text: shortDate(known(r).last) })])]);
@@ -19184,11 +19189,20 @@ function search(q, relatedPath = "") {
       if (line) li.appendChild(el("div", { class: "hit", html: labelledLine ? inline(localDates(line), r.path) : highlight(searchSnippet(summaryLine(line)), needle) }));
       return li;
     };
-    const ul = el("ul", { class: "hits" }, list.slice(0, FIRST).map(buildHitRow));
+    const DOM_CAP = 40;
+    const ul = el("ul", { class: "hits" }, list.slice(0, DOM_CAP).map((hit, i) => {
+      const li = buildHitRow(hit);
+      if (i >= FIRST) li.hidden = true;
+      return li;
+    }));
     group.appendChild(ul);
     if (list.length > FIRST) {
       const more = el("button", { type: "button", class: "chip ghost search-more", text: t("Show all {n} results", { n: list.length }) });
-      more.onclick = () => { ul.append(...list.slice(FIRST).map(buildHitRow)); more.remove(); };
+      more.onclick = () => {
+        ul.querySelectorAll("li[hidden]").forEach(li => { li.hidden = false; });
+        if (list.length > DOM_CAP) ul.append(...list.slice(DOM_CAP).map(buildHitRow));
+        more.remove();
+      };
       group.appendChild(more);
     }
     if (c === "sessions") group.appendChild(el("a", { href: sessionHash({ find: q }),
@@ -20953,6 +20967,16 @@ function graphLocalMark(n, x, y, r, centre = false) {
     href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id) }, [svgEl("title", {}, [document.createTextNode(title)]), hit, shape]);
   return link;
 }
+function graphRailAttach(main, r) {
+  if (!["people", "orgs", "projects"].includes(r.category) || !REM.graph?.nodes) return;
+  const model = graphModel();
+  if (!model.adj.has(r.path)) return;
+  const rail = graphLocal(r, model);
+  const deep = main.querySelector(".deep-note");
+  const target = deep ? (deep.querySelector(".side") || deep.querySelector(".body") || deep) : null;
+  if (target) target.append(rail);
+  else main.append(rail);
+}
 function graphRailBlock(r) {
   if (!["people", "orgs", "projects"].includes(r.category) || !REM.graph?.nodes) return null;
   const model = graphModel();
@@ -21033,7 +21057,8 @@ function render() {
   renderCrumb(route());
   const box = document.getElementById("q");
   if (!(document.activeElement === box && box.value.trim() === (query || "")) && box.value !== (query || "")) box.value = query || "";
-  if (location.hash !== "#today-calendar") window.scrollTo(0, 0);
+  const curHash = typeof location !== "undefined" ? location.hash : "";
+  if (curHash !== "#today-calendar") window.scrollTo(0, 0);
   document.getElementById("main").classList.toggle("wide", !!(c && !r && !query && !reviews && ((COLUMNS[c] || c === "people" || c === "skills") && inCategory(c).length)));
   const reading = r && byPath(r);
   document.getElementById("main").classList.toggle("reading", !query && !reviews && !!reading && ["people", "orgs", "projects", "skills", "devices", "keys", "notes", "agenda", ...ENTRY_KINDS].includes(reading.category) && reading.path !== "skills/catalog/index.md");
@@ -21045,7 +21070,7 @@ function render() {
   else if (knowledgeShowsGraph({ category: c, view })) knowledgeGraph();
   else if (c === "agenda" || view === "agenda") { todayCal.expanded = true; overview(); document.getElementById("today-calendar")?.scrollIntoView({ block: "start" }); }
   else if (c) { category(c); tagBarInto(c); }
-  else { overview(); if (location.hash === "#today-calendar") document.getElementById("today-calendar")?.scrollIntoView({ block: "start" }); }
+  else { overview(); if (curHash === "#today-calendar") document.getElementById("today-calendar")?.scrollIntoView({ block: "start" }); }
   quietLaterPrimaries(document.getElementById("main"));
   tidyText(document.getElementById("main"));
   document.title = (reviews ? t("Questions & connections") : r ? (privateTopicHidden(byPath(r) || {}) ? t("Hidden labelled passage") : byPath(r)?.title || t("Missing page")) : query ? t("Search: ") + query :

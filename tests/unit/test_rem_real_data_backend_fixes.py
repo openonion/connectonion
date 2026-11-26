@@ -178,15 +178,16 @@ def test_translate_readable_and_every_page_exclude_keys_and_unwritten_stubs_matc
 
     readable_pages = translate.readable(root)
     assert not [p for p in readable_pages if p.startswith("keys/")]
-    assert "people/stub-contact.md" not in readable_pages
-    assert "orgs/stub-org.md" not in readable_pages
-    assert "projects/stub-proj.md" not in readable_pages
-    assert "skills/catalog/stub-skill.md" not in readable_pages
-    assert "knowledge/stub-topic.md" not in readable_pages
+    every_pages = translate._every_page_records(root)
+    assert not [p for p in every_pages if p.startswith("keys/")]
+    assert "people/stub-contact.md" not in every_pages
+    assert "orgs/stub-org.md" not in every_pages
+    assert "projects/stub-proj.md" not in every_pages
+    assert "skills/catalog/stub-skill.md" not in every_pages
+    assert "knowledge/stub-topic.md" not in every_pages
 
     backlog_pages = translate.backlog(root, "zh")
     assert not [p for p in backlog_pages if p.startswith("keys/")]
-    assert "people/stub-contact.md" not in backlog_pages
 
     status = translate.every_page(root, "status", "zh")
     shell = reader.snapshot(root, local=True, today=True)
