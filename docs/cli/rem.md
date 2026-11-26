@@ -274,7 +274,7 @@ names in old help text, such as `people/elodie.md`, are not built-in records.
 co rem investigate          # What is left to investigate, by category; no model
 co rem investigate PAGE    # One page; a page refused before is retried on the same sources
 co rem investigate me --quick --days 5  # Bounded first pass; disclose uncovered sources
-co rem open                 # Open a fresh snapshot of the notebook in your browser
+co rem open                 # Open the local HTTP reader in your browser
 co rem collect --dry-run    # Inspect pending metadata, without running a model
 co rem collect              # One batch of new material only
 co rem sync                 # One update: new material, then at most one unfinished page
@@ -726,10 +726,21 @@ line's shares). The same rows are under `stages` in `--json`, each sentence whol
 | `co rem sources remove codex` | Disable that source. |
 | `co rem list people` / `show people/alice.md` / `show harbour` / `search Alice` | Inspect Markdown without model calls. |
 | `co rem status` / `sources` / `config` / `logs` / `logs --usage` / `doctor` | Inspect configuration, progress, diagnostics and reported usage. Status also reports Collect, Investigate, Deepen, Abstract and Translate in order, with waiting counts and last-run dates (or never); JSON uses `stages`. When the last night used its share of investigations, the Investigate line says so and how many pages wait for later nights. While pages wait for translation, the Translate line says how many a round translates at most (`limits.translations_per_round`). |
-| `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers and a saved page exists, that page opens immediately while `co ai` starts in the background; the next `co rem open` is live. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
+| `co rem open` | Open the live reader served by `co ai` on this computer, from the page saved at the last render, so it opens at once. When no `co ai` answers, it waits for the local HTTP Host to start. A genuine startup failure explains why a saved snapshot is shown. Only a `co ai` of the installed version serves the reader; see [Which server serves the reader](#which-server-serves-the-reader). |
 | `co rem open --local` | Open the saved self-contained HTML page (a `file://` link, works offline). A notebook changed since that page was rendered still opens at once; a newer page is built behind it and the next open shows it. The very first open renders once, synchronously. |
 | `co rem open --live` | Open the live view in O Chat, read from your `co ai` Host over OIP. Reuses an online Host or starts `co ai` automatically in the background, without channel listeners or an extra chat tab; the Host `co rem` started before an upgrade is replaced first. Opens live REM only after readiness; failure names `.co/rem-live-host.log` and labels the snapshot fallback. Default notebook only; `--no-launch` still starts the Host but only prints the URL. |
 | `co rem open --no-launch` | Print the page without opening the browser. |
+
+The local HTTP reader waits for its Host to start and refreshes `live.html` and
+`data.json` without building an offline `file.html`. Use `--local` when you want
+that self-contained snapshot. Thread marks and language requests save immediately
+without rebuilding the notebook; translation progress polls only while a job runs.
+
+Cited attachments appear under Documents and in the source drawer. Locally saved
+PDFs and raster images preview inline in the HTTP reader, including scanned PDFs
+with no extracted text. Spreadsheet and document excerpts preserve table rows and
+line breaks. Other file types download through the authenticated local Host;
+active HTML and SVG files are never rendered on the Host origin.
 
 Run `co rem catchup` to do the night's work, including its one deepen slot. Use
 `co rem catchup --nights 5` to run both five times back to back. `--nights` is

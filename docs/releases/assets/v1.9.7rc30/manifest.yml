@@ -1,0 +1,23 @@
+version: v1.9.7rc30
+images:
+  - file: attachment-preview-desktop.webp
+    alt: "The REM evidence drawer beside Mara Ostrowski's profile showing an inline native PDF preview, structured multi-line text excerpt, and loopback /rem/attachment open link."
+    caption: "Clicking a cited PDF opens the evidence drawer with an inline native preview, preserved paragraph structure, and an authenticated loopback /rem/attachment link."
+    scenario: "Open #r=people%2Fmara-ostrowski.md on the loopback live reader and click citation 7 for data-sharing-addendum.pdf"
+    viewport: "1440x900, light"
+    commit: bb0e10930dfcbbad02a244b57ede4c97eda04078
+    source_run: "Local headless Chrome capture against loopback REM HTTP reader on synthetic fixture notebook (issues 3467, 3468, 3469)"
+  - file: today-schedule-desktop.webp
+    alt: "The REM Today Focus Deck flipper strip above the Schedule section with unclipped hour labels from 12:00 through 21:00 and synthetic meetings."
+    caption: "Today's Schedule grid opens with its leading hour label completely unclipped alongside the synchronized Focus Deck flipper strip."
+    scenario: "Open Today (#) on desktop with synthetic calendar events and inspect the Schedule hour axis"
+    viewport: "1440x900, light"
+    commit: bb0e10930dfcbbad02a244b57ede4c97eda04078
+    source_run: "Local headless Chrome capture against loopback REM HTTP reader on synthetic fixture notebook (issues 3467, 3468, 3469)"
+  - file: today-mobile-phone.webp
+    alt: "The REM Today view on a 390x844 phone viewport showing the Last night sleep curve, unclipped stretch summary, next meeting bar, and 2x2 obligation flipper strip."
+    caption: "On a 390x844 phone viewport, Today renders Last night stretch summaries and the obligation strip cleanly with zero horizontal overflow."
+    scenario: "Open Today (#) on a 390x844 phone viewport in the synthetic REM fixture notebook"
+    viewport: "390x844, light"
+    commit: bb0e10930dfcbbad02a244b57ede4c97eda04078
+    source_run: "Local headless Chrome capture against loopback REM HTTP reader on synthetic fixture notebook (issues 3467, 3468, 3469)"
