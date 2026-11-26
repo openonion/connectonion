@@ -20,6 +20,8 @@ def test_inline_detail_waits_for_document_and_preserves_queue_state():
       const current = {path: 'people/alice.md', text: 'Queue projection', readLanguage: 'zh',
         original: 'Untranslated queue projection', shown: 'zh'};
       const REM = {records: [current], drafts: [{id: 'edited', body: 'Edited on Today'}],
+        today_queue: [], threads: {promise: {state: 'done'}}, ignored_senders: {'ignored@example.test': true},
+        owner_language: 'zh', as_of: '2026-11-26T12:00:00Z',
         source_context: {'gmail:queue': {excerpt: 'Queue evidence'}}};
       let detailLoad = null, detailReady = false, ready, parsed = false;
       const KNOWN = new Map(), FACTS = new Map(), PARSED_FACTS = new Map(), SESSION_TEXT = new Map();
@@ -28,6 +30,9 @@ def test_inline_detail_waits_for_document_and_preserves_queue_state():
         getElementById() {parsed = true; return {textContent: JSON.stringify({
           records: [{path: current.path, text: 'Full fictional prose', translations: {zh: '全文'}}],
           drafts: [{id: 'old', body: 'Older draft'}],
+          today_queue: [{key: 'promise'}], threads: {}, ignored_senders: {},
+          owner_language: 'en', as_of: '2026-11-26T11:00:00Z',
+          graph: {nodes: ['alice']},
           source_context: {'gmail:other': {excerpt: 'Full evidence'}}})};}};
       (async () => {
         const pending = loadDetails(), before = parsed;
@@ -35,13 +40,18 @@ def test_inline_detail_waits_for_document_and_preserves_queue_state():
         console.log(JSON.stringify({before, detailReady, text: current.text,
           language: current.readLanguage, sameRecord: REM.records[0] === current,
           original: current.original ?? null, shown: current.shown,
-          body: REM.drafts[0].body, contexts: Object.keys(REM.source_context).sort()}));
+          body: REM.drafts[0].body, contexts: Object.keys(REM.source_context).sort(),
+          queue: REM.today_queue, threads: REM.threads, ignored: REM.ignored_senders,
+          ownerLanguage: REM.owner_language, asOf: REM.as_of, graph: REM.graph}));
       })();
     ''')
     assert result == {'before': False, 'detailReady': True, 'text': 'Full fictional prose',
                       'language': 'zh', 'sameRecord': True, 'original': None, 'shown': '',
                       'body': 'Edited on Today',
-                      'contexts': ['gmail:other', 'gmail:queue']}
+                      'contexts': ['gmail:other', 'gmail:queue'],
+                      'queue': [], 'threads': {'promise': {'state': 'done'}},
+                      'ignored': {'ignored@example.test': True}, 'ownerLanguage': 'zh',
+                      'asOf': '2026-11-26T12:00:00Z', 'graph': {'nodes': ['alice']}}
 
 
 def test_full_snapshot_does_not_parse_a_deferred_payload():

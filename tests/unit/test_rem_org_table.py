@@ -93,6 +93,7 @@ def test_logo_survives_live_data_and_self_contained_snapshot(tmp_path, monkeypat
     (tmp_path / 'logos/cedar.png').write_bytes(base64.b64decode(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1cAAAAASUVORK5CYII='))
     files, _, _ = _render(tmp_path, 'full')
+    assert 'file.html' not in files
     row = next(r for r in json.loads(files['data.json'])['records'] if r['path'] == 'orgs/cedar.md')
     assert row['logo'].startswith('data:image/png;base64,')
-    assert row['logo'] in files['file.html']
+    assert row['logo'] in _render(tmp_path, 'file')[0]['file.html']

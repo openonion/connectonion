@@ -279,8 +279,8 @@ def test_live_reader_reuses_its_page_until_notebook_or_template_changes(host, ca
     get = lambda: call(host.routes, 'GET', '/rem', cookie=f'co_rem={host.token}')[2]
     page = get()
     assert get() == page and builds == [{'local': True, 'today': True}]
-    reader.refresh(host.root)                       # the details the first request left behind it,
-    assert builds[1:] == [{'local': True, 'today': True}, {'local': True}]   # with the page: one render
+    reader.refresh(host.root)                       # only the deferred details are missing
+    assert builds[1:] == [{'local': True}]           # the current shell is reused
     page = get()
     changes = [
         ('Alice Chen-Vale', lambda: (host.root / 'people/alice-chen.md').write_text(PAGE.replace('Alice Chen', 'Alice Chen-Vale'))),
@@ -490,27 +490,27 @@ def test_live_reader_serves_the_last_page_while_a_newer_one_builds(host, cache, 
     assert call(host.routes, "GET", "/rem/version")[0] == 401
 
 
-def test_a_dead_saved_host_does_not_hold_back_the_saved_page(host, cache, monkeypatch):
-    import time
+@pytest.mark.parametrize("failure", [None, live_host.STARTING])
+def test_a_dead_saved_host_does_not_hold_back_the_saved_page(host, cache, monkeypatch, failure):
     identity = host.routes["identity_dir"]
     monkeypatch.setattr("connectonion.project.selected_identity_dir", lambda: identity)
     reader.open_snapshot(host.root, launch=False)                  # a page was saved before
     live_host.write_json(identity / "rem-live-host.json", {
         "address": "owner", "pid": 2 ** 22 + 7, "port": 9125, "command": "-m connectonion.cli.main ai"})
-    monkeypatch.setattr(live_host, "answers", lambda port, address: False)
-    monkeypatch.setattr(live_host, "ensure_online", lambda *a, **k: pytest.fail("waited for co ai to start"))
-    started_hosts = []
+    starts = []
+    url = "http://127.0.0.1:9126/rem?token=owner-token"
 
-    def spawn(directory, port=None):
-        started_hosts.append(directory)
-        return SimpleNamespace(pid=4242, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9126"])
-    monkeypatch.setattr(live_host, "_spawn", spawn)
-    started = time.monotonic()
+    def ensure_local(address):
+        starts.append(address)
+        return (None, failure) if failure else (url, None)
+    monkeypatch.setattr(live_host, "ensure_local", ensure_local)
     result = reader.local_or_snapshot(host.root, "owner", launch=False)
-    assert time.monotonic() - started < 1.0
-    assert result["link"].startswith("file://") and "Alice Chen" in open(result["page"], encoding="utf-8").read()
-    assert started_hosts == [identity] and result["live"] == live_host.STARTING
-    assert live_host.read_json(identity / "rem-live-host.json", {})["pid"] == 4242
+    assert starts == ["owner"], "try the CLI-served reader even when an old snapshot exists"
+    if failure:
+        assert result["link"].startswith("file://") and result["live"] == live_host.STARTING
+        assert "Alice Chen" in Path(result["page"]).read_text(encoding="utf-8")
+    else:
+        assert result["link"] == url and "live" not in result
 
 
 def test_a_second_live_request_on_a_large_notebook_lists_no_directory(host, cache, monkeypatch):
@@ -680,13 +680,14 @@ def test_a_host_that_died_soon_after_open_started_it_names_its_log(host, cache, 
     reader.open_snapshot(host.root, launch=False)
     live_host.write_json(identity / "rem-live-host.json", {                 # a Host ran here before
         "address": "owner", "pid": 2 ** 22 + 7, "port": 9125, "command": "-m connectonion.cli.main ai"})
-    monkeypatch.setattr(live_host, "answers", lambda port, address: False)
-    monkeypatch.setattr(live_host, "_spawn", lambda directory, port=None: SimpleNamespace(
-        pid=2 ** 22 + 9, args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9127"]))
-    first = reader.local_or_snapshot(host.root, "owner", launch=False)
-    assert first["live"] == live_host.STARTING
-    again = reader.local_or_snapshot(host.root, "owner", launch=False)  # that pid never ran
-    assert "rem-live-host.log" in again["live"] and again["live"] != live_host.STARTING
+    monkeypatch.setattr(live_host, "local_reader", lambda address: None)
+    monkeypatch.setattr(reader, "host_online", lambda *a, **k: False)
+    monkeypatch.setattr(live_host, "_launch", lambda *a, **k: SimpleNamespace(
+        pid=2 ** 22 + 9, poll=lambda: 1,
+        args=["python", "-m", "connectonion.cli.main", "ai", "--port", "9127"]))
+    result = reader.local_or_snapshot(host.root, "owner", launch=False)
+    assert result["link"].startswith("file://")
+    assert "rem-live-host.log" in result["live"] and "exited during startup" in result["live"]
 
 
 

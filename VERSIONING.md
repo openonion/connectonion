@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc29
+## Current Version: 1.9.7rc30
+Release candidate 1.9.7rc30 migrates REM to SQLite store v3 (persistent WAL, incremental vacuum, per-record upserts, external-content FTS5 with CJK search, and cached attachment, translation, and research text) and serves a CLI-hosted loopback live reader with gzip compression, native PDF/image/table attachment previews via `/rem/attachment`, bounded idle refreshes, unclipped schedule hour labels, and mobile Today layout fixes (#3469, #3468, #3467). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc30.md).
+
+- 1.9.7rc30 (REM SQLite store v3 with WAL, incremental upserts, CJK search, and text caches; CLI-hosted live reader with gzip and native `/rem/attachment` previews #3469/#3468/#3467).
+
+### Previous candidate: 1.9.7rc29
 Release candidate 1.9.7rc29 splits REM Waiting on You into a tag-grouped list with in-place completion and a focused item console, adds a synchronized Today flipper strip, and self-heals `owner_record()` on notebooks without `.state/map.json` (#3464). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc29.md).
 
 - 1.9.7rc29 (REM two-screen Waiting on You, Today flipper strip, cross-page obligation deduplication, and `owner_record()` fallback #3464).
