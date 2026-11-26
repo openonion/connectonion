@@ -3954,7 +3954,7 @@ def test_a_changed_notebook_opens_the_last_page_at_once_and_rebuilds_it_behind(t
     assert "being built" in stale["note"]
 
     _Clock.at = datetime(2026, 11, 9, 9, 40, tzinfo=timezone.utc)
-    reader.refresh(root)                                             # what the background process runs
+    reader.refresh(root, ["full"])                                     # explicit snapshot refresh
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: pytest.fail("a rebuild made itself stale"))
     fresh = open(reader.open_snapshot(root, launch=False)["page"], encoding="utf-8").read()
     assert "Bruno Example" in fresh and '"as_of": "2026-11-09T09:40:00+00:00"' in fresh
@@ -4113,7 +4113,8 @@ def test_details_and_page_are_published_together(tmp_path, monkeypatch):
     Notebook(root).write("people/fern-holt.md", "# Fern Holt\n")
     _Clock.seconds += 1
     reader.refresh(root)
-    assert reader.saved(root, "live")["version"] == reader.saved(root, "full")["version"] == reader.reader_version(root)
+    assert reader.saved(root, "live")["version"] == reader.reader_version(root)
+    assert reader.saved(root, "full") == {}
     assert "Fern Holt" in open(reader.page_path(root, "data.json"), encoding="utf-8").read()
 
 
@@ -4338,9 +4339,7 @@ def test_an_open_tab_reaches_the_newest_render_through_the_link_it_was_given(tmp
 
 
 def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, monkeypatch):
-    """The live page is built on the first request; its details later, in the
-    background. Rendered apart they named different seconds, and the page's
-    details disagreed with /rem/version. Every saved build is rendered together."""
+    """The live page and JSON share one render time; offline HTML is explicit."""
     import json as _json
     reader = _cached_reader(tmp_path, monkeypatch)
     root = tmp_path / "rem"
@@ -4348,14 +4347,13 @@ def test_a_build_rendered_after_its_partner_still_names_the_same_time(tmp_path, 
     Notebook(root).write("people/alice.md", "# Alice Example\n")
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     monkeypatch.setattr(reader, "datetime", _Ticking)
-    reader.cached_page(root, "live.html")                         # the first request: the page alone
-    reader.refresh(root)                                          # then its details, behind it
+    reader.cached_page(root, "live.html")                         # page and JSON together
+    reader.refresh(root)                                          # live refresh only
     page, _ = reader.cached_page(root, "live.html")
     details, _ = reader.cached_page(root, "data.json")
-    offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
     served = re.search(r'"as_of": "([^"]+)"', page).group(1)
     assert served == reader.latest(root)["as_of"] == _json.loads(details)["as_of"]
-    assert served == re.search(r'"as_of": "([^"]+)"', offline).group(1)
+    assert reader.page_path(root, "file.html") is None
 
 
 def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp_path, monkeypatch):
@@ -4366,7 +4364,7 @@ def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     monkeypatch.setattr(reader, "datetime", _Ticking)
     reader.cached_page(root, "live.html")
-    reader.refresh(root)
+    reader.refresh(root, ["live", "full"])
     link = reader.page_path(root, "file.html")
     real = reader._replace
 
@@ -4378,7 +4376,7 @@ def test_a_stop_between_the_manifest_and_the_stable_link_is_repaired_on_read(tmp
     Notebook(root).write("people/bruno.md", "# Bruno Example\n")
     _Clock.seconds += 1
     with pytest.raises(OSError):
-        reader.refresh(root)
+        reader.refresh(root, ["live", "full"])
     monkeypatch.setattr(reader, "_replace", real)
     details, _ = reader.cached_page(root, "data.json")
     offline = open(reader.page_path(root, "file.html"), encoding="utf-8").read()
@@ -4457,7 +4455,7 @@ def _saved_under_an_older_release(tmp_path, monkeypatch, shape):
     monkeypatch.setattr("connectonion.rem.live_host.version_on_disk", lambda: "1.9.3")
     monkeypatch.setattr(reader, "_spawn_refresh", lambda root, builds: True)
     reader.cached_page(root, "live.html")
-    reader.refresh(root)
+    reader.refresh(root, ["live", "full"])
     if shape == "rc64-manifest":   # its _publish wrote the file page beside the set, never into it
         manifest = json.loads(reader._cached(root, "current.json").read_text())
         (reader._cache_dir() / manifest["files"].pop("file.html")).unlink()
@@ -4510,6 +4508,7 @@ def test_a_stale_page_says_updating_in_the_readers_language_and_a_current_one_do
     reader.refresh(root)                                           # the rebuild lands
     fresh, building = reader.cached_page(root, "live.html")
     assert not building and "rem-updating" not in fresh
+    reader.refresh(root, ["full"])                                # explicitly refresh the offline snapshot
     opened = reader.open_snapshot(root, launch=False)
     assert "rem-updating" not in open(opened["page"], encoding="utf-8").read()
 

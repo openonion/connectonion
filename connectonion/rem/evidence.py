@@ -246,8 +246,10 @@ def research_contexts(root: Path, records: list[dict], *, private: bool = False)
         identity = hashlib.sha256(source.encode()).hexdigest()
         captures = [read_json(path, {}) for path in sorted(state_path(root, f"research/{identity}").glob("*.json"))]
         captures = [item for item in captures if item.get("source") == source
-                    and (not dates.get(source) or item.get("timestamp") in dates[source])
                     and (private or not PRIVATE.search(item.get("text", "")))]
+        dated = [item for item in captures if any(str(item.get("timestamp", "")).startswith(d)
+                                                for d in dates.get(source, ()))]
+        captures = dated or captures
         if captures:
             contexts[source] = {"excerpt": "\n\n".join(dict.fromkeys(item["text"] for item in captures)),
                                 "truncated": False}
@@ -258,7 +260,12 @@ def research_contexts(root: Path, records: list[dict], *, private: bool = False)
                                         captured_at=max(item.get("timestamp", "") for item in captures))
             attachment = re.fullmatch(r"(?:gmail|outlook):[0-9a-f]{12}:([^/\\\r\n]+)", source)
             if attachment:
+                from .attachments import attachment_context
                 contexts[source].update(source="attachment", filename=attachment[1], subject=attachment[1])
+                local = attachment_context(root, source)
+                if local:
+                    contexts[source].update({key: value for key, value in local.items()
+                                             if key not in ("excerpt", "truncated")})
     return contexts
 
 

@@ -418,12 +418,31 @@ def _source_ids(records: list[dict]) -> set[str]:
 
 
 def _budget_order(records: list[dict], ids: set[str]) -> list[str]:
-    """What a reader clicks first: a claim's numbered sources, mail among them, then the
-    typed lines a session page lists. Sorted by id, 8,000 session lines spent the budget
-    before the first gmail: or outlook: citation."""
+    """Resolve structured documents before bulk mail and session excerpts spend the budget."""
     numbered = {source for row in records for _, source in SOURCE.findall(row["text"])}
-    return sorted(ids, key=lambda source: (source not in numbered,
-                                           source.split(":", 1)[0] not in ("gmail", "outlook"), source))
+    return sorted(ids, key=lambda source: (
+        not (re.fullmatch(r"(gmail|outlook):[0-9a-f]{12}:.+", source)
+             or source.startswith(("project-source:", "https://", "http://", "github:", "file:"))),
+        source not in numbered, source.split(":", 1)[0] not in ("gmail", "outlook"), source))
+
+
+def local_file_context(root: Path, source: str, private: bool) -> dict | None:
+    """Owner-only text citations inside the notebook, excluding private credential stores."""
+    if not private or not source.startswith("file:"):
+        return None
+    relative = Path(source[5:])
+    if relative.is_absolute() or not relative.parts or any(
+            part.startswith(".") or re.search(r"(?:env|keys?|secrets?|credentials?)", part, re.I)
+            for part in relative.parts):
+        return None
+    path = root / relative
+    if (path.suffix.lower() not in (".txt", ".md", ".markdown") or not path.is_file()
+            or any((root / parent).is_symlink() for parent in (relative, *relative.parents))
+            or not path.resolve().is_relative_to(root.resolve())):
+        return None
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        text = stream.read(32_769)
+    return {"source": "file", "filename": path.name, "excerpt": text[:32_768], "truncated": len(text) > 32_768}
 
 
 # A short citation (gmail:<12 hex>) names a message by its id's digest. Each lookup used to fetch every message
@@ -482,6 +501,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
     file = state_path(root, "rem.db")
     if not ids or file.is_symlink():
         return {}
+    mail_limit = 4_096 if budget >= 500_000 else 32_768
     output: dict[str, dict] = {}
     db = sqlite3.connect(file.absolute().as_uri() + "?mode=ro", uri=True) if has_message_index(file) else None
     if db is not None:
@@ -497,7 +517,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                 from .project_material import retained_session_context
                 from .project_pages import repository_context
                 from .skill_runs import instruction_context, skill_record_context
-                context = (instruction_context(root, source) or skill_record_context(root, source)
+                context = (local_file_context(root, source, private) or instruction_context(root, source) or skill_record_context(root, source)
                            or repository_context(root, source, private) or retained_session_context(root, source, private)
                            or github_context(root, source) or attachment_context(root, source) or research.get(source))
                 if context:
@@ -522,7 +542,7 @@ def cited_context(root: Path, records: list[dict], *, budget: int = 1_500_000,
                 continue
             if mail and "--- Email Body ---" in raw:
                 raw = raw.partition("--- Email Body ---")[2]
-            excerpt = raw.strip()[: min(16_384 if mail else 2_048, budget)]
+            excerpt = raw.strip()[: min(mail_limit if mail else 2_048, budget)]
             if not excerpt and not mail:
                 continue
             output[source] = {"excerpt": excerpt, "truncated": len(raw.strip()) > len(excerpt),
