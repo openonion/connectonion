@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc32
+## Current Version: 1.9.7rc33
+Release candidate 1.9.7rc33 closes server-side shared-snapshot privacy leaks (#3435 P0, #3436, #3417, #3387) and isolates non-default notebooks from HOME's WeChat keys (#3375), adds visible localized `Write full screen` / `全屏写` actions on Today reply cards (#3479), fixes phone knowledge graph priority node labels, middle-truncation, tap-to-inspect, and accessible mini-graph links (#3390 / #3466), fixes data truthfulness across elapsed appointments (#3439), Memory changes (#3438), organisation member counts (#3437), and unified translation counts + Keys loading state (#3364), upgrades the opt-in `overnight` schedule to the 10-wave `22:00`–`02:30` cadence with `03:00` cutoff and late-wave task gating (#3480), keeps macOS REM live Hosts inside the owner's `Aqua` GUI session via `gui/$UID` LaunchAgent across upgrades (#3317), and ships Notion markdown/list improvements (#3452). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc33.md).
+
+- 1.9.7rc33 (Server-side shared-snapshot privacy redaction #3435/#3436/#3417/#3387/#3375; visible Today `Write full screen` #3479; phone KG labels #3390/#3466; data truthfulness #3439/#3438/#3437/#3364; 10-wave 03:00 overnight profile #3480; macOS Aqua LaunchAgent Host #3317; Notion `page --md` #3452).
+
+### Previous candidate: 1.9.7rc32
 Release candidate 1.9.7rc32 splits the 22k-line `reader.html` monolith into modular `connectonion/rem/reader_ui/` source files with zero-build Python memory assembly (#3478), introduces an opt-in five-start `overnight` REM schedule profile (`00:00`–`03:00` with a hard `03:30` continuation cutoff to protect daytime five-hour rolling quotas, #3480), adds atomic staged `co rem upgrade` automation with post-upgrade HTML cache prewarming and resilient scheduled wrappers (#3363, #3474), pins REM's local live Host to dedicated preferred port `18765`, adds macOS tab reuse and daily-deduped `co rem open --morning`, and extends browser post-upgrade build polling to 180 seconds with a persistent reload fallback. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc32.md).
 
 - 1.9.7rc32 (Modular `reader_ui/` split #3478; five-start `overnight` schedule profile #3480; atomic overnight `co rem upgrade` with HTML prewarm #3363/#3474; stable local REM port `18765` and tab deduplication).

@@ -1232,8 +1232,9 @@ function topicList() {
 }
 function topicEntry({ r, linked, last }) {
   const shown = linked.slice(0, 4);
+  const masked = r.private && privacyLevel !== "all";
   return el("li", {}, [el("a", { class: "gx-entry", href: href(r) }, [graphGlyph("knowledge", 16, r.private),
-      el("span", { class: "gx-row-body" }, [el("b", { text: topicName(r.title) }), el("small", { text: topicAliases(r).slice(1, 5).join(" · ") })])]),
+      el("span", { class: "gx-row-body" }, [el("b", { text: topicName(pageName(r)) }), el("small", { text: masked ? "" : topicAliases(r).slice(1, 5).join(" · ") })])]),
     el("span", { class: "gx-entry-links" }, [...shown.map(n => el("a", { href: href(n.r), title: graphT(GRAPH_ONE[n.k]) }, [graphGlyph(n.k, 12, n.private), graphShort(graphTitle(n), 18)])),
       linked.length > shown.length ? el("span", { class: "gx-row-meta", text: "+" + (linked.length - shown.length) }) : null]),
     last ? el("time", { class: "gx-row-meta", datetime: last, text: fmtDate(last) }) : null]);
@@ -1486,8 +1487,8 @@ function entryCounts(r) {
   return el("p", { class: "entry-counts", text: capFirst(parts.join(" · ")) });
 }
 function entryHead(r, model, written) {
-  const topic = r.category === "knowledge", title = topic ? topicName(r.title) : r.title, same = text => text.toLowerCase().replace(/\s+/g, "");
-  const aka = [...new Map([...model.aka, ...(r.topic?.aliases || [])].map(name => [same(name), name])).values()].filter(name => same(name) !== same(title) && same(name) !== same(r.title));
+  const topic = r.category === "knowledge", masked = r.private && privacyLevel !== "all", title = topic ? topicName(pageName(r)) : pageName(r), same = text => text.toLowerCase().replace(/\s+/g, "");
+  const aka = masked ? [] : [...new Map([...model.aka, ...(r.topic?.aliases || [])].map(name => [same(name), name])).values()].filter(name => same(name) !== same(title) && same(name) !== same(r.title));
   const first = topic ? topicRows(r).map(row => row.date).filter(Boolean).sort()[0] : "";
   const unwritten = written ? "" : first ? graphT("REM has not written this page yet · named in {n} records since {date}", { n: topicRows(r).length, date: fmtDate(first) }) : graphT("REM has not written this page yet");
   const sources = model.sources.length;
