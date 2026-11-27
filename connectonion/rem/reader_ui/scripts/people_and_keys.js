@@ -1594,10 +1594,19 @@ function keysTable(items) {
 // one row per service with "connected" and a count; settings that aren't secrets (scopes, expiry times, flags, the
 // browser engine, the agent address) fold under 设置项. The Host sends names only; a value never reaches it.
 function keysEnvSection(onLoad = () => {}) {
-  const loading = el("p", { class: "key-import-note keys-env-loading", role: "status", text: t("Reading co's own keys…") });
-  const box = el("section", { class: "keys-env" }, [loading]);
+  const loading = el("ul", { class: "keys-env-list keys-env-loading", role: "status" }, [
+    el("li", { class: "keys-env-loading-row" }, [
+      el("span", { class: "key-spin", "aria-hidden": "true" }),
+      el("span", { text: t("Loading co's own keys…") })
+    ])
+  ]);
+  const box = el("section", { class: "keys-env", "aria-busy": "true" }, [
+    el("h2", { class: "keys-env-h", text: t("co's own keys") }),
+    loading
+  ]);
   hostPost("/rem/keys/env", {}).then(reply => {
-    loading.remove();
+    box.removeAttribute("aria-busy");
+    box.textContent = "";
     const services = reply.ok ? reply.services || [] : [], settings = reply.ok ? reply.settings || [] : [];
     const own = services.reduce((n, s) => n + s.count, 0);
     onLoad(own);
@@ -1676,7 +1685,51 @@ Object.assign(UI.zh, {
   "Add one by hand": "手动添加一条", "Values go to the Keychain; the notebook keeps only what each key is.": "密码存进钥匙串，笔记本只记每条是什么。", "co's own keys": "co 自己用的密钥", "They live in {where}. Values stay hidden.": "存在 {where} 里，数值不显示。", "hidden": "已隐藏",
   "{n} in the Keychain": "钥匙串里 {n} 条", "{n} in the Keychain · co's own {m}": "钥匙串里 {n} 条 · co 自己用的 {m} 项",
   "Nothing imported into the Keychain yet · co's own {m}, below": "钥匙串里还没有导入的密码 · co 自己用的 {m} 项在下面",
-  "{n} keys": "{n} 条", "1 key": "1 条", "Find a site or account": "找网站或账号", "Connected": "已连接", "Settings ({n})": "设置项（{n}）" });
+  "{n} keys": "{n} 条", "1 key": "1 条", "Find a site or account": "找网站或账号", "Connected": "已连接", "Settings ({n})": "设置项（{n}）",
+  "Loading co's own keys…": "正在读取 co 自己用的密钥…" });
+
+// #3364 Part A: Unify Settings translate-all and translationNotice onto the same authoritative count as the top bar.
+if (typeof drawTranslateAll === "function" && typeof authoritativeTranslationCounts === "function") {
+  drawTranslateAll = function(box) {
+    const { total, done, left, busy, job } = authoritativeTranslationCounts();
+    const hasJobTotal = job.total != null && job.done != null;
+    const count = hasJobTotal ? t("Translated {n} / {m}", { n: done, m: total }) : "";
+    const words = job.offline ? t("Lost touch with REM; trying again…")
+      : job.state === "starting" ? t("Getting the pages ready…")
+      : job.state === "stopping" ? count + " · " + t("Stopping after the pages already begun…")
+      : job.state === "refused" ? t("The translation was refused; try again in a moment.")
+      : job.state === "failed" && job.error ? t("Translation could not start: {why}.", { why: job.error })
+      : job.halted ? t("Stopped: the rest of the Codex week is kept for your own work, at {n} / {m}.", { n: done, m: total })
+      : (hasJobTotal && done >= total) || (!busy && left === 0 && total > 0) ? t("Every page reads in Chinese.")
+      : job.state === "stopped" ? t("Stopped.") + " " + count
+      : count;
+    const failed = !busy && job.failed ? t(job.failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: job.failed }) : "";
+    const parts = [words || failed ? el("span", { class: "ta-state", text: [words, failed].filter(Boolean).join(" ") }) : null];
+    if (busy) {
+      const stop = el("button", { type: "button", class: "ta-stop", text: t("Stop translating") });
+      stop.disabled = job.state === "stopping";
+      stop.onclick = () => translateAllSend("stop");
+      parts.push(stop);
+    } else if (left > 0 || (!hasJobTotal && total === 0)) {
+      const go = el("button", { type: "button", class: "ta-go",
+        text: left ? t("Translate every page into Chinese ({n} pages)", { n: left }) : t("Translate every page into Chinese") });
+      go.onclick = () => translateAllSend("start");
+      parts.push(go);
+    }
+    box.replaceChildren(...parts.filter(Boolean));
+  };
+}
+if (typeof translationNotice === "function" && typeof authoritativeTranslationCounts === "function") {
+  translationNotice = function() {
+    if (uiLanguage !== "zh") return null;
+    if (!authoritativeTranslationCounts().left) return null;
+    const run = (REM.logs || REM.brief_logs || []).find(run => /translat/.test(run.phase || ""));
+    const failed = run?.translation_failures ?? (run?.pages || []).filter(page => page.outcome === "failed").length;
+    const failure = failed ? t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) + " " : "";
+    const go = translateAll();
+    return el("p", { class: "translation-note quiet-line", text: failure + t("Pages are translated when you open them.") }, go ? [go] : undefined);
+  };
+}
 function keyImporter() {
   const result = el("div", { class: "key-import-result", hidden: "" });
   const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": t("Import a password export (CSV)") });

@@ -375,6 +375,19 @@
   .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; }
   .cal-row-where { grid-column: 2; color: var(--grey); font-size: var(--s-ui); overflow-wrap: anywhere; }
   .cal-row-bar.cal-event .cal-row-where { grid-column: 1; color: inherit; }
+  /* #3479: visible localized "Write full screen" / "全屏写" button beside Send/More across all skins & touch. */
+  .mailcard .mail-actions > .mail-write.mail-write-labeled { width: auto; height: auto; flex: 0 0 auto; min-height: 38px; padding: 0 var(--u3); display: inline-flex; align-items: center; gap: var(--u2); border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); white-space: nowrap; transition: background var(--t-press) var(--ease-out), border-color var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out); }
+  .mailcard .mail-actions > .mail-write.mail-write-labeled:hover { border-color: var(--ink); background: var(--well); color: var(--ink); }
+  .mailcard .mail-actions > .mail-write.mail-write-labeled:focus-visible { outline: var(--rule-heavy) solid var(--ink); outline-offset: 2px; }
+  .mailcard .mail-actions > .mail-write.mail-write-labeled .icw { display: inline-flex; align-items: center; }
+  .mailcard .mail-actions > .mail-write.mail-write-labeled .mail-write-label { line-height: var(--lh-ui); }
+  @media (max-width: 720px), (pointer: coarse) {
+    .mailcard .mail-actions > .mail-write.mail-write-labeled { width: auto; height: auto; flex: 0 0 auto; min-height: 44px; min-width: 44px; padding: 0 var(--u3); }
+  }
+  /* #3439: elapsed-appointment / unfilled-placeholder recheck warning banner on Today reply cards. */
+  .draft-recheck { display: flex; flex-direction: column; gap: var(--u1); margin: 0 0 var(--u2); padding: var(--u2) var(--u3); border: var(--hair) solid var(--amber); border-radius: var(--r-inner); background: var(--tint-amber); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .draft-recheck strong { font-weight: var(--w-bold); color: var(--amber); }
+  .draft-recheck-sub { font-size: var(--s-meta); color: var(--grey); }
   @media (max-width: 640px) {
     /* a phone: the week is a strip of dates over a day-by-day list; the month keeps its grid with a count in each
        cell and the chosen day's list under it */
