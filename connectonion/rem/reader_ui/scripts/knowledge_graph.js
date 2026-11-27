@@ -134,6 +134,27 @@ function graphLines(text, per = 22, max = 1) {
   }
   return { lines, text: said(0) };
 }
+function graphMiddleTruncate(text, max = 20) {
+  const half = (max - 1) / 2;
+  let head = "", tail = "";
+  let width = 0, tailRoom = Math.floor(half);
+  for (const ch of text) {
+    width += graphWidth(ch);
+    if (width > max) break;
+    if (width <= Math.ceil(half)) head += ch;
+  }
+  if (width <= max) return text;
+  for (let end = text.length; end > 0 && tailRoom > 0;) {
+    let start = end - 1;
+    if (start > 0 && text.codePointAt(start - 1) > 0xffff) start--;
+    const ch = text.slice(start, end);
+    end = start;
+    tailRoom -= graphWidth(ch);
+    if (tailRoom < 0) break;
+    tail = ch + tail;
+  }
+  return head.replace(/[\s\p{P}]+$/u, "") + "…" + tail.replace(/^[\s\p{P}]+/u, "");
+}
 function graphShort(text, n = 22) { return graphLines(text, n).lines[0]; }
 function graphRadius(n) {
   const d = GRAPH.adj.get(n.id)?.size || 0;
@@ -143,7 +164,7 @@ function graphRadius(n) {
 }
 // How far a mark's outline reaches from its centre: a diamond and a triangle reach past their radius.
 function graphReach(n) { return (n.private ? Math.max(graphRadius(n), GRAPH_PRIVATE_MIN) : graphRadius(n)) * ({ projects: 1.25, notes: 1.15, sessions: 1.2 }[n.k] || 1); }
-const GRAPH_LABELS = 12, GRAPH_LINE = 15;
+const GRAPH_LABELS = 12, GRAPH_PHONE_LABELS = 3, GRAPH_LINE = 15;
 // The most-linked records that are not knowledge entries: the ones the fitted map names. The owner is every
 // page's hub by definition, so ranking him says nothing (sprint 15).
 function graphHubs(nodes, degree, count = GRAPH_LABELS) {
@@ -407,13 +428,15 @@ function graphDraw() {
 // whole map is fitted, more as he zooms in (the count grows with the area the zoom opens). A phone's fitted map
 // names only the entries. A focused map names the record and what it links directly.
 function graphLabelBudget() {
-  const base = graphPhone() ? 3 : GRAPH_LABELS, zoom = graphState.T.k / (graphState.fitK || graphState.T.k);
+  const base = graphPhone() ? GRAPH_PHONE_LABELS : GRAPH_LABELS, zoom = graphState.T.k / (graphState.fitK || graphState.T.k);
   return zoom < 1.1 ? base : Math.round(Math.max(base, 6) * zoom * zoom);
 }
 function graphNamed(order) {
   const { focus, near1 } = graphState, shown = order.filter(n => graphAlpha(n) >= .4 && !graphHidden(n)), byLinks = (a, b) => graphDegree(b) - graphDegree(a);
   if (focus) return shown.filter(n => n.id === focus || near1.has(n.id)).sort((a, b) => (b.id === focus) - (a.id === focus) || (b.k === "knowledge") - (a.k === "knowledge") || byLinks(a, b));
-  return [...shown.filter(n => n.k === "knowledge").sort(byLinks), ...graphHubs(shown, graphDegree, graphLabelBudget())];
+  const named = [...shown.filter(n => n.k === "knowledge").sort(byLinks), ...graphHubs(shown, graphDegree, graphLabelBudget())];
+  if (graphPhone() && named.length < GRAPH_PHONE_LABELS) named.push(...shown.filter(n => !named.includes(n)).sort(byLinks).slice(0, GRAPH_PHONE_LABELS - named.length));
+  return named;
 }
 // Every mark on screen as a box, so a label can keep off them.
 function graphMarkBoxes() {
@@ -455,11 +478,17 @@ function graphLabels(ctx, order, colours) {
   const font = graphCss("--font"), size = graphCss("--s-meta"), weight = [graphCss("--w-regular"), graphCss("--w-bold")];
   ctx.textBaseline = "middle"; ctx.lineJoin = "round";
   graphState.labels = [];
-  for (const n of graphNamed(order)) {
+  const { T, W, H } = graphState;
+  const candidates = graphPhone() ? order.filter(n => {
+    const x = T.applyX(n.x), y = T.applyY(n.y);
+    return x >= 0 && x < W && y >= 0 && y < H;
+  }) : order;
+  for (const n of graphNamed(candidates)) {
     const top = n.k === "knowledge" || n.id === graphState.focus;
     ctx.font = `${weight[+top]} ${size} ${font}`;
-    const { lines, text } = graphLines(graphTitle(n), top ? (graphPhone() ? 22 : 28) : 20, top ? (graphPhone() ? 3 : 2) : 1);
-    const spot = graphLabelSpot(n, Math.max(...lines.map(line => ctx.measureText(line).width)) + 4, lines.length * GRAPH_LINE + 2, taken, marks, top);
+    const title = graphTitle(n), wrapped = top && !graphPhone() ? graphLines(title, 28, 2) : null;
+    const text = wrapped ? wrapped.text : graphMiddleTruncate(title), lines = wrapped ? wrapped.lines : [text];
+    const spot = graphLabelSpot(n, Math.max(...lines.map(line => ctx.measureText(line).width)) + 4, lines.length * GRAPH_LINE + 2, taken, marks, top || (graphPhone() && taken.length < GRAPH_PHONE_LABELS));
     if (!spot) continue;
     taken.push(spot.box);
     graphState.labels.push({ id: n.id, text, box: spot.box });
@@ -520,11 +549,13 @@ function graphBind(box) {
       && !(event.type === "mousedown" && graphHit(event)))
     .on("zoom", event => { graphState.T = event.transform; graphDraw(); });
   d3.select(canvas).call(graphState.zoom).on("dblclick.zoom", null);
-  // One click opens the record's page (#3095: focusing it and then pressing Open was two). Pointing at a mark is
-  // what previews it in the panel; a click on empty paper lets go of whatever was focused.
+  // A phone tap previews an unnamed mark. Named marks open directly.
   canvas.addEventListener("click", event => {
     if (graphState.dragged) { graphState.dragged = false; return; }
-    const n = graphHit(event); if (n) graphOpen(n); else graphFocus("");
+    const n = graphHit(event);
+    if (!n) graphFocus("");
+    else if (graphPhone() && n.id !== graphState.focus && !graphState.labels.some(label => label.id === n.id)) graphFocus(n.id);
+    else graphOpen(n);
   });
   canvas.addEventListener("mousemove", event => {
     if (graphState.drag) return;
@@ -1586,7 +1617,10 @@ function graphLocal(r) {
     const angle = -Math.PI / 2 + 2 * Math.PI * i / ring.length, radius = ring.length > 18 && i % 2 ? 58 : ring.length <= 6 ? 60 : 82;
     const x = cx + Math.cos(angle) * radius, y = cy + Math.sin(angle) * radius;
     lines.push(svgEl("line", { x1: cx, y1: cy, x2: x, y2: y, class: n.k === "knowledge" || centre.k === "knowledge" ? "topic" : "" }));
-    marks.push(graphLocalMark(n, x, y, n.k === "knowledge" ? 5 : 3.6));
+    // Half the chord between neighbours on this ring keeps dense targets apart.
+    const step = ring.length > 18 && (ring.length % 2 === 0 || i % 2) ? 2 : 1;
+    const hitRadius = ring.length < 2 ? 13 : Math.min(13, radius * Math.sin(Math.PI * step / ring.length));
+    marks.push(graphLocalMark(n, x, y, n.k === "knowledge" ? 5 : 3.6, false, hitRadius));
     const text = labelled.has(n.id) && !n.private ? graphLocalLabel(graphTitle(n), x, W, Math.cos(angle) >= 0) : "";
     if (text) labels.push(svgEl("text", { x: x + (Math.cos(angle) >= 0 ? 7 : -7), y: y + 4, "text-anchor": Math.cos(angle) >= 0 ? "start" : "end" }, [document.createTextNode(text)]));
   });
@@ -1601,12 +1635,11 @@ function graphLocalLabel(title, x, W, right) {
   const room = Math.floor(((right ? W - x : x) - 7) / 6.5);
   return room < 3 ? "" : graphShort(title, Math.min(18, room));
 }
-function graphLocalMark(n, x, y, r, centre = false) {
+function graphLocalMark(n, x, y, r, centre = false, hitRadius = 13) {
   const title = graphTitle(n);
-  const hit = svgEl("circle", { cx: x, cy: y, r: 12, fill: "transparent" });
   const shape = graphSvgMark(n.k, x, y, n.k === "sessions" ? Math.min(r, 4) : r, n.private);
-  const link = svgEl("a", { ...(centre ? { class: "centre" } : {}), "aria-label": title,
-    href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id) }, [svgEl("title", {}, [document.createTextNode(title)]), hit, shape]);
+  const hit = svgEl("circle", { class: "gx-hit", cx: x, cy: y, r: hitRadius, fill: "transparent", "pointer-events": "all" });
+  const link = svgEl("a", { "aria-label": title, ...(centre ? { class: "centre" } : {}), href: n.r ? href(n.r) : "#view=graph&focus=" + encodeURIComponent(n.id) }, [svgEl("title", {}, [document.createTextNode(title)]), hit, shape]);
   return link;
 }
 function graphRailAttach(main, r) {

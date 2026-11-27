@@ -283,6 +283,7 @@
     /* A phone draws the entries and what they link (the map says so in its sentence); the filters have nothing to
        filter, one finger scrolls the page and two zoom the map, and the lists scroll with the page, not inside it. */
     .gx-map { overflow: visible; padding: 4px 16px 0; }
+    .gx-map:has(> .gx-panel:not([hidden])) { padding-bottom: calc(62px + 14px + 12px + env(safe-area-inset-bottom, 0px)); }
     .gx-panel[hidden] { display: none; }
     .gx-topics { padding: 4px 16px 40px; }
     .gx-says { font-size: var(--s-body); line-height: var(--lh-body); }
