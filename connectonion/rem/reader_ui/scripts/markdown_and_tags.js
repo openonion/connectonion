@@ -101,6 +101,8 @@ function codedOrgName(r) {
 }
 function privateMaskNo(path) {
   if (!path) return "";
+  const rec = typeof byPath === "function" ? byPath(path) : (REM?.records || []).find(r => r.path === path);
+  if (rec?.masked_number) return String(rec.masked_number);
   const all = [...new Set([...(REM?.records || []).filter(r => r.private).map(r => r.path),
     ...(REM?.graph?.nodes || []).filter(n => n.private).map(n => n.id)])].sort();
   const idx = all.indexOf(path);
