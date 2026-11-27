@@ -9,6 +9,115 @@ from .service import notebook_zone
 STREET = re.compile(r'\b(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|'
                     r'highway|hwy|terrace|crescent|court|place|square)\b|[路街巷道号]', re.I)
 
+_MONTHS = ('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec')
+_MONTH_RE = r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)'
+_ISO_TIME = re.compile(r'\b(\d{4}-\d{2}-\d{2})(?:[T\s]+(?:at\s+)?)?(?:(上午|早上|早晨|中午|下午|晚上|傍晚)\s*)?(\d{1,2})(?:[:：](\d{2})|点(半|\d{1,2}分?)?|\s*(am|pm)\b)', re.I)
+_EN_MD_TIME = re.compile(rf'\b({_MONTH_RE})\s+(\d{{1,2}})(?:,?\s*(\d{{4}}))?(?:\s+at|\s*,)?\s+(\d{{1,2}})(?::(\d{{2}}))?\s*(am|pm)?\b', re.I)
+_EN_DM_TIME = re.compile(rf'\b(\d{{1,2}})\s+({_MONTH_RE})(?:\s+(\d{{4}}))?(?:\s+at|\s*,)?\s+(\d{{1,2}})(?::(\d{{2}}))?\s*(am|pm)?\b', re.I)
+_ZH_MD_TIME = re.compile(r'(\d{1,2})月(\d{1,2})[日号]\s*(上午|早上|早晨|中午|下午|晚上|傍晚)?\s*(\d{1,2})\s*(?:[:：](\d{2})|点(半|\d{1,2}分?)?)')
+_TODAY_EN_AFTER = re.compile(r'\b(?:today|this\s+(?:morning|afternoon|evening)|tonight)\b[^.\n]{0,24}?(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b', re.I)
+_TODAY_EN_BEFORE = re.compile(r'\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b[^.\n]{0,20}?\btoday\b', re.I)
+_TODAY_ZH = re.compile(r'(?:今天|今日)\s*(上午|早上|早晨|中午|下午|晚上|傍晚)?\s*(\d{1,2})\s*(?:[:：](\d{2})|点(半|\d{1,2}分?)?)')
+_DUE_EN_TIME = re.compile(r'\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b', re.I)
+_DUE_ZH_TIME = re.compile(r'(上午|早上|早晨|中午|下午|晚上|傍晚)\s*(\d{1,2})\s*(?:[:：](\d{2})|点(半|\d{1,2}分?)?)')
+
+
+def _parse_clock(hour_s, minute_s=None, mer_s=None, zh_part=None, zh_min=None):
+    hour = int(hour_s)
+    if zh_min == '半':
+        minute = 30
+    elif zh_min:
+        minute = int(zh_min.rstrip('分'))
+    elif minute_s is not None and minute_s != '':
+        minute = int(minute_s)
+    else:
+        minute = 0
+    mer = (mer_s or '').lower()
+    if mer == 'pm' and 1 <= hour <= 11:
+        hour += 12
+    elif mer == 'am' and hour == 12:
+        hour = 0
+    elif zh_part in ('下午', '晚上', '傍晚') and 1 <= hour <= 11:
+        hour += 12
+    elif zh_part == '中午' and 1 <= hour <= 5:
+        hour += 12
+    if 0 <= hour <= 23 and 0 <= minute <= 59:
+        return hour, minute
+    return None
+
+
+def elapsed_appointment(text, moment, zone, *, due=''):
+    """Return the local datetime of an elapsed appointment referenced in `text`, or None (#3439)."""
+    if not text:
+        return None
+    local_now = moment.astimezone(zone)
+    today = local_now.date()
+    candidates = []
+
+    def add(day_obj, clock):
+        if day_obj is None or clock is None:
+            return
+        if (today - day_obj).days > 7:
+            return
+        candidates.append(datetime(day_obj.year, day_obj.month, day_obj.day, clock[0], clock[1], tzinfo=zone))
+
+    for m in _ISO_TIME.finditer(text):
+        if not (m.group(4) or m.group(5) or m.group(6) or m.group(2) or '点' in m.group(0)):
+            continue
+        try:
+            d = date.fromisoformat(m.group(1))
+        except ValueError:
+            continue
+        add(d, _parse_clock(m.group(3), m.group(4), m.group(6), m.group(2), m.group(5)))
+
+    for m in _EN_MD_TIME.finditer(text):
+        if not (m.group(5) or m.group(6)):
+            continue
+        try:
+            d = date(int(m.group(3) or today.year), _MONTHS.index(m.group(1)[:3].lower()) + 1, int(m.group(2)))
+        except ValueError:
+            continue
+        add(d, _parse_clock(m.group(4), m.group(5), m.group(6)))
+
+    for m in _EN_DM_TIME.finditer(text):
+        if not (m.group(5) or m.group(6)):
+            continue
+        try:
+            d = date(int(m.group(3) or today.year), _MONTHS.index(m.group(2)[:3].lower()) + 1, int(m.group(1)))
+        except ValueError:
+            continue
+        add(d, _parse_clock(m.group(4), m.group(5), m.group(6)))
+
+    for m in _ZH_MD_TIME.finditer(text):
+        try:
+            d = date(today.year, int(m.group(1)), int(m.group(2)))
+        except ValueError:
+            continue
+        add(d, _parse_clock(m.group(4), m.group(5), None, m.group(3), m.group(6)))
+
+    for pat in (_TODAY_EN_AFTER, _TODAY_EN_BEFORE):
+        for m in pat.finditer(text):
+            if not (m.group(2) or m.group(3)):
+                continue
+            hint = m.group(0).lower()
+            mer = m.group(3) or ('pm' if ('afternoon' in hint or 'evening' in hint or 'tonight' in hint) else None)
+            add(today, _parse_clock(m.group(1), m.group(2), mer))
+
+    for m in _TODAY_ZH.finditer(text):
+        add(today, _parse_clock(m.group(2), m.group(3), None, m.group(1), m.group(4)))
+
+    if due == today.isoformat():
+        for m in _DUE_EN_TIME.finditer(text):
+            if not (m.group(2) or m.group(3)):
+                continue
+            add(today, _parse_clock(m.group(1), m.group(2), m.group(3)))
+        for m in _DUE_ZH_TIME.finditer(text):
+            add(today, _parse_clock(m.group(2), m.group(3), None, m.group(1), m.group(4)))
+
+    if not candidates or any(dt >= local_now for dt in candidates):
+        return None
+    return max(candidates)
+
 
 def address_missing(location):
     """Flag only short venue names: at most six words, no number or street word."""
@@ -99,22 +208,30 @@ def _reasons(row, day):
     return reasons
 
 
-def _proposal(row, day, slot, calendar_read):
+def _proposal(row, day, slot, calendar_read, *, elapsed=None):
     reasons = _reasons(row, day.isoformat())
-    return {'kind': 'proposal', 'key': row['key'], 'keys': row.get('keys', [row['key']]),
-            'record': row['record'], 'title': row['title'],
-            'text': re.sub(r'\s*\[\d+\]', '', row['text']).strip(), 'reasons': reasons,
-            'reason': '; '.join(reason['text'].format(**reason['values']) for reason in reasons),
-            'start': slot[0].isoformat() if slot else '', 'end': slot[1].isoformat() if slot else '',
-            'time': slot[0].strftime('%H:%M') if slot else '', 'end_time': slot[1].strftime('%H:%M') if slot else '',
-            'placement': 'no free time today' if calendar_read and not slot else ''}
+    if elapsed is not None:
+        reasons.append({'text': 'time already passed ({time}) — recheck before sending',
+                        'values': {'time': elapsed.strftime('%H:%M')}})
+    proposal = {'kind': 'proposal', 'key': row['key'], 'keys': row.get('keys', [row['key']]),
+                'record': row['record'], 'title': row['title'],
+                'text': re.sub(r'\s*\[\d+\]', '', row['text']).strip(), 'reasons': reasons,
+                'reason': '; '.join(reason['text'].format(**reason['values']) for reason in reasons),
+                'start': slot[0].isoformat() if slot else '', 'end': slot[1].isoformat() if slot else '',
+                'time': slot[0].strftime('%H:%M') if slot else '', 'end_time': slot[1].strftime('%H:%M') if slot else '',
+                'placement': 'no free time today' if calendar_read and not slot else ''}
+    if elapsed is not None:
+        proposal['elapsed'] = True
+        proposal['elapsed_at'] = elapsed.isoformat()
+    return proposal
 
 
-def _day(calendar, items, day, config, zone, calendar_read):
+def _day(calendar, items, day, config, zone, calendar_read, elapsed_map=None):
     events = _events(calendar, day, zone)
     # Only timed events take working hours: one week-long all-day entry once left every proposal without a time.
     gaps = _gaps([row for row in events if not row['all_day']], *_bounds(day, config, zone), zone)
-    proposals = [_proposal(row, day, _slot(gaps) if calendar_read else None, calendar_read) for row in items]
+    proposals = [_proposal(row, day, _slot(gaps) if calendar_read else None, calendar_read,
+                           elapsed=(elapsed_map or {}).get(row['key'])) for row in items]
     return {'date': day.isoformat(), 'items': sorted(events + proposals, key=_order)}
 
 
@@ -123,11 +240,15 @@ def build(calendar, items, config, moment):
     zone = notebook_zone(config)
     day = moment.astimezone(zone).date()
     read = bool((calendar or {}).get('read') or any(error.get('read_at') for error in (calendar or {}).get('errors', [])))
-    chosen = sorted((row for row in items if _eligible(row, day)), key=lambda row: row['rank'])[:5]
+    eligible = [row for row in items if _eligible(row, day)]
+    elapsed_map = {row['key']: elapsed_appointment(row.get('text', ''), moment, zone, due=row.get('due', '')) for row in eligible}
+    # #3439: demote already-elapsed appointments behind current/actionable items so they never lead Today.
+    chosen = sorted(eligible, key=lambda row: (elapsed_map.get(row['key']) is not None, row['rank']))[:5]
     return {'saved_at': moment.isoformat(timespec='seconds'), 'timezone': str(zone), 'calendar_read': read,
             'calendar_saved_at': (calendar or {}).get('saved_at', ''),
             'calendar_errors': (calendar or {}).get('errors', []),
-            'days': [_day(calendar, chosen, day + timedelta(days=n), config, zone, read) for n in (0, 1)]}
+            'days': [_day(calendar, chosen, day + timedelta(days=n), config, zone, read,
+                          elapsed_map if n == 0 else None) for n in (0, 1)]}
 
 
 def _eligible(row, day):
