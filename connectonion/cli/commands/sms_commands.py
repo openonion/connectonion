@@ -10,6 +10,8 @@ from rich.table import Table
 
 console = Console()
 
+APP_DOWNLOAD_URL = "https://github.com/openonion/openonion-messages-android/releases/latest"
+
 
 def handle_sms_pair(expires: int = 600, wait: bool = True, json_output: bool = False):
     from ...useful_tools.sms import (
@@ -24,53 +26,65 @@ def handle_sms_pair(expires: int = 600, wait: bool = True, json_output: bool = F
         print(json.dumps(pairing, default=str, separators=(",", ":")))
         return
 
-    console.print("\n[bold green]Scan with OpenOnion Messages[/bold green]\n")
-    try:
-        import qrcode
-
-        qr = qrcode.QRCode(border=2)
-        qr.add_data(pairing["pairing_link"])
-        qr.make(fit=True)
-        qr.print_ascii(invert=True)
-    except ImportError:
-        console.print("[yellow]QR renderer unavailable; use the private link below.[/yellow]")
-    # The link is intentionally visible only in an interactive human flow. It
-    # is a one-time bearer secret until Android returns the signed claim.
-    console.print(f"\n[dim]Private one-time link:[/dim]\n{pairing['pairing_link']}")
-    console.print(f"\n[dim]Agent inbox:[/dim] {pairing['recipient']}")
-    console.print(f"[dim]Expires:[/dim] {pairing['expires_at']}\n")
+    _print_pairing_code(pairing, expires)
     if not wait:
         return
 
     deadline = time.monotonic() + expires
+    with console.status("[dim]Waiting for your phone…[/dim]", spinner="dots"):
+        status = _wait_for_phone(pairing["id"], deadline, get_sms_pairing)
+    if status is None:
+        console.print("\n[yellow]The code expired before a phone scanned it.[/yellow]")
+        console.print("[dim]Run[/dim] [bold]co sms pair[/bold] [dim]for a fresh one.[/dim]\n")
+        raise typer.Exit(1)
+
+    device_name = (status.get("device") or {}).get("device_name") or "Your phone"
+    device_public_key = status["device_public_key"]
+    code = pairing_confirmation_code(pairing["pairing_link"], device_public_key)
+    console.print(
+        f"\n  [bold]{_safe_text(device_name)}[/bold] scanned the code. It shows:\n\n"
+        f"      [bold green]{code[:3]} {code[3:]}[/bold green]\n"
+    )
+    answer = console.input("  Press [bold]Enter[/bold] if your phone shows the same code, or type [bold]n[/bold] to cancel › ")
+    if answer.strip().lower() not in ("", "y", "yes"):
+        console.print("\n[yellow]Not approved.[/yellow] [dim]The phone will not be connected.[/dim]\n")
+        raise typer.Exit(1)
+    confirm_sms_pairing(pairing["id"], pairing["pairing_link"], device_public_key, code)
+    console.print(f"\n  [green]✓ {_safe_text(device_name)} is connected.[/green]")
+    console.print("  [dim]New texts will show up in[/dim] [bold]co sms inbox[/bold]\n")
+
+
+def _print_pairing_code(pairing: dict, expires: int):
+    import qrcode
+
+    console.print("\n  [bold]Pair an Android phone with this Agent[/bold]\n")
+    qr = qrcode.QRCode(border=2)
+    qr.add_data(pairing["pairing_link"])
+    qr.make(fit=True)
+    qr.print_ascii(invert=True)
+    recipient = pairing["recipient"]
+    console.print(
+        "\n  [green]1[/green]  Open [bold]OpenOnion Messages[/bold] on your phone\n"
+        "  [green]2[/green]  Tap [bold]Scan pairing code[/bold] and point it at this screen\n"
+    )
+    console.print(f"  [dim]No app yet?[/dim] {APP_DOWNLOAD_URL}")
+    console.print(
+        f"  [dim]Agent {recipient[:6]}…{recipient[-4:]} · code expires in {expires // 60} min[/dim]\n"
+    )
+    # The link is a one-time bearer secret until Android returns the signed
+    # claim, so it is shown only in this interactive flow, as a fallback.
+    console.print(f"  [dim]Can't scan? Paste this link in the app:\n  {pairing['pairing_link']}[/dim]\n")
+
+
+def _wait_for_phone(pairing_id: str, deadline: float, get_sms_pairing) -> dict | None:
     while time.monotonic() < deadline:
-        status = get_sms_pairing(pairing["id"])
+        status = get_sms_pairing(pairing_id)
         if status["status"] == "pending":
-            device = status.get("device") or {}
-            device_public_key = status["device_public_key"]
-            code = pairing_confirmation_code(pairing["pairing_link"], device_public_key)
-            console.print(
-                "\n[bold]Confirm this phone[/bold]\n"
-                f"  Device: {device.get('device_name', 'Android device')}\n"
-                f"  Code:   [bold green]{code[:3]} {code[3:]}[/bold green]\n"
-            )
-            if not Confirm.ask("Does the same code appear on the phone?", default=False):
-                console.print("[yellow]Not confirmed. The pairing will expire automatically.[/yellow]")
-                raise typer.Exit(1)
-            confirm_sms_pairing(
-                pairing["id"],
-                pairing["pairing_link"],
-                device_public_key,
-                code,
-            )
-            console.print("\n[green]✓ Phone approved[/green]")
-            console.print("[dim]The phone can now activate its upload-only credential.[/dim]\n")
-            return
+            return status
         if status["status"] == "expired":
-            break
+            return None
         time.sleep(2)
-    console.print("\n[yellow]Pairing expired before a phone was confirmed.[/yellow]\n")
-    raise typer.Exit(1)
+    return None
 
 
 def handle_sms_inbox(last: int = 10, pending: bool = False, json_output: bool = False):
