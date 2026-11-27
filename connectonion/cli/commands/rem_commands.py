@@ -2368,9 +2368,18 @@ def make_rem_app(factory):
 
     @rem.command("stop", cls=V("co rem stop"))
     def stop_rem(ctx: typer.Context):
-        from ...rem import schedule as rem_schedule
+        from ...rem import live_host, schedule as rem_schedule
         from ...rem.service import stop
-        _handle(ctx, lambda root: (stop(root, scheduler=rem_schedule.default_scheduler(root)), ["status"]), ["status"])
+
+        def operation(root):
+            result = stop(root, scheduler=rem_schedule.default_scheduler(root))
+            if live_host.host_agent_installed():
+                unloaded = live_host.uninstall_host_agent()
+                if unloaded:
+                    result = {**result, "host_agent_unloaded": True}
+            return result, ["status"]
+
+        _handle(ctx, operation, ["status"])
 
     @rem.command("status", cls=V("co rem status"))
     def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose"),
@@ -2966,6 +2975,31 @@ def make_rem_app(factory):
                 check("auto-upgrade", False,
                       f"last upgrade failed ({last_upgrade.get('target') or 'unknown'}): {last_upgrade.get('error', '')}",
                       rem_fix=["upgrade", "run"])
+            from ...rem import live_host
+            host_session = live_host.host_session_info()
+            if host_session["platform"] == "darwin":
+                if host_session["running"]:
+                    via = " via LaunchAgent" if host_session["launch_agent_loaded"] else ""
+                    if host_session["stuck_in_background"]:
+                        check(
+                            "REM live host session",
+                            False,
+                            f"pid {host_session['pid']} running in {host_session['session']} session "
+                            "(Keychain / Touch ID prompts require Aqua GUI session)",
+                            fix=host_session["recovery_command"],
+                        )
+                    else:
+                        check(
+                            "REM live host session",
+                            True,
+                            f"pid {host_session['pid']} running in {host_session['session']} GUI session{via}",
+                        )
+                else:
+                    agent_note = "LaunchAgent installed" if host_session["launch_agent_installed"] else "LaunchAgent not installed"
+                    check("REM live host session", True, f"not running ({agent_note})")
+            else:
+                state_desc = f"pid {host_session['pid']} running (non-macOS)" if host_session["running"] else "not running (non-macOS)"
+                check("REM live host session", True, state_desc)
             return checks, (rem_fixes[0] if rem_fixes else ["status"])
         from .rem_output import doctor_board
         _handle(ctx, operation, ["config"], draw=doctor_board)

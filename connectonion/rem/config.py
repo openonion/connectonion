@@ -186,14 +186,34 @@ def default_config() -> dict:
 LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
 # D-104: schedules are compared night against night (.state/night-stats.jsonl).
 # dense is a slot every 30 minutes from 22:00 to 07:00, each with its 15-minute follow-ups.
-# #3480: overnight concentrates five start slots inside 00:00-03:00 with a 03:30 hard stop on
-# continuations, keeping >= 5 clean hours before daytime coding starts for rolling 5h quotas.
+# #3480 (updated 2026-11-27): overnight runs 10 half-hour waves from 22:00 through 02:30
+# in the saved local IANA timezone. 22:00-02:00 each get one +15min continuation; 02:30 has
+# no 02:45 continuation (latest fire 02:30). Long/deepening/investigation work stops at 01:00,
+# new model turns stop at 02:40, and no new work starts after 03:00 (in-flight turns finish
+# cleanly), preserving a clean 5-hour rolling quota buffer before daytime coding.
 # Times set with `config set schedule.times` win over any profile.
 PROFILES = {"default": default_config()["schedule"]["times"],
             "dense": sorted(f"{hour:02d}:{minute:02d}" for hour in (*range(22, 24), *range(0, 8))
                             for minute in (0, 30) if (hour, minute) != (7, 30)),
-            "overnight": ["00:00", "00:45", "01:30", "02:15", "03:00"]}
-PROFILE_WINDOW_ENDS = {"overnight": "03:30"}
+            "overnight": ["22:00", "22:30", "23:00", "23:30",
+                          "00:00", "00:30", "01:00", "01:30", "02:00", "02:30"]}
+PROFILE_WINDOW_ENDS = {"overnight": "02:30"}
+PROFILE_POLICIES = {
+    "overnight": {
+        "window_start": "22:00",
+        "window_end": "03:00",
+        "latest_fire": "02:30",
+        "long_work_cutoff": "01:00",
+        "model_turn_cutoff": "02:40",
+        "policy": "no new work after 03:00 (in-flight turns finish cleanly)",
+    }
+}
+
+
+def _matches_profile_times(raw_schedule: dict, profile: str) -> bool:
+    times = list(raw_schedule.get("times") or [])
+    expected = list(PROFILES[profile])
+    return times == expected or sorted(times) == sorted(expected)
 
 
 def continuation_window_end(config: dict) -> str | None:
@@ -208,7 +228,20 @@ def continuation_window_end(config: dict) -> str | None:
     if not cutoff:
         return None
     # Only enforce the profile cutoff when times match the profile (explicit custom times keep their own span).
-    return cutoff if list(raw_schedule.get("times") or []) == list(PROFILES[profile]) else None
+    return cutoff if _matches_profile_times(raw_schedule, profile) else None
+
+
+def profile_policy(config: dict) -> dict | None:
+    """Explicit schedule window & late-wave policy metadata for bounded profiles (#3480)."""
+    raw_schedule = config.get("schedule")
+    if not isinstance(raw_schedule, dict):
+        return None
+    profile = raw_schedule.get("profile")
+    if not isinstance(profile, str) or profile not in PROFILE_POLICIES:
+        return None
+    if not _matches_profile_times(raw_schedule, profile):
+        return None
+    return dict(PROFILE_POLICIES[profile])
 
 
 def validate(config: dict) -> dict:

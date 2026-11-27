@@ -1006,8 +1006,9 @@ Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag, tag-node, tr
                                          sent mail and typed sessions (shown under "your languages")
           schedule.times                 "03:00,17:00": set here, these win over any profile
           schedule.profile               default | dense (every 30 min, 22:00-07:00) |
-                                         overnight (5 starts 00:00-03:00, continuations stop at
-                                         03:30 so rolling 5h quotas stay clean for daytime work);
+                                         overnight (10 starts 22:00-02:30, latest fire 02:30,
+                                         01:00 long-work cutoff, 02:40 model-turn cutoff, 03:00
+                                         window end so rolling 5h quotas stay clean for daytime work);
                                          compare nights with co rem status
           schedule.timezone              Australia/Sydney
           notify.channel                 none (default) | telegram | lark | whatsapp | email

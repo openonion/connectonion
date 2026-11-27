@@ -1,15 +1,22 @@
 """Start the existing co ai Host when the owner explicitly opens live REM."""
 
 import os
+import plistlib
 import secrets
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 from .files import RemError, read_json, write_json
+
+# Per-user macOS LaunchAgent label for REM live Host (#3317).
+# Running the Host inside `gui/$UID` (`Aqua` GUI session) keeps Keychain / Touch ID
+# prompts working even when upgrades or background agents restart it.
+REM_HOST_LABEL = "ai.openonion.rem-host"
 
 
 def version_on_disk() -> str:
@@ -183,26 +190,395 @@ def launch_session() -> str:
 
 
 def _moves_to_session(directory: Path, saved, address: str) -> bool:
-    """Our idle Host runs outside the owner's login session, and this open comes from inside it (#3305).
+    """Our idle Host runs outside the owner's login session, and this open can move it into Aqua (#3305, #3317).
 
     Agents restart the Host after an upgrade from a Background session, which leaves it unable to show the
-    Keychain prompt. When the owner then opens REM from his own Terminal, the Host moves into his session,
-    once: the new record says Aqua. A record from before this field is treated as outside.
+    Keychain prompt. When the owner opens REM from Terminal (Aqua) or when the macOS `gui/$UID` LaunchAgent
+    domain is available, the Host moves into Aqua once: the new record says Aqua. A record from before this
+    field is treated as outside.
     """
-    return (launch_session() == "Aqua" and saved.get("session") != "Aqua" and saved.get("address") == address
+    can_enter_aqua = launch_session() == "Aqua" or _use_host_agent()
+    return (can_enter_aqua and saved.get("session") != "Aqua" and saved.get("address") == address
             and _started_here(saved) and not _busy(directory) and not _inside(saved["pid"]))
+
+
+def _current_uid(uid: int | None = None) -> int:
+    return uid if uid is not None else (os.getuid() if hasattr(os, "getuid") else 0)
+
+
+def host_agent_plist_path(agents_dir: Path | None = None) -> Path:
+    """Path to the per-user macOS LaunchAgent plist for REM live Host (#3317)."""
+    base = Path(agents_dir) if agents_dir is not None else Path.home() / "Library" / "LaunchAgents"
+    return base / f"{REM_HOST_LABEL}.plist"
+
+
+def host_agent_installed(agents_dir: Path | None = None) -> bool:
+    """True when the REM live Host LaunchAgent plist is present on disk."""
+    return host_agent_plist_path(agents_dir).is_file()
+
+
+def gui_domain_available(*, uid: int | None = None, run=subprocess.run, platform: str | None = None) -> bool:
+    """True on macOS when the user's `gui/$UID` launchd session is reachable (#3317)."""
+    if (platform or sys.platform) != "darwin":
+        return False
+    try:
+        done = run(["launchctl", "print", f"gui/{_current_uid(uid)}"],
+                   capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode == 0
+
+
+def _use_host_agent() -> bool:
+    """Use the per-user macOS `gui/$UID` LaunchAgent when available outside unit test stubs."""
+    if sys.platform != "darwin" or os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return gui_domain_available()
+
+
+def _host_command(port: int, *, python_bin: str | Path | None = None, env_file: str | Path | None = None) -> list[str]:
+    from ..environment import explicit_env_file
+
+    exe = str(python_bin or sys.executable)
+    command = [exe, "-m", "connectonion.cli.main"]
+    selected = env_file if env_file is not None else explicit_env_file()
+    if selected:
+        command += ["--env-file", str(selected)]
+    command += ["ai", "--port", str(port), "--no-listen", "--no-launch"]
+    return command
+
+
+def _write_private_plist(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = plistlib.dumps(data, sort_keys=False).decode("utf-8")
+    fd, name = tempfile.mkstemp(prefix=f".{REM_HOST_LABEL}-", dir=path.parent)
+    with os.fdopen(fd, "w", encoding="utf-8") as output:
+        output.write(text)
+    os.chmod(name, 0o600)
+    os.replace(name, path)
+
+
+def _parse_launchctl_print(stdout: str) -> dict:
+    info: dict = {}
+    for raw_line in (stdout or "").splitlines():
+        line = raw_line.strip()
+        if line.startswith("pid = "):
+            value = line.split("=", 1)[1].strip()
+            if value.isdigit():
+                info["pid"] = int(value)
+        elif line.startswith("state = "):
+            info["state"] = line.split("=", 1)[1].strip()
+        elif line.startswith("session = "):
+            info["session"] = line.split("=", 1)[1].strip()
+    return info
+
+
+def install_host_agent(
+    directory: Path,
+    port: int | None = None,
+    *,
+    python_bin: str | Path | None = None,
+    env_file: str | Path | None = None,
+    agents_dir: Path | None = None,
+    uid: int | None = None,
+    run=subprocess.run,
+    platform: str | None = None,
+    bootstrap: bool = True,
+) -> dict:
+    """Install/refresh `~/Library/LaunchAgents/ai.openonion.rem-host.plist` in `gui/$UID` (#3317).
+
+    Sets `LimitLoadToSessionType = Aqua` and `ProcessType = Interactive` so any restart
+    (including automated overnight upgrades or background agent shells) runs the REM live
+    Host inside the owner's Aqua GUI session where Keychain / Touch ID prompts work.
+    """
+    plat = platform or sys.platform
+    if plat != "darwin":
+        return {"installed": False, "bootstrapped": False, "label": REM_HOST_LABEL,
+                "platform": plat, "reason": "macOS only"}
+
+    directory = Path(directory).expanduser().resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    resolved_port = port
+    if resolved_port is None:
+        saved = read_json(directory / "rem-live-host.json", {})
+        resolved_port = _preferred_port(saved)
+    if resolved_port is None:
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1", 0))
+            resolved_port = int(reservation.getsockname()[1])
+    command = _host_command(resolved_port, python_bin=python_bin, env_file=env_file)
+    env = {
+        "HOME": str(Path.home()),
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+    }
+    if python_bin is None:
+        from .schedule import _checkout_path
+        if checkout := _checkout_path():
+            env["PYTHONPATH"] = checkout
+
+    log_file = str(directory / "rem-live-host.log")
+    job = {
+        "Label": REM_HOST_LABEL,
+        "ProgramArguments": command,
+        "LimitLoadToSessionType": "Aqua",
+        "ProcessType": "Interactive",
+        "RunAtLoad": False,
+        "KeepAlive": False,
+        "WorkingDirectory": str(directory),
+        "EnvironmentVariables": env,
+        "StandardOutPath": log_file,
+        "StandardErrorPath": log_file,
+    }
+    path = host_agent_plist_path(agents_dir)
+    _write_private_plist(path, job)
+
+    resolved_uid = _current_uid(uid)
+    domain = f"gui/{resolved_uid}"
+    bootstrapped = False
+    error = ""
+    if bootstrap:
+        try:
+            run(["launchctl", "bootout", f"{domain}/{REM_HOST_LABEL}"],
+                capture_output=True, text=True, timeout=30)
+            boot = run(["launchctl", "bootstrap", domain, str(path)],
+                       capture_output=True, text=True, timeout=30)
+            bootstrapped = boot.returncode == 0
+            if not bootstrapped:
+                error = (boot.stderr or boot.stdout or "launchctl bootstrap failed").strip()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            error = str(exc)
+
+    return {
+        "installed": True,
+        "bootstrapped": bootstrapped,
+        "label": REM_HOST_LABEL,
+        "domain": domain,
+        "plist": str(path),
+        "port": resolved_port,
+        "command": command,
+        **({"error": error} if error else {}),
+    }
+
+
+def kickstart_host_agent(
+    *,
+    uid: int | None = None,
+    agents_dir: Path | None = None,
+    run=subprocess.run,
+    platform: str | None = None,
+) -> dict:
+    """Start or restart `ai.openonion.rem-host` inside the owner's `gui/$UID` Aqua session (#3317)."""
+    plat = platform or sys.platform
+    if plat != "darwin":
+        return {"ok": False, "label": REM_HOST_LABEL, "platform": plat, "error": "macOS only"}
+
+    resolved_uid = _current_uid(uid)
+    domain = f"gui/{resolved_uid}"
+    target = f"{domain}/{REM_HOST_LABEL}"
+    error = ""
+    ok = False
+    try:
+        res = run(["launchctl", "kickstart", "-k", target], capture_output=True, text=True, timeout=30)
+        ok = res.returncode == 0
+        if not ok:
+            path = host_agent_plist_path(agents_dir)
+            if path.is_file():
+                boot = run(["launchctl", "bootstrap", domain, str(path)],
+                           capture_output=True, text=True, timeout=30)
+                if boot.returncode == 0:
+                    res = run(["launchctl", "kickstart", "-k", target],
+                              capture_output=True, text=True, timeout=30)
+                    ok = res.returncode == 0
+            if not ok:
+                error = (res.stderr or res.stdout or "launchctl kickstart failed").strip()
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        error = str(exc)
+
+    pid = None
+    if ok:
+        try:
+            printed = run(["launchctl", "print", target], capture_output=True, text=True, timeout=10)
+            if printed.returncode == 0:
+                pid = _parse_launchctl_print(printed.stdout).get("pid")
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    return {
+        "ok": ok,
+        "label": REM_HOST_LABEL,
+        "domain": domain,
+        "target": target,
+        "pid": pid,
+        **({"error": error} if not ok and error else {}),
+    }
+
+
+def uninstall_host_agent(
+    *,
+    uid: int | None = None,
+    agents_dir: Path | None = None,
+    run=subprocess.run,
+    platform: str | None = None,
+) -> bool:
+    """Cleanly bootout and remove the `ai.openonion.rem-host` LaunchAgent plist (#3317; reversible)."""
+    if (platform or sys.platform) != "darwin":
+        return False
+    resolved_uid = _current_uid(uid)
+    target = f"gui/{resolved_uid}/{REM_HOST_LABEL}"
+    bootout_ok = False
+    try:
+        res = run(["launchctl", "bootout", target], capture_output=True, text=True, timeout=30)
+        bootout_ok = res.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    path = host_agent_plist_path(agents_dir)
+    existed = path.exists()
+    if existed:
+        path.unlink(missing_ok=True)
+    return existed or bootout_ok
+
+
+def host_session_info(
+    directory: Path | None = None,
+    *,
+    uid: int | None = None,
+    agents_dir: Path | None = None,
+    run=subprocess.run,
+    platform: str | None = None,
+) -> dict:
+    """Report which macOS launchd session (`Aqua` vs `Background` / `non-macOS`) the REM live Host is in (#3317)."""
+    plat = platform or sys.platform
+    resolved_uid = _current_uid(uid)
+    if directory is None:
+        from ..project import selected_identity_dir
+        directory = selected_identity_dir()
+    directory = Path(directory)
+    saved = read_json(directory / "rem-live-host.json", {})
+    saved = saved if isinstance(saved, dict) else {}
+    running = False if NO_PS else _alive(saved)
+    pid = saved.get("pid") if running else None
+    port = saved.get("port") if isinstance(saved.get("port"), int) else None
+
+    agent_installed = plat == "darwin" and host_agent_plist_path(agents_dir).is_file()
+    agent_loaded = False
+    agent_pid = None
+    if plat == "darwin":
+        try:
+            printed = run(["launchctl", "print", f"gui/{resolved_uid}/{REM_HOST_LABEL}"],
+                          capture_output=True, text=True, timeout=10)
+            if printed.returncode == 0:
+                agent_loaded = True
+                agent_pid = _parse_launchctl_print(printed.stdout).get("pid")
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if not running and agent_loaded and agent_pid:
+            running = True
+            pid = agent_pid
+
+    if plat != "darwin":
+        session = "non-macOS"
+    elif not running:
+        session = "stopped"
+    elif agent_loaded and (agent_pid == pid or saved.get("via_launch_agent")):
+        session = "Aqua"
+    elif saved.get("session") in ("Aqua", "Background"):
+        session = saved["session"]
+    else:
+        session = "Background"
+        if isinstance(pid, int) and pid > 0:
+            try:
+                proc = run(["launchctl", "procinfo", str(pid)], capture_output=True, text=True, timeout=5)
+                if proc.returncode == 0:
+                    parsed = _parse_launchctl_print(proc.stdout)
+                    if parsed.get("session") in ("Aqua", "Background"):
+                        session = parsed["session"]
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+    stuck_in_background = plat == "darwin" and running and session != "Aqua"
+    recovery_command = ""
+    if stuck_in_background:
+        if agent_installed:
+            recovery_command = f"launchctl kickstart -k gui/{resolved_uid}/{REM_HOST_LABEL}"
+        else:
+            recovery_command = "co rem open --live"
+
+    return {
+        "platform": plat,
+        "running": bool(running),
+        "pid": pid,
+        "port": port,
+        "session": session,
+        "launch_agent_label": REM_HOST_LABEL,
+        "launch_agent_installed": agent_installed,
+        "launch_agent_loaded": agent_loaded,
+        "launch_agent_pid": agent_pid,
+        "stuck_in_background": stuck_in_background,
+        "ok": not stuck_in_background,
+        "recovery_command": recovery_command,
+    }
+
+
+class _AgentProcess:
+    """Process handle for a REM live Host started via macOS `gui/$UID` LaunchAgent (#3317)."""
+
+    def __init__(self, pid: int, args: list[str], *, uid: int | None = None, run=subprocess.run):
+        self.pid = pid
+        self.args = list(args)
+        self._command = " ".join(self.args[1:])
+        self._uid = _current_uid(uid)
+        self._run = run
+
+    def poll(self):
+        if self.pid <= 0:
+            return None
+        return None if _alive({"pid": self.pid, "command": self._command}) else 0
+
+    def terminate(self):
+        try:
+            self._run(["launchctl", "bootout", f"gui/{self._uid}/{REM_HOST_LABEL}"],
+                      capture_output=True, text=True, timeout=15)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if self.pid > 0:
+            try:
+                os.kill(self.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+    def kill(self):
+        if self.pid > 0:
+            try:
+                os.kill(self.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+            except ProcessLookupError:
+                pass
+
+    def wait(self, timeout=None):
+        return 0
 
 
 def _launch(directory: Path, address: str, *, background: bool = False, port: int | None = None,
             renewed_for: str | None = None):
     """Start co ai and remember it, so the next open reuses it; the caller holds the lock."""
-    process = _spawn(directory, port)
+    via_agent = False
+    process = None
+    if _use_host_agent():
+        chosen_port = port if port is not None else _preferred_port({})
+        installed = install_host_agent(directory, port=chosen_port)
+        if installed.get("installed") and installed.get("bootstrapped"):
+            kicked = kickstart_host_agent()
+            if kicked.get("ok"):
+                via_agent = True
+                process = _AgentProcess(kicked.get("pid") or 0, installed["command"])
+    if process is None:
+        process = _spawn(directory, port)
     try:
         write_json(directory / "rem-live-host.json", {"address": address, "pid": process.pid,
                                                       "port": _port(process.args),
                                                       "command": " ".join(process.args[1:]),
                                                       "install": _install(),
-                                                      "session": launch_session(),
+                                                      "session": "Aqua" if via_agent else launch_session(),
+                                                      **({"via_launch_agent": True, "label": REM_HOST_LABEL} if via_agent else {}),
                                                       **({"renewed_for": renewed_for} if renewed_for else {}),
                                                       **({"started_at": time.time()} if background else {})})
     except (OSError, RemError):

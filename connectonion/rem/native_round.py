@@ -13,6 +13,36 @@ class RoundBlocked(RemError):
     """The round finished with nothing it could serve; `next` saves its calendar before reporting it."""
 
 
+# Bounded one-call light stages allowed during 01:00-02:40 on the overnight profile (#3480).
+OVERNIGHT_LIGHT_STAGES = frozenset({"sessions-summary", "same-person", "reply-draft", "translate"})
+
+
+def overnight_wave_policy(config: dict, now=None) -> str:
+    """Wave-gating policy for the 10-wave overnight schedule (#3480).
+
+    Returns:
+      - "full": non-overnight profiles (default/dense untouched), or overnight 22:00 <= local < 01:00
+      - "light_only": overnight 01:00 <= local < 02:40 (blocks new long/deepening/investigation work
+        after 01:00 and limits late waves to bounded one-call light tasks: session summary,
+        same-person check, reply draft, translation)
+      - "stop": overnight 02:40 <= local < 22:00 (02:40-03:00 model turn cutoff and daytime buffer
+        until next 22:00 evening window; refuses issuing new model turns so in-flight turns finish
+        cleanly before 03:00)
+    """
+    schedule = config.get("schedule") if isinstance(config, dict) else None
+    if not isinstance(schedule, dict) or schedule.get("profile") != "overnight":
+        return "full"
+    moment = service.now() if now is None else now
+    zone = service.notebook_zone(config)
+    local = moment.replace(tzinfo=zone) if moment.tzinfo is None else moment.astimezone(zone)
+    minute = local.hour * 60 + local.minute
+    if minute >= 22 * 60 or minute < 1 * 60:
+        return "full"
+    if minute < 2 * 60 + 40:
+        return "light_only"
+    return "stop"
+
+
 def scheduled_slot(root, config):
     worker = service.worker_state(root)
     slot = service.latest_slot(config, service.now() + service.EARLY_FIRE)
@@ -390,11 +420,17 @@ def _progress_not_saved(root, cursor, batch):
 
 def prepare_task(root, cursor, config, directory):
     _reset_attempts(root, cursor)
-    task = prepare_batch(root, cursor, config, directory)
-    if task:
-        return task
+    policy = overnight_wave_policy(config)
+    if policy == "stop":
+        return {"stop": "overnight model turn cutoff reached (02:40); no new work after 03:00 (in-flight turns finish cleanly)"}
+    light_only = policy == "light_only"
+    if not light_only:
+        task = prepare_batch(root, cursor, config, directory)
+        if task:
+            return task
     if cursor["phase"] == "daily-translation":
-        task = prepare_cheap(root, cursor, config, directory)
+        task = (prepare_translation(root, cursor, config, directory) if light_only
+                else prepare_cheap(root, cursor, config, directory))
         if not task:
             finish(root, cursor)
         return task
@@ -421,17 +457,20 @@ def prepare_task(root, cursor, config, directory):
         row = rows[0]
         task = drafts.prepare(root, row, config, directory=directory)
         return _task("draft", task, cursor, stage="reply-draft", record=row["id"])
-    from .tasks import auto_dispatch
-    auto_dispatch(root, config)
-    readmitted = fetch_stalls.readmit(root, {job["record"] for job in cursor["jobs"][cursor["job_index"]:]})
-    if readmitted:
-        # readmit has already dropped their hold on disk: a call that ends here must not lose them.
-        cursor["jobs"] += readmitted
-        write_json(state_path(root, "round.json"), cursor)
-    task = _job_turn(root, cursor, config, directory)
-    if task:
-        return task
-    task = _summary_turn(root, cursor, config, directory) or prepare_abstract(root, cursor, config, directory)
+    if not light_only:
+        from .tasks import auto_dispatch
+        auto_dispatch(root, config)
+        readmitted = fetch_stalls.readmit(root, {job["record"] for job in cursor["jobs"][cursor["job_index"]:]})
+        if readmitted:
+            # readmit has already dropped their hold on disk: a call that ends here must not lose them.
+            cursor["jobs"] += readmitted
+            write_json(state_path(root, "round.json"), cursor)
+        task = _job_turn(root, cursor, config, directory)
+        if task:
+            return task
+    task = _summary_turn(root, cursor, config, directory)
+    if not task and not light_only:
+        task = prepare_abstract(root, cursor, config, directory)
     if task:
         return task
     pair = next(iter(same_person.candidates(root, uninvestigated=False)), None) if cursor["same_left"] and not held else None
@@ -440,6 +479,11 @@ def prepare_task(root, cursor, config, directory):
     if "translation_slot" not in cursor:
         slot = service.latest_slot(config, service.now() + service.EARLY_FIRE) if cursor["slot"] else None
         cursor["translation_slot"] = slot.isoformat() if slot else None
+    if light_only:
+        task = _closing_translation(root, cursor, config, directory)
+        if task:
+            return task
+        return {"stop": "overnight light-only window (01:00-02:40): no bounded light tasks waiting; long work resumes next night"}
     task = (_closing_translation(root, cursor, config, directory) or _closing_tags(root, cursor, config, directory)
             or prepare_tag_node(root, cursor, config, directory))
     if task:
@@ -637,6 +681,11 @@ def prepare_cheap(root, cursor, config, directory):
     It was translation alone, and the floor held that too: from Friday at 90% the night
     served nothing until Tuesday, with 142 translations, 226 untagged pages and 56 tag
     pages waiting (Mac session, 2026-11-20). Each is a turn of a minute or so."""
+    policy = overnight_wave_policy(config)
+    if policy == "stop":
+        return {"stop": "overnight model turn cutoff reached (02:40); no new work after 03:00 (in-flight turns finish cleanly)"}
+    if policy == "light_only":
+        return prepare_translation(root, cursor, config, directory)
     return (prepare_translation(root, cursor, config, directory) or prepare_tagging(root, cursor, config, directory)
             or prepare_tag_node(root, cursor, config, directory))
 
